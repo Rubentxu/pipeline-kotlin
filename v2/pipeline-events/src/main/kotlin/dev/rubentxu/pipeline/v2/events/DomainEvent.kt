@@ -1063,3 +1063,40 @@ data class HtmlReportFailed(
 ) : DomainEvent {
     override val kind: String get() = "HtmlReportFailed"
 }
+
+/**
+ * S1-C — typed directive observability. The engine's directive seam is the
+ * ONLY emitter: [DirectiveAdmitted] fires when a stage's declared directive
+ * resolved against the DirectiveRegistry (before the stage starts, before any
+ * stage effect); [DirectiveDenied] fires when admission failed closed.
+ *
+ * `policy` is the closed policy KIND (evaluate/gate/provide-context), never a
+ * concrete directive name-driven behaviour: these events are observability of
+ * decisions the engine already took, not a second decision channel.
+ */
+data class DirectiveAdmitted(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stageIndex: Int,
+    val stageName: String,
+    val directiveKey: String,
+    val phase: String,
+    val policy: String,
+) : DomainEvent {
+    override val kind: String get() = "DirectiveAdmitted"
+}
+
+data class DirectiveDenied(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stageIndex: Int,
+    val stageName: String,
+    val directiveKey: String,
+    val reason: String,
+) : DomainEvent {
+    override val kind: String get() = "DirectiveDenied"
+}

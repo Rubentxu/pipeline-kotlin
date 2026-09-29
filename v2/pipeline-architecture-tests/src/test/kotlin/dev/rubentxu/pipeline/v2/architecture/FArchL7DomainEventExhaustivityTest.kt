@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.architecture
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import kotlin.reflect.full.memberProperties
 
@@ -84,13 +85,15 @@ class FArchL7DomainEventExhaustivityTest {
      * 49. HtmlReportPublished (WU-LPR-090 phase-a — core.publishHtml observability)
      * 50. HtmlReportSkipped (WU-LPR-090 phase-a — core.publishHtml observability)
      * 51. HtmlReportFailed (WU-LPR-090 phase-a — core.publishHtml typed failure observability)
+     * 52. DirectiveAdmitted (S1-C — directive seam admission observability)
+     * 53. DirectiveDenied (S1-C — directive seam fail-closed denial observability)
      */
     @Test
     fun `domain_event_sealed_hierarchy_has_51_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
-        val expectedCount = 51 // 48 + HtmlReport{Published,Skipped,Failed} (WU-LPR-090 phase-a)
+        val expectedCount = 53 // 51 + DirectiveAdmitted/DirectiveDenied (S1-C directive seam)
 
         assertEquals(
             expectedCount,
@@ -128,6 +131,24 @@ class FArchL7DomainEventExhaustivityTest {
                 "ML-R7 DomainEvent variants missing:\n${failures.joinToString("\n")}"
             )
         }
+    }
+
+    /**
+     * S1-C — the directive seam emits exactly two closed observability
+     * variants; anything else would let policy behaviour leak into the
+     * event vocabulary.
+     */
+    @Test
+    fun `domain_event_has_directive_seam_variants`() {
+        val expected = listOf("DirectiveAdmitted", "DirectiveDenied")
+
+        val actualNames = DomainEvent::class.sealedSubclasses.mapNotNull { it.simpleName }.toSet()
+        val missing = expected.filter { it !in actualNames }
+
+        assertTrue(
+            missing.isEmpty(),
+            "S1-C directive seam variants missing: $missing (found ${actualNames.filter { it.startsWith("Directive") }})",
+        )
     }
 
     /**

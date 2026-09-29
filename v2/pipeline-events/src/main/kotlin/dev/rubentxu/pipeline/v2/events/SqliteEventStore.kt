@@ -265,6 +265,8 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 is DirDeleted -> event.copy(sequence = assignedSequence)
                 is WsCleaned -> event.copy(sequence = assignedSequence)
                 is CatchErrorTriggered -> event.copy(sequence = assignedSequence)
+                is DirectiveAdmitted -> event.copy(sequence = assignedSequence)
+                is DirectiveDenied -> event.copy(sequence = assignedSequence)
                 is StageMarkedUnstable -> event.copy(sequence = assignedSequence)
                 is WorkflowLoaded -> event.copy(sequence = assignedSequence)
                 is WaitUntilPolled -> event.copy(sequence = assignedSequence)

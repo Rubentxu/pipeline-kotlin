@@ -23,6 +23,8 @@ import dev.rubentxu.pipeline.v2.domain.StageNode
 data class AdmittedDirective(
     val invocation: DirectiveInvocation,
     val policy: DirectiveExecutionPolicy,
+    /** The declared phase (registry metadata) the directive landed in. */
+    val phase: DirectivePhase,
 )
 
 /**
@@ -77,7 +79,7 @@ object StageDirectivePlanner {
 
                 is DirectiveAdmission.Admitted ->
                     byPhase.getValue(definition.phase) +=
-                        AdmittedDirective(invocation, admission.policy)
+                        AdmittedDirective(invocation, admission.policy, definition.phase)
             }
         }
 

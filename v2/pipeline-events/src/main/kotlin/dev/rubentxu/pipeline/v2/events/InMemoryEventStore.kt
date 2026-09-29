@@ -74,6 +74,8 @@ class InMemoryEventStore : EventSink {
             is WsCleaned -> event.copy(sequence = assignedSequence)
             // ML-R9 error-handling events (T-06)
             is CatchErrorTriggered -> event.copy(sequence = assignedSequence)
+            is DirectiveAdmitted -> event.copy(sequence = assignedSequence)
+            is DirectiveDenied -> event.copy(sequence = assignedSequence)
             is StageMarkedUnstable -> event.copy(sequence = assignedSequence)
             // ML-R9 workflow-utility events (T-07)
             is WorkflowLoaded -> event.copy(sequence = assignedSequence)

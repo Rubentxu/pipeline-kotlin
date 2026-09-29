@@ -346,6 +346,19 @@ class CanonicalDurableRunCoordinator(
                 when (val directiveDecision = directiveRegistry
                     ?.let { dev.rubentxu.pipeline.v2.domain.directive.StageDirectivePlanner.decide(it, stage) }) {
                     is dev.rubentxu.pipeline.v2.domain.directive.StageDirectiveDecision.Denied -> {
+                        // S1-C: typed denial observability BEFORE the run aborts.
+                        eventSink.append(
+                            dev.rubentxu.pipeline.v2.events.DirectiveDenied(
+                                eventId = UUID.randomUUID().toString(),
+                                runId = runId.value,
+                                sequence = 0L,
+                                occurredAt = Instant.now(),
+                                stageIndex = stageIndex,
+                                stageName = stage.name,
+                                directiveKey = directiveDecision.key.value,
+                                reason = directiveDecision.reason,
+                            ),
+                        )
                         currentOutcome = RunOutcome.Failure(
                             PipelineFailure(
                                 dev.rubentxu.pipeline.v2.domain.FailureKind.USER,
@@ -354,8 +367,29 @@ class CanonicalDurableRunCoordinator(
                         )
                         return@run currentOutcome
                     }
-                    // Permitted (or no directives declared): continue into the stage.
-                    is dev.rubentxu.pipeline.v2.domain.directive.StageDirectiveDecision.Permitted -> Unit
+                    // S1-C: one typed admitted event per declared directive,
+                    // emitted at the same seam that will later interpret them.
+                    is dev.rubentxu.pipeline.v2.domain.directive.StageDirectiveDecision.Permitted -> {
+                        directiveDecision.phases.values.flatten().forEach { admitted ->
+                            eventSink.append(
+                                dev.rubentxu.pipeline.v2.events.DirectiveAdmitted(
+                                    eventId = UUID.randomUUID().toString(),
+                                    runId = runId.value,
+                                    sequence = 0L,
+                                    occurredAt = Instant.now(),
+                                    stageIndex = stageIndex,
+                                    stageName = stage.name,
+                                    directiveKey = admitted.invocation.key.value,
+                                    phase = admitted.phase.name,
+                                    policy = when (admitted.policy) {
+                                        is dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy.Evaluate -> "evaluate"
+                                        is dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy.Gate -> "gate"
+                                        is dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy.ProvideContext -> "provide-context"
+                                    },
+                                ),
+                            )
+                        }
+                    }
                     null -> Unit
                 }
 

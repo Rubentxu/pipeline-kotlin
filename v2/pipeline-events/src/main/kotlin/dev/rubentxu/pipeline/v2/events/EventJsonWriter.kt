@@ -400,6 +400,28 @@ internal object EventJsonWriter {
                 sb.append(",\"reason\":")
                 sb.append(EventJsonWriter.jsonString(event.reason))
             }
+            is DirectiveAdmitted -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"directiveKey\":")
+                sb.append(EventJsonWriter.jsonString(event.directiveKey))
+                sb.append(",\"phase\":")
+                sb.append(EventJsonWriter.jsonString(event.phase))
+                sb.append(",\"policy\":")
+                sb.append(EventJsonWriter.jsonString(event.policy))
+            }
+            is DirectiveDenied -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"directiveKey\":")
+                sb.append(EventJsonWriter.jsonString(event.directiveKey))
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
             is DirEntered -> {
                 sb.append(",\"path\":")
                 sb.append(EventJsonWriter.jsonString(event.path))

@@ -537,6 +537,40 @@ object JsonEventLog {
                     reason = reason,
                 )
             }
+            "DirectiveAdmitted" -> {
+                val stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0
+                val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
+                val directiveKey = EventJsonFields.stringField(s, "directiveKey") ?: ""
+                val phase = EventJsonFields.stringField(s, "phase") ?: ""
+                val policy = EventJsonFields.stringField(s, "policy") ?: ""
+                DirectiveAdmitted(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    stageIndex = stageIndex,
+                    stageName = stageName,
+                    directiveKey = directiveKey,
+                    phase = phase,
+                    policy = policy,
+                )
+            }
+            "DirectiveDenied" -> {
+                val stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0
+                val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
+                val directiveKey = EventJsonFields.stringField(s, "directiveKey") ?: ""
+                val reason = EventJsonFields.stringField(s, "reason") ?: ""
+                DirectiveDenied(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    stageIndex = stageIndex,
+                    stageName = stageName,
+                    directiveKey = directiveKey,
+                    reason = reason,
+                )
+            }
             "DirEntered" -> {
                 val path = EventJsonFields.stringField(s, "path") ?: ""
                 val previousPath = EventJsonFields.stringField(s, "previousPath") ?: ""

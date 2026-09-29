@@ -6,7 +6,28 @@ import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.domain.scm.Scm
 
-/** Shared mutable state for the stage DSL builders. */
+/**
+ * Shared mutable state for the stage DSL builders.
+ *
+ * S0-C1 (Pure Builder Consumption Gate): `[MustUseReturnValues]` is applied at
+ * CLASS level, not per function, because Kotlin 2.4 restricts the annotation to
+ * targets `file` and `class` (OBSERVED: compiling it on a member function fails
+ * with "not applicable to target 'member function'").
+ *
+ * Class level is also the semantically right granularity here: it covers every
+ * pure builder declared on this scope, so a future `PURE_BUILDER` added to this
+ * class inherits the gate without anyone having to remember to annotate it. The
+ * class is annotated rather than the file because the file also declares the
+ * top-step scope, whose functions are a different concern.
+ *
+ * The annotation constrains the FATE OF A RETURNED CARRIER, not effects: the
+ * `PURE_BUILDER`s here still emit no step and no event. It only makes a discarded
+ * carrier a compile error inside `.pipeline.kts`, where the scripting host
+ * enables `-Xreturn-value-checker=check`. Functions returning `Unit` are
+ * unaffected, as are fail-closed stubs returning `Nothing` (a `Nothing` result
+ * is never discarded — it never returns).
+ */
+@MustUseReturnValues
 open class StageScopeCore(
     protected val stageName: String,
     protected val runtimeConfig: RuntimeConfig,
@@ -57,6 +78,15 @@ open class StageScopeCore(
      * A side effect here is invisible to the `non-canonical plugins` bridge gate
      * because every emitted step is canonical, which is how the duplicate
      * survived an audit that recorded the surface as gated.
+     *
+     * S0-C1 (Pure Builder Consumption Gate): purity constrains EFFECTS, not the
+     * fate of the carrier. `[MustUseReturnValues]` makes discarding the
+     * `[CheckoutSpec]` a compile error inside `.pipeline.kts` (the scripting host
+     * enables `-Xreturn-value-checker=check`). OBSERVED before the gate: a
+     * statement-position `scmGit(..)` compiled and produced a `success` run with
+     * an empty stage and zero checkouts — the author asked for a checkout and
+     * silently got nothing. The annotation does not change purity: this still
+     * returns a value and still emits no step and no event.
      */
     fun scmGit(
         url: String,

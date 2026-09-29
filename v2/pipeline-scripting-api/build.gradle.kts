@@ -10,6 +10,15 @@ kotlin {
     compilerOptions {
         languageVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_4)
         apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_4)
+        // S0-C1 (Pure Builder Consumption Gate): `@MustUseReturnValues` is an
+        // "ignorability" annotation, and Kotlin 2.4 rejects it on a declaration
+        // when the return-value checker is disabled (diagnostic
+        // IGNORABILITY_ANNOTATIONS_WITH_CHECKER_DISABLED). The DSL module is
+        // where the carriers are declared, so the checker is enabled here too.
+        // This makes the library honest at its own boundary: an unconsumed
+        // `PURE_BUILDER` result is an error for library consumers, not only
+        // inside `.pipeline.kts`.
+        freeCompilerArgs.add("-Xreturn-value-checker=check")
     }
 }
 

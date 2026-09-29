@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test
 import java.io.File
 import kotlin.reflect.KVisibility
 import kotlin.reflect.full.memberFunctions
+import kotlin.reflect.jvm.javaMethod
 
 /**
  * S0-A2: the DSL Surface Manifest v1 machine-check (Semantic Conservation Law).
@@ -46,6 +47,7 @@ class FArchS0SurfaceManifestTest {
         val signature: String,
         val category: String,
         val state: String,
+        val consumption: String,
         val interpreter: String,
     )
 
@@ -55,21 +57,41 @@ class FArchS0SurfaceManifestTest {
             "PURE_BUILDER", "SCRIPTED_RUNTIME_CALL", "UNSUPPORTED_FAIL_CLOSED",
         )
         val states = setOf("STABLE", "PARTIAL", "EXPERIMENTAL", "DEPRECATED", "UNSUPPORTED_FAIL_CLOSED")
+        // S0-C1: what may happen to a construct's returned carrier. NOT_APPLICABLE
+        // = returns nothing to consume; MUST_CONSUME = discarding is a compile
+        // error; MAY_DISCARD = discarding is a legitimate authorial choice.
+        val consumptions = setOf("NOT_APPLICABLE", "MUST_CONSUME", "MAY_DISCARD")
 
         val lines = manifestFile().readLines()
         val rows = mutableListOf<Row>()
         for ((index, line) in lines.withIndex()) {
             if (!line.startsWith("| ") || line.contains("---")) continue
             val cells = line.trim('|').split('|').map { it.trim() }
-            // Header rows have exactly the fixed labels; data rows have 5 cells.
-            if (cells.size != 5) continue
+            // Header rows have exactly the fixed labels; data rows have 6 cells.
+            if (cells.size != 6) continue
             if (cells[0] == "Construct") continue
-            val (construct, signature, category, state, interpreter) = cells
+            val construct = cells[0]
+            val signature = cells[1]
+            val category = cells[2]
+            val state = cells[3]
+            val consumption = cells[4]
+            val interpreter = cells[5]
             check(category in categories) {
                 "manifest line ${index + 1}: category '$category' outside the closed set"
             }
             check(state in states) {
                 "manifest line ${index + 1}: state '$state' outside the closed set"
+            }
+            check(consumption in consumptions) {
+                "manifest line ${index + 1}: ResultConsumption '$consumption' outside the closed set " +
+                    "($consumptions)"
+            }
+            check(
+                category != "PURE_BUILDER" || consumption in
+                    setOf("NOT_APPLICABLE", "MUST_CONSUME", "MAY_DISCARD")
+            ) {
+                "manifest line ${index + 1}: PURE_BUILDER '$construct' has ResultConsumption " +
+                    "'$consumption'; a pure builder that returns a carrier must say what happens to it"
             }
             check(!category.contains("UNKNOWN", ignoreCase = true) && !state.contains("UNKNOWN", ignoreCase = true)) {
                 "manifest line ${index + 1}: UNKNOWN is not a legal category/state"
@@ -77,7 +99,7 @@ class FArchS0SurfaceManifestTest {
             check(interpreter.isNotBlank()) {
                 "manifest line ${index + 1}: interpreter column must not be empty"
             }
-            rows.add(Row(construct, signature, category, state, interpreter))
+            rows.add(Row(construct, signature, category, state, consumption, interpreter))
         }
         check(rows.isNotEmpty()) { "manifest parsed to zero rows - table format drifted?" }
         return rows
@@ -327,4 +349,136 @@ class FArchS0SurfaceManifestTest {
             }
         }
     }
+
+    // ------------------------------------------------------------------
+    // S0-C1: ResultConsumption is bound to the real DSL surface
+    // ------------------------------------------------------------------
+
+    /**
+     * Round-trips the manifest's `ResultConsumption` against the live DSL.
+     *
+     * This is deliberately generic: it reads the construct name out of each
+     * manifest row and reflects the real function. It contains no case for
+     * `scmGit` and no hardcoded list of gated builders, so a future PURE_BUILDER
+     * inherits the gate as soon as the manifest says MUST_CONSUME and the
+     * function carries `@MustUseReturnValues`.
+     */
+    @Test
+    fun `MUST_CONSUME manifest rows are annotated MustUseReturnValues on the live DSL`() {
+        val mustConsume = loadRows().filter { it.consumption == "MUST_CONSUME" }
+        check(mustConsume.isNotEmpty()) {
+            "no manifest row declares MUST_CONSUME; the pure-builder consumption gate would be vacuous"
+        }
+        for (row in mustConsume) {
+            val fn = findBuilder(row.construct)
+            check(fn != null) {
+                "manifest declares '${row.construct}' MUST_CONSUME but no live DSL function " +
+                    "with that name exists on the reflected surface"
+            }
+            check(jvmReturnType(fn!!) != Void.TYPE) {
+                "manifest declares '${row.construct}' MUST_CONSUME but the function returns void; " +
+                    "there is no carrier to consume, so the row is dishonest"
+            }
+            check(isMustUseReturnValues(fn!!)) {
+                "manifest declares '${row.construct}' MUST_CONSUME but neither the function nor its " +
+                    "declaring class carries @MustUseReturnValues; discarding its result would " +
+                    "compile silently"
+            }
+        }
+    }
+
+    /**
+     * The inverse direction: an annotated builder the manifest does not know
+     * about is a second source of truth drift. This catches the failure where
+     * someone gates a function in code but never records the gate.
+     */
+    @Test
+    fun `no live DSL builder is MustUseReturnValues without a MUST_CONSUME manifest row`() {
+        val declared = loadRows().filter { it.consumption == "MUST_CONSUME" }.map { it.construct }.toSet()
+        val annotated = liveBuilderFunctions()
+            .filter { fn -> isMustUseReturnValues(fn) && returnsAConsumableCarrier(fn) }
+            .map { it.name }
+            .toSet()
+        check(annotated.isNotEmpty()) {
+            "expected at least one @MustUseReturnValues DSL builder; the gate has lost its subject"
+        }
+        val undeclared = annotated - declared
+        check(undeclared.isEmpty()) {
+            "these DSL builders are governed by @MustUseReturnValues and return a consumable " +
+                "carrier, but have no MUST_CONSUME manifest row: $undeclared " +
+                "(the manifest is the surface authority)"
+        }
+    }
+
+    /**
+     * Does this function produce a carrier whose loss is silent?
+     *
+     * `void` is not a carrier. `Nothing` is not either, and this is the subtle
+     * case: a fail-closed stub declared `: Nothing` THROWS, so its "result" is
+     * never produced and never discarded. Gating it would be theatre — the
+     * author cannot silently lose a value that does not exist (OBSERVED:
+     * `agent(..)` and the `retry` retrofit are `UNSUPPORTED_FAIL_CLOSED` and
+     * throw `IllegalArgumentException`).
+     */
+    private fun returnsAConsumableCarrier(fn: kotlin.reflect.KFunction<*>): Boolean {
+        val jvm = jvmReturnType(fn)
+        if (jvm == Void.TYPE || jvm == Void::class.java) return false
+        if (Nothing::class.java == jvm) return false
+        val kotlinNothing = Nothing::class.java.name
+        return jvm.name != kotlinNothing
+    }
+
+    /**
+     * The JVM return type, read from the underlying method.
+     *
+     * `KFunction.returnType` is unreliable for these members: OBSERVED, `echo`
+     * (declared `fun echo(text: String) { }`, JVM `void`) is still reported as
+     * carrying a value, and inherited builders are not visible at all. The JVM
+     * signature is the authority for "does this function produce a carrier".
+     */
+    private fun jvmReturnType(fn: kotlin.reflect.KFunction<*>): Class<*> =
+        runCatching { fn.javaMethod?.returnType ?: Void.TYPE }.getOrDefault(Void.TYPE)
+
+    /**
+     * Kotlin 2.4 restricts `@MustUseReturnValues` to `file` and `class` targets,
+     * so the gate is carried by the DECLARING class, not by the function. The
+     * declaring class is resolved through the JVM method's declaring class name
+     * (`KFunction.declaringClass` is not part of the stable reflect API), then
+     * its supertype chain is walked for an inherited marker.
+     *
+     * Resolving the real declaring class matters: testing "does ANY DSL class
+     * carry the marker" would return true for every function on the surface and
+     * make this fitness vacuous.
+     */
+    private fun isMustUseReturnValues(fn: kotlin.reflect.KFunction<*>): Boolean {
+        val marker = "kotlin.MustUseReturnValues"
+        if (fn.annotations.any { it.annotationClass.qualifiedName == marker }) return true
+
+        val declaringClassName = runCatching { fn.javaMethod?.declaringClass?.name }.getOrNull()
+            ?: return false
+        val declaring = runCatching {
+            Class.forName(declaringClassName).kotlin
+        }.getOrNull() ?: return false
+
+        return generateSequence(declaring) {
+            it.supertypes.firstNotNullOfOrNull { s -> s.classifier as? kotlin.reflect.KClass<*> }
+        }.any { it.annotations.any { a -> a.annotationClass.qualifiedName == marker } }
+    }
+
+    /** Every public DSL builder on the live surface, by simple name. */
+    private fun liveBuilderFunctions(): List<kotlin.reflect.KFunction<*>> {
+        val result = mutableListOf<kotlin.reflect.KFunction<*>>()
+        for (cls in dslClasses) {
+            for (fn in cls.memberFunctions) {
+                if (fn.visibility != KVisibility.PUBLIC) continue
+                if (fn.name in ignoredFunctions) continue
+                result.add(fn)
+            }
+        }
+        return result
+    }
+
+    /** Resolves a manifest construct name to a live DSL function, or null. */
+    private fun findBuilder(name: String): kotlin.reflect.KFunction<*>? =
+        liveBuilderFunctions().firstOrNull { it.name == name }
 }

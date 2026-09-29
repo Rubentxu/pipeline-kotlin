@@ -15,6 +15,7 @@ import kotlin.script.experimental.api.ScriptDiagnostic
 import kotlin.script.experimental.api.ScriptEvaluationConfiguration
 import kotlin.script.experimental.api.SourceCode
 import kotlin.script.experimental.api.defaultImports
+import kotlin.script.experimental.api.compilerOptions
 import kotlin.script.experimental.host.StringScriptSource
 import kotlin.script.experimental.jvm.dependenciesFromCurrentContext
 import kotlin.script.experimental.jvm.jvm
@@ -56,8 +57,18 @@ class Kotlin24ScriptingHost(
     /** Kotlin language version fed into the cache key. */
     private val kotlinVersion = "2.4.10"
 
-    /** Host implementation version fed into the cache key. */
-    private val hostVersion = "1.0.0"
+    /**
+     * Host implementation version fed into the cache key.
+     *
+     * S0-C1: bumped to 1.1.0 when `-Xreturn-value-checker=check` was added. The
+     * cache key is (script, classpath, kotlin version, HOST VERSION) and does
+     * NOT include the compilation configuration, so adding or removing a
+     * compiler option without bumping this value leaves previously compiled
+     * scripts being served from cache — OBSERVED: the flag was in the binary,
+     * yet a script compiled before the change still discarded its result
+     * silently.
+     */
+    private val hostVersion = "1.1.0"
 
     override fun compile(definition: ScriptDefinition): ScriptCompilationResult {
         val effectiveRunId = runId ?: definition.sourcePath?.fileName?.toString() ?: UUID.randomUUID().toString()
@@ -96,58 +107,72 @@ class Kotlin24ScriptingHost(
         val classpathFiles = definition.classpath.map { File(it).canonicalFile }
         val sortedClasspath = classpathFiles.map { it.canonicalPath }.sorted().joinToString(",")
 
-        // Base compilation configuration: template defaults (kotlin-stdlib,
-        // scripting runtime, reflect) plus the current context's classpath
-        // at `wholeClasspath = false` (the default). Per-call jars are
-        // appended via `updateClasspath` when present.
-        // Base compilation configuration: template defaults (kotlin-stdlib,
-        // scripting runtime, reflect) plus the current context's classpath
-        // at `wholeClasspath = false` (the default). Per-call jars are
-        // appended via `updateClasspath` when present.
-        val compilationConfig: ScriptCompilationConfiguration =
-            createJvmCompilationConfigurationFromTemplate<Any>(
-                body = {
-                    jvm {
-                        dependenciesFromCurrentContext()
-                        if (classpathFiles.isNotEmpty()) {
-                            updateClasspath(classpathFiles)
-                        }
-                    }
-                    defaultImports(
-                        "dev.rubentxu.pipeline.v2.dsl.pipeline",
-                        "dev.rubentxu.pipeline.v2.dsl.stages",
-                        "dev.rubentxu.pipeline.v2.dsl.stage",
-                        "dev.rubentxu.pipeline.v2.dsl.echo",
-                        "dev.rubentxu.pipeline.v2.dsl.sh",
-                        "dev.rubentxu.pipeline.v2.dsl.PipelineSpec",
-                        "dev.rubentxu.pipeline.v2.dsl.StageSpec",
-                        "dev.rubentxu.pipeline.v2.dsl.StepSpec",
-                        "dev.rubentxu.pipeline.v2.dsl.PipelineScope",
-                        "dev.rubentxu.pipeline.v2.dsl.StagesScope",
-                        "dev.rubentxu.pipeline.v2.dsl.StageScope",
-                        "dev.rubentxu.pipeline.v2.dsl.StageBuilder",
-                        "dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint",
-                        "dev.rubentxu.pipeline.v2.scripting.ScriptedArtifactIdentity",
-                        "dev.rubentxu.pipeline.v2.scripting.ScriptedStepFacade",
-                        "dev.rubentxu.pipeline.v2.scripting.ScriptedCallSiteId",
-                        "dev.rubentxu.pipeline.v2.scripting.ScriptedDynamicScopeId",
-                        "dev.rubentxu.pipeline.v2.scripting.ScriptedSourceId",
-                        "dev.rubentxu.pipeline.v2.scripting.ScriptedBlockName",
-                        "dev.rubentxu.pipeline.v2.scripting.ScriptedSourceLocation",
-                        "dev.rubentxu.pipeline.v2.scripting.ReturnStdout",
-                        "dev.rubentxu.pipeline.v2.scripting.ReturnStatus",
-                        "dev.rubentxu.pipeline.v2.domain.CredentialsId",
-                        "dev.rubentxu.pipeline.v2.domain.CredentialsRef"
-                    )
-                }
-            )
-
-        val evaluationConfig: ScriptEvaluationConfiguration = ScriptEvaluationConfiguration {}
-
-        val rwd: ResultWithDiagnostics<*> = host.eval(
+        // S0-C1 (Pure Builder Consumption Gate)
+        //
+        // WHY `evalWithTemplate` AND NOT A PRE-BUILT CONFIGURATION
+        // ========================================================
+        // OBSERVED: with `createJvmCompilationConfigurationFromTemplate` the
+        // `compilerOptions` key is accepted, stored, and then IGNORED — a
+        // discarded `@MustUseReturnValues` result still compiled silently.
+        //
+        // ROOT CAUSE (verified against the 2.4.10 artifacts, not guessed):
+        //   - `kotlin-scripting-jvm` and `kotlin-scripting-jvm-host` contain
+        //     ZERO references to "compilerOptions".
+        //   - `kotlin-scripting-compiler-impl-embeddable` references it only in
+        //     `org.jetbrains.kotlin.scripting.definitions.ScriptDefinition`.
+        // So the option is read from a `ScriptDefinition`, which only
+        // `evalWithTemplate` constructs. Handing the host a pre-built
+        // `ScriptCompilationConfiguration` bypasses that read entirely.
+        //
+        // `evalWithTemplate` keeps ONE compilation body — the DSL default
+        // imports, the per-call classpath and the gate flag are all declared in
+        // the same builder — so there is still a single source of truth for how
+        // a `.pipeline.kts` is compiled.
+        val rwd: ResultWithDiagnostics<*> = host.evalWithTemplate<Any>(
             source,
-            compilationConfig,
-            evaluationConfig
+            {
+                // Pure Builder Consumption Gate: an unconsumed return value from
+                // a MUST_CONSUME PURE_BUILDER is a compile error in a
+                // `.pipeline.kts`. This is Kotlin's own return-value checker
+                // (`@MustUseReturnValues` + `-Xreturn-value-checker=check`) —
+                // no custom compiler plugin and no second source of truth.
+                // The annotation is only enforced where the checker is enabled,
+                // so other consumers of the DSL library are unaffected.
+                this[compilerOptions] = listOf("-Xreturn-value-checker=check")
+                jvm {
+                    dependenciesFromCurrentContext()
+                    if (classpathFiles.isNotEmpty()) {
+                        updateClasspath(classpathFiles)
+                    }
+                }
+                defaultImports(
+                    "dev.rubentxu.pipeline.v2.dsl.pipeline",
+                    "dev.rubentxu.pipeline.v2.dsl.stages",
+                    "dev.rubentxu.pipeline.v2.dsl.stage",
+                    "dev.rubentxu.pipeline.v2.dsl.echo",
+                    "dev.rubentxu.pipeline.v2.dsl.sh",
+                    "dev.rubentxu.pipeline.v2.dsl.PipelineSpec",
+                    "dev.rubentxu.pipeline.v2.dsl.StageSpec",
+                    "dev.rubentxu.pipeline.v2.dsl.StepSpec",
+                    "dev.rubentxu.pipeline.v2.dsl.PipelineScope",
+                    "dev.rubentxu.pipeline.v2.dsl.StagesScope",
+                    "dev.rubentxu.pipeline.v2.dsl.StageScope",
+                    "dev.rubentxu.pipeline.v2.dsl.StageBuilder",
+                    "dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint",
+                    "dev.rubentxu.pipeline.v2.scripting.ScriptedArtifactIdentity",
+                    "dev.rubentxu.pipeline.v2.scripting.ScriptedStepFacade",
+                    "dev.rubentxu.pipeline.v2.scripting.ScriptedCallSiteId",
+                    "dev.rubentxu.pipeline.v2.scripting.ScriptedDynamicScopeId",
+                    "dev.rubentxu.pipeline.v2.scripting.ScriptedSourceId",
+                    "dev.rubentxu.pipeline.v2.scripting.ScriptedBlockName",
+                    "dev.rubentxu.pipeline.v2.scripting.ScriptedSourceLocation",
+                    "dev.rubentxu.pipeline.v2.scripting.ReturnStdout",
+                    "dev.rubentxu.pipeline.v2.scripting.ReturnStatus",
+                    "dev.rubentxu.pipeline.v2.domain.CredentialsId",
+                    "dev.rubentxu.pipeline.v2.domain.CredentialsRef"
+                )
+            },
+            {},
         )
 
         val compilationFinishedAt = Instant.now()

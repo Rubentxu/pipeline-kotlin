@@ -42,75 +42,75 @@ The machine-check enforces, against live code (not this file alone):
 
 ## 1. Pipeline skeleton
 
-| Construct | Signature | Category | State | Lowers to / Interpreter |
-|---|---|---|---|---|
-| pipeline | `pipeline { }` (typed spec form) | PURE_BUILDER | STABLE | PipelineSpec consumed by DslCompiledPipelineCompiler |
-| stages | `stages { }` | PURE_BUILDER | STABLE | List<StageSpec> |
-| stage | `stage(name) { }` | PURE_BUILDER | STABLE | StageSpec -> StageNode |
-| environment | `environment { env(k,v) }` (pipeline+stage) | DECLARATIVE_DIRECTIVE | STABLE | EnvironmentSpec; propagation WITNESSED at shell env (S0-B) |
-| options | `options { timeout(seconds) }` | DECLARATIVE_DIRECTIVE | STABLE | OptionSpec("timeout"); StageTimeoutProjection; shell timeoutMs. S0-B: distinct from the `timeout()` BLOCK. `options.timeout` is a stage-wide SHELL DEADLINE only — it produces NO `TimeoutScheduled`/`TimeoutTriggered`; the breach surfaces as the governed step's own `StepFailed(failureKind=TIMEOUT)`. |
-| post | `post { always/success/failure { } }` | UNSUPPORTED_FAIL_CLOSED | UNSUPPORTED_FAIL_CLOSED | IllegalStateException at scope close (toStageBuilder) |
+| Construct | Signature | Category | State | ResultConsumption | Lowers to / Interpreter |
+|---|---|---|---|---|---|
+| pipeline | `pipeline { }` (typed spec form) | PURE_BUILDER | STABLE | NOT_APPLICABLE | PipelineSpec consumed by DslCompiledPipelineCompiler |
+| stages | `stages { }` | PURE_BUILDER | STABLE | NOT_APPLICABLE | List<StageSpec> |
+| stage | `stage(name) { }` | PURE_BUILDER | STABLE | NOT_APPLICABLE | StageSpec -> StageNode |
+| environment | `environment { env(k,v) }` (pipeline+stage) | DECLARATIVE_DIRECTIVE | STABLE | NOT_APPLICABLE | EnvironmentSpec; propagation WITNESSED at shell env (S0-B) |
+| options | `options { timeout(seconds) }` | DECLARATIVE_DIRECTIVE | STABLE | NOT_APPLICABLE | OptionSpec("timeout"); StageTimeoutProjection; shell timeoutMs. S0-B: distinct from the `timeout()` BLOCK. `options.timeout` is a stage-wide SHELL DEADLINE only — it produces NO `TimeoutScheduled`/`TimeoutTriggered`; the breach surfaces as the governed step's own `StepFailed(failureKind=TIMEOUT)`. |
+| post | `post { always/success/failure { } }` | UNSUPPORTED_FAIL_CLOSED | UNSUPPORTED_FAIL_CLOSED | NOT_APPLICABLE | IllegalStateException at scope close (toStageBuilder) |
 
 ## 2. Step builders (StageScope surface)
 
-| Construct | Signature | Category | State | Lowers to / Interpreter |
-|---|---|---|---|---|
-| echo | `echo(text)` | ATOMIC_STEP | STABLE | StepSpec.Echo -> core.echo -> CoreEchoStep |
-| sh | `sh(command)` / `sh(script, isScriptBlock, returnStdout)` | ATOMIC_STEP | STABLE | StepSpec.Shell -> core.sh -> CoreShellStep |
-| error | `error(message, failureKind)` | ATOMIC_STEP | STABLE | StepSpec.Error -> core.error -> CoreErrorStep |
-| sleep | `sleep(seconds)` | ATOMIC_STEP | STABLE | StepSpec.Sleep -> core.sleep -> CoreSleepStep |
-| writeFile | `writeFile(file, text, encoding)` | ATOMIC_STEP | STABLE | StepSpec.WriteFile -> core.file.writeFile -> CoreWriteFileStep |
-| readFile | `readFile(file, encoding)` | ATOMIC_STEP | STABLE | StepSpec.ReadFile -> core.readFile -> CoreReadFileStep |
-| fileExists | `fileExists(file)` | ATOMIC_STEP | STABLE | StepSpec.FileExists -> core.fileExists -> CoreFileExistsStep |
-| deleteDir | `deleteDir(path)` | ATOMIC_STEP | STABLE | StepSpec.DeleteDir -> core.deleteDir -> CoreDeleteDirStep |
-| cleanWs | `cleanWs(deleteDirs, patterns)` | ATOMIC_STEP | STABLE | RegistryStepSpec core.cleanWs -> CoreCleanWsStep |
-| checkout | `checkout(scm)` | ATOMIC_STEP | PARTIAL | StepSpec.Checkout -> OpaqueStepNode(pluginStepId=`core.checkout`); the scm-git plugin registers `scm-git.checkout`, NOT `core.checkout` (S0-B) |
-| scmGit | `scmGit(url, branch, ...)` | PURE_BUILDER | STABLE | Returns CheckoutSpec (0 effects); consumed by checkout |
-| git | `git(url, branch, ...)` | ATOMIC_STEP | UNSUPPORTED_FAIL_CLOSED | S0-B: rejects fail-closed with exit 2 ("non-canonical plugins" naming `core.checkout`). Zero checkouts occur. |
-| archiveArtifacts | `archiveArtifacts(artifacts, ...)` | ATOMIC_STEP | STABLE | RegistryStepSpec core.archiveArtifacts -> CoreArchiveArtifactsStep |
-| artifactQuery | `artifactQuery(name)` | ATOMIC_STEP | STABLE | RegistryStepSpec core.artifact.query -> CoreArtifactQueryStep |
-| milestone | `milestone(ordinal, label?)` | ATOMIC_STEP | STABLE | RegistryStepSpec core.milestone -> CoreMilestoneStep |
-| stash | `stash(name, includes, excludes)` | ATOMIC_STEP | STABLE | RegistryStepSpec core.stash -> CoreStashStep |
-| unstash | `unstash(name, into?)` | ATOMIC_STEP | STABLE | RegistryStepSpec core.unstash -> CoreUnstashStep; blank `into` rejected by typed contract |
-| publishHTML | `publishHTML(name, reportDir, ...)` | ATOMIC_STEP | PARTIAL | RegistryStepSpec core.publishHTML -> CorePublishHtmlStep; keepAll=true FAILS CLOSED at the adapter |
-| registryStep | `registryStep(stepKey, encodedInput)` | ATOMIC_STEP | EXPERIMENTAL | open-world registry path (LB-02) |
-| registryBlock | `registryBlock(stepKey, encodedInput) { }` | BLOCK_STEP | EXPERIMENTAL | open-world registry block path; body policy from plugin descriptor |
-| load | `load(path)` | ATOMIC_STEP | UNSUPPORTED_FAIL_CLOSED | emits canonical envelope; core.load has NO handler; admission rejects |
+| Construct | Signature | Category | State | ResultConsumption | Lowers to / Interpreter |
+|---|---|---|---|---|---|
+| echo | `echo(text)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | StepSpec.Echo -> core.echo -> CoreEchoStep |
+| sh | `sh(command)` / `sh(script, isScriptBlock, returnStdout)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | StepSpec.Shell -> core.sh -> CoreShellStep |
+| error | `error(message, failureKind)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | StepSpec.Error -> core.error -> CoreErrorStep |
+| sleep | `sleep(seconds)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | StepSpec.Sleep -> core.sleep -> CoreSleepStep |
+| writeFile | `writeFile(file, text, encoding)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | StepSpec.WriteFile -> core.file.writeFile -> CoreWriteFileStep |
+| readFile | `readFile(file, encoding)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | StepSpec.ReadFile -> core.readFile -> CoreReadFileStep |
+| fileExists | `fileExists(file)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | StepSpec.FileExists -> core.fileExists -> CoreFileExistsStep |
+| deleteDir | `deleteDir(path)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | StepSpec.DeleteDir -> core.deleteDir -> CoreDeleteDirStep |
+| cleanWs | `cleanWs(deleteDirs, patterns)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | RegistryStepSpec core.cleanWs -> CoreCleanWsStep |
+| checkout | `checkout(scm)` | ATOMIC_STEP | PARTIAL | NOT_APPLICABLE | StepSpec.Checkout -> OpaqueStepNode(pluginStepId=`core.checkout`); the scm-git plugin registers `scm-git.checkout`, NOT `core.checkout` (S0-B) |
+| scmGit | `scmGit(url, branch, ...)` | PURE_BUILDER | STABLE | MUST_CONSUME | Returns CheckoutSpec (0 effects); consumed by checkout |
+| git | `git(url, branch, ...)` | ATOMIC_STEP | UNSUPPORTED_FAIL_CLOSED | NOT_APPLICABLE | S0-B: rejects fail-closed with exit 2 ("non-canonical plugins" naming `core.checkout`). Zero checkouts occur. |
+| archiveArtifacts | `archiveArtifacts(artifacts, ...)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | RegistryStepSpec core.archiveArtifacts -> CoreArchiveArtifactsStep |
+| artifactQuery | `artifactQuery(name)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | RegistryStepSpec core.artifact.query -> CoreArtifactQueryStep |
+| milestone | `milestone(ordinal, label?)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | RegistryStepSpec core.milestone -> CoreMilestoneStep |
+| stash | `stash(name, includes, excludes)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | RegistryStepSpec core.stash -> CoreStashStep |
+| unstash | `unstash(name, into?)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | RegistryStepSpec core.unstash -> CoreUnstashStep; blank `into` rejected by typed contract |
+| publishHTML | `publishHTML(name, reportDir, ...)` | ATOMIC_STEP | PARTIAL | NOT_APPLICABLE | RegistryStepSpec core.publishHTML -> CorePublishHtmlStep; keepAll=true FAILS CLOSED at the adapter |
+| registryStep | `registryStep(stepKey, encodedInput)` | ATOMIC_STEP | EXPERIMENTAL | NOT_APPLICABLE | open-world registry path (LB-02) |
+| registryBlock | `registryBlock(stepKey, encodedInput) { }` | BLOCK_STEP | EXPERIMENTAL | NOT_APPLICABLE | open-world registry block path; body policy from plugin descriptor |
+| load | `load(path)` | ATOMIC_STEP | UNSUPPORTED_FAIL_CLOSED | NOT_APPLICABLE | emits canonical envelope; core.load has NO handler; admission rejects |
 
 ## 3. Block builders (body owned by canonical body engine)
 
-| Construct | Signature | Category | State | Lowers to / Interpreter |
-|---|---|---|---|---|
-| dir | `dir(path) { }` | BLOCK_STEP | STABLE | StepSpec.Dir -> core.dir -> canonical body engine (WorkingDirectory scope) |
-| withEnv | `withEnv(overrides) { }` | BLOCK_STEP | STABLE | StepSpec.WithEnv -> core.withEnv -> canonical body engine (Scoped env) |
-| withCredentials | `withCredentials(binding(s)) { }` | BLOCK_STEP | STABLE | StepSpec.WithCredentialsBlock -> core.withCredentials -> canonical body engine |
-| timestamps | `timestamps { }` | BLOCK_STEP | STABLE | StepSpec.Timestamps -> core.timestamps -> canonical body engine (output decorator) |
-| timeout | `timeout(time, unit) { }` | BLOCK_STEP | STABLE | StepSpec.TimeoutBlock -> core.timeout -> coordinator TIMEOUT projection. Block authority = `TimeoutScheduled` at admission + `TimeoutTriggered` at breach; the deadline is enforced by the child shell watchdog, so the child also emits `StepFailed(failureKind=TIMEOUT)`. S0-B corrected the row: `TimeoutFired` never existed. |
-| retry | `retry(count) { }` | BLOCK_STEP | STABLE | StepSpec.RetryBlock -> core.retry -> coordinator retry (maxAttempts ONLY; `RetryAttemptStarted` / `RetryAttemptFinished`). S0-B corrected the row: `RetryAttempted` never existed. |
-| waitUntil | `waitUntil(period, quiet) { }` | BLOCK_STEP | STABLE | StepSpec.WaitUntilBlock -> core.waitUntil -> Retrying(waitUntil) poll loop |
-| parallel | `parallel { branch(a){} branch(b){} }` | DECLARATIVE_DIRECTIVE | STABLE | StepSpec.Parallel; canonical stage form = single Parallel root; sibling-mixed body is NON-CANONICAL by design and rejected by the durable gate |
-| catchError | `catchError(buildResult?, stageResult?, message?) { }` | DECLARATIVE_DIRECTIVE | STABLE | legacy workflow-control rewrite. Authority event: `CatchErrorTriggered` only. S0-B corrected the row: `CatchErrorEntered` never existed. Contained failure does NOT fail the run: CLI exit 0, `RunFinished.outcome=unstable` (ADR-0054 projection), and steps after the block still run. |
-| warnError | `warnError(message) { }` | DECLARATIVE_DIRECTIVE | STABLE | catchError(buildResult=UNSTABLE, stageResult=UNSTABLE) + StageMarkedUnstable |
-| unstable | `unstable(message)` | DECLARATIVE_DIRECTIVE | STABLE | lifted marker consumed by enclosing catchError/warnError rewrite |
-| node | `node(label?) { }` | BLOCK_STEP | UNSUPPORTED_FAIL_CLOSED | lowers to core.node; NO descriptor row; compile/validate fails closed (CompiledPipelineValidator) |
-| ansiColor | `ansiColor(colorMapName) { }` | BLOCK_STEP | UNSUPPORTED_FAIL_CLOSED | lowers to core.ansiColor; NO descriptor row; canonical bridge rejects (exit 2, CliNonCanonicalInMemoryExitsTwoTest) |
-| script | `script { }` | PURE_BUILDER | DEPRECATED | joins commands into ONE StepSpec.Shell(isScriptBlock=true); use sh() directly |
+| Construct | Signature | Category | State | ResultConsumption | Lowers to / Interpreter |
+|---|---|---|---|---|---|
+| dir | `dir(path) { }` | BLOCK_STEP | STABLE | NOT_APPLICABLE | StepSpec.Dir -> core.dir -> canonical body engine (WorkingDirectory scope) |
+| withEnv | `withEnv(overrides) { }` | BLOCK_STEP | STABLE | NOT_APPLICABLE | StepSpec.WithEnv -> core.withEnv -> canonical body engine (Scoped env) |
+| withCredentials | `withCredentials(binding(s)) { }` | BLOCK_STEP | STABLE | NOT_APPLICABLE | StepSpec.WithCredentialsBlock -> core.withCredentials -> canonical body engine |
+| timestamps | `timestamps { }` | BLOCK_STEP | STABLE | NOT_APPLICABLE | StepSpec.Timestamps -> core.timestamps -> canonical body engine (output decorator) |
+| timeout | `timeout(time, unit) { }` | BLOCK_STEP | STABLE | NOT_APPLICABLE | StepSpec.TimeoutBlock -> core.timeout -> coordinator TIMEOUT projection. Block authority = `TimeoutScheduled` at admission + `TimeoutTriggered` at breach; the deadline is enforced by the child shell watchdog, so the child also emits `StepFailed(failureKind=TIMEOUT)`. S0-B corrected the row: `TimeoutFired` never existed. |
+| retry | `retry(count) { }` | BLOCK_STEP | STABLE | NOT_APPLICABLE | StepSpec.RetryBlock -> core.retry -> coordinator retry (maxAttempts ONLY; `RetryAttemptStarted` / `RetryAttemptFinished`). S0-B corrected the row: `RetryAttempted` never existed. |
+| waitUntil | `waitUntil(period, quiet) { }` | BLOCK_STEP | STABLE | NOT_APPLICABLE | StepSpec.WaitUntilBlock -> core.waitUntil -> Retrying(waitUntil) poll loop |
+| parallel | `parallel { branch(a){} branch(b){} }` | DECLARATIVE_DIRECTIVE | STABLE | NOT_APPLICABLE | StepSpec.Parallel; canonical stage form = single Parallel root; sibling-mixed body is NON-CANONICAL by design and rejected by the durable gate |
+| catchError | `catchError(buildResult?, stageResult?, message?) { }` | DECLARATIVE_DIRECTIVE | STABLE | NOT_APPLICABLE | legacy workflow-control rewrite. Authority event: `CatchErrorTriggered` only. S0-B corrected the row: `CatchErrorEntered` never existed. Contained failure does NOT fail the run: CLI exit 0, `RunFinished.outcome=unstable` (ADR-0054 projection), and steps after the block still run. |
+| warnError | `warnError(message) { }` | DECLARATIVE_DIRECTIVE | STABLE | NOT_APPLICABLE | catchError(buildResult=UNSTABLE, stageResult=UNSTABLE) + StageMarkedUnstable |
+| unstable | `unstable(message)` | DECLARATIVE_DIRECTIVE | STABLE | NOT_APPLICABLE | lifted marker consumed by enclosing catchError/warnError rewrite |
+| node | `node(label?) { }` | BLOCK_STEP | UNSUPPORTED_FAIL_CLOSED | NOT_APPLICABLE | lowers to core.node; NO descriptor row; compile/validate fails closed (CompiledPipelineValidator) |
+| ansiColor | `ansiColor(colorMapName) { }` | BLOCK_STEP | UNSUPPORTED_FAIL_CLOSED | NOT_APPLICABLE | lowers to core.ansiColor; NO descriptor row; canonical bridge rejects (exit 2, CliNonCanonicalInMemoryExitsTwoTest) |
+| script | `script { }` | PURE_BUILDER | DEPRECATED | NOT_APPLICABLE | joins commands into ONE StepSpec.Shell(isScriptBlock=true); use sh() directly |
 
 ## 4. Scripted-runtime builders (placeholder returns)
 
-| Construct | Signature | Category | State | Interpreter |
-|---|---|---|---|---|
-| pwd | `pwd(tmp=false): String` | SCRIPTED_RUNTIME_CALL | STABLE | registry core.pwd / core.pwd.tmp; returns RUNTIME_VALUE_PLACEHOLDER in DSL form; real value via CorePwdStep/CorePwdTmpStep in runtime context |
-| isUnix | `isUnix(): Boolean` | SCRIPTED_RUNTIME_CALL | STABLE | registry core.isUnix; placeholder in DSL form; CoreIsUnixStep in runtime context (LFC-2R matrix) |
+| Construct | Signature | Category | State | ResultConsumption | Lowers to / Interpreter |
+|---|---|---|---|---|---|
+| pwd | `pwd(tmp=false): String` | SCRIPTED_RUNTIME_CALL | STABLE | MUST_CONSUME | registry core.pwd / core.pwd.tmp; returns RUNTIME_VALUE_PLACEHOLDER in DSL form; real value via CorePwdStep/CorePwdTmpStep in runtime context |
+| isUnix | `isUnix(): Boolean` | SCRIPTED_RUNTIME_CALL | STABLE | MUST_CONSUME | registry core.isUnix; placeholder in DSL form; CoreIsUnixStep in runtime context (LFC-2R matrix) |
 
 ## 5. Fail-closed stubs (removed constructs that still answer)
 
-| Construct | Signature | Category | State | Diagnostic anchors |
-|---|---|---|---|---|
-| agent | `agent(label, remoteUri?): Nothing` (stage level) | UNSUPPORTED_FAIL_CLOSED | UNSUPPORTED_FAIL_CLOSED | "agent", "no runtime component ever read it" |
-| retry (retrofit) | `retry(count, delaySeconds?): Nothing` (step level) | UNSUPPORTED_FAIL_CLOSED | UNSUPPORTED_FAIL_CLOSED | "removed", "consumer", points at block form |
-| whenCondition | `whenCondition(expression) { }` | UNSUPPORTED_FAIL_CLOSED | UNSUPPORTED_FAIL_CLOSED | "not supported", "conditional step" |
-| retry conditions | overload `retry(n, conditions) { }` REMOVED from surface | UNSUPPORTED_FAIL_CLOSED | UNSUPPORTED_FAIL_CLOSED | plain Kotlin signature error; reflection pins no List-taking overload |
+| Construct | Signature | Category | State | ResultConsumption | Lowers to / Interpreter |
+|---|---|---|---|---|---|
+| agent | `agent(label, remoteUri?): Nothing` (stage level) | UNSUPPORTED_FAIL_CLOSED | UNSUPPORTED_FAIL_CLOSED | NOT_APPLICABLE | "agent", "no runtime component ever read it" |
+| retry (retrofit) | `retry(count, delaySeconds?): Nothing` (step level) | UNSUPPORTED_FAIL_CLOSED | UNSUPPORTED_FAIL_CLOSED | NOT_APPLICABLE | "removed", "consumer", points at block form |
+| whenCondition | `whenCondition(expression) { }` | UNSUPPORTED_FAIL_CLOSED | UNSUPPORTED_FAIL_CLOSED | NOT_APPLICABLE | "not supported", "conditional step" |
+| retry conditions | overload `retry(n, conditions) { }` REMOVED from surface | UNSUPPORTED_FAIL_CLOSED | UNSUPPORTED_FAIL_CLOSED | NOT_APPLICABLE | plain Kotlin signature error; reflection pins no List-taking overload |
 
 ## 6. Closed sets (machine-check targets)
 

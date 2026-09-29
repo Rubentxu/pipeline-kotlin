@@ -13,4 +13,5 @@ object ScannerSupport {
     fun findUnallowedImplementation(b: Path, a: Set<String>) = SourceScanner.findUnallowedImplementation(b, a)
     fun loadRuntimeClasspathSnapshots(r: Path) = RuntimeClasspathSnapshots.load(r)
     fun findForbiddenImportPrefixes(r: Path, prefixes: Collection<String>) = SourceScanner.findForbiddenImportPrefixes(r, prefixes)
+    fun findConcreteKeyBranches(r: Path) = SourceScanner.findConcreteKeyBranches(r)
 }

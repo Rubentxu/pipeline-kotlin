@@ -117,4 +117,31 @@ object SourceScanner {
         }
         return findings
     }
+
+    /**
+     * Finds `when` subjects that branch on a directive key (open-world identity).
+     *
+     * The directive kernel resolves keys through the registry; a `when` over a
+     * key value re-closes the world the registry opened (S1 exit criterion).
+     * Deliberately narrow: it matches key-shaped subjects, not every `when`, so
+     * legitimate exhaustive matches over closed ADTs (e.g.
+     * DirectiveExecutionPolicy) are not flagged.
+     *
+     * Example flagged:   `when (key.value) { "acme.guard" -> ... }`
+     * Example allowed:   `when (policy) { is Gate -> ... }`
+     */
+    fun findConcreteKeyBranches(root: Path): List<Finding> {
+        val findings = mutableListOf<Finding>()
+        val keyWhenPattern = Pattern.compile("when\\s*\\(\\s*[^)]*\\bkey(\\.value)?\\s*\\)")
+        for (file in FitnessPaths.walkKotlinFiles(root)) {
+            for ((lineIdx, line) in Files.readAllLines(file).withIndex()) {
+                val trimmed = line.trim()
+                if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue
+                if (keyWhenPattern.matcher(trimmed).find()) {
+                    findings.add(Finding(file, lineIdx + 1, "when(key)", line))
+                }
+            }
+        }
+        return findings
+    }
 }

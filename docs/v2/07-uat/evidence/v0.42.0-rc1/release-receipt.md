@@ -1,12 +1,15 @@
 # PipelineK v0.42.0-rc1 — release-candidate receipt
 
-**Estado:** `BUILT_TAGGED_AWAITING_PUSH_AUTHORIZATION`
+**Estado:** `GATES_GREEN_AWAITING_OPERATOR_PUSH`
 
 **Candidata:** `0.42.0-rc1`
-**Tag:** `v0.42.0-rc1` (anotado)
-**Commit de build:** `fd06be7c0075fca33c5174dea54b8692bf8574cd`
+**Tag:** `v0.42.0-rc1` — **NO CREADO**. Verificado: `git tag -l v0.42.0-rc1` vacío.
+**Commit de build:** `46eea758` (11 commits detrás del `origin/main` anterior; sin integrar)
 **Rama:** `main`
-**Candidata anterior:** `v0.41.0-rc1` at `4a1a97502e60220609bf49cf4de7f6a0b230e21f`
+**Candidata anterior:** `v0.41.0-rc1`
+**Integración en `main`:** PENDIENTE. `origin/main` = `2111c10d`; el tag no puede
+apuntar a un commit fuera de `main` (AGENTS.md, regla 9). Push a destino
+compartido: decisión del operador.
 
 Esta es una **release candidate**, no una release estable. El repositorio
 entrega el material para `pipelinek-release-harness`. La certificación externa y
@@ -17,10 +20,17 @@ bytes, sin reconstrucción.
 
 | Señal | Valor |
 |---|---|
-| BREAKING CHANGE en `v0.41.0-rc1..HEAD` | 1 |
-| `feat` en el rango | 0 |
-| `fix` en el rango | 2 |
-| Train | **MAJOR** → `0.42.0-rc1` |
+| BREAKING CHANGE en `v0.41.0-rc1..HEAD` | 4 |
+| `feat` en el rango | 3 |
+| `fix` en el rango | 11 |
+| Train | **MINOR** → `0.42.0-rc1` |
+
+**Corrección S0-C.** Esta tabla decía antes 1 breaking / 0 feat / MAJOR. El
+análisis real del rango `v0.41.0-rc1..46eea758` arroja 4 breaking y 3 feat.
+Con 0.x, 4 breaking sin feat">ba MAJOR, pero hay feat, así que la train
+correcta es **MINOR** (0.42.0). El número de versión no cambia respecto al ya
+declarado en `v2/build.gradle.kts`; lo que estaba mal era el razonamiento
+registrado, no el valor.
 
 El único cambio que rompe contrato es `StageScope.retry(count, conditions) { }`,
 que antes compilaba y descartaba en silencio las condiciones declaradas. La
@@ -51,9 +61,14 @@ dist/candidates/v0.42.0-rc1/
 
 | Material | Bytes | SHA-256 |
 |---|---:|---|
-| `pipelinek-0.42.0-rc1.zip` | 92,142,096 | `bb71b6811c0108f9a9fb709d0983405df50390c84c86e63fc79fb8c70723927d` |
-| `pipelinek-0.42.0-rc1.sbom.json` | 1,391,780 | `ae55df4470d0f0f59bd6d87583f565c570449ba33c506777de41b46f23ee2503` |
-| `SHA256SUMS` | 188 | `c6725ba4c8b4689e93d4aef8751a8ca9691ecf067365ca5a4c77a5f9fef7a49e` |
+| `pipelinek-0.42.0-rc1.zip` | 92,123,215 | `33db71b625716c99def9b8b46d337e3bd13b71fd157e96b93ee7b9961fe54b85` |
+
+Los digests de `.sbom.json` y `SHA256SUMS` que la anterior versión de este
+receipt declaraba **se han retirado**: ese material no existe en el repositorio
+ni es reproducible, y un digest que no se puede recalcular no es evidencia.
+El material inmutable de esta candidata es el ZIP, cuyo digest se midió dos
+veces sobre dos construcciones independientes con resultado idéntico
+(determinismo verificado, no supuesto).
 
 `release-manifest.json` no se incluye en `SHA256SUMS`: incluir su propio digest
 crearía un problema de punto fijo. Su integridad se verifica validando su JSON y
@@ -63,12 +78,69 @@ comparando el asset descargado con el material local.
 
 | SHA | Asunto |
 |---|---|
-| `b0a5e7e5` | `refactor(scripting-api): split StageScope builders by responsibility` |
-| `582a7391` | `fix(build): prevent concurrent v2 Gradle invocations` |
-| `7d0a0b44` | `refactor(domain): group the core Step descriptor rows by declared ownership` |
-| `94fcc98b` | `fix(scripting-api): reject retry conditions the engine would silently drop` |
-| `91002764` | `chore(release): bump to 0.42.0 derived from the commit range` |
+| `46eea758` | `test(s0): witness that the CI authority's shell paths exist in a checkout` |
+| `89189cff` | `test(application): fix the corpus sweep's class-level timeout budget` |
+| `13c9b62e` | `fix(ci): make the release-verification guard reference a real path` |
+| `c3026a72` | `fix(ci): give the nested integration smokes a real workspace` |
+| `87dfc10f` | `fix(domain): resync the API declaration after the phantom-surface removal` |
+| `722e1e36` | `test(s0): add self-host script honesty witnesses for the repaired CI authority` |
+| `be247232` | `fix(ci): repair the self-hosted pipeline script so it can actually run` |
+| `ef80d40a` | `docs(s0): correct the surface manifest against witnessed reality (S0-B)` |
+| `bed54aa0` | `fix(s0): emit the missing TimeoutTriggered block authority event` |
+| `0bffa968` | `feat(architecture): DSL Surface Manifest v1 with machine-checkable conservation test` |
+| `d89f5e30` | `feat(dsl)!: remove phantom surface (agent, step retry, timeout activity, keepAll)` |
+| `2111c10d` | `docs(evolution): add semantic evolution package and archive local-first docs` |
+| `ddf75fa6` | `feat(pipeline)!: remove publication from the self-hosted pipeline script` |
+| `8b7294bc` | `fix(cli)!: surface DSL construction failures instead of NPE exit 0` |
+| `60b710e5` | `fix(dsl)!: make scmGit pure and retry(count,delay) fail closed` |
+| `d0a1da4a` | `fix(dsl): reject whenCondition instead of silently running its body` |
+| `6ca44112` | `docs(release): record v0.42.0-rc1 candidate receipt` |
 | `fd06be7c` | `fix(release): restore the release-candidate train for 0.42.0` |
+| `91002764` | `chore(release): bump to 0.42.0 derived from the commit range` |
+| `94fcc98b` | `fix(scripting-api): reject retry conditions the engine would silently drop` |
+| `7d0a0b44` | `refactor(domain): group the core Step descriptor rows by declared ownership` |
+| `582a7391` | `fix(build): prevent concurrent v2 Gradle invocations` |
+| `b0a5e7e5` | `refactor(scripting-api): split StageScope builders by responsibility` |
+| `f3203e65` | `docs(release): record v0.41.0-rc1 candidate receipt` |
+
+## Gate de distribución instalada y clon limpio (S0.5)
+
+Este es el criterio de salida que faltaba por completo en el receipt anterior.
+Se ejecutó sobre **los bytes definitivos** de esta candidata, no sobre una
+construcción anterior.
+
+| Comprobación | Resultado observado |
+|---|---|
+| `unzip -t` del ZIP | OK |
+| Binario instalado `version` | `pipeline 0.42.0-rc1` |
+| Determinismo del build | dos `distZip` independientes → sha256 idéntico |
+| Clon limpio | `git clone` en `46eea758` |
+| Invocación | `run --workspace . --db ... --control-root ... pipeline.kts` |
+| Etapas | 11/11 `StageFinished`, todas `outcome=success` |
+| `RunFinished` | `outcome=success` |
+| `StepFailed` | 0 |
+| Demos reales | `GRADLE-DEMO-OK`, `MAVEN-DEMO-OK` |
+
+Las 11 etapas: Validate, Compile, Unit Tests, Architecture Fitness, Compatibility
+Corpus, Application UAT, Real Project Gradle, Real Project Maven, Real Project
+Node, Package, Release Verification.
+
+**Por qué importa Release Verification.** Ese stage era permanentemente
+impasable por dos defectos de S0-B: la constante de versión obsoleta (`0.39.0`)
+y un escape de shell `${'$'}` dentro de una cadena Kotlin, que produce texto
+literal y una ruta que nunca resuelve. Que hoy salga en verde demuestra que ambos
+quedaron reparados de verdad y no solo "declarados" reparados.
+
+**Una corrección de honestidad que este receipt debe declarar.** Una versión
+anterior de este documento afirmaba un dogfood verde que no correspondía al
+script de autoridad: ese verde venía de `v2/compatibility/01-basic.pipeline.kts`,
+que es lo que ejecuta el job N2 de `lpr0-ci.yml`, no de `pipeline.kts`. Al ejecutar
+el binario contra el script raíz en un clon limpio, el primer `sh` falló con
+exit 127. El diagnóstico por aislamiento mostró que la causa era la invocación
+(sin `--workspace`, el `workspaceRoot` es un temporal), no un defecto del producto.
+La consecuencia real fue un hueco de cobertura: los witnesses existentes
+preguntaban si el script *afirma* la verdad, nunca si existe lo que el script
+*consume*. Ese hueco quedó cerrado en `46eea758`.
 
 ## Gates locales
 
@@ -106,7 +178,17 @@ Recuento agregado desde los XML JUnit:
 | pipeline-events | 188 | 0 | 0 |
 | pipeline-scripting-kotlin24 | 56 | 0 | 0 |
 | otros (7 módulos) | 251 | 0 | 0 |
-| **TOTAL** | **3231** | **0** | **121** |
+| **TOTAL** | **3276** | **0** | **121** |
+
+**Corrección S0-C.** El total era 3231; el gate medido sobre `46eea758` da
+**3276** tests, 0 fallos, 0 errores. La diferencia (+45) corresponde al trabajo de
+S0: 1 gate de arquitectura del manifiesto de superficie, 17+6+1 witnesses de
+honestidad semántica, y la reparación del presupuesto del sweep de corpus.
+La cifra anterior describía un punto del historial anterior a S0.
+
+Evidencia de ejecución (no UP-TO-DATE): los XML JUnit se borraron antes de la
+carrera (0 ficheros al inicio) y se regeneraron 550 al terminar, de modo que el
+verde no pudo servirse desde cache. Duración 18m 28s, presupuesto 1700s.
 
 Los 121 `skipped` son fitness tests de migración de registry preexistentes
 (`CoreErrorMigrationReadinessFitnessTest` 16, `CoreSleepRegistryPrimaryFitnessTest`
@@ -179,9 +261,22 @@ aserción falsa.
 ## Estado de la evidencia
 
 Todos los comandos anteriores se ejecutaron de verdad y sus códigos de salida y
-digests son los observados. `--rerun-tasks` es obligatorio en cada gate: Gradle
-reporta `BUILD SUCCESSFUL` para tareas `UP-TO-DATE` que no ejecutaron nada, y eso
-ocurre en tres sitios distintos de este mismo trabajo.
+digests son los observados. Gradle reporta `BUILD SUCCESSFUL` para tareas
+`UP-TO-DATE` que no ejecutaron nada, y eso ocurrió en este mismo trabajo.
+
+**Corrección S0-C.** Este receipt afirmaba que `--rerun-tasks` es obligatorio en
+cada gate. El gate final no lo usó: se ejecutó incrementalmente, borrando antes
+los XML JUnit de todos los módulos. El canario es la prueba de ejecución
+correcta de esa forma, y da una señal más fuerte que un `UP-TO-DATE` no puede
+ocultar: 0 ficheros antes, 550 después, con los casos que importan verificados
+uno a uno (el witness de honestidad, `tests=7 failures=0 errors=0`).
+
+Esto no es teórico. Al demostrar el RED del witness nuevo, una carrera
+devolvió `UP-TO-DATE` con un XML cuyo timestamp era anterior al cambio del
+script, y se leyó inicialmente como 7/7 verde. Habría sido un falso verde
+reportado. Lo detectó el canary. Por eso el procedimiento declarado es:
+borrar el XML, correr, y comprobar que el fichero reaparece con el contenido
+esperado — no confiar en el código de salida.
 
 ## Limitaciones del tooling externo
 

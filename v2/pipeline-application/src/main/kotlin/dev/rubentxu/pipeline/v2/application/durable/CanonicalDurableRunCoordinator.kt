@@ -179,6 +179,15 @@ class CanonicalDurableRunCoordinator(
     // shared body-child loop. When the caller wires a custom adapter (e.g. tests) the
     // single shared-loop law is preserved: the adapter NEVER iterates body children itself.
     private val bodyInvokerAdapter: CanonicalBodyInvokerAdapter = CanonicalBodyInvokerAdapter(),
+
+    // S1-B: the open DirectiveRegistry. When bound, every stage's declared
+    // directives are admitted against it BEFORE the stage starts (pure
+    // decision via StageDirectivePlanner, interpreted here at the effect
+    // boundary); a denial fails the run closed with a typed USER failure and
+    // the stage body never dispatches. When null, stages declaring directives
+    // are denied (no composition = no resolution), and stages without
+    // directives behave exactly as before: the seam is additive.
+    private val directiveRegistry: dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry? = null,
 ) {
     /**
      * Compatibility constructor for the consolidated capability bundle.
@@ -211,6 +220,7 @@ class CanonicalDurableRunCoordinator(
         artifactIndex = caps.artifactIndex,
         injectedBodyPolicyResolver = caps.injectedBodyPolicyResolver,
         bodyInvokerAdapter = caps.bodyInvokerAdapter,
+        directiveRegistry = caps.directiveRegistry,
     )
     // B10/W1c + WU-RP-033: the body execution policy authority. The production default
     // composes TWO declared-policy authorities, both fail-closed and neither key-specific:
@@ -327,6 +337,28 @@ class CanonicalDurableRunCoordinator(
         try {
             stagesLoop@ for (stageIndex in pipeline.stages.indices) {
                 val stage = pipeline.stages[stageIndex]
+
+                // S1-B: directive admission is a PURE decision taken BEFORE any
+                // stage effect (workspace creation, StageStarted, dispatch). A
+                // denial is fail-closed: the stage never starts and the run
+                // fails with the planner's typed diagnostic. The coordinator
+                // only INTERPRETS the decision; it never re-derives admission.
+                when (val directiveDecision = directiveRegistry
+                    ?.let { dev.rubentxu.pipeline.v2.domain.directive.StageDirectivePlanner.decide(it, stage) }) {
+                    is dev.rubentxu.pipeline.v2.domain.directive.StageDirectiveDecision.Denied -> {
+                        currentOutcome = RunOutcome.Failure(
+                            PipelineFailure(
+                                dev.rubentxu.pipeline.v2.domain.FailureKind.USER,
+                                directiveDecision.reason,
+                            ),
+                        )
+                        return@run currentOutcome
+                    }
+                    // Permitted (or no directives declared): continue into the stage.
+                    is dev.rubentxu.pipeline.v2.domain.directive.StageDirectiveDecision.Permitted -> Unit
+                    null -> Unit
+                }
+
                 // Stage boundary: ambient context must be structurally empty when entering a stage
                 check(ambient.overlays.isEmpty()) {
                     "Scope stack leaked into stage '${stage.name}' at index $stageIndex: ${ambient.overlays.size} frame(s) remaining"

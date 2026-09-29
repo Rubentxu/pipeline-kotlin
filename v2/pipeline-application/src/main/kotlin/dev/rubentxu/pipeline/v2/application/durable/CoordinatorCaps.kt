@@ -66,4 +66,7 @@ data class CoordinatorCaps(
     val artifactIndex: ArtifactIndexCapability? = null,
     val injectedBodyPolicyResolver: BodyPolicyResolver? = null,
     val bodyInvokerAdapter: CanonicalBodyInvokerAdapter = CanonicalBodyInvokerAdapter(),
+
+    /** S1-B: optional open DirectiveRegistry (stage directive admission seam). */
+    val directiveRegistry: dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry? = null,
 )

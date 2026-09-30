@@ -1,6 +1,33 @@
-# TESTING-STATE — Active change (2026-09-27, HEAD `78092a60`)
+# TESTING-STATE — Active change (2026-09-30, HEAD `ce3a40cd`)
 
-**Status: STALE — This file's body describes LPR-001 / WU-LPR-090 (2026-09-21); it is NOT authoritative for the current TRAIN-0 cycle. See "Active context" below; the rest of the file is preserved as historical record and MUST NOT be acted on as if it were current.**
+## Active context (2026-09-30, WU-RP-020, HEAD `ce3a40cd` on `main`)
+
+- **Cycle (SDDK):** `p-733fb505b5a6bd2d/rp-020-durable-sequence-authority`,
+  status **`BLOCKED`** by tooling friction, not by code. Two gate receipts issued
+  with real evidence (`gate-unblock-condition-met-6464580629a024da-1`/`-2`) but
+  `cycle.unblock` still answers `ENGINE_MISSING_GATE_RECEIPT`; `rebuild` returns
+  `restored: false`. No `supersede` reason applies, so NOT forced. Recorded in
+  receipt §7.5.
+- **HEAD `ce3a40cd`, 4 commits ahead of `origin/main 34c08ad9`, not pushed.**
+  Chain: `54bc4bf6` (UNIQUE(run_id, sequence)) → `02f829bc` (13 emitter sites)
+  → `ea45b339` (receipt) → `ce3a40cd` (stranded-barrier fix).
+- **Gate GREEN at HEAD:** `v2/gradlew -p v2 check`, BUILD SUCCESSFUL in 20m51s,
+  **562 XML classes, 3768 tests, 129 skipped, 0 failures, 0 errors**.
+  Budget rule 4: last green 20m38s x1.3 → 1750s used (ceiling raised, documented).
+- **Key reusable finding — `SqliteEventStore.flush()` stall.** A writer that dies
+  leaves a `FlushBarrier` stranded: the failing batch is `size=4 barriers=0`, and
+  `appendAssigned` returns on ASSIGNMENT so the caller's barrier is enqueued after
+  that batch. Symptom `flush() took 60008ms` = exactly the bound. Fixed by
+  `releaseQueuedBarriers()`. Regression test:
+  `flush fails fast when the writer dies on the preceding append`
+  (RED 60.416s → GREEN 0.415s).
+- **Lesson worth keeping:** a test that polls until the error is ALREADY recorded
+  cannot falsify a race hypothesis — it skips the race window and passes with and
+  without the fix. Reproduce the original ordering, not a tidied-up one.
+
+## Historical record (2026-09-27, HEAD `78092a60`) — NOT authoritative
+
+**Status: STALE — This file's body describes LPR-001 / WU-LPR-090 (2026-09-21); it is NOT authoritative for the current cycle. See "Active context" above; the rest of the file is preserved as historical record and MUST NOT be acted on as if it were current.**
 
 ## Active context (2026-09-27, HEAD `78092a60` on `wu/rp-053r-red-fixtures`)
 

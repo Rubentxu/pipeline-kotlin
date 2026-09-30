@@ -109,6 +109,36 @@ pipelinek run real-project
 
 The installed ZIP digest must match the GitHub Release artifact expected by the publish job.
 
+## 7a. Known published-artifact defect — version laundering (observed 2026-09-30)
+
+Two published releases ship bytes that claim a DIFFERENT version than the
+asset name. Verified by downloading each real asset:
+
+| Release | Asset | Archive root | JAR/binary version | SHA-256 |
+| --- | --- | --- | --- | --- |
+| `v0.40.0` | `pipelinek-0.40.0.zip` | `pipelinek-0.40.0-rc8` | `0.40.0-rc8` | see release manifest |
+| `v0.43.0` | `pipelinek-0.43.0.zip` | `pipelinek-0.43.0-rc1` | `0.43.0-rc1` | `b81687acf82d04e814908eadfaaaa39520fe976e772c40084a0125bba2005483` |
+
+`v0.43.0` and `v0.43.0-rc1` are **byte-identical** (same digest above): the
+final release is the rc1 ZIP renamed, with no rebuild.
+
+Consequences:
+
+- a consumer that trusts the asset NAME installs rc content as a final release;
+- `SHA256SUMS` cannot detect this on its own, because the manifest is derived
+  from the same build as the (misnamed) asset;
+- build-time admission is the control that prevents recurrence, which is why
+  `CandidateAdmission` (TRAIN P0.3) refuses to materialize a candidate whose
+  recorded identity diverges from the root version.
+
+Status: the producer fast lane cannot retro-fix published bytes. Republishing
+under a correct version is an operator decision (it creates a new tag and a
+new release). Until then, `scripts/release/cheat-sheet-uat.sh` REPORTS the
+mismatch instead of assuming the asset name is truthful, and it defaults to
+`v0.43.0` (the newest release publishing both a ZIP and a `SHA256SUMS`)
+while still flagging the laundering above. Set `CHEAT_UAT_VERSION` to target
+a specific release.
+
 ## 8. Future distribution adapters
 
 Allowed after LPR and only from canonical ZIP/version metadata:

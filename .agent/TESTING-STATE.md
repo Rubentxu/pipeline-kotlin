@@ -12,10 +12,55 @@ Changed:
 - scripts/release/sdkman-publish.sh  SHA256SUMS instead of the absent sidecar
 - scripts/release/sdkman-install-uat.sh  same
 - scripts/release/test_sdkman_digest.py  NEW, 16 hermetic contract tests
+- scripts/release/cheat-sheet-uat.sh  portable, manifest-verified, identity-aware
 - README.md, AGENTS.md  contract + law wiring
-- docs/v2/03-specifications/DISTRIBUTION_RELEASE_SPEC.md  §4 digest authority corrected
-Commits: 22642511 (P0.3), 59b7d5f7 (P1), b9186d9e (AGENTS laws), 1b9e219a (state)
+- docs/v2/03-specifications/DISTRIBUTION_RELEASE_SPEC.md  §4 digest authority,
+  §7a published version-laundering finding
+Commits: 22642511 (P0.3), 59b7d5f7 (P1), b9186d9e (AGENTS laws),
+         1b9e219a (state), e54fa2ef (SDKMAN digest contract)
 ```
+
+## FINDING: two published releases launder their version (operator decision)
+
+Downloaded and inspected the real assets:
+
+```text
+v0.40.0  -> pipelinek-0.40.0.zip   contains pipelinek-0.40.0-rc8
+v0.43.0  -> pipelinek-0.43.0.zip   contains pipelinek-0.43.0-rc1
+v0.43.0 and v0.43.0-rc1 are BYTE-IDENTICAL (b81687ac...).
+The "final" v0.43.0 release is the rc1 ZIP renamed, never rebuilt.
+```
+
+`SHA256SUMS` cannot catch this (it is generated from the same misnamed
+build); only build-time identity admission can, which is what P0.3 does.
+Republishing is an OPERATOR decision (new tag + new release) and is NOT
+done here. `cheat-sheet-uat.sh` now REPORTS the mismatch instead of
+trusting the asset name.
+
+Manifest availability boundary, measured:
+
+```text
+v0.39.0     SHA256SUMS=404   (predates the manifest)
+v0.40.0+    SHA256SUMS=200
+v0.42.0-rc1 SHA256SUMS=404, v0.43.0-rc1/0.43.0 = 200
+v0.44.0-rc1 SHA256SUMS=404 and ZIP=404 (never published)
+```
+
+## cheat-sheet-uat.sh: three real defects fixed
+
+```text
+1. Hardcoded an ABSOLUTE developer path (/var/home/rubentxu/...) for the
+   fixture, so it only ran on one machine. Now resolved from BASH_SOURCE.
+2. Hardcoded the expected digest as a literal. Now resolved from SHA256SUMS
+   via the shared resolver, so it cannot rot when an asset is rebuilt.
+3. Copied the gradle-demo fixture flat into a temp dir, breaking its
+   `../../v2/gradlew` relative path (exit 127). The temp tree now mirrors
+   the repo layout and the wrapper is linked where the fixture expects it.
+```
+
+Result: the UAT now completes end-to-end (exit 0) against the real
+published v0.43.0 release for the first time, having previously been
+unable to reach step 2.
 
 ## SDKMAN digest contract (P1.5) — the sidecar was already dead
 
@@ -47,7 +92,9 @@ was removed rather than left untested).
 | detekt | `:pipeline-release:detekt` | clean |
 | Installer contracts | `python3 scripts/test_install_pipelinek.py` | 14/14 |
 | SDKMAN digest contracts | `python3 scripts/release/test_sdkman_digest.py` | 16/16 |
+| Cheat sheet UAT (real network) | `bash scripts/release/cheat-sheet-uat.sh` | exit 0 end-to-end vs published v0.43.0; identity mismatch reported |
 | SDKMAN lint | `shellcheck`, `bash -n` on 3 scripts | clean on new file; 2 pre-existing SC2012/SC2015 infos in the UAT |
+| Cheat sheet lint | `shellcheck`, `bash -n` | clean (improved: hardcoded paths removed) |
 | Hermeticity | endpoints redirected at loopback | 0 public-network calls |
 | Live admission gate | `:pipeline-release:candidateAdmission` | exit 1, correct refusal (root version is `0.44.0-rc1`) |
 

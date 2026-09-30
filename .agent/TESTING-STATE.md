@@ -1,3 +1,63 @@
+# Active Change — release-evolution producer lane (2026-09-30, head `b9186d9e`)
+
+TRAIN P0 + P1 of `docs/pipelinek-release-evolution/`. Everything below this
+section is historical record; this section is the operative one.
+
+```text
+Changed:
+- :pipeline-release  CandidateAdmission + CandidateAdmissionMain + Gradle task (P0.3)
+- scripts/install-pipelinek.sh  SHA256SUMS, transactional, exact identity, doctor (P1.1-P1.4)
+- scripts/test_install_pipelinek.py  NEW, 14 hermetic contract tests
+- README.md, AGENTS.md  contract + law wiring
+Commits: 22642511 (P0.3), 59b7d5f7 (P1), b9186d9e (AGENTS laws)
+```
+
+## Verification executed
+
+| What | Command | Result |
+| --- | --- | --- |
+| :pipeline-release suite | `v2/gradlew -p v2 :pipeline-release:test --rerun-tasks` | 19 XML classes, 61 tests, 0 skipped, 0 failures, 0 errors; 6 tasks executed; XML 09:36:27Z age 4s |
+| detekt | `:pipeline-release:detekt` | clean |
+| Installer contracts | `python3 scripts/test_install_pipelinek.py` | 14/14 |
+| Installer lint | `shellcheck`, `bash -n` | clean |
+| Hermeticity | 3 runs grepped for `github.com/Rubentxu` | 0 mentions |
+| Live admission gate | `:pipeline-release:candidateAdmission` | exit 1, correct refusal (root version is `0.44.0-rc1`) |
+
+## Evidence reused
+
+Identity tests (26) and the archive-root fix: unchanged by P0.3/P1, still
+covered by the 61-test run above.
+
+## Known false greens found and fixed (do not regress)
+
+1. Suite scored 5/10 initially with FIVE false greens: a 404 from the public
+   internet was indistinguishable from a correct refusal. Fixed with
+   `assert_served_by_mirror` plus reason-specific assertions.
+2. R6 survived `cp -a` instead of `mv` until R6c added a concurrent observer
+   that samples the destination for a partial state.
+3. R8 survived deletion of the archive-root check because the identity check
+   rejected the same fixture for a different reason. The fixture now reports
+   the REQUESTED version so only the root check can refuse.
+4. The real published `SHA256SUMS` records build paths
+   (`dist/candidates/v0.41.0-rc1/<asset>`), not bare names. An exact-name
+   lookup fails closed on EVERY real install. The lookup matches on
+   basename; R1b pins both formats. Verified 404 on the sidecar URL.
+
+## Deliberately not done
+
+- Root version `0.44.0-rc1` -> `0.44.0`: operator decision required. The
+  admission task refuses by design until then.
+- `scripts/release/sdkman-publish.sh` and `sdkman-install-uat.sh` still read
+  the absent `.zip.sha256` sidecar. That is the publish-time lane; no release
+  has ever carried a sidecar, so both would fail. Follow-up, not changed
+  blindly.
+- No tag, push, or publication. Nothing was released.
+
+Result: PASS for the producer lane. Repo-wide `check` not run: the change is
+confined to :pipeline-release plus scripts/ and two docs.
+
+---
+
 # TESTING-STATE — Active change (2026-09-30, HEAD `bce7ad36`)
 
 ## Active context (2026-09-30, WU-RP-020, HEAD `bce7ad36` on `main`)

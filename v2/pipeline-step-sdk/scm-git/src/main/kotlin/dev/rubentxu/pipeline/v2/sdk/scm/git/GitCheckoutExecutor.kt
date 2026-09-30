@@ -116,7 +116,7 @@ open class GitCheckoutExecutor(
         emitEvent(req, GitCheckoutStarted(
             eventId = newEventId(),
             runId = req.runId,
-            sequence = req.stepIndex.toLong(),
+            sequence = 0L,
             occurredAt = Instant.now(clock),
             url = spec.url,
             branch = spec.branch,
@@ -184,7 +184,7 @@ open class GitCheckoutExecutor(
             emitEvent(req, GitCheckoutFailed(
                 eventId = newEventId(),
                 runId = req.runId,
-                sequence = req.stepIndex.toLong(),
+                sequence = 0L,
                 occurredAt = Instant.now(clock),
                 url = spec.url,
                 branch = spec.branch,
@@ -216,7 +216,7 @@ open class GitCheckoutExecutor(
             emitEvent(req, GitCheckoutFailed(
                 eventId = newEventId(),
                 runId = req.runId,
-                sequence = req.stepIndex.toLong(),
+                sequence = 0L,
                 occurredAt = Instant.now(clock),
                 url = url,
                 branch = branch,
@@ -232,7 +232,7 @@ open class GitCheckoutExecutor(
             emitEvent(req, GitPollChanged(
                 eventId = newEventId(),
                 runId = req.runId,
-                sequence = req.stepIndex.toLong(),
+                sequence = 0L,
                 occurredAt = Instant.now(clock),
                 url = url,
                 branch = branch,
@@ -251,7 +251,7 @@ open class GitCheckoutExecutor(
                 emitEvent(req, GitCheckoutCompleted(
                     eventId = newEventId(),
                     runId = req.runId,
-                    sequence = req.stepIndex.toLong(),
+                    sequence = 0L,
                     occurredAt = Instant.now(clock),
                     url = url,
                     branch = branch,
@@ -269,7 +269,7 @@ open class GitCheckoutExecutor(
                 emitEvent(req, GitCheckoutFailed(
                     eventId = newEventId(),
                     runId = req.runId,
-                    sequence = req.stepIndex.toLong(),
+                    sequence = 0L,
                     occurredAt = Instant.now(clock),
                     url = url,
                     branch = branch,
@@ -285,7 +285,7 @@ open class GitCheckoutExecutor(
                 emitEvent(req, GitCheckoutFailed(
                     eventId = newEventId(),
                     runId = req.runId,
-                    sequence = req.stepIndex.toLong(),
+                    sequence = 0L,
                     occurredAt = Instant.now(clock),
                     url = url,
                     branch = branch,
@@ -304,7 +304,7 @@ open class GitCheckoutExecutor(
             emitEvent(req, GitCheckoutCompleted(
                 eventId = newEventId(),
                 runId = req.runId,
-                sequence = req.stepIndex.toLong(),
+                sequence = 0L,
                 occurredAt = Instant.now(clock),
                 url = url,
                 branch = branch,
@@ -323,7 +323,7 @@ open class GitCheckoutExecutor(
             emitEvent(req, GitCheckoutFailed(
                 eventId = newEventId(),
                 runId = req.runId,
-                sequence = req.stepIndex.toLong(),
+                sequence = 0L,
                 occurredAt = Instant.now(clock),
                 url = url,
                 branch = branch,
@@ -345,7 +345,7 @@ open class GitCheckoutExecutor(
         emitEvent(req, GitCheckoutCompleted(
             eventId = newEventId(),
             runId = req.runId,
-            sequence = req.stepIndex.toLong(),
+            sequence = 0L,
             occurredAt = Instant.now(clock),
             url = url,
             branch = branch,
@@ -524,7 +524,7 @@ open class GitCheckoutExecutor(
             req.eventSink.append(EchoOutputCaptured(
                 eventId = newEventId(),
                 runId = req.runId,
-                sequence = req.stepIndex.toLong(),
+                sequence = 0L,
                 occurredAt = Instant.now(clock),
                 stepIndex = req.stepIndex,
                 content = content,
@@ -570,6 +570,15 @@ data class GitCheckoutRequest(
     val eventSink: EventSink,
     val clock: Clock,
     val secretStore: dev.rubentxu.pipeline.v2.credentials.api.SecretStore?,
+    // WU-RP-020: `stepIndex` is a STEP ORDINAL, not an event sequence. It was
+    // being passed as `DomainEvent.sequence` for all 11 checkout events, which
+    // bypassed the store's sequence authority: every checkout event claimed the
+    // same number (the step ordinal), so repeated checkouts of a step, or a
+    // checkout alongside any other event of that run, collided on
+    // UNIQUE(run_id, sequence). All 11 sites now pass `0L`, which
+    // `appendAssigned` treats as "assign me the durable sequence". The ordinal
+    // still belongs in the step-scoped payload, not the run-scoped sequence.
+    // See bl-bl-01M3RK3NZV000387H65JWN9XM0.
     val stepIndex: Int,
     val previousRemoteSha: String?,
 )

@@ -30,14 +30,33 @@ import java.util.concurrent.TimeUnit
  * fails, the property needs explicit characterisation (either a contract
  * decision or a bug fix in a follow-up WU).
  *
- * WU-RP-020: the class budget must be strictly ABOVE the longest legitimate
- * internal wait, never equal to it. `SqliteEventStore.flush()` blocks on a
- * writer barrier with a 60 s bound (`barrier.await(60, TimeUnit.SECONDS)`).
- * The previous `@Timeout(60)` set the class budget to exactly that number, so
- * any test whose flush waited on a busy writer was a coin flip against its own
- * budget — it passed in isolation and timed out under suite load. 120 s leaves
- * the barrier's full 60 s and doubles the headroom, so a timeout here means a
- * real defect rather than a coincidence of two unrelated constants.
+ * WU-RP-020: the class budget is 120 s.
+ *
+ * HISTORY, recorded honestly because two explanations were tried and BOTH were
+ * falsified by measurement:
+ *
+ * 1. Claim (retracted): "@Timeout(60) equalled the 60 s barrier bound, so the
+ *    test was a coin flip against its own budget". FALSE. With the original
+ *    `@Timeout(60)` this test completes in 0.031 s and passes 10/0/0/0 in
+ *    isolation, three runs in a row. Raising the budget did not make anything
+ *    faster and was never the cause of anything.
+ *
+ * 2. Claim (retracted): "the writer thread dies and strands a FlushBarrier, so
+ *    flush() waits its full 60 s bound". ALSO FALSE as a defect. `flush()`
+ *    begins with `writerError?.let { throw ... }` on a @Volatile field, so once
+ *    the writer records its failure every flush throws immediately. A barrier
+ *    enqueued after the writer died is unreachable in practice. A fix
+ *    (`releaseStrandedBarriers`) was written, measured as having NO effect
+ *    (the regression test passed identically with and without it), and REMOVED
+ *    rather than shipped as unearned complexity.
+ *
+ * UNRESOLVED: a `smaller explicit sequence` run was observed at 60.01 s during
+ * the full `check` gate while this class takes 0.03 s in isolation. The
+ * mechanism is not yet explained. What is NOT the explanation: a timeout-budget
+ * collision, or a stranded barrier. 120 s is retained purely as headroom so a
+ * real slow path reports a failure instead of being killed by a budget equal to
+ * a coincidental internal constant. This is open technical debt, recorded in
+ * bl-bl-01M3RK3NZV000387H65JWN9XM0; it is NOT claimed as solved.
  */
 @Timeout(120)
 class SqliteEventStoreConcurrencyCharacterisationTest {

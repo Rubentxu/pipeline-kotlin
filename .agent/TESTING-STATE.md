@@ -1749,3 +1749,53 @@ git push origin main --tags
 
 6. **`--rerun-tasks` is NOT mandatory for every gate.** An incremental run
    behind a deleted-XML canary is the stronger proof of real execution.
+
+## Active Change — WU-RP-020 durable sequence authority (2026-09-30, base `34c08ad9`, head `54bc4bf6`)
+
+- **Changed surfaces:** `SqliteEventStore.kt` (adds `createSequenceUniquenessIndex`, adds a
+  `sqlite_master` existence probe so the duplicate scan does not run on every open),
+  `Rp020CrossInstanceSequenceAuthorityTest` (new), and two characterisation tests re-pinned.
+- **Verification executed and green:** L1 (Rp020 1/0/0, store characterisation 10/0/0),
+  L2 `:pipeline-events` 189/0/0 across 37 XML, L3 durable+replay+concurrency 349/0/0 across
+  73 XML. All read from `build/test-results/test/`, all with a deleted-XML canary.
+- **Verification RED and NOT caused by this change:** L5 `check` on the final tree,
+  BUILD FAILED in 20m 59s, `UatLocal008CredentialsTest` 27 tests / 14 failures.
+- **Proof it is not this change:** with the change stashed, base `34c08ad9` runs that class
+  27/0/0. Green at base, red at head, so a cause was located rather than assumed.
+- **Root cause (new P1 `bl-bl-01M3RK3NZV000387H65JWN9XM0`):** `WithCredentialsExecutor.kt:131`
+  keeps `var sequence = 1L` and passes EXPLICIT sequences. In `appendAssigned` a non-zero
+  sequence BYPASSES the store's per-run counter, so `CredentialBound` always claims sequence 1
+  and collides with the run's first real event. Pre-existing and silent at base; the
+  `UNIQUE` constraint converted it into a fail-closed failure. Blast radius is any emitter
+  passing an explicit non-zero sequence, not only credentials.
+
+### Negative knowledge recorded this session (do not re-derive)
+
+7. **The wrapper's exit code lied.** `nohup timeout N v2/gradlew ... &` reported
+   `Exit code: 0` while the log said `BUILD FAILED in 20m 59s`. Read the log and the XML,
+   never the shell's exit status, when a command is backgrounded.
+
+8. **A duplicated @KDoc block compiles fine and reads like a mistake.** When adding a
+   rationale KDoc above a class that already had one, merge into the existing block.
+
+9. **A characterisation test can go red because the world was repaired.** The test that
+   FOUND the defect asserted the defect existed. Invert the assertion and write the
+   history into the test; do not delete it and do not weaken it.
+
+10. **A test that passes in isolation can still lie.** The store characterisation was green
+    alone and red in the full suite because it never flushed its baseline; the rollback
+    made "durable MAX(sequence)" equal to MAX(nothing). Durable claims must be read from
+    durable state (direct SQLite), never from the component under test.
+
+11. **`SqliteEventStore.flush()` blocks up to 60 s** (`barrier.await(60, TimeUnit.SECONDS)`).
+    A class `@Timeout(60)` on any test that flushes is a coin flip. Budgets must be strictly
+    above the longest legitimate internal wait, never equal to it.
+
+12. **A non-zero explicit `sequence` bypasses the store's counter** in
+    `SqliteEventStore.appendAssigned`. This is the seam behind the new P1; grep every
+    emitter for hardcoded sequences before trusting a per-run monotonic invariant.
+
+- **Next:** the WU that removes explicit sequences from the emitters (start at
+  `WithCredentialsExecutor`), then re-run the full gate. Until that lands, `main` is RED
+  and must not be tagged or shipped.
+- **Not executed:** external release-harness matrix (belongs to `pipelinek-release-harness`).

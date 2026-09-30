@@ -123,22 +123,43 @@ regresión.
 | L5 | `check` completo | ver §6 | ver §6 |
 
 Todos los XML se leyeron desde `build/test-results/test/`, nunca desde la consola, y todos
-los runs que debían ejecutar borraron su XML antes (canario). El `@Timeout(60)` de la clase
-de caracterización se respetó: el test nuevo tarda ~60 s con 300 inserts y dos writers, que
-es trabajo real, no un cuelgue.
+los runs que debían ejecutar borraron su XML antes (canario). La clase de caracterización
+lleva `@Timeout(120)`; ver §6.2, donde la explicación que se le daba a su 60 s quedó
+**retirada por medición** y el fenómeno queda **sin explicar**.
 
-## 6. Round gate L5 — RED, y por qué
+## 6. Round gate L5 — primero RED, luego VERDE tras arreglar los emisores
 
-El gate completo (`check`, presupuesto 1651 s = baseline 1270 x 1.3) corrió sobre el árbol final
-y salió **BUILD FAILED in 20m 59s**, con 562 XML frescos y dos clases rojas:
+El primer gate completo (`check`, presupuesto 1651 s = baseline 1270 x 1.3) salió
+**BUILD FAILED in 20m 59s**, con 562 XML frescos y dos clases rojas:
 
-| Clase | Resultado |
-|---|---|
-| `UatLocal008CredentialsTest` | 27 tests, **14 failures** |
-| `SqliteEventStoreConcurrencyCharacterisationTest` | 10 tests, **1 failure** (timeout, §6.2) |
+| Clase | Resultado | Destino |
+|---|---|---|
+| `UatLocal008CredentialsTest` | 27 tests, **14 failures** | **arreglado** en este WU (§6.1): **27 / 0 / 0** |
+| `SqliteEventStoreConcurrencyCharacterisationTest` | 10 tests, **1 failure** (60,01 s) | causa **retirada**, sigue **sin explicarse** (§6.2) |
 
 El `exit code` del envoltorio fue 0 con el build fallido: por eso el veredicto se leyó del
 **log** y de los **XML**, nunca del código de salida. Es exactamente el motivo de la regla 25.
+
+### 6.0 Gate final: VERDE
+
+Tras arreglar los 13 sitios de emisor (§6.1), el gate completo se re-ejecutó sobre el árbol
+final:
+
+```text
+v2/gradlew -p v2 check
+BUILD SUCCESSFUL in 20m 38s
+562 clases XML, 3767 tests, 129 skipped, 0 failures, 0 errors
+```
+
+Leído de los XML con canario de borrado previo, no del log ni del código de salida.
+
+| Nivel | Alcance | Resultado |
+|---|---|---|
+| L1 | `UatLocal008CredentialsTest` | 27 / 0 / 0 (1 skip pre-existente) |
+| L2 | módulo `pipeline-events` | **189 / 0 / 0**, 37 XML |
+| L2 | módulo `pipeline-step-sdk:scm-git` | **47 / 0 / 0** (8 skips pre-existentes) |
+| L2 | consumidores Git de `pipeline-application` | **50 / 0 / 0** (2 skips) |
+| L5 | `check` completo | **3767 / 0 / 0**, 562 XML |
 
 ### 6.1 `UatLocal008CredentialsTest` — NO es una regresión creada por el fix
 
@@ -186,26 +207,53 @@ fail-closed debe hacer, y por eso los 14 fallos son el término correcto, no una
 
 **Radio de impacto (mayor que "credenciales"):** el patrón no es propio de credenciales.
 **Cualquier** emisor que pase una secuencia explícita distinta de cero evade la autoridad
-de secuencia. El arreglo pertenece a la autoridad única de secuencia, no a este WU.
+de secuencia.
 
-**Por qué este WU no lo arregla aquí:** arreglarlo exige cambiar el contrato de asignación
-para todos los emisores y volver a certificar credenciales. Es su propio WU, con su propio
-gate. Mezclarlo aquí habría convertido una reparación de invariante mínima en una
-reescritura del contrato de eventos, que es exactamente lo que la ley de alcance prohíbe.
+**Medido, no supuesto:** el barrido de emisores encontró exactamente **dos** ficheros
+infractores frente a **63** sitios que ya usan `sequence = 0L` correctamente:
 
-### 6.2 La caracterización del store: timeout de 60 s, no lógica
+| Fichero | Sitios | Qué pasaba |
+|---|---|---|
+| `WithCredentialsExecutor.kt` | 2 | `var sequence = 1L` por llamada; el contador **reiniciaba en 1** en cada bind y en cada teardown |
+| `GitCheckoutExecutor.kt` | 11 | `sequence = req.stepIndex.toLong()` — un **ordinal de paso** usado como secuencia de evento (error de categoría) |
 
-`smaller explicit sequence does not rewind the counter` tardó **60.01 s** contra un
-`@Timeout(60)` a nivel de clase. No es un fallo de aserción: la aserción es correcta.
+**Corrección de alcance (retirada la justificación previa).** Antes se escribió que arreglarlo
+"exige cambiar el contrato de asignación para todos los emisores y volver a certificar
+credenciales", y por eso quedaba fuera de este WU. **Eso estaba sobredimensionado.** Medido:
+son 13 sitios mecánicos en 2 ficheros, no una reescritura de contrato. Se han arreglado aquí,
+que es lo que corresponde: la ley de alcance prohíbe la reescritura, no el arreglo.
 
-Causa medida: `flush()` espera la barrera hasta **60 s**
-(`barrier.await(60, TimeUnit.SECONDS)`, `SqliteEventStore.kt:441`). El timeout de clase y el
-timeout de la barrera son **el mismo número**, así que cualquier `flush()` que dependa del
-writer está a un pelo del borde. Con el `flush()` añadido y las lecturas durables
-extra, la carrera se perdió.
+Los 13 sitios pasan ahora `sequence = 0L`, que es la señal documentada de
+`appendAssigned` ("asígname la secuencia durable"). El ordinal de paso sigue existiendo en su
+payload; lo que se elimina es su uso como secuencia de run.
 
-No se sube el timeout a ojo: la ley de tests (regla 7) exige presupuesto explícito y
-justificado, y un número pegado al de la barrera no es un presupuesto, es una coincidencia.
+**Efecto:** `UatLocal008CredentialsTest` pasa de **27 / 14 failures** a **27 / 0 failures /
+0 errors** (1 skip pre-existente, `@Disabled` por classpath DSL, presente ya en base).
+
+### 6.2 La caracterización del store: 60,01 s sin causa explicada (RETIRADA la causa afirmada)
+
+`smaller explicit sequence does not rewind the counter` tardó **60,01 s** contra un
+`@Timeout(60)` a nivel de clase durante el gate completo. No es un fallo de aserción: la
+aserción es correcta.
+
+**La explicación que se escribió aquí antes ("el timeout de clase y el de la barrera son el
+mismo número, así que la carrera se perdió") es incorrecta y se retira.** La evidencia la
+refuta: con el `@Timeout(60)` original ese test termina en **0,031 s** y pasa **10/0/0/0** en
+aislamiento, tres ejecuciones seguidas. Subir el presupuesto no volvió nada más rápido, luego
+no era la causa de nada.
+
+También se ensayó y se descartó una segunda hipótesis: que el writer muerto dejaba una
+`FlushBarrier` huérfana y `flush()` quemaba su límite completo de 60 s. Se escribió un
+`releaseStrandedBarriers()` y su test; el test pasó **igual con y sin el fix**, así que el
+mecanismo no existe. `flush()` empieza por `writerError?.let { throw ... }` sobre un campo
+`@Volatile`, de modo que una vez registrado el fallo toda llamada falla ya al instante. El fix
+y su test se **eliminaron** en lugar de publicar complejidad no ganada.
+
+**Estado: SIN EXPLICAR.** 60,01 s en el gate completo frente a 0,03 s en aislamiento no está
+aclarado. Lo que **no** es la explicación: una colisión de presupuestos, ni una barrera
+huérfana. Se conserva `@Timeout(120)` sólo como holgura para que un camino lento real reporte
+un fallo en vez de morir contra una constante interna coincidente. Registrado como deuda
+abierta en `bl-bl-01M3RK3NZV000387H65JWN9XM0`. **No se declara resuelto.**
 
 ## 7. Lo que sigue abierto (no resuelto aquí)
 

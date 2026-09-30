@@ -128,8 +128,14 @@ class WithCredentialsExecutor(
         val env = mutableMapOf<String, SecretHandle>()
         val credentialIds = mutableListOf<CredentialsId>()
         val retainedProjections = mutableListOf<dev.rubentxu.pipeline.v2.domain.credentials.ProjectionResult>()
-        var sequence = 1L
 
+        // WU-RP-020: NO local sequence counter. The durable sequence authority is
+        // the store (`SqliteEventStore.appendAssigned`), which assigns when the
+        // incoming sequence is 0. A local counter starting at 1 bypasses that
+        // authority entirely, so CredentialBound always claimed sequence 1 of a
+        // run and collided with the run's first real event. That corruption was
+        // silent until UNIQUE(run_id, sequence) made it fail closed.
+        // See bl-bl-01M3RK3NZV000387H65JWN9XM0.
         try {
             for (spec in specs) {
                 val credentialsId = spec.credentialsId
@@ -140,7 +146,7 @@ class WithCredentialsExecutor(
                 val boundEvent = CredentialBound(
                     eventId = UUID.randomUUID().toString(),
                     runId = runId,
-                    sequence = sequence++,
+                    sequence = 0L,
                     occurredAt = clock.now(),
                     credentialsId = credentialsId,
                     purpose = purpose,
@@ -204,14 +210,19 @@ class WithCredentialsExecutor(
         primaryThrowable: Throwable? = null,
     ) {
         var firstThrowable = primaryThrowable
-        var sequence = 1L
+
+        // WU-RP-020: no local sequence counter here either. Restarting at 1 per
+        // teardown was the same authority bypass as the bind path, and it also
+        // made the first CredentialUnbound of every teardown collide with
+        // sequence 1 of the run. The store assigns the durable sequence.
+        // See bl-bl-01M3RK3NZV000387H65JWN9XM0.
 
         // Emit CredentialUnbound for each binding (exactly once per binding)
         for (credentialsId in credentialIds) {
             val unboundEvent = CredentialUnbound(
                 eventId = UUID.randomUUID().toString(),
                 runId = runId,
-                sequence = sequence++,
+                sequence = 0L,
                 occurredAt = clock.now(),
                 credentialsId = credentialsId,
             )

@@ -4,6 +4,10 @@ import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinat
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedWaitUntilControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
+import dev.rubentxu.pipeline.v2.events.durable.FileBackedRunExecutionLeaseStore
+import dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition
+import dev.rubentxu.pipeline.v2.events.durable.LeaseRequest
+import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.application.durable.NonCanonicalStep
 import dev.rubentxu.pipeline.v2.application.durable.analyzeCanonicalDurableExecution
 import dev.rubentxu.pipeline.v2.application.durable.credentials.WithCredentialsExecutorScopeAdapter
@@ -460,6 +464,40 @@ fun main(args: Array<String>) {
         throw e // unreachable
     }
     val runId = runSelection.runId.value
+    // S2-R0: first-class run ownership. Before any event is written for this
+    // run we must prove we are the only process writing to it. Without this,
+    // two concurrent `--resume` invocations of the same definition both proceed
+    // and collide on the durable `ux_events_run_sequence` uniqueness index, so
+    // the loser sees a raw SQLite constraint violation instead of a typed
+    // refusal. The lease turns that crash into an explicit admission decision.
+    val runOwner = RunOwnerId.of("cli-" + ProcessHandle.current().pid() + "-" +
+        java.util.UUID.randomUUID().toString().take(8))
+    val leaseStore = FileBackedRunExecutionLeaseStore(controlDirRoot.resolve("leases"))
+    val lease = leaseStore.acquire(LeaseRequest(runId, requireNotNull(runOwner)))
+    when (lease) {
+        is LeaseAcquisition.Acquired, is LeaseAcquisition.TakenOver,
+        is LeaseAcquisition.Reentered -> Unit
+        is LeaseAcquisition.AlreadyOwned -> {
+            // Typed admission rejection: this run already has a live owner.
+            // Exit 2 (invocation/admission), not a pipeline failure.
+            runCatching { leaseStore.close() }
+            System.err.println(
+                "Error: run $runId is already owned by '${lease.heldBy.value}'; " +
+                    "another process is publishing events for this run"
+            )
+            System.exit(2)
+            throw IllegalStateException("unreachable")
+        }
+        is LeaseAcquisition.Unverifiable -> {
+            // Fail closed: a process that cannot prove it is the authority must
+            // not publish. Kept distinct from AlreadyOwned because the
+            // operator response differs.
+            runCatching { leaseStore.close() }
+            System.err.println("Error: cannot establish ownership of run $runId: ${lease.reason}")
+            System.exit(2)
+            throw IllegalStateException("unreachable")
+        }
+    }
     val host = Kotlin24ScriptingHost(eventStore, runId)
     val dslClasspath = computeScriptClasspath(config.pluginJars)
     val definition = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
@@ -738,6 +776,11 @@ fun main(args: Array<String>) {
     rawEventStore.close()
     Pair(outcome, lastEventCaptured)
     } finally {
+        // S2-R0: release ownership on every exit path, including the
+        // exception paths, so a crashed run is immediately recoverable by the
+        // next owner instead of waiting for the OS to reap the lock.
+        runCatching { leaseStore.release(requireNotNull(runOwner)) }
+        runCatching { leaseStore.close() }
         runCatching { rawEventStore.close() }
     }
     val runOutcome = runOutcomeAndLastEvent.first

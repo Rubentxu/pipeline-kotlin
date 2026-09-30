@@ -144,4 +144,57 @@ object SourceScanner {
         }
         return findings
     }
+
+    /**
+     * WU-RP-020: find PRODUCTION emitters that assign their OWN event sequence.
+     *
+     * The durable sequence authority is the store: `appendAssigned` assigns the
+     * sequence when (and only when) the incoming one is `0`. An emitter that
+     * passes any other value BYPASSES that authority, and with
+     * `UNIQUE(run_id, sequence)` in place it either corrupts the log or fails
+     * the run. Two real instances were found this way and fixed:
+     * `WithCredentialsExecutor` (`var sequence = 1L`, restarting per call) and
+     * `GitCheckoutExecutor` (`req.stepIndex`, a step ordinal used as a run
+     * sequence).
+     *
+     * Only `/src/main/` is scanned. Tests legitimately pin an explicit sequence
+     * because they assert on it; production code has no such business.
+     *
+     * Flagged: `sequence = sequence++`, `sequence = 1L`, `sequence = counter`
+     * Allowed: `sequence = 0L`, `copy(sequence = assignedSequence)` (the store's
+     * own projection), `sequence = sequence` on a DECODED event (read model,
+     * never an emit).
+     *
+     * Comments are skipped so the KDoc explaining the rule cannot trip it.
+     */
+    fun findExplicitSequenceAssignment(root: Path): List<Finding> {
+        val findings = mutableListOf<Finding>()
+        // `sequence = <expr>` where expr is NOT 0L, a projection of an already
+        // assigned value, or a bare decode pass-through.
+        val pattern = Pattern.compile("""\bsequence\s*=\s*([A-Za-z0-9_.()+\-]+)""")
+        val allowed = setOf("0L", "0")
+        for (file in FitnessPaths.walkKotlinFiles(root).filter { it.toString().contains("/src/main/") }) {
+            for ((lineIdx, line) in Files.readAllLines(file).withIndex()) {
+                val trimmed = line.trim()
+                if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue
+                val m = pattern.matcher(trimmed)
+                if (!m.find()) continue
+                // The capture can swallow the closing paren of a call
+                // (`emit(sequence = 0L)` captures `0L)`), so normalise before
+                // comparing against the allow-list.
+                var value = m.group(1)
+                while (value.endsWith(")")) value = value.dropLast(1)
+                if (value in allowed) continue
+                // The store's own projection and read-model decode are not emits.
+                if (value.contains("assigned") || value == "sequence" || value.endsWith(".sequence")) continue
+                // Reading the sequence back OUT of persisted data is a decode, not
+                // an emit: `val sequence = longField(s, "sequence")`. The quoted
+                // field name is not inside the captured token, so key off the
+                // field-reading call itself.
+                if (value.contains("longField(") || value.contains("stringField(") || value.contains("intField(")) continue
+                findings.add(Finding(file, lineIdx + 1, "sequence=$value", line))
+            }
+        }
+        return findings
+    }
 }

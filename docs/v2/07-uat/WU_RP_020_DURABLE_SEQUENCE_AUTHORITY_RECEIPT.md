@@ -304,18 +304,45 @@ Módulo `pipeline-events`: **190 / 0 / 0** (antes 189, +1 la regresión).
    unicidad es una post-condición que se cumple haya colisión o no.
 4. **Bases de datos preexistentes ya corruptas.** El fallback es fail-closed al abrir con
    diagnóstico nombrado. No hay migración; se documenta la remediación en el mensaje.
-5. **Ciclo SDDK sigue en `BLOCKED` por fricción del tooling, no por el código.** El ciclo
-   `rp-020-durable-sequence-authority` se bloqueó cuando el primer gate salió rojo. Con el
-   gate ya **verde** se emitió el recibo `gate-unblock-condition-met-6464580629a024da-1` y
-   `-2` con `argv`, `exit_code` y `output_digest` reales, pero `sddk cycle transition
-   --transition cycle.unblock` sigue respondiendo `ENGINE_MISSING_GATE_RECEIPT`; y
-   `sddk cycle rebuild` devuelve `restored: false`. Comprobado contra el manifiesto: la
-   transición y el gate **sí** están declarados y el estado `BLOCKED/Explore` es el
-   correcto. Ninguna razón de `supersede` aplica (`scope_invalid`, `goal_replaced`,
-   `external-obsolete` serían todas falsas), así que **no se forzó una transición verde**.
-   Se registra la divergencia: Git + CI + el gate dicen verde; el estado del ciclo dice
-   `BLOCKED`. Según la ley de autoridad, Git/CI manda y el ciclo es lo que queda
-   desalineado. Requiere una sesión con la herramienta para cerrar el ciclo.
+5. **Colisión de identidad de ciclo SDDK (NO falta de evidencia).** El estado
+   `BLOCKED` no viene de que falte un recibo: los dos recibos existen. Viene de que hay
+   **tres ciclos solapados para el mismo trabajo** y la evidencia está partida entre
+   ellos. Observado directamente en el ledger (`~/.local/state/sddk/projects/
+   p-733fb505b5a6bd2d/ledger.sqlite`, lectura `mode=ro`):
+
+   | ciclo | estado | fase | artefactos/recibos que porta |
+   |---|---|---|---|
+   | `train-1-rp2-characterization` | `OPEN` | `explore` | (padre TRAIN) |
+   | `wu-rp-020-durable-sequence-authority` | `OPEN` | `explore` | `exploration-report.md`, `findings.md`, `inventory.json` |
+   | `rp-020-durable-sequence-authority` | `BLOCKED` | `explore` | los 3 recibos de gate; directorio de artefactos **vacío** |
+
+   Los eventos del ciclo `BLOCKED` son `cycle.created` → `cycle.transitioned` →
+   `lease.released` (07:59:31Z). **No hay lease viva** para ningún ciclo `rp-020`, y por
+   eso `sddk cycle status`/`next` responden `no active cycle found for project
+   p-733fb505b5a6bd2d`. Eso es coherente con un ciclo `BLOCKED`, no es corrupción.
+
+   Los recibos sí están enlazados al ciclo correcto
+   (`cycle_id = p-733fb505b5a6bd2d/rp-020-durable-sequence-authority`):
+   `gate-block-condition-met-31f3ced42933db6c-1`, `gate-unblock-condition-met-6464580629a024da-1`
+   y `-2`, los tres con `outcome = passed`. El manifiesto declara la transición
+   `cycle.unblock` y su gate, y el estado `BLOCKED/explore` es el correcto. Aun así
+   `cycle.transition --transition cycle.unblock` responde `ENGINE_MISSING_GATE_RECEIPT`
+   y `cycle rebuild` devuelve `restored: false`.
+
+   **Lectura honesta:** el motor valida el recibo contra el ciclo que considera activo, y
+   los punteros entre estos tres ciclos no coinciden. La explicación anterior
+   ("fricción del tooling, evidencia aparentemente suficiente") era demasiado vaga;
+   la observación específica es una **colisión de identidad de ciclo**: los recibos están
+   en un ciclo y los artefactos del trabajo en otro. Ninguna razón de `supersede` aplica
+   (`scope_invalid`, `goal_replaced`, `external-obsolete` serían todas falsas), así que
+   **no se forzó una transición verde**: cerrar el ciclo equivocado es peor que dejar
+   la divergencia documentada. La resolución requiere una decisión del operador sobre
+   qué ciclo es el canónico, y después una transición real. Git + CI + el gate dicen
+   verde; según la ley de autoridad mandan ellos, y el ciclo queda desalineado a
+   propósito y visible.
+
+   Lo que **no** se hizo y no se hará sin esa decisión: no se ejecutó `rebuild`, ni
+   `supersede`, ni ninguna transición sobre estos ciclos.
 
 ## 8. Cierre de trabajo (checklist AGENTS.md)
 
@@ -331,9 +358,36 @@ Security implications:    none — this is a data-integrity boundary, not a trus
                           boundary. No credential, sandbox or egress surface changed
 Tests demonstrating:      Rp020CrossInstanceSequenceAuthorityTest (RED+GREEN),
                           SqliteEventStoreConcurrencyCharacterisationTest (10),
-                          UatRunConcurrencyCharacterisationTest (inverted), plus the
-                          189-test events module and the 349-test durable consumer set
+                          UatRunConcurrencyCharacterisationTest (inverted),
+                          FArchSequenceAuthorityFitnessTest (1 happy path + 5
+                          fixtures, RED-proven by re-introducing the original
+                          WithCredentialsExecutor defect), plus the 189-test events
+                          module and the 349-test durable consumer set
 ```
+
+### 8.1 Guardia permanente añadida en este WU
+
+Los 13 sitios con secuencia explícita se encontraron con un `grep` puntual que **no
+tenía sucesor**: nada impedía un decimocuarto. Este WU cierra ese hueco.
+
+- `SourceScanner.findExplicitSequenceAssignment` marca código de **producción**
+  (`/src/main/` solamente) que asigna `sequence = <no-cero>`. Los tests se excluyen
+  porque fijan a propósito una secuencia sobre la que afirman.
+- Regla: la base de datos es la **única** autoridad. `appendAssigned` asigna cuando y
+  sólo cuando el valor entrante es `0`. Un emisor que pase otra cosa la evade, y con
+  `UNIQUE(run_id, sequence)` eso no es desorden: o corrompe el log o falla el run.
+- **Prueba de que no es un sello de goma:** re-introducir el defecto original de
+  `WithCredentialsExecutor` (`var sequence = 1L` + `sequence = sequence++`) pone la
+  guardia en **ROJO** nombrando archivo y las dos líneas exactas. Los 5 fixtures siguen
+  verdes en ambos estados, así que el ROJO es el hallazgo de producción y no un
+  artefacto del fixture. Restaurado el arreglo, vuelve a VERDE.
+- Lista de excepciones, cada una fijada por un fixture para que no pueda abrirse en
+  silencio: `0L` (preguntar a la base), `assignedSequence` (proyección del store),
+  `longField(s, "sequence")` (decodificación de un campo persistido) y
+  `sequence = sequence` (paso directo del read-model).
+- Evidencia: 6/0/0/0 la clase; `:pipeline-architecture-tests:test` 74 clases / 344
+  tests / 0 fallos; round gate `check` 564 XML / 3774 tests / 0 fallos / 0 errores con
+  canario verificado (los XML se borraron antes de correr, luego no fue `UP-TO-DATE`).
 
 ## 9. Estado
 

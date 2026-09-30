@@ -333,13 +333,30 @@ Módulo `pipeline-events`: **190 / 0 / 0** (antes 189, +1 la regresión).
    los punteros entre estos tres ciclos no coinciden. La explicación anterior
    ("fricción del tooling, evidencia aparentemente suficiente") era demasiado vaga;
    la observación específica es una **colisión de identidad de ciclo**: los recibos están
-   en un ciclo y los artefactos del trabajo en otro. Ninguna razón de `supersede` aplica
+   en un ciclo y los artefactos del trabajo en otro.
+
+   **Cuál es el ciclo canónico NO es ambiguo — la rama lo decide.** Los tres ciclos
+   declaran ramas distintas, y sólo una corresponde a donde vive el trabajo:
+
+   | ciclo | rama declarada | ¿existe? | veredicto |
+   |---|---|---|---|
+   | `train-1-rp2-characterization` | `wu/rp-020-sqlite-event-store` | sólo como ref remoto obsoleto, **ya mergeado en `main`**, sin rama local | ciclo padre reciclado; su rama es historia, no trabajo vivo |
+   | `wu-rp-020-durable-sequence-authority` | `feat/wu-rp-020-durable-sequence-authority` | **no existe en absoluto** (ni local ni remoto) | andamiaje muerto: un ciclo `OPEN` apuntando a una rama que nunca existió |
+   | `rp-020-durable-sequence-authority` | `main` | existe, y ahí está el WU completo | **canónico** |
+
+   El trabajo está en `main` (`c72c77c8`), el gate verde se ejecutó sobre `main`, y los
+   tres recibos están enlazados al ciclo cuya rama es `main`. Los otros dos son
+   duplicados: uno reciclado (padre TRAIN ya cerrado por el merge) y uno muerto (rama
+   inexistente). Por eso el motor no encuentra un ciclo coherente: el candidato real
+   está `BLOCKED` y los otros dos son ruido que sigue `OPEN`.
+
+   Aun así **no se forzó la transición**: el comando correcto (`unblock` sobre el ciclo
+   canónico, luego cerrar el andamiaje muerto) reescribe estado de ciclo, y eso sigue
+   siendo una decisión del operador. Ninguna razón de `supersede` aplica
    (`scope_invalid`, `goal_replaced`, `external-obsolete` serían todas falsas), así que
-   **no se forzó una transición verde**: cerrar el ciclo equivocado es peor que dejar
-   la divergencia documentada. La resolución requiere una decisión del operador sobre
-   qué ciclo es el canónico, y después una transición real. Git + CI + el gate dicen
-   verde; según la ley de autoridad mandan ellos, y el ciclo queda desalineado a
-   propósito y visible.
+   tampoco se fabricó un cierre falso: cerrar el ciclo equivocado es peor que dejar la
+   divergencia documentada. Git + CI + el gate dicen verde; según la ley de autoridad
+   mandan ellos, y el ciclo queda desalineado a propósito y visible.
 
    Lo que **no** se hizo y no se hará sin esa decisión: no se ejecutó `rebuild`, ni
    `supersede`, ni ninguna transición sobre estos ciclos.

@@ -5,3 +5,9 @@ agents:
       - git.tag
     phases:
       - release
+  sddk-release:
+    capabilities:
+      - git.push
+      - git.tag
+    phases:
+      - release

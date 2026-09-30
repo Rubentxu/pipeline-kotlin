@@ -1,11 +1,23 @@
 package dev.rubentxu.pipeline.v2.release
 
-import java.io.File
+import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskRuntime
+import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
+import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.runCaptured
+import kotlinx.coroutines.runBlocking
 import java.nio.file.Path
+import java.time.Instant
+import java.util.UUID
 
 /**
  * The effectful half of [SourceProvenance]: reads the facts the pure decider
- * needs. This is the only place that knows Git exists.
+ * needs. Git execution goes through the canonical [DurableTaskRuntime]
+ * (LF-0309: ProcessDurableTaskRuntime is the single authorised process home);
+ * this module constructs processes as little as the runtime lets it — which
+ * is to say, never directly.
  *
  * Every query degrades to [SourceProvenance.PROVENANCE_UNKNOWN] or a zero
  * count when Git cannot answer, and the decider decides what an unanswered
@@ -21,8 +33,8 @@ object SourceProvenanceProbe {
      * unavailable we cannot prove the tree is clean, and reporting zero
      * modified files would turn an outage into a pass.
      */
-    fun probe(repoRoot: Path): SourceProvenanceFacts {
-        val head = git(repoRoot, listOf("rev-parse", "HEAD"))
+    fun probe(repoRoot: Path, runtime: DurableTaskRuntime = defaultRuntime()): SourceProvenanceFacts {
+        val head = git(runtime, repoRoot, listOf("rev-parse", "HEAD"))
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
             ?: SourceProvenance.PROVENANCE_UNKNOWN
@@ -31,7 +43,7 @@ object SourceProvenanceProbe {
         // files as XY pairs. Untracked files ('??') are deliberately ignored:
         // they are not part of any commit's content, so they cannot make the
         // recorded commit a lie about the compiled sources.
-        val status = git(repoRoot, listOf("status", "--porcelain"))
+        val status = git(runtime, repoRoot, listOf("status", "--porcelain"))
         if (status == null) {
             return SourceProvenanceFacts(
                 headCommit = head,
@@ -60,28 +72,31 @@ object SourceProvenanceProbe {
     }
 
     /**
-     * Run git and return stdout, or `null` when git is absent, the directory is
-     * not a repository, or the command fails. A `null` means "no answer", which
-     * is a real state the decider must handle — never an implicit zero.
+     * Run `git` through the task runtime and return stdout, or `null` when git
+     * is absent, the directory is not a repository, or the command fails. A
+     * `null` means "no answer", which is a real state the decider must handle —
+     * never an implicit zero.
      */
-    private fun git(repoRoot: Path, args: List<String>): String? = try {
-        val process = ProcessBuilder(listOf("git") + args)
-            .directory(repoRoot.toFile())
-            .redirectErrorStream(false)
-            .start()
-        val stdout = process.inputStream.bufferedReader().use { it.readText() }
-        process.errorStream.bufferedReader().use { it.readText() }
-        if (process.waitFor() == 0) stdout else null
+    private fun git(runtime: DurableTaskRuntime, repoRoot: Path, args: List<String>): String? = try {
+        val request = TaskExecutionRequest(
+            task = TaskSpec.ExecTask(argv = listOf("git") + args),
+            runId = RunId("source-provenance-${UUID.randomUUID()}"),
+            opId = "source-provenance-${UUID.randomUUID()}",
+            timeoutMs = 30_000L,
+            env = emptyMap<String, SecretHandle>(),
+            workspaceRoot = repoRoot.toString(),
+        )
+        val captured = runBlocking { runtime.runCaptured(request) }
+        if (captured.exitCode == 0 && !captured.timedOut) captured.stdout else null
     } catch (_: Exception) {
         null
     }
-}
 
-/**
- * Convenience for the Gradle task: the repository root that owns the version
- * control state of a build. Falls back to the current directory when the
- * layout is unexpected, so the law still applies instead of silently not
- * applying.
- */
-fun defaultRepoRoot(): Path =
-    File(System.getProperty("user.dir")).toPath()
+    private fun defaultRuntime(): DurableTaskRuntime =
+        ProcessDurableTaskRuntime(
+            controlRoot = java.nio.file.Files.createTempDirectory("source-provenance-control"),
+            clock = object : dev.rubentxu.pipeline.v2.domain.durable.Clock {
+                override fun now(): Instant = Instant.now()
+            },
+        )
+}

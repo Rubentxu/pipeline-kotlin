@@ -50,7 +50,11 @@ fun main(args: Array<String>) {
         // from the commit string the caller passed. Passing the caller's own
         // claim back in would make the gate check itself.
         provenanceFacts = SourceProvenanceProbe.probe(
-            Paths.get(args.getOrNull(7) ?: defaultRepoRoot().toString()),
+            // P0.5 — the repository whose version control state defines this
+            // candidate's provenance. When the caller omits arg 7, the process
+            // cwd (Paths.get("") — no global System property read, LFC0-006)
+            // is the explicit fallback.
+            Paths.get(args.getOrNull(7) ?: Paths.get("").toAbsolutePath().toString()),
         ),
     )
 

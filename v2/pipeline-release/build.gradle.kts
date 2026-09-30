@@ -18,6 +18,9 @@ kotlin {
 
 dependencies {
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(project(":pipeline-domain"))
+    implementation(project(":pipeline-step-sdk:runtime"))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 }

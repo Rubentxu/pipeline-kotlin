@@ -39,10 +39,21 @@ if [[ ! -x "$INSTALLED_BIN" ]]; then
     exit 2
 fi
 
-mkdir -p "$WORK/gradle"
-cp -r "$PROJECT_ROOT/integration/gradle-demo/." "$WORK/gradle/"
-[[ -f "$PROJECT_ROOT/.tool-versions" ]] && cp "$PROJECT_ROOT/.tool-versions" "$WORK/gradle/"
-cd "$WORK/gradle"
+mkdir -p "$WORK/integration/gradle" "$WORK/v2"
+cp -r "$PROJECT_ROOT/integration/gradle-demo/." "$WORK/integration/gradle/"
+# The fixture runs `sh("../../v2/gradlew --no-daemon -p . build")`, a path
+# relative to the REPO ROOT. Copying it flat into a temp dir breaks that
+# path (shell exits 127), which made scenario 1 below report a false
+# regression: the CLI was correctly returning 1 for a genuinely failed
+# step, not for a contract violation. Mirror the repo layout and link the
+# wrapper where the fixture expects it.
+if [[ ! -x "$PROJECT_ROOT/v2/gradlew" ]]; then
+    echo "FATAL: $PROJECT_ROOT/v2/gradlew not found or not executable."
+    exit 2
+fi
+ln -sf "$PROJECT_ROOT/v2/gradlew" "$WORK/v2/gradlew"
+[[ -f "$PROJECT_ROOT/.tool-versions" ]] && cp "$PROJECT_ROOT/.tool-versions" "$WORK/integration/gradle/"
+cd "$WORK/integration/gradle" || exit 2
 
 FAIL=0
 
@@ -71,11 +82,11 @@ run_case "run success" 0 \
 
 echo
 echo "--- 2. run failure (fresh DB) ---"
-cat > "$WORK/gradle/fail.kts" <<'KOTLIN'
+cat > "$WORK/integration/gradle/fail.kts" <<'KOTLIN'
 pipeline { stages { stage("fail") { sh("false") } } }
 KOTLIN
-rm -f "$WORK/gradle/run.sqlite"
-rm -rf "$WORK/gradle/ctl"
+rm -f "$WORK/integration/gradle/run.sqlite"
+rm -rf "$WORK/integration/gradle/ctl"
 run_case "run failure fresh DB" 1 \
     "$INSTALLED_BIN" run --workspace . --db run.sqlite --control-root ctl fail.kts
 
@@ -92,7 +103,7 @@ run_case "validate OK" 0 \
 
 echo
 echo "--- 5. validate malformed ---"
-cat > "$WORK/gradle/bad.kts" <<'KOTLIN'
+cat > "$WORK/integration/gradle/bad.kts" <<'KOTLIN'
 pipeline { stages { stage("bad") { steps { echo("x") } } } }
 KOTLIN
 run_case "validate malformed" 2 \

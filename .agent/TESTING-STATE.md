@@ -13,6 +13,7 @@ Changed:
 - scripts/release/sdkman-install-uat.sh  same
 - scripts/release/test_sdkman_digest.py  NEW, 16 hermetic contract tests
 - scripts/release/cheat-sheet-uat.sh  portable, manifest-verified, identity-aware
+- scripts/release/cli-exit-contract-uat.sh  fixture staging fixed (was a FALSE red)
 - README.md, AGENTS.md  contract + law wiring
 - docs/v2/03-specifications/DISTRIBUTION_RELEASE_SPEC.md  §4 digest authority,
   §7a published version-laundering finding
@@ -37,7 +38,33 @@ Republishing is an OPERATOR decision (new tag + new release) and is NOT
 done here. `cheat-sheet-uat.sh` now REPORTS the mismatch instead of
 trusting the asset name.
 
-Manifest availability boundary, measured:
+## EXIT-CODE CONTRACT: verified GOOD at HEAD; the UAT was lying
+
+The published v0.43.0 UAT reported `exit 0` where the contract wants 1/2.
+That is NOT a product defect. Measured against a freshly built HEAD
+`installDist` binary with VALID fixtures, all 8 contract rows hold:
+
+```text
+version 0 | doctor 0 | validate-good 0 | validate-bad 2
+run-success 0 | run-FAILING-step 1 | unknown-subcommand 1 | bare-resume 2
+```
+
+`scripts/release/cli-exit-contract-uat.sh` was reporting a FALSE red for
+the opposite reason: it copied `gradle-demo` flat into a temp dir, breaking
+the fixture's own `sh("../../v2/gradlew ...")`. The event log proves the
+real cause — `shell exited with code 127`, `No existe el fichero o el
+directorio`. The CLI was correctly returning 1 for a genuinely failed
+step. Fixed by mirroring the repo layout and linking the wrapper.
+
+Canary: reverting the staging breaks 3 of 7 scenarios, not just the one
+(the stale `$WORK/gradle` paths also made the DB/ctl cleanups no-ops).
+With the fix: 7/7 PASS, shellcheck clean.
+
+Lesson worth keeping: an installed-binary UAT is only as trustworthy as
+its fixtures. Both it and `cheat-sheet-uat.sh` shipped the same staging
+defect, and both reported product regressions that did not exist.
+
+## Manifest availability boundary, measured:
 
 ```text
 v0.39.0     SHA256SUMS=404   (predates the manifest)
@@ -93,6 +120,7 @@ was removed rather than left untested).
 | Installer contracts | `python3 scripts/test_install_pipelinek.py` | 14/14 |
 | SDKMAN digest contracts | `python3 scripts/release/test_sdkman_digest.py` | 16/16 |
 | Cheat sheet UAT (real network) | `bash scripts/release/cheat-sheet-uat.sh` | exit 0 end-to-end vs published v0.43.0; identity mismatch reported |
+| CLI exit contract UAT | `bash scripts/release/cli-exit-contract-uat.sh` | 7/7 PASS at HEAD (was a false red) |
 | SDKMAN lint | `shellcheck`, `bash -n` on 3 scripts | clean on new file; 2 pre-existing SC2012/SC2015 infos in the UAT |
 | Cheat sheet lint | `shellcheck`, `bash -n` | clean (improved: hardcoded paths removed) |
 | Hermeticity | endpoints redirected at loopback | 0 public-network calls |

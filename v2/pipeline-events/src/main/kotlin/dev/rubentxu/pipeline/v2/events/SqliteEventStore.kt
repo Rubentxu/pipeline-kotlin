@@ -99,6 +99,28 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                     """.trimIndent()
                 )
             }
+            // WU-RP-020: the durable sequence authority.
+            //
+            // The per-run counter is seeded ONCE per instance from
+            // MAX(sequence), so two store instances over the same database
+            // each start from the same number and then increment
+            // independently. Without a uniqueness constraint BOTH inserts
+            // succeed and the events table accumulates duplicate sequences,
+            // breaking the per-run monotonic invariant that replay and every
+            // external observer depend on (P1 bl-bl-01M3QD197Q000387ET2D4MFKR0,
+            // observed rows=300 distinct=150).
+            //
+            // UNIQUE(run_id, sequence) makes the DATABASE the authority: a
+            // writer that would duplicate a sequence is rejected by SQLite
+            // itself (fail-closed, no silent corruption) instead of
+            // appending a second event with a number already in the log.
+            //
+            // This is deliberately the MINIMAL invariant repair. It does not
+            // renumber a colliding event: the single-writer queue already
+            // gives a dense 1..N for one instance, and renumbering under
+            // contention would open holes. Deciding which writer owns a run
+            // is the separate RunExecutionLease design question.
+            createSequenceUniquenessIndex(conn)
             // Create durable operation journal tables.
             OperationJournalSchema.create(conn)
             // Migrate operation_journal schema: add started_at + ended_at columns if absent.
@@ -202,6 +224,60 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
 
     override fun append(event: DomainEvent) {
         appendAssigned(event)
+    }
+
+    /**
+     * WU-RP-020: makes `UNIQUE(run_id, sequence)` the durable authority.
+     *
+     * Idempotent: `IF NOT EXISTS`, so opening an already-migrated database
+     * is a no-op.
+     *
+     * A database that ALREADY carries duplicate sequences cannot satisfy the
+     * constraint, and SQLite would then fail the index creation for an opaque
+     * reason at some later moment. That is reported here, with the offending
+     * run, instead of leaving a corrupt log that only fails later: an operator
+     * gets a named cause and a remediation (drop the database, or re-run the
+     * corrupted run) rather than a mystery UNIQUE violation mid-run.
+     */
+    private fun createSequenceUniquenessIndex(conn: java.sql.Connection) {
+        // Cheap existence probe FIRST. The duplicate scan below is a full
+        // GROUP BY over the whole events table; running it on every open of an
+        // already-migrated database would cost a full scan to learn something
+        // the index presence already answers — and a durable event log is
+        // exactly the table that grows without bound. One indexed lookup, then
+        // a no-op for every subsequent open.
+        val alreadyMigrated = conn.createStatement().use { stmt ->
+            stmt.executeQuery(
+                "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'ux_events_run_sequence'"
+            ).use { rs -> rs.next() }
+        }
+        if (alreadyMigrated) return
+
+        val duplicates = conn.createStatement().use { stmt ->
+            stmt.executeQuery(
+                """
+                SELECT run_id, sequence, COUNT(*) FROM events
+                GROUP BY run_id, sequence HAVING COUNT(*) > 1
+                ORDER BY run_id, sequence LIMIT 5
+                """.trimIndent()
+            ).use { rs ->
+                buildList {
+                    while (rs.next()) {
+                        add("runId=${rs.getString(1)} sequence=${rs.getLong(2)} count=${rs.getLong(3)}")
+                    }
+                }
+            }
+        }
+        check(duplicates.isEmpty()) {
+            "WU-RP-020: durable event log has duplicate (run_id, sequence) pairs, " +
+                "so UNIQUE(run_id, sequence) cannot be established: ${duplicates.joinToString("; ")}. " +
+                "This database was written by more than one store instance before the " +
+                "constraint existed. It cannot be repaired automatically without " +
+                "renumbering committed history; start a fresh database or re-run the run."
+        }
+        conn.createStatement().use { stmt ->
+            stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_events_run_sequence ON events(run_id, sequence)")
+        }
     }
 
     /**

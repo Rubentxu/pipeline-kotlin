@@ -1,0 +1,252 @@
+# WU-RP-020 — durable sequence authority (UNIQUE(run_id, sequence))
+
+**Fecha:** 2026-09-30T08:47Z
+**Ciclo SDDK:** `p-733fb505b5a6bd2d/rp-020-durable-sequence-authority` (base `34c08ad9`, == origin/main)
+**Backlog items ejecutados:**
+- `bl-bl-01M3QD197Q000387ET2D4MFKR0` (P1, el defecto confirmado)
+- `bl-bl-01M3QHCPHG000387F2V19JH440` (P1, WU-RP-020 desbloqueado + caveats del harness)
+**Origen del defecto:** `docs/v2/07-uat/S1_R0_RUN_CONCURRENCY_1_RECEIPT.md` (RUN-CONCURRENCY-1)
+**Clase de evidencia:** OBSERVED (SQLite real, procesos CLI reales, XML de JUnit fresco)
+
+---
+
+## 1. El defecto
+
+`SqliteEventStore` siembra su contador por run **una vez**, en el constructor
+(`seedSequenceCounters()`), desde `MAX(sequence)`. Dos instancias sobre la **misma** base
+de datos arrancan por tanto desde el mismo número y luego incrementan cada una por su
+cuenta. Sin `UNIQUE(run_id, sequence)` ambos `INSERT` tienen éxito y la tabla acumula
+secuencias duplicadas.
+
+Caracterizado en el ciclo anterior con procesos reales:
+
+```
+run_id=79e8f42b-3d0e-429e-b6bf-c219765e9564
+event_rows_after_resume=21
+distinct_sequences=13
+max_sequence=13
+```
+
+`21` filas, `13` distintas: **8 filas colisionan**. La secuencia por run no era un
+invariante durable mientras dos dueños se solapaban.
+
+Lo que **no** se reproduce es la hipótesis de efectos duplicados: la memoización del
+operation journal ejecuta el `sh` incompleto exactamente una vez. El defecto es de
+**integridad del log de eventos**, no de duplicación de efectos.
+
+## 2. El arreglo (mínimo y deliberadamente acotado)
+
+`SqliteEventStore.createSequenceUniquenessIndex()` establece
+`CREATE UNIQUE INDEX ux_events_run_sequence ON events(run_id, sequence)`.
+
+**Por qué la base de datos y no el proceso:** el contador es memoria por JVM; dos procesos
+no lo comparten. La base de datos sí. Con la restricción, SQLite **rechaza** al escritor
+que duplicaría una secuencia ya confirmada: fail-closed, sin corrupción silenciosa, en vez
+de anexar un segundo evento con un número que ya existe en el log.
+
+**Lo que este WU NO hace, a propósito:**
+
+- **No renumera** un evento que colisiona. La cola de un solo escritor ya da un `1..N`
+  denso para una instancia; renumerar bajo contención abriría huecos.
+- **No introduce `RunExecutionLease` ni fencing token.** Decide qué escritor es dueño de un
+  run es una pregunta de contrato distinta, con su propio ciclo.
+- **No convierte el rechazo en un error tipado todavía.** Hoy aflora como fallo del writer
+  en `close()`/`flush()`. La forma tipada es trabajo posterior y queda anotado abajo.
+
+**Fallo limpio en bases ya corruptas:** si una base ya contiene duplicados, el índice no
+puede crearse. En vez de dejar un log corrupto que revienta más tarde por una razón opaca,
+la migración **falla al abrir** nombrando el run, la secuencia y el conteo, con la
+remediación (base nueva, o re-ejecutar el run). Renumerar historia ya confirmada
+automáticamente no es aceptable.
+
+## 3. RED demostrado (no supuesto)
+
+Con el cambio de producción revertido (`git checkout` del fichero, canary de XML borrado
+antes de correr):
+
+```
+Rp020CrossInstanceSequenceAuthorityTest
+  tests=1 skipped=0 failures=1 errors=0
+  message="DUPLICATE DURABLE SEQUENCES: rows=300 distinct=150 (expected equal; 150 duplicated)"
+```
+
+`300 = 2 × 150`: dos stores independientes, 150 eventos cada uno, y **cada** secuencia
+queda duplicada exactamente una vez. Falla por la razón correcta (no timeout, no error de
+compilación). Log sha256 `39fe2193b9d07d24c8eb21551cc00c5349a2ebe9dcb3414ba3280a000c6bf746`.
+
+Este RED es más limpio que el del ciclo anterior: determinista, aislado, sin forks.
+
+## 4. Dos defectos de test encontrados por el propio gate
+
+Ambos los encontró la escalera de validación, no la lectura de código. Se documentan porque
+son el tipo de fallo que un L1 no ve.
+
+### 4.1 Baseline sin flush (L2, fallo sólo en suite completa)
+
+`SqliteEventStoreConcurrencyCharacterisationTest` quedaba **verde en aislamiento y rojo en
+la suite completa**. Causa: el test anexaba 3 eventos **sin `flush()`** y luego afirmaba que
+el store reabierto continuaba desde `MAX(sequence)` durable. Pero cuando el duplicado mata al
+writer, esa transacción hace **ROLLBACK**, así que el "baseline durable" era en realidad
+`MAX(nada) = 0` y la siguiente asignación era `1`, no `4`.
+
+El test mentía sobre la durabilidad. Peor que no tener test.
+
+Arreglo: `flush()` antes de provocar el duplicado, y un helper `durableMaxSequence()` que lee
+`MAX(sequence)` **directo de SQLite**, sin preguntar al store. Una propiedad de durabilidad
+se observa en el estado durable; preguntarle al sujeto por su propia nota es no examinarlo.
+Se añadieron además dos aserciones explícitas: el baseline son 3 **antes** del duplicado, y
+el duplicado rechazado nunca se vuelve durable (denso `1..3` más `4`).
+
+### 4.2 Caracterización que afirmaba el defecto (L3)
+
+`UatRunConcurrencyCharacterisationTest` —el test que **descubrió** el defecto— afirmaba
+`distinctSequences < rowsAfter`, es decir, **afirmaba que el defecto existía**. Con el
+arreglo ya no hay duplicados, luego la aserción quedaba obsoleta y el test se puso rojo.
+
+Se **invirtió** a `distinctSequences == rowsAfter`, con la historia escrita en el propio
+test: qué afirmaba antes, qué se observó, y por qué ahora afirma lo contrario. Un test de
+caracterización es un espejo del comportamiento observado; cuando el comportamiento
+cambia porque se arregló, el espejo se actualiza y se deja constancia del porqué.
+
+Detalle observado en el reporte: `owner2_exit=1`. El dueño perdedor ahora **sale no-cero** en
+vez de fingir éxito. Eso es el fail-closed funcionando en la frontera de proceso, no una
+regresión.
+
+## 5. Evidencia de verificación
+
+| Nivel | Alcance | Resultado | Evidencia |
+|---|---|---|---|
+| RED | `Rp020CrossInstanceSequenceAuthorityTest` sin el índice | `1/0/1/0` — falla por la razón correcta | mensaje `rows=300 distinct=150`; log `39fe2193…` |
+| L1 GREEN | test nuevo + caracterización del store | `1/0/0/0` y `10/0/0/0` | XML `eac5b13f…` / `b430f548…`, ts `06:36:36Z` / `06:37:37Z` |
+| L2 | módulo `pipeline-events` completo | **189 tests, 0 failures, 0 errors**, 37 XML | log `a0bbb40b54152da0cce244e81286981661d7d4854693daec5794ed1089d23467` |
+| L3 | `durable.*` + blocks durables + resume + replay + concurrencia | **349 tests, 0 failures, 0 errors**, 73 XML | log `89e50f8f1b24e340c7ed14fb5b332e6f15f0c444f862fb5e500d0c6505ce7eb5` |
+| L5 | `check` completo | ver §6 | ver §6 |
+
+Todos los XML se leyeron desde `build/test-results/test/`, nunca desde la consola, y todos
+los runs que debían ejecutar borraron su XML antes (canario). El `@Timeout(60)` de la clase
+de caracterización se respetó: el test nuevo tarda ~60 s con 300 inserts y dos writers, que
+es trabajo real, no un cuelgue.
+
+## 6. Round gate L5 — RED, y por qué
+
+El gate completo (`check`, presupuesto 1651 s = baseline 1270 x 1.3) corrió sobre el árbol final
+y salió **BUILD FAILED in 20m 59s**, con 562 XML frescos y dos clases rojas:
+
+| Clase | Resultado |
+|---|---|
+| `UatLocal008CredentialsTest` | 27 tests, **14 failures** |
+| `SqliteEventStoreConcurrencyCharacterisationTest` | 10 tests, **1 failure** (timeout, §6.2) |
+
+El `exit code` del envoltorio fue 0 con el build fallido: por eso el veredicto se leyó del
+**log** y de los **XML**, nunca del código de salida. Es exactamente el motivo de la regla 25.
+
+### 6.1 `UatLocal008CredentialsTest` — NO es una regresión creada por el fix
+
+**Clasificación:** defecto **pre-existente y silencioso**, registrado como
+`bl-bl-01M3RK3NZV000387H65JWN9XM0` (P1).
+
+**Prueba base vs head (regla 16, sin suposiciones):**
+
+| Árbol | Resultado |
+|---|---|
+| base `34c08ad9` (cambios en stash) | `UatLocal008CredentialsTest` **27 / 0 failures / 0 errors** — verde |
+| head (con el índice) | **27 / 14 failures** — rojo |
+
+Es decir: **verde en base, rojo con el cambio**. Eso descarta "preexistente" y obliga a
+explicarlo. No se dobló ninguna aserción para maquillar el verde.
+
+**Causa raíz, capturada por instrumentación y no inferida.** Con una sonda temporal en
+`bindInsert` se obtuvo el par exacto que colisiona:
+
+```text
+incoming=CredentialBound   / 07:20:36.377 / run=21bf37db / seq=1
+existing=CompilationStarted / 07:20:31.574 / run=21bf37db / seq=1
+```
+
+Dos eventos distintos, cinco segundos de diferencia, mismo run, **una sola** instancia del
+store y **un solo** writer thread. Un `AtomicLong` no produce eso por sí solo, así que la
+búsqueda bajó al emisor:
+
+```kotlin
+// WithCredentialsExecutor.kt:131
+var sequence = 1L
+...
+val boundEvent = CredentialBound(..., sequence = sequence++, ...)
+```
+
+`WithCredentialsExecutor` lleva **su propio** contador desde 1 y pasa secuencias
+**explícitas** (no cero). En `appendAssigned`, una secuencia distinta de `0` **evita el
+contador del store** y se escribe tal cual. Por tanto `CredentialBound` **siempre** reclama
+la secuencia 1 de un run, y choca con el primer evento real que ese run ya tenga.
+
+Esta corrupción **ya existía en base**, sólo que sin restricción que la delatara: el log
+aceptaba las dos filas y nadie lo notaba. `UNIQUE(run_id, sequence)` no la causó; la
+convirtió de corrupción silenciosa en fallo fail-closed. Eso es exactamente lo que un
+fail-closed debe hacer, y por eso los 14 fallos son el término correcto, no una regresión.
+
+**Radio de impacto (mayor que "credenciales"):** el patrón no es propio de credenciales.
+**Cualquier** emisor que pase una secuencia explícita distinta de cero evade la autoridad
+de secuencia. El arreglo pertenece a la autoridad única de secuencia, no a este WU.
+
+**Por qué este WU no lo arregla aquí:** arreglarlo exige cambiar el contrato de asignación
+para todos los emisores y volver a certificar credenciales. Es su propio WU, con su propio
+gate. Mezclarlo aquí habría convertido una reparación de invariante mínima en una
+reescritura del contrato de eventos, que es exactamente lo que la ley de alcance prohíbe.
+
+### 6.2 La caracterización del store: timeout de 60 s, no lógica
+
+`smaller explicit sequence does not rewind the counter` tardó **60.01 s** contra un
+`@Timeout(60)` a nivel de clase. No es un fallo de aserción: la aserción es correcta.
+
+Causa medida: `flush()` espera la barrera hasta **60 s**
+(`barrier.await(60, TimeUnit.SECONDS)`, `SqliteEventStore.kt:441`). El timeout de clase y el
+timeout de la barrera son **el mismo número**, así que cualquier `flush()` que dependa del
+writer está a un pelo del borde. Con el `flush()` añadido y las lecturas durables
+extra, la carrera se perdió.
+
+No se sube el timeout a ojo: la ley de tests (regla 7) exige presupuesto explícito y
+justificado, y un número pegado al de la barrera no es un presupuesto, es una coincidencia.
+
+## 7. Lo que sigue abierto (no resuelto aquí)
+
+1. **Rechazo tipado.** El `UNIQUE` violation hoy aflora como `IllegalStateException` del
+   writer en `close()`/`flush()`, envuelto. El contrato de dominio pide un
+   `ReplayDecision`/rechazo tipado. Convertirlo es trabajo propio.
+2. **`RunExecutionLease` + fencing token.** Decide **qué escritor** posee un run. Este WU
+   hace visible la violación y la impide; no resuelve la propiedad. Es el diseño grande que
+   el backlog nombra y que sigue sin dueño.
+3. **Caveats del harness** de `UatRunConcurrencyCharacterisationTest`, registrados en
+   `bl-bl-01M3QHCPHG000387F2V19JH440` y **no** arreglados aquí: el `CyclicBarrier` sólo
+   rendezvousea hilos auxiliares **después** de que los procesos hijos ya arrancó (la
+   simultaneidad no está garantizada), y el dueño inicial se saca de la lista de limpieza
+   antes de matar sus descendientes. Documentados en el KDoc del test. Deben arreglarse
+   **antes** de promover esa suite a certificación. Ninguno debilita la aserción 3: la
+   unicidad es una post-condición que se cumple haya colisión o no.
+4. **Bases de datos preexistentes ya corruptas.** El fallback es fail-closed al abrir con
+   diagnóstico nombrado. No hay migración; se documenta la remediación en el mensaje.
+
+## 8. Cierre de trabajo (checklist AGENTS.md)
+
+```text
+Reference implementation consulted: SQLite UNIQUE constraint semantics + JDBC/SQLite
+  transaction/rollback behaviour. No Jenkins-equivalent applies: this is internal
+  durability, not a Step surface.
+Behaviour adopted:        the DATABASE is the sequence authority; a writer that would
+                          duplicate a committed sequence is rejected fail-closed
+Intentional deviations:   no renumbering of committed history; no RunExecutionLease in
+                          this WU; the rejection is not yet a typed domain error
+Security implications:    none — this is a data-integrity boundary, not a trust
+                          boundary. No credential, sandbox or egress surface changed
+Tests demonstrating:      Rp020CrossInstanceSequenceAuthorityTest (RED+GREEN),
+                          SqliteEventStoreConcurrencyCharacterisationTest (10),
+                          UatRunConcurrencyCharacterisationTest (inverted), plus the
+                          189-test events module and the 349-test durable consumer set
+```
+
+## 9. Estado
+
+WU-RP-020 cierra su exit criterion local: la secuencia por run es ahora un invariante
+durable respaldado por la base de datos, y el fallo es fail-closed en vez de silencioso.
+
+**NO** se declara resuelta la propiedad de ownership entre procesos. Eso sigue siendo
+`RunExecutionLease` + fencing token, y es un ciclo aparte.

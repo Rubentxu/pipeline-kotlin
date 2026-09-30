@@ -29,8 +29,17 @@ import java.util.concurrent.TimeUnit
  * Each test documents ONE observable property of the store. If a test
  * fails, the property needs explicit characterisation (either a contract
  * decision or a bug fix in a follow-up WU).
+ *
+ * WU-RP-020: the class budget must be strictly ABOVE the longest legitimate
+ * internal wait, never equal to it. `SqliteEventStore.flush()` blocks on a
+ * writer barrier with a 60 s bound (`barrier.await(60, TimeUnit.SECONDS)`).
+ * The previous `@Timeout(60)` set the class budget to exactly that number, so
+ * any test whose flush waited on a busy writer was a coin flip against its own
+ * budget — it passed in isolation and timed out under suite load. 120 s leaves
+ * the barrier's full 60 s and doubles the headroom, so a timeout here means a
+ * real defect rather than a coincidence of two unrelated constants.
  */
-@Timeout(60)
+@Timeout(120)
 class SqliteEventStoreConcurrencyCharacterisationTest {
 
     private val at: Instant = Instant.parse("2026-01-01T00:00:00Z")
@@ -42,6 +51,27 @@ class SqliteEventStoreConcurrencyCharacterisationTest {
         occurredAt = at,
         scriptPath = "/p/$runId",
     )
+
+    /**
+     * WU-RP-020: reads `MAX(sequence)` straight from SQLite, bypassing the
+     * store and its in-memory counters.
+     *
+     * A durability property must be observed in the durable state. Asking the
+     * store what it thinks the counter is would be asking the subject to grade
+     * its own homework, and it is exactly that shortcut that hid the
+     * un-flushed-baseline bug this helper now pins.
+     */
+    private fun durableMaxSequence(db: Path, runId: String): Long {
+        java.sql.DriverManager.getConnection("jdbc:sqlite:${db.toAbsolutePath()}").use { conn ->
+            conn.prepareStatement("SELECT COALESCE(MAX(sequence), 0) FROM events WHERE run_id = ?").use { ps ->
+                ps.setString(1, runId)
+                ps.executeQuery().use { rs ->
+                    rs.next()
+                    return rs.getLong(1)
+                }
+            }
+        }
+    }
 
     private fun stashCreated(eventId: String, runId: String, seq: Long, entries: Int) = StashCreated(
         eventId = eventId,
@@ -170,6 +200,13 @@ class SqliteEventStoreConcurrencyCharacterisationTest {
     // This documents the "MAX forward only" rule: a producer passing a
     // smaller seq than the counter's current value gets that smaller
     // value on the assigned event, but the counter is not rewound.
+    //
+    // WU-RP-020: the explicit sequence must also be FREE in the durable
+    // log. Passing an already-used sequence is a duplicate, and the
+    // database now rejects it (UNIQUE(run_id, sequence)); the store
+    // refuses the write fail-closed instead of appending a second event
+    // carrying a number already committed. The counter rule below is
+    // unchanged and still verified.
     // ------------------------------------------------------------------
     @Test
     fun `smaller explicit sequence does not rewind the counter`(@TempDir dir: Path) {
@@ -177,13 +214,41 @@ class SqliteEventStoreConcurrencyCharacterisationTest {
         val runId = "gap-down-run"
 
         repeat(3) { i -> store.append(runStarted("g-$i", runId)) }
-        // Counter is at 3. Pass sequence=1.
-        val small = store.appendAssigned(runStarted("g-small", runId, seq = 1L))
-        assertEquals(1L, small.sequence, "explicit smaller sequence is honoured on the event itself")
-        // Next auto-assign must continue from 4, NOT 2.
-        val next = store.appendAssigned(runStarted("g-after", runId))
-        assertEquals(4L, next.sequence, "counter does not rewind on smaller explicit seq")
-        store.close()
+        // Counter is at 3. FLUSH FIRST: the durable baseline must really be
+        // durable before the test reasons about what survives a rejection.
+        // Without this the 3 events sit in a transaction the writer rolls back
+        // when the duplicate arrives, and the "durable MAX(sequence)" premise
+        // silently becomes MAX(nothing) = 0.
+        store.flush()
+        val durableBefore = durableMaxSequence(dir.resolve("gap-down.db"), runId)
+        assertEquals(3L, durableBefore, "the 3 baseline events are committed before the duplicate")
+
+        // Sequence 2 is already durable, so reusing it is a duplicate.
+        // appendAssigned returns on ASSIGNMENT, before the writer commits, so
+        // the rejection surfaces at the durable barrier (close): that is the
+        // documented sync-vs-durable distinction, not a new rule.
+        val reused = runStarted("g-reused", runId, seq = 2L)
+        val assigned = store.appendAssigned(reused)
+        assertEquals(2L, assigned.sequence, "assignment is returned eagerly, before the commit")
+        val failure = runCatching { store.close() }.exceptionOrNull()
+        val chain = generateSequence(failure) { it.cause }.joinToString(" | ")
+        check(chain.contains("UNIQUE")) {
+            "expected a fail-closed UNIQUE rejection for a reused sequence, got: $chain"
+        }
+
+        // The rejection is about the DUPLICATE, not the counter rule. The 3
+        // committed events survive; the duplicate is rejected. A fresh store
+        // on that durable log continues from MAX(sequence) = 3, so the next
+        // auto-assign is 4: the counter does not rewind.
+        val reopened = SqliteEventStore(dir.resolve("gap-down.db").toString())
+        val next = reopened.appendAssigned(runStarted("g-after", runId))
+        assertEquals(4L, next.sequence, "counter does not rewind; it continues from durable MAX(sequence)")
+        reopened.flush()
+        assertEquals(
+            4L, durableMaxSequence(dir.resolve("gap-down.db"), runId),
+            "the rejected duplicate never became durable; the log is dense 1..3 plus 4"
+        )
+        reopened.close()
     }
 
     // ------------------------------------------------------------------

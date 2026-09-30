@@ -28,7 +28,7 @@
 #   - `pipelinek validate <trivial.kts>` → VALIDATION SUCCESSFUL
 #   - `pipelinek run --workspace . pipeline.kts` → outcome=success on a
 #     trivial single-step fixture
-#   - Installed ZIP digest must match the GitHub Release asset digest
+#   - Installed ZIP digest must match the release SHA256SUMS entry
 #   - `sdk uninstall pipelinek <version>` to leave runner clean
 
 set -euo pipefail
@@ -42,11 +42,22 @@ VERSION="$1"
 GIT_TAG="v${VERSION}"
 CANDIDATE="pipelinek"
 ASSET="pipelinek-${VERSION}.zip"
-URL="https://github.com/Rubentxu/pipeline-kotlin/releases/download/${GIT_TAG}/${ASSET}"
+# Overridable only so the contract tests can point the script at a loopback
+# server. Production always uses the canonical GitHub base.
+RELEASE_BASE="${PIPELINEK_RELEASE_BASE_URL:-https://github.com/Rubentxu/pipeline-kotlin/releases/download}"
+URL="${RELEASE_BASE}/${GIT_TAG}/${ASSET}"
+SUMS_URL="${RELEASE_BASE}/${GIT_TAG}/SHA256SUMS"
+RESOLVER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/resolve-release-digest.sh"
 
-EXPECTED_SHA=$(curl -fsSL "${URL}.sha256" | awk '{print $1}')
-if [ -z "${EXPECTED_SHA}" ]; then
-  echo "❌ could not fetch SHA-256 from ${URL}.sha256" >&2
+# The expected digest comes from the release's SHA256SUMS manifest. The old
+# ${asset}.sha256 sidecar returned 404 on real releases, so this UAT could
+# never have reached step 1. A published version MUST carry the manifest.
+if ! SUMS_BODY="$(curl -fsSL --max-time 30 "${SUMS_URL}")"; then
+  echo "❌ could not fetch ${SUMS_URL}" >&2
+  exit 1
+fi
+if ! EXPECTED_SHA="$(printf '%s\n' "${SUMS_BODY}" | bash "${RESOLVER}" "${ASSET}")"; then
+  echo "❌ could not resolve a SHA-256 for ${ASSET} from ${SUMS_URL}" >&2
   exit 1
 fi
 

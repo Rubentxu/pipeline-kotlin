@@ -53,10 +53,18 @@ pipelinek-<version>/
 Published alongside:
 
 - `pipelinek-<version>.zip`;
-- `.sha256`;
+- `SHA256SUMS` — the single digest authority for the whole release, resolved
+  by basename (its entries carry the build-time path, e.g.
+  `dist/candidates/<version>/pipelinek-<version>.zip`, not the download name);
 - SBOM (CycloneDX/SPDX chosen by implementation);
 - release notes;
 - optional signature/provenance attestation after initial gate.
+
+A per-asset `<asset>.sha256` sidecar is **not** published and must not be
+consulted. That URL returns 404 on real releases; reading it makes any
+digest check fail closed forever. Consumers resolve through `SHA256SUMS`
+(via `scripts/release/resolve-release-digest.sh`) and are expected to
+recompute the digest from the archive bytes before trusting it.
 
 ## 5. GitHub Actions release gate
 

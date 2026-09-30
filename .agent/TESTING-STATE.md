@@ -1,4 +1,4 @@
-# Active Change — release-evolution producer lane (2026-09-30, head `b9186d9e`)
+# Active Change — release-evolution producer lane (2026-09-30, head `pending`)
 
 TRAIN P0 + P1 of `docs/pipelinek-release-evolution/`. Everything below this
 section is historical record; this section is the operative one.
@@ -8,25 +8,76 @@ Changed:
 - :pipeline-release  CandidateAdmission + CandidateAdmissionMain + Gradle task (P0.3)
 - scripts/install-pipelinek.sh  SHA256SUMS, transactional, exact identity, doctor (P1.1-P1.4)
 - scripts/test_install_pipelinek.py  NEW, 14 hermetic contract tests
+- scripts/release/resolve-release-digest.sh  NEW, fail-closed SHA256SUMS reader
+- scripts/release/sdkman-publish.sh  SHA256SUMS instead of the absent sidecar
+- scripts/release/sdkman-install-uat.sh  same
+- scripts/release/test_sdkman_digest.py  NEW, 16 hermetic contract tests
 - README.md, AGENTS.md  contract + law wiring
-Commits: 22642511 (P0.3), 59b7d5f7 (P1), b9186d9e (AGENTS laws)
+- docs/v2/03-specifications/DISTRIBUTION_RELEASE_SPEC.md  §4 digest authority corrected
+Commits: 22642511 (P0.3), 59b7d5f7 (P1), b9186d9e (AGENTS laws), 1b9e219a (state)
 ```
+
+## SDKMAN digest contract (P1.5) — the sidecar was already dead
+
+`${asset}.sha256` returns **404 on the real v0.41.0-rc1 release**, so
+`sdkman-publish.sh` could never have published and the install UAT could
+never have passed. The spec mandated the non-existent sidecar in §4; that
+text is now corrected to `SHA256SUMS`.
+
+Two traps found the hard way, both worth remembering:
+
+```text
+1. Real SHA256SUMS entries carry BUILD paths, not download names:
+     dist/candidates/v0.41.0-rc1/pipelinek-0.41.0-rc1.zip
+   Matching the whole field fails every real release closed. Match BASENAME.
+2. `sha256sum -b` emits "<digest> *<name>" (space THEN asterisk). A test
+   that writes "<digest>*<name>" tests a format sha256sum never produces
+   and produces a FALSE RED against correct code.
+```
+
+`resolve-release-digest.sh` matches basename, which also makes explicit
+`*` stripping unnecessary (mutation M4 proved the strip was dead code; it
+was removed rather than left untested).
 
 ## Verification executed
 
 | What | Command | Result |
 | --- | --- | --- |
-| :pipeline-release suite | `v2/gradlew -p v2 :pipeline-release:test --rerun-tasks` | 19 XML classes, 61 tests, 0 skipped, 0 failures, 0 errors; 6 tasks executed; XML 09:36:27Z age 4s |
+| :pipeline-release suite | `v2/gradlew -p v2 :pipeline-release:test --rerun-tasks` | 19 XML classes, 61 tests, 0 skipped, 0 failures, 0 errors; 5 tasks executed; XML 11:40:53 local (canary-verified fresh) |
 | detekt | `:pipeline-release:detekt` | clean |
 | Installer contracts | `python3 scripts/test_install_pipelinek.py` | 14/14 |
-| Installer lint | `shellcheck`, `bash -n` | clean |
-| Hermeticity | 3 runs grepped for `github.com/Rubentxu` | 0 mentions |
+| SDKMAN digest contracts | `python3 scripts/release/test_sdkman_digest.py` | 16/16 |
+| SDKMAN lint | `shellcheck`, `bash -n` on 3 scripts | clean on new file; 2 pre-existing SC2012/SC2015 infos in the UAT |
+| Hermeticity | endpoints redirected at loopback | 0 public-network calls |
 | Live admission gate | `:pipeline-release:candidateAdmission` | exit 1, correct refusal (root version is `0.44.0-rc1`) |
+
+## Mutation evidence (SDKMAN, 13 mutants)
+
+```text
+KILLED (9):  M1 basename->fullpath, M2 drop malformed check, M3 absent->empty,
+             M5 publish no recompute, M8 ask for .sha256 again,
+             M9/M10 wrong asset, M11 uat swallow manifest
+SURVIVED (4) — all proven BEHAVIOUR-EQUIVALENT, not test gaps:
+             M4  star-strip  : basename() already discards '*'
+             M6/M7/M13 fetch check removed : the resolver refuses empty
+                                stdin anyway, so the layered defence holds
+             M12 rewrote an echo string only, no control-flow change
+The layered defence is pinned explicitly by s14 (no POST on unverifiable
+input) and s15 (empty manifest fails closed) so the guarantee does not
+depend on any single check existing.
+```
+
+## Deletion canary
+
+Reverting both scripts to the original `.sha256` sidecar read drops the
+suite to **9/16**, failing 7 tests that each name the sidecar or the
+absent manifest. The suite detects the original defect, not just the
+replacement.
 
 ## Evidence reused
 
-Identity tests (26) and the archive-root fix: unchanged by P0.3/P1, still
-covered by the 61-test run above.
+Identity tests (26) and the archive-root fix: unchanged by P0.3/P1/P1.5,
+still covered by the 61-test run above.
 
 ## Known false greens found and fixed (do not regress)
 

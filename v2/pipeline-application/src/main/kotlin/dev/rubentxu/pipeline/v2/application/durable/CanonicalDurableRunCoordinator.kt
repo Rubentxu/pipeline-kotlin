@@ -65,6 +65,8 @@ import dev.rubentxu.pipeline.v2.domain.StageBody
 import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.post.PostCondition
+import dev.rubentxu.pipeline.v2.domain.post.PostPlanner
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
@@ -502,6 +504,27 @@ class CanonicalDurableRunCoordinator(
                                         reason = verdict.reason,
                                     ),
                                 )
+                                // S2-B: a skip is itself a stage outcome. The
+                                // finalizers that fire for it are exactly the
+                                // ones the pure planner selects for Skipped
+                                // (always + cleanup); if the author declared
+                                // none, this is a no-op.
+                                runPostBlock(
+                                    stage = stage,
+                                    stageIndex = stageIndex,
+                                    stageFinishedOutcome = "skipped",
+                                    runId = runId,
+                                    // The stage never ran, so its workspace was never
+                                    // created; finalizers run on the base options with
+                                    // the stage's env/timeout projection applied. Using
+                                    // raw `shOptions` here would silently drop the
+                                    // stage environment from a skipped stage's post.
+                                    stageShOptions = stage.projectShellOptions(shOptions),
+                                    ambient = ambient,
+                                )?.let { failure ->
+                                    currentOutcome = RunOutcome.Failure(failure)
+                                    return@run currentOutcome
+                                }
                                 continue@stagesLoop
                             }
 
@@ -568,6 +591,17 @@ class CanonicalDurableRunCoordinator(
                     val parallelOutcome = runParallelStage(stage, stageIndex, stageShOptions, runId, ambient)
                     when (val continuation = decideContinuation(parallelOutcome, stage.name, runId.value, ambient)) {
                         CanonicalContinuation.Continue -> {
+                            runPostBlock(
+                                stage = stage,
+                                stageIndex = stageIndex,
+                                stageFinishedOutcome = "success",
+                                runId = runId,
+                                stageShOptions = stageShOptions,
+                                ambient = ambient,
+                            )?.let { failure ->
+                                currentOutcome = RunOutcome.Failure(failure)
+                                return@run currentOutcome
+                            }
                             eventSink.append(
                                 dev.rubentxu.pipeline.v2.events.StageFinished(
                                     eventId = UUID.randomUUID().toString(),
@@ -582,6 +616,17 @@ class CanonicalDurableRunCoordinator(
                         }
                         CanonicalContinuation.ContinueUnstable -> {
                             currentOutcome = RunOutcome.Unstable
+                            runPostBlock(
+                                stage = stage,
+                                stageIndex = stageIndex,
+                                stageFinishedOutcome = "unstable",
+                                runId = runId,
+                                stageShOptions = stageShOptions,
+                                ambient = ambient,
+                            )?.let { failure ->
+                                currentOutcome = RunOutcome.Failure(failure)
+                                return@run currentOutcome
+                            }
                             eventSink.append(
                                 dev.rubentxu.pipeline.v2.events.StageFinished(
                                     eventId = UUID.randomUUID().toString(),
@@ -595,6 +640,21 @@ class CanonicalDurableRunCoordinator(
                             )
                         }
                         is CanonicalContinuation.Abort -> {
+                            // S2-B: a parallel branch failure is still a stage
+                            // outcome; failure/always/cleanup finalizers MUST run
+                            // before the run aborts. The original abort reason wins
+                            // unless the finalizers themselves failed.
+                            runPostBlock(
+                                stage = stage,
+                                stageIndex = stageIndex,
+                                stageFinishedOutcome = "failed",
+                                runId = runId,
+                                stageShOptions = stageShOptions,
+                                ambient = ambient,
+                            )?.let { postFailure ->
+                                currentOutcome = RunOutcome.Failure(postFailure)
+                                return@run currentOutcome
+                            }
                             currentOutcome = RunOutcome.Failure(continuation.failure)
                             return@run currentOutcome
                         }
@@ -631,10 +691,40 @@ class CanonicalDurableRunCoordinator(
                             stageUnstable = true
                         }
                         is CanonicalContinuation.Abort -> {
+                            // S2-B: a step failure is still a stage outcome. The
+                            // failure/always/cleanup finalizers MUST run before the run
+                            // aborts, or `post { failure { ... } }` would be dead code
+                            // for the exact case it exists for. The original abort
+                            // reason wins unless the finalizers themselves failed.
+                            runPostBlock(
+                                stage = stage,
+                                stageIndex = stageIndex,
+                                stageFinishedOutcome = "failed",
+                                runId = runId,
+                                stageShOptions = stageShOptions,
+                                ambient = ambient,
+                            )?.let { postFailure ->
+                                currentOutcome = RunOutcome.Failure(postFailure)
+                                return@run currentOutcome
+                            }
                             currentOutcome = RunOutcome.Failure(continuation.failure)
                             return@run currentOutcome
                         }
                     }
+                }
+                // S2-B: the stage's own steps decided the outcome; the `post`
+                // block finalizes the stage BEFORE its StageFinished, so the
+                // terminal record already includes the finalizers' work.
+                runPostBlock(
+                    stage = stage,
+                    stageIndex = stageIndex,
+                    stageFinishedOutcome = if (stageUnstable) "unstable" else "success",
+                    runId = runId,
+                    stageShOptions = stageShOptions,
+                    ambient = ambient,
+                )?.let { failure ->
+                    currentOutcome = RunOutcome.Failure(failure)
+                    return@run currentOutcome
                 }
                 eventSink.append(
                     dev.rubentxu.pipeline.v2.events.StageFinished(
@@ -961,17 +1051,95 @@ class CanonicalDurableRunCoordinator(
         invocationResolver.reconcileInvocation(metadata, journaled, currentOperation, operationId)
 
     /**
-     * +1 helper for INC-007 (canonical coordinator dispatchBody sibling).
+     * S2-B: interprets a stage's declared `post` block for a KNOWN stage
+     * outcome. The single stage-level finalizer seam of the canonical
+     * coordinator.
      *
-     * Dispatches a BlockStepNode's body children with fresh per-child journal rows
-     * every branch child gets independent durable rows and a durable rerun
-     * reuses completed branch work instead of duplicating it.
+     * Decision/interpretation split (Step Constitution rule 7):
+     *  - the PURE decision is `PostCondition.outcomeOf` + `PostPlanner.plan`:
+     *    which blocks fire, in which order, for which outcome. No I/O;
+     *  - the INTERPRETATION is this method: dispatching the selected nodes
+     *    through the SAME canonical `dispatch` spine as stage-body steps, each
+     *    with a deterministic `post:<CONDITION>` [BlockSegment] so journal
+     *    identity, replay and divergence behave exactly like any other step.
      *
-     * Join policy: ALL_COMPLETE (grounded in the surviving domain JoinPolicy
-     * contract + the coordinator's step fail-fast semantics) — a failing branch
-     * fails the aggregate; the join WAITS for all started branches so sibling
-     * outcomes stay independent and journaled. No undeclared failFast.
+     * Ordering law: StageStarted < ... < [PostConditionSelected] < post steps
+     * < StageFinished. A declared-but-not-selected block appears only in the
+     * event's `skippedConditions`, never as a silent no-op.
+     *
+     * Failure containment: a FAILING finalizer fails the RUN (typed USER
+     * failure naming the stage and condition) but never rolls back the
+     * remaining finalizers — cleanup is exactly the code that must be allowed
+     * to run after bad news. A post failure therefore ABORTS the run with the
+     * failing finalizer's message; StageFinished is not emitted for a run the
+     * coordinator is failing.
+     *
+     * @return the typed failure to abort the run with, or null when every
+     *         selected finalizer succeeded (including the empty-plan no-op).
      */
+    private suspend fun runPostBlock(
+        stage: StageNode,
+        stageIndex: Int,
+        stageFinishedOutcome: String,
+        runId: RunId,
+        stageShOptions: ShOptions,
+        ambient: ExecutionContext,
+    ): PipelineFailure? {
+        val postSpec = stage.post ?: return null
+        if (postSpec.isEmpty) return null
+        val stageOutcome = PostCondition.outcomeOf(stageFinishedOutcome)
+            ?: return PipelineFailure(
+                dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
+                "post block for stage '${stage.name}' received unknown stage outcome '$stageFinishedOutcome'; " +
+                    "refusing to select finalizers on an unreadable outcome",
+            )
+        val plan = postSpec.toPostPlan()
+        // The pure decision, made ONCE: if the planner selects nothing for this
+        // outcome, the block is inert for this stage and emits nothing.
+        if (PostPlanner.plan(plan, stageOutcome).isEmpty()) return null
+
+        eventSink.append(
+            dev.rubentxu.pipeline.v2.events.PostConditionSelected(
+                eventId = UUID.randomUUID().toString(),
+                runId = runId.value,
+                sequence = 0L,
+                occurredAt = Instant.now(),
+                stageIndex = stageIndex,
+                stageName = stage.name,
+                stageOutcome = stageFinishedOutcome,
+                selectedConditions = PostPlanner.selectedConditions(plan, stageOutcome).map { it.name },
+                skippedConditions = PostPlanner.skippedConditions(plan, stageOutcome).map { it.name },
+            ),
+        )
+
+        // One decision source: the planner's own condition projection drives
+        // the walk, so the event lists and the executed nodes can never
+        // disagree about which blocks fired.
+        var dispatched = 0
+        for (condition in PostPlanner.selectedConditions(plan, stageOutcome)) {
+            val nodes = plan.bodies[condition].orEmpty()
+            for ((index, node) in nodes.withIndex()) {
+                val bodyPath = listOf(BlockSegment("post:${condition.name}:$index"))
+                val dispatchedStep = dispatch(
+                    step = node,
+                    runId = runId,
+                    stageName = stage.name,
+                    stageIndex = stageIndex,
+                    stepIndex = POST_BASE_STEP_INDEX + dispatched,
+                    stageShOptions = stageShOptions,
+                    bodyPath = bodyPath,
+                    executionContext = ambient,
+                )
+                dispatched++
+                if (dispatchedStep.outcome !is StepOutcome.Success) {
+                    val reason = "post ${condition.name} finalizer of stage '${stage.name}' failed"
+                    return PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.USER, reason)
+                }
+            }
+        }
+        return null
+    }
+
     private suspend fun runParallelStage(
         stage: StageNode,
         stageIndex: Int,
@@ -982,6 +1150,11 @@ class CanonicalDurableRunCoordinator(
         val branches = (stage.body as? StageBody.Parallel)?.branches
             ?: throw EngineInvariantViolation("runParallelStage called for non-parallel stage '${stage.name}'")
 
+        // INC-007 (+1 helper, canonical coordinator dispatchBody sibling).
+        //
+        // Dispatches parallel branch bodies with fresh per-child journal rows so
+        // every branch child gets independent durable rows and a durable rerun
+        // reuses completed branch work instead of duplicating it.
         // E-EM-11 Z2: the canonical stage law is StageStarted < stage execution <
         // StageFinished for EVERY admitted stage, including parallel bodies. The
         // parallel path previously forked before the linear-path StageStarted emitter,
@@ -2082,6 +2255,14 @@ class CanonicalDurableRunCoordinator(
 
     private companion object {
         const val REATTACH_TIMEOUT_MS = 60_000L
+
+        /**
+         * Post finalizers dispatch at step indices AFTER every declared body
+         * step (the DSL cap is 512), with the `post:<CONDITION>:<i>` body path
+         * segment carrying the block identity, so a post op can never collide
+         * with a body-step OpId of the same stage.
+         */
+        const val POST_BASE_STEP_INDEX = 1000
     }
 
     /**

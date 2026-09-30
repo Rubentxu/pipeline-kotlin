@@ -770,6 +770,34 @@ public final class dev/rubentxu/pipeline/v2/events/ParallelBranchStarted : dev/r
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/events/PostConditionSelected : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()Ljava/time/Instant;
+	public final fun component5 ()I
+	public final fun component6 ()Ljava/lang/String;
+	public final fun component7 ()Ljava/lang/String;
+	public final fun component8 ()Ljava/util/List;
+	public final fun component9 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/events/PostConditionSelected;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/PostConditionSelected;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/PostConditionSelected;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getEventId ()Ljava/lang/String;
+	public fun getKind ()Ljava/lang/String;
+	public fun getOccurredAt ()Ljava/time/Instant;
+	public fun getRunId ()Ljava/lang/String;
+	public final fun getSelectedConditions ()Ljava/util/List;
+	public fun getSequence ()J
+	public final fun getSkippedConditions ()Ljava/util/List;
+	public final fun getStageIndex ()I
+	public final fun getStageName ()Ljava/lang/String;
+	public final fun getStageOutcome ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/events/PwdResolved : dev/rubentxu/pipeline/v2/events/DomainEvent {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;

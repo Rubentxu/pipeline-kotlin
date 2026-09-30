@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.domain
 
+import dev.rubentxu.pipeline.v2.domain.post.PostCondition
 import kotlinx.serialization.Serializable
 
 /** Immutable, inspectable pipeline definition produced before execution. */
@@ -60,9 +61,40 @@ data class ToolSpec(val name: String, val version: String) {
     }
 }
 
+/**
+ * The `post` block as it appears in the compiled IR (S2-B).
+ *
+ * TYPED over [PostCondition] rather than `Map<String, ...>`: a bare string key
+ * would let `post { alwyas { } }` compile into a block that silently never runs,
+ * which is the exact fake-fallback class the Step Constitution forbids. The
+ * closed enum makes an unrecognised condition a compile error instead.
+ *
+ * Values are [StepNode] lists because the IR must round-trip through
+ * serialization without knowing any execution detail. The pure
+ * [dev.rubentxu.pipeline.v2.domain.post.PostPlanner] decides which of these
+ * nodes run, in which order, for a given stage outcome; the coordinator is the
+ * interpreter that dispatches them. There is NO second reference layer: the
+ * nodes here are the same values the stage body would carry, so a durable
+ * rerun replays the identical program.
+ */
 @Serializable
-data class PostSpec(val conditions: Map<String, List<StepNode>>) {
-    init { require(conditions.keys.none(String::isBlank)) { "Post condition names must not be blank" } }
+data class PostSpec(
+    val conditions: Map<PostCondition, List<StepNode>> = emptyMap(),
+) {
+    init {
+        require(conditions.keys.none { it !in PostCondition.EXECUTION_ORDER }) {
+            "Post condition names must be known: ${conditions.keys - PostCondition.EXECUTION_ORDER.toSet()}"
+        }
+    }
+
+    val isEmpty: Boolean get() = conditions.isEmpty()
+
+    /**
+     * The pure projection into the runtime [dev.rubentxu.pipeline.v2.domain.post.PostPlan].
+     * Total, effect-free, and the ONLY place the two representations meet.
+     */
+    fun toPostPlan(): dev.rubentxu.pipeline.v2.domain.post.PostPlan =
+        dev.rubentxu.pipeline.v2.domain.post.PostPlan(bodies = conditions)
 }
 
 @Serializable

@@ -208,26 +208,61 @@ class PostScope {
     private val alwaysSteps = mutableListOf<StepSpec>()
     private val successSteps = mutableListOf<StepSpec>()
     private val failureSteps = mutableListOf<StepSpec>()
+    private val unstableSteps = mutableListOf<StepSpec>()
+    private val abortedSteps = mutableListOf<StepSpec>()
+    private val unsuccessfulSteps = mutableListOf<StepSpec>()
+    private val cleanupSteps = mutableListOf<StepSpec>()
 
-    fun always(block: PostStepsScope.() -> Unit) {
+    fun always(block: PostStepsScope.() -> Unit) = record(alwaysSteps, block)
+
+    fun success(block: PostStepsScope.() -> Unit) = record(successSteps, block)
+
+    fun failure(block: PostStepsScope.() -> Unit) = record(failureSteps, block)
+
+    fun unstable(block: PostStepsScope.() -> Unit) = record(unstableSteps, block)
+
+    fun aborted(block: PostStepsScope.() -> Unit) = record(abortedSteps, block)
+
+    fun unsuccessful(block: PostStepsScope.() -> Unit) = record(unsuccessfulSteps, block)
+
+    fun cleanup(block: PostStepsScope.() -> Unit) = record(cleanupSteps, block)
+
+    private fun record(into: MutableList<StepSpec>, block: PostStepsScope.() -> Unit) {
         val scope = PostStepsScope()
         scope.block()
-        alwaysSteps.addAll(scope.steps)
+        into.addAll(scope.steps)
     }
 
-    fun success(block: PostStepsScope.() -> Unit) {
-        val scope = PostStepsScope()
-        scope.block()
-        successSteps.addAll(scope.steps)
+    /**
+     * The declared blocks, keyed by the closed [PostCondition] set.
+     *
+     * Multiple blocks under the same condition CONCATENATE in declaration
+     * order, which is the author's intent; the execution ORDER across different
+     * conditions is not decided here but by the pure
+     * [dev.rubentxu.pipeline.v2.domain.post.PostPlanner].
+     *
+     * Conditions with no declared block are omitted rather than stored empty, so
+     * an empty `post { }` produces no entry at all.
+     */
+    fun build(): PostConditionSpec {
+        val conditions = buildMap {
+            putIfNotEmpty(dev.rubentxu.pipeline.v2.domain.post.PostCondition.ALWAYS, alwaysSteps)
+            putIfNotEmpty(dev.rubentxu.pipeline.v2.domain.post.PostCondition.SUCCESS, successSteps)
+            putIfNotEmpty(dev.rubentxu.pipeline.v2.domain.post.PostCondition.FAILURE, failureSteps)
+            putIfNotEmpty(dev.rubentxu.pipeline.v2.domain.post.PostCondition.UNSTABLE, unstableSteps)
+            putIfNotEmpty(dev.rubentxu.pipeline.v2.domain.post.PostCondition.ABORTED, abortedSteps)
+            putIfNotEmpty(dev.rubentxu.pipeline.v2.domain.post.PostCondition.UNSUCCESSFUL, unsuccessfulSteps)
+            putIfNotEmpty(dev.rubentxu.pipeline.v2.domain.post.PostCondition.CLEANUP, cleanupSteps)
+        }
+        return PostConditionSpec(conditions)
     }
 
-    fun failure(block: PostStepsScope.() -> Unit) {
-        val scope = PostStepsScope()
-        scope.block()
-        failureSteps.addAll(scope.steps)
+    private fun MutableMap<dev.rubentxu.pipeline.v2.domain.post.PostCondition, List<StepSpec>>.putIfNotEmpty(
+        condition: dev.rubentxu.pipeline.v2.domain.post.PostCondition,
+        steps: List<StepSpec>,
+    ) {
+        if (steps.isNotEmpty()) put(condition, steps.toList())
     }
-
-    fun build(): PostConditionSpec = PostConditionSpec(alwaysSteps, successSteps, failureSteps)
 }
 
 /**
@@ -351,8 +386,9 @@ class StageBuilder(
     private val options: OptionsSpec? = null,
     private val environment: Map<String, String>? = null,
     private val directives: List<dev.rubentxu.pipeline.v2.domain.StageDirective> = emptyList(),
+    private val post: PostConditionSpec = PostConditionSpec(),
 ) {
-    fun build(): StageSpec = StageSpec(name, steps, options, environment, directives)
+    fun build(): StageSpec = StageSpec(name, steps, options, environment, directives, post)
 }
 
 /**

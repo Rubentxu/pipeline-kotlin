@@ -36,7 +36,35 @@ internal object EventJsonFields {
                 else -> stringEnd++
             }
         }
-        return if (stringEnd > i + 1) json.substring(i + 1, stringEnd) else ""
+        return if (stringEnd > i + 1) unescape(json.substring(i + 1, stringEnd)) else ""
+    }
+
+    /**
+     * Reverses exactly the escapes [dev.rubentxu.pipeline.v2.events.EventJsonWriter.jsonString]
+     * emits (`\\` `"` `\n` `\r` `\t`). Any other backslash pair is left verbatim so an
+     * unknown escape degrades to data, never to a lost character.
+     */
+    private fun unescape(raw: String): String {
+        if ('\\' !in raw) return raw
+        val sb = StringBuilder(raw.length)
+        var i = 0
+        while (i < raw.length) {
+            val c = raw[i]
+            if (c == '\\' && i + 1 < raw.length) {
+                when (val next = raw[i + 1]) {
+                    '\\' -> { sb.append('\\'); i += 2 }
+                    '"' -> { sb.append('"'); i += 2 }
+                    'n' -> { sb.append('\n'); i += 2 }
+                    'r' -> { sb.append('\r'); i += 2 }
+                    't' -> { sb.append('\t'); i += 2 }
+                    else -> { sb.append(c); i += 1 }
+                }
+            } else {
+                sb.append(c)
+                i += 1
+            }
+        }
+        return sb.toString()
     }
 
     /**
@@ -88,6 +116,49 @@ internal object EventJsonFields {
 
     fun intField(json: String, name: String): Int? {
         return longField(json, name)?.toInt()
+    }
+
+    /**
+     * Extracts a JSON string-array field. [JsonEventLog] encodes lists only via
+     * [EventJsonWriter.jsonStringList] (flat array of quoted strings), so the
+     * reader is a bracket scanner plus repeated [stringField]-style unquoting.
+     * Returns null when the field is absent; an empty array yields an empty
+     * list. Elements are raw (no nested arrays/objects are expected or read).
+     */
+    fun stringListField(json: String, name: String): List<String>? {
+        val nameStart = json.indexOf("\"$name\"")
+        if (nameStart == -1) return null
+        val colonPos = json.indexOf(':', nameStart)
+        if (colonPos == -1) return null
+        var i = colonPos + 1
+        while (i < json.length && json[i].isWhitespace()) i++
+        if (i >= json.length || json[i] != '[') return null
+        val open = i
+        val close = json.indexOf(']', open)
+        if (close == -1) return null
+        val body = json.substring(open + 1, close)
+        if (body.isBlank()) return emptyList()
+        val values = mutableListOf<String>()
+        var j = 0
+        while (j < body.length) {
+            if (body[j] != '"') { j++; continue }
+            var valueEnd = j + 1
+            var escape = false
+            while (valueEnd < body.length) {
+                when {
+                    escape -> escape = false
+                    body[valueEnd] == '\\' -> escape = true
+                    body[valueEnd] == '"' -> break
+                }
+                valueEnd++
+            }
+            // Reuse the same unescape path by wrapping the raw lexeme in a
+            // synthetic QUOTED key (stringField matches "name" literally).
+            val raw = body.substring(j, minOf(valueEnd + 1, body.length))
+            values += stringField("\"k\":$raw", "k") ?: ""
+            j = valueEnd + 1
+        }
+        return values
     }
 
     fun boolField(json: String, name: String): Boolean {

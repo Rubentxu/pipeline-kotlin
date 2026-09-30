@@ -748,16 +748,18 @@ class StageScope(
     }
 
     fun toStageBuilder(): StageBuilder {
-        // WU-RP-032 / DSL-008: post conditions are accepted DSL surface whose execution
-        // semantics are NOT implemented in the compiled path. A declared post block that
-        // would silently never run is a fake fallback (forbidden); reject at compile time.
-        stagePost?.let {
-            throw IllegalStateException(
-                "Stage '$stageName': post { } conditions are not supported by the compiled " +
-                    "execution path (WU-RP-032). Move the steps into the stage body or use " +
-                    "catchError/warnError semantics; refusing to silently ignore post.",
-            )
-        }
-        return StageBuilder(stageName, steps.toList(), stageOptions, stageEnvironment?.values, stageDirectives)
+        // S2-B: `post { }` is now REAL. It was previously accepted surface whose
+        // semantics were not implemented, so it threw here rather than silently
+        // never running (WU-RP-032 / DSL-008). The block is carried as typed
+        // data and the coordinator decides which finalizer fires from the pure
+        // PostPlanner; the DSL still decides NOTHING about execution.
+        return StageBuilder(
+            stageName,
+            steps.toList(),
+            stageOptions,
+            stageEnvironment?.values,
+            stageDirectives,
+            stagePost ?: PostConditionSpec(),
+        )
     }
 }

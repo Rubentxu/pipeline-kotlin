@@ -1128,3 +1128,38 @@ data class DirectiveDenied(
 ) : DomainEvent {
     override val kind: String get() = "DirectiveDenied"
 }
+
+/**
+ * S2-B — emitted once per stage whose `post` block planned at least one
+ * finalizer, immediately BEFORE the first finalizer step runs and BEFORE the
+ * stage's `StageFinished`.
+ *
+ * This is the DECISION event for `post` (Event Spine category: Decision), the
+ * same role `StageSkipped` plays for a `when` gate: without it, which blocks
+ * fired and why is not observable from the event stream, and a post step would
+ * be indistinguishable from any stage-body step.
+ *
+ * [selectedConditions] lists the conditions that WILL run, in execution order;
+ * [skippedConditions] lists the declared ones that the outcome excluded, in
+ * execution order. Both are the [PostCondition] NAMES in the versioned order,
+ * so the record is deterministic and replayable.
+ *
+ * The stage's own outcome is NOT carried here redundantly: `StageFinished`
+ * owns that fact; this event owns the selection decision derived from it.
+ *
+ * Emission authority: the stage interpreter (the canonical coordinator), never
+ * a step handler. A post block that plans nothing emits nothing.
+ */
+data class PostConditionSelected(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stageIndex: Int,
+    val stageName: String,
+    val stageOutcome: String,
+    val selectedConditions: List<String>,
+    val skippedConditions: List<String>,
+) : DomainEvent {
+    override val kind: String get() = "PostConditionSelected"
+}

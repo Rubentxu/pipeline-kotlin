@@ -1321,13 +1321,17 @@ public final class dev/rubentxu/pipeline/v2/domain/PluginStepId$Companion {
 
 public final class dev/rubentxu/pipeline/v2/domain/PostSpec {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/PostSpec$Companion;
+	public fun <init> ()V
 	public fun <init> (Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/util/Map;
 	public final fun copy (Ljava/util/Map;)Ldev/rubentxu/pipeline/v2/domain/PostSpec;
 	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/PostSpec;Ljava/util/Map;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/PostSpec;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getConditions ()Ljava/util/Map;
 	public fun hashCode ()I
+	public final fun isEmpty ()Z
+	public final fun toPostPlan ()Ldev/rubentxu/pipeline/v2/domain/post/PostPlan;
 	public fun toString ()Ljava/lang/String;
 }
 
@@ -4534,6 +4538,110 @@ public final class dev/rubentxu/pipeline/v2/domain/identity/ResourceRefs {
 	public final fun stage (Ljava/lang/String;I)Ldev/rubentxu/pipeline/v2/domain/identity/ResourceRef;
 	public final fun step (Ljava/lang/String;II)Ldev/rubentxu/pipeline/v2/domain/identity/ResourceRef;
 	public final fun stepDefinition (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/identity/ResourceRef;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/post/PostCondition : java/lang/Enum {
+	public static final field ABORTED Ldev/rubentxu/pipeline/v2/domain/post/PostCondition;
+	public static final field ALWAYS Ldev/rubentxu/pipeline/v2/domain/post/PostCondition;
+	public static final field CLEANUP Ldev/rubentxu/pipeline/v2/domain/post/PostCondition;
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/post/PostCondition$Companion;
+	public static final field FAILURE Ldev/rubentxu/pipeline/v2/domain/post/PostCondition;
+	public static final field SUCCESS Ldev/rubentxu/pipeline/v2/domain/post/PostCondition;
+	public static final field UNSTABLE Ldev/rubentxu/pipeline/v2/domain/post/PostCondition;
+	public static final field UNSUCCESSFUL Ldev/rubentxu/pipeline/v2/domain/post/PostCondition;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/post/PostCondition;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/post/PostCondition;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/post/PostCondition$Companion {
+	public final fun getEXECUTION_ORDER ()Ljava/util/List;
+	public final fun outcomeOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/post/StageOutcome;
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/post/PostPlan {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/post/PostPlan$Companion;
+	public fun <init> ()V
+	public fun <init> (Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/Map;
+	public final fun copy (Ljava/util/Map;)Ldev/rubentxu/pipeline/v2/domain/post/PostPlan;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/post/PostPlan;Ljava/util/Map;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/post/PostPlan;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBodies ()Ljava/util/Map;
+	public fun hashCode ()I
+	public final fun isEmpty ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/domain/post/PostPlan$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/post/PostPlan$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/domain/post/PostPlan;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/domain/post/PostPlan;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/post/PostPlan$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/post/PostPlanKt {
+	public static final fun selects (Ldev/rubentxu/pipeline/v2/domain/post/PostCondition;Ldev/rubentxu/pipeline/v2/domain/post/StageOutcome;)Z
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/post/PostPlanner {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/post/PostPlanner;
+	public final fun plan (Ldev/rubentxu/pipeline/v2/domain/post/PostPlan;Ldev/rubentxu/pipeline/v2/domain/post/StageOutcome;)Ljava/util/List;
+	public final fun selectedConditions (Ldev/rubentxu/pipeline/v2/domain/post/PostPlan;Ldev/rubentxu/pipeline/v2/domain/post/StageOutcome;)Ljava/util/List;
+	public final fun skippedConditions (Ldev/rubentxu/pipeline/v2/domain/post/PostPlan;Ldev/rubentxu/pipeline/v2/domain/post/StageOutcome;)Ljava/util/List;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/post/StageOutcome {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/post/StageOutcome$Companion;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/post/StageOutcome$Aborted : dev/rubentxu/pipeline/v2/domain/post/StageOutcome {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/post/StageOutcome$Aborted;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/post/StageOutcome$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/post/StageOutcome$Failed : dev/rubentxu/pipeline/v2/domain/post/StageOutcome {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/post/StageOutcome$Failed;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/post/StageOutcome$Skipped : dev/rubentxu/pipeline/v2/domain/post/StageOutcome {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/post/StageOutcome$Skipped;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/post/StageOutcome$Succeeded : dev/rubentxu/pipeline/v2/domain/post/StageOutcome {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/post/StageOutcome$Succeeded;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/post/StageOutcome$Unstable : dev/rubentxu/pipeline/v2/domain/post/StageOutcome {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/post/StageOutcome$Unstable;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/scm/CheckoutSpec {

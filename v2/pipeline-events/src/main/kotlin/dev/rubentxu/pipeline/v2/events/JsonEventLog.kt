@@ -585,6 +585,24 @@ object JsonEventLog {
                     reason = reason,
                 )
             }
+            "PostConditionSelected" -> {
+                val stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0
+                val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
+                val stageOutcome = EventJsonFields.stringField(s, "stageOutcome") ?: ""
+                val selectedConditions = EventJsonFields.stringListField(s, "selectedConditions") ?: emptyList()
+                val skippedConditions = EventJsonFields.stringListField(s, "skippedConditions") ?: emptyList()
+                PostConditionSelected(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    stageIndex = stageIndex,
+                    stageName = stageName,
+                    stageOutcome = stageOutcome,
+                    selectedConditions = selectedConditions,
+                    skippedConditions = skippedConditions,
+                )
+            }
             "DirEntered" -> {
                 val path = EventJsonFields.stringField(s, "path") ?: ""
                 val previousPath = EventJsonFields.stringField(s, "previousPath") ?: ""

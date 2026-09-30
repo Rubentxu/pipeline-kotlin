@@ -13,6 +13,7 @@ import dev.rubentxu.pipeline.v2.domain.EnvironmentSpec
 import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
 import dev.rubentxu.pipeline.v2.domain.OptionSpec
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.PostSpec
 import dev.rubentxu.pipeline.v2.domain.StageBody
 import dev.rubentxu.pipeline.v2.domain.StageId
 import dev.rubentxu.pipeline.v2.domain.StageNode
@@ -115,6 +116,18 @@ object DslCompiledPipelineCompiler {
             options = stage.options.toOptions(),
             body = body,
             directives = stage.directives,
+            // S2-B: the declared `post` block becomes typed IR data. The
+            // COMPILER only projects; it never decides which finalizer runs —
+            // that is the pure PostPlanner's job at execution time.
+            post = stage.post.conditions
+                .takeIf { it.isNotEmpty() }
+                ?.let { declared ->
+                    PostSpec(
+                        conditions = declared.mapValues { (condition, steps) ->
+                            stepNodes(steps, "$stageToken/post-${condition.name}")
+                        },
+                    )
+                },
         )
     }
 

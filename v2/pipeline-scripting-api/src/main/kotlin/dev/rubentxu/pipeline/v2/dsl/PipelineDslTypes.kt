@@ -22,6 +22,14 @@ data class StageSpec(
 
     /** S1-B: directives declared on this stage (declarative carrier only). */
     val directives: List<dev.rubentxu.pipeline.v2.domain.StageDirective> = emptyList(),
+
+    /**
+     * S2-B: `post` blocks declared on this stage.
+     *
+     * Carried as DATA from the DSL to the compiler; the DSL never decides which
+     * block runs, it only records what the author declared.
+     */
+    val post: PostConditionSpec = PostConditionSpec(),
 )
 
 /**
@@ -62,23 +70,17 @@ enum class TimeoutAction {
 }
 
 /**
- * Post conditions for a stage (e.g., always, success, failure).
+ * Post conditions declared on a stage (S2-B).
+ *
+ * Keyed by the closed [PostCondition] set rather than three named lists, so the
+ * DSL and the IR speak the same typed vocabulary and a condition that the
+ * planner cannot honour is a compile error instead of a silently ignored block.
+ * The EXECUTION ORDER across conditions is not stored here: it belongs to
+ * [dev.rubentxu.pipeline.v2.domain.post.PostCondition.EXECUTION_ORDER], the
+ * single authority.
  */
 data class PostConditionSpec(
-    val always: List<StepSpec> = emptyList(),
-    val success: List<StepSpec> = emptyList(),
-    val failure: List<StepSpec> = emptyList(),
-)
-
-/**
- * Conditional execution using a when clause.
- *
- * DEAD TYPE. Nothing constructs or consumes this any more:
- * [StageScope.whenCondition] now rejects its input with `IllegalArgumentException`
- * because the IR has nowhere to carry [expression]. Kept only as a marker of the
- * intended-but-unimplemented design. Deleting it, or wiring it properly, is
- * tracked as debt — do not treat its presence as evidence that `when` blocks work.
- */
-data class WhenCondition(
-    val expression: String,
-)
+    val conditions: Map<dev.rubentxu.pipeline.v2.domain.post.PostCondition, List<StepSpec>> = emptyMap(),
+) {
+    val isEmpty: Boolean get() = conditions.isEmpty()
+}

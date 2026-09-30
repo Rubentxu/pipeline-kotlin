@@ -68,6 +68,10 @@ internal object EventJsonWriter {
         return "\"${sb}\""
     }
 
+    /** A JSON array of strings; deterministic and quote-safe. */
+    fun jsonStringList(values: List<String>): String =
+        values.joinToString(prefix = "[", postfix = "]", separator = ",") { jsonString(it) }
+
     fun encodeEvent(event: DomainEvent): String {
         val sb = StringBuilder()
         sb.append("{")
@@ -122,6 +126,18 @@ internal object EventJsonWriter {
                 sb.append(EventJsonWriter.jsonString(event.stageName))
                 sb.append(",\"reason\":")
                 sb.append(EventJsonWriter.jsonString(event.reason))
+            }
+            is PostConditionSelected -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"stageOutcome\":")
+                sb.append(EventJsonWriter.jsonString(event.stageOutcome))
+                sb.append(",\"selectedConditions\":")
+                sb.append(EventJsonWriter.jsonStringList(event.selectedConditions))
+                sb.append(",\"skippedConditions\":")
+                sb.append(EventJsonWriter.jsonStringList(event.skippedConditions))
             }
             is StepStarted -> {
                 sb.append(",\"stageIndex\":")

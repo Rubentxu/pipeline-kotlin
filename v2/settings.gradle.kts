@@ -29,6 +29,12 @@ rootProject.name = "pipeline-v2"
 include(
     ":pipeline-domain",
     ":pipeline-application",
+    // DIST-PRODUCT P0: product identity, distribution manifest, candidate
+    // handoff and the cheap identity gate. Pure contract plus the ZIP probe;
+    // the build wires the gate at candidate materialization. Kept separate from
+    // :pipeline-architecture-tests so the build can run these checks without
+    // depending on the fitness harness.
+    ":pipeline-release",
     ":pipeline-scripting-api",
     ":pipeline-scripting-kotlin24",
     ":pipeline-testkit",

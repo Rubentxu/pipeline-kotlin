@@ -1,6 +1,4 @@
-package dev.rubentxu.pipeline.v2.architecture
-
-import java.nio.file.Path
+package dev.rubentxu.pipeline.v2.release
 
 /**
  * P0.1 / P0.3 — exact product identity, as a pure decision.
@@ -14,8 +12,8 @@ import java.nio.file.Path
  * ```
  *
  * A mismatch is a build defect that blocks candidate handoff. The v0.43.0
- * incident is exactly this failure: the asset advertised GA identity while
- * the bytes carried `rc1` inside.
+ * incident is exactly this failure: the asset was advertised with a GA identity
+ * while the bytes carried `rc1` inside.
  *
  * This is deliberately a **pure** function. It takes facts and returns a
  * decision. It does not open a ZIP, shell out, or read a JAR manifest, so it
@@ -50,48 +48,6 @@ sealed interface DistributionIdentityVerdict {
 }
 
 data class SurfaceConflict(val surface: IdentitySurface, val reported: String)
-
-/**
- * A product version is a final SemVer triple. It must NOT carry a candidate
- * suffix: under this protocol, candidate state lives outside the binary
- * identity (contract §4, §11). `0.44.0-rc1` is therefore not a valid
- * [ProductVersion]; the candidate is `(ProductVersion=0.44.0, CandidateId=…)`.
- */
-@JvmInline
-value class ProductVersion private constructor(val value: String) {
-
-    val major: Int get() = value.substringBefore('.').toInt()
-    val minor: Int get() = value.substringAfter('.').substringBefore('.').toInt()
-    val patch: Int get() = value.substringAfterLast('.').toInt()
-
-    override fun toString(): String = value
-
-    companion object {
-        private val FINAL_SEMVER = Regex("""^(\d+)\.(\d+)\.(\d+)$""")
-
-        /** Placeholder used only when there is no usable expected version. */
-        val UNKNOWN: ProductVersion = ProductVersion("0.0.0")
-
-        /**
-         * Parse a final SemVer product version, or null when the input is a
-         * candidate suffix. Returning null rather than throwing keeps this
-         * usable as a predicate; callers that require a version use
-         * [parseOrThrow].
-         */
-        fun parseOrNull(raw: String): ProductVersion? {
-            val trimmed = raw.trim()
-            if (!FINAL_SEMVER.matches(trimmed)) return null
-            return ProductVersion(trimmed)
-        }
-
-        fun parseOrThrow(raw: String): ProductVersion = parseOrNull(raw)
-            ?: throw IllegalArgumentException(
-                "ProductVersion must be final SemVer MAJOR.MINOR.PATCH without a candidate " +
-                    "suffix, got '$raw'. Candidate state belongs to the candidate descriptor, " +
-                    "not to the binary identity (cross-repo contract v2 §4, §11).",
-            )
-    }
-}
 
 /** The six surfaces that must agree. */
 enum class IdentitySurface {
@@ -199,13 +155,3 @@ fun DistributionIdentityVerdict.render(): String = when (this) {
         )
     }
 }
-
-/**
- * Convenience for the real artifact: a distribution ZIP path, from which the
- * asset and archive-root versions are derived by the caller-side probe.
- */
-fun identityObservationForAsset(zip: Path): IdentityObservation =
-    IdentityObservation(
-        IdentitySurface.ASSET,
-        zip.fileName.toString().removePrefix("pipelinek-").removeSuffix(".zip"),
-    )

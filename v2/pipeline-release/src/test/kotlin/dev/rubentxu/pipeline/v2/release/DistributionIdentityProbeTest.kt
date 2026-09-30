@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.architecture
+package dev.rubentxu.pipeline.v2.release
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
@@ -233,7 +233,7 @@ class DistributionIdentityProbeTest {
     inner class AgainstRealCheckedOutArtifacts {
 
         private fun distributionsDir(): Path =
-            ScannerSupport.v2Root().resolve("pipeline-application/build/distributions")
+            ReleaseTestPaths.v2Root().resolve("pipeline-application/build/distributions")
 
         @Test
         fun `every checked-out distribution ZIP has internally agreeing ZIP surfaces`() {

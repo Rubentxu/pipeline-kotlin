@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.architecture
+package dev.rubentxu.pipeline.v2.release
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf

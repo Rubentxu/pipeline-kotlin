@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.architecture
+package dev.rubentxu.pipeline.v2.release
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -52,11 +52,25 @@ object DistributionIdentityProbe {
      * distribution shape and yields null rather than a guess.
      */
     fun archiveRootVersion(zip: Path): String? {
-        val roots = topLevelEntries(zip)
-        if (roots.size != 1) return null
-        val root = roots.single()
+        val root = archiveRootName(zip) ?: return null
         if (!root.startsWith("pipelinek-")) return null
         return root.removePrefix("pipelinek-").removeIfEmpty()
+    }
+
+    /**
+     * The archive root as the literal directory name, e.g. `pipelinek-0.44.0`.
+     *
+     * Distinct from [archiveRootVersion] on purpose: that one yields the
+     * *version component* for the identity comparison, while the distribution
+     * manifest must record the *observed directory name*. Returning the wrong
+     * unit from either would make a correct build look divergent, so the two
+     * shapes are separate functions rather than one caller re-prefixing a
+     * result it might be misreading.
+     */
+    fun archiveRootName(zip: Path): String? {
+        val roots = topLevelEntries(zip)
+        if (roots.size != 1) return null
+        return roots.single()
     }
 
     /**

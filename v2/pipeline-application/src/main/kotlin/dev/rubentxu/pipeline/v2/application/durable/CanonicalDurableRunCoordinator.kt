@@ -477,7 +477,10 @@ class CanonicalDurableRunCoordinator(
                                     if (input is dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate) {
                                         DecodedBeforeStage.GatePredicate(key, input)
                                     } else {
-                                        DecodedBeforeStage.Denied(key, "declared policy Gate but decoded to " + input::class.simpleName + ", not a WhenPredicate")
+                                        DecodedBeforeStage.Denied(
+                                            key,
+                                            "declared policy Gate but decoded to " + input::class.simpleName + ", not a WhenPredicate",
+                                        )
                                     }
                                 }
 

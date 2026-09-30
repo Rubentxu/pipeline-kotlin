@@ -1,12 +1,14 @@
 agents:
   rubentxu:
     capabilities:
+      - git.inspect
       - git.push
       - git.tag
     phases:
       - release
   sddk-release:
     capabilities:
+      - git.inspect
       - git.push
       - git.tag
     phases:

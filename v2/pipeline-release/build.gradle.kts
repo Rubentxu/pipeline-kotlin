@@ -100,6 +100,10 @@ tasks.register<JavaExec>("candidateAdmission") {
             candidateTag,
             candidateSequence,
             sbom?.absolutePath ?: "-",
+            // P0.5 — the repository whose version control state defines this
+            // candidate's provenance. RootProject lives in v2/, whose parent
+            // holds the .git directory.
+            rootProject.projectDir.parentFile.absolutePath,
         )
     }
 
@@ -115,6 +119,12 @@ tasks.register<JavaExec>("candidateAdmission") {
  * unavailable (an exported source tree, for example). Never an empty string:
  * the manifest records provenance, and an empty commit would be a claim about
  * a build nobody can trace.
+ *
+ * NOTE (P0.5): this value alone does NOT establish provenance. It is git HEAD
+ * while the ZIP is compiled from the working tree, so a dirty tree would make
+ * it a false address. The build's real guarantee is the clean-tree law in
+ * `SourceProvenance`, enforced by the `candidateAdmission` task; this function
+ * only supplies the address to be verified.
  */
 fun gitCommitOf(root: Project): String = try {
     providers.exec {

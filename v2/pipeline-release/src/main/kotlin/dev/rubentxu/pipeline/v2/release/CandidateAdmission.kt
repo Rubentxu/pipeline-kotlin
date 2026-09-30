@@ -33,7 +33,36 @@ object CandidateAdmission {
         sha256sums: Path?,
         candidateSequence: Int,
         outDir: Path,
+        provenanceFacts: SourceProvenanceFacts? = null,
     ): AdmissionOutcome {
+        // P0.5 — source provenance law. Evaluated BEFORE anything is written,
+        // so a candidate whose recorded commit would be a lie about the bytes
+        // never produces a manifest for the harness to trust.
+        //
+        // The verdict is not merely logged: an unverifiable or refused
+        // provenance aborts admission. Refusing here is what makes the law
+        // real; a warning would have left the original defect in place.
+        val provenanceVerdict = SourceProvenance.evaluate(
+            provenanceFacts ?: SourceProvenanceFacts(
+                headCommit = gitCommit,
+                modifiedTrackedFiles = 0,
+                stagedButUncommitted = 0,
+            ),
+        )
+        when (provenanceVerdict) {
+            is SourceProvenanceVerdict.Refused ->
+                return AdmissionOutcome.Refused(provenanceVerdict.reason)
+
+            is SourceProvenanceVerdict.Unverifiable ->
+                return AdmissionOutcome.Refused(
+                    provenanceVerdict.reason +
+                        " Pass an observed source commit explicitly, or build from a git " +
+                        "checkout of the exact commit being released.",
+                )
+
+            is SourceProvenanceVerdict.Clean -> Unit
+        }
+
         // A candidate-suffixed build cannot produce candidate material under
         // protocol v2. This is reported as a refusal rather than an
         // exception so the diagnostic is the build's output, not a stack trace.
@@ -65,6 +94,7 @@ object CandidateAdmission {
                 manifestPath = result.manifestPath,
                 handoffPath = result.handoffPath,
                 identityVerdict = result.identity.render(),
+                provenanceVerdict = provenanceVerdict.render(),
             )
         }
     }
@@ -92,6 +122,7 @@ sealed interface AdmissionOutcome {
         val manifestPath: Path,
         val handoffPath: Path,
         val identityVerdict: String,
+        val provenanceVerdict: String = "source provenance not evaluated",
     ) : AdmissionOutcome
 
     /** The candidate is refused. The build MUST fail. */

@@ -16,7 +16,7 @@ import kotlin.system.exitProcess
  *
  * ```text
  * usage: candidate-admission <zip> <productVersion> <gitCommit> <outDir>
- *                      [<candidateRef>] [<candidateSequence>] [<sbomPath>]
+ *                      [<candidateRef>] [<candidateSequence>] [<sbomPath>] [<repoRoot>]
  * exit  0 = admitted, 1 = refused
  * ```
  */
@@ -24,7 +24,7 @@ fun main(args: Array<String>) {
     if (args.size < 4) {
         System.err.println(
             "usage: candidate-admission <zip> <productVersion> <gitCommit> <outDir> " +
-                "[<candidateRef>] [<candidateSequence>] [<sbomPath>]",
+                "[<candidateRef>] [<candidateSequence>] [<sbomPath>] [<repoRoot>]",
         )
         exitProcess(2)
     }
@@ -46,6 +46,12 @@ fun main(args: Array<String>) {
         sha256sums = null,
         candidateSequence = args.getOrNull(5)?.takeIf { it.isNotBlank() }?.toIntOrNull() ?: 1,
         outDir = outDir,
+        // P0.5 — the law is enforced from observed version control state, not
+        // from the commit string the caller passed. Passing the caller's own
+        // claim back in would make the gate check itself.
+        provenanceFacts = SourceProvenanceProbe.probe(
+            Paths.get(args.getOrNull(7) ?: defaultRepoRoot().toString()),
+        ),
     )
 
     when (outcome) {
@@ -63,6 +69,7 @@ fun main(args: Array<String>) {
             println("[release] candidate admission PASSED")
             println("[release]   candidate_id: ${outcome.candidateId}")
             println("[release]   identity: ${outcome.identityVerdict.trim()}")
+            println("[release]   provenance: ${outcome.provenanceVerdict.trim()}")
             println("[release]   manifest: ${outcome.manifestPath}")
             println("[release]   handoff:  ${outcome.handoffPath}")
             println(

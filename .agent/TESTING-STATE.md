@@ -1,6 +1,6 @@
-# TESTING-STATE — Active change (2026-09-30, HEAD `ce3a40cd`)
+# TESTING-STATE — Active change (2026-09-30, HEAD `bce7ad36`)
 
-## Active context (2026-09-30, WU-RP-020, HEAD `ce3a40cd` on `main`)
+## Active context (2026-09-30, WU-RP-020, HEAD `bce7ad36` on `main`)
 
 - **Cycle (SDDK):** `p-733fb505b5a6bd2d/rp-020-durable-sequence-authority`,
   status **`BLOCKED`** by tooling friction, not by code. Two gate receipts issued
@@ -8,9 +8,18 @@
   `cycle.unblock` still answers `ENGINE_MISSING_GATE_RECEIPT`; `rebuild` returns
   `restored: false`. No `supersede` reason applies, so NOT forced. Recorded in
   receipt §7.5.
-- **HEAD `ce3a40cd`, 4 commits ahead of `origin/main 34c08ad9`, not pushed.**
+- **HEAD `bce7ad36`, 6 commits ahead of `origin/main 34c08ad9`, not pushed.**
   Chain: `54bc4bf6` (UNIQUE(run_id, sequence)) → `02f829bc` (13 emitter sites)
-  → `ea45b339` (receipt) → `ce3a40cd` (stranded-barrier fix).
+  → `ea45b339` (receipt) → `ce3a40cd` (stranded-barrier fix)
+  → `847a7ae1` (testing state) → `bce7ad36` (sequence-authority fitness guard).
+- **Standing guard now exists for the sequence authority.**
+  `FArchSequenceAuthorityFitnessTest` +
+  `SourceScanner.findExplicitSequenceAssignment` flag production `/src/main/`
+  code that assigns `sequence = <non-zero>`. RED proof: re-introducing the
+  original `WithCredentialsExecutor` defect turns it RED naming both lines.
+  The 13 fixed sites were found by a one-off grep that had no successor;
+  this closes that gap. Keep the allow-list pinned — each exemption has a
+  fixture so it cannot widen silently.
 - **Gate GREEN at HEAD:** `v2/gradlew -p v2 check`, BUILD SUCCESSFUL in 20m51s,
   **562 XML classes, 3768 tests, 129 skipped, 0 failures, 0 errors**.
   Budget rule 4: last green 20m38s x1.3 → 1750s used (ceiling raised, documented).

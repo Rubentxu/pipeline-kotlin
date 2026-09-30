@@ -49,6 +49,15 @@ import java.util.concurrent.TimeUnit
  * Isolation pair (AC-5): the same declared stage
  *   - WITHOUT the plugin loader: DirectiveDenied + USER failure, zero effects;
  *   - WITH the plugin loader:   DirectiveAdmitted + Success + body ran.
+ *
+ * S2-D extends the contract: an admitted `Evaluate` directive is DECODED in the
+ * BEFORE_STAGE seam before the stage starts, so malformed arguments are a typed
+ * USER denial (`DirectiveAdmitted` -> `DirectiveDenied`, zero `StageStarted`) —
+ * never the S1-EF characterisation E3 outcome ("garbage args -> admitted +
+ * success"). E3 was an explicit frontier of S1-EF, closed BY DESIGN in S2-D;
+ * the new row below is the re-pin of that characterisation to the new contract
+ * (mirrors: the `directives` row of DSL_SURFACE_MANIFEST.md and
+ * S2D_INSTALLED_DIRECTIVE_UAT_RECEIPT.md).
  */
 @Timeout(value = 120, unit = TimeUnit.SECONDS)
 class DirectivePluginContractSuiteTest {
@@ -100,7 +109,7 @@ class DirectivePluginContractSuiteTest {
     /** Host with directive infrastructure composed but ZERO plugin contributions. */
     private fun emptyRegistry(): DirectiveRegistry = DirectiveRegistry.Builder().build()
 
-    private fun pipelineDeclaringLock(): CompiledPipeline = CompiledPipeline(
+    private fun pipelineDeclaringLock(encodedArgs: String = """{"resource":"prod-db"}"""): CompiledPipeline = CompiledPipeline(
         id = DefinitionId("s1d-plugin"),
         source = SourceDescriptor("S1D.pipeline.kts", Digest("s1d")),
         pluginLockDigest = Digest("s1d-lock"),
@@ -120,7 +129,7 @@ class DirectivePluginContractSuiteTest {
                         ),
                     ),
                 ),
-                directives = listOf(StageDirective("acme.lock", """{"resource":"prod-db"}""")),
+                directives = listOf(StageDirective("acme.lock", encodedArgs)),
             ),
         ),
     )
@@ -271,6 +280,49 @@ class DirectivePluginContractSuiteTest {
         )
         assertFalse(
             events.eventsFor("s1d-without").any { it is dev.rubentxu.pipeline.v2.events.StageStarted },
+            "fail-closed: the stage never starts",
+        )
+    }
+
+    // ---- Row 8 (S2-D): WITH plugin — malformed args deny fail-closed -------------
+    //
+    // Re-pin of the S1-EF characterisation E3. That receipt declared "garbage
+    // args -> admitted + success" as an explicit frontier; S2-D closes it BY
+    // DESIGN: the BEFORE_STAGE seam decodes every admitted Gate|Evaluate
+    // directive with its own codec BEFORE the stage starts, so a malformed
+    // Evaluate is the DIRECTIVE'S CONTRACT failing (a typed USER denial), not a
+    // veto and never a silent run. Observation order is law (D4/S1-C): the
+    // admission was correct (key match), so it is observed, THEN denied.
+
+    @Test
+    fun `with plugin - malformed evaluate args deny fail-closed before the stage starts`() {
+        val (coordinator, events) = wired(registryFrom(pluginLoader()))
+        val outcome = runBlocking { coordinator.run(pipelineDeclaringLock("{not-json"), RunId("s1d-malformed")) }
+
+        assertTrue(outcome is RunOutcome.Failure, "malformed args fail closed, got $outcome")
+        val failure = (outcome as RunOutcome.Failure).failure
+        assertEquals(dev.rubentxu.pipeline.v2.domain.FailureKind.USER, failure.kind)
+        assertTrue(
+            failure.message.contains("acme.lock") && failure.message.contains("could not be decoded"),
+            "the diagnostic names the key and the decode failure: ${failure.message}",
+        )
+
+        val stream = events.eventsFor("s1d-malformed").toList()
+        val admitted = stream.filterIsInstance<DirectiveAdmitted>().single()
+        assertEquals("acme.lock", admitted.directiveKey)
+        assertEquals("BEFORE_STAGE", admitted.phase)
+        assertEquals("evaluate", admitted.policy)
+        val denied = stream.filterIsInstance<DirectiveDenied>().single()
+        assertTrue(
+            denied.reason.contains("acme.lock") && denied.reason.contains("could not be decoded"),
+            "the denial names the key and the decode failure: ${denied.reason}",
+        )
+        assertTrue(
+            stream.indexOf(admitted) < stream.indexOf(denied),
+            "DirectiveAdmitted must precede DirectiveDenied",
+        )
+        assertFalse(
+            stream.any { it is dev.rubentxu.pipeline.v2.events.StageStarted },
             "fail-closed: the stage never starts",
         )
     }

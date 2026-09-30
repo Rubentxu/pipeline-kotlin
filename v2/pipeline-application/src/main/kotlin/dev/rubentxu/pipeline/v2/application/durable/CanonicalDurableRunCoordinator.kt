@@ -376,7 +376,7 @@ class CanonicalDurableRunCoordinator(
                 // denial is fail-closed: the stage never starts and the run
                 // fails with the planner's typed diagnostic. The coordinator
                 // only INTERPRETS the decision; it never re-derives admission.
-                var gateInterpretation: List<dev.rubentxu.pipeline.v2.domain.directive.AdmittedDirective> = emptyList()
+                var beforeStageSeam: List<dev.rubentxu.pipeline.v2.domain.directive.AdmittedDirective> = emptyList()
                 when (val directiveDecision = directiveRegistry
                     ?.let { dev.rubentxu.pipeline.v2.domain.directive.StageDirectivePlanner.decide(it, stage) }) {
                     is dev.rubentxu.pipeline.v2.domain.directive.StageDirectiveDecision.Denied -> {
@@ -424,57 +424,87 @@ class CanonicalDurableRunCoordinator(
                             )
                         }
 
-                        // S2-C: the gates the interpreter will evaluate are the
-                        // ones the DECISION admitted as Gate in BEFORE_STAGE —
-                        // never a re-scan of the stage declaration. Admitted
-                        // directives in other phases or policies are out of the
-                        // gate seam's scope here (their interpretation is their
-                        // own slice's business).
-                        gateInterpretation = directiveDecision.phases
+                        // S2-C/S2-D: the directives the interpreter will decode in
+                        // the BEFORE_STAGE seam are the ones the DECISION admitted
+                        // there with policy Gate OR Evaluate — never a re-scan of
+                        // the stage declaration. Membership is read from the closed
+                        // policy ADT, never from a key. Admitted directives in other
+                        // phases or policies (e.g. ProvideContext, D5) are outside
+                        // this seam (their interpretation is their own slice's
+                        // business).
+                        beforeStageSeam = directiveDecision.phases
                             .getValue(dev.rubentxu.pipeline.v2.domain.directive.DirectivePhase.BEFORE_STAGE)
-                            .filter { it.policy is dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy.Gate }
+                            .filter {
+                                it.policy is dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy.Gate ||
+                                    it.policy is dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy.Evaluate
+                            }
                     }
                     null -> Unit
                 }
 
-                // S2-C: interpret the COMPOSED gate decision. Decode (each
-                // definition's own codec, typed failure), compose (pure
-                // GateCompositionPlanner), evaluate ONCE (pure
+                // S2-C/S2-D: interpret the BEFORE_STAGE seam. Decode EVERY
+                // admitted Gate|Evaluate directive (its own codec, typed
+                // failure), classify into DecodedBeforeStage; the FIRST denial
+                // in declaration order fails the stage closed; surviving gates
+                // compose (pure GateCompositionPlanner), evaluate ONCE (pure
                 // WhenPredicateEvaluator), emit the verdict, then act on it.
-                if (gateInterpretation.isNotEmpty()) {
-                    val gateKeys = gateInterpretation.map { it.invocation.key.value }
-
-                    // Decode each gate through its own definition codec (the
-                    // registry carries the decoder; the engine never switches on
-                    // a key), then erase the decode to its gate-predicate shape
+                // A decoded Evaluate is observed and discarded: observing and
+                // continuing is ALL of its semantics — its decoded value has no
+                // consumer here.
+                if (beforeStageSeam.isNotEmpty()) {
+                    // Decode each seam directive through its own definition codec
+                    // (the registry carries the decoder; the engine never switches
+                    // on a key), then classify the decode into the seam ADT
                     // WITHOUT an unchecked cast. A definition that declares
                     // policy Gate but decodes to anything other than a
                     // WhenPredicate is a self-contradiction, and the only safe
                     // reading of a contradiction is a typed failure - not a
                     // ClassCastException escaping into the run loop.
-                    val decoded: List<DecodedGate> = gateInterpretation.map { admitted ->
+                    val decoded: List<DecodedBeforeStage> = beforeStageSeam.map { admitted ->
                         val key = admitted.invocation.key
                         when (val result = directiveRegistry?.find(key)?.decodeAny(admitted.invocation.encodedArguments)) {
-                            null -> DecodedGate.Denied(key, "was admitted but is not resolvable in the registry")
+                            null -> DecodedBeforeStage.Denied(key, "was admitted but is not resolvable in the registry")
 
                             is dev.rubentxu.pipeline.v2.domain.directive.DirectiveDecodeResult.Malformed ->
-                                DecodedGate.Denied(key, "declared a gate whose arguments could not be decoded: " + result.reason)
+                                DecodedBeforeStage.Denied(
+                                    key,
+                                    seamDecodeFailureReason(admitted.policy, result.reason),
+                                )
 
-                            is dev.rubentxu.pipeline.v2.domain.directive.DirectiveDecodeResult.Decoded -> {
-                                val input = result.input
-                                if (input is dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate) {
-                                    DecodedGate.Predicate(key, input)
-                                } else {
-                                    DecodedGate.Denied(key, "declared policy Gate but decoded to " + input::class.simpleName + ", not a WhenPredicate")
+                            is dev.rubentxu.pipeline.v2.domain.directive.DirectiveDecodeResult.Decoded -> when (admitted.policy) {
+                                is dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy.Gate -> {
+                                    val input = result.input
+                                    if (input is dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate) {
+                                        DecodedBeforeStage.GatePredicate(key, input)
+                                    } else {
+                                        DecodedBeforeStage.Denied(key, "declared policy Gate but decoded to " + input::class.simpleName + ", not a WhenPredicate")
+                                    }
                                 }
+
+                                // Observes and continues; the typed input is
+                                // discarded (Directive.kt: "evaluate and
+                                // continue... observes but cannot veto").
+                                is dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy.Evaluate ->
+                                    DecodedBeforeStage.Evaluated(key)
+
+                                // Unreachable through the seam filter (Gate |
+                                // Evaluate only), but the policy ADT is closed and
+                                // the match must be total: a policy that cannot be
+                                // interpreted in this seam is a typed denial, never
+                                // a silent continue.
+                                is dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy.ProvideContext ->
+                                    DecodedBeforeStage.Denied(
+                                        key,
+                                        "declared policy provide-context is not interpretable in the BEFORE_STAGE decode seam",
+                                    )
                             }
                         }
                     }
-                    val deniedGate: DecodedGate.Denied? = decoded.firstNotNullOfOrNull { gate ->
-                        gate as? DecodedGate.Denied
+                    val deniedDirective: DecodedBeforeStage.Denied? = decoded.firstNotNullOfOrNull { directive ->
+                        directive as? DecodedBeforeStage.Denied
                     }
-                    if (deniedGate != null) {
-                        val reason = "directive '" + deniedGate.key.value + "' " + deniedGate.reason
+                    if (deniedDirective != null) {
+                        val reason = "directive '" + deniedDirective.key.value + "' " + deniedDirective.reason
                         eventSink.append(
                             dev.rubentxu.pipeline.v2.events.DirectiveDenied(
                                 eventId = UUID.randomUUID().toString(),
@@ -483,7 +513,7 @@ class CanonicalDurableRunCoordinator(
                                 occurredAt = Instant.now(),
                                 stageIndex = stageIndex,
                                 stageName = stage.name,
-                                directiveKey = deniedGate.key.value,
+                                directiveKey = deniedDirective.key.value,
                                 reason = reason,
                             ),
                         )
@@ -496,9 +526,14 @@ class CanonicalDurableRunCoordinator(
                         return@run currentOutcome
                     }
 
-                    val predicates = decoded.filterIsInstance<DecodedGate.Predicate>().map { gate ->
+                    // S2-D: only GATE predicates compose; a decoded Evaluate is
+                    // observed and dropped by this filter. gateKeys therefore
+                    // stays the GATE keys — GateEvaluated keeps gate semantics
+                    // (it is never reused for an Evaluate).
+                    val predicates = decoded.filterIsInstance<DecodedBeforeStage.GatePredicate>().map { gate ->
                         GateCompositionPlanner.DeclaredGate(gate.key, gate.predicate)
                     }
+                    val gateKeys = predicates.map { it.key.value }
 
                     when (val composition = GateCompositionPlanner.compose(predicates)) {
                         is GateCompositionDecision.Conflicting -> {
@@ -523,7 +558,7 @@ class CanonicalDurableRunCoordinator(
                             return@run currentOutcome
                         }
 
-                        // Empty cannot occur here (gateInterpretation is non-empty),
+                        // Empty cannot occur here (beforeStageSeam is non-empty),
                         // but the ADT is exhaustive and the compiler enforces it.
                         GateCompositionDecision.Empty -> Unit
 
@@ -2373,27 +2408,71 @@ class CanonicalDurableRunCoordinator(
  * invariant this adapter makes unrepresentable.
  */
 /**
- * S2-C: the erased shape of an already-admitted gate, BEFORE composition.
+ * S2-D: the typed classification of ONE admitted BEFORE_STAGE directive whose
+ * declared policy entered the decode seam (Gate | Evaluate), after its OWN
+ * codec ran.
  *
  * A directive definition owns its own codec, so the engine cannot know
- * statically that a definition declaring policy Gate decodes to a
- * WhenPredicate. This sealed pair is the single point where that erasure is
- * CHECKED, so a self-contradictory definition becomes a typed value the
- * coordinator can fail closed on, instead of a ClassCastException escaping from
+ * statically what a definition decodes to. This sealed ADT is the single point
+ * where that erasure is CHECKED, so a self-contradictory definition (or an
+ * undecodable one) becomes a typed value the coordinator can fail closed on,
+ * instead of a ClassCastException — or a silently-running stage — escaping from
  * the run loop.
+ *
+ * Illegal states are unrepresentable: [Evaluated] deliberately carries NO
+ * payload, because a decoded Evaluate has no consumer in this phase and
+ * carrying `input: Any` would reintroduce the untyped boundary the kernel
+ * eradicated at the registry ([dev.rubentxu.pipeline.v2.domain.directive.DirectiveDefinitionAny]).
+ * [Denied] centralises the three decode-seam failure causes (not resolvable,
+ * Malformed, gate-decoded-to-non-predicate). [GatePredicate] keeps the S2-C
+ * meaning: the erased shape of an already-admitted gate, BEFORE composition.
  */
-private sealed interface DecodedGate {
+private sealed interface DecodedBeforeStage {
     val key: dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
 
-    data class Predicate(
+    /** Gate decoded to its predicate; S2-C composition consumes exactly this. */
+    data class GatePredicate(
         override val key: dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey,
         val predicate: dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate,
-    ) : DecodedGate
+    ) : DecodedBeforeStage
 
+    /** Evaluate decoded: observes and continues; nothing is consumed. */
+    data class Evaluated(
+        override val key: dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey,
+    ) : DecodedBeforeStage
+
+    /**
+     * Fail-closed: the directive's decode contract failed (or the policy cannot
+     * be interpreted in this seam). The stage never starts.
+     */
     data class Denied(
         override val key: dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey,
         val reason: String,
-    ) : DecodedGate
+    ) : DecodedBeforeStage
+}
+
+/**
+ * S2-D (D3): the reason wording for a Malformed decode in the seam.
+ *
+ * The denial is fail-closed of the ENGINE, not a veto of the directive: an
+ * `Evaluate` observes and cannot veto, so a Malformed is that directive's OWN
+ * contract failing (it could not read the arguments its author wrote). The
+ * reason names the declared policy so the diagnostic says WHOSE contract
+ * failed; the failure kind stays USER either way (the author wrote the args).
+ * Total over the closed policy ADT.
+ */
+private fun seamDecodeFailureReason(
+    policy: dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy,
+    decodeReason: String,
+): String = when (policy) {
+    is dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy.Gate ->
+        "declared a gate whose arguments could not be decoded: " + decodeReason
+
+    is dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy.Evaluate ->
+        "declared policy evaluate whose arguments could not be decoded: " + decodeReason
+
+    is dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy.ProvideContext ->
+        "declared policy provide-context whose arguments could not be decoded: " + decodeReason
 }
 
 private class NoopStepRegistry(private val delegate: StepRegistry?) : StepRegistry {

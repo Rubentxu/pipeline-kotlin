@@ -265,32 +265,6 @@ open class StageScopeCore(
     }
 
     /**
-     * Conditional execution, Jenkins `when { }` style.
-     *
-     * NOT SUPPORTED. The IR has no conditional step and no field to carry the
-     * expression, so a `when` block can only ever be flattened into the stage
-     * unconditionally. Observed on the installed distribution: a body guarded by
-     * `whenCondition("1 == 2")` still ran and the run reported success, so the
-     * predicate was silently discarded while the script believed it was gating
-     * execution. Appending the body would be a fake fallback, so the call is
-     * rejected instead (same law as `post { }` in [StageScope.toStageBuilder]
-     * and `retry(conditions)`).
-     *
-     * @throws IllegalArgumentException always. Remove the `whenCondition` wrapper
-     *   and express the gating outside the stage, or implement conditional steps.
-     */
-    @Suppress("UnusedParameter") // `block` is retained so a rejected call still fails with THIS
-    // diagnostic instead of a bare Kotlin signature error; the body is never invoked.
-    fun whenCondition(expression: String, block: StageScope.() -> Unit) {
-        throw IllegalArgumentException(
-            "whenCondition(\"$expression\") is not supported: the compiled execution path has no " +
-                "conditional step, so the expression cannot be carried into the IR and the block would " +
-                "run unconditionally. Declaring a predicate that is then ignored is a silent lie; " +
-                "remove the whenCondition wrapper instead.",
-        )
-    }
-
-    /**
      * REMOVED (S0 Semantic Honesty Gate / Semantic Conservation Law).
      *
      * `agent(label)` used to project an [AgentSpec] into `CompiledPipeline.agent` and

@@ -42,6 +42,7 @@ import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.StageFinished
+import dev.rubentxu.pipeline.v2.events.StageSkipped
 import dev.rubentxu.pipeline.v2.events.StageMarkedUnstable
 import dev.rubentxu.pipeline.v2.events.StageStarted
 import dev.rubentxu.pipeline.v2.events.StashCreated
@@ -158,6 +159,7 @@ object EnvelopeProjector {
         is StepAdmissionObserved -> ResourceRefs.step(event.runId, event.stageIndex, event.stepIndex)
         // STAGE subject
         is StageStarted -> ResourceRefs.stage(event.runId, event.stageIndex)
+        is StageSkipped -> ResourceRefs.stage(event.runId, event.stageIndex)
         is StageFinished -> ResourceRefs.stage(event.runId, event.stageIndex)
         is ParallelBranchStarted -> ResourceRefs.stage(event.runId, event.parentStageIndex)
         is ParallelBranchFinished -> ResourceRefs.stage(event.runId, event.parentStageIndex)

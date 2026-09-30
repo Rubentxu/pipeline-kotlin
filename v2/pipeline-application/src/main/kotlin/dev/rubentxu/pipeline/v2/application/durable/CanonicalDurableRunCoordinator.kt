@@ -188,6 +188,47 @@ class CanonicalDurableRunCoordinator(
     // are denied (no composition = no resolution), and stages without
     // directives behave exactly as before: the seam is additive.
     private val directiveRegistry: dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry? = null,
+
+    /**
+     * S2-A: decodes a gate directive's arguments into the predicate the engine
+     * will evaluate.
+     *
+     * Injected as a PORT on purpose. The engine must not know that `core.when`
+     * exists, let alone how to read its arguments: it only needs "this gate's
+     * predicate". A future vendor gate supplies its own decoder through the
+     * same seam, with zero change to this class.
+     */
+    private val gateDecoder: (
+        definition: dev.rubentxu.pipeline.v2.domain.directive.DirectiveDefinitionAny,
+        encodedArguments: String,
+    ) -> dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate? = { _, _ -> null },
+
+    /**
+     * S2-A: the facts a gate is evaluated against, read at the effect boundary.
+     *
+     * Takes the CURRENT STAGE's declared environment: a gate is a property of
+     * the stage that carries it, and the stage's own `environment { }` block
+     * is the only environment the DSL can express. Reading a pipeline-level or
+     * ambient environment instead would make the same script gate differently
+     * for reasons its author never wrote.
+     */
+    private val gateContext: (
+        stageEnvironment: dev.rubentxu.pipeline.v2.domain.EnvironmentSpec,
+    ) -> dev.rubentxu.pipeline.v2.domain.directive.GateContext =
+        { dev.rubentxu.pipeline.v2.domain.directive.GateContext.EMPTY },
+
+    /**
+     * S2-A: the PURE decision. Injected so the engine interprets a verdict
+     * rather than computing one, keeping "decide" and "interpret" separate as
+     * the architecture requires.
+     */
+    private val gateEvaluator: (
+        predicate: dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate,
+        context: dev.rubentxu.pipeline.v2.domain.directive.GateContext,
+    ) -> dev.rubentxu.pipeline.v2.domain.directive.GateVerdict =
+        { predicate, context ->
+            dev.rubentxu.pipeline.v2.domain.directive.WhenPredicateEvaluator.evaluate(predicate, context)
+        },
 ) {
     /**
      * Compatibility constructor for the consolidated capability bundle.
@@ -221,6 +262,8 @@ class CanonicalDurableRunCoordinator(
         injectedBodyPolicyResolver = caps.injectedBodyPolicyResolver,
         bodyInvokerAdapter = caps.bodyInvokerAdapter,
         directiveRegistry = caps.directiveRegistry,
+        gateDecoder = caps.gateDecoder,
+        gateContext = caps.gateContext,
     )
     // B10/W1c + WU-RP-033: the body execution policy authority. The production default
     // composes TWO declared-policy authorities, both fail-closed and neither key-specific:
@@ -391,6 +434,105 @@ class CanonicalDurableRunCoordinator(
                         }
                     }
                     null -> Unit
+                }
+
+                // S2-A: interpret the gate. The DECISION is pure
+                // (WhenPredicateEvaluator); this is the effect boundary that
+                // reads the policy the definition declared. The engine reads
+                // the POLICY, never the key, so a future vendor gate needs no
+                // change here.
+                if (directiveRegistry != null) {
+                    val gates = stage.directives
+                        .mapNotNull { declared ->
+                            val definition = directiveRegistry.find(
+                                dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey(declared.key)
+                            )
+                            if (definition?.policy !is
+                                dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy.Gate
+                            ) {
+                                null
+                            } else {
+                                definition to declared
+                            }
+                        }
+
+                    for ((definition, declared) in gates) {
+                        val decoded = gateDecoder(definition, declared.encodedArguments)
+                        if (decoded == null) {
+                            // A gate whose arguments cannot be read is a
+                            // programming error in the definition, and failing
+                            // closed is the only safe reading.
+                            val reason = "directive '${declared.key}' declared a gate " +
+                                "whose arguments could not be decoded"
+                            eventSink.append(
+                                dev.rubentxu.pipeline.v2.events.DirectiveDenied(
+                                    eventId = UUID.randomUUID().toString(),
+                                    runId = runId.value,
+                                    sequence = 0L,
+                                    occurredAt = Instant.now(),
+                                    stageIndex = stageIndex,
+                                    stageName = stage.name,
+                                    directiveKey = declared.key,
+                                    reason = reason,
+                                ),
+                            )
+                            currentOutcome = RunOutcome.Failure(
+                                PipelineFailure(
+                                    dev.rubentxu.pipeline.v2.domain.FailureKind.USER,
+                                    reason,
+                                ),
+                            )
+                            return@run currentOutcome
+                        }
+
+                        val context = gateContext(stage.environment)
+                        when (val verdict = gateEvaluator(decoded, context)) {
+                            is dev.rubentxu.pipeline.v2.domain.directive.GateVerdict.Satisfied -> Unit
+
+                            is dev.rubentxu.pipeline.v2.domain.directive.GateVerdict.NotSatisfied -> {
+                                // A DECIDED negative: skip the stage and say so.
+                                eventSink.append(
+                                    dev.rubentxu.pipeline.v2.events.StageSkipped(
+                                        eventId = UUID.randomUUID().toString(),
+                                        runId = runId.value,
+                                        sequence = 0L,
+                                        occurredAt = Instant.now(),
+                                        stageIndex = stageIndex,
+                                        stageName = stage.name,
+                                        reason = verdict.reason,
+                                    ),
+                                )
+                                continue@stagesLoop
+                            }
+
+                            is dev.rubentxu.pipeline.v2.domain.directive.GateVerdict.Unverifiable -> {
+                                // NOT a skip. Nobody could prove the predicate, so
+                                // the run fails closed rather than reporting
+                                // success for work that never ran.
+                                val reason = "stage '${stage.name}' gate could not be verified: " +
+                                    verdict.reason
+                                eventSink.append(
+                                    dev.rubentxu.pipeline.v2.events.DirectiveDenied(
+                                        eventId = UUID.randomUUID().toString(),
+                                        runId = runId.value,
+                                        sequence = 0L,
+                                        occurredAt = Instant.now(),
+                                        stageIndex = stageIndex,
+                                        stageName = stage.name,
+                                        directiveKey = declared.key,
+                                        reason = reason,
+                                    ),
+                                )
+                                currentOutcome = RunOutcome.Failure(
+                                    PipelineFailure(
+                                        dev.rubentxu.pipeline.v2.domain.FailureKind.USER,
+                                        reason,
+                                    ),
+                                )
+                                return@run currentOutcome
+                            }
+                        }
+                    }
                 }
 
                 // Stage boundary: ambient context must be structurally empty when entering a stage

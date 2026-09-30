@@ -102,6 +102,34 @@ data class StageFinished(
 }
 
 /**
+ * S2-A: emitted when a stage was NOT executed because its `when` gate
+ * evaluated to a decided negative.
+ *
+ * This event is what makes a conditional observable. Without it, a skipped
+ * stage is indistinguishable from a stage that ran and did nothing, and the
+ * Per-Step Observability law is violated: an external system could not tell a
+ * deliberate skip from a silent no-op.
+ *
+ * [reason] carries the gate's own diagnostic, so "why did my stage not run"
+ * is answerable from the event stream without re-reading the script.
+ *
+ * A gate that could not be evaluated does NOT produce this event; it fails the
+ * run closed instead. Emitting a skip for an unverifiable predicate would be
+ * exactly the silent lie this whole design exists to prevent.
+ */
+data class StageSkipped(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stageIndex: Int,
+    val stageName: String,
+    val reason: String,
+) : DomainEvent {
+    override val kind: String get() = "StageSkipped"
+}
+
+/**
  * Emitted when a step within a stage starts.
  */
 data class StepStarted(

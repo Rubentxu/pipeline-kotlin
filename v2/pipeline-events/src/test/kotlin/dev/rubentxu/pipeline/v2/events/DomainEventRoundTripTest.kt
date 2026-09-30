@@ -325,14 +325,15 @@ class DomainEventRoundTripTest {
     }
 
     @Test
-    fun `sealed hierarchy contains 53 variants`() {
+    fun `sealed hierarchy contains 54 variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
         val count = sealedSubclasses.size
         assertEquals(
-            53,
+            54,
             count,
-            "DomainEvent sealed hierarchy must have exactly 53 variants " +
-                "(51 + DirectiveAdmitted/DirectiveDenied added in S1-C directive seam). " +
+            "DomainEvent sealed hierarchy must have exactly 54 variants " +
+                "(51 + DirectiveAdmitted/DirectiveDenied added in S1-C directive seam, " +
+                "+ StageSkipped added in S2-A so a gated-off stage is observable). " +
                 "Found: ${sealedSubclasses.map { it.simpleName }}",
         )
     }

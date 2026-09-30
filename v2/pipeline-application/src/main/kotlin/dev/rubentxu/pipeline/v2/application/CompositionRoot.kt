@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.directivekey.WHEN_DIRECTIVE_KEY
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
@@ -99,19 +100,74 @@ internal fun runCanonicalPipeline(
         artifactIndex = dev.rubentxu.pipeline.v2.application.durable.ArtifactIndexAdapter.build(),
         // S1-D: fold external directive contributions discovered under the plugin
         // classloader's TCCL. Null loader => null registry => legacy behaviour.
-        directiveRegistry = pluginClassLoader?.let { loader ->
-            val previousTccl = Thread.currentThread().contextClassLoader
-            Thread.currentThread().contextClassLoader = loader
-            try {
-                val builder = dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry.Builder()
-                val contributed = ExternalDirectivePluginDiscovery.registerInto(builder)
-                if (contributed.isNotEmpty()) {
-                    System.err.println("Discovered external directive plugins: " + contributed.joinToString(", "))
+        //
+        // S2-A: `core.when` is a CORE definition, so it is registered here
+        // unconditionally rather than through the plugin classpath. It enters
+        // through the same open registry as any vendor directive, which is what
+        // keeps "open by key" honest: if it needed a special case, the seam
+        // would not be open.
+        directiveRegistry = run {
+            val builder = dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry.Builder()
+            builder.add(
+                dev.rubentxu.pipeline.v2.domain.directive.ErasedDirectiveDefinition(
+                    WhenDirectiveDefinition()
+                )
+            )
+            if (pluginClassLoader != null) {
+                val previousTccl = Thread.currentThread().contextClassLoader
+                Thread.currentThread().contextClassLoader = pluginClassLoader
+                try {
+                    val contributed = ExternalDirectivePluginDiscovery.registerInto(builder)
+                    if (contributed.isNotEmpty()) {
+                        System.err.println(
+                            "Discovered external directive plugins: " + contributed.joinToString(", ")
+                        )
+                    }
+                } finally {
+                    Thread.currentThread().contextClassLoader = previousTccl
                 }
-                builder.build()
-            } finally {
-                Thread.currentThread().contextClassLoader = previousTccl
             }
+            builder.build()
+        },
+        // S2-A: the gate decoder is the ONE place that knows the `core.when`
+        // codec. The engine receives a function, never a key switch.
+        gateDecoder = { definition, encodedArguments ->
+            when (definition.key) {
+                WHEN_DIRECTIVE_KEY ->
+                    (dev.rubentxu.pipeline.v2.domain.directive.WhenPredicateCodec.decode(encodedArguments)
+                        as? dev.rubentxu.pipeline.v2.domain.directive.DirectiveDecodeResult.Decoded)
+                        ?.input
+                // An unknown gate has no decoder: returning null makes the
+                // engine fail closed rather than skip the stage.
+                else -> null
+            }
+        },
+        // S2-A: gates read the environment the STAGE actually declares, plus
+        // the process environment for names the stage names explicitly.
+        //
+        // The stage's own `environment { env(...) }` block is the source of
+        // truth, because that is what the DSL can express. `pipeline.environment`
+        // is a separate pipeline-level spec the DSL does not populate, so
+        // reading only that would make every real gate see an empty world and
+        // skip unconditionally.
+        //
+        // Only variables the stage DECLARES are read from the host: a gate must
+        // not be able to observe an arbitrary ambient process variable, or the
+        // same script would behave differently on different machines for
+        // reasons the author never wrote down.
+        //
+        // The precedence itself is a decision and lives in the domain as
+        // [dev.rubentxu.pipeline.v2.domain.directive.GateEnvironmentPrecedence];
+        // this adapter only captures the ambient effect and hands the two maps
+        // to it. Reading `System.getenv()` inline and merging here was a real
+        // defect: `declared + host` let a host variable overwrite the value the
+        // author wrote in the stage, contradicting both the comment above and
+        // the established `EnvironmentComposer` base-then-stage ordering.
+        gateContext = { stageEnvironment ->
+            dev.rubentxu.pipeline.v2.domain.directive.GateEnvironmentPrecedence.DEFAULT.resolve(
+                declared = stageEnvironment.values,
+                host = System.getenv(),
+            )
         },
     ).run(pipeline, runId)
 }

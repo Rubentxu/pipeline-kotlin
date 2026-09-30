@@ -571,6 +571,20 @@ object JsonEventLog {
                     reason = reason,
                 )
             }
+            "StageSkipped" -> {
+                val stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0
+                val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
+                val reason = EventJsonFields.stringField(s, "reason") ?: ""
+                StageSkipped(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    stageIndex = stageIndex,
+                    stageName = stageName,
+                    reason = reason,
+                )
+            }
             "DirEntered" -> {
                 val path = EventJsonFields.stringField(s, "path") ?: ""
                 val previousPath = EventJsonFields.stringField(s, "previousPath") ?: ""

@@ -33,6 +33,7 @@ class InMemoryEventStore : EventSink {
             is CompilationFinished -> event.copy(sequence = assignedSequence)
             is RunFinished -> event.copy(sequence = assignedSequence)
             is StageStarted -> event.copy(sequence = assignedSequence)
+            is StageSkipped -> event.copy(sequence = assignedSequence)
             is StageFinished -> event.copy(sequence = assignedSequence)
             is StepStarted -> event.copy(sequence = assignedSequence)
             is StepFinished -> event.copy(sequence = assignedSequence)

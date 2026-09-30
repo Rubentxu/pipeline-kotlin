@@ -56,6 +56,9 @@ The machine-check enforces, against live code (not this file alone):
 
 | Construct | Signature | Category | State | ResultConsumption | Lowers to / Interpreter |
 |---|---|---|---|---|---|
+| whenGate | `whenGate(predicate)` | DECLARATIVE_DIRECTIVE | STABLE | NOT_APPLICABLE | StageDirective(core.when) -> DirectiveExecutionPolicy.Gate -> GateEvaluator (BEFORE_STAGE) |
+| whenEnvIs | `whenEnvIs(variable, expected)` | DECLARATIVE_DIRECTIVE | STABLE | NOT_APPLICABLE | whenGate(VariableEquals) |
+| whenEnvPresent | `whenEnvPresent(variable)` | DECLARATIVE_DIRECTIVE | STABLE | NOT_APPLICABLE | whenGate(VariablePresent) |
 | echo | `echo(text)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | StepSpec.Echo -> core.echo -> CoreEchoStep |
 | sh | `sh(command)` / `sh(script, isScriptBlock, returnStdout)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | StepSpec.Shell -> core.sh -> CoreShellStep |
 | error | `error(message, failureKind)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | StepSpec.Error -> core.error -> CoreErrorStep |
@@ -110,8 +113,12 @@ The machine-check enforces, against live code (not this file alone):
 |---|---|---|---|---|---|
 | agent | `agent(label, remoteUri?): Nothing` (stage level) | UNSUPPORTED_FAIL_CLOSED | UNSUPPORTED_FAIL_CLOSED | NOT_APPLICABLE | "agent", "no runtime component ever read it" |
 | retry (retrofit) | `retry(count, delaySeconds?): Nothing` (step level) | UNSUPPORTED_FAIL_CLOSED | UNSUPPORTED_FAIL_CLOSED | NOT_APPLICABLE | "removed", "consumer", points at block form |
-| whenCondition | `whenCondition(expression) { }` | UNSUPPORTED_FAIL_CLOSED | UNSUPPORTED_FAIL_CLOSED | NOT_APPLICABLE | "not supported", "conditional step" |
 | retry conditions | overload `retry(n, conditions) { }` REMOVED from surface | UNSUPPORTED_FAIL_CLOSED | UNSUPPORTED_FAIL_CLOSED | NOT_APPLICABLE | plain Kotlin signature error; reflection pins no List-taking overload |
+
+`whenCondition(String) { }` was REMOVED in S2-A, not merely deprecated. It
+accepted an unencoded expression string that no decoder could read, so it always
+rejected. It is replaced by the typed `whenGate`/`whenEnvIs`/`whenEnvPresent`
+family in section 2, which encode a predicate the runtime can actually decode.
 
 ## 6. Closed sets (machine-check targets)
 

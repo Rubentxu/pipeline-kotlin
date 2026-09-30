@@ -260,12 +260,17 @@ class FArchS0SurfaceManifestTest {
 
     @Test
     fun `fail-closed stubs still throw at call time`() {
-        // The manifest pins three throwing stubs on the live StageScope surface.
+        // The manifest pins the throwing stubs on the live StageScope surface.
         // If any of them stopped throwing (or was silently turned into a no-op),
         // the surface would accept a construct whose semantics nobody implements.
+        //
+        // `whenCondition` was REMOVED in S2-A and is no longer pinned here: it
+        // accepted an unencoded expression string that no decoder could read, so
+        // it could only ever reject. Its typed replacement (`whenGate` /
+        // `whenEnvIs` / `whenEnvPresent`) is covered by the manifest rows in
+        // section 2 and by the directive gate UAT.
         val throwing = listOf(
             Triple("agent", arrayOf("linux"), 2),
-            Triple("whenCondition", arrayOf("1 == 2", Any()), 2),
         )
         val scope = dev.rubentxu.pipeline.v2.dsl.StageScope("manifest-probe")
         for ((name, args, arity) in throwing) {

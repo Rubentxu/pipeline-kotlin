@@ -101,7 +101,7 @@ class UatS2R0RunOwnershipCliTest {
         val held = dev.rubentxu.pipeline.v2.events.durable.FileBackedRunExecutionLeaseStore(leaseDir)
         val holderOwner =
             dev.rubentxu.pipeline.v2.events.durable.RunOwnerId.of("external-live-owner")!!
-        val runId = runIdOf(tmp, controlRoot, db)
+        val runId = runIdOf(controlRoot)
         val acquired = held.acquire(
             dev.rubentxu.pipeline.v2.events.durable.LeaseRequest(runId, holderOwner)
         )
@@ -152,7 +152,7 @@ class UatS2R0RunOwnershipCliTest {
      * flat directory of one file per definition whose content is the run id, so
      * the run id is the newest such file's content.
      */
-    private fun runIdOf(tmp: Path, controlRoot: Path, db: Path): String {
+    private fun runIdOf(controlRoot: Path): String {
         val lastRunRoot = controlRoot.resolve("last-run")
         val files = Files.list(lastRunRoot).use { s -> s.toList() }
         assertTrue(files.isNotEmpty(), "the CLI must record a run id under $lastRunRoot")

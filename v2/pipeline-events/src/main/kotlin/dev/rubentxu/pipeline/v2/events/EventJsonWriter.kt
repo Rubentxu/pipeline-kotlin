@@ -115,6 +115,14 @@ internal object EventJsonWriter {
                 sb.append(",\"outcome\":")
                 sb.append(EventJsonWriter.jsonString(event.outcome))
             }
+            is StageSkipped -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
             is StepStarted -> {
                 sb.append(",\"stageIndex\":")
                 sb.append(event.stageIndex)

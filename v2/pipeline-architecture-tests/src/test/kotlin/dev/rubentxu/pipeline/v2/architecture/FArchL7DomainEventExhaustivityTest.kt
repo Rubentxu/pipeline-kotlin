@@ -87,13 +87,15 @@ class FArchL7DomainEventExhaustivityTest {
      * 51. HtmlReportFailed (WU-LPR-090 phase-a — core.publishHtml typed failure observability)
      * 52. DirectiveAdmitted (S1-C — directive seam admission observability)
      * 53. DirectiveDenied (S1-C — directive seam fail-closed denial observability)
+     * 54. StageSkipped (S2-A — a stage whose gate verdict was a decided negative)
      */
     @Test
     fun `domain_event_sealed_hierarchy_has_51_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
-        val expectedCount = 53 // 51 + DirectiveAdmitted/DirectiveDenied (S1-C directive seam)
+        // 53 through S1-C, plus StageSkipped (S2-A directive gate observability).
+        val expectedCount = 54
 
         assertEquals(
             expectedCount,

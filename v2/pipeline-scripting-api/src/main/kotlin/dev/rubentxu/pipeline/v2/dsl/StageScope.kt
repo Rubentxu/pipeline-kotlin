@@ -28,6 +28,32 @@ class DirectivesScope {
         declared += dev.rubentxu.pipeline.v2.domain.StageDirective(key, encodedArguments)
     }
 
+    /**
+     * S2-A: the typed `when` gate, as a first-class convenience.
+     *
+     * The generic [directive] entry point stays available and unchanged; this
+     * only removes the need for an author to hand-encode the predicate. It
+     * constructs data and nothing else: the verdict is reached by the durable
+     * coordinator before the stage body runs.
+     */
+    fun whenGate(predicate: dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate) {
+        directive(
+            key = dev.rubentxu.pipeline.v2.domain.directivekey.WHEN_DIRECTIVE_KEY.value,
+            encodedArguments =
+                dev.rubentxu.pipeline.v2.domain.directive.WhenPredicateEncoder.encode(predicate),
+        )
+    }
+
+    /** Jenkins-familiar shorthand: gate on an exact variable value. */
+    fun whenEnvIs(variable: String, expected: String) {
+        whenGate(dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate.VariableEquals(variable, expected))
+    }
+
+    /** Gate on a variable being set and non-empty. */
+    fun whenEnvPresent(variable: String) {
+        whenGate(dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate.VariablePresent(variable))
+    }
+
     fun build(): List<dev.rubentxu.pipeline.v2.domain.StageDirective> = declared.toList()
 }
 
@@ -664,7 +690,61 @@ class StageScope(
     fun directives(block: DirectivesScope.() -> Unit) {
         val scope = DirectivesScope()
         scope.block()
-        stageDirectives = scope.build()
+        // S2-A: ACCUMULATE, do not assign. Two paths declare stage directives
+        // (`directives { }` and the typed `when*` helpers) and both may be
+        // used in the same stage. Assigning here silently discarded a `when`
+        // declared earlier in the stage body, which would have run the stage
+        // unconditionally while the script clearly meant to gate it — a
+        // fail-OPEN defect, the worst possible direction for a gate.
+        stageDirectives = stageDirectives + scope.build()
+    }
+
+    /**
+     * S2-A: conditional stage execution, now REAL.
+     *
+     * Previously `whenCondition("1 == 2")` was rejected outright, because a
+     * `String` cannot carry semantics into the IR: the expression would have
+     * to be re-parsed at runtime by an interpreter that did not exist, and the
+     * only honest outcome was to refuse. Observed on the installed
+     * distribution: a body guarded by `whenCondition` still ran and the run
+     * reported success, so the predicate was silently discarded while the
+     * script believed it was gating execution.
+     *
+     * Now the predicate is a VALUE, not text. These helpers construct a typed
+     * [dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate] and append a
+     * `core.when` stage directive carrying its encoded form. Nothing is
+     * evaluated here: the gate runs in the durable coordinator before the stage
+     * body, and its verdict is observable.
+     *
+     * PURE by construction (Semantic Conservation Law): no I/O, no process
+     * execution, no clock read, and no placeholder runtime value.
+     * `whenEnvIs("DEPLOY_ENV", "prod")` stores the NAME and the EXPECTED STRING;
+     * it never pretends to know what the variable currently holds.
+     *
+     * They APPEND rather than replace, so a `directives { }` block and these
+     * shorthands can be combined without one silently discarding the other.
+     */
+    fun whenGate(predicate: dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate) {
+        stageDirectives = stageDirectives + appendWhenGate(predicate)
+    }
+
+    /**
+     * Jenkins-familiar form: gate a stage on an exact variable value.
+     *
+     * This is a DECLARATION: the comparison happens at run time against the
+     * real context, never during script construction.
+     */
+    fun whenEnvIs(variable: String, expected: String) {
+        whenGate(
+            dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate.VariableEquals(variable, expected)
+        )
+    }
+
+    /** Gate on a variable being set and non-empty. */
+    fun whenEnvPresent(variable: String) {
+        whenGate(
+            dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate.VariablePresent(variable)
+        )
     }
 
     fun toStageBuilder(): StageBuilder {

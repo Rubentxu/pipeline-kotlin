@@ -78,7 +78,7 @@ class CandidateIdentityEndToEndTest {
             zip = zip,
             productVersion = ProductVersion.parseOrThrow(declared),
             gitCommit = "deadbeef",
-            gitTag = "v$declared",
+            candidateRef = "v$declared",
             toolchain = "gradle-test",
             sbom = null,
             sha256sums = null,

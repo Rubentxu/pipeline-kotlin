@@ -16,7 +16,7 @@ import kotlin.system.exitProcess
  *
  * ```text
  * usage: candidate-admission <zip> <productVersion> <gitCommit> <outDir>
- *                          [<gitTag>] [<candidateSequence>] [<sbomPath>]
+ *                      [<candidateRef>] [<candidateSequence>] [<sbomPath>]
  * exit  0 = admitted, 1 = refused
  * ```
  */
@@ -24,7 +24,7 @@ fun main(args: Array<String>) {
     if (args.size < 4) {
         System.err.println(
             "usage: candidate-admission <zip> <productVersion> <gitCommit> <outDir> " +
-                "[<gitTag>] [<candidateSequence>] [<sbomPath>]",
+                "[<candidateRef>] [<candidateSequence>] [<sbomPath>]",
         )
         exitProcess(2)
     }
@@ -40,7 +40,7 @@ fun main(args: Array<String>) {
         zip = zip,
         productVersion = args[1],
         gitCommit = args[2],
-        gitTag = args.getOrNull(4)?.takeIf { it.isNotBlank() && it != "-" },
+        candidateRef = args.getOrNull(4)?.takeIf { it.isNotBlank() && it != "-" },
         toolchain = "Gradle ${projectVersionOf(args)}",
         sbom = args.getOrNull(6)?.takeIf { it.isNotBlank() && it != "-" }?.let { Paths.get(it) },
         sha256sums = null,

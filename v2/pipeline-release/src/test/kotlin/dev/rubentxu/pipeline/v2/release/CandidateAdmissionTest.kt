@@ -49,7 +49,7 @@ class CandidateAdmissionTest {
         zip = zip,
         productVersion = declared,
         gitCommit = "abc123",
-        gitTag = null,
+        candidateRef = null,
         toolchain = "test",
         sbom = null,
         sha256sums = null,

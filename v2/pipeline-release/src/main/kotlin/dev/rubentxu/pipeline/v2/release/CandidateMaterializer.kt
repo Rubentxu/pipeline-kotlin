@@ -35,7 +35,7 @@ object CandidateMaterializer {
      * or produces no candidate at all.
      *
      * [productVersion] is the build's declared identity. [gitCommit],
-     * [gitTag] and [toolchain] are provenance. [sbom] is optional because the
+     * [candidateRef] and [toolchain] are build provenance, never promotion. [sbom] is optional because the
      * CycloneDX task may not have run; the manifest records its absence rather
      * than pretending it exists.
      */
@@ -43,7 +43,7 @@ object CandidateMaterializer {
         zip: Path,
         productVersion: ProductVersion,
         gitCommit: String,
-        gitTag: String?,
+        candidateRef: String?,
         toolchain: String,
         sbom: Path?,
         sha256sums: Path?,
@@ -85,7 +85,7 @@ object CandidateMaterializer {
                 sha256 = sha256Of(zip),
                 implementationVersion = DistributionIdentityProbe.jarImplementationVersion(zip),
             ),
-            source = DistributionSource(gitCommit, gitTag, toolchain),
+            source = DistributionSource(gitCommit, candidateRef, toolchain),
             sbom = sbom?.let { DistributionArtifactRef(it.fileName.toString(), sha256Of(it)) },
             sha256sums = sha256sums?.let { DistributionArtifactRef(it.fileName.toString(), sha256Of(it)) },
         )
@@ -106,9 +106,9 @@ object CandidateMaterializer {
             distributionManifest = CandidateFileRef(
                 name = MANIFEST_NAME,
                 sha256 = "",
-                builtAt = gitTag ?: gitCommit,
+                builtAt = candidateRef ?: gitCommit,
             ),
-            sbom = manifest.sbom?.let { CandidateFileRef(it.name, it.sha256, gitTag ?: gitCommit) },
+            sbom = manifest.sbom?.let { CandidateFileRef(it.name, it.sha256, candidateRef ?: gitCommit) },
         )
 
         val verdict = evaluateCandidateHandoff(handoff, manifest, manifest.asset.sha256)

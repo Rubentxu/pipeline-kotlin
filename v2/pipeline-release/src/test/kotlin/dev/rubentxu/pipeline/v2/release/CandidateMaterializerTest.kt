@@ -63,7 +63,7 @@ class CandidateMaterializerTest {
             zip = zip,
             productVersion = ProductVersion.parseOrThrow(version),
             gitCommit = "deadbeef",
-            gitTag = "v$version",
+            candidateRef = "v$version",
             toolchain = "gradle-test",
             sbom = null,
             sha256sums = null,

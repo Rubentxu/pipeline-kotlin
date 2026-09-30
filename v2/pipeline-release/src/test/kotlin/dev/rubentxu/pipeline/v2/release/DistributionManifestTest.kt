@@ -39,7 +39,7 @@ class DistributionManifestTest {
         ),
         source = DistributionSource(
             gitCommit = "b".repeat(40),
-            gitTag = "v$version",
+            candidateRef = "v$version",
             toolchain = "Gradle 9.0 / Kotlin 2.4.10 / JDK 21",
         ),
         sbom = DistributionArtifactRef("pipelinek-$version.sbom.json", "c".repeat(64)),

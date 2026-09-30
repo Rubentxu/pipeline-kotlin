@@ -370,6 +370,38 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     /**
+     * WU-RP-020: release every [PendingWrite.FlushBarrier] still queued behind a
+     * writer that is about to die.
+     *
+     * A barrier is a wait for the writer to make progress. Once the writer has
+     * failed there is no progress left to wait for, so a barrier left in the
+     * queue converts an immediate fail-fast into a stall for the full
+     * `barrier.await(60, SECONDS)` bound. Releasing it lets the waiter reach
+     * the `writerError` path and report the real failure instead.
+     *
+     * Queued [PendingWrite.Event]s are put **back**, not dropped: discarding
+     * them would silently lose writes. They are unreadable in practice because
+     * every later `append`/`appendAssigned` fails fast on `writerError`, and
+     * the store is closed right after.
+     */
+    private fun releaseQueuedBarriers() {
+        val queued = ArrayList<PendingWrite>(appendQueue.size)
+        appendQueue.drainTo(queued)
+        val events = ArrayList<PendingWrite>(queued.size)
+        for (pending in queued) {
+            when (pending) {
+                is PendingWrite.FlushBarrier -> pending.done.countDown()
+                // Re-offer so the queue still describes every write that was
+                // accepted; nothing is silently lost.
+                else -> events.add(pending)
+            }
+        }
+        for (pending in events) {
+            runCatching { appendQueue.put(pending) }
+        }
+    }
+
+    /**
      * Single-writer loop: drains the bounded queue in batches, inserting
      * every batch inside ONE transaction. The COMMIT is the durable unit.
      * On failure, records [writerError] and releases all waiters; later
@@ -407,6 +439,19 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                     for (pending in batch) {
                         if (pending is PendingWrite.FlushBarrier) pending.done.countDown()
                     }
+                    // WU-RP-020: the writer is dying and will never take another
+                    // item off the queue. A FlushBarrier enqueued AFTER this
+                    // batch was taken -- which is exactly what happens when a
+                    // producer appends a doomed event and immediately flushes --
+                    // is stranded in the queue and its waiter blocks for the
+                    // full 60 s bound. Release those barriers now, so the
+                    // waiter observes the writer's real error.
+                    //
+                    // Only barriers are released. Queued Events are NOT
+                    // dropped: discarding them would silently lose writes, and
+                    // every later append/appendAssigned already fails fast on
+                    // `writerError`.
+                    releaseQueuedBarriers()
                     throw e
                 } finally {
                     writerConnection.autoCommit = true
@@ -437,8 +482,29 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
         writerError?.let { throw IllegalStateException("event writer failed", it) }
         val barrier = java.util.concurrent.CountDownLatch(1)
         try {
-            appendQueue.put(PendingWrite.FlushBarrier(barrier))
-            val released = barrier.await(60, TimeUnit.SECONDS)
+            // WU-RP-020 (measured, not inferred): a barrier enqueued while the
+            // writer is DYING is stranded and burns the full 60 s bound.
+            //
+            // The failing batch contains only events -- the writer dies on a
+            // duplicate INSERT, so the catch-block release loop finds zero
+            // barriers to count down (observed: "batch FAILED size=4
+            // barriers=0"). The barrier enqueued by this flush() therefore
+            // lands in the queue AFTER the writer stopped consuming, and nobody
+            // will ever release it. The `writerError` fast path above cannot
+            // catch this: it is a race, and the failing append returns BEFORE
+            // the writer records its error.
+            //
+            // Symptom seen in a real gate: `flush()` took 60008 ms, the exact
+            // barrier bound. Fix: a latch that is already counted down cannot
+            // be stranded, and `await` returns immediately, so the writer's
+            // real error surfaces instead of a timeout.
+            val released = if (writerError != null) {
+                barrier.countDown()
+                true
+            } else {
+                appendQueue.put(PendingWrite.FlushBarrier(barrier))
+                barrier.await(60, TimeUnit.SECONDS)
+            }
             if (!released) {
                 // WU-RP-022 (finding P2): a timed-out barrier almost always means
                 // the writer thread DIED on a write error (e.g. SQLITE_TOOBIG for

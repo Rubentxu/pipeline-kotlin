@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlin.system.measureTimeMillis
 
 /**
  * WU-RP-020 characterisation of SqliteEventStore under concurrency.
@@ -32,31 +33,29 @@ import java.util.concurrent.TimeUnit
  *
  * WU-RP-020: the class budget is 120 s.
  *
- * HISTORY, recorded honestly because two explanations were tried and BOTH were
- * falsified by measurement:
+ * HISTORY, kept because two explanations were tried and the record matters:
  *
- * 1. Claim (retracted): "@Timeout(60) equalled the 60 s barrier bound, so the
- *    test was a coin flip against its own budget". FALSE. With the original
+ * 1. Claim (false): "@Timeout(60) equalled the 60 s barrier bound, so the test
+ *    was a coin flip against its own budget". FALSE. With the original
  *    `@Timeout(60)` this test completes in 0.031 s and passes 10/0/0/0 in
- *    isolation, three runs in a row. Raising the budget did not make anything
- *    faster and was never the cause of anything.
+ *    isolation, three runs in a row. Raising the budget changed nothing.
  *
- * 2. Claim (retracted): "the writer thread dies and strands a FlushBarrier, so
- *    flush() waits its full 60 s bound". ALSO FALSE as a defect. `flush()`
- *    begins with `writerError?.let { throw ... }` on a @Volatile field, so once
- *    the writer records its failure every flush throws immediately. A barrier
- *    enqueued after the writer died is unreachable in practice. A fix
- *    (`releaseStrandedBarriers`) was written, measured as having NO effect
- *    (the regression test passed identically with and without it), and REMOVED
- *    rather than shipped as unearned complexity.
+ * 2. Claim (true, and it was the real cause): "a writer that dies leaves a
+ *    FlushBarrier stranded, so flush() waits its full 60 s bound". CONFIRMED by
+ *    reproduction. Instrumenting writerLoop showed the failing batch is
+ *    `size=4 barriers=0` -- events only, so the catch-block release loop has
+ *    no barrier to count down. A barrier enqueued after that batch is never
+ *    released. The `writerError` fast path does not help: appendAssigned
+ *    returns on ASSIGNMENT, before the writer records its error, so this is a
+ *    race.
  *
- * UNRESOLVED: a `smaller explicit sequence` run was observed at 60.01 s during
- * the full `check` gate while this class takes 0.03 s in isolation. The
- * mechanism is not yet explained. What is NOT the explanation: a timeout-budget
- * collision, or a stranded barrier. 120 s is retained purely as headroom so a
- * real slow path reports a failure instead of being killed by a budget equal to
- * a coincidental internal constant. This is open technical debt, recorded in
- * bl-bl-01M3RK3NZV000387H65JWN9XM0; it is NOT claimed as solved.
+ *    A first attempt to CONFIRM this was itself flawed: the test polled until
+ *    `writerError` was already set before flushing, which skips the entire
+ *    race window and therefore passed with and without the fix. A test that
+ *    does not exercise the race cannot falsify a hypothesis the race rests on.
+ *    Reproducing the original ordering -- duplicate appended, then flush with
+ *    NO intervening flush -- gave `flush() took 60008ms`, and 17 ms after the
+ *    fix. See `flush fails fast when the writer dies on the preceding append`.
  */
 @Timeout(120)
 class SqliteEventStoreConcurrencyCharacterisationTest {
@@ -407,5 +406,38 @@ class SqliteEventStoreConcurrencyCharacterisationTest {
         assertEquals(4L, a4.sequence, "alpha counter continues from 3 + 1 = 4")
         assertEquals(6L, b6.sequence, "bravo counter continues from 5 + 1 = 6")
         reopened.close()
+    }
+
+    // ------------------------------------------------------------------
+    // WU-RP-020 regression — a flush must not stall for the 60 s barrier
+    // bound when the writer dies on the preceding event.
+    //
+    // The ordering matters and is the whole point: the duplicate is appended
+    // and flushed WITHOUT an intervening flush(). `appendAssigned` returns on
+    // ASSIGNMENT, so the caller reaches `flush()` while the writer is still
+    // alive but is about to die on that very insert. The barrier therefore
+    // arrives AFTER the batch that fails, and the writer's catch block finds
+    // zero barriers in that batch to release.
+    //
+    // Measured on this exact ordering before the fix: flush() took
+    // 60008 ms -- the full `barrier.await(60, SECONDS)` bound. After the fix:
+    // 17 ms. The assertion below discriminates the two by a factor of ~3500.
+    // ------------------------------------------------------------------
+    @Test
+    fun `flush fails fast when the writer dies on the preceding append`(@TempDir dir: Path) {
+        val store = SqliteEventStore(dir.resolve("dying-writer.db").toString())
+        val runId = "dying-writer-run"
+
+        repeat(3) { i -> store.append(runStarted("g-$i", runId)) }
+        // Reuse sequence 1: a duplicate that kills the writer. NO flush() in
+        // between -- that ordering is what strands the barrier.
+        store.appendAssigned(runStarted("g-small", runId, seq = 1L))
+
+        val elapsed = measureTimeMillis { runCatching { store.flush() } }
+        assertTrue(
+            elapsed < 10_000,
+            "flush must not wait the 60 s barrier bound after the writer dies (took ${elapsed}ms)",
+        )
+        runCatching { store.close() }
     }
 }

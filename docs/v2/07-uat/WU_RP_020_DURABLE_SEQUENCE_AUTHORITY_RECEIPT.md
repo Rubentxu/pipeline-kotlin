@@ -120,7 +120,7 @@ regresión.
 | L1 GREEN | test nuevo + caracterización del store | `1/0/0/0` y `10/0/0/0` | XML `eac5b13f…` / `b430f548…`, ts `06:36:36Z` / `06:37:37Z` |
 | L2 | módulo `pipeline-events` completo | **189 tests, 0 failures, 0 errors**, 37 XML | log `a0bbb40b54152da0cce244e81286981661d7d4854693daec5794ed1089d23467` |
 | L3 | `durable.*` + blocks durables + resume + replay + concurrencia | **349 tests, 0 failures, 0 errors**, 73 XML | log `89e50f8f1b24e340c7ed14fb5b332e6f15f0c444f862fb5e500d0c6505ce7eb5` |
-| L5 | `check` completo | ver §6 | ver §6 |
+| L5 | `check` completo | **3768 tests, 0 failures, 0 errors**, 562 XML | ver §6.0 |
 
 Todos los XML se leyeron desde `build/test-results/test/`, nunca desde la consola, y todos
 los runs que debían ejecutar borraron su XML antes (canario). La clase de caracterización
@@ -142,24 +142,28 @@ El `exit code` del envoltorio fue 0 con el build fallido: por eso el veredicto s
 
 ### 6.0 Gate final: VERDE
 
-Tras arreglar los 13 sitios de emisor (§6.1), el gate completo se re-ejecutó sobre el árbol
-final:
+Tras arreglar los 13 sitios de emisor (§6.1) y el defecto de barrera huérfana (§6.2), el gate
+completo se re-ejecutó sobre el árbol final:
 
 ```text
 v2/gradlew -p v2 check
-BUILD SUCCESSFUL in 20m 38s
-562 clases XML, 3767 tests, 129 skipped, 0 failures, 0 errors
+BUILD SUCCESSFUL in 20m 51s
+562 clases XML, 3768 tests, 129 skipped, 0 failures, 0 errors
 ```
 
-Leído de los XML con canario de borrado previo, no del log ni del código de salida.
+Leído de los XML con canario de borrado previo, no del log ni del código de salida. Ningún
+test se quedó cerca de los 60 s: los únicos >30 s son los largos por naturaleza (`corpus
+smoke-runs` 172 s, `ADV-007` 43 s, resume concurrente 35 s), ninguno con la firma del
+atasco.
 
 | Nivel | Alcance | Resultado |
 |---|---|---|
 | L1 | `UatLocal008CredentialsTest` | 27 / 0 / 0 (1 skip pre-existente) |
-| L2 | módulo `pipeline-events` | **189 / 0 / 0**, 37 XML |
+| L1 | regresión de barrera (RED 60,416 s → GREEN 0,415 s) | 1 / 0 / 0 |
+| L2 | módulo `pipeline-events` | **190 / 0 / 0**, 37 XML |
 | L2 | módulo `pipeline-step-sdk:scm-git` | **47 / 0 / 0** (8 skips pre-existentes) |
 | L2 | consumidores Git de `pipeline-application` | **50 / 0 / 0** (2 skips) |
-| L5 | `check` completo | **3767 / 0 / 0**, 562 XML |
+| L5 | `check` completo | **3768 / 0 / 0**, 562 XML |
 
 ### 6.1 `UatLocal008CredentialsTest` — NO es una regresión creada por el fix
 
@@ -230,30 +234,58 @@ payload; lo que se elimina es su uso como secuencia de run.
 **Efecto:** `UatLocal008CredentialsTest` pasa de **27 / 14 failures** a **27 / 0 failures /
 0 errors** (1 skip pre-existente, `@Disabled` por classpath DSL, presente ya en base).
 
-### 6.2 La caracterización del store: 60,01 s sin causa explicada (RETIRADA la causa afirmada)
+### 6.2 La caracterización del store: 60,01 s — CAUSA ENCONTRADA Y ARREGLADA
 
 `smaller explicit sequence does not rewind the counter` tardó **60,01 s** contra un
 `@Timeout(60)` a nivel de clase durante el gate completo. No es un fallo de aserción: la
 aserción es correcta.
 
-**La explicación que se escribió aquí antes ("el timeout de clase y el de la barrera son el
-mismo número, así que la carrera se perdió") es incorrecta y se retira.** La evidencia la
-refuta: con el `@Timeout(60)` original ese test termina en **0,031 s** y pasa **10/0/0/0** en
-aislamiento, tres ejecuciones seguidas. Subir el presupuesto no volvió nada más rápido, luego
-no era la causa de nada.
+**Reproducido y explicado por medición.** Una sonda con el *ordenamiento de base* (duplicado
+anexado y `flush()` **sin** un `flush()` intermedio) reprodujo el fallo de forma
+determinista: **`flush()` tardó 60008 ms**, exactamente el límite de la barrera
+(`barrier.await(60, TimeUnit.SECONDS)`).
 
-También se ensayó y se descartó una segunda hipótesis: que el writer muerto dejaba una
-`FlushBarrier` huérfana y `flush()` quemaba su límite completo de 60 s. Se escribió un
-`releaseStrandedBarriers()` y su test; el test pasó **igual con y sin el fix**, así que el
-mecanismo no existe. `flush()` empieza por `writerError?.let { throw ... }` sobre un campo
-`@Volatile`, de modo que una vez registrado el fallo toda llamada falla ya al instante. El fix
-y su test se **eliminaron** en lugar de publicar complejidad no ganada.
+Mecanismo, observado con instrumentación del bucle escritor (retirada después):
 
-**Estado: SIN EXPLICAR.** 60,01 s en el gate completo frente a 0,03 s en aislamiento no está
-aclarado. Lo que **no** es la explicación: una colisión de presupuestos, ni una barrera
-huérfana. Se conserva `@Timeout(120)` sólo como holgura para que un camino lento real reporte
-un fallo en vez de morir contra una constante interna coincidente. Registrado como deuda
-abierta en `bl-bl-01M3RK3NZV000387H65JWN9XM0`. **No se declara resuelto.**
+```text
+PROBE-WL batch start, first=Event writerError=null
+PROBE-WL batch FAILED size=4 barriers=0     <-- el lote que muere NO contiene barrera
+PROBE flush() took 60008ms
+```
+
+El lote que falla contiene **sólo eventos** (`barriers=0`): el escritor muere en un `INSERT`
+duplicado, así que el bucle de liberación del `catch` no encuentra ninguna barrera que
+contar. La barrera que encola el `flush()` del llamador llega **después** de ese lote, cuando
+el escritor ya no consume: queda **huérfana** y su esperador quema el límite completo. El
+`writerError` no la salva porque es una **carrera**: `appendAssigned` devuelve en
+*ASIGNACIÓN*, antes de que el escritor registre su error.
+
+**Dos caminos, uno correcto y uno falso:**
+
+1. **Planteamiento original (correcto).** "El escritor muerto deja una `FlushBarrier`
+   huérfana." Resultado: **es el mecanismo real**, sólo faltaba probarlo.
+2. **Retractación (incorrecta).** Se afirmó que la barrera no podía quedar huérfana porque
+   `flush()` empieza por `writerError?.let { throw ... }` sobre un `@Volatile`. Eso es
+   cierto **sólo si el error ya está registrado**. El test que se usó para "refutarlo"
+   **esperaba a que el error estuviera registrado antes de hacer flush**, con lo que se
+   saltaba la ventana de carrera entera y pasaba idéntico con y sin el arreglo. **Una prueba
+   que no ejercita la carrera no puede refutar la hipótesis que la carrera sostiene.**
+
+**Arreglo aplicado** (`SqliteEventStore`): cuando el escritor va a morir, libera las barreras
+que queden encoladas detrás (`releaseQueuedBarriers()`), y `flush()` acepta un latch ya
+contado. Los `Event` encolados se **devuelven a la cola**, nunca se descartan: tirarlos
+perdería escrituras en silencio.
+
+| | `flush()` |
+|---|---|
+| Antes | **60008 ms** |
+| Después | **17 ms** |
+
+Test de regresión permanente: `flush fails fast when the writer dies on the preceding append`,
+con el ordenamiento exacto que lo disparaba. RED = `60.416 s` fallando por
+`took 60008ms`; GREEN = `0.415 s`. La aserción discrimina por un factor ~3500.
+
+Módulo `pipeline-events`: **190 / 0 / 0** (antes 189, +1 la regresión).
 
 ## 7. Lo que sigue abierto (no resuelto aquí)
 

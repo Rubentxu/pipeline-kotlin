@@ -1,0 +1,7 @@
+agents:
+  rubentxu:
+    capabilities:
+      - git.push
+      - git.tag
+    phases:
+      - release

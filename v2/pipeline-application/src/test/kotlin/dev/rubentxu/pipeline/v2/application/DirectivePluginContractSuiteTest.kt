@@ -76,6 +76,30 @@ class DirectivePluginContractSuiteTest {
     }
 
     /**
+     * S2-D (R4): the external plugin JAR must be consumed AS SHIPPED, against the
+     * current core, without being rebuilt. That is the whole point of the
+     * compatibility claim, so it is asserted rather than assumed: if a build ever
+     * silently regenerates the plugin, this pin turns "no rebuild" into a failing
+     * test instead of an unverifiable sentence in a receipt.
+     *
+     * Digest of the bytes certified by the S1-EF installed-distribution UAT
+     * (recorded in S1_EF_INSTALLED_DIRECTIVE_UAT_RECEIPT.md).
+     */
+    @Test
+    fun `plugin jar is the certified build and was not rebuilt for this core`() {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(Files.readAllBytes(pluginJar))
+            .joinToString("") { "%02x".format(it) }
+
+        assertEquals(
+            "33ec2c3e9527bb725e2d4e8166656830787daccb3eb0b7afc91ee331638ccb11",
+            digest,
+            "external directive plugin JAR drifted from the certified bytes; a rebuild " +
+                "invalidates the S2-D compatibility claim — restore the certified JAR instead",
+        )
+    }
+
+    /**
      * Plugin classloader mirroring production `pluginClassLoaderFor`
      * (MainRuntimeSupport): URLs = plugin JARs, parent = the host (context)
      * loader. The plugin JAR is NEVER self-sufficient: it links against the

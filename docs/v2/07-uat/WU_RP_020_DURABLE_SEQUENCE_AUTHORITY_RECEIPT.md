@@ -272,6 +272,18 @@ abierta en `bl-bl-01M3RK3NZV000387H65JWN9XM0`. **No se declara resuelto.**
    unicidad es una post-condición que se cumple haya colisión o no.
 4. **Bases de datos preexistentes ya corruptas.** El fallback es fail-closed al abrir con
    diagnóstico nombrado. No hay migración; se documenta la remediación en el mensaje.
+5. **Ciclo SDDK sigue en `BLOCKED` por fricción del tooling, no por el código.** El ciclo
+   `rp-020-durable-sequence-authority` se bloqueó cuando el primer gate salió rojo. Con el
+   gate ya **verde** se emitió el recibo `gate-unblock-condition-met-6464580629a024da-1` y
+   `-2` con `argv`, `exit_code` y `output_digest` reales, pero `sddk cycle transition
+   --transition cycle.unblock` sigue respondiendo `ENGINE_MISSING_GATE_RECEIPT`; y
+   `sddk cycle rebuild` devuelve `restored: false`. Comprobado contra el manifiesto: la
+   transición y el gate **sí** están declarados y el estado `BLOCKED/Explore` es el
+   correcto. Ninguna razón de `supersede` aplica (`scope_invalid`, `goal_replaced`,
+   `external-obsolete` serían todas falsas), así que **no se forzó una transición verde**.
+   Se registra la divergencia: Git + CI + el gate dicen verde; el estado del ciclo dice
+   `BLOCKED`. Según la ley de autoridad, Git/CI manda y el ciclo es lo que queda
+   desalineado. Requiere una sesión con la herramienta para cerrar el ciclo.
 
 ## 8. Cierre de trabajo (checklist AGENTS.md)
 

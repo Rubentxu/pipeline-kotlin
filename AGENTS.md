@@ -1919,6 +1919,18 @@ linearized scope:   Context_n + structural transition --> Context_n+1
 
 9. **Autoridad de trunk y candidatos:** la política vigente es ADR-0099. `main` contiene la historia completa de candidatos y releases; la integración de una candidata conserva todos sus commits y no usa squash, rebase de historia publicada ni force push. El harness externo conserva la autoridad sobre su certificación y sobre la promoción estable, no sobre la pertenencia de los commits a `main`.
 
+10. **TARGET-VERSION CANDIDATE LAW (obligatoria):** el estado de candidata NO forma parte de `ProductVersion`. Para una candidata de versión objetivo `V`, `V` DEBE aparecer como identidad de producto en las cinco superficies: nombre del asset, raíz del archivo, manifiesto del JAR de aplicación, `pipelinek version` en runtime y manifiesto de distribución. La identidad de candidata es el SHA-256 del material más metadatos de release-train (`releaseTrain`, `candidateSequence`). Implementado en `:pipeline-release` (`DistributionManifest`, `CandidateHandoff`, `CandidateAdmission`).
+
+11. **PRODUCT IDENTITY LAW (obligatoria):** para cada candidata, `ProductVersion == AssetVersion == ArchiveRootVersion == EmbeddedVersion == RuntimeVersion`. Cualquier discrepancia es un defecto de build/release y BLOQUEA el handoff. La comparación es de token EXACTO, nunca substring: `0.44.0` contenido en `0.44.0-rc1` es un defecto de la v0.43.0, no una coincidencia.
+
+12. **MANIFIESTO DE DISTRIBUCIÓN INMUTABLE:** el manifiesto describe el artefacto construido y DEBE permanecer byte-inmutable con la candidata. La certificación o promoción posterior NO DEBE reescribir campos de versión de producto. La metadata de promoción es un documento SEPARADO, nunca una edición del manifiesto.
+
+13. **Fast lane, sin bloqueo por certificación:** tras publicar una candidata inmutable, registrar su handoff, continuar inmediatamente con la siguiente WorkItem independiente y NO esperar al harness. Una candidata posterior puede superseder candidatas no certificadas del mismo release-train. Un FAIL del harness genera trabajo correctivo pero NO rebobina `main` ni invalida commits posteriores no relacionados.
+
+14. **Hallazgos del harness se consumen asíncronamente:** un defecto bloqueante reproducible obtiene UN issue/fingerprint deduplicado, se prioriza por severidad, se corrige en `main` y el harness lo verifica en una candidata posterior. Ninguna candidata antigua se muta ni se re-etiqueta.
+
+15. **Identidad exacta en el instalador (fail-closed):** `scripts/install-pipelinek.sh` es transaccional (descarga, digest, extracción e identidad en un directorio temporal; el directorio final aparece por un único `rename` tras pasar todas las verificaciones) y exige identidad EXACTA en runtime. Digest mismatch, archive root discrepante o binario con sufijo de candidata bajo un nombre final fallan cerrado y no dejan instalación parcial. Tests contractuales: `python3 scripts/test_install_pipelinek.py` (hermético: ZIPs reales, servidor loopback real, cero red pública).
+
 ## Frontera de responsabilidad — pipeline-kotlin vs pipelinek-release-harness
 
 La frontera entre desarrollo y certificación es una propiedad arquitectónica, no una decisión coyuntural. Estas reglas son vinculantes para cualquier trabajo en este repositorio:

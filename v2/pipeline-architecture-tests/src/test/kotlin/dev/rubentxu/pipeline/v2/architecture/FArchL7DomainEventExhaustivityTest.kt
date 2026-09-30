@@ -89,14 +89,18 @@ class FArchL7DomainEventExhaustivityTest {
      * 53. DirectiveDenied (S1-C — directive seam fail-closed denial observability)
      * 54. StageSkipped (S2-A — a stage whose gate verdict was a decided negative)
      * 55. PostConditionSelected (S2-B — the post block selection decision)
+     * 56. GateEvaluated (S2-C — the composed gate verdict, emitted even when satisfied)
      */
     @Test
     fun `domain_event_sealed_hierarchy_has_51_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
-        // 53 through S1-C, StageSkipped (S2-A), PostConditionSelected (S2-B).
-        val expectedCount = 55
+        // 53 through S1-C, StageSkipped (S2-A), PostConditionSelected (S2-B),
+        // GateEvaluated (S2-C). S2-C missed this pin: it moved the sibling pin in
+        // DomainEventRoundTripTest but not this one, so the exhaustivity fitness
+        // stayed red until the L5 closure gate ran on the committed tree.
+        val expectedCount = 56
 
         assertEquals(
             expectedCount,

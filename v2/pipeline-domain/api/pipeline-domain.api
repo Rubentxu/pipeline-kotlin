@@ -2520,6 +2520,7 @@ public abstract interface class dev/rubentxu/pipeline/v2/domain/directive/Direct
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/domain/directive/DirectiveDefinitionAny {
+	public abstract fun decodeAny (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveDecodeResult;
 	public abstract fun getKey-LahLOg8 ()Ljava/lang/String;
 	public abstract fun getPhase ()Ldev/rubentxu/pipeline/v2/domain/directive/DirectivePhase;
 	public abstract fun getPolicy ()Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveExecutionPolicy;
@@ -2610,6 +2611,7 @@ public final class dev/rubentxu/pipeline/v2/domain/directive/DirectiveRegistry$D
 
 public final class dev/rubentxu/pipeline/v2/domain/directive/ErasedDirectiveDefinition : dev/rubentxu/pipeline/v2/domain/directive/DirectiveDefinitionAny {
 	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveDefinition;)V
+	public fun decodeAny (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveDecodeResult;
 	public fun getKey-LahLOg8 ()Ljava/lang/String;
 	public fun getPhase ()Ldev/rubentxu/pipeline/v2/domain/directive/DirectivePhase;
 	public fun getPolicy ()Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveExecutionPolicy;

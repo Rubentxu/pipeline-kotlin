@@ -62,6 +62,18 @@ interface DirectiveDefinitionAny {
     val key: DirectiveKey
     val phase: DirectivePhase
     val policy: DirectiveExecutionPolicy
+
+    /**
+     * S2-C: decode this definition's arguments through its OWN codec, with the
+     * type parameter erased at the registry boundary. This is the lawful
+     * erasure point for decoding, mirroring the one for policy metadata: the
+     * engine never learns a concrete key or payload type, and a gate definition
+     * contributed by any plugin carries its own decoder with it.
+     *
+     * Returns [DirectiveDecodeResult.Malformed] as a typed value; the engine
+     * fails closed on it without exception-based control flow.
+     */
+    fun decodeAny(encodedArguments: String): DirectiveDecodeResult<Any>
 }
 
 /** Lift a typed definition into the type-erased registry view. */
@@ -71,6 +83,10 @@ class ErasedDirectiveDefinition<I, O>(
     override val key: DirectiveKey get() = delegate.key
     override val phase: DirectivePhase get() = delegate.phase
     override val policy: DirectiveExecutionPolicy get() = delegate.policy
+
+    @Suppress("UNCHECKED_CAST")
+    override fun decodeAny(encodedArguments: String): DirectiveDecodeResult<Any> =
+        delegate.decode(encodedArguments) as DirectiveDecodeResult<Any>
 }
 
 /**

@@ -1130,6 +1130,35 @@ data class DirectiveDenied(
 }
 
 /**
+ * S2-C — the observable verdict of a stage's gate composition.
+ *
+ * Emitted exactly once per stage that declares at least one gate directive,
+ * BEFORE the stage's fate is resolved (run, skip, or fail). [satisfied] is the
+ * composed verdict; [directiveKeys] lists every gate key that participated, in
+ * declaration order; [reason] carries the decided-negative explanation (and is
+ * empty when satisfied).
+ *
+ * Without this event, a satisfied gate and an absent gate are
+ * indistinguishable in the stream: an observer could not tell whether a stage
+ * ran unconditionally or because its conditions held. This event is
+ * observability of a decision already taken; it is not a second decision
+ * channel.
+ */
+data class GateEvaluated(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stageIndex: Int,
+    val stageName: String,
+    val directiveKeys: List<String>,
+    val satisfied: Boolean,
+    val reason: String,
+) : DomainEvent {
+    override val kind: String get() = "GateEvaluated"
+}
+
+/**
  * S2-B — emitted once per stage whose `post` block planned at least one
  * finalizer, immediately BEFORE the first finalizer step runs and BEFORE the
  * stage's `StageFinished`.

@@ -2615,6 +2615,58 @@ public final class dev/rubentxu/pipeline/v2/domain/directive/ErasedDirectiveDefi
 	public fun getPolicy ()Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveExecutionPolicy;
 }
 
+public abstract interface class dev/rubentxu/pipeline/v2/domain/directive/GateCompositionDecision {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/directive/GateCompositionDecision$Composite : dev/rubentxu/pipeline/v2/domain/directive/GateCompositionDecision {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/directive/WhenPredicate;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/directive/WhenPredicate;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/directive/WhenPredicate;)Ldev/rubentxu/pipeline/v2/domain/directive/GateCompositionDecision$Composite;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/directive/GateCompositionDecision$Composite;Ldev/rubentxu/pipeline/v2/domain/directive/WhenPredicate;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/directive/GateCompositionDecision$Composite;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPredicate ()Ldev/rubentxu/pipeline/v2/domain/directive/WhenPredicate;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/directive/GateCompositionDecision$Conflicting : dev/rubentxu/pipeline/v2/domain/directive/GateCompositionDecision {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-LahLOg8 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy-7UqC_Bw (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/directive/GateCompositionDecision$Conflicting;
+	public static synthetic fun copy-7UqC_Bw$default (Ldev/rubentxu/pipeline/v2/domain/directive/GateCompositionDecision$Conflicting;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/directive/GateCompositionDecision$Conflicting;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKey-LahLOg8 ()Ljava/lang/String;
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/directive/GateCompositionDecision$Empty : dev/rubentxu/pipeline/v2/domain/directive/GateCompositionDecision {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/directive/GateCompositionDecision$Empty;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/directive/GateCompositionPlanner {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/directive/GateCompositionPlanner;
+	public final fun compose (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/domain/directive/GateCompositionDecision;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/directive/GateCompositionPlanner$DeclaredGate {
+	public synthetic fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/directive/WhenPredicate;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-LahLOg8 ()Ljava/lang/String;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/directive/WhenPredicate;
+	public final fun copy-7UqC_Bw (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/directive/WhenPredicate;)Ldev/rubentxu/pipeline/v2/domain/directive/GateCompositionPlanner$DeclaredGate;
+	public static synthetic fun copy-7UqC_Bw$default (Ldev/rubentxu/pipeline/v2/domain/directive/GateCompositionPlanner$DeclaredGate;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/directive/WhenPredicate;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/directive/GateCompositionPlanner$DeclaredGate;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKey-LahLOg8 ()Ljava/lang/String;
+	public final fun getPredicate ()Ldev/rubentxu/pipeline/v2/domain/directive/WhenPredicate;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/directive/GateContext {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/directive/GateContext$Companion;
 	public fun <init> ()V

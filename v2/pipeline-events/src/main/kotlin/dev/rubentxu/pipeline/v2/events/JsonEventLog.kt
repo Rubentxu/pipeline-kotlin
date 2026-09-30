@@ -571,6 +571,24 @@ object JsonEventLog {
                     reason = reason,
                 )
             }
+            "GateEvaluated" -> {
+                val stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0
+                val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
+                val directiveKeys = EventJsonFields.stringListField(s, "directiveKeys") ?: emptyList()
+                val satisfied = EventJsonFields.boolField(s, "satisfied")
+                val reason = EventJsonFields.stringField(s, "reason") ?: ""
+                GateEvaluated(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    stageIndex = stageIndex,
+                    stageName = stageName,
+                    directiveKeys = directiveKeys,
+                    satisfied = satisfied,
+                    reason = reason,
+                )
+            }
             "StageSkipped" -> {
                 val stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""

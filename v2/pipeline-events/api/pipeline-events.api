@@ -454,6 +454,34 @@ public final class dev/rubentxu/pipeline/v2/events/FileWritten : dev/rubentxu/pi
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/events/GateEvaluated : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/util/List;ZLjava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()Ljava/time/Instant;
+	public final fun component5 ()I
+	public final fun component6 ()Ljava/lang/String;
+	public final fun component7 ()Ljava/util/List;
+	public final fun component8 ()Z
+	public final fun component9 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/util/List;ZLjava/lang/String;)Ldev/rubentxu/pipeline/v2/events/GateEvaluated;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/GateEvaluated;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/util/List;ZLjava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/GateEvaluated;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDirectiveKeys ()Ljava/util/List;
+	public fun getEventId ()Ljava/lang/String;
+	public fun getKind ()Ljava/lang/String;
+	public fun getOccurredAt ()Ljava/time/Instant;
+	public final fun getReason ()Ljava/lang/String;
+	public fun getRunId ()Ljava/lang/String;
+	public final fun getSatisfied ()Z
+	public fun getSequence ()J
+	public final fun getStageIndex ()I
+	public final fun getStageName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/events/GitCheckoutCompleted : dev/rubentxu/pipeline/v2/events/DomainEvent {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V
 	public final fun component1 ()Ljava/lang/String;

@@ -446,6 +446,18 @@ internal object EventJsonWriter {
                 sb.append(",\"reason\":")
                 sb.append(EventJsonWriter.jsonString(event.reason))
             }
+            is GateEvaluated -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"directiveKeys\":")
+                sb.append(EventJsonWriter.jsonStringList(event.directiveKeys))
+                sb.append(",\"satisfied\":")
+                sb.append(event.satisfied)
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
             is DirEntered -> {
                 sb.append(",\"path\":")
                 sb.append(EventJsonWriter.jsonString(event.path))

@@ -84,3 +84,11 @@ uat-report-*.yaml
 __pycache__/
 *.pyc
 *.pyo
+
+### SDDK ledger projection (regenerable, not repository authority) ###
+# BACKLOG.md is a rendered projection of an SDDK project ledger. It is NOT
+# project documentation: the copy present here was rendered from a different
+# SDDK project id (p-733fb505b5a6bd2d), not this repository (p-1f3622e11c093341).
+# Standing constraint: .agent/HANDOFF-S1-TRAIN-20260929.md ("do not
+# commit/delete"). Ignored rather than deleted so the file stays on disk.
+BACKLOG.md

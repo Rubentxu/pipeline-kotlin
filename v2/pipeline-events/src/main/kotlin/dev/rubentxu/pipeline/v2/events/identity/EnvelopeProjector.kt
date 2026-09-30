@@ -17,6 +17,7 @@ import dev.rubentxu.pipeline.v2.events.CredentialUnbound
 import dev.rubentxu.pipeline.v2.events.CredentialUsed
 import dev.rubentxu.pipeline.v2.events.DirectiveAdmitted
 import dev.rubentxu.pipeline.v2.events.DirectiveDenied
+import dev.rubentxu.pipeline.v2.events.GateEvaluated
 import dev.rubentxu.pipeline.v2.events.DirDeleted
 import dev.rubentxu.pipeline.v2.events.DirEntered
 import dev.rubentxu.pipeline.v2.events.DirExited
@@ -193,6 +194,7 @@ object EnvelopeProjector {
         // exists yet; denial aborts before StageStarted creates one)
         is DirectiveAdmitted,
         is DirectiveDenied,
+        is GateEvaluated,
         // WU-LPR-090 — core.publishHTML (Tier B #2)
         is HtmlReportPublished,
         is HtmlReportSkipped,

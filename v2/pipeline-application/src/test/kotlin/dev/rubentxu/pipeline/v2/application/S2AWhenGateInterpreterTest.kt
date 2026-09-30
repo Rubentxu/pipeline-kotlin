@@ -62,6 +62,52 @@ class S2AWhenGateInterpreterTest {
         .build()
 
     /**
+     * S2-C: the same `core.when` policy under a definition whose codec reports
+     * [dev.rubentxu.pipeline.v2.domain.directive.DirectiveDecodeResult.Malformed]
+     * for any payload — the typed fail-closed surface the engine must honour.
+     */
+    private fun coordinatorWithUndecodableGate(context: GateContext): Wiring {
+        val clock = SystemClock()
+        val events = InMemoryEventStore()
+        val undecodable = DirectiveRegistry.Builder()
+            .add(
+                ErasedDirectiveDefinition(
+                    object : dev.rubentxu.pipeline.v2.domain.directive.DirectiveDefinition<
+                        WhenPredicate,
+                        dev.rubentxu.pipeline.v2.domain.directive.GateVerdict,
+                        > {
+                        override val key = dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey(
+                            "core.when",
+                        )
+                        override val phase =
+                            dev.rubentxu.pipeline.v2.domain.directive.DirectivePhase.BEFORE_STAGE
+                        override val policy = dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy
+                            .Gate("core.when")
+                        override fun decode(encodedArguments: String) =
+                            dev.rubentxu.pipeline.v2.domain.directive.DirectiveDecodeResult.Malformed(
+                                "payload does not match the ${'$'}predicate shape",
+                            )
+                    },
+                ) as DirectiveDefinitionAny,
+            )
+            .build()
+        val coordinator = CanonicalDurableRunCoordinator(
+            dispatcher = CanonicalNodeDispatcher(),
+            journal = InMemoryOperationJournal(clock),
+            cursorStore = InMemoryReplayCursorStore(clock),
+            clock = clock,
+            effectReplayPolicy = DefaultEffectReplayPolicy(),
+            eventSink = events,
+            credentialScopePort = CoordinatorFixture.noOpCredentialScopePort(),
+            controlDirRoot = Files.createTempDirectory("s2a-undecodable"),
+            stepRegistry = CoreStepRegistryFactory.registry(),
+            directiveRegistry = undecodable,
+            gateContext = { context },
+        )
+        return Wiring(coordinator, events)
+    }
+
+    /**
      * A stage whose body touches [marker]. If the body runs, the file exists;
      * if the gate stops the stage, it does not. That is the whole oracle.
      */
@@ -110,13 +156,7 @@ class S2AWhenGateInterpreterTest {
         val events: InMemoryEventStore,
     )
 
-    private fun coordinator(
-        context: GateContext,
-        decoder: (DirectiveDefinitionAny, String) -> WhenPredicate? = { _, encoded ->
-            (WhenPredicateCodec.decode(encoded)
-                as? dev.rubentxu.pipeline.v2.domain.directive.DirectiveDecodeResult.Decoded)?.input
-        },
-    ): Wiring {
+    private fun coordinator(context: GateContext): Wiring {
         val clock = SystemClock()
         val events = InMemoryEventStore()
         val coordinator = CanonicalDurableRunCoordinator(
@@ -130,7 +170,6 @@ class S2AWhenGateInterpreterTest {
             controlDirRoot = Files.createTempDirectory("s2a-control"),
             stepRegistry = CoreStepRegistryFactory.registry(),
             directiveRegistry = registry(),
-            gateDecoder = decoder,
             gateContext = { context },
         )
         return Wiring(coordinator, events)
@@ -237,10 +276,11 @@ class S2AWhenGateInterpreterTest {
 
     @Test
     fun `an undecodable gate FAILS the run closed rather than running the stage`(@org.junit.jupiter.api.io.TempDir tempDir: Path) {
-        // The decoder refuses. Returning null must not be read as "no gate
-        // declared" and must not be read as "gate satisfied" either.
+        // S2-C: the definition's OWN codec refuses, returning the typed
+        // Malformed value. It must not be read as "no gate declared" and must
+        // not be read as "gate satisfied" either.
         val marker = tempDir.resolve("ran.txt")
-        val wiring = coordinator(GateContext(values = mapOf("DEPLOY_ENV" to "prod")), decoder = { _, _ -> null })
+        val wiring = coordinatorWithUndecodableGate(GateContext(values = mapOf("DEPLOY_ENV" to "prod")))
 
         val stage = StageNode(
             id = StageId("gated"),
@@ -388,10 +428,6 @@ class S2AWhenGateInterpreterTest {
             controlDirRoot = Files.createTempDirectory("s2a-vendor"),
             stepRegistry = CoreStepRegistryFactory.registry(),
             directiveRegistry = vendorRegistry,
-            gateDecoder = { _, encoded ->
-                (WhenPredicateCodec.decode(encoded)
-                    as? dev.rubentxu.pipeline.v2.domain.directive.DirectiveDecodeResult.Decoded)?.input
-            },
             gateContext = { GateContext(values = mapOf("X" to "yes")) },
         )
 

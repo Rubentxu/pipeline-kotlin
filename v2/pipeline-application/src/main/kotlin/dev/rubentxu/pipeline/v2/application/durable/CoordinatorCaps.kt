@@ -71,18 +71,6 @@ data class CoordinatorCaps(
     val directiveRegistry: dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry? = null,
 
     /**
-     * S2-A: decodes a gate directive's arguments into an evaluable predicate.
-     *
-     * A port, not a hardcoded `core.when` call: the engine stays unaware of
-     * which directives exist. Defaults to refusing every gate, which is the
-     * safe reading when no decoder is wired.
-     */
-    val gateDecoder: (
-        definition: dev.rubentxu.pipeline.v2.domain.directive.DirectiveDefinitionAny,
-        encodedArguments: String,
-    ) -> dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate? = { _, _ -> null },
-
-    /**
      * S2-A: the facts a gate is evaluated against, read at the effect boundary
      * from the stage that carries the gate.
      */

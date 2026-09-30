@@ -129,19 +129,6 @@ internal fun runCanonicalPipeline(
             }
             builder.build()
         },
-        // S2-A: the gate decoder is the ONE place that knows the `core.when`
-        // codec. The engine receives a function, never a key switch.
-        gateDecoder = { definition, encodedArguments ->
-            when (definition.key) {
-                WHEN_DIRECTIVE_KEY ->
-                    (dev.rubentxu.pipeline.v2.domain.directive.WhenPredicateCodec.decode(encodedArguments)
-                        as? dev.rubentxu.pipeline.v2.domain.directive.DirectiveDecodeResult.Decoded)
-                        ?.input
-                // An unknown gate has no decoder: returning null makes the
-                // engine fail closed rather than skip the stage.
-                else -> null
-            }
-        },
         // S2-A: gates read the environment the STAGE actually declares, plus
         // the process environment for names the stage names explicitly.
         //

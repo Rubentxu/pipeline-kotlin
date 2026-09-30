@@ -32,7 +32,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: gradle/wrapper-validation-action@ebf3e6cb8f1ba19fc037a72116fe64f24046d72c # v3
+      - uses: gradle/wrapper-validation-action@f9c9c575b8b21b6485636a91ffecd10e558c62f6 # v3
       - name: L0 — compile main + test sources
         run: cd v2 && ./gradlew compileKotlin compileTestKotlin --no-daemon
       - if: failure()
@@ -50,7 +50,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: gradle/wrapper-validation-action@ebf3e6cb8f1ba19fc037a72116fe64f24046d72c # v3
+      - uses: gradle/wrapper-validation-action@f9c9c575b8b21b6485636a91ffecd10e558c62f6 # v3
       - name: L1 — domain unit tests
         run: cd v2 && ./gradlew :pipeline-domain:test --no-daemon
       - name: L1 — events tests
@@ -70,7 +70,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: gradle/wrapper-validation-action@ebf3e6cb8f1ba19fc037a72116fe64f24046d72c # v3
+      - uses: gradle/wrapper-validation-action@f9c9c575b8b21b6485636a91ffecd10e558c62f6 # v3
       - name: L2 — architecture fitness tests
         run: cd v2 && ./gradlew :pipeline-architecture-tests:test --no-daemon
       - if: failure()
@@ -110,7 +110,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: gradle/wrapper-validation-action@ebf3e6cb8f1ba19fc037a72116fe64f24046d72c # v3
+      - uses: gradle/wrapper-validation-action@f9c9c575b8b21b6485636a91ffecd10e558c62f6 # v3
       - name: "Install just (UatLocal010 SC-010-09 uses `just doctor`)"
         # WU-RP-051: hardened against transient HTTP 403 from just.systems
         # (observed 2026-09-23 in CI re-run). Tries up to 3 times with
@@ -227,7 +227,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: gradle/wrapper-validation-action@ebf3e6cb8f1ba19fc037a72116fe64f24046d72c # v3
+      - uses: gradle/wrapper-validation-action@f9c9c575b8b21b6485636a91ffecd10e558c62f6 # v3
       - name: N1 — bootstrap build from clean checkout
         run: cd v2 && ./gradlew :pipeline-application:installDist --no-daemon
       - name: N2 success path — pipelinek executes repo .pipeline.kts (must exit 0)
@@ -294,7 +294,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - uses: gradle/wrapper-validation-action@ebf3e6cb8f1ba19fc037a72116fe64f24046d72c # v3
+      - uses: gradle/wrapper-validation-action@f9c9c575b8b21b6485636a91ffecd10e558c62f6 # v3
       - name: "Gradle cache (WU-RP-005 - warm scripting/compile cache)"
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -338,7 +338,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - uses: gradle/wrapper-validation-action@ebf3e6cb8f1ba19fc037a72116fe64f24046d72c # v3
+      - uses: gradle/wrapper-validation-action@f9c9c575b8b21b6485636a91ffecd10e558c62f6 # v3
       - name: "Gradle cache (WU-RP-005 - warm scripting/compile cache)"
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -364,7 +364,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - uses: gradle/wrapper-validation-action@ebf3e6cb8f1ba19fc037a72116fe64f24046d72c # v3
+      - uses: gradle/wrapper-validation-action@f9c9c575b8b21b6485636a91ffecd10e558c62f6 # v3
       # WU-RP-051-bis: sbom job was missing the gradle cache step that all
       # other jobs use, so on 2026-09-23 it hit Maven Central cold and was
       # rejected with HTTP 403 (rate-limit / anti-bot). Add the same cache

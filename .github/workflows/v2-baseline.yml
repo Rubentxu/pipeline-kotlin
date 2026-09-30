@@ -18,7 +18,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: gradle/wrapper-validation-action@ebf3e6cb8f1ba19fc037a72116fe64f24046d72c # v3
+      - uses: gradle/wrapper-validation-action@f9c9c575b8b21b6485636a91ffecd10e558c62f6 # v3
       - run: cd v2 && ./gradlew check
       - if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

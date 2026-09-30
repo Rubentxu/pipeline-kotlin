@@ -82,8 +82,8 @@ or needing `sudo`).
 
 If you want multiple versions side-by-side and easy rollback, fetch
 and run the in-tree installer. It downloads the same canonical ZIP,
-verifies its SHA-256 against the `.sha256` published next to the
-release, and unpacks under `~/.local/share/pipelinek/versions/`:
+verifies its SHA-256 against the `SHA256SUMS` manifest published with
+the release, and unpacks under `~/.local/share/pipelinek/versions/`:
 
 ```bash
 VERSION=0.39.0
@@ -104,9 +104,22 @@ pipelinek version                            # → pipeline 0.39.0
 
 Available subcommands: `install`, `use`, `list`, `uninstall`, `doctor`,
 `help`. The script has a fail-closed URL allowlist
-(`github.com`, `objects.githubusercontent.com`) and refuses to install
-if the SHA-256 of the downloaded ZIP does not match the published
-digest. It never uses `sudo` and never spawns a daemon. Source:
+(`github.com`, `objects.githubusercontent.com`, plus loopback hosts for
+local or air-gapped mirrors).
+
+Install is **transactional**: download, digest, extraction and identity
+verification all happen in a temporary directory, and the final version
+directory is created by a single rename only after every check has
+passed. A failed install leaves nothing behind, and the previously
+active version is never disturbed.
+
+The installer also requires **exact runtime identity**: the installed
+binary must report exactly the requested version. A mismatch, a digest
+mismatch, an archive root that disagrees with the version, or a
+candidate-suffixed binary under a final filename all fail closed
+instead of installing something mislabelled.
+
+It never uses `sudo` and never spawns a daemon. Source:
 [`scripts/install-pipelinek.sh`](scripts/install-pipelinek.sh).
 
 ### 2. Write a pipeline

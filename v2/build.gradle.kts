@@ -18,7 +18,7 @@ group = "dev.rubentxu.pipeline.v2"
 repositories {
     mavenCentral()
 }
-version = "0.44.0-rc1"
+version = "0.44.0"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version
@@ -34,26 +34,46 @@ version = "0.44.0-rc1"
 //   - v0.43.0-rc1 was the candidate of the previous train; immutable. Its
 //     installed-distribution UAT (docs/v2/07-uat/S1_EF_INSTALLED_DIRECTIVE_UAT_RECEIPT.md)
 //     certified the bytes built at 1910083e.
-//   - v0.44.0-rc1 is the candidate for this train. MINOR because the
-//     v0.43.0..HEAD range carries six feats (S1-A directive kernel, S1-B DSL block
-//     plus admission planner, S1-C typed directive observability events, S1-D
-//     external directive plugin, plus the directive kernel fitness and the
-//     RUN-CONCURRENCY-1 characterisation) and one fix (CLI: typed rejection for a
-//     missing pipeline script) with no breaking change and no `!` footer.
+//   - v0.44.0-rc1 was the candidate of the previous step of this train; its
+//     bytes remain a historical candidate and are NOT renamed to GA. TRAIN P3
+//     changed the declared product version to the final 0.44.0, which produced
+//     NEW bytes with a NEW CandidateId. MINOR because the v0.43.0..HEAD range
+//     carries six feats (S1-A directive kernel, S1-B DSL block plus admission
+//     planner, S1-C typed directive observability events, S1-D external
+//     directive plugin, plus the directive kernel fitness and the
+//     RUN-CONCURRENCY-1 characterisation) and one fix (CLI: typed rejection for
+//     a missing pipeline script) with no breaking change and no `!` footer.
 //     Train derived from the history, not chosen by hand.
+//
+// TRAIN P3 identity law (release-evolution, operator-authorized):
+//
+//   The candidate's identity is `CandidateId = SHA256(ZIP)`. The product
+//   version is the identity the binary REPORTS, and it is final (0.44.0) from
+//   the moment the candidate is built. Candidate state is NOT expressed as an
+//   `-rcN` suffix inside the product version, and it is NOT expressed by the
+//   presence of a tag.
+//
+//   The stable tag is the RESULT of a future promotion, so it cannot be an
+//   input to building or certifying this candidate. The previous note here
+//   demanded `version` equal the git tag; that coupling is precisely what
+//   produced the v0.43.0 family of defect, and it is deliberately removed. What
+//   holds instead: the product version equals the version compiled into every
+//   identity surface of the artifact, and the tag is applied later to exactly
+//   the bytes the harness certified, or not at all.
 //
 // RP-042 consequence: the S1-E/F UAT certified the 0.43.0-rc1 bytes, and commit
 // 0fa47f74 changed production code (Main.kt). Because the bytes changed, that
 // certification does not transfer to this candidate: the installed-distribution
-// smoke MUST be re-run against the bytes built at this version before the tag.
+// smoke MUST be re-run against the bytes built at this version before any tag.
 //
 // This repo ships release CANDIDATES, not stable releases (AGENTS.md, "Release
 // candidates"). A candidate is an immutable ZIP plus SBOM, SHA256SUMS and a
 // manifest, delivered to the external pipelinek-release-harness, which owns
 // certification and stable promotion. Nothing here promotes to stable.
 //
-// Fail-closed law: the released artifact's `version` subcommand MUST equal the git tag.
-// If they ever diverge the build is broken at the source, not in the artifact.
+// Fail-closed law: the artifact's `version` subcommand MUST equal the declared
+// product version, and every identity surface in the archive MUST agree with
+// it. A stable tag is applied afterwards to those exact bytes, or not at all.
 subprojects {
     version = rootProject.version
 

@@ -73,13 +73,20 @@ internal fun runCanonicalPipeline(
             // .resolve("workspace") would point to a subdirectory of the project root
             // (typically nonexistent), and every `sh` step would fail with
             // "No such file or directory" because gradlew/mvn/node live in
-            // the project root itself. Without --workspace we keep the legacy
-            // per-stage layout.
+            // the project root itself. Without --workspace, workspace/file operations
+            // retain their legacy per-stage layout, but shell execution starts in the
+            // CLI invocation directory. Keep that shell CWD explicit so dir scopes and
+            // WorkspaceIdentity observe the same directory as the process.
             workspaceRoot = workspaceBase ?: controlDirRoot.resolve("workspace"),
             captureStdout = false,
             timeoutMs = null,
             env = emptyMap(),
             sandbox = SandboxConfigResolver.resolve(sandboxProfile),
+            workingDirectory = if (workspaceBase == null) {
+                Path.of("").toAbsolutePath().normalize()
+            } else {
+                null
+            },
         ),
         // B1.2c3-S2.3 + LB-02/EP-6: core Steps first, then external plugin contributions.
         stepRegistry = stepRegistry,

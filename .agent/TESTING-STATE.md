@@ -1,7 +1,52 @@
-# Active Change — release-evolution producer lane (2026-09-30, head `pending`)
+# Active Change — S2-D P0 shell working-directory fix (2026-10-01, HEAD `8e838e6d`)
 
-TRAIN P0 + P1 of `docs/pipelinek-release-evolution/`. Everything below this
-section is historical record; this section is the operative one.
+```text
+Cycle: p-1f3622e11c093341/train-s2-directive-plugin (OPEN, Build; lease agent:cli)
+WorkItem: b578a3aa-87f2-4bc8-82cc-598d3c83e272 — active
+Backlog: bl-bl-01M3T5PGQ0000387MBFPM65TC0 — P0, Triaged
+Base SHA: 28dcd5c5a4da6364ca13b94aab94cb97676aa1fe
+Commit: 8e838e6d5e8ef43187bb74a733f0c092aa62e629
+```
+
+Changed:
+- `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CompositionRoot.kt`: when `workspaceBase == null`, set the immutable `ShOptions.workingDirectory` to normalized process invocation CWD. Explicit `--workspace` leaves it null and remains the root. The separate `workspaceBase`/`WorkspaceResolver` path remains unchanged, preserving synthetic per-stage file/workspace operations.
+- `v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CliShellWorkingDirectoryIntegrationTest.kt`: three real MainKt CLI subprocess cases cover durable default, no-DB in-memory default, and explicit workspace. Every child has a timeout and descendant teardown.
+- Behavioral receipt: `docs/v2/07-uat/P0_SHELL_WORKING_DIRECTORY_RECEIPT.md` (to be committed after the implementation SHA).
+
+## Verification at implementation SHA `8e838e6d`
+
+| Check | Result |
+| --- | --- |
+| `timeout 600 v2/gradlew -p v2 :pipeline-application:compileTestKotlin` | PASS |
+| `timeout 600 v2/gradlew -p v2 :pipeline-application:test --tests 'dev.rubentxu.pipeline.v2.application.CliShellWorkingDirectoryIntegrationTest' --fail-fast` | PASS; fresh XML: 3 tests, 0 skipped, 0 failures/errors |
+| Installed `v2/pipeline-application/build/install/pipelinek/bin/pipelinek version` | `pipeline 0.44.0` |
+| Installed CLI, durable, no `--workspace`, control-root distinct | exit 0; shell `pwd` resolves to invocation CWD |
+| Installed CLI, no `--db` (in-memory), no `--workspace` | exit 0; shell `pwd` resolves to invocation CWD |
+| Installed CLI, durable with explicit `--workspace` distinct from invocation/control root | exit 0; shell `pwd` resolves to requested workspace |
+| `git diff --check` before commit | clean |
+
+Fresh XML digest at the final 3-case run: `92a70ef197d9270c3ec14841d63b6a60c8c6d6866868a86afcba30a636596c56`.
+Installed CLI log digests: default durable `87ad2dae1211305b3de2841724ddd75260cc53977e275c5217944148fbdbe42b`; explicit durable `ba68c5cebf00451b07f03759c8cfcb2714462043eff5d58d8e815436a982fd1d`; in-memory `de6e801d3187176622e419ec3e5122cb6a0e7956b92b44fe453fc5349d9a645b`.
+
+A shell-only first comparison for the explicit workspace returned a path-string mismatch because `/home` is a symlink to `/var/home`. The CLI exited 0; comparing both values via `realpath` passed. The regression tests use `Path.toRealPath()` and pass.
+
+## Reference / compatibility / risk
+
+- Jenkins `workflow-durable-task-step` contract consulted: `https://www.jenkins.io/doc/pipeline/steps/workflow-durable-task-step/` (accessed 2026-10-01). It documents `sh` as a Bourne shell step and `dir` as changing the current directory and relative-path base.
+- Implementation inspected at `jenkinsci/workflow-durable-task-step-plugin` commit `46cb22ff3686c9e427aab1096bd255489b003140`: `ShellStep.java` delegates to the durable task path; `DurableTaskStep.java` requires the workspace `FilePath` and launches the task against it. Test source inspected: `src/test/java/org/jenkinsci/plugins/workflow/steps/durable_task/ShellStepTest.java`.
+- Adopted: make invocation CWD the default shell/dir context; retain explicit workspace override. Deviation: when no `--workspace` is supplied, file/workspace operations continue using the legacy per-stage storage path, as this patch is specifically the shell execution CWD correction.
+- Security: no new capability, process privilege, or path traversal allowance; only a process working-directory value is supplied.
+
+## Deliberately not run / remaining
+
+- Full repository `check`, external release-harness certification, and a published candidate were not run. This is a scoped code fix with a local installed-distribution acceptance run; it does not claim release certification.
+- SDDK TRAIN remains OPEN; after this Build slice, transition to Verify. Do not treat the open Verify gate as closed.
+
+---
+
+## Historical record — release-evolution producer lane (2026-09-30, HEAD previously recorded as `pending`)
+
+TRAIN P0 + P1 of `docs/pipelinek-release-evolution/`. The content below this heading is a historical record, not the current active change.
 
 ```text
 Changed:

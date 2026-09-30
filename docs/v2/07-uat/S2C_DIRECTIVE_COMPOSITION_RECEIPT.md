@@ -206,3 +206,36 @@ observando la selección real de `PostPlanner`.
 - Journal/replay y `PostSpec`: sin tocar.
 - El flake de `WalkParallelFrameConcurrencyTest`: deuda observada, no reparada
   aquí (§5).
+
+## 9. Cierre del gate sobre el árbol commiteado (corrección post-commit)
+
+La evidencia de §4-§5 se produjo sobre un árbol sin commitear. Al ejecutar el
+L5 `check` completo (`--rerun-tasks`) sobre el árbol commiteado, el gate de
+cierre destapó dos defectos que el flujo pre-commit no vio, ambos corregidos
+en `020c4787`:
+
+1. **`pipeline-domain.api` desfasado**: el apiDump declarado verde en §4 se
+   tomó antes del bono arquitectónico (`decodeAny`), así que el dump no
+   declaraba el nuevo método público y `apiCheck` falló. Regenerado.
+2. **Pin de exhaustividad en `FArchL7DomainEventExhaustivityTest`**: S2-C movió
+   el pin de `DomainEventRoundTripTest` (55→56) pero no este, dejando la
+   ceremonia R9 a medias. Subido a 56 con su entrada documentada.
+3. **Falso rojo ambiental, no corregido aquí**: `DurableShellTerminalAdapterTest`
+   falló porque en la sesión de ejecución el `rm` del PATH es un wrapper de
+   papelera que imprime a stdout, contaminando la salida capturada por el
+   executor de compatibilidad. Re-ejecutado sin el wrapper: 9/9 verdes. En un
+   entorno limpio no reproduce.
+
+**L5 final sobre `020c4787` (árbol limpio, wrapper fuera del PATH):**
+`BUILD SUCCESSFUL in 18m 46s`, 276/276 tareas ejecutadas realmente,
+**3964 tests, 0 fallos, 0 errores, 130 skipped** (application 1857, domain 631,
+events 219, architecture 344, step-sdk/runtime 201).
+
+**CI de GitHub Actions: NOT_RUN por migración, no por ausencia de señal.**
+El workflow `LPR-0 CI` se disparó en cada push, pero sus 4 runners self-hosted
+están offline y 60 runs consecutivos terminaron `cancelled`
+(`concurrency: cancel-in-progress` mata el run anterior antes de que ningún
+runner lo recoja). El equipo migró la verificación de CI a dogfooding con
+PipelineK local; la interacción restante con GitHub Actions debe eliminarse.
+Registrado en el backlog SDDK como
+`bl-bl-01M3STVZ0Z000387KNMMQ96E00` (origen: este ciclo, fase build).

@@ -154,11 +154,20 @@ fun CompiledPipeline.analyzeCanonicalDurableExecution(effectiveRegistry: StepReg
     } else {
         canonicalStepIds
     }
+    // WU-RP-035: a block Step's canonical eligibility is its DECLARED body owner, resolved
+    // from the effective registry so an external HANDLER_CONTINUATION Step enters exactly
+    // like a core CANONICAL_ENGINE one. The static core derivation remains the fallback so
+    // the null-registry path behaves exactly as before.
+    val bodyOwnerOf: (PluginStepId) -> dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner? = { key ->
+        effectiveRegistry?.definition(key)?.contract?.descriptor?.body?.declared?.execution?.owner
+            ?: dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry.standard()
+                .get(key)?.body?.declared?.execution?.owner
+    }
     val nonCanonical = mutableListOf<NonCanonicalStep>()
     for ((stageIndex, stage) in stages.withIndex()) {
         val steps = (stage.body as? StageBody.Steps)?.steps ?: continue
         for ((stepIndex, step) in steps.withIndex()) {
-            val issue = step.checkCanonicalExecution(eligibleStepIds)
+            val issue = step.checkCanonicalExecution(eligibleStepIds, bodyOwnerOf)
             if (issue != null) {
                 nonCanonical.add(NonCanonicalStep(
                     stageIndex = stageIndex,
@@ -177,14 +186,36 @@ fun CompiledPipeline.analyzeCanonicalDurableExecution(effectiveRegistry: StepReg
 fun CompiledPipeline.supportsCanonicalDurableExecution(effectiveRegistry: StepRegistry? = null): Boolean =
     analyzeCanonicalDurableExecution(effectiveRegistry).isEmpty()
 
-internal fun StepNode.checkCanonicalExecution(eligibleStepIds: Set<String> = canonicalStepIds): String? {
+/**
+ * Default body-owner resolver over the static core descriptor registry. Preserves the
+ * pre-RP-035 behaviour for callers that do not thread an effective registry: core
+ * CANONICAL_ENGINE rows are eligible, everything else is refused exactly as before.
+ */
+internal val standardBodyOwnerOf: (PluginStepId) -> dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner? =
+    { key ->
+        dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry.standard()
+            .get(key)?.body?.declared?.execution?.owner
+    }
+
+internal fun StepNode.checkCanonicalExecution(
+    eligibleStepIds: Set<String> = canonicalStepIds,
+    bodyOwnerOf: (PluginStepId) -> dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner? = standardBodyOwnerOf,
+): String? {
     return when (this) {
         is BlockStepNode -> {
-            if (pluginStepId !in canonicalBodyStepIds) {
+            // WU-RP-035: CANONICAL_ENGINE and HANDLER_CONTINUATION are both canonical-durable
+            // eligible — the first lets the engine run the body, the second lets the Step's
+            // own handler drive it through the bound continuation. Both execute on the same
+            // durable spine. LEGACY_LINEAR and unknown keys stay refused: their semantics are
+            // not implemented by this engine and must never run as an empty shell.
+            val owner = bodyOwnerOf(pluginStepId)
+            if (owner != dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner.CANONICAL_ENGINE &&
+                owner != dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner.HANDLER_CONTINUATION
+            ) {
                 "block step '${pluginStepId.value}' is not owned by the canonical body engine"
             } else {
                 body.forEach { child ->
-                    val childIssue = child.checkCanonicalExecution(eligibleStepIds)
+                    val childIssue = child.checkCanonicalExecution(eligibleStepIds, bodyOwnerOf)
                     if (childIssue != null) return childIssue
                 }
                 null

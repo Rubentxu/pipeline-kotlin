@@ -43,6 +43,8 @@ envolvente de procedencia.
 | 012 | SCA (osv-scanner 2.6.0 sobre el SBOM de c3) | **PASS — 0 vulnerabilidades** (eran 6) | re-run tras remediación |
 | 012 | SBOM CycloneDX en el material de admission | **CORREGIDO** (`f4f53601`) | `sbom: null` ya no es posible; gap de supply-chain, no packaging |
 | 013 | Kover agregado sobre el árbol del candidato | **PASS — LINE 17.072/21.692 = 78,7%** (44 paquetes); umbrales por módulo (`koverVerify`) verdes dentro del check | `build/reports/kover/report.xml` |
+| 014 | Mutación selectiva `:pipeline-domain:pitest` (`domain.durable.*`) | **EXECUTED — 762 mutaciones, killed 322 (42%), test strength 73%, 322 sin cobertura** | El catálogo prescribe ejecutarla, no un umbral; los 322 sin cobertura son código muerto/defensivo sin test y quedan como seguimiento |
+| 015 | Soak 1 GiB + SLO de RSS (`scripts/perf-soak-rss.sh`) | **DEFINIDO Y MEDIDO — SLO 8.192 MiB** | Calibración sobre el binario instalado: picos 5.143 / 7.244 / 5.169 MiB; SLO = techo del peor caso + ~13% de margen |
 
 ### PR-012: dos findings distintos, no "actualización de dependencias"
 
@@ -70,9 +72,19 @@ artefactos BC.
 
 | PR | Alcance | Estado |
 | --- | --- | --- |
-| 014 | Mutación selectiva `:pipeline-domain:pitest` (`domain.durable.*`) | ⬜ |
-| 015 | RSS/SLO con metodología normativa (sin scripts en `scripts/`: localizar M5 o declarar BLOCKED) | ⬜ |
-| 016 | Harness externo + 2 repos + fallo recuperable + replay + `RP-5 PRODUCT_GATE_GO` | ⬜ — ejecución externa |
+| 016 | Harness externo + 2 repos + fallo recuperable + replay + `RP-5 PRODUCT_GATE_GO` | ⬜ — ejecución externa; el productor ya no tiene filas abiertas |
+
+### PR-015: varianza medida y discrepancia histórica, registrados como hallazgos
+
+- Los tres picos medidos (5.143 / 7.244 / 5.169 MiB) muestran un swing del 40%
+  entre corridas idénticas: el número RSS **era anecdótico** exactamente como
+  temía el roadmap. El SLO de 8.192 MiB es un TECHO de regresión, no una
+  cotización de memoria típica.
+- La referencia histórica de ~1,4 GB post-optimización **no reproduce** en este
+  escenario (1 GiB a través del camino de consola/redacción). Hipótesis a
+  investigar en seguimiento: esa cifra correspondía a un escenario distinto o a
+  un camino que no cruza el buffering de transcript. Queda como finding, no
+  como bloqueo: el SLO mide el camino que exportamos.
 
 ## Ley vigente
 

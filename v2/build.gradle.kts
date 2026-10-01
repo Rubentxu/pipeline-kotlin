@@ -35,7 +35,19 @@ repositories {
 //
 // This also repairs pre-existing drift: the declared version said 0.44.0 while
 // the previous tag was v0.44.1, so the single-version provider had been stale.
-version = "0.45.0"
+//
+// WU-RP-035 release train, derived from history since v0.45.0 (a277d67a):
+//
+//     feat(domain)          83d5b2b0  HANDLER_CONTINUATION + body-bound continuation
+//     feat(engine)          5a2c8a7d  handler-driven route over the durable spine
+//     feat(examples)        03e77df2  example.repeat external body plugin
+//     fix(engine)           342897f0  canonical eligibility admits handler-driven blocks
+//     docs(uat)             25c670f7  RP3_EXIT_REVIEW corrective addendum
+//     docs(uat)             d2f40691  RP035-E receipt
+//
+// No breaking commits; pipeline-domain.api is purely additive (+21/-0), so the 0.x
+// convention keeps the MINOR bump: 0.45.0 -> 0.46.0.
+version = "0.46.0"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

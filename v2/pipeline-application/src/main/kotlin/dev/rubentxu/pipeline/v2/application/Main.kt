@@ -323,6 +323,15 @@ fun main(args: Array<String>) {
         // is the temp in-memory control dir's sibling; PIPELINE_CREDENTIALS_STORE env
         // overrides, exactly like the durable path.
         val withCredentialsExecutor = composeWithCredentialsExecutor(controlDirRoot)
+        // RP034-H / ADR-0101 clause 3.1 + RP034-Id: the workspace origin is decided
+        // ONCE, here at the boundary. Both facts cross into the runtime — the shared
+        // directory and its owner — because a runtime that receives only the root
+        // re-derives ownership and lets `deleteDir` erase a user's project under the
+        // local-first default. `--isolated` keeps the historical PipelineK scratch;
+        // `--workspace <path>` stays authoritative.
+        val workspaceTransport = WorkspaceIntent.resolveRuntimeTransport(
+            config, Path.of("").toAbsolutePath().normalize(), controlDirRoot,
+        )
         val runOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = when {
             // Compilation must be checked FIRST. If the script failed to compile there is no
             // compiled pipeline to run; jumping to runCanonicalPipeline would NPE on `!!`. This
@@ -351,12 +360,12 @@ fun main(args: Array<String>) {
                 controlDirRoot = controlDirRoot,
                 sandboxProfile = config.sandboxProfile,
                 // RP034-H / ADR-0101 clause 3.1: the CLI default is local-first. The
-                // workspace origin is decided once, here at the boundary, and only the
-                // root crosses into the runtime. `--isolated` preserves the historical
-                // PipelineK-managed scratch; `--workspace <path>` stays authoritative.
-                workspaceBase = WorkspaceIntent.runtimeWorkspaceBase(
-                    config, Path.of("").toAbsolutePath().normalize(),
-                ),
+                // workspace origin is decided once, here at the boundary, and BOTH
+                // facts cross into the runtime: the shared directory and its owner.
+                // `--isolated` preserves the historical PipelineK-managed scratch;
+                // `--workspace <path>` stays authoritative.
+                workspaceBase = workspaceTransport.base,
+                workspaceOwnership = workspaceTransport.ownership,
                 stepRegistry = composedStepRegistry,
                 secretPatternRegistry = secretPatternRegistry,
                 withCredentialsExecutor = withCredentialsExecutor,
@@ -707,6 +716,13 @@ fun main(args: Array<String>) {
     if (contributedPlugins.isNotEmpty()) {
         System.err.println("Discovered external Step plugins: " + contributedPlugins.joinToString(", "))
     }
+    // RP034-H / ADR-0101 clause 3.1 + RP034-Id: the workspace origin is decided
+    // ONCE, here at the boundary, and both facts cross into the runtime — the
+    // shared directory and its owner. `--isolated` keeps the historical
+    // PipelineK scratch; `--workspace <path>` stays authoritative.
+    val workspaceTransport = WorkspaceIntent.resolveRuntimeTransport(
+        config, Path.of("").toAbsolutePath().normalize(), controlDirRoot,
+    )
     // UAT-RP-024 collateral finding fix (shutdown race 1/3): the sqlite
     // single-writer thread is NON-daemon. If any exception escapes the run
     // or the stdout envelope streaming below, rawEventStore.close() is
@@ -742,12 +758,12 @@ fun main(args: Array<String>) {
             controlDirRoot = controlDirRoot,
             sandboxProfile = config.sandboxProfile,
             // RP034-H / ADR-0101 clause 3.1: the CLI default is local-first. The
-            // workspace origin is decided once, here at the boundary, and only the
-            // root crosses into the runtime. `--isolated` preserves the historical
-            // PipelineK-managed scratch; `--workspace <path>` stays authoritative.
-            workspaceBase = WorkspaceIntent.runtimeWorkspaceBase(
-                config, Path.of("").toAbsolutePath().normalize(),
-            ),
+            // workspace origin is decided once, here at the boundary, and BOTH
+            // facts cross into the runtime: the shared directory and its owner.
+            // `--isolated` preserves the historical PipelineK-managed scratch;
+            // `--workspace <path>` stays authoritative.
+            workspaceBase = workspaceTransport.base,
+            workspaceOwnership = workspaceTransport.ownership,
             withCredentialsExecutor = withCredentialsExecutor,
             stepRegistry = composedStepRegistry,
             secretPatternRegistry = secretPatternRegistry,

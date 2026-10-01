@@ -199,15 +199,17 @@ class CoreDeleteDirStepUnitTest {
         val workspace = tempDir("core-deletedir-handler-")
         val ctx = stepHandlerContext(runId, workspace, sink)
         val output = CoreDeleteDirStep.definition.handler.execute(DeleteDirInput(path = "."), ctx)
-        // The handler resolves the workspace path as workspace/test-0 (stageName=test, stageIndex=0)
-        assertEquals(workspace.resolve("workspace/test-0").toString(), output.path)
+        // RP034-I: deleteDir anchors on CURRENT_DIRECTORY, so `.` resolves to the
+        // location's cwd — not to a workspace re-derived from the control root.
+        // The stub states cwd = workspace, so the target IS the workspace.
+        assertEquals(workspace.toString(), output.path)
         assertTrue(output.deletedCount >= 0)
         assertEquals(64, output.sha256.length)
         assertEquals(StepOutcome.Success, output.outcome)
         val events = sink.eventsFor(runId).toList().filterIsInstance<DirDeleted>()
         assertEquals(1, events.size, "exactly one DirDeleted event expected")
         val event = events.single()
-        assertEquals(workspace.resolve("workspace/test-0").toString(), event.path)
+        assertEquals(workspace.toString(), event.path)
         assertEquals(64, event.sha256.length)
     }
 
@@ -362,14 +364,15 @@ class CoreDeleteDirStepUnitTest {
         assertEquals(StepOutcome.Success, result.outcome)
         assertNotNull(result.encodedOutput)
         val decoded = CoreDeleteDirStep.definition.contract.outputCodec.decode(result.encodedOutput!!)
-        // The handler resolves the workspace path as workspace/test-0 (stageName=test, stageIndex=0)
-        assertEquals(workspace.resolve("workspace/test-0").toString(), decoded.path)
+        // RP034-I: same CURRENT_DIRECTORY anchor as the handler test above — the
+        // runtime location's cwd, not a control-root reconstruction.
+        assertEquals(workspace.toString(), decoded.path)
         assertTrue(decoded.deletedCount >= 0)
         assertEquals(64, decoded.sha256.length)
         val events = capturedDirDeleted(runId)
         assertEquals(1, events.size)
         val event = events.single()
-        assertEquals(workspace.resolve("workspace/test-0").toString(), event.path)
+        assertEquals(workspace.toString(), event.path)
         assertEquals(64, event.sha256.length)
     }
 

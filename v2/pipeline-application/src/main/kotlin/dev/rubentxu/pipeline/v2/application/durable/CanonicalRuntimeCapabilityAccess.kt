@@ -344,6 +344,10 @@ open class CanonicalRuntimeCapabilityAccess(
         scopedWorkingDirectory = context.shOptions.workingDirectory,
         fallbackRoot = context.shOptions.workspaceRoot
             ?: Path.of("").toAbsolutePath().normalize(),
+        // RP034-Id: ownership decided at the CLI boundary (ADR-0101) and carried
+        // on the transport. Without this the bridge re-derived `Managed` for every
+        // run and the ADR-0102 guard on a user-owned root never fired.
+        ownership = context.shOptions.workspaceOwnership,
     )
 
     /**

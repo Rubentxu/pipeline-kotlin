@@ -10,6 +10,8 @@ import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import dev.rubentxu.pipeline.v2.events.DirDeleted
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.files.DeleteDirExecutor
+import java.nio.file.Files
+import java.nio.file.Path
 import java.time.Instant
 import java.util.UUID
 
@@ -63,14 +65,34 @@ class DeleteDirOperationsAdapter(
      */
     private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation,
 ) : DeleteDirOperations {
+    /**
+     * Idempotent creation of the workspace directory this Step operates on.
+     *
+     * The base itself comes from the execution location (RP034-I); this only
+     * ensures the directory exists, which is what the SDK executor and its
+     * `.deleted` / `.cleaned` marker require.
+     */
+    private fun ensureWorkspace(workspace: Path) {
+        if (!Files.isDirectory(workspace)) {
+            Files.createDirectories(workspace)
+        }
+    }
+
 
     override fun delete(input: DeleteDirInput): DeleteDirResult {
-        val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
-        val workspace = resolver.resolve(stageIdentity.name, stageIdentity.index)
-        resolver.ensureCreated(workspace)
+        // RP034-I: `deleteDir` anchors on CURRENT_DIRECTORY (anchor matrix),
+        // the same base `writeFile` and `sh` resolve against. It used to
+        // re-derive the stage workspace from the control root, so inside a
+        // `dir(...)` scope the two Steps disagreed about where "sub" was:
+        // writeFile created the directory in the scope and deleteDir then
+        // looked for it under the reconstructed workspace root, failing with
+        // NoSuchFileException while writing its `.deleted` marker. Two bases
+        // for one scope is the divergence ADR-0100 removes.
+        val workspace: Path = executionLocation.cwd
+        ensureWorkspace(workspace)
 
         val executor = DeleteDirExecutor(
-            workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
+            workspaceResolver = { _, _ -> workspace },
             // RP034-G (ADR-0102): the guard is derived from the typed lease, not
             // from a VCS marker.
             //

@@ -10,6 +10,8 @@ import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.WsCleaned
 import dev.rubentxu.pipeline.v2.sdk.files.CleanWsExecutor
+import java.nio.file.Files
+import java.nio.file.Path
 import java.time.Instant
 import java.util.UUID
 
@@ -62,14 +64,30 @@ class CleanWsOperationsAdapter(
      */
     private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation,
 ) : CleanWsOperations {
+    /**
+     * Idempotent creation of the workspace directory this Step operates on.
+     *
+     * The base itself comes from the execution location (RP034-I); this only
+     * ensures the directory exists, which is what the SDK executor and its
+     * `.deleted` / `.cleaned` marker require.
+     */
+    private fun ensureWorkspace(workspace: Path) {
+        if (!Files.isDirectory(workspace)) {
+            Files.createDirectories(workspace)
+        }
+    }
+
 
     override fun clean(input: CleanWsInput): CleanWsResult {
-        val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
-        val workspace = resolver.resolve(stageIdentity.name, stageIdentity.index)
-        resolver.ensureCreated(workspace)
+        // RP034-I: `cleanWs` anchors on WORKSPACE_ROOT (anchor matrix) — it
+        // wipes the workspace, so a `dir(...)` scope must not move it. The base
+        // is the lease root the location reports, not one re-derived from the
+        // control root, for the same reason as deleteDir.
+        val workspace: Path = executionLocation.workspace.root
+        ensureWorkspace(workspace)
 
         val executor = CleanWsExecutor(
-            workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
+            workspaceResolver = { _, _ -> workspace },
             // RP034-G (ADR-0102): derived from the typed lease, not from a VCS
             // marker. The previous condition engaged only when `--workspace` was
             // passed explicitly, leaving the no-flag path unprotected, and it

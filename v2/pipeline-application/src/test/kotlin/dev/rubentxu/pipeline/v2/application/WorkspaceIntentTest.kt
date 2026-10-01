@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceOwnership
 import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceRequest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
@@ -75,6 +76,71 @@ class WorkspaceIntentTest {
                     flags(workspace = "/repos/app"), invocation, otherScratch,
                 ).root,
             )
+        }
+    }
+
+    @Nested
+    @DisplayName("the runtime transport carries both facts")
+    inner class Transport {
+
+        @Test
+        fun `the default mode pins the invocation directory and marks it USER`() {
+            val transport = WorkspaceIntent.resolveRuntimeTransport(flags(), invocation, scratch)
+            assertEquals(invocation, transport.base)
+            assertEquals(WorkspaceOwnership.USER, transport.ownership)
+        }
+
+        @Test
+        fun `an explicit workspace pins that directory and marks it USER`() {
+            val transport = WorkspaceIntent.resolveRuntimeTransport(
+                flags(workspace = "/repos/app"), invocation, scratch,
+            )
+            assertEquals(Path.of("/repos/app"), transport.base)
+            assertEquals(WorkspaceOwnership.USER, transport.ownership)
+        }
+
+        @Test
+        fun `isolated pins no directory and marks it PIPELINEK`() {
+            // The asymmetry is the point: null base lets the coordinator allocate a
+            // per-stage scratch, while PIPELINEK ownership keeps it destructible.
+            val transport = WorkspaceIntent.resolveRuntimeTransport(
+                flags(isolated = true), invocation, scratch,
+            )
+            assertEquals(null, transport.base)
+            assertEquals(WorkspaceOwnership.PIPELINEK, transport.ownership)
+        }
+
+        @Test
+        fun `every CLI mode states its owner rather than leaving it unsaid`() {
+            // RP034-Id regression at the boundary. The bug was not a wrong value
+            // but a *missing* one: ownership was resolved as Attached and then
+            // dropped when the transport was built, so the runtime re-derived
+            // Managed for every run and deleteDir() erased the user's project.
+            listOf(flags(), flags(workspace = "/repos/app"), flags(isolated = true))
+                .forEach { f ->
+                    assertNotNull(
+                        WorkspaceIntent.resolveRuntimeTransport(f, invocation, scratch).ownership,
+                        "ownership must never be absent for mode $f",
+                    )
+                }
+        }
+
+        @Test
+        fun `the transport agrees with the lease it derives from`() {
+            listOf(flags(), flags(workspace = "/repos/app"), flags(isolated = true))
+                .forEach { f ->
+                    val lease = WorkspaceIntent.resolveWorkspaceLease(f, invocation, scratch)
+                    val transport = WorkspaceIntent.resolveRuntimeTransport(f, invocation, scratch)
+                    assertEquals(lease.ownership, transport.ownership)
+                    assertEquals(
+                        if (lease is dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceLease.Attached) {
+                            lease.root
+                        } else {
+                            null
+                        },
+                        transport.base,
+                    )
+                }
         }
     }
 

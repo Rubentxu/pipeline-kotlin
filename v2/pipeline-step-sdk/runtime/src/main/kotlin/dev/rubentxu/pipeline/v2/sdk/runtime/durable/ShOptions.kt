@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceOwnership
 import java.nio.file.Path
 
 /**
@@ -37,6 +38,21 @@ data class ShOptions(
     val env: Map<String, SecretHandle>,
     val sandbox: SandboxConfig = SandboxConfig.NONE,
     val workingDirectory: Path? = null,
+    /**
+     * Who owns [workspaceRoot] (RP034-I / ADR-0102).
+     *
+     * Transport only: the runtime reads it to build a typed `WorkspaceLease`,
+     * and nothing infers ownership from the filesystem. `null` keeps the
+     * historical behaviour of a PipelineK-managed workspace, which is the
+     * fail-closed choice for destruction.
+     *
+     * This field exists because ownership cannot be recovered downstream. The
+     * CLI resolves `WorkspaceLease.Attached` for the caller's own directory,
+     * but without carrying the ownership across this transport the runtime
+     * re-derived `Managed` for every run — which left `deleteDir()` free to
+     * erase the user's project under the local-first default.
+     */
+    val workspaceOwnership: WorkspaceOwnership? = null,
 ) {
     companion object {
         /**

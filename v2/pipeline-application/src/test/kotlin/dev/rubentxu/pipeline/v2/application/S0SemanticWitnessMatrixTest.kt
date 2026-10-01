@@ -61,7 +61,13 @@ class S0SemanticWitnessMatrixTest {
         val scriptPath = dir.resolve("witness.pipeline.kts")
         Files.writeString(scriptPath, script.trimIndent())
         val stdoutFile = dir.resolve("events.json")
+        // RP034-Ic: the child MUST NOT inherit the JVM working directory. Under the
+        // local-first default the workspace IS the invocation directory, so an
+        // inherited CWD pointed `sh` at the module source root and the W-stash
+        // witness deposited `stashme.txt` into `v2/pipeline-application/`. The
+        // scratch directory is the workspace for the whole run instead.
         val process = ProcessBuilder(appBin.toString(), "run", scriptPath.toAbsolutePath().toString())
+            .directory(dir.toFile())
             .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
             .redirectError(ProcessBuilder.Redirect.PIPE)
             .start()
@@ -78,7 +84,10 @@ class S0SemanticWitnessMatrixTest {
     /** Runs the CLI and returns the raw event-log stdout. */
     private fun rawRun(scriptPath: Path): String {
         val stdoutFile = Files.createTempFile("s0replay", ".json")
+        // RP034-Ic: same isolation as `run` — the script's own directory is the
+        // workspace, never the inherited JVM CWD.
         val process = ProcessBuilder(appBin.toString(), "run", scriptPath.toAbsolutePath().toString())
+            .directory(scriptPath.parent.toFile())
             .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
             .redirectError(ProcessBuilder.Redirect.PIPE)
             .start()

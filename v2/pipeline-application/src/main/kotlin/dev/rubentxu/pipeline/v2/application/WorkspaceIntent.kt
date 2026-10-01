@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceLease
+import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceOwnership
 import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceRequest
 import java.nio.file.Path
 
@@ -66,31 +67,54 @@ internal object WorkspaceIntent {
         }
 
     /**
-     * The base the runtime receives, translating the typed decision into the
-     * transport the coordinator still uses today (RP034-I retires this).
+     * The transport the runtime receives, translating the typed lease into the
+     * two facts the coordinator still needs today.
      *
-     * The asymmetry is deliberate and is the crux of the isolated mode. A
-     * non-null base means "stages share this directory", which is exactly the
-     * Attached semantics, so both attached cases pass their directory.
+     * Both facts are read from **one** resolved lease. A previous revision
+     * returned only [base] and dropped ownership, and the runtime re-derived
+     * `Managed` from it — so the destructive guard for a user-owned root never
+     * fired in production even though the CLI had already decided `Attached`
+     * (RP034-Id). Re-deciding from the flags in a second function would only
+     * recreate that split; the lease is the single interpretation point.
      *
-     * A PipelineK-managed workspace is expressed as **null**: there is no shared
-     * project directory to pin, so `WorkspaceResolver` resumes allocating
+     * The asymmetry in [base] is deliberate and is the crux of the isolated
+     * mode. A non-null base means "stages share this directory", which is
+     * exactly the Attached semantics, so both attached cases pass their
+     * directory.
+     *
+     * A PipelineK-managed workspace is expressed as **null base**: there is no
+     * shared project directory to pin, so `WorkspaceResolver` resumes allocating
      * `<controlRoot>/workspace/<stageName>-<index>` per stage. Passing the
      * scratch parent as a base instead would pin every stage onto one directory
      * and silently destroy per-stage and per-branch isolation — a defect this
      * method exists to make impossible.
+     *
+     * [ownership] is *not* optional: `null` would reintroduce exactly the
+     * ambiguity this pair removes.
      */
-    fun runtimeWorkspaceBase(
+    fun resolveRuntimeTransport(
         flags: CliFlags,
         invocationDirectory: Path,
-    ): Path? =
-        when (val request = requestFor(flags)) {
-            is WorkspaceRequest.AttachInvocationDirectory ->
-                invocationDirectory.toAbsolutePath().normalize()
+        scratchParent: Path,
+    ): RuntimeWorkspaceTransport =
+        when (val lease = resolveWorkspaceLease(flags, invocationDirectory, scratchParent)) {
+            is WorkspaceLease.Attached ->
+                RuntimeWorkspaceTransport(base = lease.root, ownership = lease.ownership)
 
-            is WorkspaceRequest.AttachExplicit ->
-                request.path.toAbsolutePath().normalize()
-
-            is WorkspaceRequest.ManagedIsolated -> null
+            is WorkspaceLease.Managed ->
+                RuntimeWorkspaceTransport(base = null, ownership = lease.ownership)
         }
 }
+
+/**
+ * What crosses the CLI boundary into the runtime: where stages share a
+ * directory, and who owns that directory.
+ *
+ * Grouped into one value because the two were previously decided in two places
+ * and could disagree — which is exactly what happened, and what allowed
+ * `deleteDir()` to erase a user's project under the local-first default.
+ */
+internal data class RuntimeWorkspaceTransport(
+    val base: Path?,
+    val ownership: WorkspaceOwnership,
+)

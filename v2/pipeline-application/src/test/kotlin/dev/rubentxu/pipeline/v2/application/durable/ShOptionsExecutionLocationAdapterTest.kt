@@ -119,22 +119,63 @@ class ShOptionsExecutionLocationAdapterTest {
     inner class Ownership {
 
         @Test
-        fun `the bridge reports the lease it derived rather than inspecting the filesystem`() {
+        fun `an unstated owner derives the fail-closed managed lease`() {
             val capability = ShOptionsExecutionLocationAdapter.from(root, null, root)
             assertEquals(WorkspaceOwnership.PIPELINEK, capability.workspace.ownership)
         }
 
         @Test
-        fun `a git checkout is not specially recognised by the bridge`() {
-            // The bridge performs no VCS inspection at all: ownership comes from
-            // the lease type, never from a marker on disk. RP034-G is what makes
-            // the CLI produce an Attached lease for a user project.
+        fun `a user-owned root derives an Attached lease`() {
+            // RP034-Id regression. This is the exact derivation that was pinned to
+            // `Managed` while the CLI had already decided `Attached`, which left
+            // deleteDir() free to erase the caller's project under the local-first
+            // default. Reproduced against the installed distribution before the fix.
+            val capability = ShOptionsExecutionLocationAdapter.from(
+                root, null, root, WorkspaceOwnership.USER,
+            )
+            assertTrue(
+                capability.workspace is dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceLease.Attached,
+                "a USER-owned root must yield an Attached lease, was ${capability.workspace}",
+            )
+            assertEquals(root, capability.workspace.root)
+        }
+
+        @Test
+        fun `an explicitly PipelineK-owned root derives a Managed lease`() {
+            val capability = ShOptionsExecutionLocationAdapter.from(
+                root, null, root, WorkspaceOwnership.PIPELINEK,
+            )
+            assertTrue(
+                capability.workspace is dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceLease.Managed,
+                "a PIPELINEK-owned root must yield a Managed lease, was ${capability.workspace}",
+            )
+        }
+
+        @Test
+        fun `ownership never depends on a marker on disk`() {
+            // ADR-0102: no VCS inspection. A user's project and a scratch directory
+            // are distinguishable only by the ownership the caller stated.
             val gitLike = Path.of("/home/dev/git-project")
             val plain = Path.of("/home/dev/plain-project")
             assertEquals(
-                ShOptionsExecutionLocationAdapter.from(gitLike, null, gitLike).workspace.ownership,
-                ShOptionsExecutionLocationAdapter.from(plain, null, plain).workspace.ownership,
+                WorkspaceOwnership.USER,
+                ShOptionsExecutionLocationAdapter
+                    .from(gitLike, null, gitLike, WorkspaceOwnership.USER).workspace.ownership,
             )
+            assertEquals(
+                WorkspaceOwnership.PIPELINEK,
+                ShOptionsExecutionLocationAdapter
+                    .from(plain, null, plain, WorkspaceOwnership.PIPELINEK).workspace.ownership,
+            )
+        }
+
+        @Test
+        fun `ownership does not disturb the cwd projection`() {
+            val capability = ShOptionsExecutionLocationAdapter.from(
+                root, scoped, root, WorkspaceOwnership.USER,
+            )
+            assertEquals(scoped, capability.cwd)
+            assertEquals(root, capability.workspace.root)
         }
     }
 

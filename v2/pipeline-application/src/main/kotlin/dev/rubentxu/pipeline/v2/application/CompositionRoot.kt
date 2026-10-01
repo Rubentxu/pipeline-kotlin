@@ -45,6 +45,10 @@ internal fun runCanonicalPipeline(
     controlDirRoot: Path,
     sandboxProfile: SandboxProfile,
     workspaceBase: Path? = null,
+    // RP034-Id: explicit owner of `workspaceBase`. `null` means the caller
+    // could not state ownership, and the runtime then treats the root as
+    // PipelineK-managed. The CLI always states it (WorkspaceIntent).
+    workspaceOwnership: dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceOwnership? = null,
     withCredentialsExecutor: WithCredentialsExecutor? = null,
     // LB-02 / EP-6: caller-composed registry (core + discovered external contributions).
     // Composition happens ONCE in the composition root, BEFORE the canonical-eligibility
@@ -80,6 +84,10 @@ internal fun runCanonicalPipeline(
             timeoutMs = null,
             env = emptyMap(),
             sandbox = SandboxConfigResolver.resolve(sandboxProfile),
+            // RP034-Id: carry the ownership the CLI decided (ADR-0101) into the
+            // runtime transport, so the ADR-0102 destructive guard reads the real
+            // owner of this root instead of re-deriving `Managed`.
+            workspaceOwnership = workspaceOwnership,
         ),
         // B1.2c3-S2.3 + LB-02/EP-6: core Steps first, then external plugin contributions.
         stepRegistry = stepRegistry,

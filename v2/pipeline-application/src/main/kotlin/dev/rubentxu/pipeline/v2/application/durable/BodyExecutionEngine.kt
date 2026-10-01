@@ -8,6 +8,9 @@ import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
 import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
+import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
+import java.time.Instant
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
@@ -63,7 +66,7 @@ internal class BodyExecutionEngine(
         childShOptions: ShOptions,
         parentBodyPath: List<BlockSegment>,
         executionContext: ExecutionContext,
-        leaseBindings: List<CredentialBindingSpec>,
+        leaseBindings: List<CredentialBindingSpec> = emptyList(),
         dispatcher: BodyChildDispatcher,
     ): StepOutcome {
         for ((childIndex, child) in block.body.withIndex()) {
@@ -211,5 +214,120 @@ internal class BodyExecutionEngine(
         // WU-G5R.3: waitUntil scope passes through ShOptions without special flags.
         // The polling backoff is handled in the executeWaitUntilBody loop below.
         is BlockShellScope.WaitUntilScope -> ScopedBody(stageShOptions, context)
+    }
+
+    suspend fun executeWaitUntilInline(
+        scope: BlockShellScope.WaitUntilScope,
+        block: BlockStepNode,
+        runId: RunId,
+        stageName: String,
+        stageIndex: Int,
+        stepIndex: Int,
+        childShOptions: ShOptions,
+        parentBodyPath: List<BlockSegment>,
+        executionContext: ExecutionContext,
+    dispatcher: BodyChildDispatcher,
+    ): StepOutcome {
+        val overallStartMs = System.currentTimeMillis()
+        // WU-G5R.3: initial sleep before first poll
+        if (scope.initialRecurrencePeriod > 0) {
+            kotlinx.coroutines.delay(scope.initialRecurrencePeriod)
+        }
+
+        var currentBackoffMs = scope.initialRecurrencePeriod
+        val maxBackoffMs = scope.maxBackoffMs
+        var pollCount = 0
+
+        waitUntilPollLoop@ while (true) {
+            pollCount++
+            val pollAttemptPath = parentBodyPath + BlockSegment(pollCount, dev.rubentxu.pipeline.v2.domain.PluginStepId("wait-until-poll"))
+            val pollStartMs = System.currentTimeMillis()
+
+            // Emit WaitUntilPolled before the poll attempt
+            eventSink.append(
+                WaitUntilPolled(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runId.value,
+                    sequence = 0L,
+                    occurredAt = Instant.now(),
+                    attempt = pollCount,
+                    durationMs = 0L,
+                    conditionResult = false, // unknown until body runs
+                ),
+            )
+
+            val pollOutcome = invokeBodyChildren(
+                block,
+                runId,
+                stageName,
+                stageIndex,
+                stepIndex,
+                childShOptions,
+                pollAttemptPath,
+                executionContext,
+                dispatcher = dispatcher,
+            )
+
+            val pollDurationMs = System.currentTimeMillis() - pollStartMs
+
+            // Update the WaitUntilPolled event with actual duration
+            eventSink.append(
+                WaitUntilPolled(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runId.value,
+                    sequence = 0L,
+                    occurredAt = Instant.now(),
+                    attempt = pollCount,
+                    durationMs = pollDurationMs,
+                    conditionResult = pollOutcome is StepOutcome.Success,
+                ),
+            )
+
+            when (pollOutcome) {
+                is StepOutcome.Success -> {
+                    // Condition satisfied
+                    val totalDurationMs = System.currentTimeMillis() - overallStartMs
+                    eventSink.append(
+                        WaitUntilCompleted(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId.value,
+                            sequence = 0L,
+                            occurredAt = Instant.now(),
+                            totalAttempts = pollCount,
+                            totalDurationMs = totalDurationMs,
+                            outcome = "completed",
+                        ),
+                    )
+                    return StepOutcome.Success
+                }
+                else -> {
+                    // Condition not satisfied (failure, unstable, etc.) — retry with backoff
+                    if (currentBackoffMs >= maxBackoffMs) {
+                        // Backoff exceeded — deadline exceeded
+                        val totalDurationMs = System.currentTimeMillis() - overallStartMs
+                        eventSink.append(
+                            WaitUntilCompleted(
+                                eventId = UUID.randomUUID().toString(),
+                                runId = runId.value,
+                                sequence = 0L,
+                                occurredAt = Instant.now(),
+                                totalAttempts = pollCount,
+                                totalDurationMs = totalDurationMs,
+                                outcome = "deadline-exceeded",
+                            ),
+                        )
+                        return StepOutcome.Failure(
+                            dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                                dev.rubentxu.pipeline.v2.domain.FailureKind.TIMEOUT,
+                                "waitUntil condition not met after $pollCount polls (${maxBackoffMs}ms backoff ceiling exceeded)",
+                            ),
+                        )
+                    }
+                    // Exponential backoff: double currentBackoffMs, cap at maxBackoffMs
+                    currentBackoffMs = minOf(currentBackoffMs * 2, maxBackoffMs)
+                    kotlinx.coroutines.delay(currentBackoffMs)
+                }
+            }
+        }
     }
 }

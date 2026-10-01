@@ -346,6 +346,7 @@ class CanonicalDurableRunCoordinator(
     // C3 / WU-PR-017: the run-lifecycle bookends and the running outcome live in
     // the extracted engine (same events, same ordering, same quirks).
     private val runLifecycle = RunLifecycleEngine(eventSink)
+    private val bodyExecutionEngine = BodyExecutionEngine(eventSink, clock)
     private val bodyEngine = BodyExecutionEngine(eventSink, clock)
 
     suspend fun run(pipeline: CompiledPipeline, runId: RunId): RunOutcome {
@@ -1942,6 +1943,26 @@ class CanonicalDurableRunCoordinator(
      * bit-equivalent for the no-journal case; the durable loop is now owned by
      * [dev.rubentxu.pipeline.v2.application.durable.waituntil.WaitUntilEngine].
      */
+    private suspend fun dispatchChild(
+        child: StepNode,
+        runId: RunId,
+        stageName: String,
+        stageIndex: Int,
+        stepIndex: Int,
+        childShOptions: ShOptions,
+        bodyPath: List<BlockSegment>,
+        executionContext: ExecutionContext,
+    ): StepOutcome = dispatch(
+        child,
+        runId,
+        stageName,
+        stageIndex,
+        stepIndex,
+        childShOptions,
+        bodyPath,
+        executionContext,
+    ).outcome
+
     private suspend fun executeWaitUntilBodyInline(
         scope: BlockShellScope.WaitUntilScope,
         block: BlockStepNode,
@@ -1952,108 +1973,19 @@ class CanonicalDurableRunCoordinator(
         childShOptions: ShOptions,
         parentBodyPath: List<BlockSegment>,
         executionContext: ExecutionContext,
-    ): StepOutcome {
-        val overallStartMs = System.currentTimeMillis()
-        // WU-G5R.3: initial sleep before first poll
-        if (scope.initialRecurrencePeriod > 0) {
-            kotlinx.coroutines.delay(scope.initialRecurrencePeriod)
-        }
+    ): StepOutcome = bodyExecutionEngine.executeWaitUntilInline(
+        scope = scope,
+        block = block,
+        runId = runId,
+        stageName = stageName,
+        stageIndex = stageIndex,
+        stepIndex = stepIndex,
+        childShOptions = childShOptions,
+        parentBodyPath = parentBodyPath,
+        executionContext = executionContext,
+        dispatcher = ::dispatchChild,
+    )
 
-        var currentBackoffMs = scope.initialRecurrencePeriod
-        val maxBackoffMs = scope.maxBackoffMs
-        var pollCount = 0
-
-        waitUntilPollLoop@ while (true) {
-            pollCount++
-            val pollAttemptPath = parentBodyPath + BlockSegment(pollCount, dev.rubentxu.pipeline.v2.domain.PluginStepId("wait-until-poll"))
-            val pollStartMs = System.currentTimeMillis()
-
-            // Emit WaitUntilPolled before the poll attempt
-            eventSink.append(
-                WaitUntilPolled(
-                    eventId = UUID.randomUUID().toString(),
-                    runId = runId.value,
-                    sequence = 0L,
-                    occurredAt = Instant.now(),
-                    attempt = pollCount,
-                    durationMs = 0L,
-                    conditionResult = false, // unknown until body runs
-                ),
-            )
-
-            val pollOutcome = invokeBodyChildren(
-                block,
-                runId,
-                stageName,
-                stageIndex,
-                stepIndex,
-                childShOptions,
-                pollAttemptPath,
-                executionContext,
-            )
-
-            val pollDurationMs = System.currentTimeMillis() - pollStartMs
-
-            // Update the WaitUntilPolled event with actual duration
-            eventSink.append(
-                WaitUntilPolled(
-                    eventId = UUID.randomUUID().toString(),
-                    runId = runId.value,
-                    sequence = 0L,
-                    occurredAt = Instant.now(),
-                    attempt = pollCount,
-                    durationMs = pollDurationMs,
-                    conditionResult = pollOutcome is StepOutcome.Success,
-                ),
-            )
-
-            when (pollOutcome) {
-                is StepOutcome.Success -> {
-                    // Condition satisfied
-                    val totalDurationMs = System.currentTimeMillis() - overallStartMs
-                    eventSink.append(
-                        WaitUntilCompleted(
-                            eventId = UUID.randomUUID().toString(),
-                            runId = runId.value,
-                            sequence = 0L,
-                            occurredAt = Instant.now(),
-                            totalAttempts = pollCount,
-                            totalDurationMs = totalDurationMs,
-                            outcome = "completed",
-                        ),
-                    )
-                    return StepOutcome.Success
-                }
-                else -> {
-                    // Condition not satisfied (failure, unstable, etc.) — retry with backoff
-                    if (currentBackoffMs >= maxBackoffMs) {
-                        // Backoff exceeded — deadline exceeded
-                        val totalDurationMs = System.currentTimeMillis() - overallStartMs
-                        eventSink.append(
-                            WaitUntilCompleted(
-                                eventId = UUID.randomUUID().toString(),
-                                runId = runId.value,
-                                sequence = 0L,
-                                occurredAt = Instant.now(),
-                                totalAttempts = pollCount,
-                                totalDurationMs = totalDurationMs,
-                                outcome = "deadline-exceeded",
-                            ),
-                        )
-                        return StepOutcome.Failure(
-                            dev.rubentxu.pipeline.v2.domain.PipelineFailure(
-                                dev.rubentxu.pipeline.v2.domain.FailureKind.TIMEOUT,
-                                "waitUntil condition not met after $pollCount polls (${maxBackoffMs}ms backoff ceiling exceeded)",
-                            ),
-                        )
-                    }
-                    // Exponential backoff: double currentBackoffMs, cap at maxBackoffMs
-                    currentBackoffMs = minOf(currentBackoffMs * 2, maxBackoffMs)
-                    kotlinx.coroutines.delay(currentBackoffMs)
-                }
-            }
-        }
-    }
 
 
     /**

@@ -193,7 +193,9 @@ object PinnedConcreteBodyRoutingDebt {
         bodyStepIds = emptySet(),
         // Named explicitly, not BodyRoutingSite.entries.toSet(): "all entries" would silently
         // absorb a fourth site the day someone adds one, which is exactly the slack this
-        // ledger exists to prevent. Empty is a MEASUREMENT, not a relaxation.
+        // ledger exists to prevent.
+        // TRAIN H2 (PR-018): the combined coordinator+engine scan finds zero debt.
+        // The body execution lives in BodyExecutionEngine; the coordinator delegates.
         sites = emptySet(),
         blockBypasses = emptySet(),
         stepIdSwitches = 0,

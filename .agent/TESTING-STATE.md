@@ -1,17 +1,18 @@
 # Active Change — S2-D P0 shell working-directory fix (2026-10-01, HEAD `8e838e6d`)
 
 ```text
-Cycle: p-1f3622e11c093341/train-s2-directive-plugin (OPEN, Build; lease agent:cli)
-WorkItem: b578a3aa-87f2-4bc8-82cc-598d3c83e272 — active
-Backlog: bl-bl-01M3T5PGQ0000387MBFPM65TC0 — P0, Triaged
+Cycle: p-1f3622e11c093341/train-s2-directive-plugin (OPEN, Verify; no lease)
+WorkItem: b578a3aa-87f2-4bc8-82cc-598d3c83e272 — done
+Backlog: bl-bl-01M3T5PGQ0000387MBFPM65TC0 — P0, promoted into this TRAIN
 Base SHA: 28dcd5c5a4da6364ca13b94aab94cb97676aa1fe
-Commit: 8e838e6d5e8ef43187bb74a733f0c092aa62e629
+Implementation commit: 8e838e6d5e8ef43187bb74a733f0c092aa62e629
+Evidence receipt commit: d7bb25563d17e704709999a08e2c4dd09dfd977e
 ```
 
 Changed:
 - `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CompositionRoot.kt`: when `workspaceBase == null`, set the immutable `ShOptions.workingDirectory` to normalized process invocation CWD. Explicit `--workspace` leaves it null and remains the root. The separate `workspaceBase`/`WorkspaceResolver` path remains unchanged, preserving synthetic per-stage file/workspace operations.
 - `v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CliShellWorkingDirectoryIntegrationTest.kt`: three real MainKt CLI subprocess cases cover durable default, no-DB in-memory default, and explicit workspace. Every child has a timeout and descendant teardown.
-- Behavioral receipt: `docs/v2/07-uat/P0_SHELL_WORKING_DIRECTORY_RECEIPT.md` (to be committed after the implementation SHA).
+- Behavioral receipt: `docs/v2/07-uat/P0_SHELL_WORKING_DIRECTORY_RECEIPT.md` (committed at `d7bb25563d17e704709999a08e2c4dd09dfd977e`).
 
 ## Verification at implementation SHA `8e838e6d`
 
@@ -40,7 +41,7 @@ A shell-only first comparison for the explicit workspace returned a path-string 
 ## Deliberately not run / remaining
 
 - Full repository `check`, external release-harness certification, and a published candidate were not run. This is a scoped code fix with a local installed-distribution acceptance run; it does not claim release certification.
-- SDDK TRAIN remains OPEN; after this Build slice, transition to Verify. Do not treat the open Verify gate as closed.
+- The SDDK TRAIN remains OPEN in Verify; cycle-level verification/report gates remain outstanding and are not claimed complete.
 
 ---
 

@@ -246,6 +246,16 @@ class CoreArchiveArtifactsStepContractSuiteTest {
         val clock = SystemClock()
         val journal = InMemoryOperationJournal(clock)
         val registryForCoord = CoreStepRegistryFactory.registry()
+        val controlDirRoot = workDir.resolve("control")
+        // RP034-F: the harness must build the context the way the production
+        // bridge does. `ShOptions.EMPTY` carries a random temp directory as its
+        // workspaceRoot, so the execution location the archive adapter now reads
+        // pointed at that directory while the tests seeded
+        // `<control>/workspace/build-0` — a disagreement production never has,
+        // because the coordinator's shOptions.workspaceRoot *is* the resolved
+        // stage workspace. Seeding and ShOptions now name the same directory.
+        val stageWorkspace = WorkspaceResolver(controlDirRoot)
+            .ensureCreated(WorkspaceResolver(controlDirRoot).resolve("build", 0))
         val coord = CanonicalDurableRunCoordinator(
             dispatcher = CanonicalNodeDispatcher(),
             journal = journal,
@@ -254,8 +264,13 @@ class CoreArchiveArtifactsStepContractSuiteTest {
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             eventSink = eventStore,
             credentialScopePort = noOpCredentialScopePort(),
-            controlDirRoot = workDir.resolve("control"),
-            shOptions = ShOptions.EMPTY,
+            controlDirRoot = controlDirRoot,
+            shOptions = ShOptions(
+                workspaceRoot = stageWorkspace,
+                captureStdout = false,
+                timeoutMs = null,
+                env = emptyMap(),
+            ),
             stepRegistry = registryForCoord,
         )
         return Harness(coord, journal, eventStore, registryForCoord, workDir)
@@ -314,7 +329,19 @@ class CoreArchiveArtifactsStepContractSuiteTest {
         stageName = "build",
         stageIndex = 0,
         stepIndex = 0,
-        shOptions = ShOptions.EMPTY,
+        // RP034-F: production's shOptions.workspaceRoot is the resolved stage
+        // workspace, which is what the execution location the archive adapter
+        // reads is derived from. ShOptions.EMPTY would instead point it at a
+        // random temp directory, so the context would not describe any real run.
+        shOptions = ShOptions(
+            workspaceRoot = controlDirRoot?.let {
+                val resolver = WorkspaceResolver(it)
+                resolver.ensureCreated(resolver.resolve("build", 0))
+            } ?: Files.createTempDirectory("archiveartifacts-no-control-"),
+            captureStdout = false,
+            timeoutMs = null,
+            env = emptyMap(),
+        ),
         controlDirRoot = controlDirRoot,
         eventSink = sink,
     )

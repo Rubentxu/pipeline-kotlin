@@ -50,7 +50,31 @@ class PublishHtmlOperationsAdapter(
     private val eventSink: EventSink,
     /** WU-LPR-062 parity: optional project-workspace override (--workspace). */
     private val workspaceBase: Path? = null,
+    /**
+     * RP034-F: the shared execution location. `null` keeps the previous
+     * reconstruction for direct construction; the bridge always supplies it and
+     * retiring the fallback is RP034-I.
+     */
+    private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation? = null,
 ) : PublishHtmlOperations {
+
+    /**
+     * The directory `reportDir` is resolved against.
+     *
+     * RP034-F: the report directory is a user path, so it anchors on
+     * CURRENT_DIRECTORY and a `dir(...)` scope moves it. With no scope this is
+     * the stage workspace — what the private resolver returned — so behaviour
+     * at the root is unchanged. The published archive is a separate durable
+     * store under `controlDirRoot/artefacts/...`.
+     */
+    private fun sourceRoot(resolver: WorkspaceResolver): Path {
+        val shared = executionLocation?.cwd
+        if (shared != null) {
+            Files.createDirectories(shared)
+            return shared
+        }
+        return resolver.ensureCreated(resolver.resolve(stageIdentity.name, stageIdentity.index))
+    }
 
     override fun publish(input: PublishHtmlInput): PublishHtmlResult {
         // S0 Semantic Honesty Gate: keepAll has NO v1 interpreter (the adapter
@@ -64,9 +88,7 @@ class PublishHtmlOperationsAdapter(
             return PublishHtmlFailed(FailureKind.SCRIPT, reason)
         }
         val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
-        val workspaceRoot = resolver.ensureCreated(
-            resolver.resolve(stageIdentity.name, stageIdentity.index),
-        )
+        val workspaceRoot = sourceRoot(resolver)
 
         // Defense-in-depth: re-validate reportDir even though PublishHtmlInput's
         // init block already forbids ".." segments and absolute paths.

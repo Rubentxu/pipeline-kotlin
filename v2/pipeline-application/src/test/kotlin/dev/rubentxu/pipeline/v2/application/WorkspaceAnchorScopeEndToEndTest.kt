@@ -214,6 +214,143 @@ class WorkspaceAnchorScopeEndToEndTest {
         )
     }
 
+    /**
+     * DF-ARCH-001: `archiveArtifacts` anchors on CURRENT_DIRECTORY, so a
+     * `dir("sub")` scope narrows what the pattern can match.
+     *
+     * The design marked this Step `DIFFERENTIAL_REQUIRED` and forbade changing
+     * production before observing the anchor. The ruling, recorded in the
+     * RP034-F receipt: the Jenkins docs state the base is the workspace, and
+     * Jenkins states that same "workspace" default as "the current working
+     * directory (by default: the workspace)" for the sibling path Steps —
+     * `dir` moves the current directory, so it moves this base too. More
+     * decisively, `04-step-path-anchor-matrix.md` §3 allows no hidden anchor
+     * exceptions, and a root-pinned archive is precisely one.
+     *
+     * The discriminating assertion: `root.txt` lives at the workspace root and
+     * would match `*.txt` under a WORKSPACE_ROOT anchor. Under the scope it
+     * must not be archived, and `inside.txt` must be.
+     */
+    @Test
+    @DisplayName("archiveArtifacts inside dir matches only within the scope")
+    fun `archiveArtifacts source follows the dir scope`(@TempDir tempDir: Path) {
+        val project = Files.createDirectory(tempDir.resolve("project"))
+        val workspace = Files.createDirectory(tempDir.resolve("workspace"))
+        val controlRoot = tempDir.resolve("control")
+        Files.createDirectories(workspace.resolve("sub"))
+
+        val script = project.resolve("pipeline.kts")
+        Files.writeString(
+            script,
+            """
+            pipeline {
+                stages {
+                    stage("archive") {
+                        writeFile("root.txt", "root-only")
+                        dir("sub") {
+                            writeFile("inside.txt", "scoped-only")
+                            archiveArtifacts(artifacts = "*.txt", allowEmptyArchive = false)
+                        }
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val result = runCli(
+            project,
+            listOf(
+                "run",
+                "--db", tempDir.resolve("durable.db").toString(),
+                "--control-root", controlRoot.toString(),
+                "--workspace", workspace.toString(),
+                script.toString(),
+            ),
+        )
+
+        assertEquals(0, result.exitCode, result.output)
+
+        val archived = archivedFiles(controlRoot)
+
+        assertTrue(
+            archived.any { it.endsWith("inside.txt") },
+            "the scoped file must be archived; archived set was $archived. Output: ${result.output}",
+        )
+        assertFalse(
+            archived.any { it.endsWith("root.txt") },
+            "root.txt must NOT be archived from inside dir('sub'): a WORKSPACE_ROOT anchor would " +
+                "collect it. archived set was $archived. Output: ${result.output}",
+        )
+    }
+
+    /**
+     * DF-HTML-001: `publishHTML` resolves `reportDir` against the current
+     * directory, so a report that exists only inside the scope is found.
+     *
+     * Two directories are created on purpose: `sub/report` (reachable only
+     * from the scope) and `root-report` (the decoy that a root anchor would
+     * prefer). The Step also has to emit its published event, so this asserts
+     * the whole path, not only the resolution.
+     */
+    @Test
+    @DisplayName("publishHTML inside dir resolves reportDir within the scope")
+    fun `publishHtml reportDir follows the dir scope`(@TempDir tempDir: Path) {
+        val project = Files.createDirectory(tempDir.resolve("project"))
+        val workspace = Files.createDirectory(tempDir.resolve("workspace"))
+        Files.createDirectories(workspace.resolve("sub/report"))
+        Files.createDirectories(workspace.resolve("root-report"))
+        Files.writeString(workspace.resolve("sub/report/index.html"), "<html>scoped</html>")
+        Files.writeString(workspace.resolve("root-report/index.html"), "<html>root</html>")
+
+        val script = project.resolve("pipeline.kts")
+        Files.writeString(
+            script,
+            """
+            pipeline {
+                stages {
+                    stage("publish") {
+                        dir("sub") {
+                            publishHTML(
+                                name = "rp034f-html",
+                                reportDir = "report",
+                                reportFiles = "**/*.html",
+                            )
+                        }
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val result = runCli(
+            project,
+            listOf(
+                "run",
+                "--db", tempDir.resolve("durable.db").toString(),
+                "--control-root", tempDir.resolve("control").toString(),
+                "--workspace", workspace.toString(),
+                script.toString(),
+            ),
+        )
+
+        assertEquals(0, result.exitCode, result.output)
+        assertTrue(
+            result.output.contains("HtmlReportPublished"),
+            "the scoped report must be published. Output: ${result.output}",
+        )
+    }
+
+    /** Every file under the durable artifact store, as `/`-separated paths. */
+    private fun archivedFiles(controlRoot: Path): List<String> {
+        val artefacts = controlRoot.resolve("artefacts")
+        if (!Files.isDirectory(artefacts)) return emptyList()
+        return Files.walk(artefacts).use { stream ->
+            stream.filter { Files.isRegularFile(it) }
+                .map { artefacts.relativize(it).toString().replace('\\', '/') }
+                .toList()
+        }
+    }
+
     private fun runCli(workingDirectory: Path, arguments: List<String>): CliResult {
         val output = Files.createTempFile(workingDirectory, "rp034e-cli-", ".log")
         val process = ProcessBuilder(

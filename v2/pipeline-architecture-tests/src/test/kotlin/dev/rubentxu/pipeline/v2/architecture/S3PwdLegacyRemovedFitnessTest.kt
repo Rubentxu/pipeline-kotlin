@@ -113,22 +113,31 @@ class S3PwdLegacyRemovedFitnessTest {
         )
     }
 
-    @Test fun `CorePwdStep handler keeps the WorkspaceIdentity + EventSink capability declaration`() {
-        // The Step's requiredCapabilities must still include the WorkspaceIdentity
-        // and EventSink capabilities, so that capability admission remains the
-        // structural authority for granting workspace-root reads and event-sink
-        // emission. The exact key strings are read from the live StepCapability
-        // constants to stay in lockstep with the production declarations.
-        val workspaceKey = dev.rubentxu.pipeline.v2.application.WORKSPACE_IDENTITY_CAPABILITY.key
+    @Test fun `CorePwdStep handler keeps the execution-location + EventSink capability declaration`() {
+        // The Step's requiredCapabilities must declare the execution location
+        // and the event sink, so capability admission remains the structural
+        // authority for granting the workspace read and the event emission.
+        //
+        // RP034-Ea moved the workspace read from WORKSPACE_IDENTITY to
+        // EXECUTION_LOCATION: the legacy capability carries a single Path
+        // filled with `workingDirectory ?: workspaceRoot`, so core.pwd could not
+        // report the cwd and the root separately. The intent of this fitness is
+        // unchanged — the declaration must be explicit and fail-closed — only
+        // the authority it names is now the typed one.
+        val locationKey = dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY.key
         val eventSinkKey = dev.rubentxu.pipeline.v2.application.EVENT_SINK_CAPABILITY.key
         val requiredKeys = CorePwdStep.definition.contract.requiredCapabilities.map { it.key }.toSet()
         assertTrue(
-            workspaceKey in requiredKeys,
-            "CorePwdStep.descriptor MUST keep declaring the workspace-identity capability; required=$requiredKeys",
+            locationKey in requiredKeys,
+            "CorePwdStep.descriptor MUST keep declaring the execution-location capability; required=$requiredKeys",
         )
         assertTrue(
             eventSinkKey in requiredKeys,
             "CorePwdStep.descriptor MUST keep declaring the event-sink capability; required=$requiredKeys",
+        )
+        assertFalse(
+            dev.rubentxu.pipeline.v2.application.WORKSPACE_IDENTITY_CAPABILITY.key in requiredKeys,
+            "core.pwd must not regress to the collapsed workspace identity; required=$requiredKeys",
         )
     }
 

@@ -246,6 +246,9 @@ open class CanonicalRuntimeCapabilityAccess(
                 controlDirRoot = root,
                 eventSink = context.eventSink,
                 workspaceBase = context.workspaceBase,
+                // RP034-F: the archive source follows the shared location, so a
+                // `dir(...)` scope narrows what the pattern can match.
+                executionLocation = executionLocationFor(context),
             )
             builder[ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY] = archiveOps
         }
@@ -285,6 +288,8 @@ open class CanonicalRuntimeCapabilityAccess(
                 controlDirRoot = root,
                 eventSink = context.eventSink,
                 workspaceBase = context.workspaceBase,
+                // RP034-F: reportDir follows the shared location too.
+                executionLocation = executionLocationFor(context),
             )
             builder[PUBLISH_HTML_OPERATIONS_CAPABILITY] = publishHtmlOps
         }

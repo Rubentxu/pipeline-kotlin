@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.artefacts.local.AntStyleGlob
 import dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import java.nio.file.Files
 import java.nio.file.Path
 
 /**
@@ -145,11 +146,37 @@ class ArchiveArtifactsOperationsAdapter(
     private val eventSink: dev.rubentxu.pipeline.v2.events.EventSink,
     /** WU-LPR-062: optional project-workspace override (--workspace). */
     private val workspaceBase: Path? = null,
+    /**
+     * RP034-F: the shared execution location. `null` keeps the previous
+     * reconstruction for direct construction; the bridge always supplies it and
+     * retiring the fallback is RP034-I.
+     */
+    private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation? = null,
 ) : ArchiveArtifactsOperations {
+
+    /**
+     * The directory the user pattern is resolved against.
+     *
+     * RP034-F: the archive source is a user path, so it anchors on
+     * CURRENT_DIRECTORY and a `dir(...)` scope moves it. With no scope this is
+     * the stage workspace — what the private resolver returned — so behaviour at
+     * the root is unchanged.
+     *
+     * The durable store stays under `controlDirRoot/artefacts/...`; it is an
+     * INTERNAL_STORE path and is never a workspace anchor.
+     */
+    private fun sourceRoot(resolver: WorkspaceResolver): Path {
+        val shared = executionLocation?.cwd
+        if (shared != null) {
+            Files.createDirectories(shared)
+            return shared
+        }
+        return resolver.ensureCreated(resolver.resolve(stageIdentity.name, stageIdentity.index))
+    }
 
     override fun archive(input: ArchiveArtifactsInput): ArchiveArtifactsResult {
         val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
-        val workspace = resolver.ensureCreated(resolver.resolve(stageIdentity.name, stageIdentity.index))
+        val workspace = sourceRoot(resolver)
 
         val matched: List<Path> = try {
             AntStyleGlob(input.artifacts).match(

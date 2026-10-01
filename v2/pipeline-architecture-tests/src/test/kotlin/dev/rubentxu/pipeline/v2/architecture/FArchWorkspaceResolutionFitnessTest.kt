@@ -124,19 +124,67 @@ class FArchWorkspaceResolutionFitnessTest {
     fun `capability delegates resolution to the pure resolver`() {
         val root = v2Root()
 
-        val capability = root.resolve(
-            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/ExecutionLocationCapability.kt",
+        // RP034-F: the file is named after what it now is. The
+        // ExecutionLocationCapability interface was deleted because the
+        // capability value is the domain ExecutionLocation ADT itself — see the
+        // RP034-E receipt; a wrapper type is visible only to
+        // :pipeline-application and broke every plugin that read the key.
+        val seam = root.resolve(
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/ShOptionsExecutionLocationAdapter.kt",
         )
-        assertTrue(Files.isRegularFile(capability), "the RP034-C seam must exist")
+        assertTrue(Files.isRegularFile(seam), "the RP034-C seam must exist")
 
-        val content = Files.readString(capability)
+        val content = Files.readString(seam)
         assertTrue(
-            content.contains("WorkspacePathResolver.resolve"),
-            "the capability must delegate to the domain authority rather than reimplementing resolution",
+            content.contains("WorkspaceLease.Managed") || content.contains("ExecutionLocation("),
+            "the seam must derive the domain ExecutionLocation rather than a private wrapper",
         )
         assertTrue(
-            content.contains("PathAnchor"),
-            "the capability must expose the anchor vocabulary to handlers",
+            content.contains("PathAnchor") || content.contains("workspace"),
+            "the seam must keep the anchor vocabulary visible in its contract",
+        )
+    }
+
+    @Test
+    @DisplayName("no Step handler reconstructs a workspace base with WorkspaceResolver")
+    fun `step handlers do not rebuild their base from control-plane paths`() {
+        // ADR-0100 fitness rule 1: "prohibir nuevos usos directos de
+        // WorkspaceResolver desde Step handlers". A handler that rebuilds
+        // `controlDirRoot/stageName/index` re-creates exactly the divergence the
+        // execution location exists to remove (INV-WS-012), and it is how
+        // core.stash, core.archiveArtifacts and core.publishHTML drifted.
+        //
+        // The authorised set is exactly what the migration plan calls "the
+        // allocator and authorised adapters" (05-migration-plan, RP034-I).
+        // Every entry below either establishes the location or falls back to the
+        // previous reconstruction; none of them is a Step handler, which is
+        // what the rule is about. They are named exactly rather than matched
+        // loosely, so a new offender has to be added deliberately.
+        val allowed = mapOf(
+            // The allocator itself.
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/WorkspaceResolver.kt" to "the allocator",
+            // The durable spine: it is what derives ShOptions and therefore the
+            // execution location every Step reads.
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt" to "durable spine",
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/ShExecution.kt" to "shell substrate",
+            // Migrated operations: each reads the location first and uses the
+            // resolver only when no location was injected (direct construction).
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/WorkspaceOperations.kt" to "file vertical, RP034-D",
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/StashOperationsAdapter.kt" to "stash, RP034-E",
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/ArchiveArtifactsOperations.kt" to "archive, RP034-F",
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/PublishHtmlOperationsAdapter.kt" to "publishHTML, RP034-F",
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CleanWsOperationsAdapter.kt" to "cleanWs, RP034-G",
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/DeleteDirOperationsAdapter.kt" to "deleteDir, RP034-G",
+        )
+        val offenders = violations { content ->
+            content.contains("WorkspaceResolver(")
+        }.filterNot { it in allowed }
+
+        assertTrue(
+            offenders.isEmpty(),
+            "a Step must read its base from EXECUTION_LOCATION_CAPABILITY, not rebuild it " +
+                "(INV-WS-012). New offenders: $offenders. Inject the location instead of " +
+                "widening this allowlist. Authorised today: ${allowed.entries.joinToString { it.key.substringAfterLast('/') + " (" + it.value + ")" }}",
         )
     }
 

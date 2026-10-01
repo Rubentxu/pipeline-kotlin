@@ -1627,84 +1627,9 @@ class CanonicalDurableRunCoordinator(
             )
             is BodyExecutionProjection.Scope -> projection.scope
         }
-        val childShOptions = when (scope) {
-            BlockShellScope.None -> stageShOptions
-            is BlockShellScope.Retry -> stageShOptions
-            // B13/E-EM-11: block deadline becomes the child Sh watchdog budget —
-            // the tighter of the block budget and any inherited stage timeout.
-            is BlockShellScope.Timeout -> {
-                val inherited = stageShOptions.timeoutMs
-                val effective = when {
-                    inherited == null -> scope.budgetMs
-                    else -> minOf(inherited, scope.budgetMs)
-                }
-                // E-EM-11 T2.2: the timeout is now ADMITTED — decode passed, the
-                // effective deadline is computed and governs all children via
-                // childShOptions. Project the scheduling transition once, here,
-                // BEFORE any child StepStarted. Invalid payloads never reach this
-                // point (policy projection and scheduling-scope construction fail
-                // closed above, before any child runs).
-                eventSink.append(
-                    dev.rubentxu.pipeline.v2.events.TimeoutScheduled(
-                        eventId = UUID.randomUUID().toString(),
-                        runId = runId.value,
-                        sequence = 0L,
-                        occurredAt = clock.now(),
-                        timeoutSeconds = effective / 1000L,
-                        timeoutAction = "abort",
-                        stepName = block.id.value,
-                        stepType = block.pluginStepId.value,
-                        stageIndex = stageIndex,
-                        stepIndex = stepIndex,
-                    ),
-                )
-                stageShOptions.copy(timeoutMs = effective)
-            }
-            is BlockShellScope.Directory -> {
-                Files.createDirectories(scope.target)
-                contextInBody = contextInBody.pushed(ContextOverlay.Cwd(scope.target.toString()))
-                eventSink.append(
-                    DirEntered(
-                        eventId = UUID.randomUUID().toString(),
-                        runId = runId.value,
-                        sequence = 0L,
-                        occurredAt = Instant.now(),
-                        path = scope.target.toString(),
-                        previousPath = scope.previous.toString(),
-                    ),
-                )
-                stageShOptions.copy(workingDirectory = scope.target)
-            }
-            is BlockShellScope.TimestampsScope -> {
-                eventSink.append(
-                    dev.rubentxu.pipeline.v2.events.TimestampsEntered(
-                        eventId = UUID.randomUUID().toString(),
-                        runId = runId.value,
-                        sequence = 0L,
-                        occurredAt = Instant.now(),
-                    ),
-                )
-                stageShOptions
-            }
-            is BlockShellScope.EnvScope -> {
-                // Parse env overrides and merge into ShOptions.env
-                val envOverrides = scope.overrides.associate { override ->
-                    val parts = override.split("=", limit = 2)
-                    if (parts.size == 2) {
-                        parts[0] to dev.rubentxu.pipeline.v2.domain.SecretHandle.plain(parts[1])
-                    } else {
-                        override to dev.rubentxu.pipeline.v2.domain.SecretHandle.plain("")
-                    }
-                }
-                val mergedEnv = scope.parentEnv + envOverrides
-                val envSpecValues = envOverrides.mapValues { it.value.borrow { bytes -> String(bytes, Charsets.UTF_8) } }
-                contextInBody = contextInBody.pushed(ContextOverlay.Environment(dev.rubentxu.pipeline.v2.domain.EnvironmentSpec(envSpecValues)))
-                stageShOptions.copy(env = mergedEnv)
-            }
-            // WU-G5R.3: waitUntil scope passes through ShOptions without special flags.
-            // The polling backoff is handled in the executeWaitUntilBody loop below.
-            is BlockShellScope.WaitUntilScope -> stageShOptions
-        }
+        val projected = bodyEngine.projectScope(scope, block, runId, stageIndex, stepIndex, stageShOptions, contextInBody)
+        val childShOptions = projected.shOptions
+        contextInBody = projected.context
 
         // B11 / W2: bind the body-reentry seam by registering the body with the adapter.
         // The runner closure re-enters the canonical shared body loop (`invokeBodyChildren`)

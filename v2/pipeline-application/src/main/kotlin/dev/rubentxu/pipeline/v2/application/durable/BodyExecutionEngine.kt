@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import java.nio.file.Files
 import java.util.UUID
 
 /**
@@ -109,5 +110,106 @@ internal class BodyExecutionEngine(
             }
         }
         return StepOutcome.Success
+    }
+
+    /** The projected child ShOptions plus the context after the scope's overlays. */
+    data class ScopedBody(val shOptions: ShOptions, val context: ExecutionContext)
+
+    /**
+     * Projects a block's [BlockShellScope] onto the child execution surface:
+     * derives the child ShOptions, emits the scope's scheduling/entry events,
+     * and pushes the context overlays. Moved verbatim from the coordinator,
+     * including its quirks (DirEntered timestamps via Instant.now() while
+     * TimeoutScheduled uses the durable clock).
+     */
+    fun projectScope(
+        scope: BlockShellScope,
+        block: BlockStepNode,
+        runId: RunId,
+        stageIndex: Int,
+        stepIndex: Int,
+        stageShOptions: ShOptions,
+        context: ExecutionContext,
+    ): ScopedBody = when (scope) {
+        BlockShellScope.None -> ScopedBody(stageShOptions, context)
+        is BlockShellScope.Retry -> ScopedBody(stageShOptions, context)
+        // B13/E-EM-11: block deadline becomes the child Sh watchdog budget -
+        // the tighter of the block budget and any inherited stage timeout.
+        is BlockShellScope.Timeout -> {
+            val inherited = stageShOptions.timeoutMs
+            val effective = when {
+                inherited == null -> scope.budgetMs
+                else -> minOf(inherited, scope.budgetMs)
+            }
+            // E-EM-11 T2.2: the timeout is now ADMITTED. Project the scheduling
+            // transition once, BEFORE any child StepStarted.
+            eventSink.append(
+                dev.rubentxu.pipeline.v2.events.TimeoutScheduled(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runId.value,
+                    sequence = 0L,
+                    occurredAt = clock.now(),
+                    timeoutSeconds = effective / 1000L,
+                    timeoutAction = "abort",
+                    stepName = block.id.value,
+                    stepType = block.pluginStepId.value,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                ),
+            )
+            ScopedBody(stageShOptions.copy(timeoutMs = effective), context)
+        }
+        is BlockShellScope.Directory -> {
+            Files.createDirectories(scope.target)
+            val contextAfterPush = context.pushed(
+                dev.rubentxu.pipeline.v2.domain.ContextOverlay.Cwd(scope.target.toString()),
+            )
+            eventSink.append(
+                dev.rubentxu.pipeline.v2.events.DirEntered(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runId.value,
+                    sequence = 0L,
+                    occurredAt = java.time.Instant.now(),
+                    path = scope.target.toString(),
+                    previousPath = scope.previous.toString(),
+                ),
+            )
+            ScopedBody(stageShOptions.copy(workingDirectory = scope.target), contextAfterPush)
+        }
+        is BlockShellScope.TimestampsScope -> {
+            eventSink.append(
+                dev.rubentxu.pipeline.v2.events.TimestampsEntered(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runId.value,
+                    sequence = 0L,
+                    occurredAt = java.time.Instant.now(),
+                ),
+            )
+            ScopedBody(stageShOptions, context)
+        }
+        is BlockShellScope.EnvScope -> {
+            // Parse env overrides and merge into ShOptions.env
+            val envOverrides = scope.overrides.associate { override ->
+                val parts = override.split("=", limit = 2)
+                if (parts.size == 2) {
+                    parts[0] to dev.rubentxu.pipeline.v2.domain.SecretHandle.plain(parts[1])
+                } else {
+                    override to dev.rubentxu.pipeline.v2.domain.SecretHandle.plain("")
+                }
+            }
+            val mergedEnv = scope.parentEnv + envOverrides
+            val envSpecValues = envOverrides.mapValues {
+                it.value.borrow { bytes -> String(bytes, Charsets.UTF_8) }
+            }
+            val contextAfterPush = context.pushed(
+                dev.rubentxu.pipeline.v2.domain.ContextOverlay.Environment(
+                    dev.rubentxu.pipeline.v2.domain.EnvironmentSpec(envSpecValues),
+                ),
+            )
+            ScopedBody(stageShOptions.copy(env = mergedEnv), contextAfterPush)
+        }
+        // WU-G5R.3: waitUntil scope passes through ShOptions without special flags.
+        // The polling backoff is handled in the executeWaitUntilBody loop below.
+        is BlockShellScope.WaitUntilScope -> ScopedBody(stageShOptions, context)
     }
 }

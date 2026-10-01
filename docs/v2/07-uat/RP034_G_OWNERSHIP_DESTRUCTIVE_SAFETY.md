@@ -96,3 +96,42 @@ ownership, not the absence of a marker.
 The legacy fallback path still exists in source and is retired in RP034-I.
 RP034-E (non-core consumers), RP034-F (differentials) and RP034-H (CLI default
 flip) remain; RP034-H may now proceed, this gate being satisfied.
+
+---
+
+# CORRECTION (RP034-Id, 2026-10-01) — this gate was NOT satisfied in production
+
+The matrix above is accurate about the *guard implementation* and about
+`DestructiveSafetyOwnershipTest`, which constructs `ExecutionLocation` directly
+and therefore passes. It was **not** evidence that the guard fired in a real run.
+
+**What was actually true.** The CLI decided ownership correctly — ADR-0101 makes
+the default `pipelinek run` resolve `WorkspaceLease.Attached`. The value was then
+dropped in transit: `WorkspaceIntent` exposed only a `Path?` base, which cannot
+express ownership, and `ShOptionsExecutionLocationAdapter` therefore re-derived
+`WorkspaceLease.Managed` for **every** invocation. `authorizeRootDestruction`
+then returned `Permitted` and `protectWorkspaceRoot` was always `false`.
+
+The guard was live in the type and dead in the wiring.
+
+**Reproduced against the installed distribution** at `HEAD=e3e2140b`: in
+`/tmp/rp034-safety/proj` (`important.txt` plus a `deleteDir()`-only pipeline),
+running the default local-first mode deleted the file and **exited 0**.
+
+**Why every preceding check missed it.** Each test in this receipt built its own
+`ExecutionLocation` and asked the adapter a question it was already designed to
+answer. Nothing asked whether the *production* location carried ownership. The
+corpus passed for the wrong reason: `11-workflow-control` runs `deleteDir()` over
+a disposable `--workspace` temp directory, which is legitimately `Managed`, so a
+guard that never fired and a guard that fired correctly both yield exit 0. **No
+corpus fixture pointed `--workspace` at a real user checkout**, which is the only
+input that distinguishes them.
+
+**Closed in** `9d2e999a`: ownership now crosses the boundary inside a single
+non-nullable `RuntimeWorkspaceTransport`, and `deleteDir()` on an attached root
+refuses with exit 1 while `--isolated` keeps its wipe contract.
+
+**Standing lesson for the burn-down:** an adapter unit test proves the adapter
+behaves. It does not prove the value reaching it was ever populated. Any gate
+about a *transported* fact needs an end-to-end witness through the real CLI, not
+a directly-constructed fixture.

@@ -108,12 +108,30 @@ verdes en el mismo SHA.
 certificación futura; no invalida RP3_EXIT_REVIEW en su SHA. No certificar una
 nueva candidata local-first hasta cerrar WU-RP-034.
 
-**Estado (2026-10-01):** RP034-A cerrado. Caracterización congelada en
+**Estado (2026-10-01):** secuencia **A→I ejecutada**. Caracterización congelada en
 `WorkspaceExecutionLocationCharacterizationTest` (4/4). Un intento previo de
 activar el default local-first (`8e838e6d`) fue **revertido** (`aeae1e4c`)
 porque dejaba el checkout del usuario alcanzable con la protección destructiva
 dependiendo aún de la heurística VCS. Ver
 [`P0_SHELL_WORKING_DIRECTORY_RECEIPT.md`](../07-uat/P0_SHELL_WORKING_DIRECTORY_RECEIPT.md).
+
+**RP034-I (certificación) — hallazgo de seguridad y cierre del slice.**
+Con el default local-first ya activo, `deleteDir()` **borró el proyecto del
+llamante**. La causa era una pérdida de hecho en tránsito, no un fallo de tipo:
+`WorkspaceIntent` exponía sólo la base (`Path?`), incapaz de expresar ownership,
+así que el bridge re-derivaba `WorkspaceLease.Managed` para **toda** ejecución.
+El guard ADR-0102 estaba vivo en el tipo y muerto en el cableado — el gate de
+RP034-G no estaba satisfecho en producción aunque su matriz y sus unit tests
+pasaran. Corregido en `9d2e999a` con un `RuntimeWorkspaceTransport` de ownership
+no-nulable, y verificado contra la distribución instalada en los tres modos
+(adjunta → rechazo con exit 1; aislada → wipe permitido; subruta → exit 0). La
+corrección del registro histórico está en
+[`RP034_G_OWNERSHIP_DESTRUCTIVE_SAFETY.md`](../07-uat/RP034_G_OWNERSHIP_DESTRUCTIVE_SAFETY.md).
+
+**Exit criteria pendientes:** el gate de "fresh/replay/concurrency/architecture/
+full gate verdes en el MISMO SHA" requiere un `./gradlew check` completo y verde
+sobre el SHA candidato. Hasta ese punto RP-034 **no** se declara cerrado y no se
+libera candidata local-first.
 
 ## 6. RP-4 — Calidad transversal y distribución reproducible
 

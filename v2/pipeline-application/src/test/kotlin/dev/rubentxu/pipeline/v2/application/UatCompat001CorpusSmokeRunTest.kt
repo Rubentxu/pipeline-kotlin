@@ -63,24 +63,45 @@ class UatCompat001CorpusSmokeRunTest {
     private val corpusPassphrase = "corpus-passphrase-0.36.0"
 
     /**
-     * Mutable fixtures (zip / unzip / archiveArtifacts / mixed / findFiles / etc.)
-     * persist outputs under their declarative `build/` paths. Running them in
-     * the checked-in corpus directory would either reuse stale outputs from
-     * a previous run or, worse, contaminate the corpus workspace itself.
-     * The corpus smoke runner therefore copies each fixture into a JUnit
-     * temporary workspace before invoking the installed binary, matching
-     * CompatibilityCorpusTest's WU-LPR-075 pattern.
+     * Fixtures that must run in a PipelineK-managed scratch rather than in the
+     * attached staging directory.
      *
-     * Legacy fixtures (10-smoke-e2e) use absolute `/tmp/...` paths and rely on
-     * the launched process having the fixture directory as its cwd. For those
-     * fixtures we deliberately launch the binary WITHOUT `--workspace`, so the
-     * process inherits the tempdir as cwd and the legacy sh steps keep
-     * behaving like they did against the corpus directory.
+     * The corpus is not uniform and the workspace mode is part of each fixture's
+     * contract. `CompatibilityCorpusTest` already encodes the same two modes per
+     * fixture; this set mirrors it for the smoke runner.
+     *
+     * RP034-Id, first failure: fixture 10 does `git clone /tmp/smoke-repo .` and
+     * git refuses a non-empty destination. The staging directory already holds
+     * the copied fixture, so the attached mode cannot host it.
+     *
+     * RP034-Id, second failure: fixture 11 calls bare `deleteDir()`. Since the
+     * ADR-0102 guard became live, that is correctly refused on an attached root
+     * (`--workspace <dir>` means USER-owned). A PipelineK-owned scratch keeps the
+     * Step's wipe contract intact.
+     *
+     * RP034-Id, third failure — and the reason this is NOT "just run everything
+     * with --isolated": fixture 29 writes `build/utils/mix/manifest.yaml` in one
+     * stage and reads it in four later stages. Under `--isolated` each stage
+     * gets its own scratch, so `readYaml` cannot see what `writeYaml` produced.
+     * Cross-stage workspace continuity is Jenkins semantics and is exactly what
+     * an ATTACHED root provides; `Managed` deliberately does not. Fixtures with
+     * that shape must keep the shared attached workspace.
      */
-    private val fixturesWithoutWorkspace: Set<String> = setOf(
+    private val fixturesWithIsolatedWorkspace: Set<String> = setOf(
         "10-smoke-e2e.pipeline.kts",
+        "11-workflow-control.pipeline.kts",
     )
 
+    /**
+     * Mutable fixtures (zip / unzip / archiveArtifacts / mixed / findFiles / etc.)
+     * persist outputs under their declarative `build/` paths. Running them in the
+     * checked-in corpus directory would reuse stale outputs from a previous run
+     * or contaminate the corpus directory itself, so every fixture is copied
+     * into a JUnit temporary directory before the installed binary is invoked
+     * (the WU-LPR-075 pattern). For most fixtures that staging directory is then
+     * passed as `--workspace`; see [fixturesWithIsolatedWorkspace] for the ones
+     * that must not use it.
+     */
     private fun stageFixture(name: String, workspace: Path): Path =
         workspace.resolve(name).also { destination ->
             Files.copy(discoverFixtures().first { it.fileName.toString() == name }, destination)
@@ -159,9 +180,8 @@ class UatCompat001CorpusSmokeRunTest {
         fixtures.forEach { fixture ->
             val staged = stageFixture(fixture.fileName.toString(), workspace)
             val name = fixture.fileName.toString()
-            val pb = if (fixturesWithoutWorkspace.contains(name)) {
-                ProcessBuilder(appBin.toString(), "run", staged.toString())
-                    .directory(workspace.toFile())
+            val pb = if (fixturesWithIsolatedWorkspace.contains(name)) {
+                ProcessBuilder(appBin.toString(), "run", "--isolated", staged.toString())
             } else {
                 ProcessBuilder(appBin.toString(), "run", "--workspace", workspace.toString(), staged.toString())
             }
@@ -213,9 +233,8 @@ class UatCompat001CorpusSmokeRunTest {
         fixtures.forEach { fixture ->
             val staged = stageFixture(fixture.fileName.toString(), workspace)
             val name = fixture.fileName.toString()
-            val pb = if (fixturesWithoutWorkspace.contains(name)) {
-                ProcessBuilder(appBin.toString(), "run", staged.toString())
-                    .directory(workspace.toFile())
+            val pb = if (fixturesWithIsolatedWorkspace.contains(name)) {
+                ProcessBuilder(appBin.toString(), "run", "--isolated", staged.toString())
             } else {
                 ProcessBuilder(appBin.toString(), "run", "--workspace", workspace.toString(), staged.toString())
             }

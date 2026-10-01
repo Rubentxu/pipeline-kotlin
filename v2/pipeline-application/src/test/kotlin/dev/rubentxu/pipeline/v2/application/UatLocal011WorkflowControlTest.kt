@@ -17,6 +17,7 @@ import dev.rubentxu.pipeline.v2.events.WsCleaned
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import dev.rubentxu.pipeline.v2.events.StepFailed
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -262,7 +263,13 @@ class UatLocal011WorkflowControlTest {
             }
         """.trimIndent())
 
-        val result = runPipeline(script)
+        // RP034-Id: this scenario deliberately deletes a NON-EMPTY workspace root,
+        // which is only permitted on a PipelineK-managed lease. `runPipeline`
+        // attaches tempDir, i.e. an Attached, USER-owned root, and ADR-0102 now
+        // refuses root destruction there. Requesting `--isolated` preserves the
+        // scenario exactly as written. The refusal is covered separately by
+        // SC-011-13, which previously had no UAT coverage at all.
+        val result = runPipeline(script, arrayOf("--isolated"))
 
         assertEquals(0, result.exitCode,
             "Pipeline should exit 0. stdout: ${result.stdout}")
@@ -274,6 +281,50 @@ class UatLocal011WorkflowControlTest {
         val dd = dirDeleted.first()
         assertNotNull(dd.sha256, "DirDeleted should have sha256")
         assertTrue(dd.sha256.length == 64, "SHA-256 should be 64 hex chars")
+    }
+
+    /**
+     * SC-011-13: an Attached (USER-owned) root must fail closed on `deleteDir()`.
+     *
+     * This is the ADR-0102 contract that had no UAT coverage while it was dead in
+     * production: the guard was green in unit tests and never fired, because no
+     * UAT pointed the workspace at a user-owned root. It asserts BOTH halves —
+     * the refusal and the survival of the caller's file — because a refusal that
+     * deleted anyway would still satisfy a check on the exit code alone.
+     */
+    @Test
+    fun `SC-011-13 deleteDir refuses an attached root and preserves its content`() {
+        val script = tempDir.resolve("sc-011-06.pipeline.kts")
+        Files.writeString(script, """
+            pipeline {
+                stages {
+                    stage("test") {
+                        sh("echo 'precious' > important.txt")
+                        deleteDir()
+                    }
+                }
+            }
+        """.trimIndent())
+
+        Files.deleteIfExists(tempDir.resolve("important.txt"))
+        val result = runPipeline(script) // no flag => Attached, USER-owned root
+
+        assertNotEquals(0, result.exitCode,
+            "deleteDir over an attached root must fail closed, but the run exited 0. stdout: ${result.stdout}")
+
+        val stepFailed = result.events.filterIsInstance<StepFailed>()
+        assertTrue(
+            stepFailed.any { it.stepName.endsWith("deletedir-0") },
+            "Expected a StepFailed for the deleteDir step. Events: ${result.events.map { it::class.simpleName }}",
+        )
+        assertTrue(
+            result.events.none { it is DirDeleted },
+            "No DirDeleted may be emitted when the authorization refused.",
+        )
+        assertTrue(
+            Files.exists(tempDir.resolve("important.txt")),
+            "The caller's file must survive a refused root deletion.",
+        )
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

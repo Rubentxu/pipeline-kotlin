@@ -6116,6 +6116,7 @@ public final class dev/rubentxu/pipeline/v2/domain/step/WorkspaceIdentity {
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/step/WorkspaceIdentityKt {
+	public static final fun getEXECUTION_LOCATION_CAPABILITY ()Ljava/lang/String;
 	public static final fun getWORKSPACE_IDENTITY_CAPABILITY ()Ljava/lang/String;
 }
 
@@ -6357,6 +6358,284 @@ public final class dev/rubentxu/pipeline/v2/domain/step/junit/JunitTotals {
 	public final fun getSkipped ()I
 	public final fun getTests ()I
 	public final fun getTimeSeconds ()D
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/workspace/DestructiveAuthorization {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/DestructiveAuthorization$Permitted : dev/rubentxu/pipeline/v2/domain/workspace/DestructiveAuthorization {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/workspace/DestructiveAuthorization$Permitted;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/DestructiveAuthorization$Refused : dev/rubentxu/pipeline/v2/domain/workspace/DestructiveAuthorization {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;)Ldev/rubentxu/pipeline/v2/domain/workspace/DestructiveAuthorization$Refused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/workspace/DestructiveAuthorization$Refused;Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/workspace/DestructiveAuthorization$Refused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/workspace/DirDerivation {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/DirDerivation$Derived : dev/rubentxu/pipeline/v2/domain/workspace/DirDerivation {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/workspace/ExecutionLocation;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/workspace/ExecutionLocation;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/workspace/ExecutionLocation;)Ldev/rubentxu/pipeline/v2/domain/workspace/DirDerivation$Derived;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/workspace/DirDerivation$Derived;Ldev/rubentxu/pipeline/v2/domain/workspace/ExecutionLocation;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/workspace/DirDerivation$Derived;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLocation ()Ldev/rubentxu/pipeline/v2/domain/workspace/ExecutionLocation;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/DirDerivation$Rejected : dev/rubentxu/pipeline/v2/domain/workspace/DirDerivation {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;)Ldev/rubentxu/pipeline/v2/domain/workspace/DirDerivation$Rejected;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/workspace/DirDerivation$Rejected;Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/workspace/DirDerivation$Rejected;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/ExecutionLocation {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceLease;Ljava/nio/file/Path;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceLease;
+	public final fun component2 ()Ljava/nio/file/Path;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceLease;Ljava/nio/file/Path;)Ldev/rubentxu/pipeline/v2/domain/workspace/ExecutionLocation;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/workspace/ExecutionLocation;Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceLease;Ljava/nio/file/Path;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/workspace/ExecutionLocation;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCwd ()Ljava/nio/file/Path;
+	public final fun getWorkspace ()Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceLease;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/PathAnchor : java/lang/Enum {
+	public static final field CURRENT_DIRECTORY Ldev/rubentxu/pipeline/v2/domain/workspace/PathAnchor;
+	public static final field WORKSPACE_ROOT Ldev/rubentxu/pipeline/v2/domain/workspace/PathAnchor;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/workspace/PathAnchor;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/workspace/PathAnchor;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/workspace/PathResolution {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/PathResolution$Rejected : dev/rubentxu/pipeline/v2/domain/workspace/PathResolution {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;)Ldev/rubentxu/pipeline/v2/domain/workspace/PathResolution$Rejected;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/workspace/PathResolution$Rejected;Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/workspace/PathResolution$Rejected;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/PathResolution$Resolved : dev/rubentxu/pipeline/v2/domain/workspace/PathResolution {
+	public fun <init> (Ljava/nio/file/Path;)V
+	public final fun component1 ()Ljava/nio/file/Path;
+	public final fun copy (Ljava/nio/file/Path;)Ldev/rubentxu/pipeline/v2/domain/workspace/PathResolution$Resolved;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/workspace/PathResolution$Resolved;Ljava/nio/file/Path;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/workspace/PathResolution$Resolved;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPath ()Ljava/nio/file/Path;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceAllocationPolicy {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceAllocationPolicy$BranchIsolated : dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceAllocationPolicy {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceAllocationPolicy$BranchIsolated;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceAllocationPolicy$RunShared : dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceAllocationPolicy {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceAllocationPolicy$RunShared;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceAllocationPolicy$StageIsolated : dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceAllocationPolicy {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceAllocationPolicy$StageIsolated;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceLease {
+	public abstract fun getOwnership ()Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceOwnership;
+	public abstract fun getRoot ()Ljava/nio/file/Path;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceLease$Attached : dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceLease {
+	public fun <init> (Ljava/nio/file/Path;)V
+	public final fun component1 ()Ljava/nio/file/Path;
+	public final fun copy (Ljava/nio/file/Path;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceLease$Attached;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceLease$Attached;Ljava/nio/file/Path;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceLease$Attached;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOwnership ()Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceOwnership;
+	public fun getRoot ()Ljava/nio/file/Path;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceLease$Managed : dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceLease {
+	public fun <init> (Ljava/nio/file/Path;)V
+	public final fun component1 ()Ljava/nio/file/Path;
+	public final fun copy (Ljava/nio/file/Path;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceLease$Managed;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceLease$Managed;Ljava/nio/file/Path;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceLease$Managed;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOwnership ()Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceOwnership;
+	public fun getRoot ()Ljava/nio/file/Path;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceOwnership : java/lang/Enum {
+	public static final field PIPELINEK Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceOwnership;
+	public static final field USER Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceOwnership;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceOwnership;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceOwnership;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$AbsolutePathNotAllowed : dev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$AbsolutePathNotAllowed;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$AbsolutePathNotAllowed;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$AbsolutePathNotAllowed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRaw ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$ConflictingWorkspaceMode : dev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError {
+	public fun <init> (Ljava/nio/file/Path;Ljava/nio/file/Path;)V
+	public final fun component1 ()Ljava/nio/file/Path;
+	public final fun component2 ()Ljava/nio/file/Path;
+	public final fun copy (Ljava/nio/file/Path;Ljava/nio/file/Path;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$ConflictingWorkspaceMode;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$ConflictingWorkspaceMode;Ljava/nio/file/Path;Ljava/nio/file/Path;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$ConflictingWorkspaceMode;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getExplicit ()Ljava/nio/file/Path;
+	public final fun getInvocationDirectory ()Ljava/nio/file/Path;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$EscapesWorkspace : dev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError {
+	public fun <init> (Ljava/lang/String;Ljava/nio/file/Path;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/nio/file/Path;
+	public final fun copy (Ljava/lang/String;Ljava/nio/file/Path;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$EscapesWorkspace;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$EscapesWorkspace;Ljava/lang/String;Ljava/nio/file/Path;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$EscapesWorkspace;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRaw ()Ljava/lang/String;
+	public final fun getRoot ()Ljava/nio/file/Path;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$InvalidPath : dev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$InvalidPath;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$InvalidPath;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$InvalidPath;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRaw ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$ProtectedWorkspaceRoot : dev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError {
+	public fun <init> (Ljava/lang/String;Ljava/nio/file/Path;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/nio/file/Path;
+	public final fun copy (Ljava/lang/String;Ljava/nio/file/Path;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$ProtectedWorkspaceRoot;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$ProtectedWorkspaceRoot;Ljava/lang/String;Ljava/nio/file/Path;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$ProtectedWorkspaceRoot;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOperation ()Ljava/lang/String;
+	public final fun getRoot ()Ljava/nio/file/Path;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$SymlinkEscape : dev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError {
+	public fun <init> (Ljava/nio/file/Path;Ljava/nio/file/Path;)V
+	public final fun component1 ()Ljava/nio/file/Path;
+	public final fun component2 ()Ljava/nio/file/Path;
+	public final fun copy (Ljava/nio/file/Path;Ljava/nio/file/Path;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$SymlinkEscape;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$SymlinkEscape;Ljava/nio/file/Path;Ljava/nio/file/Path;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$SymlinkEscape;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPath ()Ljava/nio/file/Path;
+	public final fun getRoot ()Ljava/nio/file/Path;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$WorkspaceUnavailable : dev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$WorkspaceUnavailable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$WorkspaceUnavailable;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathError$WorkspaceUnavailable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathResolver {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspacePathResolver;
+	public final fun authorizeRootDestruction (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceLease;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/workspace/DestructiveAuthorization;
+	public final fun baseFor (Ldev/rubentxu/pipeline/v2/domain/workspace/ExecutionLocation;Ldev/rubentxu/pipeline/v2/domain/workspace/PathAnchor;)Ljava/nio/file/Path;
+	public final fun deriveDirectory (Ldev/rubentxu/pipeline/v2/domain/workspace/ExecutionLocation;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/workspace/DirDerivation;
+	public final fun rejectSymlinkEscape (Ljava/nio/file/Path;Ljava/nio/file/Path;)Ldev/rubentxu/pipeline/v2/domain/workspace/PathResolution;
+	public final fun resolve (Ldev/rubentxu/pipeline/v2/domain/workspace/ExecutionLocation;Ldev/rubentxu/pipeline/v2/domain/workspace/PathAnchor;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/workspace/PathResolution;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceRequest {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceRequest$AttachExplicit : dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceRequest {
+	public fun <init> (Ljava/nio/file/Path;)V
+	public final fun component1 ()Ljava/nio/file/Path;
+	public final fun copy (Ljava/nio/file/Path;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceRequest$AttachExplicit;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceRequest$AttachExplicit;Ljava/nio/file/Path;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceRequest$AttachExplicit;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPath ()Ljava/nio/file/Path;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceRequest$AttachInvocationDirectory : dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceRequest {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceRequest$AttachInvocationDirectory;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceRequest$ManagedIsolated : dev/rubentxu/pipeline/v2/domain/workspace/WorkspaceRequest {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/workspace/WorkspaceRequest$ManagedIsolated;
+	public fun equals (Ljava/lang/Object;)Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }

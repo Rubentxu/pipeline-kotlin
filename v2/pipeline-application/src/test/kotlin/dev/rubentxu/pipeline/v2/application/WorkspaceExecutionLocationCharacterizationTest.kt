@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -53,7 +54,7 @@ class WorkspaceExecutionLocationCharacterizationTest {
     // ---------------------------------------------------------------------
 
     @Test
-    @DisplayName("Characterisation: no --workspace runs sh in a synthetic per-stage scratch, NOT the invocation directory")
+    @DisplayName("Local-first (RP034-H): no --workspace now runs sh in the invocation directory")
     fun `no workspace flag runs shell in synthetic per-stage scratch`(@TempDir tempDir: Path) {
         val invocationDirectory = Files.createDirectory(tempDir.resolve("invocation"))
         val controlRoot = Files.createDirectory(tempDir.resolve("control"))
@@ -74,22 +75,21 @@ class WorkspaceExecutionLocationCharacterizationTest {
         assertTrue(Files.exists(observed), "shell did not record its CWD: ${result.output}")
 
         val reported = Files.readString(observed).trim()
-        // The current scratch is <controlRoot>/workspace/<stage>-<n>.
-        assertTrue(
-            reported.startsWith(controlRoot.toRealPath().toString()),
-            "expected the shell CWD to live under the control root, got: $reported",
+        // RP034-H inverted this characterisation: the no-flag default attaches the
+        // invocation directory (ADR-0101 clause 3.1).
+        assertEquals(
+            invocationDirectory.toRealPath().toString(),
+            reported,
+            "the local-first default must attach the invocation directory",
         )
-        // And it is emphatically NOT the invocation directory.
         assertFalse(
-            reported == invocationDirectory.toRealPath().toString(),
-            "RP034-A expected the invocation directory NOT to be the shell CWD; " +
-                "if this now fails, the CLI default has already flipped and this " +
-                "characterisation must be inverted in the RP034-H receipt",
+            reported.startsWith(controlRoot.toRealPath().toString()),
+            "the attached workspace must not live under the control root (INV-WS-004)",
         )
     }
 
     @Test
-    @DisplayName("Characterisation: a relative path in the project does not resolve in a no-flag run (the WU-RP-034 defect)")
+    @DisplayName("Local-first (RP034-H): a relative project path now resolves without --workspace")
     fun `relative project path is unreachable without workspace flag`(@TempDir tempDir: Path) {
         val invocationDirectory = Files.createDirectory(tempDir.resolve("invocation"))
         val controlRoot = Files.createDirectory(tempDir.resolve("control"))
@@ -123,11 +123,72 @@ class WorkspaceExecutionLocationCharacterizationTest {
         assertEquals(0, result.exitCode, result.output)
         assertTrue(Files.exists(probe), "probe did not run: ${result.output}")
         // This is the defect the whole WU exists to fix. INVERTS in RP034-H.
+        // This was the defect WU-RP-034 existed to fix. RP034-H inverted it.
         assertEquals(
-            "UNREACHABLE",
+            "present",
             Files.readString(probe).trim(),
-            "RP034-A expected the relative project path to be unreachable; " +
-                "if this now fails, the local-first default has already landed",
+            "the relative project path must resolve against the attached workspace",
+        )
+    }
+
+    @Test
+    @DisplayName("Isolated (ADR-0101): --isolated preserves the historical per-stage scratch")
+    fun `isolated flag runs shell in managed scratch`(@TempDir tempDir: Path) {
+        val invocationDirectory = Files.createDirectory(tempDir.resolve("invocation"))
+        val controlRoot = Files.createDirectory(tempDir.resolve("control"))
+        val observed = tempDir.resolve("isolated-pwd.txt")
+        val script = writePwdPipeline(invocationDirectory, observed)
+
+        val result = runCli(
+            invocationDirectory,
+            listOf(
+                "run",
+                "--db", tempDir.resolve("isolated.db").toString(),
+                "--control-root", controlRoot.toString(),
+                "--isolated",
+                script.toString(),
+            ),
+        )
+
+        assertEquals(0, result.exitCode, result.output)
+        assertTrue(Files.exists(observed), "shell did not record its CWD: ${result.output}")
+
+        val reported = Files.readString(observed).trim()
+        assertTrue(
+            reported.startsWith(controlRoot.toRealPath().toString()),
+            "--isolated must keep the PipelineK-managed scratch under the control root, got: $reported",
+        )
+        assertNotEquals(
+            invocationDirectory.toRealPath().toString(),
+            reported,
+            "--isolated must not attach the invocation directory",
+        )
+    }
+
+    @Test
+    @DisplayName("Fail-closed (ADR-0101 3.4): --isolated with --workspace is rejected")
+    fun `isolated and workspace together are rejected`(@TempDir tempDir: Path) {
+        val invocationDirectory = Files.createDirectory(tempDir.resolve("invocation"))
+        val workspace = Files.createDirectory(tempDir.resolve("workspace"))
+        val script = writePwdPipeline(invocationDirectory, tempDir.resolve("never.txt"))
+
+        val result = runCli(
+            invocationDirectory,
+            listOf(
+                "run",
+                "--workspace", workspace.toString(),
+                "--isolated",
+                script.toString(),
+            ),
+        )
+
+        assertTrue(
+            result.exitCode != 0,
+            "the conflicting-mode combination must fail closed, but exited 0: ${result.output}",
+        )
+        assertTrue(
+            !Files.exists(tempDir.resolve("never.txt")),
+            "no step may run when the CLI modes conflict",
         )
     }
 

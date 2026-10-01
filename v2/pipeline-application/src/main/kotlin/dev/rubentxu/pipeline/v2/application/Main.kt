@@ -350,7 +350,13 @@ fun main(args: Array<String>) {
                 eventSink = eventStore,
                 controlDirRoot = controlDirRoot,
                 sandboxProfile = config.sandboxProfile,
-                workspaceBase = config.workspace?.let { Path.of(it) },
+                // RP034-H / ADR-0101 clause 3.1: the CLI default is local-first. The
+                // workspace origin is decided once, here at the boundary, and only the
+                // root crosses into the runtime. `--isolated` preserves the historical
+                // PipelineK-managed scratch; `--workspace <path>` stays authoritative.
+                workspaceBase = WorkspaceIntent.runtimeWorkspaceBase(
+                    config, Path.of("").toAbsolutePath().normalize(),
+                ),
                 stepRegistry = composedStepRegistry,
                 secretPatternRegistry = secretPatternRegistry,
                 withCredentialsExecutor = withCredentialsExecutor,
@@ -735,7 +741,13 @@ fun main(args: Array<String>) {
             eventSink = eventStore,
             controlDirRoot = controlDirRoot,
             sandboxProfile = config.sandboxProfile,
-            workspaceBase = config.workspace?.let { Path.of(it) },
+            // RP034-H / ADR-0101 clause 3.1: the CLI default is local-first. The
+            // workspace origin is decided once, here at the boundary, and only the
+            // root crosses into the runtime. `--isolated` preserves the historical
+            // PipelineK-managed scratch; `--workspace <path>` stays authoritative.
+            workspaceBase = WorkspaceIntent.runtimeWorkspaceBase(
+                config, Path.of("").toAbsolutePath().normalize(),
+            ),
             withCredentialsExecutor = withCredentialsExecutor,
             stepRegistry = composedStepRegistry,
             secretPatternRegistry = secretPatternRegistry,

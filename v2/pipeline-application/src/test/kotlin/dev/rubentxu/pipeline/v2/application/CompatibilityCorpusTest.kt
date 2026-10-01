@@ -89,12 +89,27 @@ class CompatibilityCorpusTest {
 
     /**
      * Run a fixture that is expected to succeed (exit 0).
+     *
+     * RP034-H / ADR-0101: fixtures run with `--isolated`.
+     *
+     * The corpus predates the local-first default and several fixtures were
+     * written against a *fresh empty scratch* as the shell working directory —
+     * fixture 10 clones a repository into `.` and needs the directory to be
+     * empty. With the no-flag default now attaching the caller's directory, that
+     * directory is the checked-out PipelineK project, and `git clone .` correctly
+     * refuses to clone into a non-empty tree.
+     *
+     * Requesting `--isolated` preserves exactly the contract these fixtures were
+     * written against, and it doubles as continuous coverage of the isolated
+     * mode: the whole corpus exercises the historical scratch semantics on every
+     * run. Fixtures that must instead verify local-first behaviour pass no flag
+     * and are called out individually.
      */
     private fun runFixturePass(name: String) {
         val path = fixture(name)
         val appBin = AppBinSupport.discover()
 
-        val pb = ProcessBuilder(appBin.toString(), "run", path.toString())
+        val pb = ProcessBuilder(appBin.toString(), "run", "--isolated", path.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
 

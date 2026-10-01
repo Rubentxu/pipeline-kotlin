@@ -422,6 +422,11 @@ pipeline {
             "run",
             "--db", dbPath.toString(),
             "--control-root", controlRoot.toString(),
+            // RP034-H / ADR-0101: these cases assert the ADR-0048 contract that the
+            // shell CWD is the per-stage workspace. Under the local-first default the
+            // workspace is the attached invocation directory, so the managed scratch
+            // this suite is about must now be requested explicitly with --isolated.
+            "--isolated",
             "--sandbox-profile", "local",
             scriptPath.toString()
         )
@@ -469,6 +474,11 @@ pipeline {
             "run",
             "--db", dbPath.toString(),
             "--control-root", controlRoot.toString(),
+            // RP034-H / ADR-0101: these cases assert the ADR-0048 contract that the
+            // shell CWD is the per-stage workspace. Under the local-first default the
+            // workspace is the attached invocation directory, so the managed scratch
+            // this suite is about must now be requested explicitly with --isolated.
+            "--isolated",
             "--sandbox-profile", "local",
             "--resume",
             scriptPath.toString()
@@ -659,6 +669,11 @@ pipeline {
             "run",
             "--db", dbPath.toString(),
             "--control-root", controlRoot.toString(),
+            // RP034-H / ADR-0101: these cases assert the ADR-0048 contract that the
+            // shell CWD is the per-stage workspace. Under the local-first default the
+            // workspace is the attached invocation directory, so the managed scratch
+            // this suite is about must now be requested explicitly with --isolated.
+            "--isolated",
             "--sandbox-profile", "none",
             scriptPath.toString()
         )
@@ -702,6 +717,11 @@ pipeline {
             "run",
             "--db", dbPath.toString(),
             "--control-root", controlRoot.toString(),
+            // RP034-H / ADR-0101: these cases assert the ADR-0048 contract that the
+            // shell CWD is the per-stage workspace. Under the local-first default the
+            // workspace is the attached invocation directory, so the managed scratch
+            // this suite is about must now be requested explicitly with --isolated.
+            "--isolated",
             "--sandbox-profile", "local",
             "--resume",
             scriptPath.toString()
@@ -921,7 +941,14 @@ pipeline {
             "dev.rubentxu.pipeline.v2.application.MainKt",
             "run",
             "--db", dbPath.toString(),
-            "--control-root", controlRoot.toString()
+            "--control-root", controlRoot.toString(),
+            // RP034-H / ADR-0101: this suite certifies the ADR-0048 contract that
+            // the shell CWD is the per-stage workspace. Under the local-first default
+            // the workspace is the attached invocation directory, so the
+            // PipelineK-managed scratch these scenarios are about must be requested
+            // explicitly. The default itself is certified separately by
+            // WorkspaceExecutionLocationCharacterizationTest.
+            "--isolated"
         )
         args.addAll(extraArgs)
         args.add(scriptPath.toString())

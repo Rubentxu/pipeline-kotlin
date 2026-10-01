@@ -8,10 +8,9 @@ import java.nio.file.Path
  * RP034-H / ADR-0101 — CLI workspace intent, resolved once at the boundary.
  *
  * The parser has already rejected `--isolated` together with `--workspace`, so
- * by the time [resolveWorkspaceLease] runs the intent is unambiguous. The
- * decision is a pure function of the flags, the invocation directory and the
- * scratch root, which is why the whole mode matrix is testable without a
- * process, a pipeline or a filesystem.
+ * by the time these functions run the intent is unambiguous. The decision is a
+ * pure function of the flags and the invocation directory, which is why the
+ * whole mode matrix is testable without a process, a pipeline or a filesystem.
  *
  * Semantics:
  * ```text
@@ -30,9 +29,9 @@ internal object WorkspaceIntent {
     /**
      * Normalise parsed flags into the closed [WorkspaceRequest] hierarchy.
      *
-     * Separated from [resolveWorkspaceLease] because the request is the
-     * *decision* and the lease is its *interpretation*; AGENTS.md requires those
-     * two steps stay separable.
+     * Separated from the interpretations below because the request is the
+     * *decision* and the lease or transport is its *interpretation*; AGENTS.md
+     * requires those two steps stay separable.
      */
     fun requestFor(flags: CliFlags): WorkspaceRequest =
         when {
@@ -42,16 +41,18 @@ internal object WorkspaceIntent {
         }
 
     /**
-     * Interpret the request as a lease.
+     * Interpret the request as a typed lease.
      *
-     * [scratchRoot] is consulted **only** for [WorkspaceRequest.ManagedIsolated].
-     * The attached cases never read it, so a control-plane path can never become
-     * a user workspace by accident (INV-WS-004).
+     * [scratchParent] is consulted **only** for [WorkspaceRequest.ManagedIsolated],
+     * and it is the parent under which per-stage workspaces are allocated, not a
+     * resolved stage directory. The attached cases never read it, so a
+     * control-plane path can never become a user workspace by accident
+     * (INV-WS-004).
      */
     fun resolveWorkspaceLease(
         flags: CliFlags,
         invocationDirectory: Path,
-        scratchRoot: Path,
+        scratchParent: Path,
     ): WorkspaceLease =
         when (val request = requestFor(flags)) {
             is WorkspaceRequest.AttachInvocationDirectory ->
@@ -61,6 +62,35 @@ internal object WorkspaceIntent {
                 WorkspaceLease.Attached(request.path.toAbsolutePath().normalize())
 
             is WorkspaceRequest.ManagedIsolated ->
-                WorkspaceLease.Managed(scratchRoot.toAbsolutePath().normalize())
+                WorkspaceLease.Managed(scratchParent.toAbsolutePath().normalize())
+        }
+
+    /**
+     * The base the runtime receives, translating the typed decision into the
+     * transport the coordinator still uses today (RP034-I retires this).
+     *
+     * The asymmetry is deliberate and is the crux of the isolated mode. A
+     * non-null base means "stages share this directory", which is exactly the
+     * Attached semantics, so both attached cases pass their directory.
+     *
+     * A PipelineK-managed workspace is expressed as **null**: there is no shared
+     * project directory to pin, so `WorkspaceResolver` resumes allocating
+     * `<controlRoot>/workspace/<stageName>-<index>` per stage. Passing the
+     * scratch parent as a base instead would pin every stage onto one directory
+     * and silently destroy per-stage and per-branch isolation — a defect this
+     * method exists to make impossible.
+     */
+    fun runtimeWorkspaceBase(
+        flags: CliFlags,
+        invocationDirectory: Path,
+    ): Path? =
+        when (val request = requestFor(flags)) {
+            is WorkspaceRequest.AttachInvocationDirectory ->
+                invocationDirectory.toAbsolutePath().normalize()
+
+            is WorkspaceRequest.AttachExplicit ->
+                request.path.toAbsolutePath().normalize()
+
+            is WorkspaceRequest.ManagedIsolated -> null
         }
 }

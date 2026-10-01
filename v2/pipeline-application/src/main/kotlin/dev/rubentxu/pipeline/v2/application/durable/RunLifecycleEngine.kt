@@ -1,6 +1,9 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
+import dev.rubentxu.pipeline.v2.domain.ExecutionContext
+import dev.rubentxu.pipeline.v2.domain.PipelineFailure
+import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -87,6 +90,48 @@ internal class RunLifecycleEngine(private val eventSink: EventSink) {
                 outcome = outcome,
             ),
         )
+    }
+
+    fun decideStageContinuation(
+        outcome: StepOutcome,
+        stageName: String,
+        runIdValue: String,
+        executionContext: ExecutionContext,
+    ): CanonicalContinuation = when (outcome) {
+        StepOutcome.Success -> CanonicalContinuation.Continue
+        StepOutcome.Unstable -> CanonicalContinuation.ContinueUnstable
+        is StepOutcome.Failure -> walkCatchErrorChain(outcome.failure, stageName, runIdValue, executionContext)
+    }
+
+    private fun walkCatchErrorChain(
+        failure: PipelineFailure,
+        stageName: String,
+        runIdValue: String,
+        executionContext: ExecutionContext,
+    ): CanonicalContinuation {
+        // CTX-P2: identical EM-5/6 walk over the pure trailing chain (outermost-first fold order).
+        val chain = executionContext.trailingCatchErrorChain()
+        for (overlay in chain) {
+            eventSink.append(
+                dev.rubentxu.pipeline.v2.events.CatchErrorTriggered(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runIdValue,
+                    sequence = 0L,
+                    occurredAt = Instant.now(),
+                    stageName = stageName,
+                    buildResult = overlay.buildResult,
+                    stageResult = overlay.stageResult,
+                    message = overlay.message,
+                ),
+            )
+            when (overlay.buildResult) {
+                "FAILURE" -> Unit // re-throw outward to the next enclosing catch scope
+                "SUCCESS" -> return CanonicalContinuation.Continue
+                else -> return CanonicalContinuation.ContinueUnstable
+            }
+        }
+        // Exhausted enclosing catch scopes (or no catch overlay) without a suppressor: abort.
+        return CanonicalContinuation.Abort(failure)
     }
 
     /**

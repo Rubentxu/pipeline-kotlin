@@ -1,5 +1,33 @@
 # Estado actual y deuda que V2 debe resolver
 
+> **ADDENDUM 2026-10-01 — snapshot vigente (supersede este archivo como referencia).**
+>
+> **Release:** `v0.46.0` ESTABLE (tag en origin → `63ef3220`; CandidateId de los bytes:
+> `59478baf…`; ver `docs/v2/08-production-readiness/V0460_STABLE_PROMOTION.md` y
+> `CANDIDATE_0460_RP5_EVIDENCE_BUNDLE.md`).
+>
+> **Roadmap de producto:** RP-0..RP-4 cerrados; RP-034 (workspace/local-first) y RP-035
+> (open-world body handlers vía `HANDLER_CONTINUATION`) cerrados; **RP-5 productor
+> sellado** (PR-010..015 sobre el candidato exacto; PR-016 = veredicto del harness
+> externo). Siguiente frontera tras 0.46.0: hardening arquitectónico H1..H4
+> (PR-017..020) y después RP-6.
+>
+> **Ciclos SDDK activos:** exactamente uno — `p-1f3622e11c093341/pr017-run-lifecycle-engine`
+> (RunLifecycleEngine extraída con bit-equivalencia probada; coordinador 2473 líneas;
+> guardrail anti-crecimiento activo). Cerrados: rp-5-exact-candidate-certification
+> (superseded → pr017), rp-034-closure-candidate (superseded → pr017),
+> train-s2-directive-plugin (goal-replaced; divergencia documentada en
+> SCOPE_DIVERGENCE_RECONCILIATION_S2D_RP034.md), train-s2-directives, recover-041.
+>
+> **Leyes operativas vigentes:** ver AGENTS.md — CandidateId = SHA256 del ZIP;
+> publicar = mismos bytes; guardrail de coordinador; caracterización antes de
+> extracción; sin `UP-TO-DATE` como evidencia.
+>
+> El contenido histórico abaixo queda como referencia de agosto 2026; NO es el
+> estado vigente.
+
+# Estado actual y deuda que V2 debe resolver
+
 > Snapshot de referencia: rama `main`, 2026-08-21.
 > **Addendum 2026-09-06 (cycle em-0):** ver sección "Estado EM" al final.
 

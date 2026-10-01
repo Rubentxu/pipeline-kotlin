@@ -715,17 +715,7 @@ class CanonicalDurableRunCoordinator(
                                 runLifecycle.fold(RunOutcome.Failure(failure))
                                 return@run runLifecycle.outcome()
                             }
-                            eventSink.append(
-                                dev.rubentxu.pipeline.v2.events.StageFinished(
-                                    eventId = UUID.randomUUID().toString(),
-                                    runId = runId.value,
-                                    sequence = 0L,
-                                    occurredAt = Instant.now(),
-                                    stageIndex = stageIndex,
-                                    stageName = stage.name,
-                                    outcome = "success",
-                                ),
-                            )
+                            runLifecycle.stageFinished(runId, stageIndex, stage.name, "success")
                         }
                         CanonicalContinuation.ContinueUnstable -> {
                             runLifecycle.fold(RunOutcome.Unstable)
@@ -740,17 +730,7 @@ class CanonicalDurableRunCoordinator(
                                 runLifecycle.fold(RunOutcome.Failure(failure))
                                 return@run runLifecycle.outcome()
                             }
-                            eventSink.append(
-                                dev.rubentxu.pipeline.v2.events.StageFinished(
-                                    eventId = UUID.randomUUID().toString(),
-                                    runId = runId.value,
-                                    sequence = 0L,
-                                    occurredAt = Instant.now(),
-                                    stageIndex = stageIndex,
-                                    stageName = stage.name,
-                                    outcome = "unstable",
-                                ),
-                            )
+                            runLifecycle.stageFinished(runId, stageIndex, stage.name, "unstable")
                         }
                         is CanonicalContinuation.Abort -> {
                             // S2-B: a parallel branch failure is still a stage
@@ -782,16 +762,7 @@ class CanonicalDurableRunCoordinator(
                 // The canonical coordinator emits StageStarted at entry and StageFinished on normal
                 // completion (success/unstable). An aborting stage returns before StageFinished;
                 // RunFinished carries the failure.
-                eventSink.append(
-                    dev.rubentxu.pipeline.v2.events.StageStarted(
-                        eventId = UUID.randomUUID().toString(),
-                        runId = runId.value,
-                        sequence = 0L,
-                        occurredAt = Instant.now(),
-                        stageIndex = stageIndex,
-                        stageName = stage.name,
-                    ),
-                )
+                runLifecycle.stageStarted(runId, stageIndex, stage.name)
                 var stageUnstable = false
                 for (stepIndex in steps1.indices) {
                     val step = steps1[stepIndex]
@@ -839,17 +810,7 @@ class CanonicalDurableRunCoordinator(
                     runLifecycle.fold(RunOutcome.Failure(failure))
                     return@run runLifecycle.outcome()
                 }
-                eventSink.append(
-                    dev.rubentxu.pipeline.v2.events.StageFinished(
-                        eventId = UUID.randomUUID().toString(),
-                        runId = runId.value,
-                        sequence = 0L,
-                        occurredAt = Instant.now(),
-                        stageIndex = stageIndex,
-                        stageName = stage.name,
-                        outcome = if (stageUnstable) "unstable" else "success",
-                    ),
-                )
+                runLifecycle.stageFinished(runId, stageIndex, stage.name, if (stageUnstable) "unstable" else "success")
             }
             // Success: fall through to finally and return
         } catch (e: Exception) {
@@ -1330,16 +1291,7 @@ class CanonicalDurableRunCoordinator(
         // an accidental implementation difference, not a different Stage semantic.
         // Exactly one StageStarted, same stage identity as the StageFinished emitted
         // by the caller's continuation handling.
-        eventSink.append(
-            dev.rubentxu.pipeline.v2.events.StageStarted(
-                eventId = UUID.randomUUID().toString(),
-                runId = runId.value,
-                sequence = 0L,
-                occurredAt = Instant.now(),
-                stageIndex = stageIndex,
-                stageName = stage.name,
-            ),
-        )
+        runLifecycle.stageStarted(runId, stageIndex, stage.name)
 
         // PAR-D D2: plan the parallel aggregate from durable facts BEFORE any branch
         // launches. The reconciler is pure; this coordinator is the single writer.

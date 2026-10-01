@@ -9,6 +9,12 @@ plugins {
 pitest {
     junit5PluginVersion = "1.2.1"
     targetClasses = listOf("dev.rubentxu.pipeline.v2.domain.durable.*")
+    // PR-014 follow-up: kotlinx-generated $$serializer classes are compiler
+    // output, not hand-written logic - mutating their default-value branches
+    // only inflates the NO_COVERAGE denominator (they were 200+ of the 322).
+    excludedClasses = listOf(
+        "dev.rubentxu.pipeline.v2.domain.durable.*\$\$serializer",
+    )
     targetTests = listOf(
         "dev.rubentxu.pipeline.v2.domain.durable.*Test",
     )

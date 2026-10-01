@@ -69,6 +69,13 @@ pipeline {
             "run",
             "--db", dbPath.toString(),
             "--control-root", controlRoot.toString(),
+            // RP034-Ic: this test writes VERSION.txt from inside the pipeline
+            // and asserts nothing about where the workspace lives, so it wants
+            // scratch. Without the flag the local-first default attaches the
+            // caller's directory — the Gradle test JVM's working directory,
+            // which is the module source tree — and the file lands in the
+            // repository instead of a disposable workspace.
+            "--isolated",
             scriptPath.toString()
         ).inheritIO().start().waitFor()
 
@@ -110,6 +117,13 @@ pipeline {
             "run",
             "--db", dbPath.toString(),
             "--control-root", controlRoot.toString(),
+            // RP034-Ic: this test writes VERSION.txt from inside the pipeline
+            // and asserts nothing about where the workspace lives, so it wants
+            // scratch. Without the flag the local-first default attaches the
+            // caller's directory — the Gradle test JVM's working directory,
+            // which is the module source tree — and the file lands in the
+            // repository instead of a disposable workspace.
+            "--isolated",
             scriptPath.toString()
         ).inheritIO().start().waitFor()
 

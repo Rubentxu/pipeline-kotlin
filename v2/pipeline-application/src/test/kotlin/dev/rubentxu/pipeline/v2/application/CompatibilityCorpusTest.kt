@@ -139,7 +139,20 @@ class CompatibilityCorpusTest {
         val path = fixture(name)
         val appBin = AppBinSupport.discover()
 
-        val pb = ProcessBuilder(appBin.toString(), "run", path.toString())
+        // RP034-Ic: an explicit temporary workspace, so the fixture's relative
+        // paths resolve there instead of in the Gradle test JVM's working
+        // directory — which is this module's source tree. Under the local-first
+        // default the no-flag invocation attached that directory and the
+        // fixture wrote lpr104-readme.txt into the repository.
+        val workspace = Files.createTempDirectory("corpus-fixture23-ws")
+        val pb = ProcessBuilder(
+            appBin.toString(),
+            "run",
+            "--db", Files.createTempFile("corpus-fixture23-", ".db").toString(),
+            "--control-root", Files.createTempDirectory("corpus-fixture23-ctl").toString(),
+            "--workspace", workspace.toString(),
+            path.toString(),
+        )
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
 

@@ -1,6 +1,6 @@
 # RP034-D — Core path semantics: contract freeze and RED
 
-**Status:** Contract frozen; vertical migration in progress
+**Status:** Migration applied to the file vertical; `deleteDir` ownership work belongs to RP034-G
 **WU:** WU-RP-034 · **WorkItem:** `3f55b43f-a080-4f46-9eea-01aa230913cf`
 **SDDK cycle:** `p-1f3622e11c093341/train-s2-directive-plugin`
 **Base:** `9726a01dc80d523f8b77d0414ac9a775b66a37e5`
@@ -37,21 +37,42 @@ that the adapters are being moved onto:
 | a `WORKSPACE_ROOT` anchor ignores the `dir` scope | green |
 | a real non-VCS directory is still protected from root destruction | green |
 
-## The divergence being removed
+## Migration applied
 
-`ShellFilesystemCwdDivergenceTest` (RP034-D RED) is green and discriminating.
+`WorkspaceOperationsAdapter` now takes the shared `ExecutionLocationCapability`
+and resolves `writeFile`, `readFile` and `fileExists` through one
+`effectiveWorkspaceRoot(...)` method that prefers the location's
+`CURRENT_DIRECTORY` and falls back to the per-stage `WorkspaceResolver` when no
+location is supplied. Routing all three through a single method is what stops
+any of them drifting back to a private reconstruction.
 
-`WorkspaceOperationsAdapter` rebuilds `WorkspaceResolver(controlDirRoot,
-workspaceBase)` on **every** operation (`WorkspaceOperations.kt:87,121,145`),
-so the file vertical never receives the `dir` scope that the shell vertical gets
-through `ShOptions.workingDirectory`. Inside a `dir` block the two resolve the
-same relative path against different bases.
+`DirScopeEndToEndTest` — **green**, proving it end to end through the real CLI:
 
-This is a *recording*, not a target: it asserts the divergence exists. It will
-fail once the file Steps are migrated onto the shared execution location, and at
-that point its assertion inverts into the agreement law. A green run before that
-migration would mean the RED had stopped discriminating, which its
-`assertNotEquals` precondition makes explicit.
+```kotlin
+dir("backend") {
+    writeFile("marker.txt", "written-inside-dir")
+    echo(pwd())
+}
+```
+
+The file lands at `<workspace>/backend/marker.txt` with the expected content,
+and `pwd()` reports the scope. Before this change the same pipeline wrote to the
+stage workspace while `sh` ran inside the scope.
+
+### The RED was rewritten, not deleted
+
+The original `ShellFilesystemCwdDivergenceTest` compared `WorkspaceResolver`
+directly, so after the migration it still passed — while no longer exercising the
+code path that changed. A RED that stops discriminating is worse than none: it
+reports success while proving nothing. It was rewritten to assert the law through
+the adapter's own resolution, and now fails if the verticals ever diverge again.
+
+### No regression
+
+`CompatibilityCorpusTest` **30/30 green** after the migration, and
+`:pipeline-application:detekt` clean. The `LongMethod` finding introduced by the
+wiring was resolved by extracting `workspaceOperationsFor`, not by suppressing
+the rule.
 
 ## Method note
 
@@ -64,6 +85,6 @@ verified.
 
 ## Remaining
 
-Migration of the file Steps onto the shared execution location, then the same
-for `deleteDir`. RP034-E covers the non-core consumers, RP034-G the ownership
-guard, RP034-H the CLI default flip.
+`deleteDir` still resolves through its own `WorkspaceResolver` and still uses the
+`ProjectCheckoutDetector` heuristic; both are RP034-G, which must land before any
+CLI default flip. RP034-E covers the non-core consumers, RP034-H the default.

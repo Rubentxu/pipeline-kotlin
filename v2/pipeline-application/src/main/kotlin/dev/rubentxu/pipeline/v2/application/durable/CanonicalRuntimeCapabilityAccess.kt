@@ -107,15 +107,13 @@ open class CanonicalRuntimeCapabilityAccess(
         )
         builder[SHELL_OPERATIONS_CAPABILITY] = shellOps
         // S2-A3 / G1: workspace file operations bound to the current stage identity.
-        val workspaceOps: WorkspaceOperations = WorkspaceOperationsAdapter(
-            stageName = context.stageName,
-            stageIndex = context.stageIndex,
-            controlDirRoot = context.controlDirRoot,
-            eventSink = context.eventSink,
-            runId = context.runId,
-            workspaceBase = context.workspaceBase,
-        )
-        builder[WORKSPACE_OPERATIONS_CAPABILITY] = workspaceOps
+        //
+        // RP034-D: the adapter also receives the shared execution location, so
+        // file Steps resolve against the same current directory the shell vertical
+        // observes inside a `dir` scope. Previously it rebuilt its own
+        // WorkspaceResolver per operation and could never see the scope, which is
+        // the divergence recorded by ShellFilesystemCwdDivergenceTest.
+        builder[WORKSPACE_OPERATIONS_CAPABILITY] = workspaceOperationsFor(context)
         // S2-A4 / G1: narrow stage identity (name + index) for handlers needing the current
         // stage as a default (core.emit.event StageMarkedUnstable fallback). Derived from the
         // runtime context; never exposes the context itself.
@@ -329,5 +327,25 @@ open class CanonicalRuntimeCapabilityAccess(
         scopedWorkingDirectory = context.shOptions.workingDirectory,
         fallbackRoot = context.shOptions.workspaceRoot
             ?: Path.of("").toAbsolutePath().normalize(),
+    )
+
+    /**
+     * Binds the file-Step vertical to this stage and to the shared execution
+     * location (RP034-D / ADR-0100).
+     *
+     * [executionLocationFor] is passed explicitly rather than recomputed inside
+     * the adapter, so the file vertical and the capability projection are
+     * guaranteed to describe the same location for a given step.
+     */
+    private fun workspaceOperationsFor(
+        context: CanonicalRuntimeContext,
+    ): WorkspaceOperations = WorkspaceOperationsAdapter(
+        stageName = context.stageName,
+        stageIndex = context.stageIndex,
+        controlDirRoot = context.controlDirRoot,
+        eventSink = context.eventSink,
+        runId = context.runId,
+        workspaceBase = context.workspaceBase,
+        executionLocation = executionLocationFor(context),
     )
 }

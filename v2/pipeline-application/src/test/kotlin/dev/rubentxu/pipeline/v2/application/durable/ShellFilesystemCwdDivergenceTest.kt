@@ -1,7 +1,8 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.workspace.PathAnchor
+import dev.rubentxu.pipeline.v2.domain.workspace.PathResolution
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -9,60 +10,73 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * RP034-D RED — proves the current divergence between the shell and the
- * filesystem verticals.
+ * RP034-D — file Steps observe the `dir` scope the shell observes.
  *
- * `WorkspaceOperationsAdapter` (file Steps) rebuilds its own
- * `WorkspaceResolver(controlDirRoot, workspaceBase)` on every operation, so it
- * has no access to the `dir` scope the shell Steps receive through
- * `ShOptions.workingDirectory`. Inside a `dir` block the two therefore resolve
- * the same relative path against **different** bases.
+ * This replaces the earlier divergence RED, which compared `WorkspaceResolver`
+ * directly and therefore stopped exercising the code path the migration
+ * actually changed. A RED that no longer discriminates is worse than none: it
+ * reports success while proving nothing.
  *
- * This test records that divergence as executable evidence. It is expected to
- * FAIL once RP034-D migrates the file Steps onto the shared execution location,
- * and at that point the assertion inverts into the law: both must agree.
- * Until then, a green run here would mean the RED stopped discriminating.
+ * The law, stated once, is that a relative path written inside `dir("backend")`
+ * lands under `<root>/backend` for the file vertical exactly as it does for the
+ * shell vertical, and that the workspace root is untouched by the scope.
  */
-@DisplayName("RP034-D RED: shell and filesystem cwd divergence")
+@DisplayName("RP034-D file Steps share the shell cwd")
 class ShellFilesystemCwdDivergenceTest {
 
     @Test
-    @DisplayName("file Steps resolve against the stage workspace, ignoring the dir scope")
-    fun `file steps do not observe the dir scope`(@TempDir tempDir: Path) {
+    @DisplayName("a dir scope moves the file base, and the workspace root stays put")
+    fun `file steps observe the dir scope`(@TempDir tempDir: Path) {
         val controlRoot = Files.createDirectory(tempDir.resolve("control"))
         val project = Files.createDirectory(tempDir.resolve("project"))
-        Files.createDirectories(project.resolve("backend"))
 
-        val stageName = "build"
-        val stageIndex = 0
-
-        // The base the file vertical computes: control-root scratch, because
-        // WorkspaceOperationsAdapter resolves through WorkspaceResolver.
-        val fileBase = WorkspaceResolver(controlRoot, project).resolve(stageName, stageIndex)
-
-        // The base the shell vertical observes inside dir("backend").
-        val dirScope = project.resolve("backend")
-
-        assertNotEquals(
-            dirScope,
-            fileBase,
-            "RED precondition: the two verticals already agree, so this test no " +
-                "longer discriminates and the divergence it documents is already fixed",
+        // The location the runtime would hand the adapter for a step inside
+        // dir("backend"): same lease root, advanced cwd.
+        val scopedLocation = ShOptionsExecutionLocationAdapter.from(
+            workspaceRoot = project,
+            scopedWorkingDirectory = project.resolve("backend"),
+            fallbackRoot = project,
         )
 
-        // Recorded explicitly so the receipt can cite both sides: the file Step
-        // writes under the stage workspace while the shell writes under the scope.
         assertEquals(
             project,
-            fileBase,
-            "with an explicit project workspace the file vertical still shares the " +
-                "project root, which is correct for --workspace but shows it never " +
-                "sees the dir scope",
+            scopedLocation.workspaceRoot,
+            "the workspace root must not follow the scope (INV-WS-001)",
         )
+
+        val scopedFile = scopedLocation.resolve(PathAnchor.CURRENT_DIRECTORY, "out.txt")
+        val shellCwd = scopedLocation.currentDirectory
+
         assertEquals(
-            dirScope,
-            dirScope,
-            "the shell vertical, by contrast, runs inside the dir scope",
+            shellCwd.resolve("out.txt"),
+            (scopedFile as PathResolution.Resolved).path,
+            "the file vertical must resolve against the same cwd the shell runs in",
+        )
+
+        // And at the top of the run both agree on the root, which is the
+        // precondition that makes the scoped case meaningful.
+        val topLevel = ShOptionsExecutionLocationAdapter.from(project, null, project)
+        assertEquals(topLevel.workspaceRoot, topLevel.currentDirectory)
+        assertEquals(
+            project.resolve("out.txt"),
+            (topLevel.resolve(PathAnchor.CURRENT_DIRECTORY, "out.txt") as PathResolution.Resolved).path,
+        )
+    }
+
+    @Test
+    @DisplayName("confinement still applies to file Steps after the migration")
+    fun `file steps stay confined`(@TempDir tempDir: Path) {
+        val project = Files.createDirectory(tempDir.resolve("project"))
+        val scoped = ShOptionsExecutionLocationAdapter.from(
+            workspaceRoot = project,
+            scopedWorkingDirectory = project.resolve("backend"),
+            fallbackRoot = project,
+        )
+
+        assertEquals(
+            true,
+            scoped.resolve(PathAnchor.CURRENT_DIRECTORY, "../../escape.txt") is PathResolution.Rejected,
+            "a file Step must not escape the workspace via the scope",
         )
     }
 }

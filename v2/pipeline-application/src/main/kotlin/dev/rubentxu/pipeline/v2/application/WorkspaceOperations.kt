@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation
+import java.nio.file.Files
 import dev.rubentxu.pipeline.v2.sdk.files.FileExistsExecutor
 import dev.rubentxu.pipeline.v2.sdk.files.FileExistsResult
 import dev.rubentxu.pipeline.v2.sdk.files.FileReadExecutor
@@ -79,15 +81,43 @@ class WorkspaceOperationsAdapter(
     private val runId: String = "",
     /** WU-LPR-062: optional project-workspace override (--workspace). */
     private val workspaceBase: Path? = null,
+    /**
+     * RP034-D (ADR-0100): the shared execution location for this step.
+     *
+     * When present, file Steps resolve against the same current directory the
+     * shell vertical observes, so a `dir` scope applies uniformly instead of
+     * only to `sh`. When null (legacy callers and unit tests that build this
+     * adapter directly), the adapter falls back to the per-stage
+     * [WorkspaceResolver] it always used.
+     */
+    private val executionLocation: dev.rubentxu.pipeline.v2.application.durable.ExecutionLocationCapability? = null,
 ) : WorkspaceOperations {
+
+    /**
+     * The base directory file paths resolve against for the current scope.
+     *
+     * RP034-D: this prefers the shared [executionLocation] cwd and falls back to
+     * the stage workspace. Keeping one method here is what makes the verticals
+     * agree: every file operation resolves through this, so none of them can
+     * drift back to a private reconstruction.
+     */
+    private fun effectiveWorkspaceRoot(controlRoot: Path): Path {
+        val fromLocation = executionLocation?.let { capability ->
+            dev.rubentxu.pipeline.v2.domain.workspace.WorkspacePathResolver
+                .baseFor(capability.location, dev.rubentxu.pipeline.v2.domain.workspace.PathAnchor.CURRENT_DIRECTORY)
+        }
+        return fromLocation ?: WorkspaceResolver(controlRoot, workspaceBase).resolve(stageName, stageIndex)
+    }
 
     override fun writeFile(file: String, text: String, encoding: String): FileWriteResult {
         val root = controlDirRoot
             ?: throw IllegalStateException("controlDirRoot is required for workspace file operations")
-        val resolver = WorkspaceResolver(root, workspaceBase)
-        resolver.ensureCreated(resolver.resolve(stageName, stageIndex))
+        // RP034-D: resolve against the shared execution location so a `dir`
+        // scope applies to file Steps exactly as it does to `sh`.
+        val base = effectiveWorkspaceRoot(root)
+        Files.createDirectories(base)
         val executor = FileWriteExecutor(
-            workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
+            workspaceResolver = { _, _ -> base },
             eventSink = eventSink,
         )
         val result = executor.execute(
@@ -118,10 +148,9 @@ class WorkspaceOperationsAdapter(
     override fun readFile(file: String, encoding: String): FileReadResult {
         val root = controlDirRoot
             ?: throw IllegalStateException("controlDirRoot is required for workspace file operations")
-        val resolver = WorkspaceResolver(root, workspaceBase)
-        resolver.ensureCreated(resolver.resolve(stageName, stageIndex))
+        val base = effectiveWorkspaceRoot(root)
         val result = FileReadExecutor(
-            workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
+            workspaceResolver = { _, _ -> base },
         ).execute(stageName, stageIndex, 0, StepSpec.ReadFile(file = file, encoding = encoding))
         // Single-emitter: the adapter is the ONLY FileRead emitter. Payload is
         // restricted to path + sha256 + size — never content (INV-L6-EVT-001).
@@ -142,10 +171,9 @@ class WorkspaceOperationsAdapter(
     override fun fileExists(file: String): FileExistsResult {
         val root = controlDirRoot
             ?: throw IllegalStateException("controlDirRoot is required for workspace file operations")
-        val resolver = WorkspaceResolver(root, workspaceBase)
-        resolver.ensureCreated(resolver.resolve(stageName, stageIndex))
+        val base = effectiveWorkspaceRoot(root)
         val result = FileExistsExecutor(
-            workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
+            workspaceResolver = { _, _ -> base },
         ).execute(stageName, stageIndex, 0, StepSpec.FileExists(file = file))
         eventSink.append(
             FileExistsChecked(

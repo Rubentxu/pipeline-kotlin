@@ -17,7 +17,7 @@ bouncycastle = "1.86"
 # tracked as backlog). 6.2.19 clears GHSA-jmp9-x22r-554x (fixed 6.2.11) and
 # GHSA-659m-px2c-25wj / CVE-2026-41848 ReDoS in AntPathMatcher (fixed 6.2.19) — relevant
 # because artifact excludes patterns are user-supplied.
-spring-core = "6.2.19"
+spring-core = "7.0.9"
 snakeyaml = "2.3"
 # C5 / D-011 (audit 2026-09-26, R7): binary-compatibility-validator captures the
 # JVM ABI of public Kotlin types. Phased rollout: opt-in modules first (Phase 1,

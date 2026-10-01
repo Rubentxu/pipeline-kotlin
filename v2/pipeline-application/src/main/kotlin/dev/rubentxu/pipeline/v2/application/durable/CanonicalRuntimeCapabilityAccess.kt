@@ -191,6 +191,10 @@ open class CanonicalRuntimeCapabilityAccess(
                 controlDirRoot = root,
                 eventSink = context.eventSink,
                 workspaceBase = context.workspaceBase,
+                // RP034-G (ADR-0102): the typed lease decides whether a
+                // user-owned root may be destroyed, replacing the VCS-marker
+                // heuristic that RP034-I retires.
+                executionLocation = executionLocationFor(context),
             )
             builder[DELETE_DIR_OPERATIONS_CAPABILITY] = deleteOps
         }
@@ -214,6 +218,10 @@ open class CanonicalRuntimeCapabilityAccess(
                 controlDirRoot = root,
                 eventSink = context.eventSink,
                 workspaceBase = context.workspaceBase,
+                // RP034-G (ADR-0102): the typed lease decides whether a
+                // user-owned root may be destroyed, replacing the VCS-marker
+                // heuristic that RP034-I retires.
+                executionLocation = executionLocationFor(context),
             )
             builder[CLEAN_WS_OPERATIONS_CAPABILITY] = cleanWsOps
         }

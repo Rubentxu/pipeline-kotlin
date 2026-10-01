@@ -4,6 +4,8 @@ import dev.rubentxu.pipeline.v2.application.DeleteDirInput
 import dev.rubentxu.pipeline.v2.application.DeleteDirOperations
 import dev.rubentxu.pipeline.v2.application.DeleteDirResult
 import dev.rubentxu.pipeline.v2.application.StageIdentity
+import dev.rubentxu.pipeline.v2.domain.workspace.DestructiveAuthorization
+import dev.rubentxu.pipeline.v2.domain.workspace.WorkspacePathResolver
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import dev.rubentxu.pipeline.v2.events.DirDeleted
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -51,6 +53,14 @@ class DeleteDirOperationsAdapter(
     private val eventSink: EventSink,
     /** WU-LPR-062: optional project-workspace override (--workspace). */
     private val workspaceBase: java.nio.file.Path? = null,
+    /**
+     * RP034-G (ADR-0102): the typed workspace lease for this step.
+     *
+     * Additive and optional. When supplied, ownership of the root is read from
+     * this value; when null the adapter falls back to the legacy
+     * [ProjectCheckoutDetector] heuristic, which RP034-I retires.
+     */
+    private val executionLocation: ExecutionLocationCapability? = null,
 ) : DeleteDirOperations {
 
     override fun delete(input: DeleteDirInput): DeleteDirResult {
@@ -60,24 +70,28 @@ class DeleteDirOperationsAdapter(
 
         val executor = DeleteDirExecutor(
             workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
-            // C8: when --workspace points at the user's own project checkout,
-            // its contents must never be deletable, not even by the Step's own
-            // default path.
+            // RP034-G (ADR-0102): the guard is derived from the typed lease, not
+            // from a VCS marker.
             //
-            // C12 (regression fix): the original condition was simply
-            // `workspaceBase != null`, which assumed any --workspace is a user
-            // checkout. That is false: the compatibility corpus runs
-            // `pipelinek run --workspace <@TempDir>` with a DISPOSABLE temp dir,
-            // and fixture 11-workflow-control calls deleteDir() there. The
-            // over-broad interlock refused that legitimate wipe and turned a
-            // green corpus fixture into `exit 1`.
+            // The previous condition was
+            //   workspaceBase != null && ProjectCheckoutDetector.isProjectCheckout(workspaceBase)
+            // which had two defects ADR-0102 removes:
             //
-            // Correct discriminator: a project checkout is recognisable by a
-            // VCS marker. A scratch workspace has none, so it keeps the
-            // WCL-S-001/S-002 wipe contract. This is a property of the target
-            // directory, not of how the CLI was invoked.
-            protectWorkspaceRoot = workspaceBase != null &&
-                ProjectCheckoutDetector.isProjectCheckout(workspaceBase),
+            //  1. it only engaged when `--workspace` was passed explicitly, so the
+            //     no-flag path reached the user's directory unprotected — exactly
+            //     the intermediate state WU-RP-034 forbids;
+            //  2. it treated a bare non-VCS project tree as disposable scratch,
+            //     because ownership was inferred from the absence of a marker.
+            //
+            // Ownership now arrives as a WorkspaceLease, so a user-owned root is
+            // refused whether or not it carries .git, .hg or .svn, and PipelineK
+            // scratch keeps its wipe contract regardless of its contents.
+            protectWorkspaceRoot = executionLocation?.let {
+                WorkspacePathResolver.authorizeRootDestruction(
+                    it.location.workspace,
+                    "deleteDir",
+                ) !is DestructiveAuthorization.Permitted
+            } ?: (workspaceBase != null && ProjectCheckoutDetector.isProjectCheckout(workspaceBase)),
         )
 
         val spec = StepSpec.DeleteDir(path = input.path)

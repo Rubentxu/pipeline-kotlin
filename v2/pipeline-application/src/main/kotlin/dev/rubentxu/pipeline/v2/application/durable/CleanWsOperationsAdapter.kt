@@ -4,6 +4,8 @@ import dev.rubentxu.pipeline.v2.application.CleanWsInput
 import dev.rubentxu.pipeline.v2.application.CleanWsOperations
 import dev.rubentxu.pipeline.v2.application.CleanWsResult
 import dev.rubentxu.pipeline.v2.application.StageIdentity
+import dev.rubentxu.pipeline.v2.domain.workspace.DestructiveAuthorization
+import dev.rubentxu.pipeline.v2.domain.workspace.WorkspacePathResolver
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.WsCleaned
@@ -51,6 +53,14 @@ class CleanWsOperationsAdapter(
     private val eventSink: EventSink,
     /** WU-LPR-062: optional project-workspace override (--workspace). */
     private val workspaceBase: java.nio.file.Path? = null,
+    /**
+     * RP034-G (ADR-0102): the typed workspace lease for this step.
+     *
+     * Additive and optional. When supplied, ownership of the root is read from
+     * this value rather than inferred from a VCS marker; RP034-I retires the
+     * fallback.
+     */
+    private val executionLocation: ExecutionLocationCapability? = null,
 ) : CleanWsOperations {
 
     override fun clean(input: CleanWsInput): CleanWsResult {
@@ -60,16 +70,18 @@ class CleanWsOperationsAdapter(
 
         val executor = CleanWsExecutor(
             workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
-            // C9: when --workspace points at the user's own project checkout,
-            // the pattern-less form would delete every file in it.
-            //
-            // C12: same correction as DeleteDirOperationsAdapter. The trigger
-            // is the target being a VCS checkout, not the mere presence of
-            // --workspace, so disposable scratch workspaces keep their wipe
-            // contract. The corpus invokes the CLI with --workspace over a
-            // @TempDir, and the over-broad condition broke it there too.
-            protectWorkspaceRoot = workspaceBase != null &&
-                ProjectCheckoutDetector.isProjectCheckout(workspaceBase),
+            // RP034-G (ADR-0102): derived from the typed lease, not from a VCS
+            // marker. The previous condition engaged only when `--workspace` was
+            // passed explicitly, leaving the no-flag path unprotected, and it
+            // treated a bare non-VCS project tree as disposable scratch. A
+            // user-owned root is now refused regardless of what is on disk,
+            // while PipelineK-managed scratch keeps its wipe contract.
+            protectWorkspaceRoot = executionLocation?.let {
+                WorkspacePathResolver.authorizeRootDestruction(
+                    it.location.workspace,
+                    "cleanWs",
+                ) !is DestructiveAuthorization.Permitted
+            } ?: (workspaceBase != null && ProjectCheckoutDetector.isProjectCheckout(workspaceBase)),
         )
 
         val execResult = executor.execute(

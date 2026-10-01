@@ -147,6 +147,24 @@ class FArchWorkspaceResolutionFitnessTest {
     }
 
     @Test
+    @DisplayName("the VCS-marker ownership heuristic cannot come back")
+    fun `project checkout detector is gone for good`() {
+        // RP034-I deleted ProjectCheckoutDetector and its test. It inferred
+        // ownership from the presence of .git/.hg/.svn, which ADR-0102 removes:
+        // a bare non-VCS project tree read as disposable scratch, and a
+        // heuristic that is wrong in the unsafe direction is worse than none.
+        // Ownership now arrives as a WorkspaceLease, so there is nothing left
+        // for a marker on disk to decide — and nothing to re-derive it from.
+        val offenders = violations { content -> content.contains("ProjectCheckoutDetector") }
+
+        assertTrue(
+            offenders.isEmpty(),
+            "workspace ownership is a typed lease, never a VCS marker (ADR-0102). " +
+                "References to the deleted heuristic: $offenders",
+        )
+    }
+
+    @Test
     @DisplayName("no Step handler reconstructs a workspace base with WorkspaceResolver")
     fun `step handlers do not rebuild their base from control-plane paths`() {
         // ADR-0100 fitness rule 1: "prohibir nuevos usos directos de

@@ -57,10 +57,11 @@ class DeleteDirOperationsAdapter(
      * RP034-G (ADR-0102): the typed workspace lease for this step.
      *
      * Additive and optional. When supplied, ownership of the root is read from
-     * this value; when null the adapter falls back to the legacy
-     * [ProjectCheckoutDetector] heuristic, which RP034-I retires.
+     * this value. RP034-I made it required and deleted the
+     * `ProjectCheckoutDetector` heuristic it replaced: with typed ownership
+     * there is nothing left for a VCS marker to decide.
      */
-    private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation? = null,
+    private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation,
 ) : DeleteDirOperations {
 
     override fun delete(input: DeleteDirInput): DeleteDirResult {
@@ -74,7 +75,7 @@ class DeleteDirOperationsAdapter(
             // from a VCS marker.
             //
             // The previous condition was
-            //   workspaceBase != null && ProjectCheckoutDetector.isProjectCheckout(workspaceBase)
+            //   workspaceBase != null && isProjectCheckout(workspaceBase)
             // which had two defects ADR-0102 removes:
             //
             //  1. it only engaged when `--workspace` was passed explicitly, so the
@@ -86,12 +87,10 @@ class DeleteDirOperationsAdapter(
             // Ownership now arrives as a WorkspaceLease, so a user-owned root is
             // refused whether or not it carries .git, .hg or .svn, and PipelineK
             // scratch keeps its wipe contract regardless of its contents.
-            protectWorkspaceRoot = executionLocation?.let {
-                WorkspacePathResolver.authorizeRootDestruction(
-                    it.workspace,
-                    "deleteDir",
-                ) !is DestructiveAuthorization.Permitted
-            } ?: (workspaceBase != null && ProjectCheckoutDetector.isProjectCheckout(workspaceBase)),
+            protectWorkspaceRoot = WorkspacePathResolver.authorizeRootDestruction(
+                executionLocation.workspace,
+                "deleteDir",
+            ) !is DestructiveAuthorization.Permitted,
         )
 
         val spec = StepSpec.DeleteDir(path = input.path)

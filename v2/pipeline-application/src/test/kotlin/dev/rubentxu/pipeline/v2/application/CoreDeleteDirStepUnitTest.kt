@@ -418,6 +418,15 @@ class CoreDeleteDirStepUnitTest {
                             stepIndex = 0,
                             controlDirRoot = workspace,
                             eventSink = sink,
+                            // RP034-I: ownership is a required input, not an
+                            // optional refinement. A managed lease is the
+                            // fail-open case these unit tests exercise; the
+                            // protected-root contract lives in
+                            // DestructiveSafetyOwnershipTest.
+                            executionLocation = dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation(
+                                workspace = dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceLease.Managed(workspace),
+                                cwd = workspace,
+                            ),
                         ) as T
                         else -> throw IllegalArgumentException("unexpected capability $key")
                     }

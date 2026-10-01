@@ -60,7 +60,7 @@ class CleanWsOperationsAdapter(
      * this value rather than inferred from a VCS marker; RP034-I retires the
      * fallback.
      */
-    private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation? = null,
+    private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation,
 ) : CleanWsOperations {
 
     override fun clean(input: CleanWsInput): CleanWsResult {
@@ -76,12 +76,10 @@ class CleanWsOperationsAdapter(
             // treated a bare non-VCS project tree as disposable scratch. A
             // user-owned root is now refused regardless of what is on disk,
             // while PipelineK-managed scratch keeps its wipe contract.
-            protectWorkspaceRoot = executionLocation?.let {
-                WorkspacePathResolver.authorizeRootDestruction(
-                    it.workspace,
-                    "cleanWs",
-                ) !is DestructiveAuthorization.Permitted
-            } ?: (workspaceBase != null && ProjectCheckoutDetector.isProjectCheckout(workspaceBase)),
+            protectWorkspaceRoot = WorkspacePathResolver.authorizeRootDestruction(
+                executionLocation.workspace,
+                "cleanWs",
+            ) !is DestructiveAuthorization.Permitted,
         )
 
         val execResult = executor.execute(

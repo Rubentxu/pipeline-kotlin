@@ -7,7 +7,7 @@ import java.nio.file.Path
  *
  * This is a **typed state**, never an inference. A previous implementation
  * derived ownership by looking for a `.git`/`.hg`/`.svn` marker
- * (`ProjectCheckoutDetector`), which made a bare non-VCS project tree readable as
+ * (the VCS-marker heuristic, `ProjectCheckoutDetector`, deleted in RP034-I), which made a bare non-VCS project tree readable as
  * disposable scratch and left the safety of the user's checkout dependent on the
  * type of version control they happened to use.
  *

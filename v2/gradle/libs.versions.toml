@@ -10,7 +10,14 @@ cyclonedx = "1.8.2"
 
 # BouncyCastle (credentials-local module only - ADR-0049 D2)
 # NOTE: bcprov-jdk18on is the correct artifact (NOT bcprov-jdk21on which does not exist)
-bouncycastle = "1.80.2"
+# 1.86: clears GHSA-wg6q-6289-32hp (bcpkix CompositeVerifier, fixed 1.84) and the three
+# bcprov advisories osv-scanner flagged against 1.80.2; 1.86 is the hardening release.
+bouncycastle = "1.86"
+# Used ONLY for AntPathMatcher in pipeline-artefacts-local (single-class usage; removal
+# tracked as backlog). 6.2.19 clears GHSA-jmp9-x22r-554x (fixed 6.2.11) and
+# GHSA-659m-px2c-25wj / CVE-2026-41848 ReDoS in AntPathMatcher (fixed 6.2.19) — relevant
+# because artifact excludes patterns are user-supplied.
+spring-core = "6.2.19"
 snakeyaml = "2.3"
 # C5 / D-011 (audit 2026-09-26, R7): binary-compatibility-validator captures the
 # JVM ABI of public Kotlin types. Phased rollout: opt-in modules first (Phase 1,
@@ -37,8 +44,9 @@ protobuf-kotlin-lite = { module = "com.google.protobuf:protobuf-kotlin-lite", ve
 protobuf-protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
 # BouncyCastle (credentials-local module only - ADR-0049 D2)
 bouncycastle-bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
-bouncycastle-bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version = "1.80" }
+bouncycastle-bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }
 bouncycastle-bcutil = { module = "org.bouncycastle:bcutil-jdk18on", version.ref = "bouncycastle" }
+spring-core = { module = "org.springframework:spring-core", version.ref = "spring-core" }
 
 [bundles]
 

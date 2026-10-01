@@ -18,8 +18,11 @@ dependencies {
     implementation(project(":pipeline-step-sdk:runtime"))
     implementation(libs.kotlinx.coroutines.core)
 
-    // Spring AntPathMatcher for Ant-style glob matching
-    implementation("org.springframework:spring-core:6.2.4")
+    // Spring AntPathMatcher for Ant-style glob matching (single-class usage;
+    // dependency removal tracked as backlog). 6.2.19 clears the two spring-core
+    // advisories osv-scanner flagged on 6.2.4, including the AntPathMatcher ReDoS
+    // (GHSA-659m-px2c-25wj) — patterns here are user-supplied.
+    implementation(libs.spring.core)
 
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")

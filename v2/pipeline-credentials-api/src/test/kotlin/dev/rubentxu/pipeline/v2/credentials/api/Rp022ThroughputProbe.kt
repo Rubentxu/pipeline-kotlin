@@ -1,11 +1,27 @@
 package dev.rubentxu.pipeline.v2.credentials.api
 
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayInputStream
 import java.security.SecureRandom
 
-/** Disposable WU-RP-022 throughput probe (kept: it pins the perf contract). */
+/**
+ * WU-RP-022 throughput probe (kept: it pins the perf contract).
+ *
+ * Tagged `performance` and therefore NOT part of the standard `check` gate
+ * (WU-RP-5 / PR-015 placement, FASE 2 item S): a wall-clock throughput floor
+ * measured inside a full parallel build is a contention oracle, not a product
+ * measurement. This probe already carries best-of-3 sampling (C11) and 3x
+ * warmup (D-002), and it STILL breached the floor at 18.7 MB/s under a
+ * `--rerun-tasks` gate where every module's suite re-ran simultaneously —
+ * while passing in isolation 17 seconds later on the same machine. The floor
+ * is UNCHANGED at 20 MB/s; what changed is WHERE the measurement is valid.
+ *
+ * Run it deliberately via `./gradlew :pipeline-credentials-api:performanceTest`
+ * (the perf harness methodology), never as a side effect of a build storm.
+ */
+@Tag("performance")
 class Rp022ThroughputProbe {
     @Test
     fun `redactor throughput floor`() {

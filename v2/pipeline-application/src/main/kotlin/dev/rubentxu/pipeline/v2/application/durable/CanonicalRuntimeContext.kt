@@ -35,6 +35,17 @@ data class CanonicalRuntimeContext(
     val controlDirRoot: Path?,
     val eventSink: EventSink,
     val bodyInvoker: CanonicalBodyInvokerAdapter? = null,
+    // WU-RP-035: the body-ALREADY-BOUND continuation of a Step that declared
+    // BodyExecutionOwner.HANDLER_CONTINUATION, supplied under
+    // BODY_CONTINUATION_CAPABILITY to that Step's handler only.
+    //
+    // Distinct from [bodyInvoker] on purpose, and not a wrapper around it: the
+    // continuation already carries the engine-issued BodyRef, so the handler never
+    // sees an identity it could correlate, derive or outlive. Null for every other
+    // Step (and for every pre-existing construction site), which is what keeps the
+    // fail-closed admission honest: a handler that declares the capability never
+    // runs when the engine did not bind it.
+    val bodyContinuation: dev.rubentxu.pipeline.v2.domain.step.BodyContinuation? = null,
     // WU-LPR-011 secret-redaction slice: the active secret pattern registry,
     // threaded to the shell-operations adapter so the console transcript is
     // redacted chunk-boundary-safe BEFORE it reaches the observable plane.

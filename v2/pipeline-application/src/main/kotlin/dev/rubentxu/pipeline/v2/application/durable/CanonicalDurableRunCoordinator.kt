@@ -17,6 +17,7 @@ import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.BodyContextProjection
 import dev.rubentxu.pipeline.v2.domain.step.BodyAggregateIdentity
+import dev.rubentxu.pipeline.v2.domain.step.BodyContinuation
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicyShape
@@ -968,31 +969,98 @@ class CanonicalDurableRunCoordinator(
         bodyPath: List<BlockSegment> = emptyList(),
         executionContext: ExecutionContext = ExecutionContext.EMPTY,
     ): Dispatched {
+        // WU-RP-035: a body-bearing Step is routed by its DECLARED owner, never by its key.
+        //
+        //   CANONICAL_ENGINE     the engine decides when to run the body. Unchanged since
+        //                         EM-4: the decoder is bypassed and dispatchBody runs the
+        //                         children directly.
+        //   HANDLER_CONTINUATION the registered handler runs on the durable spine below
+        //                         and reaches the body only through the bound continuation.
+        //   LEGACY_LINEAR        refused by the policy resolver inside dispatchBody.
+        //
+        // Only the first keeps the historical short-circuit. The second deliberately FALLS
+        // THROUGH into the registry path, so typed decode, capability admission,
+        // StepStarted/StepFinished, typed output, FailureKind, journal, replay and the
+        // single execution boundary all come from the existing machinery. There is
+        // deliberately no second block-handler execution boundary.
+        //
+        // An unknown key (owner unresolved) keeps the historical path on purpose: the
+        // rejection then comes from the policy resolver inside dispatchBody, exactly as
+        // before, rather than from a new check here.
+        val bodyContinuation: dev.rubentxu.pipeline.v2.domain.step.BodyContinuation? =
+            if (step is BlockStepNode && declaredBodyOwnerOf(step) ==
+                dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner.HANDLER_CONTINUATION
+            ) {
+                BodyContinuation { bodyContext ->
+                    // Same derivation the engine-side adapter performs for a core body
+                    // (CanonicalBodyInvokerAdapter.open): a per-attempt segment is appended
+                    // to the body path so a retried body gets its own durable identity, and
+                    // the scope patch is applied by pure derivation without mutating the
+                    // caller's context (CTX-P).
+                    val attemptSegment = bodyContext.attempt?.let { segment ->
+                        listOf(dev.rubentxu.pipeline.v2.domain.BlockSegment(segment.index, segment.key))
+                    } ?: emptyList()
+                    val contextForCall = applyPatchToContext(executionContext, bodyContext.patch)
+                    dev.rubentxu.pipeline.v2.domain.step.BodyOutcome.Completed(
+                        dispatchBody(
+                            block = step,
+                            runId = runId,
+                            stageName = stageName,
+                            stageIndex = stageIndex,
+                            stepIndex = stepIndex,
+                            stageShOptions = stageShOptions,
+                            parentBodyPath = bodyPath + attemptSegment,
+                            executionContext = contextForCall,
+                        ),
+                    )
+                }
+            } else {
+                if (step is BlockStepNode) {
+                    val body = dispatchBody(
+                        step,
+                        runId,
+                        stageName,
+                        stageIndex,
+                        stepIndex,
+                        stageShOptions,
+                        bodyPath,
+                        executionContext,
+                    )
+                    return Dispatched(body, executionContext)
+                }
+                null
+            }
+
         // BlockStepNode bypasses decoder and goes directly to dispatchBody (EM-4).
         // EM-4 handles only the body-execution substrate for dir/withEnv/withCredentials/
         // timeout/retry. catchError and warnError remain on the legacy linear path
         // (rewriteWorkflowControl) until EM-5/EM-6 semantics are implemented.
-        if (step is BlockStepNode) {
-            val body = dispatchBody(step, runId, stageName, stageIndex, stepIndex, stageShOptions, bodyPath, executionContext)
-            return Dispatched(body, executionContext)
-        }
 
         // CDE.2-c0: durable opId/input are needed by every rejection path, so derive them first.
         val opId = OpId(runId.value, stageIndex, stepIndex, bodyPath = bodyPath)
         val operationId = opId.format()
+        // WU-RP-035: the body of a HANDLER_CONTINUATION Step is part of the parent's durable
+        // identity. Without it, the same parent payload with a different body would reuse a
+        // memoized result, the handler would never run, and the changed child would not even
+        // reach divergence. Engine-driven blocks are deliberately EXCLUDED so every journal
+        // row written by the published 0.45.0 candidate stays valid.
+        val bodyStructure: String? = if (bodyContinuation != null && step is BlockStepNode) {
+            BodyStructureDigest.of(step.body)
+        } else {
+            null
+        }
         val input = OperationInput(
             stepId = step.pluginStepId.value,
             // SB-S-010 / D4: a non-NONE sandbox profile enters the operation fingerprint,
             // so a resume with a CHANGED confinement profile diverges fail-closed instead
             // of silently re-attaching under different semantics. NONE stays absent from
             // params so default-run journals keep their historical fingerprints.
-            params = if (stageShOptions.sandbox.profile != SandboxProfile.NONE) {
-                mapOf(
-                    "payload" to JsonPrimitive(step.payload.encoded),
-                    "sandboxProfile" to JsonPrimitive(stageShOptions.sandbox.profile.name),
-                )
-            } else {
-                mapOf("payload" to JsonPrimitive(step.payload.encoded))
+            params = buildMap {
+                put("payload", JsonPrimitive(step.payload.encoded))
+                if (stageShOptions.sandbox.profile != SandboxProfile.NONE) {
+                    put("sandboxProfile", JsonPrimitive(stageShOptions.sandbox.profile.name))
+                }
+                bodyStructure?.let { digest -> put("bodyStructure", JsonPrimitive(digest)) }
             },
             runId = runId.value,
             attempt = 1,
@@ -1095,6 +1163,11 @@ class CanonicalDurableRunCoordinator(
                     // Fail-closed admission (null bodyInvoker → no capability) is preserved
                     // for legacy callers because the field defaults to null on the context.
                     bodyInvoker = bodyInvokerAdapter,
+                    // WU-RP-035: bound ONLY for a HANDLER_CONTINUATION Step, and already
+                    // carrying that Step's own body identity. Null everywhere else, so the
+                    // fail-closed admission is real: a handler that declares the capability
+                    // without the engine having bound it never runs.
+                    bodyContinuation = bodyContinuation,
                     secretPatternRegistry = secretPatternRegistry,
                     workspaceBase = workspaceBase,
                 )
@@ -1586,6 +1659,26 @@ class CanonicalDurableRunCoordinator(
         }
         return outcome
     }
+
+    /**
+     * The body owner DECLARED by the Step's own descriptor, or `null` when the key is unknown
+     * to the registry (WU-RP-035).
+     *
+     * A pure read of the open registry, never a switch on the key: the routing decision above
+     * is driven by what a Step declares about itself, which is the only way an external plugin
+     * can obtain a body-bearing route without a core change. `null` means "no declaration to
+     * honour", and the caller keeps the historical path so the policy resolver reports the
+     * unknown key exactly as it did before.
+     */
+    private fun declaredBodyOwnerOf(block: BlockStepNode): BodyExecutionOwner? =
+        stepRegistry
+            ?.definition(block.pluginStepId)
+            ?.contract
+            ?.descriptor
+            ?.body
+            ?.declared
+            ?.execution
+            ?.owner
 
     private suspend fun dispatchBody(
         block: BlockStepNode,

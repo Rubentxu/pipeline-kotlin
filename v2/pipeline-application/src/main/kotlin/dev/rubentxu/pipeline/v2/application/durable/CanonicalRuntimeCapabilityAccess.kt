@@ -35,6 +35,7 @@ import dev.rubentxu.pipeline.v2.application.MilestoneOperationsAdapter
 import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
 import dev.rubentxu.pipeline.v2.application.ARTIFACT_INDEX_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability
+import dev.rubentxu.pipeline.v2.domain.step.BODY_CONTINUATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.BODY_INVOKER_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation
@@ -324,6 +325,19 @@ open class CanonicalRuntimeCapabilityAccess(
         // every other capability in this bridge.
         context.bodyInvoker?.let { adapter ->
             builder[BODY_INVOKER_CAPABILITY] = adapter
+        }
+        // WU-RP-035: the public body-reentry seam for a Step that declared
+        // BodyExecutionOwner.HANDLER_CONTINUATION (ADR-0081 as amended). Bound ONLY when the
+        // canonical runtime context carries a body-already-bound continuation, and never as a
+        // pair with BODY_INVOKER_CAPABILITY: one value, already bound, so a handler cannot be
+        // handed an invoker without a body identity or an identity without an invoker.
+        //
+        // A handler that declares the capability for a Step whose owner is not
+        // HANDLER_CONTINUATION never sees it here, and is rejected earlier by the owner /
+        // capability coherence check; a HANDLER_CONTINUATION handler that runs without this
+        // binding never runs at all.
+        context.bodyContinuation?.let { continuation ->
+            builder[BODY_CONTINUATION_CAPABILITY] = continuation
         }
         return builder.toMap()
     }

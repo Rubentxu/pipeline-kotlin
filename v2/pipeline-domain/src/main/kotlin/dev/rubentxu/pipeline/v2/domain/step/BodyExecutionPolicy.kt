@@ -500,9 +500,16 @@ fun resolveBodyExecutionPolicy(
     }
     val owner = definition.contract.descriptor.body.declared?.execution?.owner
     val declaresContinuation = BODY_CONTINUATION_CAPABILITY in definition.contract.requiredCapabilities
+    // Exhaustive over the CLOSED owner family: an `else` here would silently absorb the next
+    // case, which is exactly the debt Lfc2BodyExecutionPolicyFitnessTest pins. `null` is its
+    // own branch and means "this Step declares no body at all", so there is no owner to be
+    // coherent with; the descriptor-only resolution above already reported it as
+    // NotABodyStep before this check is reached.
     val coherent = when (owner) {
         BodyExecutionOwner.HANDLER_CONTINUATION -> declaresContinuation
-        else -> !declaresContinuation
+        BodyExecutionOwner.CANONICAL_ENGINE -> !declaresContinuation
+        BodyExecutionOwner.LEGACY_LINEAR -> !declaresContinuation
+        null -> true
     }
     return if (coherent) {
         resolved

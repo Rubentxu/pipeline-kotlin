@@ -78,17 +78,21 @@ dependencies {
     // S1-D: external directive plugin under certification (example.lock/acme.lock) —
     // same pattern: real JAR from THIS revision's SDK, test classpath only.
     testImplementation(files(rootDir.resolve("../examples/example-directive-plugin/build/libs/example-directive-plugin-0.1.0.jar")))
+    // WU-RP-035 / slice D: external BODY plugin under certification (example.repeat) —
+    // its handler drives its own body through the bound continuation. Real JAR from THIS
+    // revision's SDK, test classpath only.
+    testImplementation(files(rootDir.resolve("../examples/example-block-plugin/build/libs/example-block-plugin-0.1.0.jar")))
     // Override BOM-enforced wrong version (junit-platform-launcher uses 1.x not 5.x)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 }
 
 // Lane R: test *compilation* needs the plugin JAR on the test classpath, so the
 // producer must be ordered before compileTestKotlin, not merely before test.
-tasks.named("compileTestKotlin") { dependsOn(":buildExamplePlugin", ":buildExternalDirectivePlugin") }
+tasks.named("compileTestKotlin") { dependsOn(":buildExamplePlugin", ":buildExternalDirectivePlugin", ":buildExampleBlockPlugin") }
 
 tasks.test {
     dependsOn(":pipeline-application:installDist")
-    dependsOn(":buildExamplePlugin", ":buildExternalDirectivePlugin")
+    dependsOn(":buildExamplePlugin", ":buildExternalDirectivePlugin", ":buildExampleBlockPlugin")
     useJUnitPlatform()
     // WU-RP-005 (docs/v2/07-uat/WU_RP_005_TEST_EFFICIENCY_RECEIPT.md):
     // measured decision under AGENTS.md rule 11 exception path. The suite is

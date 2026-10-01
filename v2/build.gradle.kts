@@ -453,3 +453,30 @@ val buildExternalDirectivePlugin by tasks.registering(Exec::class) {
         "jar",
     )
 }
+
+// WU-RP-035 / slice D: the BODY-bearing analogue. This plugin is the proof that the
+// corrected ADR-0081 claim holds from outside the build: its handler drives its own body
+// through the bound continuation, compiled against the public SDK only. It is built as an
+// INDEPENDENT Gradle project on purpose — if it needed anything from pipeline-application,
+// the open-world claim this WU certifies would be false.
+val buildExampleBlockPlugin by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Builds the independent external body plugin against this revision's SDK."
+    dependsOn(publishSdkForExternalPlugin)
+
+    val pluginDir = file("../examples/example-block-plugin")
+    inputs.dir(pluginDir.resolve("src"))
+    inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
+    inputs.files(":pipeline-domain:jar")
+    outputs.file(pluginDir.resolve("build/libs/example-block-plugin-0.1.0.jar"))
+
+    workingDir = rootDir
+    commandLine(
+        rootDir.resolve("gradlew").absolutePath,
+        "-p", pluginDir.absolutePath,
+        "--console=plain",
+        "-PsdkRepo=" + sdkRepoDir.get().asFile.absolutePath,
+        "-PsdkVersion=" + rootProject.version.toString(),
+        "jar",
+    )
+}

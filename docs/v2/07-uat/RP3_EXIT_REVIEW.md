@@ -212,3 +212,58 @@ UAT-EVIDENCE | UAT-RP-003 | COVERED | candidate=7904b3c3 | tests=StepRegistryTes
   assertions internas son deterministas.
 - **Certifier impact esperado**: UAT-RP-003 debe moverse de REFERENCED
   a COVERED.
+
+---
+
+## ADDENDUM 2026-10-01 — Corrección de la cláusula "con cuerpo" (WU-RP-035)
+
+**Estado previo de esta cláusula era más débil de lo que este review afirmó.**
+
+La cláusula 2 ("Step externo CON cuerpo por el registro genérico") se certificó sobre
+`ExternalStepWithBodyRegistryProofTest`. Esa prueba demuestra routing **estructural**
+genérico: clave externa → `BlockStepNode` → resolución de `BodyExecutionPolicy` desde el
+registro → el motor canónico ejecuta los hijos. No demuestra ejecución open-world. El
+handler registrado de un Step con cuerpo **nunca se invocaba**: `dispatchOne` cortaba
+cualquier `BlockStepNode` directamente a `dispatchBody`, así que el input tipado del Step
+nunca llegaba a un handler, su output tipado nunca se producía y el motor sustituía
+silenciosamente la semántica del plugin por la suya. La prueba pasaba con
+`requiredCapabilities = emptySet()` precisamente porque el handler era código muerto.
+
+Hallazgo, RED y caracterización: [`RP035_A_HANDLER_CONTINUATION_RED.md`](RP035_A_HANDLER_CONTINUATION_RED.md)
+(RED: `handler_is_invoked` esperaba 1, observó 0, capabilities `[]`).
+
+### Corrección (WU-RP-035, cycle `rp-035-handler-continuation`)
+
+| Slice | Commit | Contenido |
+| --- | --- | --- |
+| A | `db23ad28` | RED discriminante + caracterización de la identidad durable de un bloque |
+| B | `83d5b2b0` | `BodyExecutionOwner.HANDLER_CONTINUATION`, `BodyContinuation`, capability, coherencia fail-closed; ADR-0081 enmendada (D1/D2/D10) |
+| C | `5a2c8a7d` | Ruta dirigida por handler sobre la spine durable existente; `dispatchBody` intacto; el cuerpo entra en la identidad durable del padre |
+| D | `03e77df2` | `example.repeat`: plugin externo con cuerpo, build Gradle independiente contra el SDK público, certificado por ServiceLoader sobre el JAR real (5 leyes) |
+| E | `342897f0` | Elegibilidad canónica desde el registro efectivo; run verde en la distribución instalada |
+
+### La cláusula, hoy: CUMPLE (OBSERVED) — con la prueba que la cláusula pedía
+
+- **Con cuerpo, handler-driven:** `example.repeat` (`examples/example-block-plugin`) declara
+  `HANDLER_CONTINUATION`; su handler decide si y cuántas veces corre el cuerpo mediante la
+  `BodyContinuation` ligada. `ExampleBlockPluginCertificationTest` (5/5, sobre el JAR real,
+  descubrimiento ServiceLoader): `times=0` → cero efectos hijos; `times=3` → tres body paths
+  distintos con la clave de intento propiedad del plugin; fallo en la iteración N → para y
+  propaga el fallo tipado; replay → el handler no se invoca dos veces; determinismo → mismos
+  operation ids entre harnesses.
+- **Sin cuerpo:** `example.uppercase`, sin cambios.
+- **Cero ramificación concreta:** el enrutado lee el owner declarado desde el registro;
+  `dispatchBody` no se tocó; el gate de elegibilidad resuelve el owner desde el registro
+  efectivo, nunca por clave.
+- **Distribución instalada:** `pipelinek run --plugin-jar example-block-plugin-0.1.0.jar`
+  ejecutando `repeatBlock(2) { sh(...) }` → EXIT 0, SUCCESS, dos iteraciones journalizadas,
+  hijos ejecutados por el motor a través de la continuación del handler.
+
+La distinción que corrige el déficit conceptual: **autoridad de invocación ≠ autoridad de
+ejecución**. El handler decide CUÁNDO/SÍ/CUÁNTAS VECES; el motor sigue siendo el único
+ejecutor, con el mismo journal, eventos y ley de replay de siempre.
+
+El defecto que este addendum corrige no fue detectado por el gate de su momento: las
+pruebas a nivel coordinator no ejercitan la capa de elegibilidad canónica, y esa capa solo
+es observable en el binario instalado. Las UAT de distribución instalada pasan a ser
+obligatorias para cualquier cláusula open-world futura.

@@ -72,6 +72,44 @@ object WorkspacePathAnchors {
     }
 
     /**
+     * Resolve [userPath] against an explicit [base] the caller chose.
+     *
+     * Some Step contracts carry a base of their own — `junit.results` takes a
+     * `workspaceRoot` input so a CI caller can point the report lookup at a
+     * specific directory, including one outside the pipeline workspace. That is
+     * explicit caller authority, not ambient state, so [base] is honoured rather
+     * than overridden by [ExecutionLocation.cwd].
+     *
+     * Naming a base is a statement about *where the Step operates*, so [base]
+     * also becomes the boundary: the resolved path must stay inside it. That
+     * keeps `..` traversal and stray absolute host paths refused, while letting
+     * a caller legitimately retarget the Step — which confinement to
+     * `location.workspace.root` would have made impossible.
+     */
+    fun against(
+        base: Path,
+        stepKey: String,
+        userPath: String,
+    ): Path {
+        val anchor = base.normalize()
+        val candidate = Path.of(userPath)
+        val resolved = if (candidate.isAbsolute) {
+            candidate.normalize()
+        } else {
+            anchor.resolve(candidate).normalize()
+        }
+        if (!resolved.startsWith(anchor)) {
+            throw PluginStepException(
+                failure = PipelineFailure(
+                    kind = FailureKind.USER,
+                    message = "$stepKey: ${describe(WorkspacePathError.EscapesWorkspace(userPath, anchor))}",
+                ),
+            )
+        }
+        return resolved
+    }
+
+    /**
      * Project a typed refusal into the diagnostic a pipeline author sees.
      *
      * Total and exhaustive over [WorkspacePathError]: adding a case to the ADT

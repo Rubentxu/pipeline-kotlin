@@ -4,8 +4,9 @@ import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
-import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
+import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceLease
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutInput
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutInputCodec
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutStepDefinition
@@ -52,10 +53,10 @@ class ScmGitWorkspaceIsolationTest {
         workspace: Path,
     ): StepHandlerContext {
         val workspaceAccess = object : StepCapabilityAccess {
-            override fun available(): Set<StepCapability> = setOf(WORKSPACE_IDENTITY_CAPABILITY)
+            override fun available(): Set<StepCapability> = setOf(EXECUTION_LOCATION_CAPABILITY)
             override fun <T : Any> get(key: StepCapability): T {
                 @Suppress("UNCHECKED_CAST")
-                return WorkspaceIdentity(workspaceRoot = workspace) as T
+                return ExecutionSite(workspace = WorkspaceLease.Managed(workspace), cwd = workspace) as T
             }
         }
         return StepHandlerContext(
@@ -91,8 +92,8 @@ class ScmGitWorkspaceIsolationTest {
         // We construct a context and verify the typed capability carries
         // the workspace we asked for (not user.dir).
         val typedWorkspace = context.capabilities
-            .get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
-            .workspaceRoot
+            .get<ExecutionSite>(EXECUTION_LOCATION_CAPABILITY)
+            .workspace.root
         assertEquals(workspaceRoot, typedWorkspace,
             "Typed capability must carry the workspace we passed; user.dir fallback is forbidden")
 
@@ -124,8 +125,8 @@ class ScmGitWorkspaceIsolationTest {
                 barrier.await(10, TimeUnit.SECONDS)
                 val ctx = directContext(workspace)
                 val typedWorkspace = ctx.capabilities
-                    .get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
-                    .workspaceRoot
+                    .get<ExecutionSite>(EXECUTION_LOCATION_CAPABILITY)
+                    .workspace.root
                 observedWorkspaces[label] = typedWorkspace
             } finally {
                 finish.countDown()
@@ -161,8 +162,8 @@ class ScmGitWorkspaceIsolationTest {
         val typedWorkspace: Path = tempDir.resolve("typed").also { Files.createDirectories(it) }
         val existingCtx = directContext(typedWorkspace)
         val typedExisting = existingCtx.capabilities
-            .get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
-            .workspaceRoot
+            .get<ExecutionSite>(EXECUTION_LOCATION_CAPABILITY)
+            .workspace.root
         assertTrue(Files.isDirectory(typedExisting),
             "Typed workspace must be on disk for the canonical branch; the developer-escape hatch is only for direct unit-test construction outside the canonical bridge")
 
@@ -173,8 +174,8 @@ class ScmGitWorkspaceIsolationTest {
         val missing: Path = tempDir.resolve("does-not-exist")
         val missingCtx = directContext(missing)
         val typedMissing = missingCtx.capabilities
-            .get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
-            .workspaceRoot
+            .get<ExecutionSite>(EXECUTION_LOCATION_CAPABILITY)
+            .workspace.root
         assertEquals(missing, typedMissing)
         assertEquals(false, Files.isDirectory(typedMissing),
             "Sanity: the typed capability really points at a non-existent path")
@@ -185,8 +186,8 @@ class ScmGitWorkspaceIsolationTest {
         // invariant update.
         val definition = GitCheckoutStepDefinition()
         assertTrue(
-            definition.contract.requiredCapabilities.contains(WORKSPACE_IDENTITY_CAPABILITY),
-            "WC-SCM contract must declare WORKSPACE_IDENTITY_CAPABILITY",
+            definition.contract.requiredCapabilities.contains(EXECUTION_LOCATION_CAPABILITY),
+            "WC-SCM contract must declare EXECUTION_LOCATION_CAPABILITY",
         )
         assertEquals(
             ScmGitCheckoutKey.VALUE, definition.contract.key,

@@ -76,11 +76,11 @@ class F5_2_JUnitStepContractTest {
         assertEquals("junit.results", definition.contract.descriptor.stepId)
         assertEquals(ReplayPolicy.MEMOIZED, definition.contract.descriptor.replayPolicy)
         assertTrue(definition.contract.descriptor.effects.contains(Effect.READ_ONLY))
-        // WU-LPR-WC: the contract declares WORKSPACE_IDENTITY_CAPABILITY so
+        // WU-LPR-WC: the contract declares EXECUTION_LOCATION_CAPABILITY so
         // the handler can read the canonical workspace root from the typed
         // capability seam without consulting process-global state.
         assertEquals(
-            setOf(StepCapability("runtime.workspace-identity")),
+            setOf(StepCapability("runtime.execution-location")),
             definition.contract.requiredCapabilities,
         )
     }
@@ -452,7 +452,7 @@ class F5_2_JUnitStepContractTest {
 
     // ----------------------------------------------------------------------
     // workspaceRoot resolution (WU-LPR-WC: the canonical workspace is read
-    // from the typed WORKSPACE_IDENTITY_CAPABILITY, NOT from the system
+    // from the typed EXECUTION_LOCATION_CAPABILITY, NOT from the system
     // property `pipeline.workspace.root`). When the caller leaves it
     // blank / "." / "./" or points at a non-existent directory, the
     // handler falls back to the typed workspace identity supplied through
@@ -648,7 +648,7 @@ class F5_2_JUnitStepContractTest {
 
     /**
      * WU-LPR-WC: the handler reads the canonical workspace root from the
-     * typed `WORKSPACE_IDENTITY_CAPABILITY` seam. Tests construct a
+     * typed `EXECUTION_LOCATION_CAPABILITY` seam. Tests construct a
      * minimal capability access that exposes ONLY this capability and
      * points at a workspace directory supplied per-test via [workspaceRoot].
      *
@@ -661,8 +661,11 @@ class F5_2_JUnitStepContractTest {
         private val workspaceRoot: Path,
     ) : StepCapabilityAccess {
         private val provided: Map<StepCapability, Any> = mapOf(
-            dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY to
-                dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity(workspaceRoot),
+            dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY to
+                dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation(
+                    workspace = dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceLease.Managed(workspaceRoot),
+                    cwd = workspaceRoot,
+                ),
         )
         override fun available(): Set<StepCapability> = provided.keys
         override fun <T : Any> get(key: StepCapability): T = provided[key] as? T

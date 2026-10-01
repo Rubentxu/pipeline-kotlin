@@ -7,7 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
-import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutInput
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutInputCodec
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutOutput
@@ -117,7 +117,7 @@ class F5_1_ScmGitNegativePathsTest {
     @Test
     fun `L3 contract declares workspace identity capability so the canonical engine admits the invocation`() {
         // WU-LPR-WC-SCM: the contract declares the typed
-        // WORKSPACE_IDENTITY_CAPABILITY so the canonical engine admits
+        // EXECUTION_LOCATION_CAPABILITY so the canonical engine admits
         // the invocation AND the capability admission is fail-closed
         // before the handler runs. F5.1 originally declared an empty
         // capability set with the workspace root resolved from the
@@ -126,8 +126,8 @@ class F5_1_ScmGitNegativePathsTest {
         // same typed seam as junit.results.
         val definition = GitCheckoutStepDefinition()
         assertTrue(
-            definition.contract.requiredCapabilities.contains(WORKSPACE_IDENTITY_CAPABILITY),
-            "WC-SCM contract declares WORKSPACE_IDENTITY_CAPABILITY; " +
+            definition.contract.requiredCapabilities.contains(EXECUTION_LOCATION_CAPABILITY),
+            "WC-SCM contract declares EXECUTION_LOCATION_CAPABILITY; " +
                 "the canonical engine admits the invocation and the typed seam threads " +
                 "the pipeline workspace through the handler.",
         )

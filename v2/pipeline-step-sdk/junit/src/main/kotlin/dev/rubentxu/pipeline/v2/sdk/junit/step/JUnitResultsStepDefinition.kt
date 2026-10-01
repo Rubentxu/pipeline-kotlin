@@ -12,8 +12,9 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
-import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.sdk.WorkspacePathAnchors
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
 import java.io.BufferedInputStream
 import java.io.IOException
 import java.nio.file.Files
@@ -82,7 +83,7 @@ class JUnitResultsStepDefinition(
         // (workspaceRootResolver); production runs always thread the
         // typed capability through the registry boundary, so the system
         // property is never consulted.
-        requiredCapabilities = setOf<StepCapability>(WORKSPACE_IDENTITY_CAPABILITY),
+        requiredCapabilities = setOf<StepCapability>(EXECUTION_LOCATION_CAPABILITY),
     )
 
     override val handler = StepHandler<JUnitResultsInput, JUnitResultsOutput> { input, ctx ->
@@ -92,9 +93,12 @@ class JUnitResultsStepDefinition(
         // handler runs and throws EngineInvariantViolation if any are
         // missing, so reaching this `get(...)` is guaranteed to
         // succeed when the handler was admitted.
-        val capabilityWorkspaceRoot: Path = ctx.capabilities
-            .get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
-            .workspaceRoot
+        val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
+        // RP034-E / 04-step-path-anchor-matrix.md: the report path anchors on
+        // CURRENT_DIRECTORY, so a `dir(...)` scope scopes the report the same
+        // way it scopes `sh`. Same value the legacy capability supplied; what
+        // changes is that the anchor is now stated rather than implied.
+        val capabilityWorkspaceRoot: Path = location.cwd
         // Resolve the effective workspaceRoot:
         // - empty / "." / "./" / not-a-directory: fall back to the
         //   typed workspace identity (set by the binary's
@@ -219,8 +223,18 @@ class JUnitResultsStepDefinition(
         reportPath = reportPath.toString(),
     )
 
-    private fun resolveReport(workspaceRoot: Path, rawPath: String): Path {
-        val p = Paths.get(rawPath)
-        return if (p.isAbsolute) p else workspaceRoot.resolve(rawPath)
-    }
+    /**
+     * Resolve the report path against the current directory and confine it to
+     * the workspace root (RP034-E / ADR-0100).
+     *
+     * Replaces a bare `if (absolute) path else root.resolve(path)`, which
+     * honoured an absolute host path such as `/etc/passwd` and a `..`
+     * traversal straight out of the workspace.
+     */
+    private fun resolveReport(base: Path, rawPath: String): Path =
+        WorkspacePathAnchors.against(
+            base = base,
+            stepKey = JUnitResultsKey.VALUE.value,
+            userPath = rawPath,
+        )
 }

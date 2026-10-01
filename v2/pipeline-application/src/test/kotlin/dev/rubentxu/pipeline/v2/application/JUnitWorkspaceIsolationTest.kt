@@ -5,8 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
-import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitResultsInput
 import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitResultsOutput
 import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitResultsStepDefinition
@@ -25,7 +24,7 @@ import kotlin.concurrent.thread
  * WU-LPR-WC — isolation between concurrent invocations.
  *
  * Each [JUnitResultsStepDefinition.handler.execute] reads its canonical
- * workspace root from a typed `WORKSPACE_IDENTITY_CAPABILITY` carried by
+ * workspace root from a typed `EXECUTION_LOCATION_CAPABILITY` carried by
  * the [StepHandlerContext]. Two handlers running concurrently in the same
  * JVM (e.g. inside a forked worker, a parallel branch, or a block-Step
  * fanout) MUST each see their own workspace root. They MUST NOT share any
@@ -39,7 +38,7 @@ import kotlin.concurrent.thread
 class JUnitWorkspaceIsolationTest {
 
     /**
-     * Minimal capability access exposing ONLY `WORKSPACE_IDENTITY_CAPABILITY`,
+     * Minimal capability access exposing ONLY `EXECUTION_LOCATION_CAPABILITY`,
      * pointing at [workspaceRoot]. Mirrors the F5.2 contract-test helper
      * but is duplicated here to keep the test isolated from the contract
      * suite's evolution.
@@ -48,7 +47,10 @@ class JUnitWorkspaceIsolationTest {
         private val workspaceRoot: Path,
     ) : StepCapabilityAccess {
         private val provided: Map<StepCapability, Any> = mapOf(
-            WORKSPACE_IDENTITY_CAPABILITY to WorkspaceIdentity(workspaceRoot),
+            EXECUTION_LOCATION_CAPABILITY to dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation(
+                workspace = dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceLease.Managed(workspaceRoot),
+                cwd = workspaceRoot,
+            ),
         )
         override fun available(): Set<StepCapability> = provided.keys
         override fun <T : Any> get(key: StepCapability): T = provided[key] as? T

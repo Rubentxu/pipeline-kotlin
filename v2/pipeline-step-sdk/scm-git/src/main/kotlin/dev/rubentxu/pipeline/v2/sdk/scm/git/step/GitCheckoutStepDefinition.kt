@@ -13,12 +13,13 @@ import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
-import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.sdk.WorkspacePathAnchors
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutExecutor
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutRequest
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCredentialsApplier
@@ -103,7 +104,7 @@ class GitCheckoutStepDefinition(
         // The handler reads the canonical workspace root from
         // ctx.capabilities.get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
         // and never falls back to user.dir in production.
-        requiredCapabilities = setOf<StepCapability>(WORKSPACE_IDENTITY_CAPABILITY),
+        requiredCapabilities = setOf<StepCapability>(EXECUTION_LOCATION_CAPABILITY),
     )
 
     /**
@@ -145,9 +146,14 @@ class GitCheckoutStepDefinition(
         // boundary re-checks the declared capabilities before the handler
         // runs and throws if any are missing, so reaching this `get(...)`
         // is guaranteed to succeed when the handler was admitted.
-        val capabilityWorkspaceRoot: Path = ctx.capabilities
-            .get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
-            .workspaceRoot
+        val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
+        // RP034-E / 04-step-path-anchor-matrix.md: `checkout` anchors on
+        // CURRENT_DIRECTORY, so a `dir(...)` scope moves where the repository
+        // lands. This is the value the legacy capability already supplied
+        // (`workingDirectory ?: workspaceRoot`); what changes is that the Step
+        // now *states* the anchor instead of receiving the cwd under the name
+        // "workspace root".
+        val capabilityWorkspaceRoot: Path = location.cwd
         // Preserve the documented F5.1 semantics: workspaceRoot is the
         // canonical pipeline workspace, and `relativeTargetDir` resolves
         // against it (or is honoured verbatim if absolute). Production
@@ -194,7 +200,11 @@ class GitCheckoutStepDefinition(
         }
         GitCheckoutOutput(
             resolvedSha = resolved.sha,
-            localPath = workspaceRoot.resolve(input.relativeTargetDir).toString(),
+            localPath = WorkspacePathAnchors.currentDirectory(
+                location = location,
+                stepKey = ScmGitCheckoutKey.VALUE.value,
+                userPath = input.relativeTargetDir,
+            ).toString(),
             wasCloned = resolved.classification == "clone",
             credentialApplied = resolved.credentialsFilePath != null || resolved.gitConfigFilePath != null,
         )

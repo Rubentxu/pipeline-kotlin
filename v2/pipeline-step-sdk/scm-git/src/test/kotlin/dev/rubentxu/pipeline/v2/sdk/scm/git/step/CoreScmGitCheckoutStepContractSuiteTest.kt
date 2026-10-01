@@ -14,8 +14,9 @@ import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
-import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
+import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceLease
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutExecutor
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutRequest
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutResult
@@ -62,14 +63,14 @@ import java.time.Instant
  *
  *  1.  identity — StepKey is scm-git.checkout
  *  2.  contract — descriptor declares CONTROLLER + WRITES_WORKSPACE +
- *      EXECUTES_SUBPROCESS + MEMOIZED + RecoveryPolicy.None + WORKSPACE_IDENTITY_CAPABILITY
+ *      EXECUTES_SUBPROCESS + MEMOIZED + RecoveryPolicy.None + EXECUTION_LOCATION_CAPABILITY
  *  3.  codec input — roundtrip preserves every GitCheckoutInput field
  *  4.  codec output — roundtrip preserves resolvedSha + localPath +
  *      wasCloned + credentialApplied
  *  5.  envelope — input codec emits a well-formed JSON object
  *      (durable eligible; no `declarativeValue` leak)
  *  6.  registry resolution — InMemoryStepRegistry resolves scm-git.checkout
- *  7.  capability admission — fails closed when WORKSPACE_IDENTITY_CAPABILITY absent
+ *  7.  capability admission — fails closed when EXECUTION_LOCATION_CAPABILITY absent
  *  8.  success — handler returns typed GitCheckoutOutput for a stubbed
  *      executor that produces a deterministic GitCheckoutResult
  *  9.  typed failure — executor Result.failure is surfaced as
@@ -168,13 +169,16 @@ class CoreScmGitCheckoutStepContractSuiteTest {
     }
 
     /**
-     * Builds a [StepHandlerContext] with a typed WORKSPACE_IDENTITY_CAPABILITY
+     * Builds a [StepHandlerContext] with a typed EXECUTION_LOCATION_CAPABILITY
      * exposure rooted at [root].
      */
     private fun handlerContext(workspaceRoot: Path): StepHandlerContext {
         val caps = object : StepCapabilityAccess {
             private val map = mapOf<StepCapability, Any>(
-                WORKSPACE_IDENTITY_CAPABILITY to WorkspaceIdentity(workspaceRoot),
+                EXECUTION_LOCATION_CAPABILITY to ExecutionSite(
+                    workspace = WorkspaceLease.Managed(workspaceRoot),
+                    cwd = workspaceRoot,
+                ),
             )
             override fun available(): Set<StepCapability> = map.keys
             override fun <T : Any> get(key: StepCapability): T {
@@ -204,7 +208,7 @@ class CoreScmGitCheckoutStepContractSuiteTest {
     // =========================================================================
 
     @Test
-    fun `contract — declares CONTROLLER + WRITES_WORKSPACE + EXECUTES_SUBPROCESS + MEMOIZED + RecoveryPolicy None + WORKSPACE_IDENTITY_CAPABILITY`() {
+    fun `contract — declares CONTROLLER + WRITES_WORKSPACE + EXECUTES_SUBPROCESS + MEMOIZED + RecoveryPolicy None + EXECUTION_LOCATION_CAPABILITY`() {
         val stub = stubbedStep(stubResult = Result.success(GitCheckoutResult("deadbeef", 0L, "no-op")))
         val c = stub.contract
         assertEquals(ScmGitCheckoutKey.VALUE, c.key)
@@ -212,7 +216,7 @@ class CoreScmGitCheckoutStepContractSuiteTest {
         assertEquals(setOf(Effect.WRITES_WORKSPACE, Effect.EXECUTES_SUBPROCESS), c.descriptor.effects.toSet())
         assertEquals(ReplayPolicy.MEMOIZED, c.descriptor.replayPolicy)
         assertEquals(RecoveryPolicy.None, c.descriptor.recoveryPolicy)
-        assertEquals(setOf<StepCapability>(WORKSPACE_IDENTITY_CAPABILITY), c.requiredCapabilities)
+        assertEquals(setOf<StepCapability>(EXECUTION_LOCATION_CAPABILITY), c.requiredCapabilities)
         assertNotNull(c.inputCodec)
         assertNotNull(c.outputCodec)
         assertEquals("scm-git", c.descriptor.pluginId)
@@ -295,7 +299,7 @@ class CoreScmGitCheckoutStepContractSuiteTest {
     // =========================================================================
 
     @Test
-    fun `capability — handler fails closed when WORKSPACE_IDENTITY_CAPABILITY is absent`() {
+    fun `capability — handler fails closed when EXECUTION_LOCATION_CAPABILITY is absent`() {
         val stub = stubbedStep(stubResult = Result.success(GitCheckoutResult("deadbeef", 0L, "no-op")))
         val caps = object : StepCapabilityAccess {
             override fun available(): Set<StepCapability> = emptySet()
@@ -354,7 +358,10 @@ class CoreScmGitCheckoutStepContractSuiteTest {
         )
         val out = stub.handler.execute(input, handlerContext(ws))
         assertEquals("feedfacefeedfacefeedfacefeedfacefeedface", out.resolvedSha)
-        assertEquals(ws.resolve(".").toString(), out.localPath)
+        // RP034-E: `localPath` now goes through the typed resolver, which
+        // normalises. A `relativeTargetDir` of "." yields the workspace root
+        // itself rather than a path carrying a redundant "." component.
+        assertEquals(ws.toString(), out.localPath)
         assertTrue(out.wasCloned)
         assertTrue(out.credentialApplied)
         // The handler must forward the workspace root from the typed

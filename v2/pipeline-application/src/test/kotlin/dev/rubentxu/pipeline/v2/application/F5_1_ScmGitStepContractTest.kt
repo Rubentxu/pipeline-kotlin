@@ -25,7 +25,7 @@ import dev.rubentxu.pipeline.v2.domain.step.PluginManifest
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepManifest
-import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.registerContributors
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutInputCodec
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutOutput
@@ -103,7 +103,7 @@ class F5_1_ScmGitStepContractTest {
         // workspace root resolved from the system property; that bridge
         // was removed in WU-LPR-WC and the follow-up here migrates the
         // first OFFICIAL_PLUGIN to the same typed seam as junit.results.
-        assertTrue(contract.requiredCapabilities.contains(WORKSPACE_IDENTITY_CAPABILITY))
+        assertTrue(contract.requiredCapabilities.contains(EXECUTION_LOCATION_CAPABILITY))
     }
 
     @Test

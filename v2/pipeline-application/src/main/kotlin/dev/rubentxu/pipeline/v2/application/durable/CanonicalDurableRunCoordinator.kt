@@ -1988,35 +1988,6 @@ class CanonicalDurableRunCoordinator(
 
 
 
-    /**
-     * RETRY-D: deterministic fingerprint of a retry aggregate's contract.
-     * The fingerprint is stable across attempts for a given parent bodyPath and
-     * maxAttempts — divergence triggers [RetryReconciliationDecision.RejectDivergence].
-     */
-    private fun computeRetryContractFingerprint(
-        parentBodyPath: List<BlockSegment>,
-        scope: BlockShellScope.Retry,
-    ): Fingerprint {
-        val input = dev.rubentxu.pipeline.v2.domain.durable.OperationInput(
-            stepId = BodyAggregateIdentity.RetryControlRow.key.value,
-            params = mapOf(
-                "maxAttempts" to kotlinx.serialization.json.JsonPrimitive(scope.maxAttempts),
-                "parentBodyPath" to kotlinx.serialization.json.JsonArray(
-                    parentBodyPath.map {
-                        kotlinx.serialization.json.JsonPrimitive(it.encoded)
-                    },
-                ),
-            ),
-            runId = "retry-contract", // Stable per-aggregate, NOT per-attempt.
-            attempt = 1,
-        )
-        return Fingerprint.compute(
-            input,
-            BodyAggregateIdentity.RetryControlRow.key.value,
-            ReplayPolicy.MEMOIZED,
-            1,
-        )
-    }
 
     private fun computeWaitUntilContractFingerprint(
         parentBodyPath: List<BlockSegment>,

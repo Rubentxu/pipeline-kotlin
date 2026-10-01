@@ -13,7 +13,10 @@ import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
 import java.time.Instant
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
+import dev.rubentxu.pipeline.v2.domain.step.BodyAggregateIdentity
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import java.nio.file.Files
 import java.util.UUID
 
@@ -331,3 +334,33 @@ internal class BodyExecutionEngine(
         }
     }
 }
+
+    /**
+     * RETRY-D: deterministic fingerprint of a retry aggregate's contract.
+     * The fingerprint is stable across attempts for a given parent bodyPath and
+     * maxAttempts — divergence triggers [RetryReconciliationDecision.RejectDivergence].
+     */
+    internal fun computeRetryContractFingerprint(
+        parentBodyPath: List<BlockSegment>,
+        scope: BlockShellScope.Retry,
+    ): Fingerprint {
+        val input = dev.rubentxu.pipeline.v2.domain.durable.OperationInput(
+            stepId = BodyAggregateIdentity.RetryControlRow.key.value,
+            params = mapOf(
+                "maxAttempts" to kotlinx.serialization.json.JsonPrimitive(scope.maxAttempts),
+                "parentBodyPath" to kotlinx.serialization.json.JsonArray(
+                    parentBodyPath.map {
+                        kotlinx.serialization.json.JsonPrimitive(it.encoded)
+                    },
+                ),
+            ),
+            runId = "retry-contract", // Stable per-aggregate, NOT per-attempt.
+            attempt = 1,
+        )
+        return Fingerprint.compute(
+            input,
+            BodyAggregateIdentity.RetryControlRow.key.value,
+            ReplayPolicy.MEMOIZED,
+            1,
+        )
+    }

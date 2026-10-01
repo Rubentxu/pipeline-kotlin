@@ -28,13 +28,22 @@ class Lfc2ConcreteBodyRoutingDebtFitnessTest {
         return Files.readString(coordinatorSource)
     }
 
-    private fun scanLoops(text: String = coordinatorText()): BodyChildLoopInventory =
+    private val engineSource = ScannerSupport.v2Root().resolve(
+        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/BodyExecutionEngine.kt",
+    )
+
+    private fun engineText(): String {
+        require(Files.exists(engineSource)) { "Expected source not found: $engineSource" }
+        return Files.readString(engineSource)
+    }
+
+    private fun scanLoops(text: String = coordinatorText() + "\n" + engineText()): BodyChildLoopInventory =
         BodyChildLoopScanner.scan(text)
 
     /** The real coordinator carries exactly the pinned debt — no more, no less. */
     @Test
     fun `canonical durable coordinator carries only the pinned concrete routing debt`() {
-        val discovered = ConcreteBodyRoutingScanner.scan(coordinatorText())
+        val discovered = ConcreteBodyRoutingScanner.scan(coordinatorText() + "\n" + engineText())
         val pinned = PinnedConcreteBodyRoutingDebt.value
 
         val verdict = ConcreteBodyRoutingVerdict.decide(discovered, scanLoops(), pinned)
@@ -63,7 +72,7 @@ class Lfc2ConcreteBodyRoutingDebtFitnessTest {
         )
         assertEquals(
             0,
-            ConcreteBodyRoutingScanner.scan(coordinatorText()).total,
+            ConcreteBodyRoutingScanner.scan(coordinatorText() + "\n" + engineText()).total,
             "An empty ledger with a non-empty measurement is the regression this law exists to catch",
         )
     }
@@ -75,7 +84,7 @@ class Lfc2ConcreteBodyRoutingDebtFitnessTest {
      */
     @Test
     fun `the pinned ledger enumerates every discovered debt item`() {
-        val discovered = ConcreteBodyRoutingScanner.scan(coordinatorText()).items()
+        val discovered = ConcreteBodyRoutingScanner.scan(coordinatorText() + "\n" + engineText()).items()
         val pinned = PinnedConcreteBodyRoutingDebt.value.items()
 
         assertEquals(
@@ -144,7 +153,7 @@ class Lfc2ConcreteBodyRoutingDebtFitnessTest {
     @Nested
     inner class ViolationFixture {
 
-        private val baseline = ConcreteBodyRoutingScanner.scan(coordinatorText())
+        private val baseline = ConcreteBodyRoutingScanner.scan(coordinatorText() + "\n" + engineText())
         private val pinned = PinnedConcreteBodyRoutingDebt.value
 
         private fun violationsFor(source: String): List<RoutingDebtViolation> {

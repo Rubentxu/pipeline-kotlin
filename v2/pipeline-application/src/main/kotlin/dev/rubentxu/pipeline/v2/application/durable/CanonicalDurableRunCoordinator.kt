@@ -1796,7 +1796,7 @@ class CanonicalDurableRunCoordinator(
      * The env overlay reaches children as an immutable derived value (CTX-P): the caller's
      * execution context is not mutated and needs no restore.
      */
-    internal suspend fun executeCredentialLeasedBody(
+    private suspend fun executeCredentialLeasedBody(
         bindings: List<CredentialBindingSpec>,
         block: BlockStepNode,
         runId: RunId,

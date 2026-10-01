@@ -69,6 +69,15 @@ class Lfc2WULpr302BodyControlSeamFitnessTest {
         return Files.readString(coordinatorSource)
     }
 
+    private val engineSource = ScannerSupport.v2Root().resolve(
+        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/BodyExecutionEngine.kt",
+    )
+
+    private fun engineText(): String {
+        require(Files.exists(engineSource)) { "Expected source not found: $engineSource" }
+        return Files.readString(engineSource)
+    }
+
     /**
      * Strip Kotlin line comments, block comments, and KDoc/multi-line
      * comments so that the architecture pins do not trip on prose. A naive
@@ -268,40 +277,53 @@ class Lfc2WULpr302BodyControlSeamFitnessTest {
 
     /**
      * Property 6: the legacy retry inline loop is preserved bit-equivalent
-     * for callers without `retryControlJournal`. The fitness pins that
-     * surface still exists so the no-journal wiring stays honest.
+     * for callers without `retryControlJournal`. After TRAIN H2 (PR-018)
+     * moved the loop to BodyExecutionEngine, the fitness pins that the
+     * ENGINE owns the loop and the coordinator delegates through
+     * executeScope3b.
      */
     @Test
     fun `legacy retry inline loop remains preserved for no-journal callers`() {
-        val text = coordinatorText()
+        val engine = engineText()
+        val coordinator = coordinatorText()
         assertTrue(
-            "is BlockShellScope.Retry" in text,
+            "is BlockShellScope.Retry" in engine,
             "legacy retry inline loop must be preserved bit-equivalent for callers " +
-                "without retryControlJournal — the no-journal surface stays in the " +
-                "coordinator even after RetryEngine was extracted",
+                "without retryControlJournal — the no-journal surface now lives in " +
+                "BodyExecutionEngine after the H2 extraction",
+        )
+        assertTrue(
+            "executeScope3b" in coordinator,
+            "the coordinator must delegate the scoped-body execution to the engine",
         )
     }
 
     /**
      * Property 7: the legacy waitUntil inline loop is preserved bit-equivalent
-     * for callers without `waitUntilControlJournal`. The fitness pins that
-     * surface still exists (`executeWaitUntilBodyInline`) so the no-journal
-     * wiring stays honest.
+     * for callers without `waitUntilControlJournal`. After TRAIN H2 (PR-018)
+     * moved the loop to BodyExecutionEngine.executeWaitUntilInline, the
+     * fitness pins that the ENGINE owns the loop and the coordinator
+     * delegates through executeScope3b.
      */
     @Test
     fun `legacy waitUntil inline loop remains preserved for no-journal callers`() {
-        val text = coordinatorText()
+        val engine = engineText()
+        val coordinator = coordinatorText()
         assertTrue(
-            "executeWaitUntilBodyInline" in text,
+            "executeWaitUntilInline" in engine,
             "legacy waitUntil inline loop must be preserved bit-equivalent for " +
                 "callers without waitUntilControlJournal — the no-journal surface " +
-                "stays in the coordinator even after WaitUntilEngine was extracted",
+                "now lives in BodyExecutionEngine after the H2 extraction",
+        )
+        assertTrue(
+            "executeScope3b" in coordinator,
+            "the coordinator must delegate the scoped-body execution to the engine",
         )
         // And it is the bit-equivalent legacy loop: the durable retry-aware
         // path is owned by WaitUntilEngine, never by an inline switch.
         assertTrue(
-            "WaitUntilEngine" in text,
-            "the durable waitUntil aggregate must reach the coordinator through " +
+            "WaitUntilEngine" in engine,
+            "the durable waitUntil aggregate must reach the engine through " +
                 "WaitUntilEngine, not through a re-introduced inline switch",
         )
     }

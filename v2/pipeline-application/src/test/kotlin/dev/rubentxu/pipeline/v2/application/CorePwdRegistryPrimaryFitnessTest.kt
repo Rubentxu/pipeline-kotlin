@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.durable.ShOptionsExecutionLocationAdapter
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
 import dev.rubentxu.pipeline.v2.application.durable.ExecutionPreparation
 import dev.rubentxu.pipeline.v2.application.durable.OpId
@@ -218,7 +220,7 @@ class CorePwdRegistryPrimaryFitnessTest {
                 registry = factoryRegistry(),
                 key = key,
                 encodedInput = CorePwdStep.definition.contract.inputCodec.encode(PwdInput()),
-                availableCapabilities = setOf(WORKSPACE_IDENTITY_CAPABILITY, EVENT_SINK_CAPABILITY),
+                availableCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY, EVENT_SINK_CAPABILITY),
             )
             val ready = preparation as ExecutionPreparation.Ready
             val workspace = java.nio.file.Files.createTempDirectory("g4-pwd")
@@ -249,7 +251,7 @@ class CorePwdRegistryPrimaryFitnessTest {
         // The contract MUST still declare both capabilities; missing capability fails closed.
         val required = CorePwdStep.definition.contract.requiredCapabilities
         assertTrue(
-            WORKSPACE_IDENTITY_CAPABILITY in required,
+            EXECUTION_LOCATION_CAPABILITY in required,
             "WorkspaceIdentity capability admission MUST remain declared",
         )
         assertTrue(
@@ -271,7 +273,7 @@ class CorePwdRegistryPrimaryFitnessTest {
             val rejected = preparation as ExecutionPreparation.Rejected
             // The Rejection message MUST identify the missing capabilities (any of them).
             assertTrue(
-                rejected.reason.contains(WORKSPACE_IDENTITY_CAPABILITY.key) ||
+                rejected.reason.contains(EXECUTION_LOCATION_CAPABILITY.key) ||
                     rejected.reason.contains(EVENT_SINK_CAPABILITY.key),
                 "Rejection MUST identify at least one missing capability",
             )

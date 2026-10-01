@@ -8,6 +8,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
+import dev.rubentxu.pipeline.v2.application.durable.ExecutionLocationCapability
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
@@ -88,7 +90,7 @@ data class PwdOutput(
  * legacy `pwdContext()` consumed.
  *
  * Capability separation (mirrors `core.isUnix` precedent):
- * - [WORKSPACE_IDENTITY_CAPABILITY] owns the canonical workspace OBSERVATION
+ * - [EXECUTION_LOCATION_CAPABILITY] owns the canonical workspace OBSERVATION
  *   (`workspaceRoot: Path`); the bridge derives it from the runtime context,
  *   the handler never reaches `user.dir` / `controlDirRoot` directly.
  * - The Step owns the projection POLICY (absolute path string + sha256).
@@ -173,11 +175,25 @@ object CorePwdStep {
         replayPolicy = ReplayPolicy.MEMOIZED,
     )
 
+    /**
+     * RP034-E: `pwd` reports the current directory, not the workspace root.
+     *
+     * The legacy seam handed this handler a single `Path` built as
+     * `workingDirectory ?: workspaceRoot`, so a `dir` scope could not be
+     * distinguished from the run root: both `path` and `workspaceRoot` were
+     * filled with the same collapsed value. ADR-0100 requires `pwd()` to return
+     * `cwd`, and the two authorities to stay observably distinct, so this now
+     * reads the typed execution location and reports each authority from its own
+     * field.
+     */
     private val capabilityRoutedHandler: StepHandler<PwdInput, PwdOutput> =
         StepHandler { _, ctx ->
-            val workspace: WorkspaceIdentity = ctx.capabilities.get(WORKSPACE_IDENTITY_CAPABILITY)
+            val location: ExecutionLocationCapability =
+                ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
             val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY)
-            val path = workspace.workspaceRoot.toAbsolutePath().toString()
+            val cwd = location.currentDirectory.toAbsolutePath()
+            val root = location.workspaceRoot.toAbsolutePath()
+            val path = cwd.toString()
             sink.append(
                 PwdResolved(
                     eventId = UUID.randomUUID().toString(),
@@ -185,7 +201,7 @@ object CorePwdStep {
                     sequence = 0L,
                     occurredAt = Instant.now(),
                     path = path,
-                    workspaceRoot = workspace.workspaceRoot.toAbsolutePath().toString(),
+                    workspaceRoot = root.toString(),
                     sha256 = sha256(path),
                 ),
             )
@@ -206,7 +222,7 @@ object CorePwdStep {
                 inputCodec = inputCodec,
                 outputCodec = outputCodec,
                 requiredCapabilities = setOf(
-                    WORKSPACE_IDENTITY_CAPABILITY,
+                    EXECUTION_LOCATION_CAPABILITY,
                     EVENT_SINK_CAPABILITY,
                 ) as Set<StepCapability>,
             )

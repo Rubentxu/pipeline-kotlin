@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.durable.ShOptionsExecutionLocationAdapter
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
 import dev.rubentxu.pipeline.v2.application.durable.ExecutionPreparation
 import dev.rubentxu.pipeline.v2.application.durable.OpId
@@ -21,6 +23,7 @@ import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -39,7 +42,7 @@ import java.util.concurrent.TimeUnit
  *   - typed I/O codec round-trip (input `PwdInput(tmp=false)`, output `PwdOutput(path)`)
  *   - input codec REJECTS `tmp=true` at decode time (PWD_TMP_TRUE_DISPOSITION, D3)
  *   - declared effect `{ READ_ONLY }` + replay `MEMOIZED` (D2, D4 frozen at G2)
- *   - declared capabilities = `{ WORKSPACE_IDENTITY_CAPABILITY, EVENT_SINK_CAPABILITY }`
+ *   - declared capabilities = `{ EXECUTION_LOCATION_CAPABILITY, EVENT_SINK_CAPABILITY }`
  *   - handler emits a single `PwdResolved` event with absolute path + sha256 + workspaceRoot echoed
  *   - missing capability fail-closed admission: no handler invocation, no event
  *   - structural family: while `core.pwd` is in LEGACY_PLUGIN_IDS, classify returns LegacyCore
@@ -139,7 +142,7 @@ class CorePwdStepUnitTest {
     @Test
     fun `required capabilities = WORKSPACE_IDENTITY + EVENT_SINK`() {
         assertEquals(
-            setOf(WORKSPACE_IDENTITY_CAPABILITY, EVENT_SINK_CAPABILITY),
+            setOf(EXECUTION_LOCATION_CAPABILITY, EVENT_SINK_CAPABILITY),
             CorePwdStep.definition.contract.requiredCapabilities,
         )
     }
@@ -346,7 +349,7 @@ class CorePwdStepUnitTest {
             registry = CoreStepRegistryFactory.registry(),
             key = CorePwdStep.KEY,
             encodedInput = EncodedStepValue("""{"kind":"pwd","tmp":false}"""),
-            availableCapabilities = setOf(WORKSPACE_IDENTITY_CAPABILITY),
+            availableCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
         )
         assertInstanceOf(ExecutionPreparation.Rejected::class.java, preparation)
         assertEquals(0, capturedPwdResolved("g1-pwd-missing-sink").size)
@@ -372,7 +375,7 @@ class CorePwdStepUnitTest {
             registry = CoreStepRegistryFactory.registry(),
             key = CorePwdStep.KEY,
             encodedInput = EncodedStepValue("""{"kind":"pwd","tmp":true}"""),
-            availableCapabilities = setOf(WORKSPACE_IDENTITY_CAPABILITY, EVENT_SINK_CAPABILITY),
+            availableCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY, EVENT_SINK_CAPABILITY),
         )
         assertInstanceOf(ExecutionPreparation.Rejected::class.java, preparation)
         assertEquals(0, capturedPwdResolved("g1-pwd-tmp-true-rejected").size)
@@ -419,7 +422,7 @@ class CorePwdStepUnitTest {
             registry = CoreStepRegistryFactory.registry(),
             key = CorePwdStep.KEY,
             encodedInput = EncodedStepValue("""{"kind":"pwd","tmp":false}"""),
-            availableCapabilities = setOf(WORKSPACE_IDENTITY_CAPABILITY, EVENT_SINK_CAPABILITY),
+            availableCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY, EVENT_SINK_CAPABILITY),
         )
         val ready = assertInstanceOf(ExecutionPreparation.Ready::class.java, preparation)
         return assertInstanceOf(PreparedRegistryExecution::class.java, ready.prepared)
@@ -427,7 +430,7 @@ class CorePwdStepUnitTest {
 
     /**
      * Synthesises a [dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext] with a
-     * capability access that returns a fresh [WorkspaceIdentity] for [WORKSPACE_IDENTITY_CAPABILITY]
+     * capability access that returns a fresh [WorkspaceIdentity] for [EXECUTION_LOCATION_CAPABILITY]
      * and the supplied [sink] for [EVENT_SINK_CAPABILITY]. Mirrors the production bridge shape
      * without going through [CanonicalRuntimeCapabilityAccess] — so a test can inject a relative
      * workspaceRoot to assert the handler's defensive `toAbsolutePath()` behaviour.
@@ -442,12 +445,13 @@ class CorePwdStepUnitTest {
             stepIndex = 0,
             capabilities = object : dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess {
                 override fun available(): Set<dev.rubentxu.pipeline.v2.domain.step.StepCapability> =
-                    setOf(WORKSPACE_IDENTITY_CAPABILITY, EVENT_SINK_CAPABILITY)
+                    setOf(EXECUTION_LOCATION_CAPABILITY, EVENT_SINK_CAPABILITY)
 
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : Any> get(key: dev.rubentxu.pipeline.v2.domain.step.StepCapability): T =
                     when (key) {
-                        WORKSPACE_IDENTITY_CAPABILITY -> WorkspaceIdentity(workspaceRoot = workspace) as T
+                        EXECUTION_LOCATION_CAPABILITY ->
+                            ShOptionsExecutionLocationAdapter.from(workspace, null, workspace) as T
                         EVENT_SINK_CAPABILITY -> sink as T
                         else -> throw IllegalArgumentException("unexpected capability $key")
                     }
@@ -468,6 +472,58 @@ class CorePwdStepUnitTest {
 
     private fun capturedPwdResolved(runId: String): List<PwdResolved> =
         sharedEventStore.eventsFor(runId).toList().filterIsInstance<PwdResolved>()
+
+    /**
+     * RP034-E: `pwd` reports the current directory, and the workspace root stays
+     * observable as a separate value.
+     *
+     * Before this migration the handler received one collapsed
+     * `workingDirectory ?: workspaceRoot` Path and filled both `path` and
+     * `workspaceRoot` from it, so inside a `dir` scope the two were
+     * indistinguishable and neither could be trusted for its stated purpose.
+     */
+    @Test
+    fun `pwd reports the cwd while the workspace root stays distinct`() = runBlocking {
+        val root = Path.of("/ws/project").toAbsolutePath().normalize()
+        val scoped = root.resolve("backend")
+        val runId = "pwd-cwd-vs-root"
+        // The shared store is the one capturedPwdResolved reads; a private
+        // instance would leave the event assertions looking at an empty list.
+        val sink = sharedEventStore
+
+        val location = ShOptionsExecutionLocationAdapter.from(root, scoped, root)
+        val output = CorePwdStep.definition.handler.execute(
+            PwdInput(tmp = false),
+            dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext(
+                runId = dev.rubentxu.pipeline.v2.domain.RunId(runId),
+                stepIndex = 0,
+                capabilities = object : dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess {
+                    override fun available(): Set<dev.rubentxu.pipeline.v2.domain.step.StepCapability> =
+                        setOf(EXECUTION_LOCATION_CAPABILITY, EVENT_SINK_CAPABILITY)
+
+                    @Suppress("UNCHECKED_CAST")
+                    override fun <T : Any> get(
+                        key: dev.rubentxu.pipeline.v2.domain.step.StepCapability,
+                    ): T = when (key) {
+                        EXECUTION_LOCATION_CAPABILITY -> location as T
+                        EVENT_SINK_CAPABILITY -> sink as T
+                        else -> throw IllegalArgumentException("unexpected capability $key")
+                    }
+                },
+            ),
+        )
+
+        assertEquals(scoped.toString(), output.path, "pwd() must return the current directory")
+        assertNotEquals(root.toString(), output.path, "the scope must not be reported as the root")
+
+        val event = sharedEventStore.eventsFor(runId).toList().filterIsInstance<PwdResolved>().last()
+        assertEquals(scoped.toString(), event.path)
+        assertEquals(
+            root.toString(),
+            event.workspaceRoot,
+            "the workspace root must remain observable and must not follow the cwd",
+        )
+    }
 
     companion object {
         private val sharedEventStore = InMemoryEventStore()

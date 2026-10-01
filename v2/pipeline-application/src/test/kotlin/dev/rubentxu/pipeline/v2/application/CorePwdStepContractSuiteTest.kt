@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.durable.ShOptionsExecutionLocationAdapter
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
@@ -65,7 +67,7 @@ import org.junit.jupiter.api.Timeout
  *
  * Certifies `core.pwd` end-to-end across the registry-driven, open-world Step seam following
  * the certified `core.isUnix` model (S2-A5/G6): TWO required capabilities
- * ([WORKSPACE_IDENTITY_CAPABILITY] + [EVENT_SINK_CAPABILITY]) — the handler reaches the runtime
+ * ([EXECUTION_LOCATION_CAPABILITY] + [EVENT_SINK_CAPABILITY]) — the handler reaches the runtime
  * capability bridge to observe the canonical workspace identity and to publish the durable
  * `PwdResolved` observation.
  *
@@ -211,7 +213,7 @@ class CorePwdStepContractSuiteTest {
             "core.pwd replayPolicy MUST be MEMOIZED (replay reproduces the persisted observation)",
         )
         assertEquals(
-            setOf(WORKSPACE_IDENTITY_CAPABILITY, EVENT_SINK_CAPABILITY),
+            setOf(EXECUTION_LOCATION_CAPABILITY, EVENT_SINK_CAPABILITY),
             contract.requiredCapabilities,
             "core.pwd MUST declare EXACTLY {WORKSPACE_IDENTITY, EVENT_SINK} as required capabilities",
         )
@@ -356,8 +358,8 @@ class CorePwdStepContractSuiteTest {
             "core.pwd MUST declare exactly 2 required capabilities; got ${declared.map { it.key }}",
         )
         assertTrue(
-            WORKSPACE_IDENTITY_CAPABILITY in declared,
-            "WORKSPACE_IDENTITY_CAPABILITY MUST be declared",
+            EXECUTION_LOCATION_CAPABILITY in declared,
+            "EXECUTION_LOCATION_CAPABILITY MUST be declared",
         )
         assertTrue(
             EVENT_SINK_CAPABILITY in declared,
@@ -374,7 +376,7 @@ class CorePwdStepContractSuiteTest {
                 registry = CoreStepRegistryFactory.registry(),
                 key = CorePwdStep.KEY,
                 encodedInput = CorePwdStep.definition.contract.inputCodec.encode(PwdInput(tmp = false)),
-                availableCapabilities = setOf(WORKSPACE_IDENTITY_CAPABILITY, EVENT_SINK_CAPABILITY),
+                availableCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY, EVENT_SINK_CAPABILITY),
             )
             assertTrue(
                 preparation is ExecutionPreparation.Ready,
@@ -400,7 +402,7 @@ class CorePwdStepContractSuiteTest {
             )
             val rejected = assertInstanceOf(ExecutionPreparation.Rejected::class.java, preparation)
             assertTrue(
-                rejected.reason.contains(WORKSPACE_IDENTITY_CAPABILITY.key),
+                rejected.reason.contains(EXECUTION_LOCATION_CAPABILITY.key),
                 "Rejection MUST identify the missing WORKSPACE_IDENTITY capability",
             )
         }
@@ -415,7 +417,7 @@ class CorePwdStepContractSuiteTest {
                 registry = CoreStepRegistryFactory.registry(),
                 key = CorePwdStep.KEY,
                 encodedInput = CorePwdStep.definition.contract.inputCodec.encode(PwdInput(tmp = false)),
-                availableCapabilities = setOf(WORKSPACE_IDENTITY_CAPABILITY),
+                availableCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
             )
             assertTrue(
                 preparation is ExecutionPreparation.Rejected,
@@ -464,7 +466,7 @@ class CorePwdStepContractSuiteTest {
                         descriptor = CorePwdStep.definition.contract.descriptor,
                         inputCodec = CorePwdStep.definition.contract.inputCodec,
                         outputCodec = CorePwdStep.definition.contract.outputCodec,
-                        requiredCapabilities = setOf(WORKSPACE_IDENTITY_CAPABILITY, EVENT_SINK_CAPABILITY),
+                        requiredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY, EVENT_SINK_CAPABILITY),
                     )
                     override val handler: StepHandler<PwdInput, PwdOutput> = throwingHandler
                 },
@@ -652,7 +654,7 @@ class CorePwdStepContractSuiteTest {
                 registry = h.registry,
                 key = CorePwdStep.KEY,
                 encodedInput = encoded,
-                availableCapabilities = setOf(WORKSPACE_IDENTITY_CAPABILITY, EVENT_SINK_CAPABILITY),
+                availableCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY, EVENT_SINK_CAPABILITY),
             )
             val ready = assertInstanceOf(ExecutionPreparation.Ready::class.java, preparation)
             val prepared = assertInstanceOf(PreparedRegistryExecution::class.java, ready.prepared)

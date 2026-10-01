@@ -1,10 +1,65 @@
 # ADR-0048: SandboxProfile.LOCAL — cwd drift fix + env deny-list + PATH normalization
 
-- **Status:** accepted
+- **Status:** accepted — §D1 (cwd flip) superseded by ADR-0101; remainder still in force
 - **Date:** 2026-08-26
+- **Amended:** 2026-10-01 (WU-RP-034) — see "Amendment 2026-10-01" below
 - **Deciders:** Rubentxu (product owner), orchestrator
 - **Authority:** binds at apply phase T4 (authoring); required for L3 milestone completeness
-- **Related:** [[ADR-0046-local-ecosystem-first-reprioritization]] §D2 (cwd drift), [[ADR-0047-operation-status-failed-timeout]], REQ-Sandbox-Profile, REQ-Sandbox-Profile-Local, UAT-LOCAL-007
+- **Related:** [[ADR-0046-local-ecosystem-first-reprioritization]] §D2 (cwd drift), [[ADR-0047-operation-status-failed-timeout]], REQ-Sandbox-Profile, REQ-Sandbox-Profile-Local, UAT-LOCAL-007, [[ADR-0100-workspace-lease-and-execution-location]], [[ADR-0101-local-first-workspace-cli]], [[ADR-0102-path-anchors-and-destructive-safety]]
+
+## Amendment 2026-10-01 (WU-RP-034)
+
+**§D1 — "CWD flip to workspacePath" — is SUPERSEDED by ADR-0101.** The rest
+of this ADR (the env deny-list, PATH normalization, `SandboxConfig` shape and
+the `NONE`/`LOCAL` profile behaviour) remains in force and is unchanged.
+
+### What is superseded
+
+D1 established that the shell CWD is always the **per-stage workspace**
+`{controlRoot}/workspace/stage-{n}-{m}/`. That remains the correct rule *for a
+PipelineK-managed scratch workspace*, and the original defect it fixed — cwd
+drift writing to the control directory and diverging the journal on resume —
+is still fixed exactly as described.
+
+D1 is superseded **as the rule for the no-flag CLI default**. Under ADR-0101:
+
+| Invocation | Effective workspace | Ownership | D1 applies? |
+|---|---|---|---|
+| `pipelinek run p.kts` | invocation directory, attached | USER | no |
+| `pipelinek run --workspace <path> p.kts` | that path, attached | USER | no |
+| `pipelinek run --isolated p.kts` | per-stage scratch, managed | PIPELINEK | **yes, unchanged** |
+
+The historical behaviour D1 describes is therefore **preserved exactly**, and
+made explicit rather than implicit: it is what `--isolated` requests.
+
+### Why
+
+Dogfooding showed that the implicit scratch default made `pipelinek run` unable
+to find the consumer's own project: `./gradlew` and relative paths fail because
+they do not exist in a synthetic scratch. A product sold as a Jenkins-compatible
+runner must not require `--workspace .` to build the project in front of it.
+ADR-0101 makes that mode the default while keeping the Jenkins-like scratch
+available on request.
+
+### Destructive-safety consequence (binding)
+
+Because the default workspace is now **user-owned**, the ownership authority for
+`deleteDir`/`cleanWs` changes. ADR-0102 replaces the VCS-marker heuristic
+(`ProjectCheckoutDetector`) as the primary ownership authority: a `Attached`
+workspace refuses root-wide destruction by default **regardless of whether it
+carries `.git`, `.hg` or `.svn`**. Ownership is a typed state, not an inference.
+
+`ProjectCheckoutDetector` may survive temporarily as a diagnostic, but it is no
+longer an authority for whether a root may be deleted.
+
+### Not changed by this amendment
+
+- The `SandboxProfile` enum, `SandboxConfig`, `SandboxConfigResolver`.
+- The 11-key env deny-list and `applyDenyList` / `normalizePath` behaviour.
+- `UAT-LOCAL-007` and the `SB-P-*` scenarios, whose assertions are restated in
+  ADR-0102 terms and re-certified by WU-RP-034.
+- The historical record of this ADR. Nothing above is rewritten.
+
 
 ## Context
 
@@ -14,7 +69,15 @@ ML-R3 introduces the full `SandboxProfile.LOCAL` implementation to address cwd d
 
 ## Decision
 
-### D1 — CWD flip to workspacePath (DEC-1)
+### D1 — CWD flip to workspacePath (DEC-1) — **SUPERSEDED by ADR-0101, applies to `--isolated` only**
+
+> **Amendment 2026-10-01 (WU-RP-034).** This decision is no longer the rule for
+> the no-flag CLI default. It remains in force **verbatim for a PipelineK-managed
+> scratch workspace**, which `pipelinek run --isolated` now requests explicitly.
+> The effective CWD is the `ExecutionLocation.cwd` defined by ADR-0100; for a
+> managed workspace that equals the per-stage workspace described here. Destructive
+> safety no longer keys off the VCS marker — see ADR-0102. The rationale and the
+> original defect (cwd drift) are preserved unchanged below.
 
 Flip `pb.directory(controlDir)` → `pb.directory(workspaceRoot)` in `DurableShellExecutor.launch()`. The `workspaceRoot` is the per-stage workspace directory (`{controlRoot}/workspace/stage-{n}-{m}/`) resolved by `WorkspaceResolver` and threaded through `ShOptions.workspaceRoot`.
 

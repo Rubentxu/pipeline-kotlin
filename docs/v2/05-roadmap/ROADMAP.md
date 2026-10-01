@@ -67,6 +67,54 @@
 **WU-RP-032:** cerrar semánticas del DSL soportado: declaración vs ejecución, valores runtime tipados, block Steps/cancelación, contextos, failures, validación compile-negative/positive, plugin externo sin tocar motor. Rechazar explícitamente superficie no soportada; no publicar un fallback ficticio.
 **Salida RP-3:** un Step externo con y sin cuerpo accede al mismo registro genérico (si forma parte del SDK soportado), con admission/replay/typed errors comprobados y cero nueva ramificación concreta en el coordinator. Los recorridos soportados tienen paridad demostrada.
 
+### WU-RP-034 — Workspace & Execution Location Semantic Remediation (post-exit corrective WU)
+
+**Trigger:** el dogfooding posterior a RP-3 demostró que `pipelinek run` sin
+`--workspace` ejecuta proyectos locales en un scratch temporal donde no existen
+los paths del checkout. La caracterización WU-RP-053R también mostró
+coexistencia de WORKSPACE_ROOT/CURRENT_DIRECTORY y consumidores con anchors
+distintos.
+
+**Objetivo:** establecer una única semántica tipada para workspace root, current
+working directory y control root; hacer local-first el default del CLI sin
+perder el modo scratch Jenkins-like.
+
+**Decisiones (ADR-0100/0101/0102, ACCEPTED 2026-10-01):**
+- `WorkspaceLease` distingue Attached(user-owned) de Managed(PipelineK-owned).
+- `ExecutionLocation = workspace + cwd`; `cwd` es no-null y comienza en root.
+- `dir(...)` deriva sólo cwd; no redefine workspace root.
+- `controlRoot` nunca resuelve rutas del usuario.
+- no-flag `pipelinek run` => attach invocation directory.
+- `--workspace <path>` => attach explícito (compatible).
+- `--isolated` => scratch gestionado (comportamiento histórico explícito).
+- `--workspace` y `--isolated` son mutuamente excluyentes.
+- filesystem Steps resuelven mediante PathAnchor + ExecutionLocation.
+- workspaces Attached protegen su root contra `deleteDir/cleanWs` por defecto.
+- Ownership es estado tipado; ninguna heurística VCS es autoridad.
+
+**Secuencia obligatoria:**
+A characterization-only → B ADTs puros → C runtime capability bridge →
+D core cwd Steps → E consumers externos/utilities → F root/differential Steps →
+G destructive safety → H CLI default flip → I cleanup/certificación.
+**G precede obligatoriamente a H.**
+
+**Exit:** distribución instalada demuestra Gradle/Maven/Node + self-hosting sin
+`--workspace`, `--workspace .` conserva compatibilidad, `--isolated` conserva
+scratch, nested `dir` es coherente entre sh/pwd/files/stash/plugins, attached root
+no puede destruirse por default, fresh/replay/concurrency/architecture/full gate
+verdes en el mismo SHA.
+
+**Gate:** esta WU reabre únicamente la semántica de workspace necesaria para
+certificación futura; no invalida RP3_EXIT_REVIEW en su SHA. No certificar una
+nueva candidata local-first hasta cerrar WU-RP-034.
+
+**Estado (2026-10-01):** RP034-A cerrado. Caracterización congelada en
+`WorkspaceExecutionLocationCharacterizationTest` (4/4). Un intento previo de
+activar el default local-first (`8e838e6d`) fue **revertido** (`aeae1e4c`)
+porque dejaba el checkout del usuario alcanzable con la protección destructiva
+dependiendo aún de la heurística VCS. Ver
+[`P0_SHELL_WORKING_DIRECTORY_RECEIPT.md`](../07-uat/P0_SHELL_WORKING_DIRECTORY_RECEIPT.md).
+
 ## 6. RP-4 — Calidad transversal y distribución reproducible
 
 **WU-RP-040:** configurar cobertura por módulo y umbrales fundamentados por riesgo (branch/line) sobre partes críticas, mutación selectiva de codecs/políticas; registrar exclusiones y @Disabled clasificados, nunca contar tests omitidos como PASS. Crear informes SAST/dependency audit/secret scan/SBOM y fijación de acciones por SHA según política de suministro.

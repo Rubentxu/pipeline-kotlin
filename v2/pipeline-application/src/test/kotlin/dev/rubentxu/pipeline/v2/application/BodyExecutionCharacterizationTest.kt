@@ -58,6 +58,7 @@ class BodyExecutionCharacterizationTest {
     private val dirKey = PluginStepId("core.dir")
     private val retryKey = PluginStepId("core.retry")
     private val withEnvKey = PluginStepId("core.withEnv")
+    private val waitUntilKey = PluginStepId("core.waitUntil")
     private val writeFileKey = PluginStepId("core.file.writeFile")
     private val echoKey = PluginStepId("core.echo")
     private val errorKey = PluginStepId("core.error")
@@ -247,5 +248,37 @@ class BodyExecutionCharacterizationTest {
             events.eventsFor("bc3").any { it is dev.rubentxu.pipeline.v2.events.EchoOutputCaptured },
             "the child echo crossed the console path",
         )
+    }
+
+    @Test
+    fun `waitUntil body - first-poll success completes the condition`() = runBlocking {
+        val (coordinator, journal, events, _) = harness()
+
+        val outcome = coordinator.run(
+            pipelineOf(
+                stage(
+                    "S",
+                    block(
+                        waitUntilKey,
+                        """{"kind":"waitUntil","initialRecurrencePeriod":10,"maxBackoffMs":50}""",
+                        "s/wait-body-1",
+                        echo("s", 0, "condition holds"),
+                    ),
+                ),
+            ),
+            RunId("bc4"),
+        )
+
+        assertEquals(RunOutcome.Success, outcome)
+        val polled = events.eventsFor("bc4").filter { it is dev.rubentxu.pipeline.v2.events.WaitUntilPolled }.toList()
+        assertEquals(
+            2,
+            polled.size,
+            "one poll emits the pre-attempt and post-attempt WaitUntilPolled pair",
+        )
+        val completed = events.eventsFor("bc4").filterIsInstance<dev.rubentxu.pipeline.v2.events.WaitUntilCompleted>().single()
+        assertEquals("completed", completed.outcome)
+        assertEquals(1, completed.totalAttempts)
+        assertEquals(1, childRowIds(journal, "bc4").size)
     }
 }

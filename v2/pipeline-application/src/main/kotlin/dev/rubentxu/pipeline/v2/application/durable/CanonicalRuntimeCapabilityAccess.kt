@@ -36,10 +36,12 @@ import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
 import dev.rubentxu.pipeline.v2.application.ARTIFACT_INDEX_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability
 import dev.rubentxu.pipeline.v2.domain.step.BODY_INVOKER_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
+import java.nio.file.Path
 
 /**
  * CDE.3-d1: explicit, small capability bridge from a [CanonicalRuntimeContext] to a
@@ -144,6 +146,20 @@ open class CanonicalRuntimeCapabilityAccess(
         builder[WORKSPACE_IDENTITY_CAPABILITY] = WorkspaceIdentity(
             workspaceRoot = effectiveWorkspaceRoot,
         )
+        // RP034-C (ADR-0100): the typed execution location, registered alongside
+        // the legacy WorkspaceIdentity above so consumers migrate per vertical
+        // instead of all at once.
+        //
+        // Unlike the single-value WorkspaceIdentity, this carries BOTH
+        // authorities separately: the resolved workspace for this stage (the
+        // lease root) and the active `dir` scope projection (the cwd). The
+        // legacy value above cannot express that difference — it collapses the
+        // two into one Path, which is why a handler asking for the security
+        // boundary could receive the current directory.
+        //
+        // This is a pure binding: it introduces no new behaviour and changes no
+        // value the legacy consumers already observe.
+        builder[EXECUTION_LOCATION_CAPABILITY] = executionLocationFor(context)
         // S2-A6 / G3T (post-correction): the ONLY capability consumed by
         // CorePwdTmpStep.handler. The adapter binds the runtime's
         // [runIdString], [OpId], [ShOptions] (workspaceRoot), [EventSink] —
@@ -296,4 +312,22 @@ open class CanonicalRuntimeCapabilityAccess(
         }
         return builder.toMap()
     }
+
+    /**
+     * Derives the typed [ExecutionLocationCapability] for this invocation
+     * (RP034-C / ADR-0100).
+     *
+     * Kept out of [buildProvided] so the bridge stays readable and so the
+     * derivation has one name a test can reason about. It is a pure function of
+     * the context: the same context always yields the same location, and it
+     * reads no ambient process state.
+     */
+    private fun executionLocationFor(
+        context: CanonicalRuntimeContext,
+    ): ExecutionLocationCapability = ShOptionsExecutionLocationAdapter.from(
+        workspaceRoot = context.shOptions.workspaceRoot,
+        scopedWorkingDirectory = context.shOptions.workingDirectory,
+        fallbackRoot = context.shOptions.workspaceRoot
+            ?: Path.of("").toAbsolutePath().normalize(),
+    )
 }

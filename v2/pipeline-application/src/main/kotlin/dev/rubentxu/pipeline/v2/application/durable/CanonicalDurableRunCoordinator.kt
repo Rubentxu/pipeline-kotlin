@@ -343,30 +343,16 @@ class CanonicalDurableRunCoordinator(
         cursorStore = cursorStore,
     )
 
-    // C3: RunStarted/RunFinished state
-    private var currentOutcome: RunOutcome = RunOutcome.Success
-    // Track whether RunStarted was emitted (for RunFinished correlation)
-    private var runStartedEmitted = false
+    // C3 / WU-PR-017: the run-lifecycle bookends and the running outcome live in
+    // the extracted engine (same events, same ordering, same quirks).
+    private val runLifecycle = RunLifecycleEngine(eventSink)
 
     suspend fun run(pipeline: CompiledPipeline, runId: RunId): RunOutcome {
-        // Reset state for this run
-        currentOutcome = RunOutcome.Success
-        runStartedEmitted = false
+        runLifecycle.openRun(pipeline, runId)
         // CTX-P2: ambient execution context is a run-local immutable value threaded
         // explicitly through dispatch; no coordinator field, no restore idiom.
         var ambient = ExecutionContext.EMPTY
 
-        // C3: Emit RunStarted at the beginning of the pipeline run
-        eventSink.append(
-            RunStarted(
-                eventId = UUID.randomUUID().toString(),
-                runId = runId.value,
-                sequence = 0L,
-                occurredAt = Instant.now(),
-                scriptPath = pipeline.source.path,
-            ),
-        )
-        runStartedEmitted = true
 
         try {
             stagesLoop@ for (stageIndex in pipeline.stages.indices) {
@@ -394,13 +380,13 @@ class CanonicalDurableRunCoordinator(
                                 reason = directiveDecision.reason,
                             ),
                         )
-                        currentOutcome = RunOutcome.Failure(
+                        runLifecycle.fold(RunOutcome.Failure(
                             PipelineFailure(
                                 dev.rubentxu.pipeline.v2.domain.FailureKind.USER,
                                 directiveDecision.reason,
                             ),
-                        )
-                        return@run currentOutcome
+                        ))
+                        return@run runLifecycle.outcome()
                     }
                     // S1-C: one typed admitted event per declared directive,
                     // emitted at the same seam that will later interpret them.
@@ -521,13 +507,13 @@ class CanonicalDurableRunCoordinator(
                                 reason = reason,
                             ),
                         )
-                        currentOutcome = RunOutcome.Failure(
+                        runLifecycle.fold(RunOutcome.Failure(
                             PipelineFailure(
                                 dev.rubentxu.pipeline.v2.domain.FailureKind.USER,
                                 reason,
                             ),
-                        )
-                        return@run currentOutcome
+                        ))
+                        return@run runLifecycle.outcome()
                     }
 
                     // S2-D: only GATE predicates compose; a decoded Evaluate is
@@ -553,13 +539,13 @@ class CanonicalDurableRunCoordinator(
                                     reason = composition.reason,
                                 ),
                             )
-                            currentOutcome = RunOutcome.Failure(
+                            runLifecycle.fold(RunOutcome.Failure(
                                 PipelineFailure(
                                     dev.rubentxu.pipeline.v2.domain.FailureKind.USER,
                                     composition.reason,
                                 ),
-                            )
-                            return@run currentOutcome
+                            ))
+                            return@run runLifecycle.outcome()
                         }
 
                         // Empty cannot occur here (beforeStageSeam is non-empty),
@@ -634,8 +620,8 @@ class CanonicalDurableRunCoordinator(
                                         stageShOptions = stage.projectShellOptions(shOptions),
                                         ambient = ambient,
                                     )?.let { failure ->
-                                        currentOutcome = RunOutcome.Failure(failure)
-                                        return@run currentOutcome
+                                        runLifecycle.fold(RunOutcome.Failure(failure))
+                                        return@run runLifecycle.outcome()
                                     }
                                     continue@stagesLoop
                                 }
@@ -672,13 +658,13 @@ class CanonicalDurableRunCoordinator(
                                             reason = reason,
                                         ),
                                     )
-                                    currentOutcome = RunOutcome.Failure(
+                                    runLifecycle.fold(RunOutcome.Failure(
                                         PipelineFailure(
                                             dev.rubentxu.pipeline.v2.domain.FailureKind.USER,
                                             reason,
                                         ),
-                                    )
-                                    return@run currentOutcome
+                                    ))
+                                    return@run runLifecycle.outcome()
                                 }
                             }
                         }
@@ -698,13 +684,13 @@ class CanonicalDurableRunCoordinator(
                         resolver.ensureCreated(workspacePath)
                         stageWorkspace = workspacePath
                     } catch (e: java.io.IOException) {
-                        currentOutcome = RunOutcome.Failure(
+                        runLifecycle.fold(RunOutcome.Failure(
                             PipelineFailure(
                                 dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
                                 "Failed to create stage workspace '${workspacePath}': ${e.message}"
                             ),
-                        )
-                        return@run currentOutcome
+                        ))
+                        return@run runLifecycle.outcome()
                     }
                 }
                 val stageBaseOptions = if (stageWorkspace != null) shOptions.copy(workspaceRoot = stageWorkspace) else shOptions
@@ -726,8 +712,8 @@ class CanonicalDurableRunCoordinator(
                                 stageShOptions = stageShOptions,
                                 ambient = ambient,
                             )?.let { failure ->
-                                currentOutcome = RunOutcome.Failure(failure)
-                                return@run currentOutcome
+                                runLifecycle.fold(RunOutcome.Failure(failure))
+                                return@run runLifecycle.outcome()
                             }
                             eventSink.append(
                                 dev.rubentxu.pipeline.v2.events.StageFinished(
@@ -742,7 +728,7 @@ class CanonicalDurableRunCoordinator(
                             )
                         }
                         CanonicalContinuation.ContinueUnstable -> {
-                            currentOutcome = RunOutcome.Unstable
+                            runLifecycle.fold(RunOutcome.Unstable)
                             runPostBlock(
                                 stage = stage,
                                 stageIndex = stageIndex,
@@ -751,8 +737,8 @@ class CanonicalDurableRunCoordinator(
                                 stageShOptions = stageShOptions,
                                 ambient = ambient,
                             )?.let { failure ->
-                                currentOutcome = RunOutcome.Failure(failure)
-                                return@run currentOutcome
+                                runLifecycle.fold(RunOutcome.Failure(failure))
+                                return@run runLifecycle.outcome()
                             }
                             eventSink.append(
                                 dev.rubentxu.pipeline.v2.events.StageFinished(
@@ -779,11 +765,11 @@ class CanonicalDurableRunCoordinator(
                                 stageShOptions = stageShOptions,
                                 ambient = ambient,
                             )?.let { postFailure ->
-                                currentOutcome = RunOutcome.Failure(postFailure)
-                                return@run currentOutcome
+                                runLifecycle.fold(RunOutcome.Failure(postFailure))
+                                return@run runLifecycle.outcome()
                             }
-                            currentOutcome = RunOutcome.Failure(continuation.failure)
-                            return@run currentOutcome
+                            runLifecycle.fold(RunOutcome.Failure(continuation.failure))
+                            return@run runLifecycle.outcome()
                         }
                     }
                     continue@stagesLoop
@@ -814,7 +800,7 @@ class CanonicalDurableRunCoordinator(
                     when (val continuation = decideContinuation(dispatched.outcome, stage.name, runId.value, ambient)) {
                         CanonicalContinuation.Continue -> Unit
                         CanonicalContinuation.ContinueUnstable -> {
-                            currentOutcome = RunOutcome.Unstable
+                            runLifecycle.fold(RunOutcome.Unstable)
                             stageUnstable = true
                         }
                         is CanonicalContinuation.Abort -> {
@@ -831,11 +817,11 @@ class CanonicalDurableRunCoordinator(
                                 stageShOptions = stageShOptions,
                                 ambient = ambient,
                             )?.let { postFailure ->
-                                currentOutcome = RunOutcome.Failure(postFailure)
-                                return@run currentOutcome
+                                runLifecycle.fold(RunOutcome.Failure(postFailure))
+                                return@run runLifecycle.outcome()
                             }
-                            currentOutcome = RunOutcome.Failure(continuation.failure)
-                            return@run currentOutcome
+                            runLifecycle.fold(RunOutcome.Failure(continuation.failure))
+                            return@run runLifecycle.outcome()
                         }
                     }
                 }
@@ -850,8 +836,8 @@ class CanonicalDurableRunCoordinator(
                     stageShOptions = stageShOptions,
                     ambient = ambient,
                 )?.let { failure ->
-                    currentOutcome = RunOutcome.Failure(failure)
-                    return@run currentOutcome
+                    runLifecycle.fold(RunOutcome.Failure(failure))
+                    return@run runLifecycle.outcome()
                 }
                 eventSink.append(
                     dev.rubentxu.pipeline.v2.events.StageFinished(
@@ -869,34 +855,18 @@ class CanonicalDurableRunCoordinator(
         } catch (e: Exception) {
             // Invariants are engine failures, never ordinary infrastructure outcomes.
             if (e is IllegalStateException || e is EngineInvariantViolation) throw e
-            currentOutcome = RunOutcome.Failure(
+            runLifecycle.fold(RunOutcome.Failure(
                 PipelineFailure(
                     dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
                     "Unexpected error during pipeline run: ${e.message}"
                 ),
-            )
+            ))
         } finally {
-            // C3: Emit RunFinished in finally block, only if RunStarted was emitted
-            // This ensures SKIP replay paths still get proper bookend events
-            if (runStartedEmitted) {
-                eventSink.append(
-                    RunFinished(
-                        eventId = UUID.randomUUID().toString(),
-                        runId = runId.value,
-                        sequence = 0L,
-                        occurredAt = Instant.now(),
-                        outcome = when (currentOutcome) {
-                            is RunOutcome.Success -> "success"
-                            is RunOutcome.Unstable -> "unstable"
-                            is RunOutcome.Failure -> "failure"
-                            is RunOutcome.Aborted -> "aborted"
-                        },
-                        diagnostics = emptyList(),
-                    ),
-                )
-            }
+            // C3 / WU-PR-017: the closing bookend is the engine's; the correlation
+            // invariant (RunFinished only if RunStarted was emitted) lives there.
+            runLifecycle.closeRun(runId)
         }
-        return currentOutcome
+        return runLifecycle.outcome()
     }
 
     /**

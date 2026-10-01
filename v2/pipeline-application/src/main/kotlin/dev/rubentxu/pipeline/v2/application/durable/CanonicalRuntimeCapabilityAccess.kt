@@ -264,6 +264,9 @@ open class CanonicalRuntimeCapabilityAccess(
                 controlDirRoot = root,
                 eventSink = context.eventSink,
                 workspaceBase = context.workspaceBase,
+                // RP034-E: stash source and unstash target follow the same
+                // location every other workspace-aware Step reads.
+                executionLocation = executionLocationFor(context),
             )
             builder[STASH_OPERATIONS_CAPABILITY] = stashOps
         }

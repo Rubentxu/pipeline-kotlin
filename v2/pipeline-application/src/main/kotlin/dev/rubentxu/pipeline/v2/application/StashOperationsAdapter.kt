@@ -40,13 +40,38 @@ class StashOperationsAdapter(
     private val eventSink: EventSink,
     /** WU-LPR-062 parity: optional project-workspace override (--workspace). */
     private val workspaceBase: Path? = null,
+    /**
+     * RP034-E / ADR-0100: the shared execution location.
+     *
+     * `stash` and `unstash` operate on the current directory (anchor matrix),
+     * so they must read the same location every other workspace-aware Step
+     * reads instead of re-deriving `controlDirRoot/stageName/index` themselves
+     * — the reconstruction the domain resolver exists to eliminate (INV-WS-012).
+     * `null` keeps direct construction working; the bridge always supplies it.
+     */
+    private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation? = null,
 ) : StashOperations {
 
-    override fun stash(input: StashInput): StashResult {
+    /**
+     * The directory a stash is taken from and restored into.
+     *
+     * A caller-chosen `dir(...)` scope moves it; with no scope it is the stage
+     * workspace the location reports, which is what the old resolver returned.
+     * The stash *store* stays under `controlDirRoot/stashes/...` and is never a
+     * workspace anchor (INTERNAL_STORE in the anchor matrix).
+     */
+    private fun sourceRoot(): Path {
+        val shared = executionLocation?.cwd
+        if (shared != null) {
+            Files.createDirectories(shared)
+            return shared
+        }
         val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
-        val workspaceRoot = resolver.ensureCreated(
-            resolver.resolve(stageIdentity.name, stageIdentity.index),
-        )
+        return resolver.ensureCreated(resolver.resolve(stageIdentity.name, stageIdentity.index))
+    }
+
+    override fun stash(input: StashInput): StashResult {
+        val workspaceRoot = sourceRoot()
 
         // WU-RP-012 — paths confinement for stash.
         // Resolve the workspace's real path so we can detect symlinks that
@@ -182,10 +207,7 @@ class StashOperationsAdapter(
     }
 
     override fun unstash(input: UnstashInput): StashResult {
-        val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
-        val workspaceRoot = resolver.ensureCreated(
-            resolver.resolve(stageIdentity.name, stageIdentity.index),
-        )
+        val workspaceRoot = sourceRoot()
 
         val stashRoot = stashRoot(runIdString, input.name)
         if (!Files.exists(stashRoot)) {

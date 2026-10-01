@@ -139,6 +139,81 @@ class WorkspaceAnchorScopeEndToEndTest {
         }
     }
 
+    /**
+     * DF-UNSTASH-001: stash source and unstash target both follow the active
+     * `dir` scope, while the stash store stays an internal control-root path.
+     *
+     * Stashing from `producer/` and restoring into `consumer/` is the case that
+     * a Step re-deriving its base from `controlDirRoot/stage/index` gets wrong:
+     * it would read and write the stage workspace, so the restore would land at
+     * the root instead of inside `consumer/`.
+     */
+    @Test
+    @DisplayName("stash reads from the dir scope and unstash restores into the dir scope")
+    fun `stash source and unstash target follow the dir scope`(@TempDir tempDir: Path) {
+        val project = Files.createDirectory(tempDir.resolve("project"))
+        val workspace = Files.createDirectory(tempDir.resolve("workspace"))
+        Files.createDirectories(workspace.resolve("producer"))
+        Files.createDirectories(workspace.resolve("consumer"))
+
+        val script = project.resolve("pipeline.kts")
+        Files.writeString(
+            script,
+            """
+            pipeline {
+                stages {
+                    stage("produce") {
+                        dir("producer") {
+                            writeFile("payload.txt", "carried-across-scopes")
+                            stash(name = "rp034-payload", includes = "**/*.txt")
+                        }
+                    }
+                    stage("consume") {
+                        dir("consumer") {
+                            unstash(name = "rp034-payload")
+                            sh("cat payload.txt")
+                        }
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val result = runCli(
+            project,
+            listOf(
+                "run",
+                "--db", tempDir.resolve("durable.db").toString(),
+                "--control-root", tempDir.resolve("control").toString(),
+                "--workspace", workspace.toString(),
+                script.toString(),
+            ),
+        )
+
+        assertEquals(0, result.exitCode, result.output)
+
+        assertTrue(
+            Files.exists(workspace.resolve("consumer/payload.txt")),
+            "unstash inside dir('consumer') must restore into the scope. Output: ${result.output}",
+        )
+        assertEquals(
+            "carried-across-scopes",
+            Files.readString(workspace.resolve("consumer/payload.txt")),
+        )
+
+        // The stash store is an INTERNAL_STORE path under the control root and
+        // must never be confused with a workspace anchor.
+        assertFalse(
+            Files.exists(workspace.resolve("payload.txt")),
+            "the restored file must not appear at the workspace root: unstash ignored the scope. " +
+                "Output: ${result.output}",
+        )
+        assertTrue(
+            Files.exists(workspace.resolve("producer/payload.txt")),
+            "the stashed source must remain in the producer scope. Output: ${result.output}",
+        )
+    }
+
     private fun runCli(workingDirectory: Path, arguments: List<String>): CliResult {
         val output = Files.createTempFile(workingDirectory, "rp034e-cli-", ".log")
         val process = ProcessBuilder(

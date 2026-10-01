@@ -23,6 +23,14 @@ data class CliFlags(
     val controlRoot: String? = null,
     /** WU-LPR-062: project workspace base directory (--workspace). */
     val workspace: String? = null,
+    /**
+     * RP034-H / ADR-0101: request the historical PipelineK-managed scratch
+     * workspace instead of the default attached invocation directory.
+     *
+     * Mutually exclusive with [workspace]; the parser rejects the combination
+     * rather than applying a silent precedence rule.
+     */
+    val isolated: Boolean = false,
     val sandboxProfile: SandboxProfile = SandboxProfile.NONE,
     /** External plugin JARs: one list feeds compilation and runtime discovery. */
     val pluginJars: List<String> = emptyList(),
@@ -34,6 +42,19 @@ sealed interface CliError {
     data class InvalidCommand(val value: String) : CliError
     data class MissingOptionValue(val option: String) : CliError
     data object ConflictingDurablePolicies : CliError
+
+    /**
+     * RP034-H / ADR-0101 clause 3.4: `--isolated` and `--workspace` request two
+     * different workspace origins. Applying a silent precedence would let a user
+     * believe they attached a workspace while running in scratch, so the
+     * combination fails closed at admission.
+     */
+    data class ConflictingWorkspaceModes(val workspace: String) : CliError {
+        override fun toString(): String =
+            "ConflictingWorkspaceModes(workspace=$workspace): --isolated requests a " +
+                "PipelineK-managed scratch workspace while --workspace attaches a " +
+                "user directory; choose one (ADR-0101 clause 3.4)."
+    }
     data class InvalidSandboxProfile(val value: String) : CliError
     data class UnsupportedSandboxProfile(val value: String) : CliError {
         // D-012: enrich the typed error message with cross-references so the
@@ -83,6 +104,8 @@ private class ParseState(
     var durableRunPolicy: DurableRunPolicy = DurableRunPolicy.ReusePriorRun,
     var controlRoot: String? = null,
     var workspace: String? = null,
+    /** RP034-H / ADR-0101: `--isolated` requests managed scratch. */
+    var isolated: Boolean = false,
     var sandboxProfile: SandboxProfile = SandboxProfile.NONE,
     val pluginJars: MutableList<String> = mutableListOf(),
 )
@@ -111,6 +134,13 @@ object CliParser {
         val scriptPath = args.getOrNull(index)
             ?: return CliParseResult.Rejected(CliError.MissingScriptPath)
 
+        // RP034-H / ADR-0101 clause 3.4: fail closed on the incompatible pair.
+        state.workspace?.let { explicit ->
+            if (state.isolated) {
+                return CliParseResult.Rejected(CliError.ConflictingWorkspaceModes(explicit))
+            }
+        }
+
         return CliParseResult.Parsed(
             CliFlags(
                 command = command,
@@ -119,6 +149,7 @@ object CliParser {
                 scriptPath = scriptPath,
                 controlRoot = state.controlRoot,
                 workspace = state.workspace,
+                isolated = state.isolated,
                 sandboxProfile = state.sandboxProfile,
                 pluginJars = state.pluginJars.toList(),
             ),
@@ -163,6 +194,10 @@ object CliParser {
             "--workspace" -> {
                 state.workspace = value
                 ApplyOutcome.Applied(index + 2)
+            }
+            "--isolated" -> {
+                state.isolated = true
+                ApplyOutcome.Applied(index + 1)
             }
             "--plugin-jar" -> {
                 state.pluginJars += value

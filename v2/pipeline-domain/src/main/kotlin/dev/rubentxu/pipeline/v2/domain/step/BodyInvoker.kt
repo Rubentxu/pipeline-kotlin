@@ -183,3 +183,55 @@ fun interface BodyInvoker {
  * handler runs when it is not available.
  */
 val BODY_INVOKER_CAPABILITY: StepCapability = StepCapability("bodyInvoker")
+
+/**
+ * The public, body-ALREADY-BOUND re-entry port a body Step handler uses
+ * (WU-RP-035; ADR-0081 D1/D2/D10 as amended 2026-10-01).
+ *
+ * A `BodyExecutionOwner.HANDLER_CONTINUATION` Step receives one of these under
+ * [BODY_CONTINUATION_CAPABILITY] and invokes it. The continuation already carries
+ * the engine-issued [BodyRef] for that invocation, so the handler never sees, derives or
+ * constructs a body identity: it cannot name a body that is not its own, cannot reach a
+ * sibling body, and cannot survive past the scope that bound it.
+ *
+ * ## Why this is one value and not two capabilities
+ *
+ * The obvious alternative is to hand the handler [BODY_INVOKER_CAPABILITY] plus a
+ * `CURRENT_BODY_REF` capability and let it correlate them. That is rejected on purpose: the
+ * two would have to come from the same body invocation, and nothing in the type system would
+ * say so. One capability that is already bound is one authority, and it is impossible to
+ * project one without the other.
+ *
+ * ```text
+ * BodyRef + BodyInvoker          INTERNAL, engine-owned
+ *          | bind
+ *          v
+ * BodyContinuation               PUBLIC, the whole of what a plugin sees
+ *          |
+ *          v
+ * external handler
+ * ```
+ *
+ * A continuation is valid only for the handler invocation that received it. Invoking it after
+ * that scope closes is a typed [BodyOutcome.Cancelled], never a stale child dispatch.
+ *
+ * The context is explicit rather than defaulted because a Kotlin functional interface cannot
+ * carry a default value on its abstract method, and an explicit parameter is the honest
+ * reading anyway: a body invocation always has a context, even when that context is the plain
+ * `BodyInvocationContext()`.
+ */
+fun interface BodyContinuation {
+    suspend fun invoke(context: BodyInvocationContext): BodyOutcome
+}
+
+/**
+ * Capability key under which the engine supplies the [BodyContinuation] for the body of the
+ * Step being executed, to a handler that declares
+ * [BodyExecutionOwner.HANDLER_CONTINUATION].
+ *
+ * A Step declaring this capability without that owner, or an owner without the capability, is
+ * an incoherent declaration rejected fail-closed at admission — the same discipline as every
+ * other capability (ADR-0070), and the same rule that a declared capability the engine did not
+ * bind keeps the handler from running at all.
+ */
+val BODY_CONTINUATION_CAPABILITY: StepCapability = StepCapability("bodyContinuation")

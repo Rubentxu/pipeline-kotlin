@@ -63,6 +63,34 @@ declare the capability; a handler that does is rejected at prepare time when the
 engine has not bound it. This generalizes, and does not replace, the existing
 core capability set (`EVENT_SINK_CAPABILITY`, `SHELL_OPERATIONS_CAPABILITY`, ...).
 
+**AMENDED 2026-10-01 (WU-RP-035).** A Step whose handler is to drive its own
+body declares `BodyExecutionOwner.HANDLER_CONTINUATION` and receives a
+**body-ALREADY-BOUND** continuation, not the raw invoker plus a body identity:
+
+```kotlin
+fun interface BodyContinuation {
+    suspend fun invoke(context: BodyInvocationContext): BodyOutcome
+}
+
+val BODY_CONTINUATION_CAPABILITY: StepCapability = StepCapability("bodyContinuation")
+```
+
+`BODY_INVOKER_CAPABILITY` remains the **engine-side** port and keeps its
+existing core callers. What changed is the shape of what a plugin is handed:
+before this amendment D1 implied that satisfying the plugin meant also being
+able to name a body, which the next clause corrects.
+
+Why one capability and not two (`BODY_INVOKER_CAPABILITY` plus a
+`CURRENT_BODY_REF`): the two would have to originate from the same body
+invocation, and nothing in the type would state it. One already-bound value is
+one authority, and it is impossible to project one without the other.
+
+The owner and the capability are checked for coherence and rejected
+fail-closed (`BodyPolicyRejection.IncoherentCapabilities`): declaring
+`HANDLER_CONTINUATION` without the capability, or the capability under any
+other owner, is a defect in the Step — not something the engine papers over by
+executing the body on the Step's behalf.
+
 ### D2 — BodyRef: serializable body identity, not body content
 
 A body is referenced by value-identity, never by a lambda or by the handler
@@ -94,6 +122,23 @@ object BodyRefs {
   constructs a `BodyRef` by string-munging; unknown encodings fail closed at the
   adapter (`BodyRef` decode belongs to the engine adapter, mirrors codec
   discipline).
+
+**AMENDED 2026-10-01 (WU-RP-035).** `BodyRef` is now **engine-internal
+identity**. The factories above are not part of what a plugin may use to reach
+its own body, because reaching its own body does not require naming a body: the
+engine binds the ref into the `BodyContinuation` it hands over.
+
+The property this preserves is the one D2 was protecting, and it is now
+enforced by construction rather than by convention. A plugin can name only the
+body the engine gave it; it cannot derive a sibling's ref, cannot encode a path,
+and cannot outlive the invocation that bound it. The `BodyRefs` factories stay
+in `pipeline-domain` because the engine adapter, the retry engine and the
+waitUntil engine are legitimate callers of the same encoding — they are engine
+code, not plugin code.
+
+This supersedes the clause "External plugins get the same factories via the
+public SDK surface", which is withdrawn: it made a body identity reachable from
+plugin code, and the whole point of the seam is that it is not.
 
 ### D3 — BodyOutcome: closed typed algebra, never booleans or exceptions
 
@@ -195,6 +240,33 @@ through the public plugin SDK surface. A plugin declares
 core Steps. Zero production-core semantic changes are required for a plugin to
 add a block Step.
 
+**AMENDED 2026-10-01 (WU-RP-035).** The clause above is corrected in two ways.
+
+First, `BodyRef`/`BodyRefs` are **no longer** part of the plugin-facing surface
+(see D2): the plugin-facing body re-entry port is `BodyContinuation` under
+`BODY_CONTINUATION_CAPABILITY`.
+
+Second, and this is the substantive one, "zero production-core semantic changes
+are required for a plugin to add a block Step" was **not true of the
+implementation this ADR was accepted against**, and the gap was found only by
+running the proof rather than reading the receipt. On the audited SHA a
+`BlockStepNode` was routed straight to the body dispatcher, so the registered
+handler of an external body Step never ran at all: its typed input never reached
+a handler, its typed output was never produced, and a declared capability was
+never observed. The engine executed the body on the Step's behalf, which is
+exactly the semantic substitution the open-world design exists to prevent.
+
+So the open-world claim of this ADR is amended to its true content: the
+**structural** path was open (a plugin body Step compiled, resolved its declared
+policy generically and had its children executed by the canonical body engine),
+while the **handler-driven** path was not. Closing that gap is WU-RP-035, and
+until it is closed this ADR does not assert that a plugin can author a body Step
+whose own logic runs.
+
+The second half of D10 stands and is now testable for the first time: once
+RP035-C lands, a plugin adds a body Step with zero Step-specific core edits, and
+that is proven by an independent external build (RP035-D) rather than asserted.
+
 ## Acceptance record
 
 Accepted 2026-09-13 by the product owner (`deciders`), on the same day PR #47 landed the
@@ -206,6 +278,35 @@ Acceptance settles D1–D10. It does **not** settle the migration order of the e
 `dispatchBody` call sites onto the port — see §"What this ADR does NOT decide". That
 ordering is a B10 implementation slice decision, recorded in
 `docs/v2/07-uat/B10_W1_PREFLIGHT.md`.
+
+## Amendment record
+
+**2026-10-01 — WU-RP-035 (authoritative: product owner, corrective of RP-3).**
+Amends D1, D2 and D10. Summary of what changed and why:
+
+| Clause | Before | After |
+| --- | --- | --- |
+| D1 | A plugin drives its body with `BODY_INVOKER_CAPABILITY`. | A plugin drives its body with a bound `BodyContinuation` under `BODY_CONTINUATION_CAPABILITY`; the raw invoker stays engine-side. |
+| D2 | `BodyRefs` factories are part of the public plugin surface. | `BodyRef` is engine-internal identity. Plugins never name a body; the engine binds it. |
+| D10 | "Zero production-core semantic changes required for a plugin to add a block Step." | True in intent, false in fact at the audited SHA: the structural path was open, the handler-driven path was not. The claim is re-scoped and made testable by WU-RP-035. |
+
+New public surface added by this amendment, all in `pipeline-domain`:
+
+- `BodyExecutionOwner.HANDLER_CONTINUATION` — the handler owns the invocation
+  decision; the engine remains the sole executor of the children.
+- `BodyContinuation` — the public, already-bound re-entry port.
+- `BODY_CONTINUATION_CAPABILITY` — its capability key.
+- `BodyPolicyRejection.IncoherentCapabilities` — the fail-closed rejection when
+  owner and declared capabilities contradict each other.
+
+The deliberate non-change: **invocation authority is not execution authority.**
+A `HANDLER_CONTINUATION` handler decides whether, when and how many times to
+invoke; it never receives a `StepNode`, never iterates children and never
+executes a body. The engine keeps running children through the same durable
+loop, with the same journal, events and replay law.
+
+Evidence for the finding that forced this amendment:
+`docs/v2/07-uat/RP035_A_HANDLER_CONTINUATION_RED.md`.
 
 ## What this ADR does NOT decide
 

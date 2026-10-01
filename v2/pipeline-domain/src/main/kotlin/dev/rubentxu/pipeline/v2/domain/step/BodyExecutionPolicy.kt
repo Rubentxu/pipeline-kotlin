@@ -176,6 +176,31 @@ enum class BodyExecutionOwner {
      * never executed as an empty shell.
      */
     LEGACY_LINEAR,
+
+    /**
+     * The handler owns the INVOCATION decision; the engine still owns EXECUTION
+     * (WU-RP-035, ADR-0081 as amended 2026-10-01).
+     *
+     * A Step declaring this runs its registered handler through the canonical
+     * durable spine, and reaches its own body only through a
+     * [BodyContinuation] the engine binds for that invocation. The engine NEVER
+     * auto-executes the children of such a Step: if the handler does not invoke
+     * the continuation, the body does not run, and that is the declared
+     * semantics, not a missing effect.
+     *
+     * ## Invocation authority is not execution authority
+     *
+     * This owner is about WHEN, WHETHER and HOW MANY TIMES the body is invoked —
+     * a decision that belongs to the Step author, because a wrapper, a retry
+     * condition or a plugin-specific rule is not expressible by the engine. It
+     * is NOT about who executes the children. The engine remains the only
+     * executor, through the same durable body loop, with the same journal,
+     * events and replay law as any other body.
+     *
+     * The handler never receives a [StepNode], never iterates children and never
+     * executes a body itself. It receives a bound continuation and nothing else.
+     */
+    HANDLER_CONTINUATION,
 }
 
 /**
@@ -358,6 +383,21 @@ sealed interface BodyPolicyRejection {
         val declared: BodyExecutionPolicy,
         val support: BodyExecutionSupport,
     ) : BodyPolicyRejection
+
+    /**
+     * The declared [BodyExecutionOwner] and the declared capabilities contradict
+     * each other: a [BodyExecutionOwner.HANDLER_CONTINUATION] Step that does not
+     * declare [BODY_CONTINUATION_CAPABILITY] has no way to reach its own body, and
+     * a Step that declares the capability under any other owner was handed a
+     * continuation it must not drive. Both are rejected before any effect instead of
+     * being papered over by the engine executing the body on the Step's behalf, which
+     * is exactly the substitution ADR-0081 (as amended) forbids.
+     */
+    data class IncoherentCapabilities(
+        val key: PluginStepId,
+        val owner: BodyExecutionOwner,
+        val detail: String,
+    ) : BodyPolicyRejection
 }
 
 /**
@@ -443,12 +483,46 @@ fun resolveBodyExecutionPolicy(
  * Resolves from a registered [StepDefinition], reading the policy off its contract
  * descriptor. This is the port the engine uses: the authority is the open
  * [StepRegistry], so a core Step and an external plugin Step resolve identically.
+ *
+ * This overload additionally checks COHERENCE between the declared
+ * [BodyExecutionOwner] and the declared capabilities, because only the contract carries
+ * both (WU-RP-035). The descriptor-only overload below cannot see the capabilities and is
+ * therefore used for static validation where that half of the contract is not available.
  */
 fun resolveBodyExecutionPolicy(
     definition: StepDefinition<*, *>,
     support: BodyExecutionSupport,
-): BodyPolicyResolution =
-    resolveBodyExecutionPolicy(definition.contract.key, definition.contract.descriptor, support)
+): BodyPolicyResolution {
+    val key = definition.contract.key
+    val resolved = resolveBodyExecutionPolicy(key, definition.contract.descriptor, support)
+    if (resolved is BodyPolicyResolution.Rejected) {
+        return resolved
+    }
+    val owner = definition.contract.descriptor.body.declared?.execution?.owner
+    val declaresContinuation = BODY_CONTINUATION_CAPABILITY in definition.contract.requiredCapabilities
+    val coherent = when (owner) {
+        BodyExecutionOwner.HANDLER_CONTINUATION -> declaresContinuation
+        else -> !declaresContinuation
+    }
+    return if (coherent) {
+        resolved
+    } else {
+        BodyPolicyResolution.Rejected(
+            key,
+            BodyPolicyRejection.IncoherentCapabilities(
+                key = key,
+                owner = owner ?: BodyExecutionOwner.CANONICAL_ENGINE,
+                detail = if (declaresContinuation) {
+                    "declares $BODY_CONTINUATION_CAPABILITY but owner is $owner; a bound " +
+                        "continuation is only meaningful for HANDLER_CONTINUATION"
+                } else {
+                    "declares owner $owner but does not declare $BODY_CONTINUATION_CAPABILITY, " +
+                        "so its handler has no way to reach its own body"
+                },
+            ),
+        )
+    }
+}
 
 /**
  * Resolves from a [StepDescriptor] alone. Used where a descriptor is available

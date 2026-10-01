@@ -12,8 +12,9 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
-import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
+import dev.rubentxu.pipeline.v2.sdk.WorkspacePathAnchors
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadJsonInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadJsonOutput
 import kotlinx.serialization.json.Json
@@ -55,15 +56,17 @@ class CoreUtilsReadJsonStepDefinition : StepDefinition<ReadJsonInput, ReadJsonOu
         ),
         inputCodec = CoreUtilsReadJsonInputCodec,
         outputCodec = CoreUtilsReadJsonOutputCodec,
-        requiredCapabilities = setOf<StepCapability>(WORKSPACE_IDENTITY_CAPABILITY),
+        requiredCapabilities = setOf<StepCapability>(EXECUTION_LOCATION_CAPABILITY),
     )
 
     override val handler = StepHandler<ReadJsonInput, ReadJsonOutput> { input, ctx ->
-        val capabilityWorkspaceRoot: Path = ctx.capabilities
-            .get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
-            .workspaceRoot
+        val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
 
-        val target: Path = resolvePath(capabilityWorkspaceRoot, input.path)
+        val target: Path = WorkspacePathAnchors.currentDirectory(
+            location = location,
+            stepKey = "core-utils.readJson",
+            userPath = input.path,
+        )
 
         if (!target.exists() || !target.isRegularFile()) {
             throw PluginStepException(
@@ -127,15 +130,6 @@ class CoreUtilsReadJsonStepDefinition : StepDefinition<ReadJsonInput, ReadJsonOu
         private val JSON_PARSER: Json = Json {
             ignoreUnknownKeys = true
             isLenient = false
-        }
-
-        /**
-         * Resolve a workspace-relative path against the canonical workspace
-         * root; absolute paths are honoured verbatim.
-         */
-        internal fun resolvePath(workspaceRoot: Path, rawPath: String): Path {
-            val p = Path.of(rawPath)
-            return if (p.isAbsolute) p else workspaceRoot.resolve(p)
         }
     }
 }

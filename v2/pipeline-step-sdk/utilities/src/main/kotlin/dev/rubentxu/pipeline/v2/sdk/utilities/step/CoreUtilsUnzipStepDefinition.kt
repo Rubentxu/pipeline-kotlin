@@ -12,8 +12,9 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
-import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
+import dev.rubentxu.pipeline.v2.sdk.WorkspacePathAnchors
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ExtractedFile
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ExtractedFiles
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.TestReport
@@ -62,16 +63,18 @@ class CoreUtilsUnzipStepDefinition : StepDefinition<UnzipInput, UnzipOutput> {
             ),
             inputCodec = CoreUtilsUnzipInputCodec,
             outputCodec = CoreUtilsUnzipOutputCodec,
-            requiredCapabilities = setOf<StepCapability>(WORKSPACE_IDENTITY_CAPABILITY),
+            requiredCapabilities = setOf<StepCapability>(EXECUTION_LOCATION_CAPABILITY),
         )
 
     override val handler: StepHandler<UnzipInput, UnzipOutput> =
         StepHandler { input, ctx ->
-            val workspaceRoot: Path = ctx.capabilities
-                .get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
-                .workspaceRoot
+            val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
 
-            val archive = CoreUtilsReadJsonStepDefinition.resolvePath(workspaceRoot, input.path)
+            val archive = WorkspacePathAnchors.currentDirectory(
+                location = location,
+                stepKey = "core-utils.unzip",
+                userPath = input.path,
+            )
             if (!Files.isRegularFile(archive)) {
                 throw PluginStepException(
                     failure = PipelineFailure(
@@ -81,19 +84,18 @@ class CoreUtilsUnzipStepDefinition : StepDefinition<UnzipInput, UnzipOutput> {
                 )
             }
 
-            val destRootRaw = input.destination?.let {
-                CoreUtilsReadJsonStepDefinition.resolvePath(workspaceRoot, it)
-            } ?: workspaceRoot
-            // Refuse a destination that escapes the workspace.
-            if (!destRootRaw.startsWith(workspaceRoot)) {
-                throw PluginStepException(
-                    failure = PipelineFailure(
-                        kind = FailureKind.USER,
-                        message = "core-utils.unzip: destination escapes the workspace root: ${input.destination}",
-                    ),
+            // The destination is cwd-relative, but the boundary it must stay
+            // inside is the workspace root — the two differ under a `dir(...)`
+            // scope, which is exactly where the previous `startsWith` guard was
+            // checking the wrong path. An absent destination means "the current
+            // directory", so it inherits the cwd.
+            val destRoot = input.destination?.let {
+                WorkspacePathAnchors.currentDirectory(
+                    location = location,
+                    stepKey = "core-utils.unzip",
+                    userPath = it,
                 )
-            }
-            val destRoot = destRootRaw.toAbsolutePath().normalize()
+            } ?: location.cwd
 
             val globMatcher = input.glob?.let { CoreUtilsFindFilesStepDefinition.buildMatcher(it) }
 

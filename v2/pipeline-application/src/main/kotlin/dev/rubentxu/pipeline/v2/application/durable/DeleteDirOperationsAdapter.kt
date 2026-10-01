@@ -60,7 +60,7 @@ class DeleteDirOperationsAdapter(
      * this value; when null the adapter falls back to the legacy
      * [ProjectCheckoutDetector] heuristic, which RP034-I retires.
      */
-    private val executionLocation: ExecutionLocationCapability? = null,
+    private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation? = null,
 ) : DeleteDirOperations {
 
     override fun delete(input: DeleteDirInput): DeleteDirResult {
@@ -88,7 +88,7 @@ class DeleteDirOperationsAdapter(
             // scratch keeps its wipe contract regardless of its contents.
             protectWorkspaceRoot = executionLocation?.let {
                 WorkspacePathResolver.authorizeRootDestruction(
-                    it.location.workspace,
+                    it.workspace,
                     "deleteDir",
                 ) !is DestructiveAuthorization.Permitted
             } ?: (workspaceBase != null && ProjectCheckoutDetector.isProjectCheckout(workspaceBase)),

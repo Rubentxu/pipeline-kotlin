@@ -8,7 +8,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.application.durable.ExecutionLocationCapability
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
 import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
@@ -188,11 +188,11 @@ object CorePwdStep {
      */
     private val capabilityRoutedHandler: StepHandler<PwdInput, PwdOutput> =
         StepHandler { _, ctx ->
-            val location: ExecutionLocationCapability =
+            val location: ExecutionSite =
                 ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
             val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY)
-            val cwd = location.currentDirectory.toAbsolutePath()
-            val root = location.workspaceRoot.toAbsolutePath()
+            val cwd = location.cwd.toAbsolutePath()
+            val root = location.workspace.root.toAbsolutePath()
             val path = cwd.toString()
             sink.append(
                 PwdResolved(

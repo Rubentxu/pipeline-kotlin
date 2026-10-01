@@ -12,8 +12,9 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
-import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
+import dev.rubentxu.pipeline.v2.sdk.WorkspacePathAnchors
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ZipInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ZipOutput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ZipSources
@@ -63,16 +64,19 @@ class CoreUtilsZipStepDefinition : StepDefinition<ZipInput, ZipOutput> {
             ),
             inputCodec = CoreUtilsZipInputCodec,
             outputCodec = CoreUtilsZipOutputCodec,
-            requiredCapabilities = setOf<StepCapability>(WORKSPACE_IDENTITY_CAPABILITY),
+            requiredCapabilities = setOf<StepCapability>(EXECUTION_LOCATION_CAPABILITY),
         )
 
     override val handler: StepHandler<ZipInput, ZipOutput> =
         StepHandler { input, ctx ->
-            val workspaceRoot: Path = ctx.capabilities
-                .get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
-                .workspaceRoot
+            val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
+            val stepKey = "core-utils.zip"
 
-            val target = CoreUtilsReadJsonStepDefinition.resolvePath(workspaceRoot, input.path)
+            val target = WorkspacePathAnchors.currentDirectory(
+                location = location,
+                stepKey = stepKey,
+                userPath = input.path,
+            )
             if (Files.exists(target) && !input.overwrite) {
                 throw PluginStepException(
                     failure = PipelineFailure(
@@ -87,9 +91,12 @@ class CoreUtilsZipStepDefinition : StepDefinition<ZipInput, ZipOutput> {
             // the workspace root, plus the relative entry name to use in
             // the archive.
             val entries: List<Pair<Path, String>> = when (val s = input.sources) {
-                is ZipSources.FromGlob -> materialiseGlob(workspaceRoot, s.glob)
-                is ZipSources.FromDirectory -> materialiseDirectory(workspaceRoot, s.directory)
-                is ZipSources.FromFiles -> materialiseFiles(workspaceRoot, s.paths)
+                // A glob is rooted at the current directory; a directory or an
+                // explicit file list is resolved against it and must land
+                // inside the workspace root.
+                is ZipSources.FromGlob -> materialiseGlob(location.cwd, s.glob)
+                is ZipSources.FromDirectory -> materialiseDirectory(location, s.directory)
+                is ZipSources.FromFiles -> materialiseFiles(location, s.paths)
             }
 
             // Stream the archive straight to disk. The digest and the
@@ -169,8 +176,12 @@ class CoreUtilsZipStepDefinition : StepDefinition<ZipInput, ZipOutput> {
         }
     }
 
-    private fun materialiseDirectory(workspaceRoot: Path, directory: String): List<Pair<Path, String>> {
-        val dir = CoreUtilsReadJsonStepDefinition.resolvePath(workspaceRoot, directory)
+    private fun materialiseDirectory(location: ExecutionSite, directory: String): List<Pair<Path, String>> {
+        val dir = WorkspacePathAnchors.currentDirectory(
+            location = location,
+            stepKey = "core-utils.zip",
+            userPath = directory,
+        )
         if (!Files.isDirectory(dir)) {
             throw PluginStepException(
                 failure = PipelineFailure(
@@ -200,21 +211,19 @@ class CoreUtilsZipStepDefinition : StepDefinition<ZipInput, ZipOutput> {
         }
     }
 
-    private fun materialiseFiles(workspaceRoot: Path, paths: List<String>): List<Pair<Path, String>> {
-        // Each path must resolve to a regular file inside the workspace root.
-        // Defence in depth (mirrors CVE-2023-32981 containment on the
-        // archive-creation side): an absolute path that lives outside the
-        // workspace is rejected before any byte is read.
+    private fun materialiseFiles(location: ExecutionSite, paths: List<String>): List<Pair<Path, String>> {
+        // Each path resolves against the current directory, and the workspace
+        // root is the boundary it may not cross (CVE-2023-32981 containment,
+        // archive-creation side). The two differ under `dir(...)`: anchoring
+        // the check on the cwd would refuse a file that is legitimately inside
+        // the workspace but outside the active scope.
+        val entryBase = location.cwd
         return paths.map { raw ->
-            val abs = CoreUtilsReadJsonStepDefinition.resolvePath(workspaceRoot, raw)
-            if (!abs.startsWith(workspaceRoot)) {
-                throw PluginStepException(
-                    failure = PipelineFailure(
-                        kind = FailureKind.USER,
-                        message = "core-utils.zip: source path escapes the workspace root: $raw",
-                    ),
-                )
-            }
+            val abs = WorkspacePathAnchors.currentDirectory(
+                location = location,
+                stepKey = "core-utils.zip",
+                userPath = raw,
+            )
             if (!abs.isRegularFile()) {
                 throw PluginStepException(
                     failure = PipelineFailure(
@@ -223,8 +232,8 @@ class CoreUtilsZipStepDefinition : StepDefinition<ZipInput, ZipOutput> {
                     ),
                 )
             }
-            // Entry name: workspace-relative, forward-slash.
-            val rel = runCatching { abs.relativeTo(workspaceRoot).toString() }
+            // Entry name: relative to the anchor the caller used, forward-slash.
+            val rel = runCatching { abs.relativeTo(entryBase).toString() }
                 .getOrDefault(abs.fileName.toString())
                 .replace('\\', '/')
             abs to rel

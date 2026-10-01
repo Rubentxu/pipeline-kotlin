@@ -90,7 +90,7 @@ class WorkspaceOperationsAdapter(
      * adapter directly), the adapter falls back to the per-stage
      * [WorkspaceResolver] it always used.
      */
-    private val executionLocation: dev.rubentxu.pipeline.v2.application.durable.ExecutionLocationCapability? = null,
+    private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation? = null,
 ) : WorkspaceOperations {
 
     /**
@@ -104,7 +104,7 @@ class WorkspaceOperationsAdapter(
     private fun effectiveWorkspaceRoot(controlRoot: Path): Path {
         val fromLocation = executionLocation?.let { capability ->
             dev.rubentxu.pipeline.v2.domain.workspace.WorkspacePathResolver
-                .baseFor(capability.location, dev.rubentxu.pipeline.v2.domain.workspace.PathAnchor.CURRENT_DIRECTORY)
+                .baseFor(capability, dev.rubentxu.pipeline.v2.domain.workspace.PathAnchor.CURRENT_DIRECTORY)
         }
         return fromLocation ?: WorkspaceResolver(controlRoot, workspaceBase).resolve(stageName, stageIndex)
     }

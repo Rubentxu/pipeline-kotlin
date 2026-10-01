@@ -12,8 +12,9 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
-import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
+import dev.rubentxu.pipeline.v2.sdk.WorkspacePathAnchors
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FileEntry
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FindFilesInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FindFilesOutput
@@ -65,16 +66,18 @@ class CoreUtilsFindFilesStepDefinition : StepDefinition<FindFilesInput, FindFile
             ),
             inputCodec = CoreUtilsFindFilesInputCodec,
             outputCodec = CoreUtilsFindFilesOutputCodec,
-            requiredCapabilities = setOf<StepCapability>(WORKSPACE_IDENTITY_CAPABILITY),
+            requiredCapabilities = setOf<StepCapability>(EXECUTION_LOCATION_CAPABILITY),
         )
 
     override val handler: StepHandler<FindFilesInput, FindFilesOutput> =
         StepHandler { input, ctx ->
-            val workspaceRoot: Path = ctx.capabilities
-                .get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
-                .workspaceRoot
+            val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
 
-            val base = CoreUtilsReadJsonStepDefinition.resolvePath(workspaceRoot, input.base)
+            val base = WorkspacePathAnchors.currentDirectory(
+                location = location,
+                stepKey = "core-utils.findFiles",
+                userPath = input.base,
+            )
             if (!base.exists()) {
                 throw PluginStepException(
                     failure = PipelineFailure(

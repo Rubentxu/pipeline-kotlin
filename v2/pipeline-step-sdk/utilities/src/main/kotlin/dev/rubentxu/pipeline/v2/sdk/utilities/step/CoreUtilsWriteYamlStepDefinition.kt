@@ -12,8 +12,9 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
-import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
+import dev.rubentxu.pipeline.v2.sdk.WorkspacePathAnchors
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlDestination
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlOutput
@@ -66,7 +67,7 @@ class CoreUtilsWriteYamlStepDefinition : StepDefinition<WriteYamlInput, WriteYam
         ),
         inputCodec = CoreUtilsWriteYamlInputCodec,
         outputCodec = CoreUtilsWriteYamlOutputCodec,
-        requiredCapabilities = setOf<StepCapability>(WORKSPACE_IDENTITY_CAPABILITY),
+        requiredCapabilities = setOf<StepCapability>(EXECUTION_LOCATION_CAPABILITY),
     )
 
     override val handler = StepHandler<WriteYamlInput, WriteYamlOutput> { input, ctx ->
@@ -84,12 +85,11 @@ class CoreUtilsWriteYamlStepDefinition : StepDefinition<WriteYamlInput, WriteYam
 
         when (val dest = input.destination) {
             is WriteYamlDestination.ToFile -> {
-                val workspaceRoot: Path = ctx.capabilities
-                    .get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
-                    .workspaceRoot
-                val target: Path = CoreUtilsReadJsonStepDefinition.resolvePath(
-                    workspaceRoot = workspaceRoot,
-                    rawPath = dest.path,
+                val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
+                val target: Path = WorkspacePathAnchors.currentDirectory(
+                    location = location,
+                    stepKey = "core-utils.writeYaml",
+                    userPath = dest.path,
                 )
 
                 if (Files.exists(target) && !dest.overwrite) {

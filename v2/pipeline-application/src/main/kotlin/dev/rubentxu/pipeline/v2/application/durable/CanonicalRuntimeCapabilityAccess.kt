@@ -37,6 +37,7 @@ import dev.rubentxu.pipeline.v2.application.ARTIFACT_INDEX_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability
 import dev.rubentxu.pipeline.v2.domain.step.BODY_INVOKER_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -320,7 +321,7 @@ open class CanonicalRuntimeCapabilityAccess(
     }
 
     /**
-     * Derives the typed [ExecutionLocationCapability] for this invocation
+     * Derives the typed [ExecutionLocation] for this invocation
      * (RP034-C / ADR-0100).
      *
      * Kept out of [buildProvided] so the bridge stays readable and so the
@@ -330,7 +331,7 @@ open class CanonicalRuntimeCapabilityAccess(
      */
     private fun executionLocationFor(
         context: CanonicalRuntimeContext,
-    ): ExecutionLocationCapability = ShOptionsExecutionLocationAdapter.from(
+    ): ExecutionLocation = ShOptionsExecutionLocationAdapter.from(
         workspaceRoot = context.shOptions.workspaceRoot,
         scopedWorkingDirectory = context.shOptions.workingDirectory,
         fallbackRoot = context.shOptions.workspaceRoot

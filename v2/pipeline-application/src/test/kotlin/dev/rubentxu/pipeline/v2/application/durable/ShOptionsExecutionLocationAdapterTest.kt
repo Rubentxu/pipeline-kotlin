@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.domain.workspace.PathAnchor
 import dev.rubentxu.pipeline.v2.domain.workspace.PathResolution
 import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceOwnership
+import dev.rubentxu.pipeline.v2.domain.workspace.WorkspacePathResolver
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
@@ -19,7 +20,7 @@ import java.nio.file.Path
  * remains registered and unchanged, so this slice is behaviour-preserving.
  */
 @DisplayName("RP034-C execution location runtime bridge")
-class ExecutionLocationCapabilityTest {
+class ShOptionsExecutionLocationAdapterTest {
 
     private val root = Path.of("/ws/project")
     private val scoped = Path.of("/ws/project/backend")
@@ -31,8 +32,8 @@ class ExecutionLocationCapabilityTest {
         @Test
         fun `at the top of a run cwd equals the workspace root`() {
             val capability = ShOptionsExecutionLocationAdapter.from(root, null, root)
-            assertEquals(root, capability.workspaceRoot)
-            assertEquals(root, capability.currentDirectory)
+            assertEquals(root, capability.workspace.root)
+            assertEquals(root, capability.cwd)
         }
 
         @Test
@@ -40,17 +41,17 @@ class ExecutionLocationCapabilityTest {
             val capability = ShOptionsExecutionLocationAdapter.from(root, scoped, root)
             assertEquals(
                 root,
-                capability.workspaceRoot,
+                capability.workspace.root,
                 "a dir scope must not redefine the workspace root",
             )
-            assertEquals(scoped, capability.currentDirectory)
+            assertEquals(scoped, capability.cwd)
         }
 
         @Test
         fun `the two anchors now resolve differently inside a dir scope`() {
             val capability = ShOptionsExecutionLocationAdapter.from(root, scoped, root)
-            val fromCwd = capability.resolve(PathAnchor.CURRENT_DIRECTORY, "out.txt")
-            val fromRoot = capability.resolve(PathAnchor.WORKSPACE_ROOT, "out.txt")
+            val fromCwd = WorkspacePathResolver.resolve(capability, PathAnchor.CURRENT_DIRECTORY, "out.txt")
+            val fromRoot = WorkspacePathResolver.resolve(capability, PathAnchor.WORKSPACE_ROOT, "out.txt")
 
             assertEquals(scoped.resolve("out.txt"), (fromCwd as PathResolution.Resolved).path)
             assertEquals(
@@ -67,9 +68,9 @@ class ExecutionLocationCapabilityTest {
             // cwd under the name "workspace root". RP034-I retires it.
             val capability = ShOptionsExecutionLocationAdapter.from(root, scoped, root)
             val legacyEffective = scoped
-            assertEquals(legacyEffective, capability.currentDirectory)
+            assertEquals(legacyEffective, capability.cwd)
             assertTrue(
-                legacyEffective != capability.workspaceRoot,
+                legacyEffective != capability.workspace.root,
                 "this test is only meaningful while the two authorities differ",
             )
         }
@@ -83,8 +84,8 @@ class ExecutionLocationCapabilityTest {
         fun `a null workspace root falls back and still yields an absolute location`() {
             val fallback = Path.of("/fallback/ws")
             val capability = ShOptionsExecutionLocationAdapter.from(null, null, fallback)
-            assertEquals(fallback, capability.workspaceRoot)
-            assertTrue(capability.currentDirectory.isAbsolute)
+            assertEquals(fallback, capability.workspace.root)
+            assertTrue(capability.cwd.isAbsolute)
         }
 
         @Test
@@ -98,8 +99,8 @@ class ExecutionLocationCapabilityTest {
             // the ambient-state dependency ADR-0100 removes, so the adapter only
             // normalises.
             assertTrue(
-                capability.currentDirectory.isAbsolute,
-                "the derived cwd must be absolute, was ${capability.currentDirectory}",
+                capability.cwd.isAbsolute,
+                "the derived cwd must be absolute, was ${capability.cwd}",
             )
         }
 
@@ -108,8 +109,8 @@ class ExecutionLocationCapabilityTest {
             // Same inputs must yield the same location regardless of user.dir:
             // the derivation reads only its arguments.
             val capability = ShOptionsExecutionLocationAdapter.from(root, scoped, root)
-            assertEquals(root, capability.workspaceRoot)
-            assertEquals(scoped, capability.currentDirectory)
+            assertEquals(root, capability.workspace.root)
+            assertEquals(scoped, capability.cwd)
         }
     }
 
@@ -120,7 +121,7 @@ class ExecutionLocationCapabilityTest {
         @Test
         fun `the bridge reports the lease it derived rather than inspecting the filesystem`() {
             val capability = ShOptionsExecutionLocationAdapter.from(root, null, root)
-            assertEquals(WorkspaceOwnership.PIPELINEK, capability.lease.ownership)
+            assertEquals(WorkspaceOwnership.PIPELINEK, capability.workspace.ownership)
         }
 
         @Test
@@ -131,8 +132,8 @@ class ExecutionLocationCapabilityTest {
             val gitLike = Path.of("/home/dev/git-project")
             val plain = Path.of("/home/dev/plain-project")
             assertEquals(
-                ShOptionsExecutionLocationAdapter.from(gitLike, null, gitLike).lease.ownership,
-                ShOptionsExecutionLocationAdapter.from(plain, null, plain).lease.ownership,
+                ShOptionsExecutionLocationAdapter.from(gitLike, null, gitLike).workspace.ownership,
+                ShOptionsExecutionLocationAdapter.from(plain, null, plain).workspace.ownership,
             )
         }
     }
@@ -144,7 +145,7 @@ class ExecutionLocationCapabilityTest {
         @Test
         fun `traversal out of the workspace is refused with a typed reason`() {
             val capability = ShOptionsExecutionLocationAdapter.from(root, null, root)
-            val outcome = capability.resolve(PathAnchor.CURRENT_DIRECTORY, "../../etc/passwd")
+            val outcome = WorkspacePathResolver.resolve(capability, PathAnchor.CURRENT_DIRECTORY, "../../etc/passwd")
             assertTrue(outcome is PathResolution.Rejected)
         }
 
@@ -152,7 +153,7 @@ class ExecutionLocationCapabilityTest {
         fun `an absolute host path is refused`() {
             val capability = ShOptionsExecutionLocationAdapter.from(root, null, root)
             assertTrue(
-                capability.resolve(PathAnchor.CURRENT_DIRECTORY, "/etc/shadow")
+                WorkspacePathResolver.resolve(capability, PathAnchor.CURRENT_DIRECTORY, "/etc/shadow")
                     is PathResolution.Rejected,
             )
         }

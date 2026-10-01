@@ -12,8 +12,9 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
-import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
+import dev.rubentxu.pipeline.v2.sdk.WorkspacePathAnchors
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.Sha256Input
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.Sha256Output
 import java.nio.file.Files
@@ -59,7 +60,7 @@ class CoreUtilsSha256StepDefinition : StepDefinition<Sha256Input, Sha256Output> 
         ),
         inputCodec = CoreUtilsSha256InputCodec,
         outputCodec = CoreUtilsSha256OutputCodec,
-        requiredCapabilities = setOf<StepCapability>(WORKSPACE_IDENTITY_CAPABILITY),
+        requiredCapabilities = setOf<StepCapability>(EXECUTION_LOCATION_CAPABILITY),
     )
 
     override val handler = StepHandler<Sha256Input, Sha256Output> { input, ctx ->
@@ -77,12 +78,11 @@ class CoreUtilsSha256StepDefinition : StepDefinition<Sha256Input, Sha256Output> 
             )
         }
 
-        val capabilityWorkspaceRoot: Path = ctx.capabilities
-            .get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
-            .workspaceRoot
-        val target: Path = CoreUtilsReadJsonStepDefinition.resolvePath(
-            workspaceRoot = capabilityWorkspaceRoot,
-            rawPath = input.path,
+        val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
+        val target: Path = WorkspacePathAnchors.currentDirectory(
+            location = location,
+            stepKey = "core-utils.sha256",
+            userPath = input.path,
         )
         if (!target.exists() || !target.isRegularFile()) {
             throw PluginStepException(

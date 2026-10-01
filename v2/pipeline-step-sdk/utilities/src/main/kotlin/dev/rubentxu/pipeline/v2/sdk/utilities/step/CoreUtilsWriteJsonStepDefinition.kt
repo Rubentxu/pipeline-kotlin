@@ -12,8 +12,9 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
-import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
+import dev.rubentxu.pipeline.v2.sdk.WorkspacePathAnchors
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteJsonInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteJsonOutput
 import kotlinx.serialization.json.Json
@@ -55,17 +56,16 @@ class CoreUtilsWriteJsonStepDefinition : StepDefinition<WriteJsonInput, WriteJso
         ),
         inputCodec = CoreUtilsWriteJsonInputCodec,
         outputCodec = CoreUtilsWriteJsonOutputCodec,
-        requiredCapabilities = setOf<StepCapability>(WORKSPACE_IDENTITY_CAPABILITY),
+        requiredCapabilities = setOf<StepCapability>(EXECUTION_LOCATION_CAPABILITY),
     )
 
     override val handler = StepHandler<WriteJsonInput, WriteJsonOutput> { input, ctx ->
-        val capabilityWorkspaceRoot: Path = ctx.capabilities
-            .get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
-            .workspaceRoot
+        val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
 
-        val target: Path = CoreUtilsReadJsonStepDefinition.resolvePath(
-            workspaceRoot = capabilityWorkspaceRoot,
-            rawPath = input.path,
+        val target: Path = WorkspacePathAnchors.currentDirectory(
+            location = location,
+            stepKey = "core-utils.writeJson",
+            userPath = input.path,
         )
 
         // Validate the input shape BEFORE touching the filesystem. A

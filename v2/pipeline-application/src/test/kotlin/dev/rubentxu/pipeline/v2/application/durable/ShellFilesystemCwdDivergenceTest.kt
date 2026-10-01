@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.domain.workspace.PathAnchor
+import dev.rubentxu.pipeline.v2.domain.workspace.WorkspacePathResolver
 import dev.rubentxu.pipeline.v2.domain.workspace.PathResolution
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.DisplayName
@@ -40,12 +41,12 @@ class ShellFilesystemCwdDivergenceTest {
 
         assertEquals(
             project,
-            scopedLocation.workspaceRoot,
+            scopedLocation.workspace.root,
             "the workspace root must not follow the scope (INV-WS-001)",
         )
 
-        val scopedFile = scopedLocation.resolve(PathAnchor.CURRENT_DIRECTORY, "out.txt")
-        val shellCwd = scopedLocation.currentDirectory
+        val scopedFile = WorkspacePathResolver.resolve(scopedLocation, PathAnchor.CURRENT_DIRECTORY, "out.txt")
+        val shellCwd = scopedLocation.cwd
 
         assertEquals(
             shellCwd.resolve("out.txt"),
@@ -56,10 +57,10 @@ class ShellFilesystemCwdDivergenceTest {
         // And at the top of the run both agree on the root, which is the
         // precondition that makes the scoped case meaningful.
         val topLevel = ShOptionsExecutionLocationAdapter.from(project, null, project)
-        assertEquals(topLevel.workspaceRoot, topLevel.currentDirectory)
+        assertEquals(topLevel.workspace.root, topLevel.cwd)
         assertEquals(
             project.resolve("out.txt"),
-            (topLevel.resolve(PathAnchor.CURRENT_DIRECTORY, "out.txt") as PathResolution.Resolved).path,
+            (WorkspacePathResolver.resolve(topLevel, PathAnchor.CURRENT_DIRECTORY, "out.txt") as PathResolution.Resolved).path,
         )
     }
 
@@ -75,7 +76,7 @@ class ShellFilesystemCwdDivergenceTest {
 
         assertEquals(
             true,
-            scoped.resolve(PathAnchor.CURRENT_DIRECTORY, "../../escape.txt") is PathResolution.Rejected,
+            WorkspacePathResolver.resolve(scoped, PathAnchor.CURRENT_DIRECTORY, "../../escape.txt") is PathResolution.Rejected,
             "a file Step must not escape the workspace via the scope",
         )
     }

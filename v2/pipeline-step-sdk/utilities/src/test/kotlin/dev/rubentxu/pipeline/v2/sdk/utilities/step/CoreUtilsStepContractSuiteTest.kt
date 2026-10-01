@@ -6,8 +6,9 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
+import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceLease
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadJsonInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadJsonOutput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadYamlInput
@@ -70,7 +71,7 @@ import java.security.MessageDigest
  *  - output codec encode/decode roundtrip
  *  - canonical envelope (well-formed JSON object)
  *  - registry resolution (InMemoryStepRegistry)
- *  - capability admission (fails closed when WORKSPACE_IDENTITY_CAPABILITY absent)
+ *  - capability admission (fails closed when EXECUTION_LOCATION_CAPABILITY absent)
  *  - success (happy path)
  *  - typed failure (missing file / invalid JSON / unsupported algorithm)
  *  - replay (output is deterministic)
@@ -102,13 +103,30 @@ class CoreUtilsStepContractSuiteTest {
     private fun stubWorkspaceRoot(): Path = tempDir.resolve("workspace").also { Files.createDirectories(it) }
 
     /**
-     * Builds a [dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext] with a
-     * `WORKSPACE_IDENTITY_CAPABILITY` exposure rooted at the supplied [root].
+     * Builds a [dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext] with an
+     * `EXECUTION_LOCATION_CAPABILITY` exposure rooted at [workspaceRoot].
+     *
+     * With no active `dir` scope the cwd and the root coincide, which is the
+     * ordinary case; [handlerContext] with an explicit cwd covers the scoped
+     * one.
      */
-    private fun handlerContext(workspaceRoot: Path): dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext {
+    private fun handlerContext(workspaceRoot: Path): dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext =
+        handlerContext(workspaceRoot = workspaceRoot, currentDirectory = workspaceRoot)
+
+    /**
+     * Builds a handler context whose current directory differs from the
+     * workspace root, mirroring a `dir("sub")` scope.
+     */
+    private fun handlerContext(
+        workspaceRoot: Path,
+        currentDirectory: Path,
+    ): dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext {
         val caps = object : dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess {
             private val map = mapOf<dev.rubentxu.pipeline.v2.domain.step.StepCapability, Any>(
-                WORKSPACE_IDENTITY_CAPABILITY to WorkspaceIdentity(workspaceRoot),
+                EXECUTION_LOCATION_CAPABILITY to ExecutionSite(
+                    workspace = WorkspaceLease.Managed(workspaceRoot),
+                    cwd = currentDirectory,
+                ),
             )
             override fun available(): Set<dev.rubentxu.pipeline.v2.domain.step.StepCapability> = map.keys
             override fun <T : Any> get(key: dev.rubentxu.pipeline.v2.domain.step.StepCapability): T {
@@ -146,34 +164,34 @@ class CoreUtilsStepContractSuiteTest {
     // -------- contract completeness --------
 
     @Test
-    fun `contract — readJson declares READ_ONLY, MEMOIZED, WORKSPACE_IDENTITY_CAPABILITY`() {
+    fun `contract — readJson declares READ_ONLY, MEMOIZED, EXECUTION_LOCATION_CAPABILITY`() {
         val c = readJsonStep.contract
         assertEquals(CoreUtilsReadJsonKey.VALUE, c.key)
         assertEquals(Effect.READ_ONLY, c.descriptor.effects.single())
         assertEquals(ReplayPolicy.MEMOIZED, c.descriptor.replayPolicy)
-        assertEquals(setOf(WORKSPACE_IDENTITY_CAPABILITY), c.requiredCapabilities)
+        assertEquals(setOf(EXECUTION_LOCATION_CAPABILITY), c.requiredCapabilities)
         assertNotNull(c.inputCodec)
         assertNotNull(c.outputCodec)
     }
 
     @Test
-    fun `contract — writeJson declares WRITES_WORKSPACE, NEVER, WORKSPACE_IDENTITY_CAPABILITY`() {
+    fun `contract — writeJson declares WRITES_WORKSPACE, NEVER, EXECUTION_LOCATION_CAPABILITY`() {
         val c = writeJsonStep.contract
         assertEquals(CoreUtilsWriteJsonKey.VALUE, c.key)
         assertEquals(Effect.WRITES_WORKSPACE, c.descriptor.effects.single())
         assertEquals(ReplayPolicy.NEVER, c.descriptor.replayPolicy)
-        assertEquals(setOf(WORKSPACE_IDENTITY_CAPABILITY), c.requiredCapabilities)
+        assertEquals(setOf(EXECUTION_LOCATION_CAPABILITY), c.requiredCapabilities)
         assertNotNull(c.inputCodec)
         assertNotNull(c.outputCodec)
     }
 
     @Test
-    fun `contract — sha256 declares READ_ONLY, MEMOIZED, WORKSPACE_IDENTITY_CAPABILITY`() {
+    fun `contract — sha256 declares READ_ONLY, MEMOIZED, EXECUTION_LOCATION_CAPABILITY`() {
         val c = sha256Step.contract
         assertEquals(CoreUtilsSha256Key.VALUE, c.key)
         assertEquals(Effect.READ_ONLY, c.descriptor.effects.single())
         assertEquals(ReplayPolicy.MEMOIZED, c.descriptor.replayPolicy)
-        assertEquals(setOf(WORKSPACE_IDENTITY_CAPABILITY), c.requiredCapabilities)
+        assertEquals(setOf(EXECUTION_LOCATION_CAPABILITY), c.requiredCapabilities)
     }
 
     // -------- codec roundtrip --------
@@ -545,12 +563,12 @@ class CoreUtilsStepContractSuiteTest {
     // -------- contract completeness --------
 
     @Test
-    fun `contract — readYaml declares READ_ONLY, MEMOIZED, WORKSPACE_IDENTITY_CAPABILITY`() {
+    fun `contract — readYaml declares READ_ONLY, MEMOIZED, EXECUTION_LOCATION_CAPABILITY`() {
         val c = readYamlStep.contract
         assertEquals(CoreUtilsReadYamlKey.VALUE, c.key)
         assertEquals(Effect.READ_ONLY, c.descriptor.effects.single())
         assertEquals(ReplayPolicy.MEMOIZED, c.descriptor.replayPolicy)
-        assertEquals(setOf(WORKSPACE_IDENTITY_CAPABILITY), c.requiredCapabilities)
+        assertEquals(setOf(EXECUTION_LOCATION_CAPABILITY), c.requiredCapabilities)
         assertNotNull(c.inputCodec)
         assertNotNull(c.outputCodec)
     }
@@ -870,12 +888,12 @@ class CoreUtilsStepContractSuiteTest {
     // -------- contract completeness --------
 
     @Test
-    fun `contract — writeYaml declares WRITES_WORKSPACE, NEVER, WORKSPACE_IDENTITY_CAPABILITY`() {
+    fun `contract — writeYaml declares WRITES_WORKSPACE, NEVER, EXECUTION_LOCATION_CAPABILITY`() {
         val c = writeYamlStep.contract
         assertEquals(CoreUtilsWriteYamlKey.VALUE, c.key)
         assertEquals(Effect.WRITES_WORKSPACE, c.descriptor.effects.single())
         assertEquals(ReplayPolicy.NEVER, c.descriptor.replayPolicy)
-        assertEquals(setOf(WORKSPACE_IDENTITY_CAPABILITY), c.requiredCapabilities)
+        assertEquals(setOf(EXECUTION_LOCATION_CAPABILITY), c.requiredCapabilities)
         assertNotNull(c.inputCodec)
         assertNotNull(c.outputCodec)
     }
@@ -1148,12 +1166,12 @@ class CoreUtilsStepContractSuiteTest {
     // -------- contract completeness --------
 
     @Test
-    fun `contract — findFiles declares READ_ONLY, MEMOIZED, WORKSPACE_IDENTITY_CAPABILITY`() {
+    fun `contract — findFiles declares READ_ONLY, MEMOIZED, EXECUTION_LOCATION_CAPABILITY`() {
         val c = findFilesStep.contract
         assertEquals(CoreUtilsFindFilesKey.VALUE, c.key)
         assertEquals(Effect.READ_ONLY, c.descriptor.effects.single())
         assertEquals(ReplayPolicy.MEMOIZED, c.descriptor.replayPolicy)
-        assertEquals(setOf(WORKSPACE_IDENTITY_CAPABILITY), c.requiredCapabilities)
+        assertEquals(setOf(EXECUTION_LOCATION_CAPABILITY), c.requiredCapabilities)
         assertNotNull(c.inputCodec)
         assertNotNull(c.outputCodec)
     }
@@ -1440,12 +1458,12 @@ class CoreUtilsStepContractSuiteTest {
     // -------- contract completeness --------
 
     @Test
-    fun `contract — zip declares WRITES_WORKSPACE, NEVER, WORKSPACE_IDENTITY_CAPABILITY`() {
+    fun `contract — zip declares WRITES_WORKSPACE, NEVER, EXECUTION_LOCATION_CAPABILITY`() {
         val c = zipStep.contract
         assertEquals(CoreUtilsZipKey.VALUE, c.key)
         assertEquals(Effect.WRITES_WORKSPACE, c.descriptor.effects.single())
         assertEquals(ReplayPolicy.NEVER, c.descriptor.replayPolicy)
-        assertEquals(setOf(WORKSPACE_IDENTITY_CAPABILITY), c.requiredCapabilities)
+        assertEquals(setOf(EXECUTION_LOCATION_CAPABILITY), c.requiredCapabilities)
         assertNotNull(c.inputCodec)
         assertNotNull(c.outputCodec)
     }
@@ -1704,12 +1722,12 @@ class CoreUtilsStepContractSuiteTest {
     // -------- contract completeness --------
 
     @Test
-    fun `contract — unzip declares WRITES_WORKSPACE, NEVER, WORKSPACE_IDENTITY_CAPABILITY`() {
+    fun `contract — unzip declares WRITES_WORKSPACE, NEVER, EXECUTION_LOCATION_CAPABILITY`() {
         val c = unzipStep.contract
         assertEquals(CoreUtilsUnzipKey.VALUE, c.key)
         assertEquals(Effect.WRITES_WORKSPACE, c.descriptor.effects.single())
         assertEquals(ReplayPolicy.NEVER, c.descriptor.replayPolicy)
-        assertEquals(setOf(WORKSPACE_IDENTITY_CAPABILITY), c.requiredCapabilities)
+        assertEquals(setOf(EXECUTION_LOCATION_CAPABILITY), c.requiredCapabilities)
         assertNotNull(c.inputCodec)
         assertNotNull(c.outputCodec)
     }
@@ -1974,7 +1992,44 @@ class CoreUtilsStepContractSuiteTest {
                 )
             }
         }
-        assertTrue(ex.failure.message!!.contains("destination escapes the workspace"))
+        // RP034-E: the refusal is now decided by the pure resolver and carries
+        // the typed AbsolutePathNotAllowed reason, so the diagnostic names the
+        // workspace boundary instead of the old hand-rolled `startsWith` guard.
+        assertEquals(FailureKind.USER, ex.failure.kind)
+        assertTrue(
+            ex.failure.message!!.contains("absolute path outside the workspace root is not allowed"),
+            "unexpected diagnostic: ${ex.failure.message}",
+        )
+        assertTrue(ex.failure.message!!.contains("/tmp/escape-out"))
+    }
+
+    @Test
+    fun `typed failure — unzip accepts a destination inside the workspace but outside the current directory`() {
+        // The containment boundary is the workspace root, not the cwd. Under a
+        // `dir` scope the two diverge, and the old `startsWith(workspaceRoot)`
+        // guard was checking the cwd — which refused this legitimate path.
+        val ws = stubWorkspaceRoot()
+        val scoped = Files.createDirectories(ws.resolve("backend"))
+        val elsewhere = Files.createDirectories(ws.resolve("other"))
+
+        val archive = scoped.resolve("seed.zip")
+        java.util.zip.ZipOutputStream(Files.newOutputStream(archive)).use { zos ->
+            zos.putNextEntry(java.util.zip.ZipEntry("a.txt"))
+            zos.write("alpha".toByteArray())
+            zos.closeEntry()
+        }
+
+        val out = runBlocking {
+            unzipStep.handler.execute(
+                // The archive is named relative to the cwd; the destination is
+                // absolute, inside the root, and outside the active scope.
+                UnzipInput(path = "seed.zip", destination = elsewhere.toString()),
+                handlerContext(workspaceRoot = ws, currentDirectory = scoped),
+            )
+        }
+
+        assertEquals(1, out.extracted!!.files.size)
+        assertEquals("alpha", Files.readString(elsewhere.resolve("a.txt")))
     }
 
     @Test

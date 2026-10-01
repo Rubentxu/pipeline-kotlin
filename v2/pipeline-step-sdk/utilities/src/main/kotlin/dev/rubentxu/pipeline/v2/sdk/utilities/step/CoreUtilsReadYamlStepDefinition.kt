@@ -12,8 +12,9 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
-import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation as ExecutionSite
+import dev.rubentxu.pipeline.v2.sdk.WorkspacePathAnchors
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadYamlInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadYamlOutput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadYamlSource
@@ -63,13 +64,11 @@ class CoreUtilsReadYamlStepDefinition : StepDefinition<ReadYamlInput, ReadYamlOu
         ),
         inputCodec = CoreUtilsReadYamlInputCodec,
         outputCodec = CoreUtilsReadYamlOutputCodec,
-        requiredCapabilities = setOf<StepCapability>(WORKSPACE_IDENTITY_CAPABILITY),
+        requiredCapabilities = setOf<StepCapability>(EXECUTION_LOCATION_CAPABILITY),
     )
 
     override val handler = StepHandler<ReadYamlInput, ReadYamlOutput> { input, ctx ->
-        val workspaceRoot: Path = ctx.capabilities
-            .get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
-            .workspaceRoot
+        val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
 
         // Source: file XOR text — already enforced by the sealed type, but we
         // also handle the on-disk / in-memory split here.
@@ -77,7 +76,11 @@ class CoreUtilsReadYamlStepDefinition : StepDefinition<ReadYamlInput, ReadYamlOu
         var absolutePath: String? = null
         when (val source = input.source) {
             is ReadYamlSource.FromFile -> {
-                val target = resolvePath(workspaceRoot, source.path)
+                val target = WorkspacePathAnchors.currentDirectory(
+                    location = location,
+                    stepKey = "core-utils.readYaml",
+                    userPath = source.path,
+                )
                 if (!target.exists() || !target.isRegularFile()) {
                     throw PluginStepException(
                         failure = PipelineFailure(
@@ -164,16 +167,5 @@ class CoreUtilsReadYamlStepDefinition : StepDefinition<ReadYamlInput, ReadYamlOu
             byteSize = rawBytes.size.toLong(),
             absolutePath = absolutePath,
         )
-    }
-
-    companion object {
-        /**
-         * Resolve a workspace-relative path against the canonical workspace
-         * root; absolute paths are honoured verbatim.
-         */
-        internal fun resolvePath(workspaceRoot: Path, rawPath: String): Path {
-            val p = Path.of(rawPath)
-            return if (p.isAbsolute) p else workspaceRoot.resolve(p)
-        }
     }
 }

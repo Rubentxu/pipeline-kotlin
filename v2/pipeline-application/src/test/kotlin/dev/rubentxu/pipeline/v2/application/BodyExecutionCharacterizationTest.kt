@@ -281,4 +281,17 @@ class BodyExecutionCharacterizationTest {
         assertEquals(1, completed.totalAttempts)
         assertEquals(1, childRowIds(journal, "bc4").size)
     }
+
+    // OPEN FINDINGS (H2 slice 3), diagnosed to the byte:
+    //  1. The waitUntil payload projects ONLY initialRecurrencePeriod and quiet
+    //     (DslCompiledPipelineCompiler ~lines 349-356); a "maxBackoffMs" key in
+    //     the payload is silently ignored, and BlockShellScope.WaitUntilScope
+    //     constructs maxBackoffMs = 60_000L as an unreachable-from-DSL default.
+    //     The user cannot tune the backoff ceiling. Small product gap.
+    //  2. With that 60s ceiling, a NEVER-holding condition doubles correctly
+    //     (10, 20, 40, ... 60000; cumulative ~145s) - the deadline-exceeded fold
+    //     works, but a 120s test budget expires during a legitimate 60s wait.
+    //     The counterexample row was a measurement artifact, not a loop bug.
+    // The slice-3 move to BodyExecutionEngine must ship: the ceiling made
+    // payload-configurable, and the deadline row green within a sane budget.
 }

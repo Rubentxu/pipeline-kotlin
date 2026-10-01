@@ -1,11 +1,38 @@
 # P0 — `core.sh` invocation working directory receipt
 
-**Status:** IMPLEMENTED / LOCALLY VERIFIED (not externally certified)
+**Status:** SUPERSEDED — reverted before merge; retained as characterisation evidence
 **SDDK cycle:** `p-1f3622e11c093341/train-s2-directive-plugin` (OPEN, Build at verification time)
 **SDDK WorkItem:** `b578a3aa-87f2-4bc8-82cc-598d3c83e272`
 **Backlog source:** `bl-bl-01M3T5PGQ0000387MBFPM65TC0` (P0)
 **Base SHA:** `28dcd5c5a4da6364ca13b94aab94cb97676aa1fe`
-**Implementation SHA:** `8e838e6d5e8ef43187bb74a733f0c092aa62e629`
+**Implementation SHA:** `8e838e6d5e8ef43187bb74a733f0c092aa62e629` (reverted)
+
+## Superseded by WU-RP-034 (2026-10-01)
+
+The **problem characterisation in this receipt is correct and is retained as
+evidence** for WU-RP-034 (ADR-0100/0101/0102). The UX defect is real: without
+`--workspace`, `sh` runs in a synthetic per-stage scratch where the consumer's
+checkout paths do not exist, so `./gradlew` and relative paths fail.
+
+The **implementation at `8e838e6d` is superseded and was reverted.** It flipped
+the `sh` default to the invocation CWD *before* the ownership model existed,
+producing the exact intermediate state the WU-RP-034 safety order forbids:
+
+```text
+pipelinek run p.kts  -> attaches to the user's real checkout
+deleteDir()/cleanWs() -> still gated by ProjectCheckoutDetector (VCS heuristic)
+```
+
+Because `ProjectCheckoutDetector` only guards when `--workspace` was passed
+explicitly (`workspaceBase != null`), the new no-flag default reached the user's
+checkout with destructive protection **inactive**. The four ADR-0048 sandbox CWD
+cases (`SB-S-001`, `UAT-L7-TC-004`, `SB-S-006`, `SB-S-008`) and
+`UatLocal003ReturnStdoutTest` failed at `a5406ae7` for this reason.
+
+The behaviour is reimplemented inside WU-RP-034 as slice **RP034-H**, after
+slice **RP034-G** makes typed ownership the authority for destructive safety.
+The historical per-stage scratch semantics remain available explicitly as
+`--isolated`.
 
 ## Contract and change
 

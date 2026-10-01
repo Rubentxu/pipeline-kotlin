@@ -346,6 +346,7 @@ class CanonicalDurableRunCoordinator(
     // C3 / WU-PR-017: the run-lifecycle bookends and the running outcome live in
     // the extracted engine (same events, same ordering, same quirks).
     private val runLifecycle = RunLifecycleEngine(eventSink)
+    private val bodyEngine = BodyExecutionEngine(eventSink, clock)
 
     suspend fun run(pipeline: CompiledPipeline, runId: RunId): RunOutcome {
         runLifecycle.openRun(pipeline, runId)
@@ -1985,56 +1986,30 @@ class CanonicalDurableRunCoordinator(
         childShOptions: ShOptions,
         parentBodyPath: List<BlockSegment>,
         executionContext: ExecutionContext,
-        // CR-BD-027 (WU-LPR-071): bindings of the ACTIVE credential lease, if any.
-        // When non-empty, one CredentialUsed event per binding is emitted after each
-        // child step execution — per USE, not per lease.
         leaseBindings: List<CredentialBindingSpec> = emptyList(),
-    ): StepOutcome {
-        for ((childIndex, child) in block.body.withIndex()) {
-            val childOpId = OpId(
-                runId.value,
-                stageIndex,
-                stepIndex,
-                branchIndex = null,
-                bodyPath = parentBodyPath + BlockSegment(childIndex, child.pluginStepId),
-            )
-            val childOutcome = dispatch(
+    ): StepOutcome = bodyEngine.invokeBodyChildren(
+        block,
+        runId,
+        stageName,
+        stageIndex,
+        stepIndex,
+        childShOptions,
+        parentBodyPath,
+        executionContext,
+        leaseBindings,
+        BodyChildDispatcher { child, rId, sName, sIdx, stIdx, shOpts, bodyPath, ctx ->
+            dispatch(
                 child,
-                runId,
-                stageName,
-                stageIndex,
-                stepIndex,
-                childShOptions,
-                childOpId.bodyPath,
-                executionContext,
+                rId,
+                sName,
+                sIdx,
+                stIdx,
+                shOpts,
+                bodyPath,
+                ctx,
             ).outcome
-            if (leaseBindings.isNotEmpty()) {
-                for (binding in leaseBindings) {
-                    eventSink.append(
-                        dev.rubentxu.pipeline.v2.events.CredentialUsed(
-                            eventId = UUID.randomUUID().toString(),
-                            runId = runId.value,
-                            sequence = 0L,
-                            occurredAt = clock.now(),
-                            credentialsId = binding.credentialsId,
-                            purpose = when (binding.kind) {
-                                "string" -> BoundPurpose.API_KEY
-                                "usernamePassword" -> BoundPurpose.USERNAME_PASSWORD
-                                "sshUserPrivateKey" -> BoundPurpose.SSH_KEY
-                                else -> BoundPurpose.API_KEY
-                            },
-                            stepIndex = childIndex,
-                        ),
-                    )
-                }
-            }
-            when (childOutcome) {
-                is StepOutcome.Failure, is StepOutcome.Unstable -> return childOutcome
-                else -> { /* continue to the next child */ }
-            }
-        }
-        return StepOutcome.Success
-    }
+        },
+    )
 
     /**
      * WU-G5R.3 / LFC-5.3: legacy waitUntil polling loop used when no

@@ -18,7 +18,24 @@ group = "dev.rubentxu.pipeline.v2"
 repositories {
     mavenCentral()
 }
-version = "0.44.0"
+// WU-RP-034 closes here. The version is DERIVED from the commit history since the
+// previous tag, never chosen by hand:
+//
+//   git tag --sort=-creatordate  ->  v0.44.1 (0f45a201)
+//   v0.44.1..HEAD carries seven breaking commits:
+//     feat(cli)!            3cd0d0d2  local-first workspace default
+//     fix(steps)!           19577730  core.pwd reports the cwd
+//     refactor(workspace)!  b797ca27  the capability value IS the ExecutionLocation ADT
+//     refactor(steps)!      4d615fff  scm checkout and junit results anchored to the location
+//     fix(workspace)!       9ef19694  ambient-state escape hatch removed
+//     fix(workspace)!       9d2e999a  ownership crosses the boundary; a user root is not destructible
+//     fix(corpus)!          459f431c  each fixture states the workspace mode it requires
+//
+// Breaking under 0.x convention bumps the MINOR component: 0.44.1 -> 0.45.0.
+//
+// This also repairs pre-existing drift: the declared version said 0.44.0 while
+// the previous tag was v0.44.1, so the single-version provider had been stale.
+version = "0.45.0"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

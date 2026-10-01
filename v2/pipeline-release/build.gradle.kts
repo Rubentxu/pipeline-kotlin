@@ -63,6 +63,12 @@ tasks.register<JavaExec>("candidateAdmission") {
     description = "DIST-PRODUCT P0.3: cheap identity admission for the distribution ZIP."
 
     dependsOn(":pipeline-application:distZip")
+    // PR-012 / WU-RP-5: every admitted candidate carries its SBOM. The cyclonedx plugin
+    // already produces build/reports/bom.json; the admission previously recorded
+    // "sbom": null because nothing placed the BOM where the probe looks. Generate it as
+    // part of admission and stage it under the probed name — no manual step, and the
+    // handoff stops shipping an SBOM hole.
+    dependsOn(":pipeline-application:cyclonedxBom")
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("dev.rubentxu.pipeline.v2.release.CandidateAdmissionMainKt")
 
@@ -88,6 +94,15 @@ tasks.register<JavaExec>("candidateAdmission") {
                 "DIST-PRODUCT P0.3: expected distribution ZIP at $zip but it does not exist. " +
                     "Run :pipeline-application:distZip first.",
             )
+        }
+
+        // Stage the freshly generated BOM under the probed name. The task dependency above
+        // guarantees it exists; the copy is what makes it OBSERVABLE to the admission probe,
+        // which only looks inside the distributions directory.
+        val bomSource = project(":pipeline-application").layout.buildDirectory
+            .file("reports/bom.json").get().asFile
+        if (bomSource.isFile) {
+            bomSource.copyTo(dist.resolve("pipelinek-$version.sbom.json"), overwrite = true)
         }
 
         val sbom = listOf(

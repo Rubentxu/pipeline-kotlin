@@ -47,11 +47,10 @@ val SCM_GIT_OPERATIONS_CAPABILITY: StepCapability = StepCapability("scm-git.oper
  * Capability discipline (F5.1 + WC-SCM): the contract declares
  * [WORKSPACE_IDENTITY_CAPABILITY] and the handler reads the canonical
  * workspace root from the typed capability seam. The constructor
- * default `workspaceRootResolver` survives ONLY as a developer-escape
- * hatch for direct `handler.invoke(...)` unit tests that bypass the
- * canonical registry boundary; production runs always thread the typed
- * capability through [StepHandlerContext.capabilities], so neither
- * `pipeline.workspace.root` nor `user.dir` is consulted in production.
+ * RP034-I removed the `workspaceRootResolver` developer-escape hatch
+ * entirely. A location that is not a directory is now a typed
+ * INFRASTRUCTURE failure; neither `pipeline.workspace.root` nor `user.dir`
+ * is consulted anywhere in this Step.
  *
  * The `relativeTargetDir` semantics documented for F5.1 are preserved:
  * if the path is absolute it is honoured verbatim (legacy callers that
@@ -72,15 +71,6 @@ class GitCheckoutStepDefinition(
     private val eventSink: EventSink? = null,
     private val clock: Clock = Clock.systemUTC(),
     private val secretStore: dev.rubentxu.pipeline.v2.credentials.api.SecretStore? = null,
-    // WU-LPR-WC-SCM: developer-escape hatch ONLY. The production path
-    // reads the workspace root from WORKSPACE_IDENTITY_CAPABILITY; this
-    // resolver is consulted by the handler as a last-resort fallback
-    // when the handler is admitted through the boundary but the typed
-    // capability happens to point at a workspace that no longer exists
-    // (rare; covers direct unit-test construction outside the canonical
-    // bridge). Production runs always thread a valid typed workspace
-    // identity, so this fallback is never exercised in production.
-    private val workspaceRootResolver: () -> Path = { Path.of(System.getProperty("pipeline.workspace.root") ?: System.getProperty("user.dir") ?: ".") },
 ) : StepDefinition<GitCheckoutInput, GitCheckoutOutput> {
 
     override val contract = StepContract(
@@ -103,7 +93,7 @@ class GitCheckoutStepDefinition(
         // capability admission is fail-closed before the handler runs.
         // The handler reads the canonical workspace root from
         // ctx.capabilities.get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
-        // and never falls back to user.dir in production.
+        // and never falls back to ambient process state (RP034-I).
         requiredCapabilities = setOf<StepCapability>(EXECUTION_LOCATION_CAPABILITY),
     )
 
@@ -158,15 +148,25 @@ class GitCheckoutStepDefinition(
         // canonical pipeline workspace, and `relativeTargetDir` resolves
         // against it (or is honoured verbatim if absolute). Production
         // reads workspaceRoot from the typed capability seam; the
-        // developer-escape resolver is consulted only when the typed
+        // (see the RP034-I guard below)
         // capability points at a directory that no longer exists on disk
         // (rare; covers direct unit-test construction outside the
         // canonical bridge).
-        val workspaceRoot: Path = if (Files.isDirectory(capabilityWorkspaceRoot)) {
-            capabilityWorkspaceRoot
-        } else {
-            workspaceRootResolver()
+        // RP034-I: the developer-escape hatch is gone. Falling back to
+        // `System.getProperty("pipeline.workspace.root") ?: user.dir` meant a
+        // run whose typed location had gone missing would silently operate on
+        // whatever directory the JVM happened to start in — ambient state as a
+        // workspace authority, which ADR-0100 forbids outright. A location that
+        // is not a directory is now a typed failure instead.
+        if (!Files.isDirectory(capabilityWorkspaceRoot)) {
+            throw PluginStepException(
+                failure = PipelineFailure(
+                    kind = FailureKind.INFRASTRUCTURE,
+                    message = "scm-git.checkout: execution location is not a directory: $capabilityWorkspaceRoot",
+                ),
+            )
         }
+        val workspaceRoot: Path = capabilityWorkspaceRoot
         val executor = executorFactory(workspaceRoot)
         val spec = CheckoutSpec(
             scm = GitScm(

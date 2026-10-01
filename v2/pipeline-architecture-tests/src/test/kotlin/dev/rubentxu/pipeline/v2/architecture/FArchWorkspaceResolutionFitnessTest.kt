@@ -78,11 +78,12 @@ class FArchWorkspaceResolutionFitnessTest {
         //  - constructor-default resolvers in StepDefinition classes exist only
         //    so a test can build a definition directly. Production threads the
         //    typed capability and never consults them, as their own KDoc states.
+        // RP034-I: the two plugin exemptions are gone — scm-git.checkout and
+        // junit.results no longer fall back to user.dir, so a Step has no
+        // excuse to reach ambient state for a workspace base.
         val allowed = setOf(
             "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/SystemRuntimeConfig.kt",
             "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/MapRuntimeConfig.kt",
-            "pipeline-step-sdk/junit/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/junit/step/JUnitResultsStepDefinition.kt",
-            "pipeline-step-sdk/scm-git/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/scm/git/step/GitCheckoutStepDefinition.kt",
         )
         val offenders = violations { content -> content.contains("user.dir") }
             .filterNot { it in allowed }

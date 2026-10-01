@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.FailureKind
+import dev.rubentxu.pipeline.v2.domain.PluginStepException
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
@@ -13,11 +15,13 @@ import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutStepDefinition
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.ScmGitCheckoutKey
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlinx.coroutines.runBlocking
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -34,11 +38,10 @@ import java.util.concurrent.TimeUnit
  * against the TYPED workspace identity (the `--workspace <dir>` value
  * threaded through CanonicalRuntimeContext), not against user.dir.
  *
- * The developer-escape hatch (`workspaceRootResolver`) is consulted
- * ONLY when the typed capability points at a directory that no longer
- * exists on disk. Direct unit-test construction with a non-existent
- * workspace exercises that branch explicitly so the production path
- * remains free of the system property / user.dir fallbacks.
+ * RP034-I removed the developer-escape hatch. When the typed location is not
+ * a directory the handler now raises a typed INFRASTRUCTURE failure instead of
+ * falling back to `System.getProperty("pipeline.workspace.root") ?: user.dir`;
+ * ambient state is no longer a workspace authority, and WC-SCM-03 pins that.
  */
 class ScmGitWorkspaceIsolationTest {
 
@@ -148,42 +151,52 @@ class ScmGitWorkspaceIsolationTest {
     }
 
     @Test
-    fun `WC-SCM-03 developer-escape hatch is consulted only when typed workspace is missing on disk`(@TempDir tempDir: Path) {
-        // The handler MUST NOT reach the developer-escape resolver when
-        // the typed workspace exists. We exercise both branches:
-        //   - typed workspace exists  -> handler uses the typed path
-        //   - typed workspace is missing -> handler uses the escape hatch
-        //
-        // We verify the seam by constructing two contexts and asserting
-        // the typed capability carries the right value. The handler's
-        // branch selection is structurally guarded by
-        // `Files.isDirectory(capabilityWorkspaceRoot)`; this test is the
-        // lock-in for that guard.
+    fun `WC-SCM-03 a location that is not a directory fails closed instead of reaching ambient state`(@TempDir tempDir: Path) {
+        // The previous version of this test only read the capability back and
+        // asserted the path it had constructed — it never ran the handler, so it
+        // could not distinguish "the escape hatch is consulted" from "the escape
+        // hatch is gone". This one executes the Step.
         val typedWorkspace: Path = tempDir.resolve("typed").also { Files.createDirectories(it) }
         val existingCtx = directContext(typedWorkspace)
-        val typedExisting = existingCtx.capabilities
-            .get<ExecutionSite>(EXECUTION_LOCATION_CAPABILITY)
-            .workspace.root
-        assertTrue(Files.isDirectory(typedExisting),
-            "Typed workspace must be on disk for the canonical branch; the developer-escape hatch is only for direct unit-test construction outside the canonical bridge")
+        assertTrue(
+            Files.isDirectory(
+                existingCtx.capabilities
+                    .get<ExecutionSite>(EXECUTION_LOCATION_CAPABILITY)
+                    .workspace.root,
+            ),
+            "sanity: the canonical branch points at a real directory",
+        )
 
-        // Typed capability pointing at a non-existent path exercises the
-        // guard; we still type-check that the typed access returns the
-        // path the test constructed (the guard inside the handler will
-        // fall through to workspaceRootResolver() at runtime).
         val missing: Path = tempDir.resolve("does-not-exist")
         val missingCtx = directContext(missing)
-        val typedMissing = missingCtx.capabilities
-            .get<ExecutionSite>(EXECUTION_LOCATION_CAPABILITY)
-            .workspace.root
-        assertEquals(missing, typedMissing)
-        assertEquals(false, Files.isDirectory(typedMissing),
-            "Sanity: the typed capability really points at a non-existent path")
 
-        // The contract declares the typed capability so the canonical
-        // engine admits the invocation and the typed seam threads the
-        // workspace through. This is the F5.1 -> WU-LPR-WC-SCM
-        // invariant update.
+        val failure = assertThrows(PluginStepException::class.java) {
+            runBlocking {
+                GitCheckoutStepDefinition().handler.execute(
+                    GitCheckoutInput(
+                        url = "https://example.invalid/repo.git",
+                        branch = "main",
+                        credentialsRef = null,
+                        changelog = false,
+                        poll = false,
+                        relativeTargetDir = ".",
+                    ),
+                    missingCtx,
+                )
+            }
+        }
+
+        assertEquals(
+            FailureKind.INFRASTRUCTURE,
+            failure.failure.kind,
+            "a location that is not a directory is a broken run, not a reason to " +
+                "resolve against user.dir",
+        )
+        assertTrue(
+            failure.failure.message!!.contains("execution location is not a directory"),
+            "unexpected diagnostic: ${failure.failure.message}",
+        )
+
         val definition = GitCheckoutStepDefinition()
         assertTrue(
             definition.contract.requiredCapabilities.contains(EXECUTION_LOCATION_CAPABILITY),

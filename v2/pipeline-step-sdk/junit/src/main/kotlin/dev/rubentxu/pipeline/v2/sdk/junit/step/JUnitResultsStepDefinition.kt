@@ -53,11 +53,7 @@ import java.nio.file.Paths
  * F5.2 follow-up introduces a typed WORKSPACE_OPERATIONS_CAPABILITY
  * read path that the runtime already supplies (LB-02 / G3-A4.2).
  */
-class JUnitResultsStepDefinition(
-    private val workspaceRootResolver: () -> Path = {
-        Path.of(System.getProperty("pipeline.workspace.root") ?: System.getProperty("user.dir") ?: ".")
-    },
-) : StepDefinition<JUnitResultsInput, JUnitResultsOutput> {
+class JUnitResultsStepDefinition : StepDefinition<JUnitResultsInput, JUnitResultsOutput> {
 
     override val contract: StepContract<JUnitResultsInput, JUnitResultsOutput> = StepContract(
         key = JUnitResultsKey.VALUE,
@@ -79,10 +75,8 @@ class JUnitResultsStepDefinition(
         // admission is fail-closed before the handler runs when the
         // runtime context does not supply it. The historical
         // `pipeline.workspace.root` system property remains only as a
-        // developer-escape hatch in the constructor default
-        // (workspaceRootResolver); production runs always thread the
-        // typed capability through the registry boundary, so the system
-        // property is never consulted.
+        // RP034-I deleted the `workspaceRootResolver` developer-escape
+        // hatch, so no system property is consulted anywhere in this Step.
         requiredCapabilities = setOf<StepCapability>(EXECUTION_LOCATION_CAPABILITY),
     )
 
@@ -119,19 +113,12 @@ class JUnitResultsStepDefinition(
             Files.isDirectory(configured) -> configured
             else -> capabilityWorkspaceRoot
         }
-        val workspaceRoot: Path = if (Files.isDirectory(resolved)) {
-            resolved
-        } else {
-            // Back-compat bridge for direct test construction: when the
-            // handler is invoked outside the canonical registry boundary
-            // (e.g. unit tests that build a synthetic
-            // StepHandlerContext with a non-canonical capability access),
-            // the typed capability may point at a temporary directory
-            // that no longer exists. Fall back to the developer-escape
-            // resolver so the unit tests keep working without bringing
-            // in a full CanonicalRuntimeContext.
-            workspaceRootResolver()
-        }.also {
+        // RP034-I: the developer-escape hatch is gone. When no usable base was
+        // selected, the run is malformed — falling back to
+        // `System.getProperty("pipeline.workspace.root") ?: user.dir` made a
+        // broken context silently resolve against whatever directory the JVM
+        // started in. The typed `require` below now reports it.
+        val workspaceRoot: Path = resolved.also {
             require(Files.isDirectory(it)) {
                 "junit.results: workspaceRoot is not a directory: ${it}"
             }

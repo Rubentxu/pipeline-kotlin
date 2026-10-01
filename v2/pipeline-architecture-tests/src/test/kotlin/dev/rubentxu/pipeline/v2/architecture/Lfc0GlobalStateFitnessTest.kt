@@ -57,20 +57,13 @@ class Lfc0GlobalStateFitnessTest {
             // this fitness scan keeps the two constraints coherent: the adapter
             // is the allowlist for direct global-state access, every other
             // production site must go through it.
-            !toString().endsWith("/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/SystemRuntimeConfig.kt") &&
-            // WU-LPR-081: Step SDK plugins (scm-git, junit) declare a
-            // `workspaceRootResolver: () -> Path` constructor default that
-            // falls back to `System.getProperty("user.dir")` as a
-            // **developer-escape hatch only**. The production handler reads the
-            // workspace root from the typed `WORKSPACE_IDENTITY_CAPABILITY`
-            // (fail-closed at the registry boundary); the system-property
-            // default is consulted only when the handler is admitted through
-            // unit-test construction outside the canonical bridge (rare).
-            // Both files document this explicitly in their KDoc ("developer
-            // escape hatch ONLY"). Excluding them keeps the fitness invariant
-            // focused on the production path: every other production site must
-            // go through `SystemRuntimeConfig`; the developer-escape hatch
-            // defaults are documented in-line and out of scope for LFC-0.
-            !toString().endsWith("/pipeline-step-sdk/scm-git/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/scm/git/step/GitCheckoutStepDefinition.kt") &&
-            !toString().endsWith("/pipeline-step-sdk/junit/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/junit/step/JUnitResultsStepDefinition.kt")
+            // WP-LPR-081 / RP034-I: the scm-git and junit plugins used to carry a
+            // `workspaceRootResolver: () -> Path` constructor default that fell
+            // back to `System.getProperty("pipeline.workspace.root") ?:
+            // user.dir` as a "developer-escape hatch". Both were deleted in
+            // RP034-I, so those two files no longer need an exemption and this
+            // list is back to a single entry: the adapter that *is* the bridge.
+            // Re-adding one is the signal that ambient state has crept back into
+            // a Step.
+            !toString().endsWith("/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/SystemRuntimeConfig.kt")
 }

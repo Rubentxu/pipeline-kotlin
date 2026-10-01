@@ -59,17 +59,28 @@ class ScriptedPwdRuntimeTest {
         private val workspaceRoot: Path,
         private val workspaceReads: AtomicInteger = AtomicInteger(0),
     ) : CanonicalRuntimeCapabilityAccess(context = context) {
+        // RP034-Ea: `core.pwd` declares EXECUTION_LOCATION_CAPABILITY and reads
+        // the observation from it, so the synthetic bridge must expose THAT seam
+        // rather than the legacy single-valued WorkspaceIdentity. Exposing only
+        // the legacy key made admission reject the Step with
+        // "missing required capabilities ... runtime.execution-location" — the
+        // test was pinning the pre-migration contract while production had
+        // already moved. cwd == root here because no `dir` scope is active.
         override fun available(): Set<dev.rubentxu.pipeline.v2.domain.step.StepCapability> =
             setOf(
-                WORKSPACE_IDENTITY_CAPABILITY,
+                dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY,
                 EVENT_SINK_CAPABILITY,
             )
 
         @Suppress("UNCHECKED_CAST")
         override fun <T : Any> get(key: dev.rubentxu.pipeline.v2.domain.step.StepCapability): T {
-            if (key == WORKSPACE_IDENTITY_CAPABILITY) {
+            if (key == dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY) {
                 workspaceReads.incrementAndGet()
-                return WorkspaceIdentity(workspaceRoot = workspaceRoot) as T
+                val root = workspaceRoot.toAbsolutePath().normalize()
+                return dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation(
+                    workspace = dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceLease.Managed(root),
+                    cwd = root,
+                ) as T
             }
             return super.get(key)
         }

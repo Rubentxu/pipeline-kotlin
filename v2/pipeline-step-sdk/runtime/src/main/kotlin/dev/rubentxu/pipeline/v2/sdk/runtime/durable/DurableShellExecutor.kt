@@ -653,8 +653,17 @@ class DurableShellExecutor : DurableShellLaunching {
             // Write exit code atomically: temp file then rename
             append("echo \$EXIT_CODE > \"\$RESULT_TMP\"; ")
             append("mv \"\$RESULT_TMP\" \"\$RESULT_FILE\"; ")
-            // Remove cookie file to signal completion
-            append("rm -f \"\$COOKIE_FILE\"; ")
+            // Remove cookie file to signal completion.
+            //
+            // RP034-Id: stdout and stderr are REDIRECTED AWAY. The cookie is our
+            // control-plane bookkeeping, not the user's output, so it must never
+            // write into the data channel that becomes `capturedStdout` and the
+            // console transcript. An unredirected `rm` leaks whenever the host's
+            // rm is verbose, wrapped, or shimmed — which is exactly how
+            // DurableShellTerminalAdapterTest failed here with the deletion notice
+            // appended to `canonical-output`. Silence is the correct contract for
+            // control-plane housekeeping regardless of what `rm` resolves to.
+            append("rm -f \"\$COOKIE_FILE\" >/dev/null 2>&1; ")
             append("kill \$HB_PID 2>/dev/null; ")
             append("exit \$EXIT_CODE")
         }

@@ -58,6 +58,38 @@ internal class RunLifecycleEngine(private val eventSink: EventSink) {
     fun outcome(): RunOutcome = outcome
 
     /**
+     * The stage bookend pair (WU-PR-017 slice 2). Same events, same field
+     * values, same sequence-0 quirk the coordinator has always emitted; the
+     * only variable is the outcome string.
+     */
+    fun stageStarted(runId: RunId, stageIndex: Int, stageName: String) {
+        eventSink.append(
+            dev.rubentxu.pipeline.v2.events.StageStarted(
+                eventId = UUID.randomUUID().toString(),
+                runId = runId.value,
+                sequence = 0L,
+                occurredAt = Instant.now(),
+                stageIndex = stageIndex,
+                stageName = stageName,
+            ),
+        )
+    }
+
+    fun stageFinished(runId: RunId, stageIndex: Int, stageName: String, outcome: String) {
+        eventSink.append(
+            dev.rubentxu.pipeline.v2.events.StageFinished(
+                eventId = UUID.randomUUID().toString(),
+                runId = runId.value,
+                sequence = 0L,
+                occurredAt = Instant.now(),
+                stageIndex = stageIndex,
+                stageName = stageName,
+                outcome = outcome,
+            ),
+        )
+    }
+
+    /**
      * Closes the run: emits RunFinished in the coordinator's finally, only if
      * RunStarted was emitted, with the outcome mapping the coordinator has
      * always used.

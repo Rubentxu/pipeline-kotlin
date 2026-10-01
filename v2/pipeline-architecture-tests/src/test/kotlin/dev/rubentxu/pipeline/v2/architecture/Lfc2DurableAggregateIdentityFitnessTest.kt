@@ -118,23 +118,37 @@ class Lfc2DurableAggregateIdentityFitnessTest {
     }
 
     /** The coordinator names identities by type; it no longer spells their keys. */
+    private val engineSource = v2Root.resolve(
+        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/BodyExecutionEngine.kt",
+    )
+
     @Test
     fun `the coordinator reaches the identities by type and never by literal`() {
-        val text = read(coordinatorSource)
+        // TRAIN H2 (PR-018): the body execution moved to BodyExecutionEngine;
+        // the identities are reached from BOTH the coordinator and the engine.
+        val coordinator = read(coordinatorSource)
+        val engine = read(engineSource)
+        val text = coordinator + "\n" + engine
 
         val referenced = Regex("BodyAggregateIdentity\\.([A-Za-z0-9_]+)")
             .findAll(text).map { it.groupValues[1] }.toSet()
         assertEquals(
             declaredCaseNames(),
             referenced,
-            "Every durable aggregate identity must be reached by its typed name, and the " +
-                "coordinator must not invent a name the identity model does not declare",
+            "Every durable aggregate identity must be reached by its typed name, and " +
+                "the coordinator + engine must not invent a name the identity model " +
+                "does not declare",
         )
 
         BodyAggregateIdentity.ALL.forEach { identity ->
             assertTrue(
-                "\"${identity.key.value}\"" !in text,
+                "\"${identity.key.value}\"" !in coordinator,
                 "The literal ${identity.key.value} must not appear in the coordinator: the " +
+                    "identity model is the single place where the durable key is stated",
+            )
+            assertTrue(
+                "\"${identity.key.value}\"" !in engine,
+                "The literal ${identity.key.value} must not appear in the engine: the " +
                     "identity model is the single place where the durable key is stated",
             )
         }

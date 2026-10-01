@@ -702,7 +702,7 @@ class CanonicalDurableRunCoordinator(
                 if (steps == null && stage.body is StageBody.Parallel) {
                     // Workspace creation is required before branch dispatch (D5/C1 reuse).
                     val parallelOutcome = runParallelStage(stage, stageIndex, stageShOptions, runId, ambient)
-                    when (val continuation = decideContinuation(parallelOutcome, stage.name, runId.value, ambient)) {
+                    when (val continuation = runLifecycle.decideStageContinuation(parallelOutcome, stage.name, runId.value, ambient)) {
                         CanonicalContinuation.Continue -> {
                             runPostBlock(
                                 stage = stage,
@@ -768,7 +768,7 @@ class CanonicalDurableRunCoordinator(
                     val step = steps1[stepIndex]
                     val dispatched = dispatch(step, runId, stage.name, stageIndex, stepIndex, stageShOptions, emptyList(), ambient)
                     ambient = dispatched.context
-                    when (val continuation = decideContinuation(dispatched.outcome, stage.name, runId.value, ambient)) {
+                    when (val continuation = runLifecycle.decideStageContinuation(dispatched.outcome, stage.name, runId.value, ambient)) {
                         CanonicalContinuation.Continue -> Unit
                         CanonicalContinuation.ContinueUnstable -> {
                             runLifecycle.fold(RunOutcome.Unstable)
@@ -842,47 +842,6 @@ class CanonicalDurableRunCoordinator(
      * suppresses and stops the walk. An unstable()-only outcome is never a failure, so it never
      * enters the walk (ERR-S-008 emits no trigger).
      */
-    private fun decideContinuation(
-        outcome: StepOutcome,
-        stageName: String,
-        runIdValue: String,
-        executionContext: ExecutionContext,
-    ): CanonicalContinuation = when (outcome) {
-        StepOutcome.Success -> CanonicalContinuation.Continue
-        StepOutcome.Unstable -> CanonicalContinuation.ContinueUnstable
-        is StepOutcome.Failure -> walkCatchErrorChain(outcome.failure, stageName, runIdValue, executionContext)
-    }
-
-    private fun walkCatchErrorChain(
-        failure: PipelineFailure,
-        stageName: String,
-        runIdValue: String,
-        executionContext: ExecutionContext,
-    ): CanonicalContinuation {
-        // CTX-P2: identical EM-5/6 walk over the pure trailing chain (outermost-first fold order).
-        val chain = executionContext.trailingCatchErrorChain()
-        for (overlay in chain) {
-            eventSink.append(
-                dev.rubentxu.pipeline.v2.events.CatchErrorTriggered(
-                    eventId = UUID.randomUUID().toString(),
-                    runId = runIdValue,
-                    sequence = 0L,
-                    occurredAt = Instant.now(),
-                    stageName = stageName,
-                    buildResult = overlay.buildResult,
-                    stageResult = overlay.stageResult,
-                    message = overlay.message,
-                ),
-            )
-            when (overlay.buildResult) {
-                "FAILURE" -> Unit // re-throw outward to the next enclosing catch scope
-                "SUCCESS" -> return CanonicalContinuation.Continue
-                else -> return CanonicalContinuation.ContinueUnstable
-            }
-        }
-        // Exhausted enclosing catch scopes (or no catch overlay) without a suppressor: abort.
-        return CanonicalContinuation.Abort(failure)
-    }
 
     /**
      * Dispatches a step, routing BlockStepNode to [dispatchBody].

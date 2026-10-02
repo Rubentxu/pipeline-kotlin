@@ -352,7 +352,7 @@ internal class BodyExecutionEngine(
      * coordinator. The credential-lease path composes through the
      * credentialLeasedBody callback the caller passes.
      */
-    @Suppress("LongMethod")
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     suspend fun executeScope3b(
         scope: BlockShellScope,
         block: BlockStepNode,

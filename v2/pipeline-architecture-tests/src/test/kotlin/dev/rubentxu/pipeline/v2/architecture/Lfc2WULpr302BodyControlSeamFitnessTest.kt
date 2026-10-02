@@ -195,7 +195,7 @@ class Lfc2WULpr302BodyControlSeamFitnessTest {
      */
     @Test
     fun `coordinator contains no inline retry mechanics`() {
-        val text = stripKotlinCommentsAndDocstrings(coordinatorText())
+        val text = stripKotlinCommentsAndDocstrings(DurableRunPathSources.text())
         val bannedBodies = listOf(
             // Pre-Phase 2 inline body. Retired in commit b08538aa.
             "dispatchRetryAwareBody",
@@ -227,7 +227,7 @@ class Lfc2WULpr302BodyControlSeamFitnessTest {
      */
     @Test
     fun `coordinator contains no inline waitUntil mechanics`() {
-        val text = stripKotlinCommentsAndDocstrings(coordinatorText())
+        val text = stripKotlinCommentsAndDocstrings(DurableRunPathSources.text())
         val bannedBodies = listOf(
             "is dev.rubentxu.pipeline.v2.domain.durable.WaitUntilReconciliationDecision.",
             "WaitUntilReconciliationDecision.ScheduleAttempt",
@@ -261,7 +261,7 @@ class Lfc2WULpr302BodyControlSeamFitnessTest {
      */
     @Test
     fun `parallel branch dispatch remains a separate primitive in the coordinator`() {
-        val text = coordinatorText()
+        val text = DurableRunPathSources.text()
         assertTrue(
             "runParallelStage" in text,
             "runParallelStage must remain the canonical entry point for parallel " +
@@ -285,7 +285,9 @@ class Lfc2WULpr302BodyControlSeamFitnessTest {
     @Test
     fun `legacy retry inline loop remains preserved for no-journal callers`() {
         val engine = engineText()
-        val coordinator = coordinatorText()
+        // The delegating side moved out of the coordinator with the step spine, so the
+        // assertion follows the durable run path rather than one file.
+        val coordinator = DurableRunPathSources.text()
         assertTrue(
             "is BlockShellScope.Retry" in engine,
             "legacy retry inline loop must be preserved bit-equivalent for callers " +
@@ -308,7 +310,9 @@ class Lfc2WULpr302BodyControlSeamFitnessTest {
     @Test
     fun `legacy waitUntil inline loop remains preserved for no-journal callers`() {
         val engine = engineText()
-        val coordinator = coordinatorText()
+        // The delegating side moved out of the coordinator with the step spine, so the
+        // assertion follows the durable run path rather than one file.
+        val coordinator = DurableRunPathSources.text()
         assertTrue(
             "executeWaitUntilInline" in engine,
             "legacy waitUntil inline loop must be preserved bit-equivalent for " +

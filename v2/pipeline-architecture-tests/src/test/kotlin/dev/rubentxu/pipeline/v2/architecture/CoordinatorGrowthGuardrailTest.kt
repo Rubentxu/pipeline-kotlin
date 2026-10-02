@@ -17,8 +17,8 @@ import org.junit.jupiter.api.Test
  * this ceiling IN THE SAME COMMIT, with the commit message justifying why an
  * extraction could not absorb it.
  *
- * The ceiling is pinned at the post-slice-2 size (2514 lines). It is
- * deliberately a ratchet, not the final target: PR-020's real property is
+ * The ceiling is pinned at the exact current size (741 lines). It is
+ * deliberately a ratchet, not a final target: PR-020's real property is
  * "the coordinator only coordinates and no Step/body/replay semantics live
  * there", enforced by the concrete-routing fitness tests; this file stops
  * the tape measure from running backwards while those slices land.
@@ -33,11 +33,17 @@ class CoordinatorGrowthGuardrailTest {
 
     /**
      * The ratchet. History: 2592 (post RP-035) -> 2562 (slice 1, lifecycle
-     * bookends out) -> 2514 (slice 2, stage bookends out). PR-018..020 are
-     * expected to keep lowering it; raising it requires a same-commit
-     * justification per the class KDoc.
+     * bookends out) -> 2514 (slice 2, stage bookends out) -> 2032 (H3 close)
+     * -> 1728 (PR-020 slice 1, the BEFORE_STAGE directive seam out) -> 1701
+     * (slice 2a, the dead waitUntil wrapper out) -> 741 (slice 2b, the step
+     * spine and the parallel aggregate out).
+     *
+     * Pinned to the exact current size on purpose. A ceiling left at 2514 while
+     * the file is 741 is not a ratchet: it would take 1773 lines of regression to
+     * trip, which is the whole class of growth this guard exists to stop. Raising
+     * it requires a same-commit justification per the class KDoc.
      */
-    private val maxCoordinatorLines = 2514L
+    private val maxCoordinatorLines = 741L
 
     @Test
     fun `the durable coordinator never grows again`() {
@@ -48,8 +54,9 @@ class CoordinatorGrowthGuardrailTest {
         assertTrue(
             lines <= maxCoordinatorLines,
             "CanonicalDurableRunCoordinator.kt grew to $lines lines (ceiling $maxCoordinatorLines). " +
-                "New responsibilities belong in named engines (RunLifecycle/BodyExecution/Invocation/" +
-                "Recovery), not in the coordinator. If a same-commit extraction truly cannot absorb " +
+                "New responsibilities belong in named engines (RunLifecycle, BodyExecution, " +
+                "Invocation/Recovery, BeforeStageDirective, StepDispatch, ParallelStage), not in the " +
+                "coordinator. If a same-commit extraction truly cannot absorb " +
                 "the change, raise this ceiling deliberately and justify it in the commit message.",
         )
     }

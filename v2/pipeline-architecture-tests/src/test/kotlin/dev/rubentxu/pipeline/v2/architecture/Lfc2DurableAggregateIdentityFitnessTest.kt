@@ -126,7 +126,7 @@ class Lfc2DurableAggregateIdentityFitnessTest {
     fun `the coordinator reaches the identities by type and never by literal`() {
         // TRAIN H2 (PR-018): the body execution moved to BodyExecutionEngine;
         // the identities are reached from BOTH the coordinator and the engine.
-        val coordinator = read(coordinatorSource)
+        val coordinator = DurableRunPathSources.text()
         val engine = read(engineSource)
         val text = coordinator + "\n" + engine
 

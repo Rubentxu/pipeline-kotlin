@@ -185,6 +185,11 @@ class FArchWorkspaceResolutionFitnessTest {
             // The durable spine: it is what derives ShOptions and therefore the
             // execution location every Step reads.
             "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt" to "durable spine",
+            // PR-020 slice 2b: the parallel aggregate left the coordinator as its own
+            // engine. It derives per-branch isolated workspaces with the same allocator
+            // and for the same reason (SB-S-008 / WU-LPR-071): a branch must not observe a
+            // sibling's working directory. Still the durable spine, not a Step handler.
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/ParallelStageEngine.kt" to "durable spine (parallel aggregate)",
             "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/ShExecution.kt" to "shell substrate",
             // Migrated operations: each reads the location first and uses the
             // resolver only when no location was injected (direct construction).

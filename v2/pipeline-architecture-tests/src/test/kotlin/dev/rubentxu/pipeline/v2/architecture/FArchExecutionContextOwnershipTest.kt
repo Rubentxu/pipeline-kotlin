@@ -100,14 +100,19 @@ class FArchExecutionContextOwnershipTest {
     // F3 — branch explicit-context seam.
     @Test
     fun `F3 branch path threads ExecutionContext explicitly and reads no coordinator context`() {
-        val coordinator = v2Root.resolve(
-            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt",
-        )
-        assertTrue(Files.exists(coordinator))
-        val code = codeOnly(Files.readString(coordinator))
+        // The branch path moved to ParallelStageEngine with the parallel aggregate, so the
+        // property is asserted over the durable run path rather than one file.
+        val code = codeOnly(DurableRunPathSources.text())
+
+        // Whitespace-tolerant, but every argument still required IN ORDER. The property is
+        // "the context value is passed explicitly", so a line break between arguments is not
+        // a regression; a dropped or reordered argument is. Pinning the single-line shape
+        // would make this guard fail on a reformat and pass on a genuine mistake.
         assertTrue(
-            """executeBranchSteps\(branch, runId, stageIndex, branchIndex, stageShOptions, executionContext\)""".toRegex()
-                .containsMatchIn(code),
+            Regex(
+                """executeBranchSteps\(\s*branch\s*,\s*runId\s*,\s*stageIndex\s*,\s*branchIndex\s*,""" +
+                    """\s*stageShOptions\s*,\s*executionContext\s*,?\s*\)""",
+            ).containsMatchIn(code),
             "runParallelStage must pass the context value explicitly to executeBranchSteps",
         )
         val branchFn = code.substringAfter("private suspend fun executeBranchSteps")

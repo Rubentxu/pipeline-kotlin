@@ -38,13 +38,13 @@ class Lfc2ConcreteBodyRoutingDebtFitnessTest {
         return Files.readString(engineSource)
     }
 
-    private fun scanLoops(text: String = coordinatorText() + "\n" + engineText()): BodyChildLoopInventory =
+    private fun scanLoops(text: String = DurableRunPathSources.text()): BodyChildLoopInventory =
         BodyChildLoopScanner.scan(text)
 
     /** The real coordinator carries exactly the pinned debt — no more, no less. */
     @Test
     fun `canonical durable coordinator carries only the pinned concrete routing debt`() {
-        val discovered = ConcreteBodyRoutingScanner.scan(coordinatorText() + "\n" + engineText())
+        val discovered = ConcreteBodyRoutingScanner.scan(DurableRunPathSources.text())
         val pinned = PinnedConcreteBodyRoutingDebt.value
 
         val verdict = ConcreteBodyRoutingVerdict.decide(discovered, scanLoops(), pinned)
@@ -73,7 +73,7 @@ class Lfc2ConcreteBodyRoutingDebtFitnessTest {
         )
         assertEquals(
             0,
-            ConcreteBodyRoutingScanner.scan(coordinatorText() + "\n" + engineText()).total,
+            ConcreteBodyRoutingScanner.scan(DurableRunPathSources.text()).total,
             "An empty ledger with a non-empty measurement is the regression this law exists to catch",
         )
     }
@@ -85,7 +85,7 @@ class Lfc2ConcreteBodyRoutingDebtFitnessTest {
      */
     @Test
     fun `the pinned ledger enumerates every discovered debt item`() {
-        val discovered = ConcreteBodyRoutingScanner.scan(coordinatorText() + "\n" + engineText()).items()
+        val discovered = ConcreteBodyRoutingScanner.scan(DurableRunPathSources.text()).items()
         val pinned = PinnedConcreteBodyRoutingDebt.value.items()
 
         assertEquals(
@@ -162,7 +162,7 @@ class Lfc2ConcreteBodyRoutingDebtFitnessTest {
     @Disabled("Coordinator is clean post-H2; fixture needs synthetic sources")
     inner class ViolationFixture {
 
-        private val baseline = ConcreteBodyRoutingScanner.scan(coordinatorText() + "\n" + engineText())
+        private val baseline = ConcreteBodyRoutingScanner.scan(DurableRunPathSources.text())
         private val pinned = PinnedConcreteBodyRoutingDebt.value
 
         private fun violationsFor(source: String): List<RoutingDebtViolation> {

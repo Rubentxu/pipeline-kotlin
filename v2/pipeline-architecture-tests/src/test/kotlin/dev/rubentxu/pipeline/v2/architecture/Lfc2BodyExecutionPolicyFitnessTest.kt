@@ -53,7 +53,7 @@ class Lfc2BodyExecutionPolicyFitnessTest {
     )
 
     /** The durable body path as it now exists: coordinator plus engine, in that order. */
-    private fun bodyExecutionText(): String = read(coordinatorSource) + "\n" + read(engineSource)
+    private fun bodyExecutionText(): String = DurableRunPathSources.text()
 
     private val stepBodyModule = v2Root.resolve(
         "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/StepBody.kt",
@@ -240,7 +240,10 @@ class Lfc2BodyExecutionPolicyFitnessTest {
      */
     @Test
     fun `the coordinator resolves body policies through the port`() {
-        val code = codeOnly(read(coordinatorSource))
+        // The body-policy resolution moved to StepDispatchEngine with the step spine, so this
+        // guard follows the durable run path: the property is "the run path resolves body
+        // policies through the port", not "the coordinator file names it".
+        val code = codeOnly(DurableRunPathSources.text())
 
         val required = listOf("BodyPolicyResolver", "BodyExecutionOwner")
         val missing = required.filterNot { code.contains(it) }

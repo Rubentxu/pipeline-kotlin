@@ -86,19 +86,23 @@ class FArchParallelReconciliationAuthorityTest {
             }
         }
         assertEquals(1, definitions.size, "exactly one ParallelReconciler definition allowed; got $definitions")
+        // The property is "exactly ONE effect executor of the parallel decision", and it
+        // is unchanged. Its owner moved to ParallelStageEngine with the rest of the parallel
+        // aggregate; a second consumer must still fail here.
         assertEquals(
-            listOf("CanonicalDurableRunCoordinator.kt"),
+            listOf("ParallelStageEngine.kt"),
             consumers.map { it.substringAfterLast('/') },
-            "the canonical coordinator must be the only effect executor of the parallel decision",
+            "the parallel engine must be the only effect executor of the parallel decision",
         )
     }
 
     @Test
     fun `the orphan unstructured CoroutineScope is absent from the parallel path`() {
-        val coord = v2Root.resolve(
-            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt",
-        )
-        val text = Files.readString(coord)
+        // The parallel path lives in ParallelStageEngine since the PR-020 slice 2b split,
+        // so this guard follows the durable run path. Scanning one file would have made
+        // "supervisorScope in text" fail on an unrelated move rather than on a real
+        // regression — the guard would be measuring location, not structure.
+        val text = DurableRunPathSources.text()
         assertFalse(
             "CoroutineScope(Dispatchers" in text,
             "runParallelStage must not create an orphan unstructured CoroutineScope (ADR-0076 §4)",

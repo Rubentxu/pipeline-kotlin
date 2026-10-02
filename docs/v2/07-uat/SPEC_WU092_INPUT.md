@@ -45,7 +45,7 @@ sealed interface InputDecision {
 // Por qué NO hay decisión. Cerrado, sin booleanos ni nulls sendos.
 sealed interface InputDenialReason {
     data class TimedOut(val waitedMillis: Long) : InputDenialReason
-    data object Cancelled : InputDenialReason
+    data class Cancelled : InputDenialReason
     /** No se puede ni preguntar: p.ej. el ancla de control dir no es escribible. */
     data class Unanswerable(val diagnostic: String) : InputDenialReason
 }
@@ -61,18 +61,26 @@ data class CoreInputOutput(
 **antes** de ejecutar el cuerpo, y una denegación significa que el cuerpo no corrió
 nunca.
 
-**Corrección de la primera redacción.** Esta spec declaraba además
-`MalformedResponse` y `AlreadyAnswered` como denegaciones. Al modelar el puerto
-apareció que ninguna de las dos puede ser resultado del Step:
+**Corrección de la primera redacción (dos, no una).** Esta spec declaraba además
+`MalformedResponse` y `AlreadyAnswered` como denegaciones, y afirmaba que una
+cancelación de corrutina producía `Cancelled`. Al modelar el puerto y medir el
+comportamiento, las tres afirmaciones resultaron falsas:
 
 - una respuesta malformada **no termina la espera** (D4), luego no produce
   resultado: produce otro turno de espera;
 - la respuesta perdedora de una carrera es un `CREATE_NEW` que falla, es decir un
-  hecho del sistema de ficheros del lado de quien responde, no del handler.
+  hecho del sistema de ficheros del lado de quien responde, no del handler;
+- una corrutina cancelada **no puede entregar un valor a quien la canceló**: la
+  promesa que completaría ya está cancelada, así que el supuesto resultado tipado
+  se descarta igual. Aplanar la cancelación sólo esconde la señal. Por eso
+  `Cancelled` queda como caso de la vía de *interrupción* (hilo interrumpido con
+  la corrutina viva, el mismo productor que tiene `FileLockCoordinator`), y la
+  cancelación de corrutina se propaga.
 
-Mantenerlas habría dejado dos casos muertos en la ADT, que es justo lo que esta
-base de código castiga. Se quedan documentadas como observaciones del bucle de
-espera y del mecanismo de respuesta, no como resultados del paso.
+Mantener lo que no puede ocurrir habría dejado casos muertos en la ADT, que es
+justo lo que esta base de código castiga. Se quedan documentadas como
+observaciones del bucle de espera y del mecanismo de respuesta, no como
+resultados del paso.
 
 ## 3. Decisiones que esta spec fija
 

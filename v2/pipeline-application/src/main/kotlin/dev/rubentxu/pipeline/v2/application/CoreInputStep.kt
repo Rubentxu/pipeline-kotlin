@@ -120,16 +120,22 @@ object CoreInputStep {
             ).also { denied(sink, ctx.runId.value, it) }
 
             is InputIntentResolution.Resolved -> when (
-                val answer = decisions.awaitDecision(
-                    request = InputRequest(
-                        opId = ctx.runId.value,
-                        message = input.message,
-                        ok = input.ok,
-                        submitter = input.submitter,
-                        id = input.id,
-                    ),
-                    waitMillis = resolution.waitMillis,
-                )
+                val answer = try {
+                    decisions.awaitDecision(
+                        // The durable OPERATION, not the run: two input steps in one
+                        // run are two questions and must not share a file.
+                        request = InputRequest(
+                            opId = "${ctx.runId.value}#${ctx.stepIndex}",
+                            message = input.message,
+                            ok = input.ok,
+                            submitter = input.submitter,
+                            id = input.id,
+                        ),
+                        waitMillis = resolution.waitMillis,
+                    )
+                } catch (e: UnanswerableException) {
+                    InputResolution.Denied(InputDenialReason.Unanswerable(e.message ?: "could not ask"))
+                }
             ) {
                 is InputResolution.Denied -> CoreInputOutput(
                     requested = input.message,

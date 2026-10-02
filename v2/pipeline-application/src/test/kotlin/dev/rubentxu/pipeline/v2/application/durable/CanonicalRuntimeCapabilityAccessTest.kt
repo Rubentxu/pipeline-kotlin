@@ -55,6 +55,11 @@ class CanonicalRuntimeCapabilityAccessTest {
         //   - WORKSPACE_IDENTITY_CAPABILITY (S2-A6 / G1)
         //   - TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY (S2-A6 / G3T post-correction)
         //   - EXECUTION_LOCATION_CAPABILITY (RP034-C / ADR-0100)
+        //   - EXECUTION_LANE_CAPABILITY (RP6-A / WU-091) — the durable execution
+        //     lane `core.lock` needs to decide re-entrancy. Added deliberately:
+        //     without it the lock cannot tell a nested acquire from a sibling
+        //     `parallel` branch. The set below must name it for the same reason it
+        //     names every other entry: so the growth is visible, not silent.
         //
         // The bridge must expose EXACTLY this set — adding/removing a capability requires
         // updating both this test and the bridge together. The set must NEVER silently
@@ -68,6 +73,7 @@ class CanonicalRuntimeCapabilityAccessTest {
             dev.rubentxu.pipeline.v2.application.WORKSPACE_IDENTITY_CAPABILITY,
             dev.rubentxu.pipeline.v2.application.TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY,
             dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY,
+            dev.rubentxu.pipeline.v2.application.EXECUTION_LANE_CAPABILITY,
         )
         val access = CanonicalRuntimeCapabilityAccess(runtime(InMemoryEventStore()))
         assertEquals(expected, access.available())

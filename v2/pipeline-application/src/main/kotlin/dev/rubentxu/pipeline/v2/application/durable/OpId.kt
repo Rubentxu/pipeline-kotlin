@@ -29,6 +29,31 @@ data class OpId(
     val bodyPath: List<BlockSegment> = emptyList(),
 ) {
     /**
+     * The parallel lineage this operation runs in: the ordered list of `branch`
+     * frame indices along [bodyPath], outermost first.
+     *
+     * Empty for a linear path, one element for a single level of `parallel`, and
+     * N elements for N levels — so nested parallel extends this WITHOUT changing
+     * the shape, which is why callers should derive a lane from it rather than
+     * from [branchIndex] alone.
+     *
+     * This is deliberately a `List<Int>` and not a single index. Freezing
+     * `branchIndex` as the model of "which lane am I in" would make nested
+     * parallel impossible to represent without a breaking change, and a lane
+     * identity that cannot express nesting is a lane identity that will be
+     * wrong the moment nesting exists.
+     */
+    val parallelLineage: List<Int>
+        get() = bodyPath.mapNotNull { segment ->
+            // BlockSegment is a value class over "{index}:{pluginStepId}", so the
+            // branch frame is recognised by its SUFFIX, not by a field that does
+            // not exist on the type.
+            val encoded = segment.encoded
+            if (!encoded.endsWith(":$PARALLEL_BRANCH_SEGMENT")) return@mapNotNull null
+            encoded.substringBeforeLast(':').toIntOrNull()
+        }
+
+    /**
      * Formats this OpId into the canonical string representation with length-prefix bodyPath.
      * @return String in format "$runId-s$stageIndex-$stepIndex[-b$branchIndex][-bp{N}-{seg}...]"
      */
@@ -55,6 +80,13 @@ data class OpId(
         else "$runId-s$stageIndex-$stepIndex"
 
     companion object {
+        /**
+         * `pluginStepId` the parallel engine writes for a branch frame segment.
+         * Named here so [parallelLineage] and the engine that emits the segment
+         * cannot drift apart.
+         */
+        const val PARALLEL_BRANCH_SEGMENT = "branch"
+
         /**
          * Pattern for OpId without branch: "runId-s{stageIndex}-{stepIndex}"
          */

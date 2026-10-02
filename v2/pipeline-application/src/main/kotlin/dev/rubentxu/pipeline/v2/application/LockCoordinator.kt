@@ -51,34 +51,73 @@ interface LockCoordinator {
 }
 
 /**
- * The durable identity a hold belongs to.
+ * The durable EXECUTION LANE a hold belongs to.
  *
- * ## Why this is not a thread, a coroutine or a process
+ * ## Why not the run
  *
- * Re-entrancy keyed by process would let a second RUN in the same JVM walk
- * straight into a resource the first run is holding, and keyed by thread would
- * make the answer depend on which scheduler thread happened to run the nested
- * body. Both are ambient, and both change across exactly the transitions the
- * engine performs routinely:
+ * Keying re-entrancy by run alone is too coarse, and the failure is invisible
+ * until the day it matters: two branches of the SAME `parallel` would look like
+ * one owner, so branch B would "re-enter" a resource branch A is holding, and the
+ * mutual exclusion the lock exists to provide would be gone — in exactly the
+ * situation where it is being relied upon.
+ *
+ * ## Why not the full OpId
+ *
+ * The opposite error. `lock("a") { lock("a") { ... } }` has two DIFFERENT OpIds
+ * (the inner one carries a body path), so OpId identity would deny a nested
+ * acquire and deadlock the run against its own legitimate hold.
+ *
+ * ## What this is
  *
  * ```text
- * suspension      → the body is journalled and the thread is released
- * resume          → the handler re-runs, possibly on a different thread
- * replay          → memoised steps never re-enter the handler at all
- * parallel branches → each branch runs on its own coroutine
+ * Lane = run + parallel lineage
  * ```
  *
- * A hold therefore belongs to a DURABLE identity that survives all four. That
- * identity is the run: it is in the journal, it is stable across restart, and it
- * is what Jenkins keys on too — `LockableResourcesManager` is per build, so a
- * `lock` nested inside a build re-enters rather than deadlocking against itself.
+ * A structural value, not a coordinate: it is the ordered list of branch frames
+ * the execution is inside, so nested parallel widens it without changing the
+ * type. It is NOT a thread, a coroutine, a `stepIndex`, or a lock invocation, and
+ * it is not ambient — it is derived from the operation identity that is already
+ * journalled, so it survives suspension, replay, resume, a change of thread and a
+ * change of coroutine.
  *
- * [LockAdmission.Acquired.reentrant] is the observable consequence: it is true
- * when the SAME owner already held the resource, and false for a different
- * owner — which is a genuine contention and must be denied.
+ * The law, stated once:
+ *
+ * ```text
+ * same run  + same lane   -> reentrant
+ * same run  + other lane  -> contention   (parallel branches)
+ * other run               -> contention
+ * ```
  */
 @JvmInline
-value class LockOwner(val runId: String)
+value class ExecutionLaneId(val value: String) {
+    companion object {
+        /**
+         * Derives a lane from a run and its [branchLineage] (see
+         * `OpId.parallelLineage`). Empty lineage is the linear lane.
+         *
+         * Pure: no clock, no ambient state, no I/O. Two derivations from the same
+         * inputs always produce the same lane, which is what makes it durable.
+         */
+        fun of(runId: String, branchLineage: List<Int>): ExecutionLaneId =
+            ExecutionLaneId(
+                buildString {
+                    append(runId)
+                    branchLineage.forEach { append("-b"); append(it) }
+                },
+            )
+    }
+}
+
+/**
+ * The owner of a hold: a durable execution lane, never a run, a thread, a
+ * coroutine or a Step invocation.
+ *
+ * Wrapping [ExecutionLaneId] rather than aliasing it makes the law visible at
+ * every call site: `acquire(owner, …)` says "owner of a lane", and the type
+ * cannot be constructed from a bare run id by accident.
+ */
+@JvmInline
+value class LockOwner(val lane: ExecutionLaneId)
 
 /**
  * A granted hold, and the only thing [LockCoordinator.release] accepts.

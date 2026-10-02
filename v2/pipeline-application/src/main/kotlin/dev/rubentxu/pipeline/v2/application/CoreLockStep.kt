@@ -180,13 +180,14 @@ object CoreLockStep {
     private val handler: StepHandler<CoreLockInput, CoreLockOutput> = StepHandler { input, ctx ->
         val coordinator: LockCoordinator = ctx.capabilities.get(LOCK_COORDINATION_CAPABILITY)
         val continuation: BodyContinuation = ctx.capabilities.get(BODY_CONTINUATION_CAPABILITY)
+        val lane: ExecutionLaneId = ctx.capabilities.get(EXECUTION_LANE_CAPABILITY)
 
-        // The durable owner is the RUN, not this step and not this thread. Jenkins is
-        // re-entrant per build, so a nested `lock` inside one run re-enters; a second
-        // run in the same process is a different owner and must contend. The run id
-        // is journalled, so it survives suspension, replay, resume, a change of
-        // thread and a change of coroutine — which is what a hold has to do.
-        val owner = LockOwner(ctx.runId.value)
+        // The owner is the durable EXECUTION LANE, derived by the bridge from the
+        // runtime's own operation identity. Same lane re-enters (Jenkins is
+        // re-entrant per build, so a nested `lock` must not deadlock against its own
+        // hold); a sibling `parallel` branch is a DIFFERENT lane and must contend,
+        // which is precisely the exclusion the lock exists to provide.
+        val owner = LockOwner(lane)
 
         when (val resolution = lockIntentOf(input.skipIfLocked, input.timeoutSeconds)) {
             is LockIntentResolution.Rejected -> CoreLockOutput(
@@ -321,13 +322,15 @@ object CoreLockStep {
                 descriptor = descriptor,
                 inputCodec = inputCodec,
                 outputCodec = outputCodec,
-                // Two halves of one declaration: the port that decides WHETHER to run
-                // the body, and the bound continuation that runs it. Admission is
-                // fail-closed before the handler runs when either is absent, and
+                // Two halves of one declaration plus the lane: the port that decides
+                // WHETHER to run the body, the bound continuation that runs it, and
+                // the durable lane that decides WHO owns the resulting hold. Admission
+                // is fail-closed before the handler runs when any is absent, and
                 // resolveBodyExecutionPolicy rejects the owner/capability mismatch.
                 requiredCapabilities = setOf(
                     LOCK_COORDINATION_CAPABILITY,
                     BODY_CONTINUATION_CAPABILITY,
+                    EXECUTION_LANE_CAPABILITY,
                 ),
             )
 

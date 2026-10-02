@@ -41,12 +41,16 @@ class CoreLockStepContractTest {
     // ------------------------------------------------------- capability coherence
 
     @Test
-    fun `both halves of the declaration are present`() {
+    fun `all three halves of the declaration are present`() {
         assertEquals(
-            setOf(LOCK_COORDINATION_CAPABILITY, BODY_CONTINUATION_CAPABILITY),
+            setOf(
+                LOCK_COORDINATION_CAPABILITY,
+                BODY_CONTINUATION_CAPABILITY,
+                EXECUTION_LANE_CAPABILITY,
+            ),
             definition.contract.requiredCapabilities,
-            "lock needs the port that decides WHETHER to run the body and the bound " +
-                "continuation that runs it; one without the other is not a lock",
+            "lock needs the port that decides WHETHER to run the body, the bound continuation " +
+                "that runs it, and the durable lane that decides WHO owns the resulting hold",
         )
     }
 

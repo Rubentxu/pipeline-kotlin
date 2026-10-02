@@ -2,13 +2,21 @@ package dev.rubentxu.pipeline.v2.application
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.Executors
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 /**
  * G2 contract proof for [FileLockCoordinator] (RP6-A / WU-091).
@@ -34,14 +42,18 @@ class FileLockCoordinatorTest {
 
     private fun coordinator() = FileLockCoordinator(lockRoot)
 
-    /** The durable owner used by the same-run re-entrancy rows. */
-    private val OWNER = LockOwner("run-a")
+    /** The linear lane of run-a: the owner the re-entrancy rows use. */
+    private val OWNER = LockOwner(ExecutionLaneId.of("run-a", emptyList()))
 
-    /** A different durable owner sharing the same process. */
-    private val OTHER_OWNER = LockOwner("run-b")
+    /** SAME run, DIFFERENT parallel lane — a sibling `parallel` branch. */
+    private val SIBLING_LANE_OWNER =
+        LockOwner(ExecutionLaneId.of("run-a", listOf(1)))
+
+    /** A different run entirely. */
+    private val OTHER_OWNER = LockOwner(ExecutionLaneId.of("run-b", emptyList()))
 
     /** An owner that never acquires anything. */
-    private val UNRELATED_OWNER = LockOwner("run-never-seen")
+    private val UNRELATED_OWNER = LockOwner(ExecutionLaneId.of("run-never-seen", emptyList()))
 
     // ------------------------------------------------------------- the happy path
 
@@ -166,12 +178,184 @@ class FileLockCoordinatorTest {
      * would let a second run in the same JVM walk into a resource the first run is
      * holding; re-entrant by DURABLE OWNER does not.
      */
+    /**
+     * THE law, stated in one row. Same run, different parallel lane, must
+     * CONTEND. With run-only ownership this silently re-entered instead, and the
+     * mutual exclusion the lock exists for was gone in the one case that needs it.
+     */
+    @Test
+    fun `same run but a different parallel lane contends`() = runBlocking {
+        val c = coordinator()
+        c.acquire(OWNER, "db", LockIntent.Now)
+
+        val admission = c.acquire(SIBLING_LANE_OWNER, "db", LockIntent.Now)
+
+        assertEquals(
+            LockAdmission.Denied(LockDenialReason.Held),
+            admission,
+            "branch B walked into branch A's hold; run-scoped ownership made two parallel " +
+                "branches look like one owner",
+        )
+    }
+
+    @Test
+    fun `a sibling lane does not re-enter a hold taken by another lane`() = runBlocking {
+        val c = coordinator()
+        c.acquire(OWNER, "db", LockIntent.Now)
+
+        c.acquire(SIBLING_LANE_OWNER, "db", LockIntent.Now)
+
+        assertEquals(
+            1,
+            c.depthOf(OWNER, "db"),
+            "a denied sibling must not have deepened the real holder's chain",
+        )
+    }
+
+    @Test
+    fun `a nested acquire in the SAME lane still re-enters`() = runBlocking {
+        val c = coordinator()
+
+        c.acquire(OWNER, "db", LockIntent.Now)
+        val nested = c.acquire(OWNER, "db", LockIntent.Now)
+
+        assertEquals(
+            LockAdmission.Acquired("db", reentrant = true),
+            nested,
+            "a nested lock is a deeper body in the same lane, not contention; denying it " +
+                "would deadlock the run against its own legitimate hold",
+        )
+        assertEquals(2, c.depthOf(OWNER, "db"))
+    }
+
+    /** Depth 2 -> 1 -> 0, with the resource actually freed only at 0. */
+    @Test
+    fun `release walks the depth down and frees only at zero`() = runBlocking {
+        val c = coordinator()
+        c.acquire(OWNER, "db", LockIntent.Now)
+        c.acquire(OWNER, "db", LockIntent.Now)
+
+        c.release(LockHold(OWNER, "db"))
+        assertEquals(1, c.depthOf(OWNER, "db"))
+        assertTrue(
+            c.isHeldLocally(OWNER, "db"),
+            "at depth 1 the OS lock must still be held",
+        )
+        assertEquals(
+            LockAdmission.Denied(LockDenialReason.Held),
+            c.acquire(SIBLING_LANE_OWNER, "db", LockIntent.Now),
+            "a sibling must still be locked out while depth is 1",
+        )
+
+        c.release(LockHold(OWNER, "db"))
+        assertEquals(0, c.depthOf(OWNER, "db"))
+        assertEquals(
+            LockAdmission.Acquired("db", reentrant = false),
+            c.acquire(SIBLING_LANE_OWNER, "db", LockIntent.Now),
+            "only at depth 0 is the resource actually free for another lane",
+        )
+    }
+
+    /** The whole law in one executable statement. */
+    @Test
+    fun `the three outcomes of the ownership law`() = runBlocking {
+        val c = coordinator()
+        c.acquire(OWNER, "db", LockIntent.Now)
+
+        assertTrue(
+            c.acquire(OWNER, "db", LockIntent.Now) is LockAdmission.Acquired,
+            "same run + same lane must re-enter",
+        )
+        assertTrue(
+            c.acquire(SIBLING_LANE_OWNER, "db", LockIntent.Now) is LockAdmission.Denied,
+            "same run + different lane must contend",
+        )
+        assertTrue(
+            c.acquire(OTHER_OWNER, "db", LockIntent.Now) is LockAdmission.Denied,
+            "different run must contend",
+        )
+    }
+
+    /**
+     * A cancelled acquire is EXECUTION CONTROL, not a business outcome. It must
+     * cancel the coroutine, not hand back a `Denied` value the caller could
+     * mistake for a timeout and carry on from.
+     */
+    @Test
+    fun `a cancelled acquire propagates cancellation instead of returning a denial`() = runBlocking {
+        val holder = coordinator()
+        holder.acquire(OWNER, "db", LockIntent.Now)
+        val contender = coordinator()
+
+        val waiter = launch(Dispatchers.Default) {
+            contender.acquire(OTHER_OWNER, "db", LockIntent.UpTo(120_000))
+        }
+        delay(200) // let it enter the poll loop
+        waiter.cancelAndJoin()
+
+        assertTrue(
+            waiter.isCancelled,
+            "a cancelled acquire must cancel its coroutine; a returned denial would let " +
+                "the caller treat a cancellation as a timeout and keep going",
+        )
+        assertTrue(
+            holder.isHeldLocally(OWNER, "db"),
+            "the cancelled waiter must not have disturbed the real holder",
+        )
+    }
+
+    /**
+     * The wait must SUSPEND, and the probe measures the WORST GAP between two
+     * consecutive pieces of work on the waiter's own thread.
+     *
+     * Counting ticks is NOT enough: a `Thread.sleep` loop still yields at every
+     * dispatcher hand-off, so ticks keep advancing and the test passes either way.
+     * The gap is what separates the two: with `delay` the thread is free the whole
+     * time (sub-millisecond gaps), with a blocking sleep of [POLL] every gap is at
+     * least one sleep interval wide.
+     */
+    @Test
+    fun `a contended acquire suspends instead of blocking its thread`() = runBlocking {
+        val holder = coordinator()
+        holder.acquire(OWNER, "db", LockIntent.Now)
+        val contender = coordinator()
+
+        val single = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        try {
+            val waiter = async(single) { contender.acquire(OTHER_OWNER, "db", LockIntent.UpTo(900)) }
+            var worstGapMillis = 0L
+            var ticks = 0
+            var previous = System.nanoTime()
+            while (!waiter.isCompleted && ticks < 2_000) {
+                withContext(single) {
+                    val now = System.nanoTime()
+                    val gap = (now - previous) / 1_000_000
+                    if (gap > worstGapMillis) worstGapMillis = gap
+                    previous = now
+                    ticks++
+                }
+                delay(2)
+            }
+            val outcome = waiter.await()
+
+            assertTrue(ticks > 10, "the shared thread barely ran ($ticks times); the probe is not measuring anything")
+            assertTrue(
+                worstGapMillis < 40,
+                "the waiter's thread was blocked for ${worstGapMillis}ms at its worst, so the " +
+                    "acquire is BLOCKING rather than suspending (poll interval is 50ms)",
+            )
+            assertTrue(outcome is LockAdmission.Denied, "the waiter should have timed out, got $outcome")
+        } finally {
+            single.close()
+        }
+    }
+
     @Test
     fun `a different durable owner contends even in the same process`() = runBlocking {
         val runA = coordinator()
         runA.acquire(OWNER, "staging", LockIntent.Now)
 
-        val admission = runA.acquire(LockOwner("run-b"), "staging", LockIntent.Now)
+        val admission = runA.acquire(OTHER_OWNER, "staging", LockIntent.Now)
 
         assertEquals(
             LockAdmission.Denied(LockDenialReason.Held),
@@ -189,7 +373,7 @@ class FileLockCoordinatorTest {
         val c = coordinator()
         c.acquire(OWNER, "staging", LockIntent.Now)
 
-        c.release(LockHold(LockOwner("run-b"), "staging"))
+        c.release(LockHold(OTHER_OWNER, "staging"))
 
         assertTrue(
             c.isHeldLocally(OWNER, "staging"),

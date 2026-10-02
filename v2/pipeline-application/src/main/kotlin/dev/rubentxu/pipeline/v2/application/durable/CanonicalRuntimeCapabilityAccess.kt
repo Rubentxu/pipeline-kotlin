@@ -3,6 +3,8 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.application.PLATFORM_IDENTITY_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.PlatformIdentity
 import dev.rubentxu.pipeline.v2.application.EVENT_SINK_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.EXECUTION_LANE_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.ExecutionLaneId
 import dev.rubentxu.pipeline.v2.application.SHELL_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.STAGE_IDENTITY_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.StageIdentity
@@ -122,6 +124,20 @@ open class CanonicalRuntimeCapabilityAccess(
         builder[STAGE_IDENTITY_CAPABILITY] = StageIdentity(
             name = context.stageName,
             index = context.stageIndex,
+        )
+        // RP6-A / WU-091: the durable EXECUTION LANE, derived HERE from the
+        // runtime's own operation identity — run id plus the parallel lineage the
+        // OpId already carries. Deriving it in the bridge is the point: a handler
+        // must not be handed the OpId and left to work out its own lane, and
+        // `StepHandlerContext` is deliberately not widened to carry it.
+        //
+        // `core.lock` uses this to decide re-entrancy: same lane re-enters (Jenkins
+        // is re-entrant per build, so a nested `lock` must not deadlock against its
+        // own hold), while a SIBLING `parallel` branch is a different lane and must
+        // contend — which is the exclusion the lock exists to provide.
+        builder[EXECUTION_LANE_CAPABILITY] = ExecutionLaneId.of(
+            runId = context.runId,
+            branchLineage = context.opId.parallelLineage,
         )
         // S2-A5 / G1: raw environmental observation for platform-classification handlers
         // (core.isUnix). The single remaining System.getProperty("os.name") read lives HERE,

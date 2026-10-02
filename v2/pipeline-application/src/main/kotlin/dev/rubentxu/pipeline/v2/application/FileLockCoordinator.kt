@@ -9,7 +9,11 @@ import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /**
@@ -94,75 +98,99 @@ class FileLockCoordinator(
         val PROCESS_HOLDS: ConcurrentHashMap<HoldKey, HeldLock> = ConcurrentHashMap()
     }
 
+    /**
+     * Takes the lock, suspending rather than blocking while it waits.
+     *
+     * The wait is coroutine-first: the `tryLock` syscall runs on
+     * [Dispatchers.IO] because it is a real (fast) file operation, and the WAIT
+     * itself is [delay]. A coroutine parked in `delay` retains no thread, so a
+     * pipeline holding ten contended locks retains ten nothing.
+     *
+     * Cancellation propagates as [kotlinx.coroutines.CancellationException] rather
+     * than being converted into a typed denial. Turning a cancelled coroutine into
+     * a business failure value is the mistake this deliberately avoids: the caller
+     * is being cancelled, and a `Denied(Cancelled)` value would invite it to carry
+     * on. [LockDenialReason.Cancelled] remains for a coordinator that is asked to
+     * stop while its coroutine is still live.
+     */
     override suspend fun acquire(
         owner: LockOwner,
         resource: String,
         intent: LockIntent,
-    ): LockAdmission =
-        withContext(Dispatchers.IO) {
-            val path = lockFileFor(resource)
-            val key = HoldKey(path, owner, resource)
-            val existing = PROCESS_HOLDS[key]
-            if (existing != null) {
-                // SAME durable owner already holds it: re-enter and count the depth.
-                // No OS call. A DIFFERENT owner falls through to the OS lock below
-                // and contends properly, even inside this same JVM.
-                existing.depth += 1
-                return@withContext LockAdmission.Acquired(resource, reentrant = true)
-            }
+    ): LockAdmission {
+        val path = lockFileFor(resource)
+        val key = HoldKey(path, owner, resource)
 
-            Files.createDirectories(path.parent)
-            val channel = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE)
-            val startedAt = System.nanoTime()
-
-            val fileLock: FileLock? = try {
-                takeLock(channel, intent, deadlineNanos = null)
-            } catch (e: InterruptedException) {
-                Thread.currentThread().interrupt()
-                closeQuietly(channel)
-                return@withContext LockAdmission.Denied(LockDenialReason.Cancelled)
-            }
-
-            if (fileLock == null) {
-                closeQuietly(channel)
-                val waitedMillis = (System.nanoTime() - startedAt) / 1_000_000
-                return@withContext when (intent) {
-                    // "Held" under Now is the skipIfLocked contract: not a timeout,
-                    // and the handler maps it to a SUCCESS with the body not run.
-                    LockIntent.Now -> LockAdmission.Denied(LockDenialReason.Held)
-                    else -> LockAdmission.Denied(LockDenialReason.TimedOut(waitedMillis))
-                }
-            }
-
-            PROCESS_HOLDS[key] = HeldLock(channel, fileLock, depth = 1)
-            LockAdmission.Acquired(resource, reentrant = false)
+        PROCESS_HOLDS[key]?.let { existing ->
+            // SAME durable owner already holds it: re-enter and count the depth.
+            // The transition is synchronised rather than mutex-guarded because it
+            // never suspends, so a Mutex would only add an allocation and a
+            // suspension point to protect a two-field counter. Cross-process
+            // exclusion remains the OS lock's job, not this one's.
+            synchronized(existing) { existing.depth += 1 }
+            return LockAdmission.Acquired(resource, reentrant = true)
         }
 
+        val startedAt = System.nanoTime()
+        val channel = withContext(Dispatchers.IO) {
+            Files.createDirectories(path.parent)
+            FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE)
+        }
+
+        val fileLock: FileLock? = try {
+            takeLock(channel, intent, startedAt)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            closeQuietly(channel)
+            throw e
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            closeQuietly(channel)
+            return LockAdmission.Denied(LockDenialReason.Cancelled)
+        }
+
+        if (fileLock == null) {
+            closeQuietly(channel)
+            val waitedMillis = (System.nanoTime() - startedAt) / 1_000_000
+            return when (intent) {
+                // "Held" under Now is the skipIfLocked contract: not a timeout,
+                // and the handler maps it to a SUCCESS with the body not run.
+                LockIntent.Now -> LockAdmission.Denied(LockDenialReason.Held)
+                else -> LockAdmission.Denied(LockDenialReason.TimedOut(waitedMillis))
+            }
+        }
+
+        PROCESS_HOLDS[key] = HeldLock(channel, fileLock, depth = 1)
+        return LockAdmission.Acquired(resource, reentrant = false)
+    }
+
     /**
-     * Takes the OS lock according to [intent].
+     * Takes the OS lock according to [intent], SUSPENDING while it waits.
      *
      * There is NO timed `tryLock` on this JDK's [FileChannel] (only `tryLock()` and
      * the positional `tryLock(long, long, boolean)`), so a bounded wait is a poll
-     * loop. That is not only a workaround: the loop is the only place that can
-     * observe thread interruption, which is how a cancelled run stops waiting
-     * instead of sitting in an uninterruptible `lock()`.
-     *
-     * [deadlineNanos] is `null` for an unbounded wait.
+     * loop — but the wait between attempts is [delay], not [Thread.sleep], so a
+     * waiting acquire holds no thread at all.
      */
-    private fun takeLock(channel: FileChannel, intent: LockIntent, deadlineNanos: Long?): FileLock? =
-        when (intent) {
-            LockIntent.Now -> tryOnce(channel) { it.tryLock() }
-            is LockIntent.UpTo -> pollUntilLocked(channel, intent.millis * 1_000_000L)
-            LockIntent.Forever -> pollUntilLocked(channel, deadlineNanos)
-        }
+    private suspend fun takeLock(
+        channel: FileChannel,
+        intent: LockIntent,
+        startedAtNanos: Long,
+    ): FileLock? = when (intent) {
+        LockIntent.Now -> withContext(Dispatchers.IO) { tryOnce(channel) { it.tryLock() } }
+        is LockIntent.UpTo ->
+            pollUntilLocked(channel, startedAtNanos + intent.millis * 1_000_000L)
+        LockIntent.Forever -> pollUntilLocked(channel, deadlineNanos = null)
+    }
 
-    private fun pollUntilLocked(channel: FileChannel, budgetNanos: Long?): FileLock? {
-        val deadline = budgetNanos?.let { System.nanoTime() + it }
+    private suspend fun pollUntilLocked(channel: FileChannel, deadlineNanos: Long?): FileLock? {
         while (true) {
-            if (Thread.currentThread().isInterrupted) throw InterruptedException("lock wait interrupted")
-            tryOnce(channel) { it.tryLock() }?.let { return it }
-            if (deadline != null && System.nanoTime() >= deadline) return null
-            Thread.sleep(POLL_INTERVAL_MILLIS)
+            // Cancellation is checked BEFORE each attempt, so a cancelled acquire
+            // stops promptly instead of finishing the current sleep interval.
+            currentCoroutineContext().ensureActive()
+            val acquired = withContext(Dispatchers.IO) { tryOnce(channel) { it.tryLock() } }
+            if (acquired != null) return acquired
+            if (deadlineNanos != null && System.nanoTime() >= deadlineNanos) return null
+            delay(POLL_INTERVAL_MILLIS)
         }
     }
 

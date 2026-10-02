@@ -25,3 +25,24 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * missing the continuation capability, so the pairing is checked, not assumed.
  */
 val LOCK_COORDINATION_CAPABILITY: StepCapability = StepCapability("lockCoordination")
+
+/**
+ * Capability key under which the engine supplies the current
+ * [ExecutionLaneId] (RP6-A / WU-091).
+ *
+ * ## Why this is a capability and not a wider `StepHandlerContext`
+ *
+ * The lane is needed by `core.lock` to decide re-entrancy, and nothing else needs
+ * it today. Widening `StepHandlerContext` would push a parallel-lineage fact onto
+ * every Step handler in the system to serve one of them, and would make the
+ * context a second source of identity beside the operation id it is derived from.
+ *
+ * The narrow seam keeps the direction: the handler asks for the lane, the bridge
+ * derives it from the runtime's own operation identity, and a Step that does not
+ * declare this capability cannot observe it.
+ *
+ * `core.lock` declares this TOGETHER WITH
+ * [dev.rubentxu.pipeline.v2.domain.step.BODY_CONTINUATION_CAPABILITY] and
+ * [LOCK_COORDINATION_CAPABILITY]; all three are fail-closed at admission.
+ */
+val EXECUTION_LANE_CAPABILITY: StepCapability = StepCapability("executionLane")

@@ -1450,10 +1450,9 @@ class CanonicalDurableRunCoordinator(
     )
 
     /**
-     * WU-G5R.3 / LFC-5.3: legacy waitUntil polling loop used when no
-     * [WaitUntilControlJournal] is bound. WU-LPR-302 Phase 3 keeps this loop
-     * bit-equivalent for the no-journal case; the durable loop is now owned by
-     * [dev.rubentxu.pipeline.v2.application.durable.waituntil.WaitUntilEngine].
+     * Dispatches one body child through the canonical spine and projects its outcome.
+     * This is the reference the body execution engine is handed, so every block Step
+     * re-enters the engine through exactly this one call site.
      */
     private suspend fun dispatchChild(
         child: StepNode,
@@ -1474,32 +1473,6 @@ class CanonicalDurableRunCoordinator(
         bodyPath,
         executionContext,
     ).outcome
-
-    private suspend fun executeWaitUntilBodyInline(
-        scope: BlockShellScope.WaitUntilScope,
-        block: BlockStepNode,
-        runId: RunId,
-        stageName: String,
-        stageIndex: Int,
-        stepIndex: Int,
-        childShOptions: ShOptions,
-        parentBodyPath: List<BlockSegment>,
-        executionContext: ExecutionContext,
-    ): StepOutcome = bodyExecutionEngine.executeWaitUntilInline(
-        scope = scope,
-        block = block,
-        runId = runId,
-        stageName = stageName,
-        stageIndex = stageIndex,
-        stepIndex = stepIndex,
-        childShOptions = childShOptions,
-        parentBodyPath = parentBodyPath,
-        executionContext = executionContext,
-        dispatcher = ::dispatchChild,
-    )
-
-
-
 
     /**
      * EM-7/LFC-5.3 (INC-022), reworked by W1d — a credential lease as a body PREAMBLE.

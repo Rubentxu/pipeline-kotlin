@@ -354,6 +354,12 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 is UnixDetected -> event.copy(sequence = assignedSequence)
                 is MilestoneReached -> event.copy(sequence = assignedSequence)
                 is MilestoneAborted -> event.copy(sequence = assignedSequence)
+                // RP6-A / WU-091 §6 lock events
+                is LockRequested -> event.copy(sequence = assignedSequence)
+                is LockAcquired -> event.copy(sequence = assignedSequence)
+                is LockReleased -> event.copy(sequence = assignedSequence)
+                is LockSkipped -> event.copy(sequence = assignedSequence)
+                is LockAcquireFailed -> event.copy(sequence = assignedSequence)
                 is TimeoutTriggered -> event.copy(sequence = assignedSequence)
                 is TimestampsEntered -> event.copy(sequence = assignedSequence)
                 is TimestampsExited -> event.copy(sequence = assignedSequence)

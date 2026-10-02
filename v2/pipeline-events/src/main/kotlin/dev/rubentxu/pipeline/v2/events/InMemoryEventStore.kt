@@ -89,6 +89,12 @@ class InMemoryEventStore : EventSink {
             // ML-R9 T-09 milestone events
             is MilestoneReached -> event.copy(sequence = assignedSequence)
             is MilestoneAborted -> event.copy(sequence = assignedSequence)
+            // RP6-A / WU-091 §6 lock events
+            is LockRequested -> event.copy(sequence = assignedSequence)
+            is LockAcquired -> event.copy(sequence = assignedSequence)
+            is LockReleased -> event.copy(sequence = assignedSequence)
+            is LockSkipped -> event.copy(sequence = assignedSequence)
+            is LockAcquireFailed -> event.copy(sequence = assignedSequence)
             // ML-R9 T-10 timeout events
             is TimeoutTriggered -> event.copy(sequence = assignedSequence)
             // ML-R9 T-08 timestamps decorator events

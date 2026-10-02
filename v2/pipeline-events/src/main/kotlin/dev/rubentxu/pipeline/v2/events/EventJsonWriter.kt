@@ -560,6 +560,35 @@ internal object EventJsonWriter {
                 sb.append(",\"reason\":")
                 sb.append(EventJsonWriter.jsonString(event.reason))
             }
+            // RP6-A / WU-091 §6 lock events
+            is LockRequested -> {
+                sb.append(",\"resource\":")
+                sb.append(EventJsonWriter.jsonString(event.resource))
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason ?: ""))
+                sb.append(",\"skipIfLocked\":")
+                sb.append(event.skipIfLocked)
+            }
+            is LockAcquired -> {
+                sb.append(",\"resource\":")
+                sb.append(EventJsonWriter.jsonString(event.resource))
+            }
+            is LockReleased -> {
+                sb.append(",\"resource\":")
+                sb.append(EventJsonWriter.jsonString(event.resource))
+            }
+            is LockSkipped -> {
+                sb.append(",\"resource\":")
+                sb.append(EventJsonWriter.jsonString(event.resource))
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
+            is LockAcquireFailed -> {
+                sb.append(",\"resource\":")
+                sb.append(EventJsonWriter.jsonString(event.resource))
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
             is TimeoutTriggered -> {
                 sb.append(",\"stageOrStep\":")
                 sb.append(EventJsonWriter.jsonString(event.stageOrStep))

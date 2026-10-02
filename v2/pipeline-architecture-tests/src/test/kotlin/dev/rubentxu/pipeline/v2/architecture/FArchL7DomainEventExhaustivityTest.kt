@@ -90,9 +90,14 @@ class FArchL7DomainEventExhaustivityTest {
      * 54. StageSkipped (S2-A — a stage whose gate verdict was a decided negative)
      * 55. PostConditionSelected (S2-B — the post block selection decision)
      * 56. GateEvaluated (S2-C — the composed gate verdict, emitted even when satisfied)
+     * 57. LockRequested (RP6-A / WU-091 §6 — core.lock lifecycle observability)
+     * 58. LockAcquired (RP6-A / WU-091 §6)
+     * 59. LockReleased (RP6-A / WU-091 §6 — release at every terminal)
+     * 60. LockSkipped (RP6-A / WU-091 §6 — skipIfLocked with the resource held)
+     * 61. LockAcquireFailed (RP6-A / WU-091 §6 — timeout or cancellation)
      */
     @Test
-    fun `domain_event_sealed_hierarchy_has_51_variants`() {
+    fun `domain_event_sealed_hierarchy_has_61_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
@@ -100,7 +105,9 @@ class FArchL7DomainEventExhaustivityTest {
         // GateEvaluated (S2-C). S2-C missed this pin: it moved the sibling pin in
         // DomainEventRoundTripTest but not this one, so the exhaustivity fitness
         // stayed red until the L5 closure gate ran on the committed tree.
-        val expectedCount = 56
+        // +5 through RP6-A / WU-091 §6: the core.lock lifecycle, added when core.lock
+        // reached production routing (every step MUST emit its own typed events).
+        val expectedCount = 61
 
         assertEquals(
             expectedCount,

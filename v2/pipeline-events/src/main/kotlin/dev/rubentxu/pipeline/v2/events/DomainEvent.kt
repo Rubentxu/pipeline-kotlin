@@ -1192,3 +1192,65 @@ data class PostConditionSelected(
 ) : DomainEvent {
     override val kind: String get() = "PostConditionSelected"
 }
+
+/**
+ * RP6-A / WU-091 §6 — the five `core.lock` events (SPEC_WU091_LOCK.md §6,
+ * `Dir*`/`Milestone*` convention, MilestoneReached shape). Emission authority:
+ * the `core.lock` handler, through [dev.rubentxu.pipeline.v2.domain.step.EVENT_SINK_CAPABILITY].
+ * No sensitive payload: `resource` is a pipeline-author-declared resource name.
+ */
+data class LockRequested(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val resource: String,
+    val reason: String?,
+    val skipIfLocked: Boolean,
+) : DomainEvent {
+    override val kind: String get() = "LockRequested"
+}
+
+data class LockAcquired(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val resource: String,
+) : DomainEvent {
+    override val kind: String get() = "LockAcquired"
+}
+
+data class LockReleased(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val resource: String,
+) : DomainEvent {
+    override val kind: String get() = "LockReleased"
+}
+
+/** `skipIfLocked` with the resource held: nothing ran, the step succeeded. */
+data class LockSkipped(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val resource: String,
+    val reason: String,
+) : DomainEvent {
+    override val kind: String get() = "LockSkipped"
+}
+
+/** The resource was not obtained: timeout or cancellation while waiting. */
+data class LockAcquireFailed(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val resource: String,
+    val reason: String,
+) : DomainEvent {
+    override val kind: String get() = "LockAcquireFailed"
+}

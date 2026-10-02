@@ -33,6 +33,11 @@ import dev.rubentxu.pipeline.v2.events.GitPollChanged
 import dev.rubentxu.pipeline.v2.events.HtmlReportFailed
 import dev.rubentxu.pipeline.v2.events.HtmlReportPublished
 import dev.rubentxu.pipeline.v2.events.HtmlReportSkipped
+import dev.rubentxu.pipeline.v2.events.LockAcquireFailed
+import dev.rubentxu.pipeline.v2.events.LockAcquired
+import dev.rubentxu.pipeline.v2.events.LockReleased
+import dev.rubentxu.pipeline.v2.events.LockRequested
+import dev.rubentxu.pipeline.v2.events.LockSkipped
 import dev.rubentxu.pipeline.v2.events.MilestoneAborted
 import dev.rubentxu.pipeline.v2.events.MilestoneReached
 import dev.rubentxu.pipeline.v2.events.ParallelBranchFinished
@@ -212,6 +217,13 @@ object EnvelopeProjector {
         is UnixDetected,
         is MilestoneReached,
         is MilestoneAborted,
+        // RP6-A / WU-091 §6: lock lifecycle is run-scoped (no stage/step index in
+        // the event payload; the step events carry the position).
+        is LockRequested,
+        is LockAcquired,
+        is LockReleased,
+        is LockSkipped,
+        is LockAcquireFailed,
         is TimeoutTriggered,
         is TimestampsEntered,
         is TimestampsExited,

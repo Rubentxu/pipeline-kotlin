@@ -1,5 +1,10 @@
 package dev.rubentxu.pipeline.v2.events
 
+import dev.rubentxu.pipeline.v2.events.LockAcquireFailed
+import dev.rubentxu.pipeline.v2.events.LockAcquired
+import dev.rubentxu.pipeline.v2.events.LockReleased
+import dev.rubentxu.pipeline.v2.events.LockRequested
+import dev.rubentxu.pipeline.v2.events.LockSkipped
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -325,18 +330,53 @@ class DomainEventRoundTripTest {
     }
 
     @Test
-    fun `sealed hierarchy contains 56 variants`() {
+    fun `sealed hierarchy contains 61 variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
         val count = sealedSubclasses.size
         assertEquals(
-            56,
+            61,
             count,
-            "DomainEvent sealed hierarchy must have exactly 56 variants " +
+            "DomainEvent sealed hierarchy must have exactly 61 variants " +
                 "(51 + DirectiveAdmitted/DirectiveDenied added in S1-C directive seam, " +
                 "+ StageSkipped added in S2-A so a gated-off stage is observable, " +
                 "+ PostConditionSelected added in S2-B so the post decision is observable, " +
-                "+ GateEvaluated added in S2-C so a gate verdict is observable even when satisfied). " +
+                "+ GateEvaluated added in S2-C so a gate verdict is observable even when satisfied, " +
+                "+ LockRequested/LockAcquired/LockReleased/LockSkipped/LockAcquireFailed added in " +
+                "RP6-A WU-091 §6 so the lock lifecycle is observable). " +
                 "Found: ${sealedSubclasses.map { it.simpleName }}",
         )
+    }
+
+    @Test
+    fun `lock events round-trip through the JSON log`() {
+        // RP6-A / WU-091 §6: the five lock kinds survive the durable wire.
+        val events: List<DomainEvent> = listOf(
+            LockRequested(
+                eventId = "e-lock-1", runId = "r1", sequence = 1L,
+                occurredAt = Instant.parse("2026-10-02T12:00:00Z"),
+                resource = "staging", reason = "deploy window", skipIfLocked = false,
+            ),
+            LockAcquired(
+                eventId = "e-lock-2", runId = "r1", sequence = 2L,
+                occurredAt = Instant.parse("2026-10-02T12:00:01Z"),
+                resource = "staging",
+            ),
+            LockReleased(
+                eventId = "e-lock-3", runId = "r1", sequence = 3L,
+                occurredAt = Instant.parse("2026-10-02T12:00:09Z"),
+                resource = "staging",
+            ),
+            LockSkipped(
+                eventId = "e-lock-4", runId = "r2", sequence = 1L,
+                occurredAt = Instant.parse("2026-10-02T12:00:02Z"),
+                resource = "staging", reason = "held with skipIfLocked",
+            ),
+            LockAcquireFailed(
+                eventId = "e-lock-5", runId = "r3", sequence = 1L,
+                occurredAt = Instant.parse("2026-10-02T12:00:03Z"),
+                resource = "db", reason = "cancelled while waiting",
+            ),
+        )
+        assertEquals(events, JsonEventLog.decode(JsonEventLog.encode(events)))
     }
 }

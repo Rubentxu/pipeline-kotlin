@@ -28,6 +28,11 @@ import dev.rubentxu.pipeline.v2.events.GitPollChanged
 import dev.rubentxu.pipeline.v2.events.HtmlReportFailed
 import dev.rubentxu.pipeline.v2.events.HtmlReportPublished
 import dev.rubentxu.pipeline.v2.events.HtmlReportSkipped
+import dev.rubentxu.pipeline.v2.events.LockAcquireFailed
+import dev.rubentxu.pipeline.v2.events.LockAcquired
+import dev.rubentxu.pipeline.v2.events.LockReleased
+import dev.rubentxu.pipeline.v2.events.LockRequested
+import dev.rubentxu.pipeline.v2.events.LockSkipped
 import dev.rubentxu.pipeline.v2.events.MilestoneAborted
 import dev.rubentxu.pipeline.v2.events.MilestoneReached
 import dev.rubentxu.pipeline.v2.events.ParallelBranchFinished
@@ -91,6 +96,12 @@ internal object SequenceAssigner {
         is GitPollChanged -> event.copy(sequence = sequence)
         is MilestoneAborted -> event.copy(sequence = sequence)
         is MilestoneReached -> event.copy(sequence = sequence)
+        // RP6-A / WU-091 §6 lock events
+        is LockRequested -> event.copy(sequence = sequence)
+        is LockAcquired -> event.copy(sequence = sequence)
+        is LockReleased -> event.copy(sequence = sequence)
+        is LockSkipped -> event.copy(sequence = sequence)
+        is LockAcquireFailed -> event.copy(sequence = sequence)
         is ParallelBranchFinished -> event.copy(sequence = sequence)
         is ParallelBranchStarted -> event.copy(sequence = sequence)
         is PwdResolved -> event.copy(sequence = sequence)

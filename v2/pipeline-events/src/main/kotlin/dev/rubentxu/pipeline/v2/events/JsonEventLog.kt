@@ -797,6 +797,59 @@ object JsonEventLog {
                     reason = reason,
                 )
             }
+            // RP6-A / WU-091 §6 lock events
+            "LockRequested" -> {
+                val resource = EventJsonFields.stringField(s, "resource") ?: ""
+                val reason = EventJsonFields.stringField(s, "reason")?.takeIf { it.isNotEmpty() }
+                val skipIfLocked = EventJsonFields.boolField(s, "skipIfLocked") ?: false
+                LockRequested(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    resource = resource,
+                    reason = reason,
+                    skipIfLocked = skipIfLocked,
+                )
+            }
+            "LockAcquired" -> LockAcquired(
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+                resource = EventJsonFields.stringField(s, "resource") ?: "",
+            )
+            "LockReleased" -> LockReleased(
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+                resource = EventJsonFields.stringField(s, "resource") ?: "",
+            )
+            "LockSkipped" -> {
+                val resource = EventJsonFields.stringField(s, "resource") ?: ""
+                val reason = EventJsonFields.stringField(s, "reason") ?: ""
+                LockSkipped(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    resource = resource,
+                    reason = reason,
+                )
+            }
+            "LockAcquireFailed" -> {
+                val resource = EventJsonFields.stringField(s, "resource") ?: ""
+                val reason = EventJsonFields.stringField(s, "reason") ?: ""
+                LockAcquireFailed(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    resource = resource,
+                    reason = reason,
+                )
+            }
             "TimeoutTriggered" -> {
                 val stageOrStep = EventJsonFields.stringField(s, "stageOrStep") ?: ""
                 val action = EventJsonFields.stringField(s, "action") ?: "interrupt"

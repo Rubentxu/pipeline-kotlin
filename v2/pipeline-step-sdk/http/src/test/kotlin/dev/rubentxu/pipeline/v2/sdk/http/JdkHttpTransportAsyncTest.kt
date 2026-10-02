@@ -62,6 +62,44 @@ class JdkHttpTransportAsyncTest {
             exchange.sendResponseHeaders(200, body.size.toLong())
             exchange.responseBody.use { it.write(body) }
         }
+        // H4-C1: headers arrive, then the body stops. `sendResponseHeaders` with a
+        // positive length declares a fixed Content-Length, so writing 64 KiB of a
+        // declared 1 MiB and closing is exactly "the server answered 200 and then
+        // went away mid-body" — the case `Unreachable` cannot describe.
+        server.createContext("/drop-mid-body") { exchange ->
+            exchange.sendResponseHeaders(200, 1_048_576L)
+            exchange.responseBody.use {
+                it.write(ByteArray(64 * 1_024) { FILLER })
+                it.flush()
+            }
+        }
+        // H4-C2: a body that keeps arriving, so there is a window in which to cancel.
+        server.createContext("/slow-body") { exchange ->
+            exchange.sendResponseHeaders(200, 0)
+            exchange.responseBody.use { out ->
+                repeat(400) {
+                    out.write(ByteArray(8 * 1_024) { FILLER })
+                    out.flush()
+                    Thread.sleep(25)
+                }
+            }
+        }
+        // H4-C3: a body larger than the declared cap, over a real socket.
+        server.createContext("/large") { exchange ->
+            val size = exchange.requestURI.query.orEmpty()
+                .substringAfter("bytes=", "0").toLongOrNull() ?: 0L
+            val head = minOf(size, 64L * 1_024)
+            exchange.sendResponseHeaders(200, size)
+            exchange.responseBody.use { out ->
+                out.write(ByteArray(head.toInt()) { FILLER })
+                var sent = head
+                while (sent < size) {
+                    val chunk = minOf(64L * 1_024, size - sent).toInt()
+                    out.write(ByteArray(chunk) { FILLER })
+                    sent += chunk
+                }
+            }
+        }
         server.executor = java.util.concurrent.Executors.newFixedThreadPool(4)
         server.start()
         baseUrl = "http://127.0.0.1:${server.address.port}"
@@ -201,6 +239,116 @@ class JdkHttpTransportAsyncTest {
                 async { transport.send(request("$baseUrl/ok")) },
                 async { transport.send(request("$baseUrl/ok")) },
             ).awaitAll()
+        }
+    }
+
+    // ── H4 over a real socket ──────────────────────────────────────────────
+
+    /**
+     * H4-C1 — a body that stops after the headers is NOT an unreachable host.
+     *
+     * The server was demonstrably reached: it returned a status. Folding this into
+     * `Unreachable` would tell an operator "this host does not exist" about a host
+     * that just answered, and would throw away the one number that explains the
+     * incident — how many bytes actually arrived.
+     */
+    @Test
+    fun `H4-C1 a body cut short after the headers is ResponseInterrupted, not Unreachable`() = runBlocking {
+        val result = JdkHttpTransport().send(request("$baseUrl/drop-mid-body", timeoutMs = 10_000))
+
+        val outcome = result.outcome
+        assertTrue(
+            outcome is HttpSendOutcome.ResponseInterrupted,
+            "a 200 whose body stopped is ResponseInterrupted; got $outcome. Reporting it as " +
+                "Unreachable would blame the host for something it already answered.",
+        )
+        outcome as HttpSendOutcome.ResponseInterrupted
+        assertTrue(
+            outcome.bytesReceived in 1..1_048_576,
+            "bytesReceived must report what actually arrived (got ${outcome.bytesReceived}); " +
+                "without it a body cut at 0 bytes and one cut at 100 KB look identical.",
+        )
+        assertTrue(
+            outcome.bytesReceived < 1_048_576,
+            "the server declared 1 MiB and sent less; ${outcome.bytesReceived} is the fact that " +
+                "distinguishes this from a complete response.",
+        )
+    }
+
+    /**
+     * H4-C2 — cancellation reaches a body that is still streaming.
+     *
+     * C1 proved cancellation works before the response exists. This is the harder
+     * half: the headers are long since received and the subscriber is mid-body, which
+     * is the window where a transport is most likely to keep reading.
+     */
+    @Test
+    fun `H4-C2 cancelling mid-body produces NO outcome and does not hang`() = runBlocking {
+        val transport = JdkHttpTransport()
+
+        var produced: HttpTransportResult? = null
+        val job = launch(Dispatchers.Default) {
+            produced = transport.send(request("$baseUrl/slow-body", timeoutMs = 30_000))
+        }
+
+        // Long enough for the headers and several body batches to have arrived.
+        delay(400)
+        job.cancelAndJoin()
+
+        assertTrue(
+            produced == null,
+            "a send cancelled mid-body must produce NO result at all. Got $produced — a " +
+                "truncated body reported as a completed request is the worst possible answer.",
+        )
+    }
+
+    /**
+     * H4-C3 — the bounded prefix, over a real socket, with the digest of the WHOLE body.
+     *
+     * The unit canary proves the subscriber's arithmetic. This proves the JDK actually
+     * routes the response through it — a subscriber that is correct but never wired in
+     * is a subscriber that has changed nothing.
+     */
+    @Test
+    fun `H4-C3 a body over the cap is truncated, fully counted and fully digested`() = runBlocking {
+        val size = 4L * 1_024 * 1_024
+        val cap = 1_024 * 1_024
+
+        val result = JdkHttpTransport().send(
+            request("$baseUrl/large?bytes=$size", timeoutMs = 30_000).copy(maxBodyBytes = cap.toLong()),
+        )
+
+        val outcome = result.outcome
+        assertTrue(outcome is HttpSendOutcome.Answered, "expected an answered response, got $outcome")
+        outcome as HttpSendOutcome.Answered
+        assertTrue(outcome.bodyTruncated, "4 MiB against a 1 MiB cap is a truncation")
+        assertEquals(
+            size,
+            outcome.bodySizeBytes,
+            "the counter must see all 4 MiB, not the 1 MiB that was kept",
+        )
+        assertEquals(cap, outcome.body.length, "exactly the cap is projected")
+        assertEquals(
+            digestOfRepeatedByte(FILLER, size),
+            outcome.bodySha256,
+            "the digest must cover the complete 4 MiB body, not the retained prefix",
+        )
+    }
+
+    private companion object {
+        const val FILLER: Byte = 0x78
+
+        /** Independent of the transport: hashes [count] copies of [byte] with the JDK. */
+        fun digestOfRepeatedByte(byte: Byte, count: Long): String {
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            val block = ByteArray(64 * 1_024) { byte }
+            var written = 0L
+            while (written < count) {
+                val size = minOf(block.size.toLong(), count - written).toInt()
+                digest.update(block, 0, size)
+                written += size
+            }
+            return digest.digest().joinToString("") { "%02x".format(it) }
         }
     }
 }

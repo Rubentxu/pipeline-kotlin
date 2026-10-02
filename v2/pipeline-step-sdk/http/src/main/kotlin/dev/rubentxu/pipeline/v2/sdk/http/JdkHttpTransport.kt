@@ -7,10 +7,9 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.net.http.HttpTimeoutException
 import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
-import java.security.NoSuchAlgorithmException
 import java.time.Duration
 import java.util.Base64
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.future.await
 
 /**
@@ -69,25 +68,48 @@ class JdkHttpTransport(
 
     override suspend fun send(request: HttpSendRequest): HttpTransportResult {
         val startedAt = System.nanoTime()
+        // H4: the body is consumed by a subscriber that keeps a bounded prefix and
+        // digests everything, so `maxBodyBytes` bounds MEMORY rather than arriving
+        // after the fact to truncate a body that was already fully in the heap.
+        val subscriber = BoundedBodySubscriber(materializationLimitOf(request.maxBodyBytes))
         // Only the two REAL transport failures are caught. CancellationException is
         // deliberately NOT in scope: it is the runtime's decision, not a fact about
         // the network, and swallowing it here is how a stopped run reports that the
         // world was at fault.
         val outcome: HttpSendOutcome = try {
-            executeAsync(request)
+            executeAsync(request, subscriber)
         } catch (e: HttpTimeoutException) {
             HttpSendOutcome.Expired(elapsedMs(startedAt))
         } catch (e: IOException) {
+            // ONE classification point, asked a FACT rather than guessed from which
+            // call threw. The JDK may surface a mid-body failure through the OUTER
+            // response future, so "it came from the body await" is not a reliable
+            // discriminator — but "the body subscription was established" is, and it
+            // is the difference between a host that never answered and a host that
+            // answered and then stopped.
+            if (subscriber.bodyStarted) {
+                HttpSendOutcome.ResponseInterrupted(
+                    reason = describe(e),
+                    bytesReceived = subscriber.bytesReceived,
+                )
+            } else {
                 // DNS failure, refused connection, reset, TLS handshake failure. They
                 // are one fact to a caller — the host could not be reached — and the
                 // cause is kept as the diagnostic rather than as a case, because none
                 // of them is something the caller can act on differently.
-                HttpSendOutcome.Unreachable(e.javaClass.simpleName + ": " + (e.message ?: "no detail"))
+                HttpSendOutcome.Unreachable(describe(e))
             }
+        }
         return HttpTransportResult(outcome = outcome, durationMs = elapsedMs(startedAt))
     }
 
-    private suspend fun executeAsync(request: HttpSendRequest): HttpSendOutcome {
+    private fun describe(e: IOException): String =
+        e.javaClass.simpleName + ": " + (e.message ?: "no detail")
+
+    private suspend fun executeAsync(
+        request: HttpSendRequest,
+        subscriber: BoundedBodySubscriber,
+    ): HttpSendOutcome {
         val builder = HttpRequest.newBuilder(URI.create(request.url))
         request.timeoutMs?.let { builder.timeout(Duration.ofMillis(it)) }
         request.headers.forEach { builder.header(it.name.value, it.value.value) }
@@ -114,25 +136,33 @@ class JdkHttpTransport(
             builder.method(javaMethod, HttpRequest.BodyPublishers.noBody())
         }
 
-        // H3.1: the only suspension point. `await()` parks THIS coroutine, not a
-        // thread, and cancels the underlying future if the coroutine is cancelled
-        // — which is the whole reason the send is asynchronous rather than wrapped
-        // in withContext(Dispatchers.IO).
-        val response: HttpResponse<ByteArray> = client
-            .sendAsync(builder.build(), HttpResponse.BodyHandlers.ofByteArray())
+        // H3.1: the suspension point covering CONNECT, SEND and HEADERS. `await()`
+        // parks THIS coroutine, not a thread, and cancels the underlying future if
+        // the coroutine is cancelled.
+        //
+        // `fromSubscriber` (there is no `ofSubscriber`) yields a `BodyHandler<Void>`:
+        // the returned response carries NO body and the body arrives on the
+        // subscriber's own completion stage. The `Void` is not a missing feature —
+        // it is the JDK saying the body belongs to the subscriber, which is the
+        // whole reason the response can be bounded in memory.
+        val response: HttpResponse<Void> = client
+            .sendAsync(builder.build(), HttpResponse.BodyHandlers.fromSubscriber(subscriber))
             .await()
-        val raw = response.body()
 
-        // The digest is of the COMPLETE body, even when the materialised prefix is
-        // shorter. A truncated response whose digest is of the prefix cannot be told
-        // apart from a genuinely short one, and the identity of what the server
-        // actually said is exactly the thing worth keeping.
-        val digest = sha256Hex(raw)
-        val prefix = if (raw.size > request.maxBodyBytes) {
-            raw.copyOf(request.maxBodyBytes.toInt())
-        } else {
-            raw
+        // The response object is complete at the HEADERS; the body follows on the
+        // subscriber's stage. A mid-body failure surfaces HERE or through the outer
+        // future — the JDK chooses — and `send` classifies it from `bodyStarted`
+        // rather than from which of the two threw.
+        val body: BoundedBody = try {
+            subscriber.getBody().toCompletableFuture().await()
+        } catch (e: CancellationException) {
+            // Not an HTTP fact. Cancel the exchange explicitly rather than trusting
+            // that cancelling the stage reached the socket, then let it propagate:
+            // a stopped run must never be reported as a broken network.
+            subscriber.cancel()
+            throw e
         }
+
         // `map()` flattens the multi-valued header map, which is what a header LIST
         // means: HTTP allows a name to repeat, and `Set-Cookie` relies on it. Iterating
         // the entrySet instead would keep only the last value of each name.
@@ -142,30 +172,54 @@ class JdkHttpTransport(
         return HttpSendOutcome.Answered(
             status = response.statusCode(),
             headers = headers,
-            body = String(prefix, StandardCharsets.UTF_8),
-            bodySha256 = digest,
-            bodySizeBytes = raw.size.toLong(),
-            bodyTruncated = raw.size > request.maxBodyBytes,
+            body = String(body.prefix, StandardCharsets.UTF_8),
+            bodySha256 = body.sha256,
+            bodySizeBytes = body.totalBytes,
+            bodyTruncated = body.truncated,
         )
     }
 
     /**
-     * Deliberately no `redirect` policy: `HttpClient.Redirect.NORMAL` follows a 302
-     * and the `Authorization` header goes with it. A credential minted for one host
-     * leaking to another is a worse failure than a 302 the author has to notice, so
-     * redirects are not followed and the status is reported as it arrived.
+     * Narrows the declared cap to what a JVM array can actually be.
+     *
+     * [HttpSendRequest.maxBodyBytes] is `Long` because that is the honest type for a
+     * body size, and a `ByteArray` is not. Narrowing with `.toInt()` would turn a cap
+     * above `Int.MAX_VALUE` into a negative one and truncate every response to
+     * nothing — a silent lie about a limit, which is worse than a loud failure.
+     *
+     * `require` rather than a typed rejection because this is a PROGRAMMER defect
+     * today: `toSendRequest()` is the only producer and it supplies
+     * [HttpDefaults.MAX_RESPONSE_BYTES]. The moment an author can set the cap, the
+     * check belongs in `httpIntentOf` as an [HttpRejection], where a wrong value is
+     * a USER fact instead of a crash.
+     */
+    private fun materializationLimitOf(maxBodyBytes: Long): Int {
+        require(maxBodyBytes in 0..MAX_MATERIALIZED_BYTES) {
+            "maxBodyBytes must be between 0 and $MAX_MATERIALIZED_BYTES, got $maxBodyBytes. " +
+                "A cap a JVM array cannot hold would silently truncate every response."
+        }
+        return maxBodyBytes.toInt()
+    }
+
+    /**
+     * Wall time of the whole exchange, body included.
+     *
+     * Measured here because the transport is the only party that can: a handler
+     * timing its own I/O would be timing its own overhead, and a port that took a
+     * `Clock` would be a clock the caller has to keep in step. This is the same split
+     * `ShExecution` uses for its `durationMs`.
      */
     private fun elapsedMs(startedAt: Long): Long =
         (System.nanoTime() - startedAt) / 1_000_000
 
-    private fun sha256Hex(bytes: ByteArray): String = try {
-        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-    } catch (e: NoSuchAlgorithmException) {
-        throw IllegalStateException("SHA-256 is required by the platform", e)
-    }
-
     companion object {
         const val DEFAULT_CONNECT_TIMEOUT_MS: Long = 10_000
+
+        /**
+         * The largest prefix a JVM array can hold. `ByteArray` is `Int`-indexed, so
+         * this is a property of the platform rather than a limit anybody chose.
+         */
+        private const val MAX_MATERIALIZED_BYTES: Long = Int.MAX_VALUE.toLong()
 
         /**
          * Deliberately `NEVER` redirects: `NORMAL` would follow a 302 and take the

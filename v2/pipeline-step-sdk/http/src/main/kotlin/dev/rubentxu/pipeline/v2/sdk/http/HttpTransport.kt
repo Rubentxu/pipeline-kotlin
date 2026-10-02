@@ -61,7 +61,30 @@ sealed interface HttpSendOutcome {
     ) : HttpSendOutcome
 
     data class Unreachable(val reason: String) : HttpSendOutcome
+
     data class Expired(val afterMs: Long) : HttpSendOutcome
+
+    /**
+     * H4 — the response STARTED and the body stopped.
+     *
+     * This case exists because `Unreachable` is a lie here. A server that answered
+     * `200` and then closed the connection after 37 MiB was, unambiguously, reached;
+     * the failure happened later, while the body was being read. Folding both into
+     * `Unreachable` loses the two facts an operator actually needs:
+     *
+     * ```text
+     * DNS failure / refused connection  ->  the request never had a chance
+     * body cut short at byte N          ->  the request SUCCEEDED, partially
+     * ```
+     *
+     * [bytesReceived] is the whole reason this is worth its own case: a truncated
+     * download, a server that ran out of disk, and a proxy that gave up are three
+     * different incidents that all report the same string without it.
+     */
+    data class ResponseInterrupted(
+        val reason: String,
+        val bytesReceived: Long,
+    ) : HttpSendOutcome
 }
 
 /**

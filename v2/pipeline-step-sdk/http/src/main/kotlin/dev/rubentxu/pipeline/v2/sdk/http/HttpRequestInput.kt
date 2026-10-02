@@ -92,6 +92,24 @@ sealed interface HttpRejection {
                 "available in this build. The request was NOT sent. Remove `authentication` to " +
                 "send it unauthenticated on purpose."
     }
+
+    /**
+     * A declaration this build refused, read back from a durable record.
+     *
+     * Only ever produced by `HttpResponseCodec.decode`, and that is the whole point of
+     * its existence. The record is a PROJECTION of the original declaration: it kept
+     * the reason and not the case. Reusing one of the specific cases to carry that text
+     * — `UnsupportedMethod` for a blank URL, say — would put a fact on the wire that was
+     * never true, and the next reader would believe it.
+     *
+     * What round-trips exactly is the diagnostic, which is the only thing a
+     * declaration rejection is consumed for. What is LOST is which of the five
+     * declaration cases produced it, and a decode therefore cannot be used to
+     * reconstruct the author's input — only to report why the request was not sent.
+     */
+    data class DeclarationRefused(val reason: String) : HttpRejection {
+        override val diagnostic: String get() = reason
+    }
 }
 
 /**

@@ -23,6 +23,8 @@ import java.nio.file.Path
  * FIT-7  ServiceLoader                discovers the contributor
  * FIT-8  ShOptions                    carries FACTS, never SERVICES
  * FIT-9  the transport                never parks a thread on HTTP
+ * FIT-10 the transport                never materialises a whole response body
+ * FIT-11 the bounded subscriber       never asks for unbounded demand
  * ```
  *
  * ## Why these seven and not one
@@ -294,6 +296,66 @@ class Lfc2HttpOfficiallyPluginBoundaryFitnessTest {
         assertTrue(
             code.contains("sendAsync(") && code.contains(".await()"),
             "JdkHttpTransport must send asynchronously and await the future.",
+        )
+    }
+
+    // ── FIT-10: the body is bounded in memory, not bounded after the fact ──
+
+    @Test
+    fun `FIT-10 the transport never materialises a whole response body`() {
+        // H4's structural half. The behavioural canaries (C1..C7) live with the
+        // plugin; this one lives here because `BodyHandlers.ofByteArray()` is the
+        // shortest, most idiomatic-looking line in the whole JDK HTTP API, and it is
+        // exactly the line that makes a declared cap a fiction: it accumulates the
+        // complete body and only then truncates to `maxBodyBytes`.
+        val transport = v2.resolve(
+            "pipeline-step-sdk/http/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/http/JdkHttpTransport.kt",
+        )
+        val code = codeOnly(transport)
+        for (forbidden in listOf(
+            "ofByteArray()",
+            "ofString()",
+            "ofInputStream()",
+            "ofFile(",
+        )) {
+            assertTrue(
+                !code.contains(forbidden),
+                "JdkHttpTransport uses BodyHandlers.$forbidden. The response body must be " +
+                    "consumed by BoundedBodySubscriber: a built-in handler accumulates the " +
+                    "whole body before producing a response, so maxBodyBytes would bound the " +
+                    "returned value while the heap still held the entire download.",
+            )
+        }
+        assertTrue(
+            code.contains("fromSubscriber("),
+            "JdkHttpTransport must route the body through the bounded subscriber.",
+        )
+    }
+
+    @Test
+    fun `FIT-11 the bounded subscriber asks for one batch and never for everything`() {
+        // `request(Long.MAX_VALUE)` would also fit in memory — this subscriber only
+        // keeps a bounded prefix — so it is not a memory bug. It is a different defect:
+        // it is not backpressure. It asks the publisher for permission it never uses and
+        // hands up the window the whole design exists to keep small.
+        val subscriber = v2.resolve(
+            "pipeline-step-sdk/http/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/http/BoundedBodySubscriber.kt",
+        )
+        val code = codeOnly(subscriber)
+        // Matched WITHOUT the trailing parenthesis on purpose. `Long.MAX_VALUE` reaches
+        // this file in at least two shapes — `request(Long.MAX_VALUE)` and
+        // `= Long.MAX_VALUE` — and a detector written for only the first one is a
+        // detector that stops working the moment somebody writes the second.
+        assertTrue(
+            !code.contains("Long.MAX_VALUE"),
+            "BoundedBodySubscriber must not request unbounded demand. Bounded retention is " +
+                "not backpressure: request(Long.MAX_VALUE) is a promise the publisher is " +
+                "never asked to keep, and it hands back the small window the whole design " +
+                "exists to hold.",
+        )
+        assertTrue(
+            code.contains("DEMAND_PER_BATCH"),
+            "demand must be a named decision, not a literal buried in a callback",
         )
     }
 }

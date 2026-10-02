@@ -106,6 +106,26 @@ sealed interface HttpFailure {
     }
 
     /**
+     * H4 — the server answered and the body stopped part-way.
+     *
+     * Distinct from [Unreachable] because the host WAS reached: it returned a status
+     * and then the connection died mid-body. The two are the same shape to a caller
+     * and completely different incidents, and merging them is what turns "the proxy
+     * gave up at 37 MiB" into "the host does not exist".
+     *
+     * [bytesReceived] is carried because without it the diagnostic is a string that
+     * says nothing: how much arrived is the difference between a truncated download,
+     * a server that filled its disk, and a peer that vanished immediately.
+     */
+    data class ResponseInterrupted(
+        val reason: String,
+        val bytesReceived: Long,
+    ) : HttpFailure {
+        override val diagnostic: String get() =
+            "the response was cut short after $bytesReceived bytes ($reason)"
+    }
+
+    /**
      * The DECLARATION was unusable, so nothing was sent.
      *
      * A `durationMs` of zero accompanies this case, and that is the point: no
@@ -207,6 +227,16 @@ fun HttpAttempt.toStepOutcome(): StepOutcome = when (this) {
             PipelineFailure(
                 kind = FailureKind.NETWORK,
                 message = "http.request: $method $url could not be reached (${failure.diagnostic})",
+            ),
+        )
+        // NETWORK rather than a new kind: the world failed, and the algebra stays
+        // closed. The message carries what makes it actionable — the server DID
+        // answer, and this is how much of the body actually arrived.
+        is HttpFailure.ResponseInterrupted -> StepOutcome.Failure(
+            PipelineFailure(
+                kind = FailureKind.NETWORK,
+                message = "http.request: $method $url answered but its body was cut short — " +
+                    "${failure.diagnostic}",
             ),
         )
         // A declaration error and an egress denial are BOTH the author's problem

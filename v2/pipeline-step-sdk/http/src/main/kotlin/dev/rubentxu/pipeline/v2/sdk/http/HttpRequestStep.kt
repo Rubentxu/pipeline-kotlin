@@ -163,6 +163,18 @@ object HttpRequestStep {
                             durationMs = sent.durationMs,
                             failure = HttpFailure.Expired(outcome.afterMs),
                         )
+
+                        // The host answered; the body did not finish. Mapping this onto
+                        // `Unreachable` would be the one word that erases the fact.
+                        is HttpSendOutcome.ResponseInterrupted -> HttpAttempt.Failed(
+                            url = intent.url,
+                            method = intent.method,
+                            durationMs = sent.durationMs,
+                            failure = HttpFailure.ResponseInterrupted(
+                                reason = outcome.reason,
+                                bytesReceived = outcome.bytesReceived,
+                            ),
+                        )
                     }
                     HttpResponseOutput(attempt = attempt)
                 }

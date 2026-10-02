@@ -25,6 +25,8 @@ import java.nio.file.Path
  * FIT-9  the transport                never parks a thread on HTTP
  * FIT-10 the transport                never materialises a whole response body
  * FIT-11 the bounded subscriber       never asks for unbounded demand
+ * FIT-12 the composition root         discovers capability contributors by default
+ * FIT-13 the plugin                   ships the capability service manifest
  * ```
  *
  * ## Why these seven and not one
@@ -356,6 +358,57 @@ class Lfc2HttpOfficiallyPluginBoundaryFitnessTest {
         assertTrue(
             code.contains("DEMAND_PER_BATCH"),
             "demand must be a named decision, not a literal buried in a callback",
+        )
+    }
+
+    // ── FIT-12: the seam is presented by default, not only by a test ────────
+
+    @Test
+    fun `FIT-12 the composition root discovers capability contributors by default`() {
+        // The H4.5 defect, in one line. `capabilityContributors` defaulted to
+        // `emptyList()` and the CLI never passed the argument, so `http.request` was
+        // refused at admission in the installed distribution for a missing
+        // `http.transport` — while every contract test passed, because those tests
+        // hand-assembled the contributor they were asserting about.
+        //
+        // A default is invisible to behavioural testing from the outside: the only
+        // honest way to pin it is to read it.
+        val root = v2.resolve(
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CompositionRoot.kt",
+        )
+        val code = codeOnly(root)
+        assertTrue(
+            code.contains("ExternalCapabilityContributorDiscovery.discover()"),
+            "CompositionRoot must default capabilityContributors to discovery. Defaulting to " +
+                "an empty list makes a Step that is present, discovered and fully contracted " +
+                "unrunnable, and no unit test notices.",
+        )
+        assertTrue(
+            !code.contains("capabilityContributors: List<dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor> = emptyList()"),
+            "CompositionRoot must not default the contributor list to emptyList(); that is the " +
+                "H4.5 defect verbatim.",
+        )
+    }
+
+    @Test
+    fun `FIT-13 the http plugin ships the capability contributor service file`() {
+        // The other half of the same repair. Without this manifest entry the discovery
+        // call in FIT-12 resolves to an empty list, which is indistinguishable from
+        // "no plugin needs a seam" at the only place anyone looks.
+        val serviceFile = v2.resolve(
+            "pipeline-step-sdk/http/src/main/resources/META-INF/services/" +
+                "dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor",
+        )
+        assertTrue(
+            Files.exists(serviceFile),
+            "the http plugin must declare its capability contributor at $serviceFile, or the " +
+                "transport it owns is never presented to the runtime.",
+        )
+        val declared = Files.readString(serviceFile).trim()
+        assertEquals(
+            "dev.rubentxu.pipeline.v2.sdk.http.HttpCapabilityContributor",
+            declared,
+            "the service file must name the plugin's own contributor class",
         )
     }
 }

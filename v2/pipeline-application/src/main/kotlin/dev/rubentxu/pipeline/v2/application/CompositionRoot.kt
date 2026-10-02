@@ -69,8 +69,17 @@ internal fun runCanonicalPipeline(
      * can read, collisions fail closed, and adding the next plugin is one more
      * element in this list — with no change here, in the coordinator, or in the
      * capability access.
+     *
+     * H4.5: the default is DISCOVERY, not `emptyList()`. It used to default to an
+     * empty list that the CLI never filled, which meant `http.request` was refused
+     * at admission in the installed distribution for a missing `http.transport` —
+     * a Step that passed every contract test and could not run. The default is
+     * evaluated per call, so a caller that injects its own contributors (a test
+     * asserting a specific capability set) is unaffected and no discovery happens
+     * on its behalf.
      */
-    capabilityContributors: List<dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor> = emptyList(),
+    capabilityContributors: List<dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor> =
+        ExternalCapabilityContributorDiscovery.discover(),
     // LB-02 / EP-6: caller-composed registry (core + discovered external contributions).
     // Composition happens ONCE in the composition root, BEFORE the canonical-eligibility
     // gate, so contributed keys participate in the gate (eligibility is registry-derived).

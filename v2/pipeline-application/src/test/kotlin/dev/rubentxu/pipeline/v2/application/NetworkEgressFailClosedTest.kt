@@ -4,12 +4,19 @@ import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAc
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
 import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.CompositeCapabilityContributor
-import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressPolicy
+import dev.rubentxu.pipeline.v2.domain.step.AllowAll
+import dev.rubentxu.pipeline.v2.domain.step.DenyAll
+import dev.rubentxu.pipeline.v2.domain.step.EgressRule
+import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressGate
+import dev.rubentxu.pipeline.v2.domain.step.RestrictedEgressGate
+import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.sdk.http.HTTP_TRANSPORT_CAPABILITY
 import dev.rubentxu.pipeline.v2.sdk.http.HttpRequestStep
 import dev.rubentxu.pipeline.v2.sdk.http.HttpCapabilityContributor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.nio.file.Files
@@ -44,7 +51,7 @@ class NetworkEgressFailClosedTest {
 
     private fun contributor() = CompositeCapabilityContributor(listOf(HttpCapabilityContributor()))
 
-    private fun context(egress: NetworkEgressPolicy): CanonicalRuntimeContext {
+    private fun context(egress: NetworkEgressGate): CanonicalRuntimeContext {
         val controlDir: Path = Files.createTempDirectory("egress-test")
         return CanonicalRuntimeContext(
             opId = dev.rubentxu.pipeline.v2.application.durable.OpId("test-op", 0, 0),
@@ -67,7 +74,7 @@ class NetworkEgressFailClosedTest {
     @Test
     fun `a default run receives the transport but NOT the egress permission`() {
         val access = CanonicalRuntimeCapabilityAccess(
-            context(NetworkEgressPolicy.Denied),
+            context(DenyAll),
             capabilityContributor = contributor(),
         )
 
@@ -85,7 +92,7 @@ class NetworkEgressFailClosedTest {
     @Test
     fun `--allow-network is the single thing that grants egress`() {
         val access = CanonicalRuntimeCapabilityAccess(
-            context(NetworkEgressPolicy.Allowed),
+            context(AllowAll),
             capabilityContributor = contributor(),
         )
 
@@ -96,6 +103,54 @@ class NetworkEgressFailClosedTest {
         assertTrue(
             access.available().contains(HTTP_TRANSPORT_CAPABILITY),
             "granting egress must not remove the transport it enables",
+        )
+    }
+
+    @Test
+    fun `a restricted run is admitted, and refused per destination instead`() {
+        // The half of H2 that only became expressible once the verdict became a gate.
+        //
+        // The two failure modes this refuses to pick between are both real and both
+        // have shipped in products: withhold the capability from a run that has a
+        // one-host allowlist, and http.request becomes unusable on it; or hand it out
+        // unconditionally, and the allowlist is a comment in a config file. Asking the
+        // gate — `permitsAny` for admission, `decide` per destination — is the shape
+        // where the allowlist actually restricts.
+        val access = CanonicalRuntimeCapabilityAccess(
+            context(RestrictedEgressGate(listOf(EgressRule("https", "api.example.test")))),
+            capabilityContributor = contributor(),
+        )
+
+        assertTrue(
+            access.available().contains(NETWORK_EGRESS_CAPABILITY),
+            "a run with an allowlist HAS a network. Withholding the permission from it would " +
+                "refuse http.request at admission for the whole run, which is not what an " +
+                "allowlist says.",
+        )
+        assertEquals(
+            emptySet<StepCapability>(),
+            setOf(NETWORK_EGRESS_CAPABILITY) - access.available(),
+            "so the egress requirement is satisfied and the refusal happens where it belongs: " +
+                "at the destination, with a reason. (The credential seam is absent from this " +
+                "fixture by construction; it is covered by HttpCapabilityProductionWiringTest.)",
+        )
+    }
+
+    @Test
+    fun `the gate the bridge hands over is the run's own gate, not a copy`() {
+        // Identity, not equality. A runtime that rebuilt the gate here would hold a
+        // second opinion about the run's permission, and the question the Step asks
+        // would not be reaching the object the operator's flag produced.
+        val gate = RestrictedEgressGate(listOf(EgressRule("https", "api.example.test")))
+        val access = CanonicalRuntimeCapabilityAccess(
+            context(gate),
+            capabilityContributor = contributor(),
+        )
+
+        assertSame(
+            gate,
+            access.get<Any>(NETWORK_EGRESS_CAPABILITY),
+            "the capability must BE the run's gate",
         )
     }
 
@@ -115,7 +170,7 @@ class NetworkEgressFailClosedTest {
         )
 
         val denied = CanonicalRuntimeCapabilityAccess(
-            context(NetworkEgressPolicy.Denied),
+            context(DenyAll),
             capabilityContributor = contributor(),
         )
         val missing = required - denied.available()
@@ -132,7 +187,7 @@ class NetworkEgressFailClosedTest {
         // caller would have to remember to check. A null here would put the
         // "did I remember?" question back in front of every consumer.
         val access = CanonicalRuntimeCapabilityAccess(
-            context(NetworkEgressPolicy.Denied),
+            context(DenyAll),
             capabilityContributor = contributor(),
         )
         val failure = runCatching {

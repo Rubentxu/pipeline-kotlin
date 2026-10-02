@@ -9,7 +9,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressPolicy
+import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressGate
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
@@ -47,13 +47,30 @@ object HttpRequestKey {
  * The handler uses ONLY declared capabilities:
  * - [HTTP_TRANSPORT_CAPABILITY] for the socket (supplied by the plugin's own
  *   transport implementation, wired by the composition root);
- * - [NETWORK_EGRESS_CAPABILITY] for permission (supplied by the runtime ONLY
- *   under `--allow-network`).
+ * - [NETWORK_EGRESS_CAPABILITY] for permission — a [NetworkEgressGate] the handler
+ *   ASKS, never a verdict it reads. The runtime withholds the capability entirely
+ *   unless this run has some network entitlement, so the default is refused at
+ *   admission; the gate is what narrows that entitlement to a destination.
  *
  * It never reaches `CanonicalRuntimeContext`, the journal, the event sink, the
  * filesystem, or `java.net` directly. It resolves no credential: the transport
  * receives an already-resolved [HttpAuthorization] and never a [CredentialsId],
  * so a secret cannot leak through a typed value by accident.
+ *
+ * ## The order of the three questions
+ *
+ * ```text
+ * 1. is the declaration sound?     httpIntentOf      pure, no capabilities
+ * 2. may this run open a socket to THIS host?       the gate
+ * 3. can the declared credential become a header?   the credential seam
+ *    ────────────────────────────────────────────────────────────────
+ *    … and only now, transport.send
+ * ```
+ *
+ * Each question is cheaper and coarser than the next, and none of them has a
+ * socket behind it. The order is not an optimisation: it is why a refused
+ * destination cannot decrypt a credential, and why an unsendable declaration never
+ * asks the runtime about the network at all.
  */
 object HttpRequestStep {
 
@@ -79,28 +96,13 @@ object HttpRequestStep {
 
     private val capabilityRoutedHandler: StepHandler<HttpRequestInput, HttpResponseOutput> =
         StepHandler { input, ctx ->
-            // Admission already guaranteed both capabilities; reading them here is
-            // the typed access, NOT a second policy check. The policy decision
-            // happened at prepare-time, when the runtime decided whether to hand
-            // out the egress verdict at all.
-            val egress: NetworkEgressPolicy = ctx.capabilities.get(NETWORK_EGRESS_CAPABILITY)
+            // Admission already guaranteed all three capabilities; reading them here
+            // is the typed access, NOT a second policy check. The runtime's part of
+            // the decision happened at prepare-time, when it decided whether to hand
+            // out the egress gate at all.
+            val egressGate: NetworkEgressGate = ctx.capabilities.get(NETWORK_EGRESS_CAPABILITY)
             val transport: HttpTransport = ctx.capabilities.get(HTTP_TRANSPORT_CAPABILITY)
             val credentials: BasicCredentialSource = ctx.capabilities.get(BASIC_CREDENTIALS_CAPABILITY)
-
-            // A verdict that arrives as Denied cannot normally reach here — the
-            // runtime withholds the capability instead — but the case is handled
-            // rather than assumed away, because a runtime that chooses to hand
-            // out the capability with an explicit refusal must be obeyed too.
-            if (egress is NetworkEgressPolicy.Denied) {
-                return@StepHandler HttpResponseOutput(
-                    attempt = HttpAttempt.Failed(
-                        url = input.url,
-                        method = input.method,
-                        durationMs = 0L,
-                        failure = HttpFailure.EgressDenied,
-                    ),
-                )
-            }
 
             // PURE decision, applied once, here at the Step. Neither the
             // compiler nor the transport resolves a rejection: a blank URL or a
@@ -117,6 +119,21 @@ object HttpRequestStep {
                 )
 
                 is HttpIntent.Ready -> {
+                    // H6 — WHERE, not WHETHER. The gate is a question, and this is
+                    // where it is asked: after the declaration is known to be sound,
+                    // before a credential is decrypted, and long before a socket
+                    // could exist.
+                    //
+                    // The ordering is the security property, not an optimisation. A
+                    // credential is a secret; resolving it for a destination the run
+                    // may not reach would decrypt material nobody was authorised to
+                    // send, and doing so before asking would have been the more
+                    // defensible-looking mistake.
+                    val admission: EgressAdmission = egressAdmissionOf(intent.url, egressGate)
+                    if (admission !is EgressAdmission.Permitted) {
+                        return@StepHandler notSent(intent, admission.toEgressFailure())
+                    }
+
                     // H5: the credential is resolved HERE, before the send request
                     // exists, so a credential that cannot be used means no socket was
                     // ever opened. A declared secret that degraded into an anonymous
@@ -208,12 +225,18 @@ object HttpRequestStep {
                 inputCodec = HttpRequestCodec,
                 outputCodec = HttpResponseCodec,
                 // BOTH are required, and both are absent on a default run:
-                // the runtime withholds the egress verdict unless --allow-network
-                // is passed, so admission rejects BEFORE the handler runs. The
-                // policy is expressed as a missing capability rather than as an
+                // the runtime withholds the egress gate unless the run has some
+                // network entitlement, so admission rejects BEFORE the handler runs.
+                // The policy is expressed as a missing capability rather than as an
                 // `if` inside the handler, which is the difference between a
                 // default that cannot be forgotten and a default somebody has
                 // to remember to write.
+                //
+                // H6 sharpened what "some entitlement" means. Withholding the gate
+                // only when the run has NO network keeps the default fail-closed at
+                // admission while leaving a restricted gate free to refuse a single
+                // destination from inside the handler — which is a different fact,
+                // and one the operator has to be able to read.
                 requiredCapabilities = setOf<StepCapability>(
                     HTTP_TRANSPORT_CAPABILITY,
                     NETWORK_EGRESS_CAPABILITY,
@@ -239,20 +262,31 @@ object HttpRequestStep {
     }
 
     /**
-     * A credential that cannot be used is a DECLARATION failure with nothing sent.
+     * Something was decided NOT to send, and the fact is the whole outcome.
      *
      * `durationMs` is zero on purpose: no socket was opened, so no time was spent
-     * and no request reached the world. A reader of the journal can tell that
-     * apart from "we sent it and it failed", which are very different facts about
-     * a pipeline.
+     * and no request reached the world. A reader of the journal can tell that apart
+     * from "we sent it and it failed", which are very different facts about a
+     * pipeline.
+     *
+     * Both refusal paths — a declaration this build cannot honour, and a destination
+     * the runtime refused — are expressed here rather than at their own call sites,
+     * because "nothing was sent, and here is exactly why" is one fact and two
+     * constructions of it would be two chances to spell it differently.
      */
-    private fun rejected(intent: HttpIntent.Ready, rejection: HttpRejection): HttpResponseOutput =
+    private fun notSent(intent: HttpIntent.Ready, failure: HttpFailure): HttpResponseOutput =
         HttpResponseOutput(
             attempt = HttpAttempt.Failed(
                 url = intent.url,
                 method = intent.method,
                 durationMs = 0L,
-                failure = HttpFailure.Rejected(rejection),
+                failure = failure,
             ),
         )
+
+    /**
+     * A credential that cannot be used is a DECLARATION failure with nothing sent.
+     */
+    private fun rejected(intent: HttpIntent.Ready, rejection: HttpRejection): HttpResponseOutput =
+        notSent(intent, HttpFailure.Rejected(rejection))
 }

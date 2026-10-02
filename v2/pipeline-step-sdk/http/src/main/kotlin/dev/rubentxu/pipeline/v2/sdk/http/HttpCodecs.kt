@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.http
 
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.step.EgressRefusal
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import kotlinx.serialization.json.Json
@@ -224,7 +225,10 @@ object HttpResponseCodec : StepCodec<HttpResponseOutput> {
                             put("failureReason", failure.reason)
                             put("failureBytesReceived", failure.bytesReceived)
                         }
-                        is HttpFailure.EgressDenied -> put("failureKind", "egressDenied")
+                        is HttpFailure.EgressDenied -> {
+                            put("failureKind", "egressDenied")
+                            put("failureEgressReason", failure.reason.name)
+                        }
                     }
                 }
                 is HttpAttempt.Unauthorized -> {
@@ -325,7 +329,7 @@ object HttpResponseCodec : StepCodec<HttpResponseOutput> {
     private fun decodeFailure(obj: JsonObject): HttpFailure = when (obj.stringField("failureKind")) {
         "unreachable" -> HttpFailure.Unreachable(obj.stringField("failure") ?: "the request failed")
         "expired" -> HttpFailure.Expired(obj.longField("failureAfterMs") ?: 0L)
-        "egressDenied" -> HttpFailure.EgressDenied
+        "egressDenied" -> HttpFailure.EgressDenied(decodeEgressRefusal(obj))
         "responseInterrupted" -> HttpFailure.ResponseInterrupted(
             reason = obj.stringField("failureReason")
                 ?: obj.stringField("failure")
@@ -344,6 +348,22 @@ object HttpResponseCodec : StepCodec<HttpResponseOutput> {
     }
 
     /**
+     * Rebuilds the egress refusal, falling back the way the old world actually was.
+     *
+     * Records written before H6 carry no reason, and they could only ever have been
+     * written by a runtime that handed out the single static `Denied` verdict — so
+     * [EgressRefusal.NetworkNotPermitted] is not a guess for them, it is the one
+     * thing that build was able to say. Reading an unknown future name as
+     * `NetworkNotPermitted` is the same choice applied to a record this build cannot
+     * interpret: refuse, and say so in closed terms, rather than invent a fact.
+     */
+    private fun decodeEgressRefusal(obj: JsonObject): EgressRefusal {
+        val name = obj.stringField("failureEgressReason") ?: return EgressRefusal.NetworkNotPermitted
+        return EgressRefusal.entries.firstOrNull { it.name == name }
+            ?: EgressRefusal.NetworkNotPermitted
+    }
+
+    /**
      * Rebuilds the credential rejection, keeping the id.
      *
      * An older record has no `rejectionKind`, and its only content is a sentence. The
@@ -351,8 +371,7 @@ object HttpResponseCodec : StepCodec<HttpResponseOutput> {
      * diagnostic, so nothing is invented — but a rejection whose id is genuinely
      * absent says so instead of inventing a placeholder name.
      */
-    private fun decodeRejection(obj: JsonObject): CredentialRejection {
-        val id = obj.stringField("rejectionId")
+    private fun decodeRejection(obj: JsonObject): CredentialRejection {        val id = obj.stringField("rejectionId")
         return when (obj.stringField("rejectionKind")) {
             "notFound" -> CredentialRejection.NotFound(id ?: "the named credential")
             "kindUnsupported" -> CredentialRejection.KindUnsupported(
@@ -454,6 +473,11 @@ object HttpResponseCodec : StepCodec<HttpResponseOutput> {
               "description": "The raw transport reason for 'responseInterrupted', without the diagnostic sentence."
             },
             "failureBytesReceived": { "type": "integer" },
+            "failureEgressReason": {
+              "type": "string",
+              "enum": ["NetworkNotPermitted", "DestinationNotPermitted", "UnjudgeableDestination"],
+              "description": "Which refusal the runtime gave, for 'egressDenied'. Absent in records written before egress became a question rather than a verdict; those decode as 'NetworkNotPermitted', the only refusal that build could express."
+            },
             "failureRejection": { "type": "string" },
             "rejection": { "type": "string" },
             "rejectionKind": { "type": "string", "enum": ["notFound", "kindUnsupported"] },

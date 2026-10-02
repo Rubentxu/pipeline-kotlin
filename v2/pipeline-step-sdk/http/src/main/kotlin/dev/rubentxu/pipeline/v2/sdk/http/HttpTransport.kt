@@ -12,19 +12,23 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * the plugin that owns the protocol. Application composes it; it does not know
  * what HTTP is.
  *
- * What application DOES own is the egress POLICY — whether this run may reach the
- * network at all — and that is not HTTP knowledge, it is a per-execution runtime
- * decision. It arrives as the generic `NETWORK_EGRESS_CAPABILITY` and is declared
- * in `requiredCapabilities`, so its absence is a fail-closed admission rejection
- * before the handler ever runs. A pipeline that reaches for the network without
- * `--allow-network` therefore never gets a transport to use.
+ * What application DOES own is the egress PERMISSION — whether this run may reach the
+ * network, and to where — and that is not HTTP knowledge, it is a per-execution
+ * runtime decision. It arrives as the generic `NETWORK_EGRESS_CAPABILITY` and is
+ * declared in `requiredCapabilities`, so its absence is a fail-closed admission
+ * rejection before the handler ever runs. A pipeline that reaches for the network
+ * without `--allow-network` therefore never gets a transport to use.
+ *
+ * ## The transport never asks
+ *
+ * Nothing here consults, interprets or re-derives a permission. `JdkHttpTransport`
+ * opens a socket because it was called, and the only thing that can call it is the
+ * Step handler, which asked the runtime's egress gate first. H6 deleted a
+ * `NetworkPolicy { Denied, Allowed }` that used to sit in this file: a second,
+ * plugin-local copy of a permission that the runtime owns is not a harmless spare
+ * — it is a second answer waiting for somebody to use it.
  */
 val HTTP_TRANSPORT_CAPABILITY: StepCapability = StepCapability("http.transport")
-
-sealed interface NetworkPolicy {
-    data object Denied : NetworkPolicy
-    data object Allowed : NetworkPolicy
-}
 
 data class HttpSendRequest(
     val url: String,

@@ -8,7 +8,9 @@ import dev.rubentxu.pipeline.v2.credentials.api.NoBasicCredentialSource
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressPolicy
+import dev.rubentxu.pipeline.v2.domain.step.AllowAll
+import dev.rubentxu.pipeline.v2.domain.step.DenyAll
+import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressGate
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
@@ -75,7 +77,7 @@ class HttpCredentialApplicationTest {
     private fun contextFor(
         transport: HttpTransport,
         credentials: BasicCredentialSource,
-        egress: NetworkEgressPolicy = NetworkEgressPolicy.Allowed,
+        egress: NetworkEgressGate = AllowAll,
     ): StepHandlerContext {
         val available = mapOf<StepCapability, Any>(
             HTTP_TRANSPORT_CAPABILITY to transport,
@@ -216,7 +218,7 @@ class HttpCredentialApplicationTest {
                     asked = true
                     BasicCredentialResolution.Resolved("alice", "s3cr3t".toByteArray())
                 },
-                egress = NetworkEgressPolicy.Denied,
+                egress = DenyAll,
             ),
         )
 

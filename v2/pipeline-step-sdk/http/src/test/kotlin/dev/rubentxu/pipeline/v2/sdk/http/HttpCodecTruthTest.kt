@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.http
 
 import dev.rubentxu.pipeline.v2.domain.FailureKind
+import dev.rubentxu.pipeline.v2.domain.step.EgressRefusal
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
@@ -88,7 +89,7 @@ class HttpCodecTruthTest {
             HttpAttempt.Refused("u", HttpMethod.Get, 1L, 500, listOf(StatusRange.Single(200))),
             HttpAttempt.Failed("u", HttpMethod.Get, 1L, HttpFailure.Unreachable("no route")),
             HttpAttempt.Failed("u", HttpMethod.Get, 1L, HttpFailure.Expired(30L)),
-            HttpAttempt.Failed("u", HttpMethod.Get, 1L, HttpFailure.EgressDenied),
+            HttpAttempt.Failed("u", HttpMethod.Get, 1L, HttpFailure.EgressDenied(EgressRefusal.NetworkNotPermitted)),
             HttpAttempt.Failed("u", HttpMethod.Get, 1L, HttpFailure.ResponseInterrupted("cut", 42L)),
             HttpAttempt.Failed("u", HttpMethod.Get, 1L, HttpFailure.Rejected(HttpRejection.BlankUrl(""))),
             HttpAttempt.Unauthorized("u", HttpMethod.Get, 1L, CredentialRejection.NotFound("creds")),
@@ -162,7 +163,7 @@ class HttpCodecTruthTest {
             HttpFailure.Unreachable("ConnectException: no route to host"),
             HttpFailure.Expired(30_000L),
             HttpFailure.ResponseInterrupted("fixed content-length", 65_536L),
-            HttpFailure.EgressDenied,
+            HttpFailure.EgressDenied(EgressRefusal.DestinationNotPermitted),
             HttpFailure.Rejected(HttpRejection.BlankUrl("   ")),
         )
 
@@ -303,6 +304,59 @@ class HttpCodecTruthTest {
         assertTrue(
             interrupted.failure.message.contains("99"),
             "the message must carry the byte count; got ${interrupted.failure.message}",
+        )
+    }
+
+    /**
+     * H6 — the refusal gained a reason, and an older record must not be damaged by it.
+     *
+     * A pre-H6 record is not missing information that used to be there: the build that
+     * wrote it could only EVER say "the run may not use the network", because that was
+     * the entire vocabulary the egress seam had. Decoding it as
+     * [EgressRefusal.NetworkNotPermitted] is therefore not a fallback — it is the one
+     * thing that record can truthfully mean.
+     */
+    @Test
+    fun `Q3h a pre-H6 egressDenied record decodes to the only refusal it could mean`() {
+        val legacy = """
+            {"kind":"httpAttempt","url":"http://example.test/x","httpMode":"GET",
+             "durationMs":0,"attempt":"failed","failureKind":"egressDenied",
+             "failure":"this run may not reach the network; start it with --allow-network to permit egress"}
+        """.trimIndent()
+
+        val decoded = HttpResponseCodec.decode(
+            dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue(legacy),
+        ).attempt
+
+        val failure = (decoded as HttpAttempt.Failed).failure
+        assertEquals(
+            EgressRefusal.NetworkNotPermitted,
+            (failure as HttpFailure.EgressDenied).reason,
+            "a record written when the only egress verdict was Denied must not acquire a " +
+                "reason it never carried — and it must not lose the one it can honestly state.",
+        )
+    }
+
+    @Test
+    fun `Q3i an unknown egress reason is refused as no-network, never invented`() {
+        // A record from a build with a reason this one has never heard of. Refusing is
+        // the safe reading: every one of these reasons is a refusal, so collapsing an
+        // unknown one to NetworkNotPermitted can never turn a denial into a permission.
+        val record = """
+            {"kind":"httpAttempt","url":"http://example.test/x","httpMode":"GET",
+             "durationMs":0,"attempt":"failed","failureKind":"egressDenied",
+             "failureEgressReason":"ApprovedByTheVibes"}
+        """.trimIndent()
+
+        val failure = (
+            HttpResponseCodec.decode(dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue(record)).attempt
+                as HttpAttempt.Failed
+            ).failure
+
+        assertEquals(
+            EgressRefusal.NetworkNotPermitted,
+            (failure as HttpFailure.EgressDenied).reason,
+            "an unrecognised reason must not be decoded into a fact this build cannot support",
         )
     }
 }

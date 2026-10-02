@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
+import dev.rubentxu.pipeline.v2.domain.step.EgressRefusal
 
 /**
  * What the server actually said, as facts.
@@ -138,16 +139,33 @@ sealed interface HttpFailure {
     }
 
     /**
-     * The runtime refused egress.
+     * H6 — the runtime refused egress, and says WHICH refusal.
      *
-     * Normally unreachable: the runtime withholds the egress capability rather
-     * than handing out a refusal, so admission rejects the Step before the
-     * handler runs. This case exists for a runtime that chooses to be explicit,
-     * and it is honoured rather than assumed away.
+     * Normally unreachable for [EgressRefusal.NetworkNotPermitted]: the runtime
+     * withholds the egress capability rather than handing out a refusing gate, so
+     * admission rejects the Step before the handler runs. The other two reasons are
+     * exactly what a *restricted* gate produces, and they are the reason this case
+     * stopped being a bare `data object` — "denied" alone sends an operator to
+     * `--allow-network`, which is useless advice when the run already has a network
+     * and the destination simply is not on the list.
+     *
+     * [reason] is the whole payload, and it is deliberately not joined by a parsed
+     * destination: [HttpAttempt.url] already carries it, and a second copy would
+     * have to be kept in step with the first on every write and every decode.
      */
-    data object EgressDenied : HttpFailure {
-        override val diagnostic: String get() =
-            "this run may not reach the network; start it with --allow-network to permit egress"
+    data class EgressDenied(val reason: EgressRefusal) : HttpFailure {
+        override val diagnostic: String get() = when (reason) {
+            EgressRefusal.NetworkNotPermitted ->
+                "this run may not reach the network; start it with --allow-network to permit egress"
+
+            EgressRefusal.DestinationNotPermitted ->
+                "this run may not reach that destination; the permitted destinations are a " +
+                    "per-run allowlist, so --allow-network or a rule covering this host is needed"
+
+            EgressRefusal.UnjudgeableDestination ->
+                "the URL could not be reduced to a scheme, host and port, so there was no " +
+                    "destination to permit and nothing was opened"
+        }
     }
 }
 

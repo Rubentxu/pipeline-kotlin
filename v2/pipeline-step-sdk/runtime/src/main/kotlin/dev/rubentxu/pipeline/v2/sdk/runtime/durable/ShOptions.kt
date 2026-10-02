@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
-import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressPolicy
+import dev.rubentxu.pipeline.v2.domain.step.DenyAll
+import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressGate
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceOwnership
 import java.nio.file.Path
@@ -55,12 +56,11 @@ data class ShOptions(
      */
     val workspaceOwnership: WorkspaceOwnership? = null,
     /**
-     * Whether this execution may reach the network (LFC-2E3 / WU-093).
+     * Who this execution is allowed to reach on the network (LFC-2E3 / WU-093).
      *
-     * DENIED by default in the data class itself, so a constructor that forgets
+     * [DenyAll] by default in the data class itself, so a constructor that forgets
      * to mention it is fail-closed by construction rather than by a condition
-     * somebody has to remember to write. Only `--allow-network` produces
-     * [NetworkEgressPolicy.Allowed].
+     * somebody has to remember to write. Only `--allow-network` produces [AllowAll].
      *
      * It rides here for the same reason `workspaceOwnership` does: it is a
      * per-execution decision set at the CLI boundary that cannot be
@@ -68,8 +68,18 @@ data class ShOptions(
      * turns it into the generic `NETWORK_EGRESS_CAPABILITY`, and a Step that
      * needs egress declares that capability — which is how "no network" becomes
      * an admission rejection instead of a convention.
+     *
+     * ## Why a gate and not a verdict
+     *
+     * This used to be `Allowed | Denied`, which reads the same and is not. A
+     * verdict answers "may this run use the network?"; a gate answers "may this
+     * run open a socket to THIS host?" — and the second question is the one an
+     * allowlist has to ask. Keeping the rules out of here is what stops the Step
+     * from becoming the place where a permission is actually decided: the gate is
+     * handed over as a capability and asked, and `pipeline-application` never
+     * learns that `http.request` exists to ask it.
      */
-    val networkEgress: NetworkEgressPolicy = NetworkEgressPolicy.Denied,
+    val networkEgress: NetworkEgressGate = DenyAll,
     // NOTE: a `Map<StepCapability, Any>` was briefly carried here so the
     // plugin seams would not have to reach CanonicalDurableRunCoordinator.
     // That was reverted: it turned this type — a carrier of FACTS and POLICIES

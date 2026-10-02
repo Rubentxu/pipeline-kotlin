@@ -1,7 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.step.CompositeCapabilityContributor
-import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressPolicy
+import dev.rubentxu.pipeline.v2.domain.step.AllowAll
+import dev.rubentxu.pipeline.v2.domain.step.DenyAll
 import dev.rubentxu.pipeline.v2.domain.directivekey.WHEN_DIRECTIVE_KEY
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
@@ -146,14 +147,16 @@ internal fun runCanonicalPipeline(
             // owner of this root instead of re-deriving `Managed`.
             workspaceOwnership = workspaceOwnership,
             // RP6-C / LFC-2E3: egress is DENIED unless the operator asked for it
-            // with --allow-network. The bridge turns this verdict into the
-            // generic NETWORK_EGRESS_CAPABILITY, and a Step that needs the
-            // network declares it — so the default run cannot reach one.
-            networkEgress = if (allowNetwork) {
-                NetworkEgressPolicy.Allowed
-            } else {
-                NetworkEgressPolicy.Denied
-            },
+            // with --allow-network. The bridge turns this gate into the generic
+            // NETWORK_EGRESS_CAPABILITY, and a Step that needs the network declares
+            // it — so the default run cannot reach one.
+            //
+            // H6: the two ends are gates, not verdicts. `--allow-network` is
+            // [AllowAll] and the default is [DenyAll], which are the SAME interface
+            // as a future per-destination allowlist — so adding one later is a new
+            // value here and not a new code path through the runtime, the Step, or
+            // the admission check.
+            networkEgress = if (allowNetwork) AllowAll else DenyAll,
         ),
         // B1.2c3-S2.3 + LB-02/EP-6: core Steps first, then external plugin contributions.
         stepRegistry = stepRegistry,

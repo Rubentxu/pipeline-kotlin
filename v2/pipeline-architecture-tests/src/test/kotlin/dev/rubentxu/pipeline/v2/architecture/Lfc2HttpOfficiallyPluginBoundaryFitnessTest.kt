@@ -411,4 +411,90 @@ class Lfc2HttpOfficiallyPluginBoundaryFitnessTest {
             "the service file must name the plugin's own contributor class",
         )
     }
+
+    // ── FIT-14: the plugin asks the gate, and never becomes one ─────────────
+
+    @Test
+    fun `FIT-14 the http plugin may ask about egress but never decides it`() {
+        // H6's structural half. The behavioural canaries (E1..E19) live with the
+        // plugin; this one lives here because the shape it forbids is invisible from
+        // the outside — every canary keeps passing when the plugin re-derives the
+        // verdict instead of asking, exactly as M-http-25 demonstrated for
+        // credentials.
+        //
+        // The failure this law prevents is not a bug in http.request. It is two
+        // readers of the same policy reaching different verdicts, one of which is
+        // "allowed", with no test failing on either run.
+        val admission = v2.resolve(
+            "pipeline-step-sdk/http/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/http/EgressAdmission.kt",
+        )
+        val step = v2.resolve(
+            "pipeline-step-sdk/http/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/http/HttpRequestStep.kt",
+        )
+        val transport = v2.resolve(
+            "pipeline-step-sdk/http/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/http/HttpTransport.kt",
+        )
+
+        for ((label, file) in listOf(
+            "EgressAdmission.kt" to admission,
+            "HttpRequestStep.kt" to step,
+            "HttpTransport.kt" to transport,
+        )) {
+            val code = codeOnly(file)
+            for (forbidden in listOf(
+                "RestrictedEgressGate",
+                "EgressRule(",
+                "AllowAll",
+                "DenyAll",
+            )) {
+                assertTrue(
+                    !code.contains(forbidden),
+                    "$label names '$forbidden'. The plugin may ASK the runtime's egress gate " +
+                        "and may interpret the answer it is given, but it must not name a gate " +
+                        "implementation or construct a rule. The moment it does, the permission " +
+                        "is being decided here, and 'the runtime owns it' is a comment.",
+                )
+            }
+        }
+
+        // The positive half, stated as the whole contract: one question, asked of
+        // somebody else, before anything is opened.
+        assertTrue(
+            codeOnly(admission).contains("gate.decide("),
+            "the plugin must actually ASK — reading a capability and ignoring it satisfies " +
+                "every prohibition above while permitting everything.",
+        )
+        assertTrue(
+            codeOnly(step).contains("egressAdmissionOf(intent.url, egressGate)"),
+            "HttpRequestStep must ask about THIS request's destination before it sends, not " +
+                "merely hold the capability.",
+        )
+    }
+
+    @Test
+    fun `FIT-15 the runtime bridge reads a gate property, not a list of known gates`() {
+        // The companion law on the other side. `when (gate) { DenyAll -> ... }` at the
+        // bridge would work today and would be the natural way to express "refuse unless
+        // --allow-network" once the gate became an interface — and it would make adding
+        // a restricted allowlist an edit to the runtime core. A property keeps the
+        // runtime ignorant of which gates exist.
+        val access = v2.resolve(
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/" +
+                "durable/CanonicalRuntimeCapabilityAccess.kt",
+        )
+        val code = codeOnly(access)
+
+        assertTrue(
+            code.contains("permitsAny"),
+            "the bridge must ask the gate whether this run may reach the network at all.",
+        )
+        for (forbidden in listOf("RestrictedEgressGate", "AllowAll", "DenyAll")) {
+            assertTrue(
+                !code.contains(forbidden),
+                "the runtime bridge names '$forbidden'. The runtime owns the permission, but it " +
+                    "must not know which gates exist: a `when` over gate implementations is a " +
+                    "core edit every future policy would need.",
+            )
+        }
+    }
 }

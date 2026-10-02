@@ -6,7 +6,9 @@ import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.credentials.api.BASIC_CREDENTIALS_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.CompositeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressPolicy
+import dev.rubentxu.pipeline.v2.domain.step.AllowAll
+import dev.rubentxu.pipeline.v2.domain.step.DenyAll
+import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressGate
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.http.HTTP_TRANSPORT_CAPABILITY
 import dev.rubentxu.pipeline.v2.sdk.http.HttpRequestStep
@@ -63,7 +65,7 @@ class HttpCapabilityProductionWiringTest {
      * which source each capability came from.
      */
     private fun productionCapabilities(
-        egress: NetworkEgressPolicy = NetworkEgressPolicy.Denied,
+        egress: NetworkEgressGate = DenyAll,
         withCredentialStore: Boolean = true,
     ): Set<dev.rubentxu.pipeline.v2.domain.step.StepCapability> {
         val controlDir: Path = Files.createTempDirectory("h45-wiring")
@@ -125,7 +127,7 @@ class HttpCapabilityProductionWiringTest {
 
     @Test
     fun `a denied run is refused for EGRESS and never for the transport`() {
-        val denied = productionCapabilities(NetworkEgressPolicy.Denied)
+        val denied = productionCapabilities(DenyAll)
         val required = HttpRequestStep.definition.contract.requiredCapabilities
 
         val missing = required - denied
@@ -140,7 +142,7 @@ class HttpCapabilityProductionWiringTest {
 
     @Test
     fun `an allowed run satisfies every declared requirement`() {
-        val allowed = productionCapabilities(NetworkEgressPolicy.Allowed)
+        val allowed = productionCapabilities(AllowAll)
         val required = HttpRequestStep.definition.contract.requiredCapabilities
 
         val missing = required - allowed

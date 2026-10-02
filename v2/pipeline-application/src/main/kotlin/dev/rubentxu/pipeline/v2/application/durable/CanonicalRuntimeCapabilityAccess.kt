@@ -48,7 +48,6 @@ import dev.rubentxu.pipeline.v2.domain.step.BODY_INVOKER_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressPolicy
 import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
@@ -126,12 +125,21 @@ open class CanonicalRuntimeCapabilityAccess(
             EVENT_SINK_CAPABILITY to context.eventSink,
         )
         // RP6-C / LFC-2E3: network egress is PERMISSION, not protocol. The
-        // runtime owns the verdict and the Step declares the requirement, so a
+        // runtime owns the decision and the Step declares the requirement, so a
         // pipeline that reaches for the network without --allow-network is
         // rejected at prepare-time by the ordinary fail-closed admission path —
         // before any handler runs and before a socket could exist.
-        if (context.shOptions.networkEgress is NetworkEgressPolicy.Allowed) {
-            builder[NETWORK_EGRESS_CAPABILITY] = context.shOptions.networkEgress
+        //
+        // H6 reads `permitsAny` rather than testing the gate against its
+        // implementations. A run with no network entitlement at all never sees the
+        // capability, so the default is still refused at ADMISSION and not inside a
+        // handler; a run with an allowlist does get the capability and is refused
+        // per destination by the gate itself. Both are refusals, but they are
+        // different operator facts and they arrive through different mechanisms on
+        // purpose.
+        val egressGate = context.shOptions.networkEgress
+        if (egressGate.permitsAny) {
+            builder[NETWORK_EGRESS_CAPABILITY] = egressGate
         }
         // Plugin-contributed capabilities last, so a plugin may add a seam
         // without the runtime enumerating it — and may not silently OVERWRITE a

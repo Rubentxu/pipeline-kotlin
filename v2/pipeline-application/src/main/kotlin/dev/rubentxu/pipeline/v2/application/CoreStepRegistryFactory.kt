@@ -185,5 +185,17 @@ object CoreStepRegistryFactory {
         // produced by CoreLockWireCodec, the single wire authority shared with the
         // DSL compiler (G3.4).
         CoreLockStep.registerInto(this)
+        // RP6-B / WU-092 G4: core.input production registration, with the same
+        // shape as the lock above: the key is NOT in LEGACY_PLUGIN_IDS, so
+        // StructuralFamilyResolver returns Registry from the moment of registration
+        // and there is no legacy row to retire. Admission is fail-closed on
+        // INPUT_DECISIONS_CAPABILITY (exposed only when the runtime carries a
+        // control-dir anchor — without one there is nowhere to publish a question,
+        // and core.input must refuse rather than ask into a void) and
+        // BODY_CONTINUATION_CAPABILITY (only when a body is bound; the body is the
+        // conditional part, it runs ONLY on Proceed). The wire payload is produced
+        // by CoreInputWireCodec, the single wire authority shared with the DSL
+        // compiler (G3.4).
+        CoreInputStep.registerInto(this)
     }
 }

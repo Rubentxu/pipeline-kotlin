@@ -197,14 +197,14 @@ object CoreInputStep {
             decision = decision,
             denial = null,
             bodyRan = true,
-            outcome = body.outcome,
+            bodyOutcome = body.outcome,
         )
         is BodyOutcome.Cancelled -> CoreInputOutput(
             requested = requested,
             decision = decision,
             denial = null,
             bodyRan = true,
-            outcome = StepOutcome.Failure(
+            bodyOutcome = StepOutcome.Failure(
                 PipelineFailure(
                     kind = FailureKind.INFRASTRUCTURE,
                     message = "core.input: body of '$requested' was cancelled after the answer",

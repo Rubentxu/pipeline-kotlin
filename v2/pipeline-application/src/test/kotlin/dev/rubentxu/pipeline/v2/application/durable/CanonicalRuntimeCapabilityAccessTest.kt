@@ -12,6 +12,8 @@ import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.application.FileLockCoordinator
+import dev.rubentxu.pipeline.v2.application.INPUT_DECISIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.InputDecisions
 import dev.rubentxu.pipeline.v2.application.LOCK_COORDINATION_CAPABILITY
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
@@ -68,6 +70,10 @@ class CanonicalRuntimeCapabilityAccessTest {
         //     here: this context carries no control-dir anchor, and the lock
         //     coordinator is exposed ONLY when one exists (conditional, like the
         //     delete-dir workspace operations). See the lock-anchor test below.
+        //   - INPUT_DECISIONS_CAPABILITY (RP6-B / WU-092) is ABSENT for the same
+        //     reason and one more: without an anchor there is nowhere to publish a
+        //     question, so a fallback location would put the answer channel
+        //     somewhere the operator cannot see or reach. See its anchor test below.
         //
         // The bridge must expose EXACTLY this set — adding/removing a capability requires
         // updating both this test and the bridge together. The set must NEVER silently
@@ -131,6 +137,43 @@ class CanonicalRuntimeCapabilityAccessTest {
         assertThrows(
             IllegalArgumentException::class.java,
         ) { anchorlessAccess.get<FileLockCoordinator>(LOCK_COORDINATION_CAPABILITY) }
+    }
+
+    @Test
+    fun `input decisions capability is exposed only with a control-dir anchor`(@TempDir tempDir: Path) {
+        // RP6-B / WU-092 G4: the answer channel is anchored under the control root
+        // (`<controlDirRoot>/inputs`), the same engine territory the lock uses.
+        //
+        // The absence is the load-bearing half. A question with nowhere to go has
+        // exactly two honest outcomes — refuse the run at admission, or publish into
+        // a temporary location the operator never learns about and therefore never
+        // answers. The second one is worse than a failure: the run would block until
+        // its deadline on a channel no human can see. Fail-closed is the only
+        // behaviour that tells the operator something true.
+        val anchored = CanonicalRuntimeContext(
+            opId = OpId("cap-bridge", 0, 0),
+            runId = "cap-bridge",
+            stageName = "build",
+            stageIndex = 0,
+            stepIndex = 0,
+            shOptions = ShOptions.EMPTY,
+            controlDirRoot = tempDir,
+            eventSink = InMemoryEventStore(),
+        )
+        val access = CanonicalRuntimeCapabilityAccess(anchored)
+        // The port binds; the UAT input scenarios prove the namespace behaviourally.
+        access.get<InputDecisions>(INPUT_DECISIONS_CAPABILITY)
+
+        val anchorless = anchored.copy(opId = OpId("cap-bridge", 0, 0), controlDirRoot = null)
+        val anchorlessAccess = CanonicalRuntimeCapabilityAccess(anchorless)
+        assertEquals(
+            false,
+            INPUT_DECISIONS_CAPABILITY in anchorlessAccess.available(),
+            "input decisions must not be exposed without a control-dir anchor",
+        )
+        assertThrows(
+            IllegalArgumentException::class.java,
+        ) { anchorlessAccess.get<InputDecisions>(INPUT_DECISIONS_CAPABILITY) }
     }
 
     @Test

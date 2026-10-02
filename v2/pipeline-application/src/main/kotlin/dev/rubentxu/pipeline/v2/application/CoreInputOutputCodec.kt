@@ -59,15 +59,21 @@ object CoreInputOutputCodec : StepCodec<CoreInputOutput> {
             (value.decision as? InputDecision.Abort)?.submitter?.let {
                 put("decidedBy", JsonPrimitive(it))
             }
-            (value.outcome as? StepOutcome.Failure)?.let { failure ->
+            // `bodyOutcome` — the FIELD — is what the envelope carries, never the
+            // derived `outcome`. The two are not the same value: for an abort or a
+            // denial the derived outcome is a Failure while the field is null, and
+            // journalling the derivation would decode back into a different object
+            // than the one that produced it. The projection is recomputed on read,
+            // which is the whole point of keeping it derived.
+            (value.bodyOutcome as? StepOutcome.Failure)?.let { failure ->
                 put("outcomeKind", JsonPrimitive("FAILURE"))
                 put("failureKind", JsonPrimitive(failure.failure.kind.name))
                 put("failureMessage", JsonPrimitive(failure.failure.message))
             }
-            if (value.outcome is StepOutcome.Success) {
+            if (value.bodyOutcome is StepOutcome.Success) {
                 put("outcomeKind", JsonPrimitive("SUCCESS"))
             }
-            if (value.outcome is StepOutcome.Unstable) {
+            if (value.bodyOutcome is StepOutcome.Unstable) {
                 put("outcomeKind", JsonPrimitive("UNSTABLE"))
             }
         }
@@ -132,7 +138,7 @@ object CoreInputOutputCodec : StepCodec<CoreInputOutput> {
             decision = decision,
             denial = denial,
             bodyRan = bodyRan,
-            outcome = outcome,
+            bodyOutcome = outcome,
         )
     }
 

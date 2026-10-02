@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 
 /**
  * Typed input of `core.input` (RP6-B / WU-092).
@@ -73,14 +74,27 @@ data class CoreInputOutput(
     val decision: InputDecision? = null,
     val denial: InputDenialReason? = null,
     val bodyRan: Boolean = false,
-    val outcome: StepOutcome? = null,
-) {
+    val bodyOutcome: StepOutcome? = null,
+) : TypedStepOutput {
     /**
-     * The run outcome this Step produces. Pure interpretation of the two facts
-     * above, so no caller can disagree about what an Abort or a denial means.
+     * The canonical Step outcome, projected by `RegistryExecutionBoundary` through the
+     * Step-agnostic `(produced as? TypedStepOutput)?.outcome`.
+     *
+     * This is NOT a convenience alias: it is the only channel by which an unanswered or
+     * refused question can reach the run's outcome. `core.input` can end without ever
+     * running a body, so the body engine has no outcome to propagate and the handler's
+     * return value alone would default to Success — a run whose permission was DENIED,
+     * TIMED OUT or ABORTED would report success and exit 0. Measured on the real CLI
+     * before this carrier existed (WU-092 G4).
+     */
+    override val outcome: StepOutcome get() = runOutcome()
+
+    /**
+     * The run outcome this Step produces. Pure interpretation of the facts above, so
+     * no caller can disagree about what an Abort or a denial means.
      */
     fun runOutcome(): StepOutcome = when {
-        outcome != null -> outcome
+        bodyOutcome != null -> bodyOutcome
         decision is InputDecision.Abort -> StepOutcome.Failure(
             PipelineFailure(
                 kind = FailureKind.USER,

@@ -8,6 +8,8 @@ import dev.rubentxu.pipeline.v2.application.EXECUTION_LANE_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.ExecutionBudget
 import dev.rubentxu.pipeline.v2.application.ExecutionLaneId
 import dev.rubentxu.pipeline.v2.application.FileLockCoordinator
+import dev.rubentxu.pipeline.v2.application.FileInputDecisions
+import dev.rubentxu.pipeline.v2.application.INPUT_DECISIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.LOCK_COORDINATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.SHELL_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.STAGE_IDENTITY_CAPABILITY
@@ -172,6 +174,25 @@ open class CanonicalRuntimeCapabilityAccess(
         context.controlDirRoot?.let { root ->
             builder[LOCK_COORDINATION_CAPABILITY] = FileLockCoordinator(
                 root.resolve("locks"),
+            )
+        }
+        // RP6-B / WU-092 G4: the filesystem answer channel for core.input.
+        //
+        // Anchored to the CONTROL ROOT for the same reason the lock is, and with the
+        // same conditional exposure: a question is a fact about the ENGINE's durable
+        // territory (who may answer a run that lives in `--db`), not about a
+        // workspace that is NULL under the Managed lease and not about a run that
+        // ends before its question is answered.
+        //
+        // Conditional on controlDirRoot for an additional reason specific to input:
+        // without an anchor there is nowhere to publish the request, and inventing a
+        // temp directory would silently relocate the channel from what the operator
+        // can inspect and answer. Absent capability therefore means fail-closed at
+        // admission — core.input refuses the run instead of asking a question into a
+        // void that nobody will ever read.
+        context.controlDirRoot?.let { root ->
+            builder[INPUT_DECISIONS_CAPABILITY] = FileInputDecisions(
+                root.resolve("inputs"),
             )
         }
         // S2-A5 / G1: raw environmental observation for platform-classification handlers

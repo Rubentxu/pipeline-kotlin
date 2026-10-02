@@ -247,7 +247,7 @@ class CoreInputStepContractTest {
             requested = "ship?",
             decision = InputDecision.Proceed("ana", null),
             bodyRan = true,
-            outcome = StepOutcome.Success,
+            bodyOutcome = StepOutcome.Success,
         )
         assertEquals(output, CoreInputOutputCodec.decode(CoreInputOutputCodec.encode(output)))
     }
@@ -263,7 +263,7 @@ class CoreInputStepContractTest {
             requested = "ship?",
             decision = InputDecision.Proceed("ana", null),
             bodyRan = true,
-            outcome = StepOutcome.Success,
+            bodyOutcome = StepOutcome.Success,
         )
         assertEquals(StepOutcome.Success, proceeded.runOutcome())
     }
@@ -282,6 +282,38 @@ class CoreInputStepContractTest {
         assertTrue(
             (unanswerable.runOutcome() as StepOutcome.Failure).failure.kind ==
                 dev.rubentxu.pipeline.v2.domain.FailureKind.USER,
+        )
+    }
+
+    // ------------------------------------------------------- outcome projection
+
+    @Test
+    fun `the output is a typed carrier so a refused question reaches the run`() {
+        // This row exists because the law was BROKEN in production and only the HF2
+        // UAT caught it: with a plain data class the boundary found no
+        // `TypedStepOutput` and defaulted the Step to Success, so a pipeline whose
+        // `input` timed out, was aborted or was never answered reported success and
+        // exited 0. The runOutcome() computation was present and correct — it was
+        // simply never asked for.
+        //
+        // `core.input` is the only Step so far whose handler can END without a body,
+        // so the body engine has no outcome to propagate and the carrier is the only
+        // channel. Making this an assertion about the TYPE, not about one case, is
+        // what keeps a future refactor from silently re-dropping it.
+        assertTrue(
+            CoreInputOutput(requested = "q") is dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput,
+            "CoreInputOutput MUST implement TypedStepOutput; otherwise the boundary " +
+                "defaults a refused or unanswered question to Success",
+        )
+        assertEquals(
+            CoreInputOutput(requested = "q").runOutcome(),
+            CoreInputOutput(requested = "q").outcome,
+            "the projected outcome IS the interpreted outcome: one authority, no second classifier",
+        )
+        assertTrue(
+            CoreInputOutput(requested = "q", denial = InputDenialReason.TimedOut(1L)).outcome
+                is StepOutcome.Failure,
+            "a denial must project a failure through the carrier, not a success",
         )
     }
 

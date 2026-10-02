@@ -195,6 +195,9 @@ class CoreSleepRegistryPrimaryFitnessTest {
     //   - WU-LPR-090 / 2026-09-13: core.publishHtml (19 -> 20)
     //   - RP6-A / WU-091 / 2026-10-02: core.lock (20 -> 21). Born behind the
     //     registry, so it arrives with no legacy decoder/dispatcher row at all.
+    //   - RP6-B / WU-092 / 2026-10-08: core.input (21 -> 22). Also born behind the
+    //     registry, for the same reason: a Step that asks a human has no legacy
+    //     shape to migrate from.
     // This row was stale from WU-LPR-090 (registry shape drifted but the
     // pinning was not refreshed), surfacing only after the WU-RP-001 CI
     // bootstrap brought the application-focused job online for the first
@@ -211,7 +214,7 @@ class CoreSleepRegistryPrimaryFitnessTest {
                 "core.cleanWs", "core.archiveArtifacts",
                 "core.artifact.query", "core.waitUntil",
                 "core.stash", "core.unstash", "core.publishHTML",
-                "core.lock",
+                "core.lock", "core.input",
             ),
             CoreStepRegistryFactory.registry().keys().map { it.value }.toSet(),
         )

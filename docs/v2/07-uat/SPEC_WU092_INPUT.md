@@ -174,6 +174,39 @@ owner               = HANDLER_CONTINUATION
 policy              = Sequential
 ```
 
+### 5.1 Corrección de G4: qué significa realmente `MEMOIZED` aquí
+
+La primera redacción de esta spec afirmaba que un re-run «no vuelve a preguntar».
+**Medido en el CLI real durante G4, esa frase es falsa tal como está escrita**, y
+corregirla importa más que defenderla:
+
+```text
+resume con la pregunta ya respondida (CLI real, cuerpo fallido tras PROCEED)
+  StepStarted(input)      -> el handler SÍ se re-ejecuta
+  InputRequested (nuevo)  -> SÍ se republica la pregunta (mismo directorio, idempotente)
+  espera de operador      -> NO: relee response.json y sigue
+  cuerpo                  -> no se duplica (los hijos ya exitosos vienen memoizados)
+```
+
+Es decir: la republished es el **mismo hecho durable**, no una pregunta nueva, porque
+`publish` es idempotente y escribe en el mismo directorio (`runId#stepIndex`). La ley
+real, y la que el UAT certifica, es:
+
+> **Un resume no pide una segunda decisión.** La respuesta ya registrada se relee del
+> canal; nadie espera y nadie tiene que volver a contestar.
+
+La consecuencia de diseño que faltaba en el texto original: **esta ley no la impone el
+descriptor**. Mutar `replayPolicy` a `RERUN`, `recoveryPolicy` a `ExternalSubprocess` o
+`effects` a un valor que escriba deja el UAT entero en verde — las tres sobreviven. La
+ley vive en el canal durable (`FileInputDecisions` relee `response.json` antes y durante
+la espera) y la mutación que la rompe de verdad es borrar esa respuesta al republicar
+(§7.5, medida en G4).
+
+`MEMOIZED` sigue siendo la declaración correcta y hay que mantenerla, pero describe el
+**resultado** del Step —que incluye la decisión—, no el mecanismo que evita la segunda
+pregunta. Confundir ambas cosas es exactamente el error que habría producido un recibo
+falso.
+
 ## 6. Eventos
 
 ```kotlin
@@ -196,7 +229,8 @@ seguridad (D5).
 3. Registro en `CoreStepRegistryFactory` sin bypass de admisión.
 4. Fichero DSL `input(...)` con compilación positiva **y negativa**, con
    `CoreInputWireCodec` como autoridad única de wire (patrón G3.4 de RP6-A).
-5. Fila de reanudación verificada por mutación: un re-run no vuelve a preguntar.
+5. Fila de reanudación verificada por mutación: un resume **no pide una segunda
+   decisión** — relee la registrada y no espera a un operador (§5.1).
 6. Denegaciones como vías propias: `TimedOut`, `Cancelled` y `Unanswerable`,
    cada una con su diagnóstico; y las dos observaciones que **no** son
    denegaciones (respuesta malformada, doble respuesta) probadas en el puerto.

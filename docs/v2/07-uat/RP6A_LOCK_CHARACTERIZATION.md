@@ -454,12 +454,101 @@ Sin decidir si `LockSkipped` merece evento propio o se infiere de
 
 ---
 
-## 9. Siguiente paso
+## 9. Viabilidad ejecutada — la afirmación de §4, probada o refutada
 
-1. Escribir la caracterización **ejecutable** (tests que fijen
-   acquire / release / re-adquisición-en-reanudación / failure / abort / cancelación /
-   re-entrada) **antes** de la implementación, y verificar cada test por mutación.
-2. Abrir el ciclo SDDK H5 con WorkItem propio y goal correcto.
-3. Cerrar §7.1 y §7.3 al escribir la spec de WU-091.
+`lock` no existe, así que **no hay comportamiento que caracterizar**. Lo que sí se
+puede hacer, y es lo que importa, es **ejecutar la afirmación de §4**: si un
+`HANDLER_CONTINUATION` puede de verdad condicionar su propio body a una adquisición,
+la forma elegida sirve; si no, WU-091 está mal planteada y conviene saberlo antes de
+escribir un `StepDefinition`, una fachada DSL y un burn-down.
+
+`v2/pipeline-application/src/test/kotlin/.../LockFeasibilityProofTest.kt` lo hace con
+un **doble de prueba**, deliberadamente no código de producción. Resultado:
+**5 tests, 0 fallos, 0 skips.**
+
+| Fila | Qué fija |
+|---|---|
+| `the body runs only when the lock was acquired` | La afirmación cargante. Recurso tomado ⇒ **cero** efectos hijos. |
+| `a declined acquisition releases nothing` | Nunca adquirido ⇒ nunca liberado. Liberar lo ajeno rompe a un titular foráneo. |
+| `the lock is released after the body completes` | El corchete de éxito. |
+| `a body that reports failure still releases and fails the step` | Liberación en el camino de fallo **y** propagación del fallo. |
+| `the body effects reach the journal` | El Step `lock` está **sobre** la spine durable, no al lado. |
+
+Comando: `cd v2 && ./gradlew :pipeline-application:test --tests "*LockFeasibilityProofTest" --rerun-tasks`
+
+### 9.1 Verificación por mutación (3 mutaciones)
+
+| # | Mutación | Tests rojos | Lectura |
+|---|---|---|---|
+| M1 | Anular la detección de owner en `StepDispatchEngine` para que el motor ejecute el body aunque el handler no lo invoque (simula la sustitución de semántica) | **3 de 5** | La afirmación cargante tiene dientes: el test detecta que el motor corre el body por su cuenta. |
+| M2 | Sustituir el `finally` de liberación por liberar-then-return | **0 de 5** | **La fila mentía.** Ver §9.2. |
+| M3 | Suprimir la liberación por completo | **2 de 5** | Las dos filas de liberación muerden, y exactamente las dos. |
+
+### 9.2 M2 encontró un defecto real — en el test, y en el supuesto de diseño
+
+La fila original afirmaba *"a failing body still releases"*, con la liberación escrita
+como `finally`. M2 no la puso roja, lo que demuestra que **no estaba probando el
+`finally`**.
+
+La causa es una propiedad genuina del motor, y no es un detalle menor:
+
+```kotlin
+sealed interface BodyOutcome {
+    data class Completed(val outcome: StepOutcome) : BodyOutcome
+    data class Cancelled(val reason: CancellationReason) : BodyOutcome
+}
+```
+
+`BodyOutcome` tiene **exactamente dos casos y ninguno lanza**. Un cuerpo señaliza el
+fallo **devolviendo** `Completed(StepOutcome.Failure)`, nunca lanzando. Una excepción
+atravesando la continuación sería un defecto del motor, no un resultado operativo
+esperado (AGENTS.md, §6 de la guía de diseño tipado).
+
+Por tanto el contrato de liberación que de verdad importa es:
+
+> **liberar después de que `invoke` retorne, sea lo que retorne.**
+
+que es exactamente lo que verifica la fila superviviente. El `finally` se mantiene en
+el doble como defensa en profundidad ante un defecto del motor, pero queda
+**explícitamente marcado como propiedad no probada**. Declararla probada habría sido
+un test fabricando confianza que no se ha ganado.
+
+**Consecuencia para WU-091**: hay que cubrir el camino `Cancelled` como segunda vía de
+retorno real, no sólo `Completed(Failure)`.
+
+### 9.3 Segundo hallazgo: el output del handler debe llevar su propio `StepOutcome`
+
+Sin esto, `lock` **reportaría Success sobre un body que falló**. El mecanismo ya
+existe y `core.sh` lo usa: la salida tipada implementa `TypedStepOutput`, y
+`CommonExecutionBoundary` proyecta `produced as? TypedStepOutput` para obtener el
+veredicto real. El doble de este spike lo hace (`LockOutput : TypedStepOutput`) y la
+fila de fallo lo verifica.
+
+> `core.lock` necesita un carrier de salida que implemente `TypedStepOutput`, igual que
+> `CoreShellOutput` para `core.sh`. Sin ese carrier, la fila
+> `a body that reports failure ... fails the step` se pone roja.
+
+### 9.4 Lo que la viabilidad NO cubre
+
+- **El enlace de `LOCK_COORDINATION_CAPABILITY`.** El doble se cierra sobre un campo;
+  no se exercise el binding de una capability propia. Ese seam ya está probado por
+  `core.sh` / `SHELL_OPERATIONS_CAPABILITY`, pero el enlace *de esta* capability
+  concreta es una fila de implementación, no de viabilidad.
+- **Re-adquisición en reanudación** (§5.1). Es la fila durable más importante de
+  WU-091 y **no** está cubierta aquí: requiere un `ReplayPolicy` y un cursor de
+  reanudación, no un doble de exclusión.
+- **Cancelación** (§9.2).
+- **Re-entrada** (§5.3): sigue siendo decisión abierta, y el doble actual no es
+  reentrante a propósito. Nada en este test afirma lo contrario.
+
+---
+
+## 10. Siguiente paso
+
+1. Cerrar §7.1 y §7.3 al escribir la spec de WU-091.
+2. Implementar WU-091 empezando por la fila durable más difícil: **re-adquisición en
+   reanudación** (§5.1), porque es la que puede invalidar el `ReplayPolicy` elegido.
+3. Cubrir cancelación como vía de retorno propia.
+4. Cerrar el hueco del baseline Jenkins (§3) como parte de WU-091.
 
 Nada de esto empieza hasta que H4 deje de retener la spine.

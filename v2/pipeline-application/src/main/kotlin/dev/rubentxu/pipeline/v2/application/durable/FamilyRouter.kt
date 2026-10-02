@@ -75,7 +75,10 @@ object FamilyRouter {
         return if (registry.contains(stepKey)) {
             FamilyRoutingDecision.SeamedRouting(
                 legacy = legacyBoundary,
-                registry = RegistryExecutionBoundary.adapt(),
+                registry = RegistryExecutionBoundary.adapt(
+                    milestoneStateStore = null,
+                    artifactIndex = null,
+                ),
             )
         } else {
             FamilyRoutingDecision.LegacyOnly

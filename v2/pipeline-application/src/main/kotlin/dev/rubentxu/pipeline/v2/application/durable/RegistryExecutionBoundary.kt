@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
+import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability
@@ -62,7 +63,10 @@ object RegistryExecutionBoundary {
      *   Always non-null in production; nullable for test/adapter flexibility.
      */
     fun adapt(milestoneStateStore: MilestoneStateStore?): CommonExecutionBoundary =
-        adapt(milestoneStateStore = milestoneStateStore, artifactIndex = null)
+        adapt(
+            milestoneStateStore = milestoneStateStore,
+            artifactIndex = null,
+        )
 
     /**
      * E1.ecosystem-local-first / T1: per-run artifact index threaded
@@ -71,16 +75,33 @@ object RegistryExecutionBoundary {
      * consumer (core.artifact.query). When null the capability stays
      * unexposed and both Steps fail closed at registry-prepare-time.
      *
+     * WU-093 H7-D: the EXECUTE-time capability access must be built from the same
+     * [RuntimeCapabilityContributor] the PREPARE-time admission used. It was not, and
+     * the effect was that every plugin Step declaring a contributor-provided capability
+     * — `http.transport`, `credentials.basic` — was ADMITTED and then threw
+     * `EngineInvariantViolation` on execute. `http.request` could not run at all.
+     *
+     * The gap was invisible to H4.5's own proof because that proof asserted the
+     * capability was *available* from a hand-built access; nothing ran a Step through
+     * this boundary. A capability nobody can reach is not a capability, and the
+     * honest test for one is executing.
+     *
      * @param milestoneStateStore Optional store for milestone ordinal state. When provided,
      *   the MILESTONE_OPERATIONS_CAPABILITY is populated for core.milestone execution.
      *   Always non-null in production; nullable for test/adapter flexibility.
      * @param artifactIndex Optional per-run ArtifactIndexCapability. Same lifetime as the run.
      *   When provided, ARTIFACT_INDEX_CAPABILITY is exposed to both core.archiveArtifacts
      *   and core.artifact.query.
+     * @param capabilityContributor The run's plugin capability contributors. Same value
+     *   admission saw. When null, no contributor-provided capability is exposed here and
+     *   any Step declaring one fails closed at the execute-time re-check — which is the
+     *   correct direction for a missing capability, but it is NOT a substitute for
+     *   production passing the real one.
      */
     fun adapt(
         milestoneStateStore: MilestoneStateStore?,
         artifactIndex: ArtifactIndexCapability?,
+        capabilityContributor: RuntimeCapabilityContributor = RuntimeCapabilityContributor { emptyMap() },
     ): CommonExecutionBoundary =
         CommonExecutionBoundary { prepared, context ->
             when (prepared) {
@@ -89,6 +110,7 @@ object RegistryExecutionBoundary {
                         ctx,
                         milestoneStateStore = milestoneStateStore,
                         artifactIndex = artifactIndex,
+                        capabilityContributor = capabilityContributor,
                     )
                 }
                 is PreparedLegacyExecution -> throw EngineInvariantViolation(

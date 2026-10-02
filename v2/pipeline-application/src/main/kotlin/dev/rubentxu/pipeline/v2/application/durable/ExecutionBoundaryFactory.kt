@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability
 
@@ -65,6 +66,7 @@ object ExecutionBoundaryFactory {
         recorder: CommonExecutionBoundary? = null,
         milestoneStateStore: MilestoneStateStore? = null,
         artifactIndex: ArtifactIndexCapability? = null,
+        capabilityContributor: RuntimeCapabilityContributor = RuntimeCapabilityContributor { emptyMap() },
     ): CommonExecutionBoundary {
         // Binary policy preserved bit-a-bit from the original `if (stepRegistry != null)` inline
         // branch. `stepKey` is forwarded to the router for future per-step routing, but does not
@@ -83,6 +85,7 @@ object ExecutionBoundaryFactory {
             val registry = RegistryExecutionBoundary.adapt(
                 milestoneStateStore = milestoneStateStore,
                 artifactIndex = artifactIndex,
+                capabilityContributor = capabilityContributor,
             )
             // stepKey is intentionally not consumed here; the canonical coordinator does not know
             // the key at boundary-build time and the registry boundary decides reachability per

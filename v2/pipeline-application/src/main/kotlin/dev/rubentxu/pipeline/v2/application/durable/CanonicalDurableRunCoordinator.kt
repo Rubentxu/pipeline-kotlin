@@ -279,6 +279,7 @@ class CanonicalDurableRunCoordinator(
             stepRegistry = stepRegistry,
             milestoneStateStore = milestoneStateStore,
             artifactIndex = artifactIndex,
+            capabilityContributor = capabilityContributor,
         )
 
     // WU-RP-031 E4: effective execution + durable folding behind a narrow collaborator.

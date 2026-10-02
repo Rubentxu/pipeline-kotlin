@@ -365,6 +365,7 @@ internal class BodyExecutionEngine(
         context: ExecutionContext,
         dispatcher: BodyChildDispatcher,
         bodyInvokerAdapter: CanonicalBodyInvokerAdapter,
+        maxBackoffMsOverride: Long? = null,
     ): StepOutcome {
         var contextInBody = context
         var outcome: StepOutcome = StepOutcome.Success
@@ -472,7 +473,7 @@ internal class BodyExecutionEngine(
                 // Legacy waitUntil (no journal): the pre-WU-G5R.5 inline polling
                 // loop remains bit-equivalent.
                 outcome = executeWaitUntilInline(
-                    scope = scope,
+                    scope = scope.copy(maxBackoffMs = maxBackoffMsOverride ?: scope.maxBackoffMs),
                     block = block,
                     runId = runId,
                     stageName = stageName,

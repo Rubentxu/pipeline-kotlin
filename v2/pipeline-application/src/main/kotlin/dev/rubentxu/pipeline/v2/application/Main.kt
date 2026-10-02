@@ -369,6 +369,14 @@ fun main(args: Array<String>) {
                 stepRegistry = composedStepRegistry,
                 secretPatternRegistry = secretPatternRegistry,
                 withCredentialsExecutor = withCredentialsExecutor,
+                // H5-B: NO credentialProvider on this path, deliberately. It composes
+                // with an in-memory journal and receives no store, so the seam takes
+                // its default: a source that refuses every lookup with
+                // `NotConfigured`. That is the honest answer for a run that has
+                // nowhere to look, and it is the same answer the durable path gives
+                // when the operator configured no store. Passing a provider here
+                // would mean opening a secret store for a path that has no use for
+                // one.
                 pluginClassLoader = pluginClassLoader,
             )
             else -> {
@@ -765,6 +773,11 @@ fun main(args: Array<String>) {
             workspaceBase = workspaceTransport.base,
             workspaceOwnership = workspaceTransport.ownership,
             withCredentialsExecutor = withCredentialsExecutor,
+            // H5-B: same on the canonical run path. The credential seam is offered on
+            // EVERY path or it is offered inconsistently, and an inconsistently
+            // admitted Step is a Step whose behaviour depends on which branch the CLI
+            // happened to take.
+            credentialProvider = credentialProvider,
             stepRegistry = composedStepRegistry,
             secretPatternRegistry = secretPatternRegistry,
             pluginClassLoader = pluginClassLoader,

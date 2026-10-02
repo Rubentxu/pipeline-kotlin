@@ -26,21 +26,18 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  */
 class HttpCapabilityContributor(
     private val transport: HttpTransport = JdkHttpTransport(),
-    /**
-     * H5: contributed UNCONDITIONALLY, like the transport and for the same reason.
-     *
-     * The default is [NoCredentialSource], which fails every lookup with a
-     * diagnosis that says the run has no store. That is deliberately different
-     * from "that name is not in the store": one sends an operator to configure
-     * the run, the other to fix a typo. Withholding the capability instead would
-     * make a request WITHOUT a credential fail admission too, which would be a
-     * strictly worse answer to a question nobody asked.
-     */
-    private val credentials: HttpCredentialResolver = NoCredentialSource,
 ) : RuntimeCapabilityContributor {
 
-    override fun capabilities(): Map<StepCapability, Any> = mapOf(
-        HTTP_TRANSPORT_CAPABILITY to transport,
-        HTTP_CREDENTIALS_CAPABILITY to credentials,
-    )
+    /**
+     * The transport ONLY.
+     *
+     * H5-B moved the credential seam out: it is supplied by the runtime through
+     * `BasicCredentialsCapabilityContributor`, because the value has to come from
+     * the operator's store and the runtime cannot import this plugin's vocabulary
+     * to build it. Contributing it from BOTH sides would be a capability collision,
+     * which `CompositeCapabilityContributor` refuses by design — and rightly: first
+     * wins and last wins both let one side silently shadow the other.
+     */
+    override fun capabilities(): Map<StepCapability, Any> =
+        mapOf(HTTP_TRANSPORT_CAPABILITY to transport)
 }

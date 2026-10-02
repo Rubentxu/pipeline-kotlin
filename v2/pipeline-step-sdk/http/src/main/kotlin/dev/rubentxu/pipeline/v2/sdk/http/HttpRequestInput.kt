@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.sdk.http
 
+import dev.rubentxu.pipeline.v2.credentials.api.CredentialStoreUnavailability
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 
@@ -110,16 +111,16 @@ sealed interface HttpRejection {
                     supported.joinToString(" and ")
         }
 
-        data class StoreUnavailable(override val id: String, val reason: StoreUnavailability) :
+        data class StoreUnavailable(override val id: String, val reason: CredentialStoreUnavailability) :
             CredentialRefused {
             override val diagnostic: String get() = when (reason) {
-                StoreUnavailability.NotConfigured ->
+                CredentialStoreUnavailability.NotConfigured ->
                     "this run has no credential store configured, so '$id' cannot be looked up"
 
-                StoreUnavailability.Unreadable ->
+                CredentialStoreUnavailability.Unreadable ->
                     "the credential store could not be opened, so '$id' cannot be looked up"
 
-                StoreUnavailability.Unavailable ->
+                CredentialStoreUnavailability.Unavailable ->
                     "the credential store could not answer the lookup for '$id'"
             }
         }

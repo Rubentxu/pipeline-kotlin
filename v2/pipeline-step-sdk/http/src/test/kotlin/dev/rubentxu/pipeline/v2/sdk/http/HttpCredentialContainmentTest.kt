@@ -1,5 +1,9 @@
 package dev.rubentxu.pipeline.v2.sdk.http
 
+import dev.rubentxu.pipeline.v2.credentials.api.BasicCredentialResolution
+import dev.rubentxu.pipeline.v2.credentials.api.BasicCredentialSource
+import dev.rubentxu.pipeline.v2.credentials.api.CredentialStoreUnavailability
+import dev.rubentxu.pipeline.v2.credentials.api.NoBasicCredentialSource
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -32,17 +36,17 @@ class HttpCredentialContainmentTest {
 
     private val id = CredentialsId("deploy-token")
 
-    private fun resolverFor(resolution: (CredentialsId) -> HttpCredentialResolution) =
-        HttpCredentialResolver { resolution(it) }
+    private fun resolverFor(resolution: (CredentialsId) -> BasicCredentialResolution) =
+        BasicCredentialSource { resolution(it) }
 
     // ── K1: nothing declared, nothing resolved ─────────────────────────────
 
     @Test
     fun `K1 an undeclared authentication is Undeclared and never asks the resolver`() {
         var asked = false
-        val resolver = HttpCredentialResolver {
+        val resolver = BasicCredentialSource {
             asked = true
-            HttpCredentialResolution.NotFound("unused")
+            BasicCredentialResolution.NotFound("unused")
         }
 
         val decision = credentialDecisionOf(null, resolver)
@@ -62,7 +66,7 @@ class HttpCredentialContainmentTest {
     fun `K2 a resolvable credential becomes a Basic header`() {
         val decision = credentialDecisionOf(
             id,
-            resolverFor { HttpCredentialResolution.Basic("alice", "s3cr3t".toByteArray()) },
+            resolverFor { BasicCredentialResolution.Resolved("alice", "s3cr3t".toByteArray()) },
         )
 
         assertTrue(decision is CredentialDecision.Authorized, "got $decision")
@@ -75,7 +79,7 @@ class HttpCredentialContainmentTest {
 
     @Test
     fun `K3b a run with no credential store says so instead of blaming the name`() {
-        val decision = credentialDecisionOf(id, NoCredentialSource)
+        val decision = credentialDecisionOf(id, NoBasicCredentialSource)
 
         val rejection = (decision as CredentialDecision.Refused).rejection
         assertTrue(rejection is HttpRejection.CredentialRefused.StoreUnavailable, "got $rejection")
@@ -95,7 +99,7 @@ class HttpCredentialContainmentTest {
     fun `K3c a name that is simply absent is Absent`() {
         val decision = credentialDecisionOf(
             id,
-            resolverFor { HttpCredentialResolution.NotFound(it.value) },
+            resolverFor { BasicCredentialResolution.NotFound(it.value) },
         )
 
         val rejection = (decision as CredentialDecision.Refused).rejection
@@ -109,7 +113,7 @@ class HttpCredentialContainmentTest {
         val decision = credentialDecisionOf(
             id,
             resolverFor {
-                HttpCredentialResolution.KindUnsupported(
+                BasicCredentialResolution.KindUnsupported(
                     id = it.value,
                     found = "SecretFile",
                     supported = listOf("UsernamePassword"),
@@ -184,8 +188,8 @@ class HttpCredentialContainmentTest {
         val basic = HttpAuthorization.Basic("alice", secret.toByteArray())
         assertFalse(basic.toString().contains(secret), "HttpAuthorization.Basic leaks: $basic")
         assertFalse(
-            HttpCredentialResolution.Basic("alice", secret.toByteArray()).toString().contains(secret),
-            "HttpCredentialResolution.Basic leaks",
+            BasicCredentialResolution.Resolved("alice", secret.toByteArray()).toString().contains(secret),
+            "BasicCredentialResolution.Basic leaks",
         )
         assertFalse(
             HttpResponseCodec.encode(output).value.contains(secret),
@@ -209,7 +213,7 @@ class HttpCredentialContainmentTest {
         val secret = "sup3r-s3cr3t-value"
         val decision = credentialDecisionOf(
             id,
-            resolverFor { HttpCredentialResolution.NoSource(StoreUnavailability.Unreadable) },
+            resolverFor { BasicCredentialResolution.StoreUnavailable(CredentialStoreUnavailability.Unreadable) },
         )
 
         val output = HttpResponseOutput(
@@ -236,23 +240,24 @@ class HttpCredentialContainmentTest {
     @Test
     fun `K6b the resolution hierarchy admits no free text a secret could hide in`() {
         // The property K6 depends on, asserted structurally rather than through one
-        // example: `NoSource` carries an enum, not a `String`. There is no free text
+        // example: `StoreUnavailable` carries an enum, not a `String`. There is no free text
         // anywhere on the path from resolution to journal, so there is nothing for a
         // secret to hide in. A reflection check is the honest way to say that — and it
         // fails the moment somebody "just adds a detail" to the reason.
-        val parameterTypes = HttpCredentialResolution.NoSource::class.java.declaredConstructors
+        val parameterTypes = BasicCredentialResolution.StoreUnavailable::class.java
+            .declaredConstructors
             .single()
             .parameterTypes
 
         assertEquals(
-            listOf(StoreUnavailability::class.java),
+            listOf(CredentialStoreUnavailability::class.java),
             parameterTypes.toList(),
-            "NoSource must carry a closed reason, not a String. A free-text reason is a " +
+            "StoreUnavailable must carry a closed reason, not a String. A free-text reason is a " +
                 "secret exfiltration path into the journal, the event log and every " +
                 "toString() in between; K6 caught exactly that.",
         )
         assertTrue(
-            StoreUnavailability.entries.size == 3,
+            CredentialStoreUnavailability.entries.size == 3,
             "a closed set of three: not configured, unreadable, unavailable. If a fourth " +
                 "arrives it must arrive with a diagnostic that is still a fixed phrase.",
         )
@@ -264,7 +269,7 @@ class HttpCredentialContainmentTest {
     fun `K7 the Authorization header is a ByteArray, so it is not a String in the port`() {
         val decision = credentialDecisionOf(
             id,
-            resolverFor { HttpCredentialResolution.Basic("alice", "s3cr3t".toByteArray()) },
+            resolverFor { BasicCredentialResolution.Resolved("alice", "s3cr3t".toByteArray()) },
         )
         val basic = (decision as CredentialDecision.Authorized).authorization as HttpAuthorization.Basic
 

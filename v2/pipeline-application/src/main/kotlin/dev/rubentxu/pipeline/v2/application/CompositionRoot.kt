@@ -53,6 +53,20 @@ internal fun runCanonicalPipeline(
     workspaceOwnership: dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceOwnership? = null,
     withCredentialsExecutor: WithCredentialsExecutor? = null,
     /**
+     * H5-B: the store the operator configured, if any.
+     *
+     * Turned into [BasicCredentialsCapabilityContributor] here, which is the ONE
+     * place allowed to know both a credentials port and a plugin-facing capability
+     * shape. `Main` passes the provider it already builds and never imports the
+     * http plugin; the plugin declares `credentials.basic` and never imports this.
+     *
+     * A run with no store still contributes the capability, backed by a source that
+     * refuses every lookup with a reason that says so. Withholding it would refuse
+     * admission for every Step that declares the seam, including those that declare
+     * no credential and would never call it.
+     */
+    credentialProvider: dev.rubentxu.pipeline.v2.credentials.spi.CredentialProvider? = null,
+    /**
      * RP6-C / LFC-2E3 (`--allow-network`): permit outbound egress for this run.
      *
      * FALSE by default. The transport a plugin needs is contributed through
@@ -79,7 +93,15 @@ internal fun runCanonicalPipeline(
      * on its behalf.
      */
     capabilityContributors: List<dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor> =
-        ExternalCapabilityContributorDiscovery.discover(),
+        ExternalCapabilityContributorDiscovery.discover() +
+            // H5-B: the credential seam is per-run state — it wraps the store THIS
+            // invocation opened — so it cannot come from classpath discovery the way
+            // a plugin's own transport does. Discovery supplies the plugin side; this
+            // supplies the runtime side, and the two never collide because the plugin
+            // deliberately contributes only its transport.
+            dev.rubentxu.pipeline.v2.credentials.executor.BasicCredentialsCapabilityContributor(
+                credentialProvider,
+            ),
     // LB-02 / EP-6: caller-composed registry (core + discovered external contributions).
     // Composition happens ONCE in the composition root, BEFORE the canonical-eligibility
     // gate, so contributed keys participate in the gate (eligibility is registry-derived).

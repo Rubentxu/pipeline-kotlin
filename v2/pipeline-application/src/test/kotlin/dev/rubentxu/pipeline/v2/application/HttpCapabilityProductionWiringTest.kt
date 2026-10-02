@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
 import dev.rubentxu.pipeline.v2.application.durable.OpId
+import dev.rubentxu.pipeline.v2.credentials.api.BASIC_CREDENTIALS_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.CompositeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressPolicy
@@ -10,6 +11,7 @@ import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.http.HTTP_TRANSPORT_CAPABILITY
 import dev.rubentxu.pipeline.v2.sdk.http.HttpRequestStep
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -45,11 +47,24 @@ import java.nio.file.Path
 class HttpCapabilityProductionWiringTest {
 
     /**
-     * The composed set as PRODUCTION sees it: whatever is on the classpath, composed
-     * by the same composite the coordinator uses.
+     * The composed set as PRODUCTION sees it.
+     *
+     * Two sources, because the seams have genuinely different lifetimes:
+     *
+     * ```text
+     * discovery            http.transport        — the plugin's own, from the classpath
+     * composition root     credentials.basic      — the operator's store, from this run
+     * ```
+     *
+     * The credential seam cannot come from classpath discovery: it wraps the store
+     * THIS invocation opened, and a classpath has no idea whether the operator
+     * configured one. Composing only the discovered half is a real configuration —
+     * it is what a test harness builds — and it is why the assertions below name
+     * which source each capability came from.
      */
     private fun productionCapabilities(
         egress: NetworkEgressPolicy = NetworkEgressPolicy.Denied,
+        withCredentialStore: Boolean = true,
     ): Set<dev.rubentxu.pipeline.v2.domain.step.StepCapability> {
         val controlDir: Path = Files.createTempDirectory("h45-wiring")
         val context = CanonicalRuntimeContext(
@@ -68,11 +83,18 @@ class HttpCapabilityProductionWiringTest {
             controlDirRoot = controlDir,
             eventSink = InMemoryEventStore(),
         )
+        val contributors = buildList {
+            addAll(ExternalCapabilityContributorDiscovery.discover())
+            if (withCredentialStore) {
+                add(
+                    dev.rubentxu.pipeline.v2.credentials.executor
+                        .BasicCredentialsCapabilityContributor(null),
+                )
+            }
+        }
         return CanonicalRuntimeCapabilityAccess(
             context,
-            capabilityContributor = CompositeCapabilityContributor(
-                ExternalCapabilityContributorDiscovery.discover(),
-            ),
+            capabilityContributor = CompositeCapabilityContributor(contributors),
         ).available()
     }
 
@@ -102,33 +124,49 @@ class HttpCapabilityProductionWiringTest {
     }
 
     @Test
-    fun `a discovered run is refused for EGRESS and never for the transport`() {
+    fun `a denied run is refused for EGRESS and never for the transport`() {
         val denied = productionCapabilities(NetworkEgressPolicy.Denied)
         val required = HttpRequestStep.definition.contract.requiredCapabilities
 
-        assertTrue(
-            required.all { it in denied } || !denied.contains(NETWORK_EGRESS_CAPABILITY),
-            "a denied run must not receive the egress permission",
-        )
         val missing = required - denied
-        assertTrue(
-            missing.isEmpty() || missing == setOf(NETWORK_EGRESS_CAPABILITY),
+        assertEquals(
+            setOf(NETWORK_EGRESS_CAPABILITY),
+            missing,
             "on a denied run the ONLY unsatisfied requirement may be the egress permission; " +
-                "missing=$missing. Anything else means the transport is not wired and the " +
-                "operator is told the wrong thing.",
+                "missing=$missing. Anything else means a seam is not wired and the operator " +
+                "is told the wrong thing about why the Step was refused.",
         )
     }
 
     @Test
-    fun `an allowed run satisfies every declared requirement through discovery alone`() {
+    fun `an allowed run satisfies every declared requirement`() {
         val allowed = productionCapabilities(NetworkEgressPolicy.Allowed)
         val required = HttpRequestStep.definition.contract.requiredCapabilities
 
         val missing = required - allowed
         assertTrue(
             missing.isEmpty(),
-            "with --allow-network every requirement must be satisfiable from the classpath; " +
-                "missing=$missing. This is the run that used to be impossible.",
+            "with --allow-network every requirement must be satisfiable; missing=$missing. " +
+                "This is the run that used to be impossible.",
+        )
+    }
+
+    @Test
+    fun `the credential seam is per-run state, not something a classpath can supply`() {
+        // Worth pinning because it looks like an omission. It is not: the seam wraps
+        // the store THIS invocation opened. A ServiceLoader implementation would have
+        // to invent a store, and inventing one is how a run ends up with credentials
+        // nobody configured.
+        val discovered = ExternalCapabilityContributorDiscovery.discover()
+            .flatMap { it.capabilities().keys }
+
+        assertFalse(
+            BASIC_CREDENTIALS_CAPABILITY in discovered,
+            "credentials.basic must not be discoverable from the classpath; got $discovered",
+        )
+        assertTrue(
+            BASIC_CREDENTIALS_CAPABILITY in productionCapabilities(),
+            "but the composition root must always supply it, with or without a store",
         )
     }
 }

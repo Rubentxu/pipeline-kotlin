@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.step.Delivery
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
+import dev.rubentxu.pipeline.v2.credentials.api.BASIC_CREDENTIALS_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor
@@ -81,10 +82,10 @@ class HttpPluginContractTest {
         val contract = HttpRequestStep.definition.contract
 
         assertEquals(
-            setOf(HTTP_TRANSPORT_CAPABILITY, NETWORK_EGRESS_CAPABILITY, HTTP_CREDENTIALS_CAPABILITY),
+            setOf(HTTP_TRANSPORT_CAPABILITY, NETWORK_EGRESS_CAPABILITY, BASIC_CREDENTIALS_CAPABILITY),
             contract.requiredCapabilities,
             "http.request needs its own transport, the generic egress permission, and the " +
-                "narrow credential seam. The permission is what makes a default run fail " +
+                "narrow `credentials.basic` seam owned by pipeline-credentials-api. The permission is what makes a default run fail " +
                 "closed at admission instead of reaching the network. The credential seam is " +
                 "declared UNCONDITIONALLY rather than only when `authentication` appears, " +
                 "because this contract is read BEFORE the input is decoded — deciding the " +

@@ -1,5 +1,10 @@
 package dev.rubentxu.pipeline.v2.sdk.http
 
+import dev.rubentxu.pipeline.v2.credentials.api.BASIC_CREDENTIALS_CAPABILITY
+import dev.rubentxu.pipeline.v2.credentials.api.BasicCredentialResolution
+import dev.rubentxu.pipeline.v2.credentials.api.BasicCredentialSource
+import dev.rubentxu.pipeline.v2.credentials.api.CredentialStoreUnavailability
+import dev.rubentxu.pipeline.v2.credentials.api.NoBasicCredentialSource
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
@@ -69,12 +74,12 @@ class HttpCredentialApplicationTest {
 
     private fun contextFor(
         transport: HttpTransport,
-        credentials: HttpCredentialResolver,
+        credentials: BasicCredentialSource,
         egress: NetworkEgressPolicy = NetworkEgressPolicy.Allowed,
     ): StepHandlerContext {
         val available = mapOf<StepCapability, Any>(
             HTTP_TRANSPORT_CAPABILITY to transport,
-            HTTP_CREDENTIALS_CAPABILITY to credentials,
+            BASIC_CREDENTIALS_CAPABILITY to credentials,
             NETWORK_EGRESS_CAPABILITY to egress,
         )
         return StepHandlerContext(
@@ -101,7 +106,7 @@ class HttpCredentialApplicationTest {
         val output = runBlocking {
             HttpRequestStep.definition.handler.execute(
                 input(),
-                contextFor(transport, NoCredentialSource),
+                contextFor(transport, NoBasicCredentialSource),
             )
         }
 
@@ -118,7 +123,7 @@ class HttpCredentialApplicationTest {
     fun `K10 the refusal is a declaration failure with nothing sent`() = runBlocking {
         val output = HttpRequestStep.definition.handler.execute(
             input(),
-            contextFor(RecordingTransport(), NoCredentialSource),
+            contextFor(RecordingTransport(), NoBasicCredentialSource),
         )
 
         val attempt = output.attempt
@@ -145,7 +150,7 @@ class HttpCredentialApplicationTest {
                 input(),
                 contextFor(
                     transport,
-                    HttpCredentialResolver { HttpCredentialResolution.NotFound(it.value) },
+                    BasicCredentialSource { BasicCredentialResolution.NotFound(it.value) },
                 ),
             )
 
@@ -168,7 +173,7 @@ class HttpCredentialApplicationTest {
             input(),
             contextFor(
                 transport,
-                HttpCredentialResolver { HttpCredentialResolution.Basic("alice", "s3cr3t".toByteArray()) },
+                BasicCredentialSource { BasicCredentialResolution.Resolved("alice", "s3cr3t".toByteArray()) },
             ),
         )
 
@@ -184,7 +189,7 @@ class HttpCredentialApplicationTest {
 
         HttpRequestStep.definition.handler.execute(
             input(authentication = null),
-            contextFor(transport, NoCredentialSource),
+            contextFor(transport, NoBasicCredentialSource),
         )
 
         assertEquals(
@@ -207,9 +212,9 @@ class HttpCredentialApplicationTest {
             input(),
             contextFor(
                 transport,
-                HttpCredentialResolver {
+                BasicCredentialSource {
                     asked = true
-                    HttpCredentialResolution.Basic("alice", "s3cr3t".toByteArray())
+                    BasicCredentialResolution.Resolved("alice", "s3cr3t".toByteArray())
                 },
                 egress = NetworkEgressPolicy.Denied,
             ),

@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.http
 
+import dev.rubentxu.pipeline.v2.credentials.api.BASIC_CREDENTIALS_CAPABILITY
+import dev.rubentxu.pipeline.v2.credentials.api.BasicCredentialSource
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
@@ -83,7 +85,7 @@ object HttpRequestStep {
             // out the egress verdict at all.
             val egress: NetworkEgressPolicy = ctx.capabilities.get(NETWORK_EGRESS_CAPABILITY)
             val transport: HttpTransport = ctx.capabilities.get(HTTP_TRANSPORT_CAPABILITY)
-            val credentials: HttpCredentialResolver = ctx.capabilities.get(HTTP_CREDENTIALS_CAPABILITY)
+            val credentials: BasicCredentialSource = ctx.capabilities.get(BASIC_CREDENTIALS_CAPABILITY)
 
             // A verdict that arrives as Denied cannot normally reach here — the
             // runtime withholds the capability instead — but the case is handled
@@ -223,7 +225,7 @@ object HttpRequestStep {
                     // credential store is still admitted, and a Step that never names a
                     // credential never calls the resolver, so the cost of requiring it
                     // is one map lookup.
-                    HTTP_CREDENTIALS_CAPABILITY,
+                    BASIC_CREDENTIALS_CAPABILITY,
                 ),
             )
 

@@ -99,9 +99,13 @@ class FArchL7DomainEventExhaustivityTest {
      * 63. InputProceed (RP6-B / WU-092 §6 — affirmative answer; the body ran)
      * 64. InputAborted (RP6-B / WU-092 §6 — negative answer; the body was skipped)
      * 65. InputDenied (RP6-B / WU-092 §6 — timed out, cancelled or unanswerable)
+     * 66. HttpRequestStarted (RP6-C / WU-093 §5 — a request left, before any answer)
+     * 67. HttpResponseReceived (RP6-C / WU-093 §5 — a response arrived, any status)
+     * 68. HttpStatusRejected (RP6-C / WU-093 §5 — status outside what the author listed)
+     * 69. HttpRequestFailed (RP6-C / WU-093 §5 — no response at all)
      */
     @Test
-    fun `domain_event_sealed_hierarchy_has_65_variants`() {
+    fun `domain_event_sealed_hierarchy_has_69_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
@@ -115,7 +119,12 @@ class FArchL7DomainEventExhaustivityTest {
         // four sealed events in G1. Same lesson as S2-C, one tier down: the four
         // variants shipped in 523ffb0a and this pin was only reached by the G3 gate,
         // because the gate that ran for G1 never included this module.
-        val expectedCount = 65
+        // +4 through RP6-C / WU-093 §5: the core.httpRequest lifecycle, added with
+        // the four sealed events in G3. Third recurrence of this exact miss, so the
+        // rule is now stated rather than remembered: ANY sealed hierarchy growth MUST
+        // move this pin in the same commit that adds the variant. A pin that is
+        // renamed but not re-valued is a false green waiting for the next gate.
+        val expectedCount = 69
 
         assertEquals(
             expectedCount,

@@ -29,6 +29,10 @@ import dev.rubentxu.pipeline.v2.events.HtmlReportFailed
 import dev.rubentxu.pipeline.v2.events.HtmlReportPublished
 import dev.rubentxu.pipeline.v2.events.HtmlReportSkipped
 import dev.rubentxu.pipeline.v2.events.InputAborted
+import dev.rubentxu.pipeline.v2.events.HttpRequestStarted
+import dev.rubentxu.pipeline.v2.events.HttpResponseReceived
+import dev.rubentxu.pipeline.v2.events.HttpStatusRejected
+import dev.rubentxu.pipeline.v2.events.HttpRequestFailed
 import dev.rubentxu.pipeline.v2.events.InputDenied
 import dev.rubentxu.pipeline.v2.events.InputProceed
 import dev.rubentxu.pipeline.v2.events.InputRequested
@@ -108,6 +112,10 @@ internal object SequenceAssigner {
         is LockAcquireFailed -> event.copy(sequence = sequence)
         // RP6-B / WU-092 §6 input events
         is InputRequested -> event.copy(sequence = sequence)
+        is HttpRequestStarted -> event.copy(sequence = sequence)
+        is HttpResponseReceived -> event.copy(sequence = sequence)
+        is HttpStatusRejected -> event.copy(sequence = sequence)
+        is HttpRequestFailed -> event.copy(sequence = sequence)
         is InputProceed -> event.copy(sequence = sequence)
         is InputAborted -> event.copy(sequence = sequence)
         is InputDenied -> event.copy(sequence = sequence)

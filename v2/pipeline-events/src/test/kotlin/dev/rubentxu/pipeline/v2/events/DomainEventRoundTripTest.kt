@@ -1,5 +1,9 @@
 package dev.rubentxu.pipeline.v2.events
 
+import dev.rubentxu.pipeline.v2.events.HttpRequestStarted
+import dev.rubentxu.pipeline.v2.events.HttpResponseReceived
+import dev.rubentxu.pipeline.v2.events.HttpStatusRejected
+import dev.rubentxu.pipeline.v2.events.HttpRequestFailed
 import dev.rubentxu.pipeline.v2.events.InputAborted
 import dev.rubentxu.pipeline.v2.events.InputDenied
 import dev.rubentxu.pipeline.v2.events.InputProceed
@@ -334,13 +338,13 @@ class DomainEventRoundTripTest {
     }
 
     @Test
-    fun `sealed hierarchy contains 65 variants`() {
+    fun `sealed hierarchy contains 69 variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
         val count = sealedSubclasses.size
         assertEquals(
-            65,
+            69,
             count,
-            "DomainEvent sealed hierarchy must have exactly 65 variants " +
+            "DomainEvent sealed hierarchy must have exactly 69 variants " +
                 "(51 + DirectiveAdmitted/DirectiveDenied added in S1-C directive seam, " +
                 "+ StageSkipped added in S2-A so a gated-off stage is observable, " +
                 "+ PostConditionSelected added in S2-B so the post decision is observable, " +
@@ -385,6 +389,64 @@ class DomainEventRoundTripTest {
             ),
         )
         assertEquals(events, JsonEventLog.decode(JsonEventLog.encode(events)))
+    }
+
+    @Test
+    fun `http events round-trip through the JSON log`() {
+        // RP6-C / WU-093 §5. The load-bearing property here is the four kinds staying
+        // DISTINCT: an answer, a refusal and a failure all end with "no result for the
+        // step", and a decoder that collapsed them would make a pipeline that was never
+        // attempted look like one that was answered and rejected.
+        val events: List<DomainEvent> = listOf(
+            HttpRequestStarted(
+                eventId = "e-http-1", runId = "r1", sequence = 1L,
+                occurredAt = Instant.parse("2026-10-09T09:00:00Z"),
+                url = "https://api.test/v1/orders", method = "POST", headerCount = 2,
+            ),
+            HttpResponseReceived(
+                eventId = "e-http-2", runId = "r1", sequence = 2L,
+                occurredAt = Instant.parse("2026-10-09T09:00:01Z"),
+                url = "https://api.test/v1/orders", status = 201, durationMs = 842L,
+            ),
+            HttpStatusRejected(
+                eventId = "e-http-3", runId = "r2", sequence = 1L,
+                occurredAt = Instant.parse("2026-10-09T09:05:00Z"),
+                url = "https://api.test/v1/orders", status = 503, accepted = "200:299",
+            ),
+            HttpRequestFailed(
+                eventId = "e-http-4", runId = "r3", sequence = 1L,
+                occurredAt = Instant.parse("2026-10-09T09:10:00Z"),
+                url = "https://down.test/v1", reason = "ConnectException: refused",
+            ),
+        )
+        val decoded = JsonEventLog.decode(JsonEventLog.encode(events))
+        assertEquals(events, decoded)
+        assertEquals(
+            listOf("HttpRequestStarted", "HttpResponseReceived", "HttpStatusRejected", "HttpRequestFailed"),
+            decoded.map { it.kind },
+            "the four http outcomes must decode as four distinct kinds",
+        )
+    }
+
+    @Test
+    fun `an http event carries no response body and no header value`() {
+        // INV-L6-EVT-001. This row fails if somebody adds a body or an Authorization
+        // field to any of the four events, which is the one change to this file that
+        // would silently start writing tokens into the durable log.
+        val encoded = JsonEventLog.encode(
+            listOf(
+                HttpResponseReceived(
+                    eventId = "e-http-5", runId = "r1", sequence = 1L,
+                    occurredAt = Instant.parse("2026-10-09T09:00:00Z"),
+                    url = "https://api.test/v1", status = 200, durationMs = 12L,
+                ),
+            ),
+        )
+        assertFalse(
+            encoded.contains("Authorization") || encoded.contains("token") ||
+                encoded.contains("secret") || encoded.contains("\"body\""),
+            "an http event payload must stay metadata-only: $encoded",
+        )
     }
 
     @Test

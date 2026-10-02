@@ -1309,3 +1309,70 @@ data class InputDenied(
 ) : DomainEvent {
     override val kind: String get() = "InputDenied"
 }
+
+// ── core.httpRequest (RP6-C / WU-093 §5) ─────────────────────────────────
+//
+// INV-L6-EVT-001 (see FileRead): no payload of a `core.httpRequest` event carries
+// the response body or a header VALUE. A response body can hold a token and a header
+// can be `Authorization`, and this is the same hole that rule closed for file reads.
+// What travels is metadata: what was asked, what came back as a number, and how long
+// it took. `headerCount` stands in for the headers themselves — enough to answer "did
+// this request authenticate?", nothing that can leak what it authenticated with.
+
+/**
+ * A request left the runtime. Emitted before the transport is invoked, so a reader can
+ * see the attempt even when the transport never answers.
+ */
+data class HttpRequestStarted(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val url: String,
+    val method: String,
+    val headerCount: Int,
+) : DomainEvent {
+    override val kind: String get() = "HttpRequestStarted"
+}
+
+/** A response arrived, whatever its status. The status itself is metadata, not content. */
+data class HttpResponseReceived(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val url: String,
+    val status: Int,
+    val durationMs: Long,
+) : DomainEvent {
+    override val kind: String get() = "HttpResponseReceived"
+}
+
+/**
+ * The response came back with a status the author did not list. Carries both the
+ * status received and the range that was expected, because "it returned 503" without
+ * "and you asked for 2xx" leaves the reader to guess which of the two was a mistake.
+ */
+data class HttpStatusRejected(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val url: String,
+    val status: Int,
+    val accepted: String,
+) : DomainEvent {
+    override val kind: String get() = "HttpStatusRejected"
+}
+
+/** The transport never produced a response: unreachable host, refused connection, elapsed bound. */
+data class HttpRequestFailed(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val url: String,
+    val reason: String,
+) : DomainEvent {
+    override val kind: String get() = "HttpRequestFailed"
+}

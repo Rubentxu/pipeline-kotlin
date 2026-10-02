@@ -850,6 +850,50 @@ object JsonEventLog {
                     reason = reason,
                 )
             }
+            // RP6-C / WU-093 §5 httpRequest events
+            "HttpRequestStarted" -> {
+                HttpRequestStarted(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    url = EventJsonFields.stringField(s, "url") ?: "",
+                    method = EventJsonFields.stringField(s, "method") ?: "GET",
+                    headerCount = EventJsonFields.longField(s, "headerCount")?.toInt() ?: 0,
+                )
+            }
+            "HttpResponseReceived" -> {
+                HttpResponseReceived(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    url = EventJsonFields.stringField(s, "url") ?: "",
+                    status = EventJsonFields.longField(s, "status")?.toInt() ?: 0,
+                    durationMs = EventJsonFields.longField(s, "durationMs") ?: 0L,
+                )
+            }
+            "HttpStatusRejected" -> {
+                HttpStatusRejected(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    url = EventJsonFields.stringField(s, "url") ?: "",
+                    status = EventJsonFields.longField(s, "status")?.toInt() ?: 0,
+                    accepted = EventJsonFields.stringField(s, "accepted") ?: "",
+                )
+            }
+            "HttpRequestFailed" -> {
+                HttpRequestFailed(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    url = EventJsonFields.stringField(s, "url") ?: "",
+                    reason = EventJsonFields.stringField(s, "reason") ?: "",
+                )
+            }
             // RP6-B / WU-092 §6 input events
             "InputRequested" -> {
                 val message = EventJsonFields.stringField(s, "message") ?: ""

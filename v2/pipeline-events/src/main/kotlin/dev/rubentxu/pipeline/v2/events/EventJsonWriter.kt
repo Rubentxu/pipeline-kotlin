@@ -589,6 +589,38 @@ internal object EventJsonWriter {
                 sb.append(",\"reason\":")
                 sb.append(EventJsonWriter.jsonString(event.reason))
             }
+            // RP6-C / WU-093 §5 httpRequest events. Metadata only: no body, no
+            // header values (INV-L6-EVT-001).
+            is HttpRequestStarted -> {
+                sb.append(",\"url\":")
+                sb.append(EventJsonWriter.jsonString(event.url))
+                sb.append(",\"method\":")
+                sb.append(EventJsonWriter.jsonString(event.method))
+                sb.append(",\"headerCount\":")
+                sb.append(event.headerCount.toString())
+            }
+            is HttpResponseReceived -> {
+                sb.append(",\"url\":")
+                sb.append(EventJsonWriter.jsonString(event.url))
+                sb.append(",\"status\":")
+                sb.append(event.status.toString())
+                sb.append(",\"durationMs\":")
+                sb.append(event.durationMs.toString())
+            }
+            is HttpStatusRejected -> {
+                sb.append(",\"url\":")
+                sb.append(EventJsonWriter.jsonString(event.url))
+                sb.append(",\"status\":")
+                sb.append(event.status.toString())
+                sb.append(",\"accepted\":")
+                sb.append(EventJsonWriter.jsonString(event.accepted))
+            }
+            is HttpRequestFailed -> {
+                sb.append(",\"url\":")
+                sb.append(EventJsonWriter.jsonString(event.url))
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
             // RP6-B / WU-092 §6 input events
             is InputRequested -> {
                 sb.append(",\"message\":")

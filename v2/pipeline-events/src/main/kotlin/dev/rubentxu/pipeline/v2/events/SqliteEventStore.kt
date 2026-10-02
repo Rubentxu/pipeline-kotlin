@@ -362,6 +362,10 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 is LockAcquireFailed -> event.copy(sequence = assignedSequence)
                 // RP6-B / WU-092 §6 input events
                 is InputRequested -> event.copy(sequence = assignedSequence)
+                is HttpRequestStarted -> event.copy(sequence = assignedSequence)
+                is HttpResponseReceived -> event.copy(sequence = assignedSequence)
+                is HttpStatusRejected -> event.copy(sequence = assignedSequence)
+                is HttpRequestFailed -> event.copy(sequence = assignedSequence)
                 is InputProceed -> event.copy(sequence = assignedSequence)
                 is InputAborted -> event.copy(sequence = assignedSequence)
                 is InputDenied -> event.copy(sequence = assignedSequence)

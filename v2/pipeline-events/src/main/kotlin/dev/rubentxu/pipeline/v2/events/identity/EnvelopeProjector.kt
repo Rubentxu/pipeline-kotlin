@@ -37,6 +37,10 @@ import dev.rubentxu.pipeline.v2.events.InputAborted
 import dev.rubentxu.pipeline.v2.events.InputDenied
 import dev.rubentxu.pipeline.v2.events.InputProceed
 import dev.rubentxu.pipeline.v2.events.InputRequested
+import dev.rubentxu.pipeline.v2.events.HttpRequestStarted
+import dev.rubentxu.pipeline.v2.events.HttpResponseReceived
+import dev.rubentxu.pipeline.v2.events.HttpStatusRejected
+import dev.rubentxu.pipeline.v2.events.HttpRequestFailed
 import dev.rubentxu.pipeline.v2.events.LockAcquireFailed
 import dev.rubentxu.pipeline.v2.events.LockAcquired
 import dev.rubentxu.pipeline.v2.events.LockReleased
@@ -233,6 +237,10 @@ object EnvelopeProjector {
         is InputRequested,
         is InputProceed,
         is InputAborted,
+        is HttpRequestStarted,
+        is HttpResponseReceived,
+        is HttpStatusRejected,
+        is HttpRequestFailed,
         is InputDenied,
         is TimeoutTriggered,
         is TimestampsEntered,

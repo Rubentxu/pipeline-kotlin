@@ -17,9 +17,7 @@
     <ID>ClassNaming:F5_1_ScmGitStepContractTest.kt:F5_1_ScmGitStepContractTest</ID>
     <ID>ClassNaming:F5_2_JUnitStepContractTest.kt:F5_2_JUnitStepContractTest</ID>
     <ID>ClassNaming:G7_CoreShellOutputCodecRoundTripTest.kt:G7_CoreShellOutputCodecRoundTripTest</ID>
-    <ID>CyclomaticComplexMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private suspend fun dispatchBody: StepOutcome</ID>
-    <ID>CyclomaticComplexMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private suspend fun runParallelStage: StepOutcome</ID>
-    <ID>CyclomaticComplexMethod:Main.kt:fun main</ID>
+            <ID>CyclomaticComplexMethod:Main.kt:fun main</ID>
     <ID>CyclomaticComplexMethod:Main.kt:fun parseCliArgs: PipelineCliConfig?</ID>
     <ID>CyclomaticComplexMethod:MainEventsCli.kt:MainEventsCli$fun main: Int</ID>
     <ID>CyclomaticComplexMethod:SimplePipelineCompiler.kt:SimplePipelineCompiler$override fun compile: CompileResult</ID>
@@ -31,19 +29,12 @@
     <ID>EmptyElseBlock:Spike016DurableScriptedReplayTest.kt:Runtime$if(replay)replayed+=id</ID>
     <ID>EmptyIfBlock:UatCompat001CorpusSmokeRunTest.kt:UatCompat001CorpusSmokeRunTest${ }</ID>
     <ID>InvalidPackageDeclaration:FileBasedWaitUntilControlJournalTest.kt:package dev.rubentxu.pipeline.v2.application.durable</ID>
-    <ID>LargeClass:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator</ID>
-    <ID>LongMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private suspend fun dispatch: Dispatched</ID>
-    <ID>LongMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private suspend fun dispatchBody: StepOutcome</ID>
-    <ID>LongMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private suspend fun runParallelStage: StepOutcome</ID>
-    <ID>LongMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$suspend fun run: RunOutcome</ID>
+                    <ID>LongMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$suspend fun run: RunOutcome</ID>
     <ID>LongMethod:Main.kt:fun main</ID>
     <ID>LongMethod:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$override fun publish: PublishHtmlResult</ID>
     <ID>LongMethod:UatLocal002ResumeAfterKillTest.kt:UatLocal002ResumeAfterKillTest$@Test fun `resume after kill reads result txt no reexec`</ID>
     <ID>LongMethod:WaitUntilEngine.kt:WaitUntilEngine$suspend fun execute: StepOutcome</ID>
     <ID>MaxLineLength:CanonicalCoordinatorScopeStackTest.kt:CanonicalCoordinatorScopeStackTest$"""{"kind":"CatchErrorEntered","buildResult":"UNSTABLE","stageResult":"UNSTABLE","enteredAt":"${System.currentTimeMillis()}"}"""</ID>
-    <ID>MaxLineLength:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.USER, (decision.outcome as BranchTerminal.Failed).message ?: "parallel branch failed")</ID>
-    <ID>MaxLineLength:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$journal.append(aggregateTerminalRow(aggregateOpId, aggregateId, aggregateFingerprint, aggregateInput, BranchTerminal.Failed(decision.reason), OperationStatus.ABORTED))</ID>
-    <ID>MaxLineLength:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$journal.append(aggregateTerminalRow(aggregateOpId, aggregateId, aggregateFingerprint, aggregateInput, BranchTerminal.Failed(decision.reason), OperationStatus.DIVERGENT))</ID>
     <ID>MaxLineLength:CompatibilityCorpusTest.kt:CompatibilityCorpusTest$assertEquals(0, exitCode) { "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()} stdout tail: ${stdout.takeLast(1200)}" }</ID>
     <ID>MaxLineLength:CompatibilityCorpusTest.kt:CompatibilityCorpusTest$assertEquals(31, fixtures.size, "Corpus must have 31 valid fixtures (S2 added 25..29; E1.1 / T8 added 30..30; WU-LPR-089 added 31-stash-unstash; WU-LPR-090 added 32-publish-html)")</ID>
     <ID>MaxLineLength:CompatibilityCorpusTest.kt:CompatibilityCorpusTest$println("DEBUG-LPR103 store=$storePath exists=${storePath.toFile().exists()} size=${if (storePath.toFile().exists()) java.nio.file.Files.size(storePath) else -1}")</ID>
@@ -153,11 +144,8 @@
     <ID>MaxLineLength:UatLocal005CorpusUntouchedTest.kt:UatLocal005CorpusUntouchedTest$fun</ID>
     <ID>MaxLineLength:UatLocal011WorkflowControlTest.kt:UatLocal011WorkflowControlTest$@org.junit.jupiter.api.Disabled("INC-024: load step produces child steps; coordinator does not yet inject loaded pipeline into execution flow. Pre-existing on c88d5c88 (v0.32.2). See comment block above.")</ID>
     <ID>MaxLineLength:WURp020MavenRealUatTest.kt:WURp020MavenRealUatTest$Files.writeString(badPom, "&lt;?xml version=\"1.0\"?&gt;&lt;project xmlns=\"http://maven.apache.org/POM/4.0.0\"&gt;&lt;modelVersion&gt;4.0.0&lt;/modelVersion&gt;&lt;groupId&gt;x&lt;/groupId&gt;&lt;artifactId&gt;y&lt;/artifactId&gt;&lt;version&gt;1&lt;/version&gt;&lt;packaging&gt;not-a-real-packaging&lt;/packaging&gt;&lt;/project&gt;")</ID>
-    <ID>MayBeConstant:DurableInvocationResolver.kt:DurableInvocationResolver.Companion$// Preserved from CanonicalDurableRunCoordinator companion (behavior-equivalence law). private val REATTACH_TIMEOUT_MS = 60_000L</ID>
-    <ID>TooManyFunctions:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler</ID>
-    <ID>UnusedParameter:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$id: ParallelAggregateId</ID>
-    <ID>UnusedParameter:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$stageIndex: Int</ID>
-    <ID>UnusedParameter:CanonicalNodeDispatcher.kt:CanonicalNodeDispatcher$context: CanonicalRuntimeContext</ID>
+        <ID>TooManyFunctions:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler</ID>
+            <ID>UnusedParameter:CanonicalNodeDispatcher.kt:CanonicalNodeDispatcher$context: CanonicalRuntimeContext</ID>
     <ID>UnusedParameter:CoreArtifactQueryStepContractTest.kt:CoreArtifactQueryStepContractTest$missing: StepCapability</ID>
     <ID>UnusedParameter:CtxPConcurrencyOwnershipTest.kt:CtxPConcurrencyOwnershipTest$branchIndex: Int</ID>
     <ID>UnusedParameter:DurableInvocationResolver.kt:DurableInvocationResolver$effects: Set&lt;Effect&gt;</ID>

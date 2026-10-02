@@ -5,6 +5,10 @@ import dev.rubentxu.pipeline.v2.domain.RuntimeConfig
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.domain.scm.Scm
+import dev.rubentxu.pipeline.v2.domain.step.http.HttpDefaults
+import dev.rubentxu.pipeline.v2.domain.step.http.HttpHeader
+import dev.rubentxu.pipeline.v2.domain.step.http.HttpMethod
+import dev.rubentxu.pipeline.v2.domain.step.http.StatusRange
 
 /**
  * Shared mutable state for the stage DSL builders.
@@ -479,6 +483,71 @@ open class StageScopeTopSteps(
                 id = id,
                 timeoutSeconds = timeoutSeconds,
                 steps = inner.steps(),
+            ),
+        )
+    }
+
+    /**
+     * Sends one request to a remote service (RP6-C / WU-093; Jenkins `httpRequest`:
+     * url, method, customHeaders, requestBody, contentType, acceptType,
+     * validResponseCodes, timeout, authentication).
+     *
+     * Declarative construction only: this builder records a [StepSpec.HttpRequest].
+     * Nothing here opens a socket. Whether the request is allowed at all, how it
+     * travels, what is emitted and what is journaled belong to the `core.httpRequest`
+     * handler behind the registry — and admitting it at all depends on the
+     * `--allow-network` policy, so a pipeline that declares this and runs without
+     * that flag fails closed rather than silently reaching the world.
+     *
+     * The values are TYPED, and that is the whole point. Jenkins accepts
+     * `method: 'POST'` and `validResponseCodes: '200,201'` as strings it parses
+     * AFTER the request has already been sent, so a typo becomes an exception
+     * raised against a request that left the machine. Here `method` is an
+     * [HttpMethod] and a range is a validated [StatusRange]: `method = "GTE"`
+     * does not compile, and `StatusRange.Span(400, 200)` is rejected where it is
+     * written. The Jenkins *parameter names* are preserved, so porting a pipeline
+     * is a literal-to-typed change on the value, not a relearning.
+     *
+     * The Jenkins string spellings remain reachable as pure, total functions when
+     * a port really wants them — [HttpMethod.fromWire] and [StatusRange.parse]
+     * both return `null` rather than guessing — which is how a migration tool
+     * converts a legacy pipeline without ever inventing a value.
+     *
+     * @param url the absolute URL to request.
+     * @param method defaults to GET, as in Jenkins.
+     * @param customHeaders a LIST, not a map: a header may legitimately repeat
+     *   (`Set-Cookie`), and a map would silently collapse them.
+     * @param body the request body. Only a method whose [HttpMethod.carriesBody]
+     *   accepts one; pairing a body with GET is a declaration error, not a
+     *   request the server will ignore.
+     * @param validResponseCodes the statuses that count as success, defaulting to
+     *   the Jenkins default of anything below 400.
+     * @param timeoutSeconds bound on the request; `0` means no bound at all.
+     * @param authentication a credentials id resolved behind the credentials
+     *   capability. Only username/password (Basic) is supported.
+     */
+    fun httpRequest(
+        url: String,
+        method: HttpMethod = HttpMethod.Get,
+        customHeaders: List<HttpHeader> = emptyList(),
+        body: String? = null,
+        contentType: String? = null,
+        acceptType: String? = null,
+        validResponseCodes: List<StatusRange> = StatusRange.jenkinsDefault(),
+        timeoutSeconds: Int = HttpDefaults.DEFAULT_TIMEOUT_SECONDS,
+        authentication: CredentialsId? = null,
+    ) {
+        steps.add(
+            StepSpec.HttpRequest(
+                url = url,
+                method = method,
+                customHeaders = customHeaders,
+                body = body,
+                contentType = contentType,
+                acceptType = acceptType,
+                validResponseCodes = validResponseCodes,
+                timeoutSeconds = timeoutSeconds,
+                authentication = authentication,
             ),
         )
     }

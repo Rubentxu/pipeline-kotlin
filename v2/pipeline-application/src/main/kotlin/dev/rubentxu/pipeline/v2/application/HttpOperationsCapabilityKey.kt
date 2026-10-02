@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import dev.rubentxu.pipeline.v2.domain.step.http.HttpHeader
+import dev.rubentxu.pipeline.v2.domain.step.http.HttpMethod
 
 /**
  * RP6-C / WU-093 G3-A4.2 — the ONE network seam of the runtime.

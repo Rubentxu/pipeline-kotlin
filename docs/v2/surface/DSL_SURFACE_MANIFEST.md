@@ -68,6 +68,7 @@ The machine-check enforces, against live code (not this file alone):
 | fileExists | `fileExists(file)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | StepSpec.FileExists -> core.fileExists -> CoreFileExistsStep |
 | deleteDir | `deleteDir(path)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | StepSpec.DeleteDir -> core.deleteDir -> CoreDeleteDirStep |
 | cleanWs | `cleanWs(deleteDirs, patterns)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | RegistryStepSpec core.cleanWs -> CoreCleanWsStep |
+| httpRequest | `httpRequest(url, method?, customHeaders?, body?, contentType?, acceptType?, validResponseCodes?, timeoutSeconds?, authentication?)` | ATOMIC_STEP | EXPERIMENTAL | NOT_APPLICABLE | StepSpec.HttpRequest -> core.httpRequest -> CoreHttpStep via HTTP_OPERATIONS_CAPABILITY, admitted fail-closed only under `--allow-network`. Events: `HttpRequestStarted` / `HttpResponseReceived` / `HttpStatusRejected` / `HttpRequestFailed`, metadata only (never a body, never a header value). Wire payload authored ONLY by CoreHttpWireCodec (WU-093 G3.4). `method` and `validResponseCodes` are TYPED (`HttpMethod`, `StatusRange`), not strings: Jenkins parses `validResponseCodes` AFTER the request has already been sent (`HttpRequest.java:552-589`). `ReplayPolicy.NEVER` (a request may have an effect the runtime cannot know); the retry is the author's `retry` block. `sslVerify`, `failOnStatusCode`, `customBands`, `responseCode`, `retry` and `retryableStatusCodes` DO NOT EXIST — that parameter list belongs to a surface that was extracted to its own plugin (RP6-C exploration) |
 | checkout | `checkout(scm)` | ATOMIC_STEP | PARTIAL | NOT_APPLICABLE | StepSpec.Checkout -> OpaqueStepNode(pluginStepId=`core.checkout`); the scm-git plugin registers `scm-git.checkout`, NOT `core.checkout` (S0-B) |
 | scmGit | `scmGit(url, branch, ...)` | PURE_BUILDER | STABLE | MUST_CONSUME | Returns CheckoutSpec (0 effects); consumed by checkout. MUST_CONSUME applies to a PURE_BUILDER that hands out a config carrier which NOTHING consumes on its own: discarding it loses the author's intent entirely. It does NOT apply to SCRIPTED_RUNTIME_CALL builders, whose call already emits a step, nor to builders returning Unit or Nothing |
 | git | `git(url, branch, ...)` | ATOMIC_STEP | UNSUPPORTED_FAIL_CLOSED | NOT_APPLICABLE | S0-B: rejects fail-closed with exit 2 ("non-canonical plugins" naming `core.checkout`). Zero checkouts occur. |
@@ -124,7 +125,7 @@ family in section 2, which encode a predicate the runtime can actually decode.
 
 ## 6. Closed sets (machine-check targets)
 
-- StepSpec subtypes (33 after S0 block A): the sealed family in
+- StepSpec subtypes (34 after S0 block A): the sealed family in
   `pipeline-scripting-api/.../dsl/StepSpec.kt`. The manifest must cover every subtype's
   producing builder. Subtypes without a DSL producer are internal IR detail
   (RegistryStepSpec/RegistryBlockSpec are produced by registryStep/registryBlock and by

@@ -6,6 +6,9 @@ import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import dev.rubentxu.pipeline.v2.domain.step.http.HttpHeader
+import dev.rubentxu.pipeline.v2.domain.step.http.HttpMethod
+import dev.rubentxu.pipeline.v2.domain.step.http.StatusRange
 
 /**
  * Contract of `core.httpRequest` (RP6-C / WU-093 G1), exercised WITHOUT a socket:

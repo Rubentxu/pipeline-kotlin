@@ -11,6 +11,8 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import dev.rubentxu.pipeline.v2.domain.step.http.HttpHeader
+import dev.rubentxu.pipeline.v2.domain.step.http.HttpMethod
 
 /**
  * RP6-C / WU-093 G2 — the transport, against a REAL local HTTP server.

@@ -4,6 +4,9 @@ import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
+import dev.rubentxu.pipeline.v2.domain.step.http.HttpHeader
+import dev.rubentxu.pipeline.v2.domain.step.http.HttpMethod
+import dev.rubentxu.pipeline.v2.domain.step.http.StatusRange
 
 /**
  * The Step's result.

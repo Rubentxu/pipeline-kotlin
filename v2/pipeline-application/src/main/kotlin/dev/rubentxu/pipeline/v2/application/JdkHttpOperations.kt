@@ -13,6 +13,8 @@ import java.time.Duration
 import java.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import dev.rubentxu.pipeline.v2.domain.step.http.HttpHeader
+import dev.rubentxu.pipeline.v2.domain.step.http.HttpMethod
 
 /**
  * RP6-C / WU-093 G2 — the ONLY class in this repository that opens a socket.

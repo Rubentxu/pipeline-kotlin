@@ -11,6 +11,10 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import dev.rubentxu.pipeline.v2.domain.step.http.HttpDefaults
+import dev.rubentxu.pipeline.v2.domain.step.http.HttpHeader
+import dev.rubentxu.pipeline.v2.domain.step.http.HttpMethod
+import dev.rubentxu.pipeline.v2.domain.step.http.StatusRange
 
 /** Raised when a `core.httpRequest` payload is not what this Step can speak. */
 class CoreHttpCodecException(message: String) : IllegalArgumentException(message)
@@ -106,7 +110,7 @@ object CoreHttpWireCodec : StepCodec<CoreHttpInput> {
             contentType = obj.stringField("contentType"),
             acceptType = obj.stringField("acceptType"),
             validResponseCodes = ranges,
-            timeoutSeconds = obj.intField("timeoutSeconds") ?: CoreHttpInput.DEFAULT_TIMEOUT_SECONDS,
+            timeoutSeconds = obj.intField("timeoutSeconds") ?: HttpDefaults.DEFAULT_TIMEOUT_SECONDS,
             authentication = obj.stringField("authentication")?.let { CredentialsId(it) },
         )
     }

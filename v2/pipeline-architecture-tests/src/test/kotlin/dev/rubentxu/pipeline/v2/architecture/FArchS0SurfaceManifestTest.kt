@@ -242,6 +242,9 @@ class FArchS0SurfaceManifestTest {
             "lock" to "Lock",
             // WU-092 / RP6-B: core.input joins the manifest-governed block family.
             "input" to "Input",
+            // WU-093 / RP6-C: core.httpRequest joins the manifest-governed ATOMIC
+            // family. Atomic, not a block: a request owns no body to flatten.
+            "httpRequest" to "HttpRequest",
             "cleanWs" to "CleanWs",
         )
         val unexplained = stepSpecSubtypes.filter { subtype ->

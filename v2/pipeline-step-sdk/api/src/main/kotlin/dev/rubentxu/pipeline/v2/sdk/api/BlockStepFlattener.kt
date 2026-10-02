@@ -218,7 +218,12 @@ object BlockStepFlattener {
             is StepSpec.Unstable,
             is StepSpec.Pwd,
             is StepSpec.IsUnix,
-            is StepSpec.Load -> {
+            is StepSpec.Load,
+            // RP6-C / WU-093: core.httpRequest is a terminal leaf. It is not a
+            // block Step — the request has no enclosed body to flatten, unlike
+            // core.lock and core.input, whose bodies are conditional and must not
+            // disappear. It is a Leaf here for the same reason core.echo is.
+            is StepSpec.HttpRequest -> {
                 // Terminal step: nothing to flatten.
             }
             is dev.rubentxu.pipeline.v2.dsl.StepSpec.WaitUntilBlock -> {

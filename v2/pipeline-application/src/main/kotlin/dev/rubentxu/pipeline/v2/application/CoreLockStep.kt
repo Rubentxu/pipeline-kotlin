@@ -63,44 +63,7 @@ object CoreLockStep {
 
     val KEY: PluginStepId = PluginStepId("core.lock")
 
-    private val inputCodec = object : StepCodec<CoreLockInput> {
-        override fun encode(value: CoreLockInput): EncodedStepValue {
-            val obj: JsonObject = buildJsonObject {
-                put("resource", JsonPrimitive(value.resource))
-                put("skipIfLocked", JsonPrimitive(value.skipIfLocked))
-                value.timeoutSeconds?.let { put("timeoutSeconds", JsonPrimitive(it)) }
-                value.reason?.let { put("reason", JsonPrimitive(it)) }
-            }
-            return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
-        }
-
-        override fun decode(encoded: EncodedStepValue): CoreLockInput {
-            val obj = try {
-                Json.parseToJsonElement(encoded.value).jsonObject
-            } catch (e: Exception) {
-                throw CoreLockCodecException(
-                    "core.lock arguments are not a JSON object: ${e.message ?: "parse failed"}",
-                )
-            }
-            val resource = obj.stringOrNull("resource")
-                ?: throw CoreLockCodecException("core.lock arguments missing mandatory 'resource'")
-            val skipIfLocked = obj.booleanOrNull("skipIfLocked") ?: false
-            val timeoutSeconds = when (val el = obj["timeoutSeconds"]) {
-                null, kotlinx.serialization.json.JsonNull -> null
-                else -> el.jsonPrimitive.contentOrNull?.toIntOrNull()
-                    ?: throw CoreLockCodecException(
-                        "core.lock 'timeoutSeconds' is not an integer",
-                    )
-            }
-            val reason = obj.stringOrNull("reason")
-            return CoreLockInput(
-                resource = resource,
-                timeoutSeconds = timeoutSeconds,
-                reason = reason,
-                skipIfLocked = skipIfLocked,
-            )
-        }
-    }
+    private val inputCodec = CoreLockWireCodec
 
     /**
      * Explicit, lossless round-trip of [CoreLockOutput].
@@ -218,6 +181,13 @@ object CoreLockStep {
         val coordinator: LockCoordinator = ctx.capabilities.get(LOCK_COORDINATION_CAPABILITY)
         val continuation: BodyContinuation = ctx.capabilities.get(BODY_CONTINUATION_CAPABILITY)
 
+        // The durable owner is the RUN, not this step and not this thread. Jenkins is
+        // re-entrant per build, so a nested `lock` inside one run re-enters; a second
+        // run in the same process is a different owner and must contend. The run id
+        // is journalled, so it survives suspension, replay, resume, a change of
+        // thread and a change of coroutine — which is what a hold has to do.
+        val owner = LockOwner(ctx.runId.value)
+
         when (val resolution = lockIntentOf(input.skipIfLocked, input.timeoutSeconds)) {
             is LockIntentResolution.Rejected -> CoreLockOutput(
                 resource = input.resource,
@@ -232,9 +202,10 @@ object CoreLockStep {
             )
             is LockIntentResolution.Resolved -> {
                 val intent = resolution.intent
-                when (val admission = coordinator.acquire(input.resource, intent)) {
+                when (val admission = coordinator.acquire(owner, input.resource, intent)) {
                     is LockAdmission.Denied -> denied(input.resource, admission, intent)
                     is LockAdmission.Acquired -> runBody(
+                        owner = owner,
                         resource = input.resource,
                         admission = admission,
                         continuation = continuation,
@@ -256,6 +227,7 @@ object CoreLockStep {
      * `LockFeasibilityProofTest`'s header.
      */
     private suspend fun runBody(
+        owner: LockOwner,
         resource: String,
         admission: LockAdmission.Acquired,
         continuation: BodyContinuation,
@@ -281,7 +253,7 @@ object CoreLockStep {
             )
         }
     } finally {
-        coordinator.release(LockHold(admission.resource))
+        coordinator.release(LockHold(owner, admission.resource))
     }
 
     /**
@@ -384,12 +356,3 @@ private fun outcomeDiscriminant(outcome: StepOutcome): String = when (outcome) {
     is StepOutcome.Unstable -> "UNSTABLE"
     is StepOutcome.Failure -> "FAILURE"
 }
-
-private fun JsonObject.stringOrNull(field: String): String? =
-    this[field]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonPrimitive?.contentOrNull
-
-private fun JsonObject.booleanOrNull(field: String): Boolean? =
-    this[field]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonPrimitive?.booleanOrNull
-
-private fun JsonObject.longOrNull(field: String): Long? =
-    this[field]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonPrimitive?.contentOrNull?.toLongOrNull()

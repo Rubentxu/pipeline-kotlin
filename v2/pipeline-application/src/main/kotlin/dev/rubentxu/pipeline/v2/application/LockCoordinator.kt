@@ -26,7 +26,7 @@ package dev.rubentxu.pipeline.v2.application
 interface LockCoordinator {
 
     /**
-     * Takes [resource] according to [intent], or reports why it could not.
+     * Takes [resource] for [owner] according to [intent], or reports why it could not.
      *
      * The contract an implementation MUST honour:
      * - On [LockAdmission.Acquired], the returned hold is what [release] takes.
@@ -34,11 +34,10 @@ interface LockCoordinator {
      * - The hold is released by exactly one of: [release], the death of the
      *   owning process, or the resource's own expiry — whichever comes first.
      *   An implementation MUST NOT leave a hold that no [release] can clear.
-     * - Re-acquiring a resource this holder already holds is a decision the
-     *   IMPLEMENTATION must not make implicitly; see the re-entrancy note on
-     *   [LockAdmission.Acquired].
+     * - Re-entrancy is keyed by [owner], NEVER by thread, coroutine, or process.
+     *   See [LockOwner].
      */
-    suspend fun acquire(resource: String, intent: LockIntent): LockAdmission
+    suspend fun acquire(owner: LockOwner, resource: String, intent: LockIntent): LockAdmission
 
     /**
      * Releases a previously granted hold.
@@ -50,6 +49,45 @@ interface LockCoordinator {
      */
     fun release(hold: LockHold)
 }
+
+/**
+ * The durable identity a hold belongs to.
+ *
+ * ## Why this is not a thread, a coroutine or a process
+ *
+ * Re-entrancy keyed by process would let a second RUN in the same JVM walk
+ * straight into a resource the first run is holding, and keyed by thread would
+ * make the answer depend on which scheduler thread happened to run the nested
+ * body. Both are ambient, and both change across exactly the transitions the
+ * engine performs routinely:
+ *
+ * ```text
+ * suspension      → the body is journalled and the thread is released
+ * resume          → the handler re-runs, possibly on a different thread
+ * replay          → memoised steps never re-enter the handler at all
+ * parallel branches → each branch runs on its own coroutine
+ * ```
+ *
+ * A hold therefore belongs to a DURABLE identity that survives all four. That
+ * identity is the run: it is in the journal, it is stable across restart, and it
+ * is what Jenkins keys on too — `LockableResourcesManager` is per build, so a
+ * `lock` nested inside a build re-enters rather than deadlocking against itself.
+ *
+ * [LockAdmission.Acquired.reentrant] is the observable consequence: it is true
+ * when the SAME owner already held the resource, and false for a different
+ * owner — which is a genuine contention and must be denied.
+ */
+@JvmInline
+value class LockOwner(val runId: String)
+
+/**
+ * A granted hold, and the only thing [LockCoordinator.release] accepts.
+ *
+ * Carries the owner as well as the resource so that "release a lock this run
+ * never acquired" is a type error at the call site, and so a release can never
+ * free a hold belonging to a different owner.
+ */
+data class LockHold(val owner: LockOwner, val resource: String)
 
 /**
  * How long a caller is willing to wait for a resource.
@@ -85,16 +123,14 @@ sealed interface LockIntent {
 sealed interface LockAdmission {
 
     /**
-     * The resource is held by this caller.
+     * The resource is held by [owner].
      *
      * @param resource the held resource, as the coordinator knows it.
-     * @param reentrant whether this hold was satisfied by a hold the SAME holder
-     *   already had. A coordinator that is not re-entrant reports `false` for a
-     *   nested request for a resource it already holds; one that is re-entrant
-     *   reports `true` and must still expect a matching [release] per
-     *   acquisition. WU-091 leaves the re-entrancy policy undecided, which is
-     *   why it is an explicit, readable value and not an accident of the
-     *   backend.
+     * @param reentrant whether this hold was satisfied by a hold the SAME
+     *   [LockOwner] already had. Jenkins is re-entrant per build, so
+     *   `lock("a") { lock("a") { ... } }` inside one run re-enters. A DIFFERENT
+     *   owner asking for a held resource is contention and is denied, even
+     *   inside the same JVM — the process is not the owner.
      */
     data class Acquired(
         val resource: String,
@@ -120,16 +156,6 @@ sealed interface LockDenialReason {
     /** The run was cancelled or aborted while waiting. */
     data object Cancelled : LockDenialReason
 }
-
-/**
- * A granted hold, and the only thing [LockCoordinator.release] accepts.
- *
- * Being a distinct type rather than a bare `String` resource is what makes
- * "release a lock this run never acquired" unrepresentable at the call site
- * instead of a runtime hazard.
- */
-@JvmInline
-value class LockHold(val resource: String)
 
 /**
  * Typed decode/validation failure for `core.lock` input. Expected operational

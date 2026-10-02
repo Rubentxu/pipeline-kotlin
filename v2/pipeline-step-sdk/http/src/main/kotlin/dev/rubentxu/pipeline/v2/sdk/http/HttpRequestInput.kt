@@ -77,14 +77,71 @@ sealed interface HttpRejection {
     }
 
     /**
-     * The author asked for a credential this slice cannot honour yet.
+     * H5 — a named credential could not be turned into an `Authorization` header.
      *
-     * Credential resolution is scheduled for G6, where it arrives through a
-     * declared capability rather than a service locator. Until then a declared
-     * `authentication` is REFUSED, and refusing it is the whole point: silently
-     * dropping the credential and sending the request unauthenticated would
-     * turn a declared secret into a 401 at best and an audit finding at worst,
-     * and the pipeline would look like it had authenticated.
+     * A DECLARATION error, not a transport one: no socket is opened and
+     * `durationMs` is zero, so a reader of the journal can tell "we decided not to
+     * send" from "we sent and it failed".
+     *
+     * `NoSource` is its own case rather than folded into [CredentialsUnsupported]
+     * because the two send an operator to different places: one is usually an
+     * author typo, the other means the run was never given a store to look in.
+     */
+    sealed interface CredentialRefused : HttpRejection {
+        val id: String
+
+        data class Absent(override val id: String) : CredentialRefused {
+            override val diagnostic: String get() = "no credential named '$id'"
+        }
+
+        /**
+         * Jenkins reports this as *"Authentication 'X' doesn't exist anymore"*, which
+         * is a lie: it blames a missing credential for a present one of the wrong
+         * shape, and the operator goes looking for a credential they can already
+         * see. This says what arrived and what would have worked.
+         */
+        data class WrongKind(
+            override val id: String,
+            val found: String,
+            val supported: List<String>,
+        ) : CredentialRefused {
+            override val diagnostic: String get() =
+                "credential '$id' is a $found; http.request supports " +
+                    supported.joinToString(" and ")
+        }
+
+        data class StoreUnavailable(override val id: String, val reason: StoreUnavailability) :
+            CredentialRefused {
+            override val diagnostic: String get() = when (reason) {
+                StoreUnavailability.NotConfigured ->
+                    "this run has no credential store configured, so '$id' cannot be looked up"
+
+                StoreUnavailability.Unreadable ->
+                    "the credential store could not be opened, so '$id' cannot be looked up"
+
+                StoreUnavailability.Unavailable ->
+                    "the credential store could not answer the lookup for '$id'"
+            }
+        }
+    }
+
+    /**
+     * H5: retired. A declared `authentication` used to be REFUSED outright, on the
+     * sound grounds that silently dropping a credential and sending the request
+     * unauthenticated would turn a declared secret into a 401 at best and an audit
+     * finding at worst.
+     *
+     * The reasoning was right and the mechanism was wrong: refusing meant
+     * `http.request` could never authenticate at all, and the refusal text had to
+     * explain a missing feature. The credential is now resolved through
+     * [HTTP_CREDENTIALS_CAPABILITY] before any socket exists, and every way that
+     * can fail is still a typed rejection with the request NOT sent. The property
+     * this case protected — a declared secret must never degrade into an
+     * anonymous request — is now enforced by the resolution being MANDATORY
+     * rather than by the declaration being forbidden.
+     *
+     * Kept, not deleted, so a durable record written while it was the only outcome
+     * still decodes into something truthful.
      */
     data class CredentialsUnsupported(val id: String) : HttpRejection {
         override val diagnostic: String get() =
@@ -145,18 +202,19 @@ sealed interface HttpIntent {
  * façade, so the headers that travel are the ones the decision produced. The
  * transport sends what it is given and never invents a `Content-Type`.
  */
-internal fun HttpIntent.Ready.toSendRequest(): HttpSendRequest = HttpSendRequest(
-    url = url,
-    method = method,
-    headers = headers + buildList {
-        contentType?.let { add(HttpHeader.of("Content-Type", resolveContentType(it))) }
-        acceptType?.let { add(HttpHeader.of("Accept", resolveContentType(it))) }
-    },
-    body = body,
-    timeoutMs = timeoutMs,
-    authorization = null,
-    maxBodyBytes = HttpDefaults.MAX_RESPONSE_BYTES,
-)
+internal fun HttpIntent.Ready.toSendRequest(authorization: HttpAuthorization?): HttpSendRequest =
+    HttpSendRequest(
+        url = url,
+        method = method,
+        headers = headers + buildList {
+            contentType?.let { add(HttpHeader.of("Content-Type", resolveContentType(it))) }
+            acceptType?.let { add(HttpHeader.of("Accept", resolveContentType(it))) }
+        },
+        body = body,
+        timeoutMs = timeoutMs,
+        authorization = authorization,
+        maxBodyBytes = HttpDefaults.MAX_RESPONSE_BYTES,
+    )
 
 internal fun httpIntentOf(input: HttpRequestInput): HttpIntent {
     if (input.url.isBlank()) {
@@ -174,11 +232,10 @@ internal fun httpIntentOf(input: HttpRequestInput): HttpIntent {
     if (input.timeoutSeconds < 0) {
         return HttpIntent.Rejected(HttpRejection.NonPositiveTimeout(input.timeoutSeconds))
     }
-    // Fail-closed on a credential this build cannot honour. Dropping it and
-    // sending anyway would make an unauthenticated request look authenticated.
-    input.authentication?.let { id ->
-        return HttpIntent.Rejected(HttpRejection.CredentialsUnsupported(id.value))
-    }
+    // H5: a declared `authentication` is no longer refused HERE. It is resolved
+    // through the credentials capability before any socket exists, and a failure
+    // there is still a typed rejection with nothing sent. Refusing at this stage
+    // would have meant the Step could never authenticate at all.
     return HttpIntent.Ready(
         url = input.url,
         method = input.method,

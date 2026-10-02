@@ -37,10 +37,22 @@ data class HttpSendRequest(
     val maxBodyBytes: Long,
 )
 
-/** A resolved credential header, ready to write. */
+/**
+ * A resolved credential header, ready to write — but not yet written.
+ *
+ * H5: this used to carry a pre-encoded base64 `String`, while the function that
+ * produces it claimed the secret "never enters the port". Both cannot be true. It
+ * now carries the raw material and the encoding happens inside the transport, in
+ * the last place the secret exists, and the bytes can be wiped straight after.
+ */
 sealed interface HttpAuthorization {
     data object None : HttpAuthorization
-    data class Basic(val base64UserPassword: String) : HttpAuthorization
+
+    data class Basic(
+        val username: String,
+        /** Secret material. Wiped by the transport once the header string is built. */
+        val password: ByteArray,
+    ) : HttpAuthorization
 }
 
 /**

@@ -209,7 +209,7 @@ class JdkHttpOperationsTest {
 
     @Test
     fun `an already-resolved credential is sent as a Basic header`() {
-        val value = basicAuthorizationValue("ana", "s3cret")
+        val value = basicAuthorizationValue("ana", "s3cret".toByteArray())
         val outcome = answered(
             send(
                 url = "$baseUrl/echo",

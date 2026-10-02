@@ -83,6 +83,7 @@ object HttpRequestStep {
             // out the egress verdict at all.
             val egress: NetworkEgressPolicy = ctx.capabilities.get(NETWORK_EGRESS_CAPABILITY)
             val transport: HttpTransport = ctx.capabilities.get(HTTP_TRANSPORT_CAPABILITY)
+            val credentials: HttpCredentialResolver = ctx.capabilities.get(HTTP_CREDENTIALS_CAPABILITY)
 
             // A verdict that arrives as Denied cannot normally reach here — the
             // runtime withholds the capability instead — but the case is handled
@@ -114,7 +115,23 @@ object HttpRequestStep {
                 )
 
                 is HttpIntent.Ready -> {
-                    val sent: HttpTransportResult = transport.send(intent.toSendRequest())
+                    // H5: the credential is resolved HERE, before the send request
+                    // exists, so a credential that cannot be used means no socket was
+                    // ever opened. A declared secret that degraded into an anonymous
+                    // request would be the failure this ordering exists to prevent.
+                    // The DECISION is pure and lives in `credentialDecisionOf`; this
+                    // is only its interpretation at the effect boundary.
+                    val decision: CredentialDecision =
+                        credentialDecisionOf(intent.authentication, credentials)
+                    if (decision is CredentialDecision.Refused) {
+                        return@StepHandler rejected(intent, decision.rejection)
+                    }
+
+                    val sent: HttpTransportResult = transport.send(
+                        intent.toSendRequest(
+                            (decision as? CredentialDecision.Authorized)?.authorization,
+                        ),
+                    )
                     // The transport REPORTS the status; the Step DECIDES whether
                     // that status was acceptable. Splitting it this way is what
                     // keeps `validResponseCodes` an author-facing policy rather
@@ -198,6 +215,15 @@ object HttpRequestStep {
                 requiredCapabilities = setOf<StepCapability>(
                     HTTP_TRANSPORT_CAPABILITY,
                     NETWORK_EGRESS_CAPABILITY,
+                    // H5: declared UNCONDITIONALLY, not only when the author asked for
+                    // a credential. A conditional requirement would mean deciding the
+                    // capability set from the decoded input, and this contract is read
+                    // BEFORE decode — that is what makes the refusal below an admission
+                    // fact rather than a branch somebody can forget. A run with no
+                    // credential store is still admitted, and a Step that never names a
+                    // credential never calls the resolver, so the cost of requiring it
+                    // is one map lookup.
+                    HTTP_CREDENTIALS_CAPABILITY,
                 ),
             )
 
@@ -209,4 +235,22 @@ object HttpRequestStep {
     fun registerInto(registry: StepRegistry) {
         registry.register(definition)
     }
+
+    /**
+     * A credential that cannot be used is a DECLARATION failure with nothing sent.
+     *
+     * `durationMs` is zero on purpose: no socket was opened, so no time was spent
+     * and no request reached the world. A reader of the journal can tell that
+     * apart from "we sent it and it failed", which are very different facts about
+     * a pipeline.
+     */
+    private fun rejected(intent: HttpIntent.Ready, rejection: HttpRejection): HttpResponseOutput =
+        HttpResponseOutput(
+            attempt = HttpAttempt.Failed(
+                url = intent.url,
+                method = intent.method,
+                durationMs = 0L,
+                failure = HttpFailure.Rejected(rejection),
+            ),
+        )
 }

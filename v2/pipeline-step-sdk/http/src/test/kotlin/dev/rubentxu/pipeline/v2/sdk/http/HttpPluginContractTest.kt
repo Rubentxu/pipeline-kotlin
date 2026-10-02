@@ -81,11 +81,14 @@ class HttpPluginContractTest {
         val contract = HttpRequestStep.definition.contract
 
         assertEquals(
-            setOf(HTTP_TRANSPORT_CAPABILITY, NETWORK_EGRESS_CAPABILITY),
+            setOf(HTTP_TRANSPORT_CAPABILITY, NETWORK_EGRESS_CAPABILITY, HTTP_CREDENTIALS_CAPABILITY),
             contract.requiredCapabilities,
-            "http.request needs its own transport AND the generic egress permission. Declaring " +
-                "the permission is what makes a default run fail closed at admission instead of " +
-                "reaching the network.",
+            "http.request needs its own transport, the generic egress permission, and the " +
+                "narrow credential seam. The permission is what makes a default run fail " +
+                "closed at admission instead of reaching the network. The credential seam is " +
+                "declared UNCONDITIONALLY rather than only when `authentication` appears, " +
+                "because this contract is read BEFORE the input is decoded — deciding the " +
+                "capability set from the payload is exactly the branch somebody forgets.",
         )
         assertTrue(
             contract.descriptor.effects.contains(Effect.NETWORKS),

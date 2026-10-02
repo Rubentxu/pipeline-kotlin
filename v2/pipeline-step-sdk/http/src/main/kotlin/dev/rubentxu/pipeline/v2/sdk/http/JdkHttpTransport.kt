@@ -117,7 +117,7 @@ class JdkHttpTransport(
             null, HttpAuthorization.None -> Unit
             is HttpAuthorization.Basic -> builder.header(
                 "Authorization",
-                "Basic " + authorization.base64UserPassword,
+                basicAuthorizationValue(authorization.username, authorization.password),
             )
         }
         val javaMethod = when (request.method) {
@@ -235,6 +235,30 @@ class JdkHttpTransport(
     }
 }
 
-/** Encodes user/password into a Basic header value. Lives here so the secret never enters the port. */
-fun basicAuthorizationValue(user: String, password: String): String =
-    Base64.getEncoder().encodeToString("$user:$password".toByteArray(StandardCharsets.UTF_8))
+/**
+ * Encodes a username and password into a Basic header value.
+ *
+ * This is the LAST place the secret exists. The caller hands over bytes, the
+ * header string is built, and the bytes are overwritten immediately afterwards —
+ * an immutable `String` copy of a password would instead sit in the heap until
+ * something decided to collect it, which is not a property anybody can audit.
+ *
+ * The header string itself is unavoidable: HTTP carries it in clear text unless
+ * the transport is TLS, and TLS is the author's decision, made by writing an
+ * `https` URL.
+ */
+internal fun basicAuthorizationValue(username: String, password: ByteArray): String {
+    val user = username.toByteArray(StandardCharsets.UTF_8)
+    val raw = ByteArray(user.size + 1 + password.size)
+    System.arraycopy(user, 0, raw, 0, user.size)
+    raw[user.size] = ':'.code.toByte()
+    System.arraycopy(password, 0, raw, user.size + 1, password.size)
+    return try {
+        "Basic " + Base64.getEncoder().encodeToString(raw)
+    } finally {
+        // Only OUR copies. The caller's `password` is not ours to destroy — the
+        // resolution value may legitimately outlive this call.
+        raw.fill(0)
+        user.fill(0)
+    }
+}

@@ -33,6 +33,10 @@ import dev.rubentxu.pipeline.v2.events.GitPollChanged
 import dev.rubentxu.pipeline.v2.events.HtmlReportFailed
 import dev.rubentxu.pipeline.v2.events.HtmlReportPublished
 import dev.rubentxu.pipeline.v2.events.HtmlReportSkipped
+import dev.rubentxu.pipeline.v2.events.InputAborted
+import dev.rubentxu.pipeline.v2.events.InputDenied
+import dev.rubentxu.pipeline.v2.events.InputProceed
+import dev.rubentxu.pipeline.v2.events.InputRequested
 import dev.rubentxu.pipeline.v2.events.LockAcquireFailed
 import dev.rubentxu.pipeline.v2.events.LockAcquired
 import dev.rubentxu.pipeline.v2.events.LockReleased
@@ -224,6 +228,12 @@ object EnvelopeProjector {
         is LockReleased,
         is LockSkipped,
         is LockAcquireFailed,
+        // RP6-B / WU-092: input lifecycle is run-scoped (no stage/step index;
+        // the step events around it carry the position).
+        is InputRequested,
+        is InputProceed,
+        is InputAborted,
+        is InputDenied,
         is TimeoutTriggered,
         is TimestampsEntered,
         is TimestampsExited,

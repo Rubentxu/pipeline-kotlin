@@ -1254,3 +1254,58 @@ data class LockAcquireFailed(
 ) : DomainEvent {
     override val kind: String get() = "LockAcquireFailed"
 }
+
+/**
+ * RP6-B / WU-092 §6 — the four `core.input` events (SPEC_WU092_INPUT.md §6).
+ * Emission authority: the `core.input` handler, through the event sink
+ * capability. No sensitive payload: `message` is written by the pipeline author.
+ *
+ * [InputProceed] and [InputAborted] carry a `submitter` that is ATTRIBUTION, not
+ * authorization: this runner is headless and has no user database to check
+ * against. Publishing it as if it were an identity would be a lie a later reader
+ * would build on.
+ */
+data class InputRequested(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val message: String,
+    val submitter: String?,
+    val id: String?,
+) : DomainEvent {
+    override val kind: String get() = "InputRequested"
+}
+
+data class InputProceed(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val submitter: String?,
+    val message: String?,
+) : DomainEvent {
+    override val kind: String get() = "InputProceed"
+}
+
+data class InputAborted(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val submitter: String?,
+    val message: String?,
+) : DomainEvent {
+    override val kind: String get() = "InputAborted"
+}
+
+/** No answer was obtained: timed out, cancelled, or the question was unaskable. */
+data class InputDenied(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val reason: String,
+) : DomainEvent {
+    override val kind: String get() = "InputDenied"
+}

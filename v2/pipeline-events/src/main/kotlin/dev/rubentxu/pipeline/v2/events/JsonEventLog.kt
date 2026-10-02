@@ -850,6 +850,52 @@ object JsonEventLog {
                     reason = reason,
                 )
             }
+            // RP6-B / WU-092 §6 input events
+            "InputRequested" -> {
+                val message = EventJsonFields.stringField(s, "message") ?: ""
+                val submitter = EventJsonFields.stringField(s, "submitter")?.takeIf { it.isNotEmpty() }
+                val id = EventJsonFields.stringField(s, "id")?.takeIf { it.isNotEmpty() }
+                InputRequested(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    message = message,
+                    submitter = submitter,
+                    id = id,
+                )
+            }
+            "InputProceed" -> {
+                val submitter = EventJsonFields.stringField(s, "submitter")?.takeIf { it.isNotEmpty() }
+                val message = EventJsonFields.stringField(s, "message")?.takeIf { it.isNotEmpty() }
+                InputProceed(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    submitter = submitter,
+                    message = message,
+                )
+            }
+            "InputAborted" -> {
+                val submitter = EventJsonFields.stringField(s, "submitter")?.takeIf { it.isNotEmpty() }
+                val message = EventJsonFields.stringField(s, "message")?.takeIf { it.isNotEmpty() }
+                InputAborted(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    submitter = submitter,
+                    message = message,
+                )
+            }
+            "InputDenied" -> InputDenied(
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+                reason = EventJsonFields.stringField(s, "reason") ?: "",
+            )
             "TimeoutTriggered" -> {
                 val stageOrStep = EventJsonFields.stringField(s, "stageOrStep") ?: ""
                 val action = EventJsonFields.stringField(s, "action") ?: "interrupt"

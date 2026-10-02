@@ -589,6 +589,31 @@ internal object EventJsonWriter {
                 sb.append(",\"reason\":")
                 sb.append(EventJsonWriter.jsonString(event.reason))
             }
+            // RP6-B / WU-092 §6 input events
+            is InputRequested -> {
+                sb.append(",\"message\":")
+                sb.append(EventJsonWriter.jsonString(event.message))
+                sb.append(",\"submitter\":")
+                sb.append(EventJsonWriter.jsonString(event.submitter ?: ""))
+                sb.append(",\"id\":")
+                sb.append(EventJsonWriter.jsonString(event.id ?: ""))
+            }
+            is InputProceed -> {
+                sb.append(",\"submitter\":")
+                sb.append(EventJsonWriter.jsonString(event.submitter ?: ""))
+                sb.append(",\"message\":")
+                sb.append(EventJsonWriter.jsonString(event.message ?: ""))
+            }
+            is InputAborted -> {
+                sb.append(",\"submitter\":")
+                sb.append(EventJsonWriter.jsonString(event.submitter ?: ""))
+                sb.append(",\"message\":")
+                sb.append(EventJsonWriter.jsonString(event.message ?: ""))
+            }
+            is InputDenied -> {
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
             is TimeoutTriggered -> {
                 sb.append(",\"stageOrStep\":")
                 sb.append(EventJsonWriter.jsonString(event.stageOrStep))

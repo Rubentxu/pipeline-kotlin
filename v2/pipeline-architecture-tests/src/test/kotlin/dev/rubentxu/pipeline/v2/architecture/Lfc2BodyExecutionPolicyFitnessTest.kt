@@ -39,6 +39,22 @@ class Lfc2BodyExecutionPolicyFitnessTest {
         "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt",
     )
 
+    /**
+     * TRAIN H2 (PR-018): the body path is no longer contained in the coordinator. The
+     * body-child loop and the credential acquisition moved into [BodyExecutionEngine], so
+     * any law about that path must read BOTH sources. Scanning the coordinator alone no
+     * longer measures the path it is meant to guard: the loop inventory reads as zero
+     * loops and zero acquisitions, which is indistinguishable from "the body path was
+     * deleted" and would therefore pass a guard whose whole purpose is to fail on exactly
+     * that. The same union is used by `Lfc2ConcreteBodyRoutingDebtFitnessTest`.
+     */
+    private val engineSource = v2Root.resolve(
+        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/BodyExecutionEngine.kt",
+    )
+
+    /** The durable body path as it now exists: coordinator plus engine, in that order. */
+    private fun bodyExecutionText(): String = read(coordinatorSource) + "\n" + read(engineSource)
+
     private val stepBodyModule = v2Root.resolve(
         "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/StepBody.kt",
     )
@@ -247,20 +263,20 @@ class Lfc2BodyExecutionPolicyFitnessTest {
      */
     @Test
     fun `W1d lowers the pinned concrete routing debt to zero`() {
-        val text = read(coordinatorSource)
+        val text = bodyExecutionText()
         val discovered = ConcreteBodyRoutingScanner.scan(text)
         val pinned = PinnedConcreteBodyRoutingDebt.value
 
         assertEquals(
             pinned.total,
             discovered.total,
-            "The ledger must equal the coordinator's measured concrete routing debt",
+            "The ledger must equal the durable body path's measured concrete routing debt",
         )
         assertEquals(
             0,
             discovered.total,
             "W1d burns the credential bypass and reclassifies the two durable identities; the " +
-                "coordinator contains no concrete Step literal, no step-id switch, no " +
+                "durable body path contains no concrete Step literal, no step-id switch, no " +
                 "dispatch*Block identifier and no hard-coded body id set",
         )
         assertEquals(

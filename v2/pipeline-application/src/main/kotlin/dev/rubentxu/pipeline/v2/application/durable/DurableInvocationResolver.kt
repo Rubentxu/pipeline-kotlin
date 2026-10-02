@@ -11,14 +11,11 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ReplayDecision
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
-import java.nio.file.Path
 
 /**
  * WU-RP-031 E2 — durable invocation reconciliation extracted from the
@@ -30,15 +27,13 @@ import java.nio.file.Path
 internal class DurableInvocationResolver(
     private val divergenceDetector: dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector,
     private val effectReplayPolicy: EffectReplayPolicy,
-    private val clock: dev.rubentxu.pipeline.v2.domain.durable.Clock,
     private val journal: OperationJournal,
-    private val controlDirRoot: Path?,
+    // TRAIN H3 / PR-019: the a2 external-subprocess compatibility hook is a PORT. The resolver
+    // decides when recovery applies; the adapter observes the process. The resolver no longer
+    // constructs StepReconcilerL1 / DurableShellExecutor, so this class stays free of process
+    // and control-directory knowledge and remains testable with no filesystem.
+    private val runningSubprocessRecovery: RunningSubprocessRecovery,
 ) {
-
-    companion object {
-        // Preserved from CanonicalDurableRunCoordinator companion (behavior-equivalence law).
-        private val REATTACH_TIMEOUT_MS = 60_000L
-    }
 
     /**
      * Records a FAILED journal row and returns the terminal `SCHEMA` [StepOutcome]; the effective
@@ -127,46 +122,6 @@ internal class DurableInvocationResolver(
         recoveryPolicy: RecoveryPolicy,
         journaled: dev.rubentxu.pipeline.v2.domain.durable.DurableOperation?,
         operationId: String,
-    ): RunningCanonicalShellRecovery {
-        if (recoveryPolicy != RecoveryPolicy.ExternalSubprocess || journaled?.status != OperationStatus.RUNNING || controlDirRoot == null) {
-            return RunningCanonicalShellRecovery.NotRunningShell
-        }
-
-        val reconciler = StepReconcilerL1(clock, controlDirRoot)
-        val classification = reconciler.classify(operationId)
-        return when (classification) {
-            is StepReconcilerL1.Classification.Complete -> completedShellOutcome(classification.exitCode)
-            is StepReconcilerL1.Classification.Reattach -> {
-                val exitCode = DurableShellExecutor().pollResult(classification.controlDir, REATTACH_TIMEOUT_MS)
-                if (exitCode == null) lostShellOutcome(operationId) else completedShellOutcome(exitCode)
-            }
-            is StepReconcilerL1.Classification.TimedOut -> RunningCanonicalShellRecovery.Recovered(
-                StepOutcome.Failure(
-                    PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.TIMEOUT, "Canonical shell '$operationId' timed out"),
-                ),
-                OperationStatus.FAILED_TIMEOUT,
-            )
-            StepReconcilerL1.Classification.Lost -> lostShellOutcome(operationId)
-        }
-    }
-
-    internal fun completedShellOutcome(exitCode: Int): RunningCanonicalShellRecovery.Recovered =
-        if (exitCode == 0) {
-            RunningCanonicalShellRecovery.Recovered(StepOutcome.Success, OperationStatus.SUCCEEDED)
-        } else {
-            RunningCanonicalShellRecovery.Recovered(
-                StepOutcome.Failure(
-                    PipelineFailure(FailureKind.SCRIPT, "Canonical shell exited with code $exitCode"),
-                ),
-                OperationStatus.FAILED,
-            )
-        }
-
-    internal fun lostShellOutcome(operationId: String): RunningCanonicalShellRecovery.Recovered =
-        RunningCanonicalShellRecovery.Recovered(
-            StepOutcome.Failure(
-                PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE, "Canonical shell '$operationId' could not be reconciled"),
-            ),
-            OperationStatus.LOST,
-        )
+    ): RunningCanonicalShellRecovery =
+        runningSubprocessRecovery.recover(recoveryPolicy, journaled, operationId)
 }

@@ -282,9 +282,11 @@ class CanonicalDurableRunCoordinator(
     private val invocationResolver: DurableInvocationResolver = DurableInvocationResolver(
         divergenceDetector = divergenceDetector as StrictFingerprintDivergenceDetector,
         effectReplayPolicy = effectReplayPolicy,
-        clock = clock,
         journal = journal,
-        controlDirRoot = controlDirRoot,
+        // TRAIN H3 / PR-019: the a2 external-subprocess compatibility hook is COMPOSED here and
+        // reaches the resolver only as a port. The resolver decides when recovery applies; this
+        // adapter owns the only place that knows a control directory and a live process exist.
+        runningSubprocessRecovery = ExternalSubprocessRecovery(clock, controlDirRoot),
     )
 
     // WU-RP-031 E3: typed input preparation behind a narrow collaborator.

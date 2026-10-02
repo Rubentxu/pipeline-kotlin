@@ -119,9 +119,11 @@ class InvocationRecoveryCharacterizationTest {
     private fun resolver(controlDir: Path? = null) = DurableInvocationResolver(
         divergenceDetector = StrictFingerprintDivergenceDetector(),
         effectReplayPolicy = dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy(),
-        clock = clock,
         journal = ForbiddenJournal(),
-        controlDirRoot = controlDir,
+        // TRAIN H3 / PR-019: the compatibility hook is a PORT. The test drives the real adapter
+        // against a temp control directory, so the decision is exercised with the same
+        // implementation production uses rather than a stand-in that could drift from it.
+        runningSubprocessRecovery = dev.rubentxu.pipeline.v2.application.durable.ExternalSubprocessRecovery(clock, controlDir),
     )
 
     // ===== law 1: the deterministic gate is a pure divergence check =====

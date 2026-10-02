@@ -119,7 +119,7 @@ class FArchL7DomainEventExhaustivityTest {
         // four sealed events in G1. Same lesson as S2-C, one tier down: the four
         // variants shipped in 523ffb0a and this pin was only reached by the G3 gate,
         // because the gate that ran for G1 never included this module.
-        // +4 through RP6-C / WU-093 §5: the core.httpRequest lifecycle, added with
+        // +4 through RP6-C / WU-093 §5: the http.request lifecycle, added with
         // the four sealed events in G3. Third recurrence of this exact miss, so the
         // rule is now stated rather than remembered: ANY sealed hierarchy growth MUST
         // move this pin in the same commit that adds the variant. A pin that is

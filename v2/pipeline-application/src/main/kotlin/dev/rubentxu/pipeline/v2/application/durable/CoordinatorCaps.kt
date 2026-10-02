@@ -52,6 +52,10 @@ data class CoordinatorCaps(
     val eventSink: EventSink,
     val credentialScopePort: CredentialScopePort,
     val controlDirRoot: Path? = null,
+    // WU-093 H2b: OFFICIAL_PLUGIN capability contributions. See the seam note on
+    // the coordinator's matching parameter.
+    val capabilityContributor: dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor =
+        dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor { emptyMap() },
     val workspaceBase: Path? = null,
     val shOptions: ShOptions = ShOptions.EMPTY,
     val secretPatternRegistry: SecretPatternRegistry? = null,

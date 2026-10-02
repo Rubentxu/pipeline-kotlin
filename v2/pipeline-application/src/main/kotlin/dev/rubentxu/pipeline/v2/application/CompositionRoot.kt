@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.step.CompositeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressPolicy
 import dev.rubentxu.pipeline.v2.domain.directivekey.WHEN_DIRECTIVE_KEY
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
@@ -55,17 +56,21 @@ internal fun runCanonicalPipeline(
      * RP6-C / LFC-2E3 (`--allow-network`): permit outbound egress for this run.
      *
      * FALSE by default. The transport a plugin needs is contributed through
-     * [pluginCapabilities] and the PERMISSION is produced here, so a plugin can
+     * a capability contributor and the PERMISSION is produced here, so a plugin can
      * be present in the distribution and still be unable to reach the network
      * until an operator says so.
      */
     allowNetwork: Boolean = false,
     /**
-     * Capabilities contributed by OFFICIAL_PLUGINs, merged verbatim into the
-     * runtime table. Opaque on purpose: naming a plugin's types here would pull
-     * the plugin's vocabulary into core.
+     * RP6-C / LFC-2E3 (H2b): the capabilities OFFICIAL_PLUGINs contribute.
+     *
+     * A LIST OF CONTRIBUTORS, composed here and consulted at both admission and
+     * execution, rather than a finished map. Composition is a value a reviewer
+     * can read, collisions fail closed, and adding the next plugin is one more
+     * element in this list — with no change here, in the coordinator, or in the
+     * capability access.
      */
-    pluginCapabilities: Map<dev.rubentxu.pipeline.v2.domain.step.StepCapability, Any> = emptyMap(),
+    capabilityContributors: List<dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor> = emptyList(),
     // LB-02 / EP-6: caller-composed registry (core + discovered external contributions).
     // Composition happens ONCE in the composition root, BEFORE the canonical-eligibility
     // gate, so contributed keys participate in the gate (eligibility is registry-derived).
@@ -78,6 +83,11 @@ internal fun runCanonicalPipeline(
     pluginClassLoader: ClassLoader? = null,
 ): RunOutcome = runBlocking {
     CanonicalDurableRunCoordinator(
+        // H2b: ONE composite, consulted by both admission and execution. The
+        // contributors are composed here and nowhere else; a plugin that needs a
+        // seam adds one element to this list and changes nothing in the engine,
+        // the boundary or the coordinator.
+        capabilityContributor = CompositeCapabilityContributor(capabilityContributors),
         dispatcher = CanonicalNodeDispatcher(),
         journal = journal,
         cursorStore = cursorStore,

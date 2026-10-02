@@ -27,6 +27,7 @@ import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistration
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.RunId
@@ -67,6 +68,11 @@ class CanonicalDurableRunCoordinator(
     // runtime context so the durable console transcript is redacted at the
     // transcript seam before reaching the observable event plane.
     private val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
+    // WU-093 H2b: OFFICIAL_PLUGIN capability contributions. PREPARE and EXECUTE
+    // must observe the SAME set, so both get this one contributor. The
+    // alternative tried first — a `Map<StepCapability, Any>` on `ShOptions` to
+    // avoid this parameter — kept the count and lost the architecture.
+    private val capabilityContributor: RuntimeCapabilityContributor = RuntimeCapabilityContributor { emptyMap() },
     private val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector(),
     // CDE.2-b2: durable metadata resolved by structural step key (pre-decode). Nullable default so a
     // registry-injected constructor can opt into the composite (CDE.3-e4.2); legacy call-sites that do
@@ -180,6 +186,7 @@ class CanonicalDurableRunCoordinator(
         workspaceBase = caps.workspaceBase,
         shOptions = caps.shOptions,
         secretPatternRegistry = caps.secretPatternRegistry,
+        capabilityContributor = caps.capabilityContributor,
         divergenceDetector = caps.divergenceDetector,
         stepMetadataResolver = caps.stepMetadataResolver,
         invocationExecutor = caps.invocationExecutor,
@@ -232,6 +239,7 @@ class CanonicalDurableRunCoordinator(
         stepRegistry = stepRegistry,
         milestoneStateStore = milestoneStateStore,
         artifactIndex = artifactIndex,
+        capabilityContributor = capabilityContributor, // H2b: the same set EXECUTE will see
     )
 
 
@@ -323,6 +331,7 @@ class CanonicalDurableRunCoordinator(
         controlDirRoot = controlDirRoot,
         workspaceBase = workspaceBase,
         secretPatternRegistry = secretPatternRegistry,
+        capabilityContributor = capabilityContributor,
     )
     // TRAIN H4 / PR-020: a parallel stage is a composite with its own durable aggregate, not a
     // Step, so it does not belong to the step spine. It dispatches branch steps back through

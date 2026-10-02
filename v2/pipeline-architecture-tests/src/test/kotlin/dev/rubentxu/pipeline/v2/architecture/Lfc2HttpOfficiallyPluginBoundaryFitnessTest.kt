@@ -21,6 +21,7 @@ import java.nio.file.Path
  * FIT-5  the DSL façade               lowers exclusively via registryStep(...)
  * FIT-6  the wire bytes               come exclusively from HttpRequestCodec
  * FIT-7  ServiceLoader                discovers the contributor
+ * FIT-8  ShOptions                    carries FACTS, never SERVICES
  * ```
  *
  * ## Why these seven and not one
@@ -41,12 +42,20 @@ import java.nio.file.Path
  * lowering; plus presence of the plugin's own codec authority and of runtime
  * discovery.
  *
- * FIT-4 deserves a note. `pipeline-application` DOES depend on the http plugin
- * module — it is the composition root and must be able to wire the transport
- * and the egress capability. What it must never do is import the plugin's
- * *vocabulary*: its codecs, its ADTs, its StepKey. The guard therefore forbids
- * those imports specifically, and permits the module dependency, so the
- * assertion stays true instead of becoming an aspiration.
+ * FIT-4 deserves a note, and it is the one FIT that needed an amendment.
+ * `pipeline-application` DOES depend on the http plugin module — it is the
+ * composition root. What it must never do is import the plugin's
+ * *vocabulary*: its codecs, its ADTs, its StepKey, its DSL façade.
+ *
+ * A capability, though, is an INSTANCE of a type the plugin defines, so
+ * something outside the plugin has to construct it. The guard therefore names
+ * exactly ONE exempt file — `CompositionRoot.kt` — rather than relaxing the
+ * import ban for the whole module. Naming one file keeps the exemption from
+ * spreading; an unnamed relaxation would have made this FIT aspirational, which
+ * is the failure mode the whole rewrite exists to avoid.
+ *
+ * The root still decides whether the Step may run, and it does that through the
+ * GENERIC `network.egress` verdict without referencing HTTP at all.
  *
  * The scan is comment-blind, like the rest of the Lfc2 source-scan family.
  */
@@ -135,16 +144,35 @@ class Lfc2HttpOfficiallyPluginBoundaryFitnessTest {
         val offenders = ScannerSupport.findImports(
             appRoot,
             listOf("dev.rubentxu.pipeline.v2.sdk.http."),
-        )
+        ).filter { finding -> finding.file.toString() !in WIRING_EXEMPT_FILES }
         assertTrue(
             offenders.isEmpty(),
             "pipeline-application imports the HTTP plugin's own vocabulary in " +
-                offenders.joinToString { "${it.file}:${it.line} (${it.token})" } + ". The " +
-                "composition root MAY depend on the module to wire the transport, but it must " +
-                "not name the plugin's codecs, ADTs or StepKey — that is how a plugin stops " +
-                "being a plugin.",
+                offenders.joinToString { "${it.file}:${it.line} (${it.token})" } + ". Only the " +
+                "composition root may name a plugin's transport to WIRE it, and even there only " +
+                "the transport. Naming codecs, ADTs, the StepKey or the façade in core is how a " +
+                "plugin stops being a plugin.",
         )
     }
+
+    /**
+     * The single, explicitly named place where core may touch the plugin.
+     *
+     * A plugin's capability is an instance of a type the plugin defines, so
+     * SOMETHING outside the plugin has to construct it; the composition root is
+     * that somewhere. Amending the boundary to allow one named file — rather
+     * than widening the import ban for the whole module — is what keeps the
+     * exemption from spreading into vocabulary the root has no business knowing.
+     *
+     * Granted at H2 when the transport was wired. The root still decides
+     * whether the Step may run at all, and it does that through the GENERIC
+     * `network.egress` verdict without referencing HTTP.
+     */
+    private val WIRING_EXEMPT_FILES = listOf(
+        v2.resolve(
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CompositionRoot.kt",
+        ).toString(),
+    )
 
     // ── FIT-5: the façade lowers only through the generic primitive ─────────
 
@@ -195,6 +223,45 @@ class Lfc2HttpOfficiallyPluginBoundaryFitnessTest {
             "dev.rubentxu.pipeline.v2.sdk.http.HttpStepDefinitionContributor",
             read(servicesFile).trim(),
             "The http contributor must be the single declared StepDefinitionContributor.",
+        )
+    }
+
+    // ── FIT-8: ShOptions is a carrier of facts, not a service registry ─────
+
+    @Test
+    fun `FIT-8 ShOptions does not carry live capabilities`() {
+        // This law exists because it was broken. A `Map<StepCapability, Any>` was
+        // briefly parked on `ShOptions` so the plugin seams would not have to
+        // reach `CanonicalDurableRunCoordinator` — which kept the coordinator at
+        // 552 lines and quietly converted a carrier of execution FACTS
+        // (workspace, cwd, timeout, sandbox, egress policy) into a runtime
+        // service locator. The next plugin's transport would have found the same
+        // hole, and it would have happened by accretion rather than by decision.
+        //
+        // A ratchet satisfied by moving the coupling elsewhere is Goodharting.
+        // The seam belongs in the coordinator and the ceiling moves honestly.
+        val shOptions = v2.resolve(
+            "pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/ShOptions.kt",
+        )
+        val code = codeOnly(shOptions)
+        for (forbidden in listOf(
+            "Map<StepCapability",
+            "Map<dev.rubentxu.pipeline.v2.domain.step.StepCapability",
+            "pluginCapabilities",
+        )) {
+            assertTrue(
+                !code.contains(forbidden),
+                "ShOptions declares '$forbidden'. ShOptions carries FACTS and POLICIES for one " +
+                    "execution; live ports and clients travel through RuntimeCapabilityContributor " +
+                    "instead. A service registry on a config object is a coupling with no owner.",
+            )
+        }
+        // The positive half: the POLICY belongs here, because it is a fact about
+        // this execution and cannot be reconstructed downstream.
+        assertTrue(
+            code.contains("networkEgress"),
+            "ShOptions must still carry the network egress policy: it is a per-execution fact " +
+                "decided at the CLI boundary, and the runtime turns it into a capability.",
         )
     }
 }

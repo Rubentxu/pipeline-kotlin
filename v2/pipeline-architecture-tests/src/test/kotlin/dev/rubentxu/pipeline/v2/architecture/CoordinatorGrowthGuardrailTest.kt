@@ -37,14 +37,24 @@ class CoordinatorGrowthGuardrailTest {
      * -> 1728 (PR-020 slice 1, the BEFORE_STAGE directive seam out) -> 1701
      * (slice 2a, the dead waitUntil wrapper out) -> 741 (slice 2b, the step
      * spine and the parallel aggregate out) -> 552 (slice 4, the stage body and its `post`
-     * finalizers out).
+     * finalizers out) -> 561 (WU-093 H2b, the OFFICIAL_PLUGIN capability seam).
+     *
+     * The 552 -> 561 step is the FIRST move in this ratchet's history that is an
+     * addition rather than an extraction, and it was made deliberately. H2b needs
+     * PREPARE and EXECUTE to observe the same capability set, which costs a
+     * parameter the coordinator already threads to both. The alternative was
+     * tried first and rejected: parking a `Map<StepCapability, Any>` on
+     * `ShOptions` kept the file at 552 and turned a carrier of execution FACTS
+     * into a runtime service locator. Nine lines of seam is the honest price;
+     * a ratchet satisfied by moving the coupling elsewhere is Goodharting, and
+     * this file exists to stop exactly that.
      *
      * Pinned to the exact current size on purpose. A ceiling left at 2514 while
      * the file is 741 is not a ratchet: it would take 1773 lines of regression to
      * trip, which is the whole class of growth this guard exists to stop. Raising
      * it requires a same-commit justification per the class KDoc.
      */
-    private val maxCoordinatorLines = 552L
+    private val maxCoordinatorLines = 561L
 
     @Test
     fun `the durable coordinator never grows again`() {

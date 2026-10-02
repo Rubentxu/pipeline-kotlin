@@ -99,6 +99,9 @@ internal class StepDispatchEngine(
     private val controlDirRoot: Path?,
     private val workspaceBase: Path?,
     private val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry?,
+    // WU-093 H2b: handed to PREPARE so admission and execution observe the same set.
+    private val capabilityContributor: dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor =
+        dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor { emptyMap() },
 ) {
 
     /** A dispatched Step's outcome together with the context it left behind. */

@@ -1310,9 +1310,9 @@ data class InputDenied(
     override val kind: String get() = "InputDenied"
 }
 
-// ── core.httpRequest (RP6-C / WU-093 §5) ─────────────────────────────────
+// ── http.request (RP6-C / WU-093 §5) — OFFICIAL_PLUGIN ──────────────────────
 //
-// INV-L6-EVT-001 (see FileRead): no payload of a `core.httpRequest` event carries
+// INV-L6-EVT-001 (see FileRead): no payload of an `http.request` event carries
 // the response body or a header VALUE. A response body can hold a token and a header
 // can be `Authorization`, and this is the same hole that rule closed for file reads.
 // What travels is metadata: what was asked, what came back as a number, and how long

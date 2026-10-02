@@ -17,6 +17,15 @@ internal class DurableTypedInputPreparation(
     private val stepRegistry: StepRegistry?,
     private val milestoneStateStore: MilestoneStateStore,
     private val artifactIndex: ArtifactIndexCapability?,
+    /**
+     * H2b: the SAME contributor EXECUTE will consult.
+     *
+     * Without this, PREPARE built its own capability view and EXECUTE built
+     * another, and a Step could pass admission and then find its capability
+     * missing. One contributor, two moments, one answer.
+     */
+    private val capabilityContributor: dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor =
+        dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor { emptyMap() },
 ) {
 
     /** Closed outcome of typed preparation; the coordinator interprets each case. */
@@ -44,6 +53,7 @@ internal class DurableTypedInputPreparation(
                         runtime,
                         milestoneStateStore = milestoneStateStore,
                         artifactIndex = artifactIndex,
+                        capabilityContributor = capabilityContributor,
                     ).available(),
                 )
                 when (admission) {

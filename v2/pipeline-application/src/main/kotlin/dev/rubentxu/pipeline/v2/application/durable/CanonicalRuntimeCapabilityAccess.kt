@@ -49,6 +49,7 @@ import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressPolicy
+import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -83,16 +84,20 @@ open class CanonicalRuntimeCapabilityAccess(
     // Steps fail closed at registry-prepare-time / availability-check time.
     private val artifactIndex: ArtifactIndexCapability? = null,
     /**
-     * Capabilities contributed by OFFICIAL_PLUGINs, merged verbatim.
+     * Behaviour supplying the capabilities an OFFICIAL_PLUGIN contributes.
      *
-     * Deliberately an OPAQUE map. `pipeline-application` is the composition
-     * root, so it must be able to hand a plugin the capability that plugin
-     * declared — but naming the plugin's own types here would import the
-     * plugin's vocabulary into core, which is precisely the line
-     * `Lfc2HttpOfficiallyPluginBoundaryFitnessTest` FIT-4 defends. A plugin
-     * contributes its transport; the runtime supplies the PERMISSION.
+     * A CONTRIBUTOR rather than a map, and the difference is the whole point of
+     * H2b. A `Map<StepCapability, Any>` has to live somewhere, and it was
+     * briefly parked on `ShOptions` to spare this class a parameter — which
+     * turned a carrier of execution FACTS into a runtime service locator and
+     * bought nothing but a line count. A contributor is composed at the
+     * composition root, asked what it provides, and consulted at the two
+     * moments that must agree; it never becomes ambient configuration.
+     *
+     * Core supplies the PERMISSION (`network.egress`); the plugin supplies its
+     * own SEAM (`http.transport`); neither names the other's types.
      */
-    private val pluginCapabilities: Map<StepCapability, Any> = emptyMap(),
+    private val capabilityContributor: RuntimeCapabilityContributor = RuntimeCapabilityContributor { emptyMap() },
 ) : StepCapabilityAccess {
 
     private val provided: Map<StepCapability, Any> = buildProvided(context)
@@ -131,7 +136,7 @@ open class CanonicalRuntimeCapabilityAccess(
         // Plugin-contributed capabilities last, so a plugin may add a seam
         // without the runtime enumerating it — and may not silently OVERWRITE a
         // core one, which the duplicate check below refuses.
-        for ((capability, value) in pluginCapabilities) {
+        for ((capability, value) in capabilityContributor.capabilities()) {
             val existing = builder[capability]
             require(existing == null || existing === value) {
                 "capability $capability is contributed twice: by the runtime core and by a plugin"

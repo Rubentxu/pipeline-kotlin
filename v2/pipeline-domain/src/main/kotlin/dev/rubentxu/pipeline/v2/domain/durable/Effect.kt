@@ -21,7 +21,8 @@ enum class Effect {
     WRITES_WORKSPACE,
 
     /**
-     * Step performs I/O against a remote service (RP6-C / WU-093, `core.httpRequest`).
+     * Step performs I/O against a remote service (RP6-C / WU-093, `http.request`,
+     * an OFFICIAL_PLUGIN that declares this effect).
      *
      * Not one of the three above, and reusing one of them would be a lie in the
      * descriptor: the request is not a read of local state, there is no subprocess,

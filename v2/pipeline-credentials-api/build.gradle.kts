@@ -33,8 +33,32 @@ tasks.test {
     }
 }
 
+// The `excludeTags("performance")` above is NECESSARY BUT NOT SUFFICIENT. The
+// Kover plugin (0.9.9) wires every Test task it discovers as an input to
+// `koverGenerateArtifactJvm`, so the probe was re-attached to the standard gate
+// through a path the tag exclusion cannot reach:
+//
+//   koverGenerateArtifactJvm --> performanceTest --> (fails the floor)
+//
+// Measured on the same SHA and the same machine: 19,6 MB/s inside the full
+// `check` gate versus 22,4 MB/s running the probe alone. That 14% swing is
+// contention from the rest of the build, not the redactor — it made the
+// repository gate non-reproducible for reasons unrelated to the code under
+// test, and it contradicted both the tag exclusion and the probe's own KDoc.
+//
+// `disabledForTestTasks` is the supported Kover API for exactly this: the task
+// is not a coverage source, so nothing pulls it into `check`. Coverage for
+// StreamingRedactor still comes from the dedicated redaction tests.
+kover {
+    currentProject {
+        instrumentation {
+            disabledForTestTasks.add("performanceTest")
+        }
+    }
+}
+
 tasks.register<Test>("performanceTest") {
-    group = "verification"
+    group = "performance"
     description = "Runs the @Tag(\"performance\") probes in isolation (PR-015 methodology)."
     useJUnitPlatform {
         includeTags("performance")

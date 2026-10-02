@@ -182,6 +182,16 @@ object BlockStepFlattener {
                     flattenImpl(inner, depth + 1, childPath, result)
                 }
             }
+            // RP6-A / WU-091: core.lock is a body-bearing block step — its body
+            // flattens like any other block (G3.6 inventory: this exhaustive `when`
+            // is the consumer a new sealed case BREAKS at source level, which is
+            // exactly why the compiler caught it).
+            is StepSpec.Lock -> {
+                for ((idx, inner) in step.steps.withIndex()) {
+                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
+                    flattenImpl(inner, depth + 1, childPath, result)
+                }
+            }
             // --- Terminal steps — no recursion ---
             is StepSpec.Echo,
             is StepSpec.Shell,

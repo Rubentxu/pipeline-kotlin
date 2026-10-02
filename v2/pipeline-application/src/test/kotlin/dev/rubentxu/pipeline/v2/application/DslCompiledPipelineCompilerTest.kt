@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.Digest
+import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
 import dev.rubentxu.pipeline.v2.domain.StageBody
 import dev.rubentxu.pipeline.v2.dsl.pipeline
@@ -421,5 +422,161 @@ class DslCompiledPipelineCompilerTest {
         assertTrue(step.payload.encoded.contains("\"kind\":\"milestone\""))
         assertTrue(step.payload.encoded.contains("\"ordinal\":1"))
         assertTrue(step.payload.encoded.contains("\"label\":\"post-error\""))
+    }
+
+    // ── WU-091 G3: core.lock DSL surface lowers through the single wire authority ──
+
+    @Test
+    fun `lock step compiles to core lock block node whose payload is the wire codec encoding`() {
+        val spec = pipeline {
+            stages {
+                stage("Deploy") {
+                    lock("staging") {
+                        sh("./deploy.sh")
+                    }
+                }
+            }
+        }
+        val compiled = DslCompiledPipelineCompiler.compile(
+            spec,
+            "lock.pipeline.kts",
+            "lock pipeline",
+            Digest("lock-v1"),
+        )
+        val body = compiled.stages.single().body as StageBody.Steps
+        val block = body.steps.single() as BlockStepNode
+        assertEquals("core.lock", block.pluginStepId.value)
+        // G3.4: the compiler did not hand-write the payload — it is byte-identical
+        // to what the wire authority itself produces for the same typed input.
+        assertEquals(
+            CoreLockWireCodec.encode(CoreLockInput(resource = "staging")).value,
+            block.payload.encoded,
+        )
+        // G3.3 side effect of the same law: the payload is the CODEC spelling,
+        // never the generic-else fallback `{"kind":"lock"}`.
+        assertFalse(
+            block.payload.encoded.contains("\"kind\""),
+            "lock payload must come from CoreLockWireCodec, not the generic else payload",
+        )
+        // The body children survive lowering (B11 law for the lock family member).
+        val childIds = block.body.map { it.id.value }
+        assertTrue(
+            childIds.any { it.endsWith("/sh-0") },
+            "lock body must contain the sh child; got $childIds",
+        )
+        assertTrue(
+            (block.body.single() as OpaqueStepNode).payload.encoded.contains("./deploy.sh"),
+        )
+    }
+
+    @Test
+    fun `lock options reach the wire verbatim without the compiler resolving them`() {
+        val spec = pipeline {
+            stages {
+                stage("Deploy") {
+                    lock(
+                        resource = "db-migrate",
+                        timeoutSeconds = 120,
+                        reason = "serial schema migration",
+                        skipIfLocked = false,
+                    ) {
+                        echo("migrating")
+                    }
+                }
+            }
+        }
+        val compiled = DslCompiledPipelineCompiler.compile(
+            spec,
+            "lock-options.pipeline.kts",
+            "lock options pipeline",
+            Digest("lock-v1"),
+        )
+        val block = (compiled.stages.single().body as StageBody.Steps).steps.single() as BlockStepNode
+        assertEquals(
+            CoreLockWireCodec.encode(
+                CoreLockInput(
+                    resource = "db-migrate",
+                    timeoutSeconds = 120,
+                    reason = "serial schema migration",
+                ),
+            ).value,
+            block.payload.encoded,
+        )
+    }
+
+    @Test
+    fun `contradictory lock declaration is encoded verbatim and left to the typed decision`() {
+        // skipIfLocked + timeout is individually valid and jointly contradictory.
+        // G3 law: the COMPILER must not resolve the contradiction (that decision
+        // belongs to lockIntentOf at the Step, once); it encodes both fields.
+        val spec = pipeline {
+            stages {
+                stage("Deploy") {
+                    lock(
+                        resource = "db",
+                        timeoutSeconds = 30,
+                        skipIfLocked = true,
+                    ) {
+                        echo("never runs in this shape")
+                    }
+                }
+            }
+        }
+        val compiled = DslCompiledPipelineCompiler.compile(
+            spec,
+            "lock-contradiction.pipeline.kts",
+            "lock contradiction pipeline",
+            Digest("lock-v1"),
+        )
+        val block = (compiled.stages.single().body as StageBody.Steps).steps.single() as BlockStepNode
+        assertEquals(
+            CoreLockWireCodec.encode(
+                CoreLockInput(resource = "db", timeoutSeconds = 30, skipIfLocked = true),
+            ).value,
+            block.payload.encoded,
+        )
+    }
+
+    @Test
+    fun `lock inside a parallel branch lowers with its body children`() {
+        // G4 scenario seed (sibling contention): the branch-scope lock builder
+        // must produce the same canonical block shape as the stage-scope one.
+        val spec = pipeline {
+            stages {
+                stage("Matrix") {
+                    parallel {
+                        branch("left") {
+                            lock("shared") {
+                                echo("left critical section")
+                            }
+                        }
+                        branch("right") {
+                            echo("right free")
+                        }
+                    }
+                }
+            }
+        }
+        val compiled = DslCompiledPipelineCompiler.compile(
+            spec,
+            "lock-parallel.pipeline.kts",
+            "lock parallel pipeline",
+            Digest("lock-v1"),
+        )
+        val stageBody = compiled.stages.single().body
+        val parallelBody = stageBody as StageBody.Parallel
+        val leftSteps = (parallelBody.branches.single { it.name == "left" }.body as StageBody.Steps).steps
+        val rightSteps = (parallelBody.branches.single { it.name == "right" }.body as StageBody.Steps).steps
+        val leftLock = leftSteps.single() as BlockStepNode
+        assertEquals("core.lock", leftLock.pluginStepId.value)
+        assertEquals(
+            CoreLockWireCodec.encode(CoreLockInput(resource = "shared")).value,
+            leftLock.payload.encoded,
+        )
+        assertTrue(
+            leftLock.body.any { it.id.value.endsWith("/echo-0") },
+            "branch lock body must contain the echo child; got ${leftLock.body.map { it.id.value }}",
+        )
+        assertEquals("core.echo", rightSteps.single().pluginStepId.value)
     }
 }

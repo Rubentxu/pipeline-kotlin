@@ -407,6 +407,43 @@ open class StageScopeTopSteps(
         steps.add(StepSpec.Dir(path = path, steps = inner.steps()))
     }
 
+    /**
+     * Holds a named resource for the duration of the nested block (RP6-A /
+     * WU-091; Jenkins `lock` verbatim: resource, timeout, reason, skipIfLocked).
+     *
+     * Declarative construction only: this builder records a [StepSpec.Lock];
+     * exclusion semantics, admission and events belong to the `core.lock`
+     * handler behind the registry. `timeoutSeconds` is in seconds, the engine's
+     * deadline unit (`timeoutUnit` of Jenkins is not exposed). `skipIfLocked`
+     * with a `timeoutSeconds` is a contradictory declaration and is rejected as
+     * typed input by the Step, not silently resolved here.
+     *
+     * @param resource name of the resource to hold. Mandatory, as in Jenkins.
+     * @param timeoutSeconds maximum wait once the resource is contended;
+     *   `null` waits indefinitely.
+     * @param reason human-readable motive surfaced in the lock events.
+     * @param skipIfLocked when the resource is held, run nothing and succeed.
+     */
+    fun lock(
+        resource: String,
+        timeoutSeconds: Int? = null,
+        reason: String? = null,
+        skipIfLocked: Boolean = false,
+        block: StageScope.() -> Unit,
+    ) {
+        val inner = nestedScope()
+        inner.block()
+        steps.add(
+            StepSpec.Lock(
+                resource = resource,
+                timeoutSeconds = timeoutSeconds,
+                reason = reason,
+                skipIfLocked = skipIfLocked,
+                steps = inner.steps(),
+            ),
+        )
+    }
+
     protected fun escapeJsonString(s: String): String {
         val sb = StringBuilder(s.length + 2)
         for (c in s) {

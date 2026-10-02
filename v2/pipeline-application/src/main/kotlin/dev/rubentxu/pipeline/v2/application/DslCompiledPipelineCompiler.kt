@@ -247,6 +247,14 @@ object DslCompiledPipelineCompiler {
                 parentToken = parentToken,
                 occurrence = occurrence,
             )
+            // WU-091 G3: core.lock lowers through the SAME block machinery; the
+            // wire payload is produced exclusively by CoreLockWireCodec (G3.4).
+            // The else -> OpaqueStepNode catch-all MUST NOT fire for this key.
+            is StepSpec.Lock -> blockStepNode(
+                step = step,
+                parentToken = parentToken,
+                occurrence = occurrence,
+            )
             is StepSpec.Unstable -> rewriteUnstable(
                 message = step.message,
                 parentToken = parentToken,
@@ -294,6 +302,9 @@ object DslCompiledPipelineCompiler {
             is StepSpec.WithEnv -> step.steps
             is StepSpec.Timestamps -> step.steps
             is StepSpec.WaitUntilBlock -> step.body
+            // WU-091 G3: the lock body children compile like every other block
+            // family member; missing this arm would silently drop the body.
+            is StepSpec.Lock -> step.steps
             else -> emptyList()
         }, "$parentToken/${tokenPrefix}-body-$occurrence")
 
@@ -354,8 +365,27 @@ object DslCompiledPipelineCompiler {
             put("initialRecurrencePeriod", step.initialRecurrencePeriod)
             put("quiet", step.quiet)
         })
+        // WU-091 G3.4: the compiler does NOT hand-write the core.lock wire JSON.
+        // CoreLockWireCodec is THE single authority for that format; this is the
+        // divergence core.sh suffered (kind=sh|shell, command|script) refused in
+        // advance. Guarded by Lfc2LockWireAuthorityFitnessTest.
+        is StepSpec.Lock -> CoreLockWireCodec.encode(step.toCoreLockInput()).value
         else -> "{}"
     }
+
+    /**
+     * WU-091 G3.3: the compiler knows the `StepSpec.Lock -> CoreLockInput`
+     * transformation, which is a DOMAIN decision (what the step takes as
+     * input); it does not know the wire format, which is an ENCODING decision
+     * owned by [CoreLockWireCodec]. Pure, total, one direction, no defaults
+     * invented here: every field maps verbatim.
+     */
+    private fun StepSpec.Lock.toCoreLockInput(): CoreLockInput = CoreLockInput(
+        resource = resource,
+        timeoutSeconds = timeoutSeconds,
+        reason = reason,
+        skipIfLocked = skipIfLocked,
+    )
 
     /**
      * Pre-compiler rewrite for catchError / warnError blocks.

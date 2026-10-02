@@ -194,6 +194,12 @@ class Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest {
         "WaitUntilBlock" to { body ->
             StepSpec.WaitUntilBlock(initialRecurrencePeriod = 5L, quiet = false, body = body)
         },
+        // WU-091 / RP6-A: core.lock joins the closed block family with the same
+        // mechanical proof as the rest — a non-empty child body must survive
+        // compilation.
+        "Lock" to { body ->
+            StepSpec.Lock(resource = "lfc2-b11-lock-resource", steps = body)
+        },
     )
 
     /** Variants that are body-bearing but intentionally NOT routed to `blockStepNode`. */

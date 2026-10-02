@@ -238,6 +238,8 @@ class FArchS0SurfaceManifestTest {
             "node" to "NodeNoOp",
             "timeout" to "TimeoutBlock",
             "retry" to "RetryBlock",
+            // WU-091 / RP6-A: core.lock joins the manifest-governed block family.
+            "lock" to "Lock",
             "cleanWs" to "CleanWs",
         )
         val unexplained = stepSpecSubtypes.filter { subtype ->

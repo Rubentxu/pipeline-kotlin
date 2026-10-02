@@ -341,6 +341,34 @@ class BranchScope {
         inner.block()
         steps.add(StepSpec.Dir(path = path, steps = inner.steps.toList()))
     }
+
+    /**
+     * `lock` inside a parallel branch (RP6-A / WU-091). The composed scenario
+     * `branch("left") { lock("res") { ... } }` vs a sibling branch contending
+     * for the same resource is exactly the case the durable execution lane
+     * (`ExecutionLaneId = runId + parallelLineage`) was introduced for: two
+     * sibling branches are DIFFERENT lanes and must contend; a nested `lock`
+     * on the SAME lane re-enters. Same declarative shape as [dir].
+     */
+    fun lock(
+        resource: String,
+        timeoutSeconds: Int? = null,
+        reason: String? = null,
+        skipIfLocked: Boolean = false,
+        block: BranchScope.() -> Unit,
+    ) {
+        val inner = BranchScope()
+        inner.block()
+        steps.add(
+            StepSpec.Lock(
+                resource = resource,
+                timeoutSeconds = timeoutSeconds,
+                reason = reason,
+                skipIfLocked = skipIfLocked,
+                steps = inner.steps.toList(),
+            ),
+        )
+    }
 }
 
 /**

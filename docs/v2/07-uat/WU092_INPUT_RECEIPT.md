@@ -1,6 +1,6 @@
 # WU-092 `core.input` — Recibo de certificación (RP6-B)
 
-> status: EN CIERRE — los 9 criterios de §7 están CERTIFIED salvo el cierre de ciclo
+> status: RECIPIDO — WU-092 CERTIFIED sobre el árbol `9895a2b5` (ver §3)
 > cycle SDDK: `p-1f3622e11c093341/rp6b-input`
 > spec: `docs/v2/07-uat/SPEC_WU092_INPUT.md` §7 (9 criterios de salida)
 > exploración: `docs/v2/07-uat/RP6B_INPUT_EXPLORATION.md`
@@ -38,7 +38,7 @@ proceso, una decisión sí.
 | 6 | Denegaciones como vías propias | CERTIFIED | `TimedOut` / `Cancelled` / `Unanswerable`; malformada y doble respuesta probadas en el puerto (§3.4 D4) |
 | 7 | UAT HF2 con los escenarios duros | CERTIFIED | `UatInputBlockDurableTest` WI-L1..WI-L9 (§4) |
 | 8 | Ratchet del coordinador intacto en 552 | CERTIFIED | `CanonicalDurableRunCoordinator` = 552 líneas, sin tocar |
-| 9 | Recibo con SHA exacto | PENDIENTE | §3, se fija al cerrar el ciclo |
+| 9 | Recibo con SHA exacto | CERTIFIED | §3 |
 
 ### 2.1 Suite de certificación (sobre el árbol de G4)
 
@@ -58,7 +58,7 @@ base  e68b5143  (cierre de RP6-A)
 G1    523ffb0a  feat(input): contrato de dominio y ADTs cerrados
 G2    d0a02bd6  fix(input): respuesta por fichero segura + corrección de mi propio diseño
 G3    e16b8e28  feat(input): superficie DSL con autoridad única de wire
-G4    (este recibo)  fix(input): routing de producción + una pregunta rehusada falla el run
+G4    9895a2b5  fix(input): routing de producción + una pregunta rehusada falla el run
 ```
 
 ## 4. UAT HF2 — `UatInputBlockDurableTest`

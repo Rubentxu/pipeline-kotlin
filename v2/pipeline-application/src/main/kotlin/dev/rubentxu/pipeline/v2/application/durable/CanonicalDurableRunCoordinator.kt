@@ -346,6 +346,11 @@ class CanonicalDurableRunCoordinator(
     // C3 / WU-PR-017: the run-lifecycle bookends and the running outcome live in
     // the extracted engine (same events, same ordering, same quirks).
     private val runLifecycle = RunLifecycleEngine(eventSink)
+    // TRAIN H3 / PR-019: the INTERPRETATION of a recovery resolution. The DECISION already
+    // lives in invocationResolver; this engine performs the journal write, cursor advance and
+    // lifecycle events that a resolution names, and reports ProceedToExecution for the one
+    // resolution that is not a recovery case.
+    private val recoveryInterpretation = RecoveryInterpretationEngine(eventSink, journal, cursorStore)
     private val bodyExecutionEngine = BodyExecutionEngine(
         eventSink,
         clock,
@@ -1001,104 +1006,84 @@ class CanonicalDurableRunCoordinator(
             status = OperationStatus.PENDING,
             attempt = 1,
         )
-        when (val resolution = reconcileInvocation(metadata, journaled, currentOperation, operationId)) {
-            is InvocationReconciliation.Diverged ->
-                return Dispatched(StepOutcome.Failure(
-                    PipelineFailure(
-                        dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
-                        "Canonical run diverged at '${resolution.operationId}'",
-                    ),
-                ), contextAfterOverlay)
-            is InvocationReconciliation.RecoverRunning -> {
-                val executionResult = StepExecutionBoundary(eventSink).execute(lifecycleContext) {
-                    CommonExecutionResult(outcome = resolution.outcome, encodedOutput = null)
-                }
-                val outcome = executionResult.outcome
-                journal.append(
-                    RerunOperation(
-                        id = operationId,
-                        fingerprint = fingerprint,
-                        input = input,
-                        output = null,
-                        status = resolution.status,
-                        attempt = 1,
-                    ),
-                )
-                if (outcome is StepOutcome.Success) cursorStore.advance(runId.value, operationId, stageIndex)
-                return Dispatched(outcome, contextAfterOverlay)
-            }
-            InvocationReconciliation.ReuseCompleted -> return Dispatched(StepOutcome.Success, contextAfterOverlay)
-            is InvocationReconciliation.RejectedAbort ->
-                return Dispatched(StepExecutionBoundary(eventSink).execute(lifecycleContext) {
-                    CommonExecutionResult(
-                        outcome = StepOutcome.Failure(
-                            PipelineFailure(
-                                dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
-                                "Replay aborted for '${resolution.operationId}'",
-                            ),
-                        ),
-                        encodedOutput = null,
-                    )
-                }.outcome, contextAfterOverlay)
-            // Execute is the ONLY resolution that reaches the effective executor. beginOperation, the
-            // StepExecutionBoundary-wrapped executor call, the terminal journal write and cursor advance
-            // live here, so the concrete semantics are invoked exclusively under this decision.
-            InvocationReconciliation.Execute -> {
-                // CDE.3-e4.3: runtime context is hoisted here so registry prepare can derive the
-                // available capabilities from the capability bridge (never the raw context to a handler).
-                val runtime = CanonicalRuntimeContext(
-                    opId = opId,
-                    runId = runId.value,
-                    stageName = stageName,
-                    stageIndex = stageIndex,
-                    stepIndex = stepIndex,
-                    shOptions = stageShOptions,
-                    controlDirRoot = controlDirRoot,
-                    eventSink = eventSink,
-                    // B11 / W2: surface the per-run body-reentry adapter under
-                    // BODY_INVOKER_CAPABILITY for any block-step handler that declares it.
-                    // Fail-closed admission (null bodyInvoker → no capability) is preserved
-                    // for legacy callers because the field defaults to null on the context.
-                    bodyInvoker = bodyInvokerAdapter,
-                    // WU-RP-035: bound ONLY for a HANDLER_CONTINUATION Step, and already
-                    // carrying that Step's own body identity. Null everywhere else, so the
-                    // fail-closed admission is real: a handler that declares the capability
-                    // without the engine having bound it never runs.
-                    bodyContinuation = bodyContinuation,
-                    secretPatternRegistry = secretPatternRegistry,
-                    workspaceBase = workspaceBase,
-                )
-
-                // CDE.2-c/d + CDE.3-b3/e4.3: strategy preparation runs ONLY on actual execution and NEVER
-                // produces Step side effects. Selection is by the CLOSED structural family (LegacyCore vs
-                // Registry), never by concrete step name. Reuse/divergence/recover never prepare. A
-                // Rejected admission (typed field / unsupported command / missing capability) is a
-                // terminal SCHEMA rejection (journal FAILED, common executor never runs).
-                // WU-RP-031 E3: extracted to DurableTypedInputPreparation.
-                val prepared = when (val typed = typedInputPreparation.prepare(step, runtime)) {
-                    is DurableTypedInputPreparation.TypedPreparation.Rejected -> return Dispatched(rejectSchema(
-                        operationId,
-                        input,
-                        "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${typed.reason}",
-                    ), contextAfterOverlay)
-                    is DurableTypedInputPreparation.TypedPreparation.Ready -> typed.prepared
-                }
-
-                // WU-RP-031 E4: effective execution + durable folding extracted to DurableStepExecutor.
-                val outcome = stepExecutor.executeAndJournal(
+        // TRAIN H3 / PR-019: the four recovery resolutions are interpreted by
+        // RecoveryInterpretationEngine; only Execute — which IS the invocation — stays here.
+        // The arms were moved verbatim, including which ones emit lifecycle events, write the
+        // journal and advance the cursor.
+        when (
+            val interpretation = recoveryInterpretation.interpret(
+                reconcileInvocation(metadata, journaled, currentOperation, operationId),
+                RecoveryInterpretationEngine.Request(
                     operationId = operationId,
                     fingerprint = fingerprint,
                     input = input,
-                    journaled = journaled,
-                    prepared = prepared,
-                    runtime = runtime,
-                    lifecycleContext = lifecycleContext,
                     runIdValue = runId.value,
                     stageIndex = stageIndex,
-                )
-                return Dispatched(outcome, contextAfterOverlay)
-            }
+                    lifecycleContext = lifecycleContext,
+                ),
+            )
+        ) {
+            is RecoveryInterpretationEngine.RecoveryInterpretation.Settled ->
+                return Dispatched(interpretation.outcome, contextAfterOverlay)
+            RecoveryInterpretationEngine.RecoveryInterpretation.ProceedToExecution -> Unit
         }
+
+        // Execute is the ONLY resolution that reaches the effective executor. beginOperation, the
+        // StepExecutionBoundary-wrapped executor call, the terminal journal write and cursor advance
+        // live here, so the concrete semantics are invoked exclusively under this decision.
+        // CDE.3-e4.3: runtime context is hoisted here so registry prepare can derive the
+        // available capabilities from the capability bridge (never the raw context to a handler).
+        val runtime = CanonicalRuntimeContext(
+            opId = opId,
+            runId = runId.value,
+            stageName = stageName,
+            stageIndex = stageIndex,
+            stepIndex = stepIndex,
+            shOptions = stageShOptions,
+            controlDirRoot = controlDirRoot,
+            eventSink = eventSink,
+            // B11 / W2: surface the per-run body-reentry adapter under
+            // BODY_INVOKER_CAPABILITY for any block-step handler that declares it.
+            // Fail-closed admission (null bodyInvoker → no capability) is preserved
+            // for legacy callers because the field defaults to null on the context.
+            bodyInvoker = bodyInvokerAdapter,
+            // WU-RP-035: bound ONLY for a HANDLER_CONTINUATION Step, and already
+            // carrying that Step's own body identity. Null everywhere else, so the
+            // fail-closed admission is real: a handler that declares the capability
+            // without the engine having bound it never runs.
+            bodyContinuation = bodyContinuation,
+            secretPatternRegistry = secretPatternRegistry,
+            workspaceBase = workspaceBase,
+        )
+
+        // CDE.2-c/d + CDE.3-b3/e4.3: strategy preparation runs ONLY on actual execution and NEVER
+        // produces Step side effects. Selection is by the CLOSED structural family (LegacyCore vs
+        // Registry), never by concrete step name. Reuse/divergence/recover never prepare. A
+        // Rejected admission (typed field / unsupported command / missing capability) is a
+        // terminal SCHEMA rejection (journal FAILED, common executor never runs).
+        // WU-RP-031 E3: extracted to DurableTypedInputPreparation.
+        val prepared = when (val typed = typedInputPreparation.prepare(step, runtime)) {
+            is DurableTypedInputPreparation.TypedPreparation.Rejected -> return Dispatched(rejectSchema(
+                operationId,
+                input,
+                "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${typed.reason}",
+            ), contextAfterOverlay)
+            is DurableTypedInputPreparation.TypedPreparation.Ready -> typed.prepared
+        }
+
+        // WU-RP-031 E4: effective execution + durable folding extracted to DurableStepExecutor.
+        val outcome = stepExecutor.executeAndJournal(
+            operationId = operationId,
+            fingerprint = fingerprint,
+            input = input,
+            journaled = journaled,
+            prepared = prepared,
+            runtime = runtime,
+            lifecycleContext = lifecycleContext,
+            runIdValue = runId.value,
+            stageIndex = stageIndex,
+        )
+        return Dispatched(outcome, contextAfterOverlay)
     }
 
     /**

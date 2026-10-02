@@ -37,7 +37,8 @@ class CoordinatorGrowthGuardrailTest {
      * -> 1728 (PR-020 slice 1, the BEFORE_STAGE directive seam out) -> 1701
      * (slice 2a, the dead waitUntil wrapper out) -> 741 (slice 2b, the step
      * spine and the parallel aggregate out) -> 552 (slice 4, the stage body and its `post`
-     * finalizers out) -> 561 (WU-093 H2b, the OFFICIAL_PLUGIN capability seam).
+     * finalizers out) -> 561 (WU-093 H2b, the OFFICIAL_PLUGIN capability seam)
+     * -> 562 (WU-093 H7-D, the execute-time capability access fixed).
      *
      * The 552 -> 561 step is the FIRST move in this ratchet's history that is an
      * addition rather than an extraction, and it was made deliberately. H2b needs
@@ -53,8 +54,24 @@ class CoordinatorGrowthGuardrailTest {
      * the file is 741 is not a ratchet: it would take 1773 lines of regression to
      * trip, which is the whole class of growth this guard exists to stop. Raising
      * it requires a same-commit justification per the class KDoc.
+     *
+     * The 561 -> 562 step is WU-093 H7-D: the same PREPARE/EXECUTE disagreement
+     * H2b paid for, one layer in. `RegistryExecutionBoundary` rebuilt its
+     * capability access without the run's `capabilityContributor`, so every plugin
+     * Step declaring a contributed capability was admitted and then refused on
+     * execute — `http.request` among them. The repair is one named argument
+     * threading a value this file already holds into the boundary it already
+     * builds, alongside `milestoneStateStore` and `artifactIndex`.
+     *
+     * One line, and no extraction can absorb it: the coupling is between two
+     * objects this file owns, and the alternatives were all rejected before —
+     * parking the capability map on `ShOptions` turns a carrier of execution facts
+     * into a service locator (see the 552 -> 561 note above), and duplicating the
+     * contributor inside the engine would mean two contributors and two opinions
+     * about one run's capabilities. A ratchet satisfied by moving the coupling
+     * somewhere else is Goodharting; this one is paid in the open.
      */
-    private val maxCoordinatorLines = 561L
+    private val maxCoordinatorLines = 562L
 
     @Test
     fun `the durable coordinator never grows again`() {

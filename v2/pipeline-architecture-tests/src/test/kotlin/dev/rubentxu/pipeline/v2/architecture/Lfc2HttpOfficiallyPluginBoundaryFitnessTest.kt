@@ -497,4 +497,83 @@ class Lfc2HttpOfficiallyPluginBoundaryFitnessTest {
             )
         }
     }
+
+    // ── FIT-16: the retry a user can see is the only retry ──────────────────
+
+    @Test
+    fun `FIT-16 the request path cannot hide a retry`() {
+        // WU-093 H7. `ReplayPolicy.NEVER` means http.request never re-sends itself on
+        // replay — a promise worth exactly as much as the code's ability to keep it.
+        // A transport that retried behind the engine's back would break that promise
+        // invisibly: the journal would show one attempt while the server saw three,
+        // and every POST that timed out after taking effect would be charged twice.
+        //
+        // The only sanctioned retry is the author's own `retry { httpRequest(...) }`,
+        // which is visible, counted, and carries a distinct durable identity per
+        // attempt. Anything the JDK does on its own is neither.
+        //
+        // Scoped to the code that runs ON a request. `HttpStepDefinitionContributor`
+        // does touch System properties, but for `pipeline.http.*` provenance with a
+        // save/restore, it is not on the request path, and rewriting plugin
+        // registration is not this law's business.
+        val onRequestPath = listOf(
+            "JdkHttpTransport.kt",
+            "HttpRequestStep.kt",
+            "BoundedBodySubscriber.kt",
+            "EgressAdmission.kt",
+        )
+
+        for (fileName in onRequestPath) {
+            val code = codeOnly(
+                v2.resolve(
+                    "pipeline-step-sdk/http/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/http/$fileName",
+                ),
+            )
+            for (forbidden in listOf(
+                "jdk.httpclient",
+                "enableAllMethodRetry",
+                "System.setProperty",
+                "System.getProperty",
+            )) {
+                assertTrue(
+                    !code.contains(forbidden),
+                    "$fileName references '$forbidden'. A retry the engine cannot see is a " +
+                        "resend nobody chose and nobody counted; a JVM-wide property set from " +
+                        "the request path is worse still, because it is process-global and " +
+                        "would outlive the call.",
+                )
+            }
+        }
+
+        // The JDK client is reached through sendAsync, never through the blocking
+        // send(...) — one future per invocation, awaited once.
+        val transport = codeOnly(
+            v2.resolve(
+                "pipeline-step-sdk/http/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/http/JdkHttpTransport.kt",
+            ),
+        )
+        assertTrue(
+            !transport.contains(".send("),
+            "JdkHttpTransport calls the blocking HttpClient.send(...). H3 replaced it with " +
+                "sendAsync(); a silent return to the blocking call would put the whole body " +
+                "read back on the calling thread.",
+        )
+
+        // The handler calls the port exactly once. A second call site — or a loop around
+        // the first — is what an internal retry looks like in source, and it is the only
+        // place the Step could grow one.
+        val step = codeOnly(
+            v2.resolve(
+                "pipeline-step-sdk/http/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/http/HttpRequestStep.kt",
+            ),
+        )
+        assertEquals(
+            1,
+            Regex("""transport\.send\s*\(""").findAll(step).count(),
+            "HttpRequestStep must call transport.send(...) from exactly ONE place. A second " +
+                "call site, or a loop around the first, is an internal retry: invisible in the " +
+                "journal, uncounted by the author, and precisely what ReplayPolicy.NEVER " +
+                "forbids.",
+        )
+    }
 }

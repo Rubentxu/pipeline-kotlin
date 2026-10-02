@@ -90,6 +90,45 @@ object CoordinatorFixture {
     )
 
     /**
+     * OFFICIAL_PLUGIN fixture: production defaults, plus the two seams a plugin Step needs
+     * that `ShOptions.EMPTY` cannot express.
+     *
+     * WU-093 H7 added it because "the plugin could not run" and "the plugin did not run"
+     * must be distinguishable in a test. With [shOptions] left at `EMPTY` — whose
+     * `networkEgress` is [dev.rubentxu.pipeline.v2.domain.step.DenyAll] — `http.request`
+     * is refused at admission, so a replay test asserting "the handler did not run"
+     * would pass for the wrong reason: it could not tell a replay abort from a
+     * capability denial. Handing the coordinator a real transport and an allowing gate is
+     * what makes zero sends mean the replay law stopped it, and nothing else.
+     *
+     * It also refuses to be a second coordinator construction: the parameters are the
+     * same ones `CompositionRoot` supplies in production, so a test and the CLI agree
+     * about which capabilities exist.
+     */
+    fun default(
+        clock: Clock = SystemClock(),
+        journal: OperationJournal,
+        eventSink: EventSink,
+        stepRegistry: StepRegistry,
+        shOptions: ShOptions,
+        capabilityContributor: dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor,
+    ): CanonicalDurableRunCoordinator = CanonicalDurableRunCoordinator(
+        dispatcher = CanonicalNodeDispatcher(),
+        journal = journal,
+        cursorStore = InMemoryReplayCursorStore(clock),
+        clock = clock,
+        effectReplayPolicy = DefaultEffectReplayPolicy(),
+        eventSink = eventSink,
+        credentialScopePort = noOpCredentialScopePort(),
+        controlDirRoot = null,
+        shOptions = shOptions,
+        divergenceDetector = StrictFingerprintDivergenceDetector(),
+        commonExecutionBoundary = null,
+        stepRegistry = stepRegistry,
+        capabilityContributor = capabilityContributor,
+    )
+
+    /**
      * Dual-only fixture: NO core registry, NO injected metadata resolver. The coordinator falls
      * back to the legacy core metadata authority and the legacy adapter over the dispatcher.
      * Reserved for explicit dual-characterization tests that exercise the legacy path on purpose.

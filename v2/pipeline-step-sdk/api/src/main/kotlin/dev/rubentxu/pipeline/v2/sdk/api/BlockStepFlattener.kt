@@ -192,6 +192,15 @@ object BlockStepFlattener {
                     flattenImpl(inner, depth + 1, childPath, result)
                 }
             }
+            // RP6-B / WU-092: core.input is body-bearing for the same reason: the
+            // body is conditional (it runs only on a Proceed), so it must flatten
+            // like any other block rather than disappear.
+            is StepSpec.Input -> {
+                for ((idx, inner) in step.steps.withIndex()) {
+                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
+                    flattenImpl(inner, depth + 1, childPath, result)
+                }
+            }
             // --- Terminal steps — no recursion ---
             is StepSpec.Echo,
             is StepSpec.Shell,

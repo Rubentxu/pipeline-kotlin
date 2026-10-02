@@ -200,6 +200,12 @@ class Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest {
         "Lock" to { body ->
             StepSpec.Lock(resource = "lfc2-b11-lock-resource", steps = body)
         },
+        // WU-092 / RP6-B: core.input joins the closed block family with the same
+        // mechanical proof; its body is conditional, which is exactly why it must
+        // survive compilation rather than being dropped.
+        "Input" to { body ->
+            StepSpec.Input(message = "lfc2-b11-input-question", steps = body)
+        },
     )
 
     /** Variants that are body-bearing but intentionally NOT routed to `blockStepNode`. */

@@ -240,6 +240,8 @@ class FArchS0SurfaceManifestTest {
             "retry" to "RetryBlock",
             // WU-091 / RP6-A: core.lock joins the manifest-governed block family.
             "lock" to "Lock",
+            // WU-092 / RP6-B: core.input joins the manifest-governed block family.
+            "input" to "Input",
             "cleanWs" to "CleanWs",
         )
         val unexplained = stepSpecSubtypes.filter { subtype ->

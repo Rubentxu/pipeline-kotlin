@@ -1,5 +1,9 @@
 package dev.rubentxu.pipeline.v2.events
 
+import dev.rubentxu.pipeline.v2.events.InputAborted
+import dev.rubentxu.pipeline.v2.events.InputDenied
+import dev.rubentxu.pipeline.v2.events.InputProceed
+import dev.rubentxu.pipeline.v2.events.InputRequested
 import dev.rubentxu.pipeline.v2.events.LockAcquireFailed
 import dev.rubentxu.pipeline.v2.events.LockAcquired
 import dev.rubentxu.pipeline.v2.events.LockReleased
@@ -330,19 +334,22 @@ class DomainEventRoundTripTest {
     }
 
     @Test
-    fun `sealed hierarchy contains 61 variants`() {
+    fun `sealed hierarchy contains 65 variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
         val count = sealedSubclasses.size
         assertEquals(
-            61,
+            65,
             count,
-            "DomainEvent sealed hierarchy must have exactly 61 variants " +
+            "DomainEvent sealed hierarchy must have exactly 65 variants " +
                 "(51 + DirectiveAdmitted/DirectiveDenied added in S1-C directive seam, " +
                 "+ StageSkipped added in S2-A so a gated-off stage is observable, " +
                 "+ PostConditionSelected added in S2-B so the post decision is observable, " +
                 "+ GateEvaluated added in S2-C so a gate verdict is observable even when satisfied, " +
                 "+ LockRequested/LockAcquired/LockReleased/LockSkipped/LockAcquireFailed added in " +
-                "RP6-A WU-091 §6 so the lock lifecycle is observable). " +
+                "RP6-A WU-091 §6 so the lock lifecycle is observable, " +
+                "+ InputRequested/InputProceed/InputAborted/InputDenied added in RP6-B WU-092 §6 " +
+                "so the question lifecycle is observable — including the three outcomes that " +
+                "decide a body). " +
                 "Found: ${sealedSubclasses.map { it.simpleName }}",
         )
     }
@@ -378,5 +385,44 @@ class DomainEventRoundTripTest {
             ),
         )
         assertEquals(events, JsonEventLog.decode(JsonEventLog.encode(events)))
+    }
+
+    @Test
+    fun `input events round-trip through the JSON log`() {
+        // RP6-B / WU-092 §6: the four input kinds survive the durable wire, and — the
+        // part that is easy to lose — the THREE body-deciding outcomes stay distinct.
+        // A log that decoded every answer as "Proceed" would round-trip perfectly and
+        // still be a lie, so these are four separate assertions, not one list compare
+        // that a collapsing decoder could fake by rebuilding one case.
+        val events: List<DomainEvent> = listOf(
+            InputRequested(
+                eventId = "e-in-1", runId = "r1", sequence = 1L,
+                occurredAt = Instant.parse("2026-10-08T12:00:00Z"),
+                message = "Deploy to production?", submitter = "release-team", id = "deploy-1",
+            ),
+            InputProceed(
+                eventId = "e-in-2", runId = "r1", sequence = 2L,
+                occurredAt = Instant.parse("2026-10-08T12:00:04Z"),
+                submitter = "release-team", message = "Deploy to production?",
+            ),
+            InputAborted(
+                eventId = "e-in-3", runId = "r2", sequence = 1L,
+                occurredAt = Instant.parse("2026-10-08T12:10:00Z"),
+                submitter = null, message = "Deploy to production?",
+            ),
+            InputDenied(
+                eventId = "e-in-4", runId = "r3", sequence = 1L,
+                occurredAt = Instant.parse("2026-10-08T12:20:00Z"),
+                reason = "TIMED_OUT",
+            ),
+        )
+        val decoded = JsonEventLog.decode(JsonEventLog.encode(events))
+        assertEquals(events, decoded)
+        assertEquals(
+            listOf("InputRequested", "InputProceed", "InputAborted", "InputDenied"),
+            decoded.map { it.kind },
+            "the four input outcomes must decode as four distinct kinds; a decoder that " +
+                "collapsed the answers would make every run look approved.",
+        )
     }
 }

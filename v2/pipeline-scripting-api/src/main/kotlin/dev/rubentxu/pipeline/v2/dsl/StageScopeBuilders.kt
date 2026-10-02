@@ -444,6 +444,45 @@ open class StageScopeTopSteps(
         )
     }
 
+    /**
+     * Asks a human and runs the body only if they say yes (RP6-B / WU-092; Jenkins
+     * `input`: message, ok, submitter, id).
+     *
+     * Declarative construction only: this builder records a [StepSpec.Input]. Whether
+     * the body runs, and what an abort means, belongs to the `core.input` handler
+     * behind the registry — including the rejection of a blank `message` or `ok`,
+     * which is a typed declaration error, not a silent pass-through.
+     *
+     * @param message what to ask. Mandatory, and blank is rejected.
+     * @param ok label of the affirmative answer, Jenkins `ok`.
+     * @param submitter attribution of who is expected to answer. NOT an
+     *   authorization boundary: this runner is headless and has no user database.
+     * @param id correlation id for the request, Jenkins `id`.
+     * @param timeoutSeconds bound on the wait; `null` waits until the enclosing
+     *   block budget runs out.
+     */
+    fun input(
+        message: String,
+        ok: String = "Proceed",
+        submitter: String? = null,
+        id: String? = null,
+        timeoutSeconds: Int? = null,
+        block: StageScope.() -> Unit,
+    ) {
+        val inner = nestedScope()
+        inner.block()
+        steps.add(
+            StepSpec.Input(
+                message = message,
+                ok = ok,
+                submitter = submitter,
+                id = id,
+                timeoutSeconds = timeoutSeconds,
+                steps = inner.steps(),
+            ),
+        )
+    }
+
     protected fun escapeJsonString(s: String): String {
         val sb = StringBuilder(s.length + 2)
         for (c in s) {

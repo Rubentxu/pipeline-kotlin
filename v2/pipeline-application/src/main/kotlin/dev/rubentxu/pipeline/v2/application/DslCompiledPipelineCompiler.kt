@@ -255,6 +255,14 @@ object DslCompiledPipelineCompiler {
                 parentToken = parentToken,
                 occurrence = occurrence,
             )
+            // WU-092 G3: core.input lowers through the SAME block machinery; the
+            // wire payload is produced exclusively by CoreInputWireCodec (G3.4).
+            // The else -> OpaqueStepNode catch-all MUST NOT fire for this key.
+            is StepSpec.Input -> blockStepNode(
+                step = step,
+                parentToken = parentToken,
+                occurrence = occurrence,
+            )
             is StepSpec.Unstable -> rewriteUnstable(
                 message = step.message,
                 parentToken = parentToken,
@@ -305,6 +313,8 @@ object DslCompiledPipelineCompiler {
             // WU-091 G3: the lock body children compile like every other block
             // family member; missing this arm would silently drop the body.
             is StepSpec.Lock -> step.steps
+            // WU-092 G3: same law for the input body.
+            is StepSpec.Input -> step.steps
             else -> emptyList()
         }, "$parentToken/${tokenPrefix}-body-$occurrence")
 
@@ -370,8 +380,27 @@ object DslCompiledPipelineCompiler {
         // divergence core.sh suffered (kind=sh|shell, command|script) refused in
         // advance. Guarded by Lfc2LockWireAuthorityFitnessTest.
         is StepSpec.Lock -> CoreLockWireCodec.encode(step.toCoreLockInput()).value
+        // WU-092 G3.4: same single-authority law as core.lock. The compiler knows
+        // the StepSpec.Input -> CoreInputInput transformation (a DOMAIN decision)
+        // and delegates the ENCODING to CoreInputWireCodec.
+        is StepSpec.Input -> CoreInputWireCodec.encode(step.toCoreInputInput()).value
         else -> "{}"
     }
+
+    /**
+     * WU-092 G3.3: the compiler knows the `StepSpec.Input -> CoreInputInput`
+     * transformation, which is a DOMAIN decision; it does not know the wire
+     * format, which is an ENCODING decision owned by [CoreInputWireCodec]. Pure,
+     * total, one direction, and it does NOT resolve a blank message here: that
+     * rule belongs to `inputIntentOf`, applied once at the Step.
+     */
+    private fun StepSpec.Input.toCoreInputInput(): CoreInputInput = CoreInputInput(
+        message = message,
+        ok = ok,
+        submitter = submitter,
+        id = id,
+        timeoutSeconds = timeoutSeconds,
+    )
 
     /**
      * WU-091 G3.3: the compiler knows the `StepSpec.Lock -> CoreLockInput`

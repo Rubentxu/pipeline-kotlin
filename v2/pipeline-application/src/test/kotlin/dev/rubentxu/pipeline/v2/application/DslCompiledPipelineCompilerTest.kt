@@ -537,6 +537,113 @@ class DslCompiledPipelineCompilerTest {
         )
     }
 
+    // ── WU-092 G3: core.input DSL surface lowers through the single wire authority ──
+
+    @Test
+    fun `input step compiles to core input block whose payload is the wire codec encoding`() {
+        val spec = pipeline {
+            stages {
+                stage("Deploy") {
+                    input("Deploy to production?") {
+                        sh("./deploy.sh")
+                    }
+                }
+            }
+        }
+        val compiled = DslCompiledPipelineCompiler.compile(
+            spec,
+            "input.pipeline.kts",
+            "input pipeline",
+            Digest("input-v1"),
+        )
+        val body = compiled.stages.single().body as StageBody.Steps
+        val block = body.steps.single() as BlockStepNode
+        assertEquals("core.input", block.pluginStepId.value)
+        // G3.4: the payload is byte-identical to what the wire authority itself
+        // produces for the same typed input.
+        assertEquals(
+            CoreInputWireCodec.encode(CoreInputInput(message = "Deploy to production?")).value,
+            block.payload.encoded,
+        )
+        assertFalse(
+            block.payload.encoded.contains("\"kind\""),
+            "input payload must come from CoreInputWireCodec, not the generic else payload",
+        )
+        // The body children survive lowering.
+        assertTrue(
+            block.body.any { it.id.value.endsWith("/sh-0") },
+            "input body must contain the sh child; got ${block.body.map { it.id.value }}",
+        )
+    }
+
+    @Test
+    fun `input options reach the wire verbatim without the compiler deciding anything`() {
+        // G3 law: the compiler encodes; it does NOT resolve a blank message. That
+        // rule belongs to inputIntentOf, applied once at the Step.
+        val spec = pipeline {
+            stages {
+                stage("Release") {
+                    input(
+                        message = "Promote 1.2.3?",
+                        ok = "Promote",
+                        submitter = "release-team",
+                        id = "promote-123",
+                        timeoutSeconds = 300,
+                    ) {
+                        echo("promoting")
+                    }
+                }
+            }
+        }
+        val compiled = DslCompiledPipelineCompiler.compile(
+            spec,
+            "input-options.pipeline.kts",
+            "input options pipeline",
+            Digest("input-v1"),
+        )
+        val block = (compiled.stages.single().body as StageBody.Steps).steps.single() as BlockStepNode
+        assertEquals(
+            CoreInputWireCodec.encode(
+                CoreInputInput(
+                    message = "Promote 1.2.3?",
+                    ok = "Promote",
+                    submitter = "release-team",
+                    id = "promote-123",
+                    timeoutSeconds = 300,
+                ),
+            ).value,
+            block.payload.encoded,
+        )
+    }
+
+    @Test
+    fun `a blank input message still compiles and is rejected by the step not the compiler`() {
+        val spec = pipeline {
+            stages {
+                stage("Broken") {
+                    input(message = "   ") {
+                        echo("must not run")
+                    }
+                }
+            }
+        }
+        val compiled = DslCompiledPipelineCompiler.compile(
+            spec,
+            "input-blank.pipeline.kts",
+            "input blank pipeline",
+            Digest("input-v1"),
+        )
+        val block = (compiled.stages.single().body as StageBody.Steps).steps.single() as BlockStepNode
+        // The compiler is a transcription layer: it does not decide what a valid
+        // question is, so the contradiction reaches the Step and is decided ONCE
+        // there as a typed rejection.
+        assertEquals("core.input", block.pluginStepId.value)
+        assertTrue(
+            block.payload.encoded.contains("\"message\":\"   \""),
+            "the blank question must be encoded verbatim, got ${block.payload.encoded}",
+        )
+    }
+
     @Test
     fun `lock inside a parallel branch lowers with its body children`() {
         // G4 scenario seed (sibling contention): the branch-scope lock builder

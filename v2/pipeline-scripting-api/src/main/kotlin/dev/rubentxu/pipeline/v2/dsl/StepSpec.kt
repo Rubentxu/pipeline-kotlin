@@ -393,4 +393,24 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val name: String get() = "lock"
         override val type: String get() = "lock"
     }
+
+    /**
+     * `input(message) { ... }` — ask a human and continue only if they say yes
+     * (RP6-B / WU-092). declarative structural IR only: the compiler lowers this
+     * variant through
+     * [dev.rubentxu.pipeline.v2.application.CoreInputInput] and the single wire
+     * authority `CoreInputWireCodec`; this type carries no wire vocabulary of its
+     * own.
+     */
+    data class Input(
+        val message: String,
+        val ok: String = "Proceed",
+        val submitter: String? = null,
+        val id: String? = null,
+        val timeoutSeconds: Int? = null,
+        val steps: List<StepSpec>,
+    ) : StepSpec {
+        override val name: String get() = "input"
+        override val type: String get() = "input"
+    }
 }

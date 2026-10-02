@@ -95,9 +95,13 @@ class FArchL7DomainEventExhaustivityTest {
      * 59. LockReleased (RP6-A / WU-091 §6 — release at every terminal)
      * 60. LockSkipped (RP6-A / WU-091 §6 — skipIfLocked with the resource held)
      * 61. LockAcquireFailed (RP6-A / WU-091 §6 — timeout or cancellation)
+     * 62. InputRequested (RP6-B / WU-092 §6 — a question reached the request file)
+     * 63. InputProceed (RP6-B / WU-092 §6 — affirmative answer; the body ran)
+     * 64. InputAborted (RP6-B / WU-092 §6 — negative answer; the body was skipped)
+     * 65. InputDenied (RP6-B / WU-092 §6 — timed out, cancelled or unanswerable)
      */
     @Test
-    fun `domain_event_sealed_hierarchy_has_61_variants`() {
+    fun `domain_event_sealed_hierarchy_has_65_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
@@ -107,7 +111,11 @@ class FArchL7DomainEventExhaustivityTest {
         // stayed red until the L5 closure gate ran on the committed tree.
         // +5 through RP6-A / WU-091 §6: the core.lock lifecycle, added when core.lock
         // reached production routing (every step MUST emit its own typed events).
-        val expectedCount = 61
+        // +4 through RP6-B / WU-092 §6: the core.input lifecycle, added with the
+        // four sealed events in G1. Same lesson as S2-C, one tier down: the four
+        // variants shipped in 523ffb0a and this pin was only reached by the G3 gate,
+        // because the gate that ran for G1 never included this module.
+        val expectedCount = 65
 
         assertEquals(
             expectedCount,

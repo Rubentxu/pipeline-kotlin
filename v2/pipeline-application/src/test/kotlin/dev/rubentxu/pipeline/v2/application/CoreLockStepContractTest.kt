@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolution
 import dev.rubentxu.pipeline.v2.domain.step.resolveBodyExecutionPolicy
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -41,16 +42,52 @@ class CoreLockStepContractTest {
     // ------------------------------------------------------- capability coherence
 
     @Test
-    fun `all three halves of the declaration are present`() {
+    fun `all five halves of the declaration are present`() {
         assertEquals(
             setOf(
                 LOCK_COORDINATION_CAPABILITY,
                 BODY_CONTINUATION_CAPABILITY,
                 EXECUTION_LANE_CAPABILITY,
+                EVENT_SINK_CAPABILITY,
+                EXECUTION_BUDGET_CAPABILITY,
             ),
             definition.contract.requiredCapabilities,
             "lock needs the port that decides WHETHER to run the body, the bound continuation " +
-                "that runs it, and the durable lane that decides WHO owns the resulting hold",
+                "that runs it, the durable lane that decides WHO owns the resulting hold, the " +
+                "event sink that makes the lifecycle observable (SPEC_WU091_LOCK.md §6), and the " +
+                "scope budget that BOUNDS the wait (a suspending Step escapes the shell watchdog)",
+        )
+    }
+
+    @Test
+    fun `the block budget bounds the declared wait`() {
+        // Pure crossing law, no effects: the effective wait is the tighter of the
+        // author's `timeoutSeconds` and the scope budget, and "neither bounds it"
+        // stays unbounded. The LockIntent mapping itself is private to the handler;
+        // its observable effect is certified by UatLockBlockDurableTest.WL-L6.
+        assertEquals(
+            2_000L,
+            ExecutionBudget(2_000L).bound(null),
+            "an unbounded wait is bounded by the scope budget",
+        )
+        assertEquals(
+            1_000L,
+            ExecutionBudget(5_000L).bound(1_000L),
+            "the author timeout wins when it is tighter",
+        )
+        assertEquals(
+            1_000L,
+            ExecutionBudget(1_000L).bound(5_000L),
+            "the scope budget wins when it is tighter",
+        )
+        assertEquals(
+            1_000L,
+            ExecutionBudget(null).bound(1_000L),
+            "no scope budget leaves the author timeout alone",
+        )
+        assertNull(
+            ExecutionBudget(null).bound(null),
+            "neither side bounds the wait => still unbounded",
         )
     }
 

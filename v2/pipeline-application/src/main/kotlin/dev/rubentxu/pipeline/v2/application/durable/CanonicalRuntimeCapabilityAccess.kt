@@ -3,8 +3,12 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.application.PLATFORM_IDENTITY_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.PlatformIdentity
 import dev.rubentxu.pipeline.v2.application.EVENT_SINK_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.EXECUTION_BUDGET_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.EXECUTION_LANE_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.ExecutionBudget
 import dev.rubentxu.pipeline.v2.application.ExecutionLaneId
+import dev.rubentxu.pipeline.v2.application.FileLockCoordinator
+import dev.rubentxu.pipeline.v2.application.LOCK_COORDINATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.SHELL_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.STAGE_IDENTITY_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.StageIdentity
@@ -135,10 +139,41 @@ open class CanonicalRuntimeCapabilityAccess(
         // is re-entrant per build, so a nested `lock` must not deadlock against its
         // own hold), while a SIBLING `parallel` branch is a different lane and must
         // contend — which is the exclusion the lock exists to provide.
+        // RP6-A / WU-091: the projected scope budget, the same value the child
+        // shell watchdog consumes. Exposed so a SUSPENDING Step (one that runs no
+        // process, like core.lock) can honour the block deadline through a typed
+        // capability instead of escaping the watchdog. "No budget" is a real
+        // value (null), hence unconditional exposure: admission stays deterministic.
+        builder[EXECUTION_BUDGET_CAPABILITY] = ExecutionBudget(context.shOptions.timeoutMs)
         builder[EXECUTION_LANE_CAPABILITY] = ExecutionLaneId.of(
             runId = context.runId,
             branchLineage = context.opId.parallelLineage,
         )
+        // RP6-A / WU-091 G4: the POSIX file lock coordinator for core.lock.
+        //
+        // The lock namespace is anchored to the CONTROL ROOT — the engine's own
+        // durable territory (journal db parent, `--control-root`) — NOT to the
+        // workspace and NOT to the run:
+        //   - per-run would make two runs of one job never contend, which is
+        //     precisely the exclusion `lock` exists to provide;
+        //   - the workspace is NULL under the local-first Managed lease (no
+        //     `--workspace`), so it cannot be the anchor of a capability that
+        //     must work in the default mode;
+        //   - the control root is stable across runs sharing one `--db` /
+        //     `--control-root`, so two runs on one host contend through the OS
+        //     lock while a different install (different control dir) does not.
+        //
+        // Conditional exposure mirrors DELETE_DIR_OPERATIONS_CAPABILITY: the
+        // capability is registered ONLY when controlDirRoot != null. Absent
+        // otherwise, so capability admission fails closed for core.lock without
+        // affecting the rest of the registry. The hold registry inside
+        // FileLockCoordinator is process-scoped, so a fresh instance per context
+        // still observes every hold this JVM has taken.
+        context.controlDirRoot?.let { root ->
+            builder[LOCK_COORDINATION_CAPABILITY] = FileLockCoordinator(
+                root.resolve("locks"),
+            )
+        }
         // S2-A5 / G1: raw environmental observation for platform-classification handlers
         // (core.isUnix). The single remaining System.getProperty("os.name") read lives HERE,
         // in the bridge adapter — never inside a handler.

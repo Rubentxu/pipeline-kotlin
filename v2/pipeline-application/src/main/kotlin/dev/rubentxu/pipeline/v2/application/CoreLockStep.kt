@@ -23,6 +23,14 @@ import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.events.LockAcquireFailed
+import dev.rubentxu.pipeline.v2.events.LockAcquired
+import dev.rubentxu.pipeline.v2.events.LockReleased
+import dev.rubentxu.pipeline.v2.events.LockRequested
+import dev.rubentxu.pipeline.v2.events.LockSkipped
+import java.time.Instant
+import java.util.UUID
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -181,6 +189,8 @@ object CoreLockStep {
         val coordinator: LockCoordinator = ctx.capabilities.get(LOCK_COORDINATION_CAPABILITY)
         val continuation: BodyContinuation = ctx.capabilities.get(BODY_CONTINUATION_CAPABILITY)
         val lane: ExecutionLaneId = ctx.capabilities.get(EXECUTION_LANE_CAPABILITY)
+        val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY)
+        val budget: ExecutionBudget = ctx.capabilities.get(EXECUTION_BUDGET_CAPABILITY)
 
         // The owner is the durable EXECUTION LANE, derived by the bridge from the
         // runtime's own operation identity. Same lane re-enters (Jenkins is
@@ -188,6 +198,21 @@ object CoreLockStep {
         // hold); a sibling `parallel` branch is a DIFFERENT lane and must contend,
         // which is precisely the exclusion the lock exists to provide.
         val owner = LockOwner(lane)
+
+        // RP6-A §6: the REQUEST is observable even when the declaration is
+        // contradictory — the event carries what the pipeline author declared,
+        // not what the step went on to do.
+        sink.append(
+            LockRequested(
+                eventId = UUID.randomUUID().toString(),
+                runId = ctx.runId.value,
+                sequence = 0L,
+                occurredAt = Instant.now(),
+                resource = input.resource,
+                reason = input.reason,
+                skipIfLocked = input.skipIfLocked,
+            ),
+        )
 
         when (val resolution = lockIntentOf(input.skipIfLocked, input.timeoutSeconds)) {
             is LockIntentResolution.Rejected -> CoreLockOutput(
@@ -202,19 +227,109 @@ object CoreLockStep {
                 ),
             )
             is LockIntentResolution.Resolved -> {
-                val intent = resolution.intent
+                // The author declares the wait; the enclosing block budget BOUNDS it.
+                // Without this intersection an unbounded `lock` escaped the block
+                // deadline (the shell watchdog enforces a budget only for children
+                // that run a process) and ran its body after the deadline expired.
+                // The decision stays pure and in one place: `bound` picks the tighter
+                // of the two, and a contradiction is still rejected upstream by
+                // lockIntentOf before any of this runs.
+                val intent = resolution.intent.withBudget(budget)
                 when (val admission = coordinator.acquire(owner, input.resource, intent)) {
-                    is LockAdmission.Denied -> denied(input.resource, admission, intent)
-                    is LockAdmission.Acquired -> runBody(
-                        owner = owner,
-                        resource = input.resource,
-                        admission = admission,
-                        continuation = continuation,
-                        coordinator = coordinator,
-                    )
+                    is LockAdmission.Denied -> {
+                        emitDenialEvent(sink, ctx.runId.value, input.resource, admission, intent)
+                        denied(input.resource, admission, intent)
+                    }
+                    is LockAdmission.Acquired -> {
+                        sink.append(
+                            LockAcquired(
+                                eventId = UUID.randomUUID().toString(),
+                                runId = ctx.runId.value,
+                                sequence = 0L,
+                                occurredAt = Instant.now(),
+                                resource = input.resource,
+                            ),
+                        )
+                        runBody(
+                            owner = owner,
+                            resource = input.resource,
+                            admission = admission,
+                            continuation = continuation,
+                            coordinator = coordinator,
+                            sink = sink,
+                            runId = ctx.runId.value,
+                        )
+                    }
                 }
             }
         }
+    }
+
+    /**
+     * Intersects the declared wait with the enclosing block budget.
+     *
+     * `Now` is already non-blocking, so a budget cannot make it wait. A bounded wait
+     * is replaced by the TIGHTER of author and budget — a budget that expires while
+     * the resource is held produces the ordinary typed
+     * [LockDenialReason.TimedOut], indistinguishable from an author timeout on
+     * purpose: both mean "this run does not hold the resource".
+     */
+    private fun LockIntent.withBudget(budget: ExecutionBudget): LockIntent = when (this) {
+        is LockIntent.Now -> this
+        is LockIntent.UpTo -> LockIntent.UpTo(budget.bound(millis) ?: millis)
+        is LockIntent.Forever -> budget.remainingMs
+            ?.let { LockIntent.UpTo(it) }
+            ?: this
+    }
+
+    /**
+     * RP6-A §6: a denial is observable with the reason the author needs — the
+     * `skipIfLocked` contract as [LockSkipped], the lost wait as
+     * [LockAcquireFailed]. The coordinator-defect denial (held under a waiting
+     * intent) intentionally emits nothing here: it is an engine failure, and
+     * the step failure output already names it as such.
+     */
+    private fun emitDenialEvent(
+        sink: EventSink,
+        runId: String,
+        resource: String,
+        denial: LockAdmission.Denied,
+        intent: LockIntent,
+    ): Unit = when (val reason = denial.reason) {
+        is LockDenialReason.Held -> if (intent == LockIntent.Now) {
+            sink.append(
+                LockSkipped(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = Instant.now(),
+                    resource = resource,
+                    reason = "held with skipIfLocked",
+                ),
+            )
+        } else {
+            Unit
+        }
+        is LockDenialReason.TimedOut -> sink.append(
+            LockAcquireFailed(
+                eventId = UUID.randomUUID().toString(),
+                runId = runId,
+                sequence = 0L,
+                occurredAt = Instant.now(),
+                resource = resource,
+                reason = "not acquired within ${reason.waitedMillis}ms",
+            ),
+        )
+        is LockDenialReason.Cancelled -> sink.append(
+            LockAcquireFailed(
+                eventId = UUID.randomUUID().toString(),
+                runId = runId,
+                sequence = 0L,
+                occurredAt = Instant.now(),
+                resource = resource,
+                reason = "cancelled while waiting",
+            ),
+        )
     }
 
     /**
@@ -233,6 +348,8 @@ object CoreLockStep {
         admission: LockAdmission.Acquired,
         continuation: BodyContinuation,
         coordinator: LockCoordinator,
+        sink: EventSink,
+        runId: String,
     ): CoreLockOutput = try {
         when (val body = continuation.invoke(BodyInvocationContext())) {
             is BodyOutcome.Completed -> CoreLockOutput(
@@ -254,7 +371,19 @@ object CoreLockStep {
             )
         }
     } finally {
+        // RP6-A §6: release is observable on EVERY terminal — completed, failed
+        // and cancelled body alike — because the `finally` owns the release and
+        // the event follows it.
         coordinator.release(LockHold(owner, admission.resource))
+        sink.append(
+            LockReleased(
+                eventId = UUID.randomUUID().toString(),
+                runId = runId,
+                sequence = 0L,
+                occurredAt = Instant.now(),
+                resource = admission.resource,
+            ),
+        )
     }
 
     /**
@@ -322,15 +451,19 @@ object CoreLockStep {
                 descriptor = descriptor,
                 inputCodec = inputCodec,
                 outputCodec = outputCodec,
-                // Two halves of one declaration plus the lane: the port that decides
-                // WHETHER to run the body, the bound continuation that runs it, and
-                // the durable lane that decides WHO owns the resulting hold. Admission
-                // is fail-closed before the handler runs when any is absent, and
-                // resolveBodyExecutionPolicy rejects the owner/capability mismatch.
+                // One declaration, five halves: the port that decides WHETHER to run
+                // the body, the bound continuation that runs it, the durable lane
+                // that decides WHO owns the resulting hold, the event sink that
+                // makes the lifecycle observable (SPEC_WU091_LOCK.md §6), and the
+                // scope budget that BOUNDS the wait. Admission is fail-closed before
+                // the handler runs when any is absent, and resolveBodyExecutionPolicy
+                // rejects the owner/capability mismatch.
                 requiredCapabilities = setOf(
                     LOCK_COORDINATION_CAPABILITY,
                     BODY_CONTINUATION_CAPABILITY,
                     EXECUTION_LANE_CAPABILITY,
+                    EVENT_SINK_CAPABILITY,
+                    EXECUTION_BUDGET_CAPABILITY,
                 ),
             )
 

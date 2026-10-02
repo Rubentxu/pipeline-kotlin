@@ -174,5 +174,16 @@ object CoreStepRegistryFactory {
         // the adapter wired at composition time; the registry seam is the only
         // path that produces HtmlReportPublished/HtmlReportSkipped/HtmlReportFailed.
         CorePublishHtmlStep.registerInto(this)
+        // RP6-A / WU-091 G4: core.lock production registration. The key is NOT in
+        // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver returns Registry from the
+        // moment of registration — there is no legacy decoder/dispatcher row to
+        // retire (this Step was born behind the registry). Admission is fail-closed
+        // on three capabilities: LOCK_COORDINATION_CAPABILITY (exposed only when the
+        // runtime carries a control-dir anchor, see the capability bridge),
+        // BODY_CONTINUATION_CAPABILITY (only when a body is bound) and
+        // EXECUTION_LANE_CAPABILITY (always bridge-derived). The wire payload is
+        // produced by CoreLockWireCodec, the single wire authority shared with the
+        // DSL compiler (G3.4).
+        CoreLockStep.registerInto(this)
     }
 }

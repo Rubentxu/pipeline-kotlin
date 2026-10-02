@@ -11,6 +11,8 @@ import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceOwnership
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
+import dev.rubentxu.pipeline.v2.application.FileLockCoordinator
+import dev.rubentxu.pipeline.v2.application.LOCK_COORDINATION_CAPABILITY
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -19,7 +21,9 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
+import java.nio.file.Path
 
 /**
  * CDE.3-d1: freezes the small, explicit capability bridge from a [CanonicalRuntimeContext] to a
@@ -60,6 +64,10 @@ class CanonicalRuntimeCapabilityAccessTest {
         //     without it the lock cannot tell a nested acquire from a sibling
         //     `parallel` branch. The set below must name it for the same reason it
         //     names every other entry: so the growth is visible, not silent.
+        //   - LOCK_COORDINATION_CAPABILITY (RP6-A / WU-091) is deliberately ABSENT
+        //     here: this context carries no control-dir anchor, and the lock
+        //     coordinator is exposed ONLY when one exists (conditional, like the
+        //     delete-dir workspace operations). See the lock-anchor test below.
         //
         // The bridge must expose EXACTLY this set — adding/removing a capability requires
         // updating both this test and the bridge together. The set must NEVER silently
@@ -74,9 +82,55 @@ class CanonicalRuntimeCapabilityAccessTest {
             dev.rubentxu.pipeline.v2.application.TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY,
             dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY,
             dev.rubentxu.pipeline.v2.application.EXECUTION_LANE_CAPABILITY,
+            // EXECUTION_BUDGET_CAPABILITY (RP6-A / WU-091) is exposed
+            // UNCONDITIONALLY with a null budget: "no scope budget" is a real value,
+            // so admission of a Step that declares it is deterministic everywhere.
+            dev.rubentxu.pipeline.v2.application.EXECUTION_BUDGET_CAPABILITY,
         )
         val access = CanonicalRuntimeCapabilityAccess(runtime(InMemoryEventStore()))
         assertEquals(expected, access.available())
+    }
+
+    @Test
+    fun `lock coordination capability is exposed only with a control-dir anchor`(@TempDir tempDir: Path) {
+        // RP6-A / WU-091 G4: the lock coordinator anchors its POSIX lock namespace
+        // under the control root (`<controlDirRoot>/locks`). Without a control dir
+        // the capability must be ABSENT — capability admission for core.lock then
+        // fails closed before any handler runs, instead of inventing a namespace.
+        val anchored = CanonicalRuntimeContext(
+            opId = OpId("cap-bridge", 0, 0),
+            runId = "cap-bridge",
+            stageName = "build",
+            stageIndex = 0,
+            stepIndex = 0,
+            shOptions = ShOptions.EMPTY,
+            controlDirRoot = tempDir,
+            eventSink = InMemoryEventStore(),
+        )
+        val access = CanonicalRuntimeCapabilityAccess(anchored)
+        // The coordinator binds; the UAT lock scenarios prove the namespace is
+        // rooted under `<controlDirRoot>/locks` behaviourally.
+        access.get<FileLockCoordinator>(LOCK_COORDINATION_CAPABILITY)
+
+        val anchorless = CanonicalRuntimeContext(
+            opId = OpId("cap-bridge", 0, 0),
+            runId = "cap-bridge",
+            stageName = "build",
+            stageIndex = 0,
+            stepIndex = 0,
+            shOptions = ShOptions.EMPTY,
+            controlDirRoot = null,
+            eventSink = InMemoryEventStore(),
+        )
+        val anchorlessAccess = CanonicalRuntimeCapabilityAccess(anchorless)
+        assertEquals(
+            false,
+            LOCK_COORDINATION_CAPABILITY in anchorlessAccess.available(),
+            "lock coordination must not be exposed without a control-dir anchor",
+        )
+        assertThrows(
+            IllegalArgumentException::class.java,
+        ) { anchorlessAccess.get<FileLockCoordinator>(LOCK_COORDINATION_CAPABILITY) }
     }
 
     @Test

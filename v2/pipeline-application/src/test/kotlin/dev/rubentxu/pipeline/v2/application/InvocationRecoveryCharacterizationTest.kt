@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 import kotlinx.serialization.json.JsonPrimitive
@@ -274,5 +275,44 @@ class InvocationRecoveryCharacterizationTest {
             resolution,
             "End to end: divergence is decided before the recovery hook and before the replay kernel",
         )
+    }
+
+    /**
+     * Law 1, with teeth. The case above is NOT sufficient on its own: its recovery hook is inert
+     * (no ExternalSubprocess policy, no control dir), so it resolves to Diverged whichever order
+     * the two steps run in. It pins the divergence GATE, not the precedence.
+     *
+     * This case is the one that actually observes the order. Every precondition that makes the
+     * recovery hook fire is present — ExternalSubprocess declared, a RUNNING row, and a real
+     * control directory — so an operation with no reconcilable control data classifies as Lost and
+     * resolves to RecoverRunning. If the hook were consulted first the run would recover a
+     * DIFFERENT payload than the one the journal describes. Divergence must still win.
+     *
+     * Verified by mutation: moving the recovery hook above the divergence gate turns this red.
+     */
+    @Test
+    fun `divergence outranks an armed recovery hook`() {
+        val controlDir = Files.createTempDirectory("h3-precedence")
+        try {
+            val resolution = resolver(controlDir = controlDir).reconcileInvocation(
+                metadata = StepMetadata(
+                    effects = setOf(Effect.EXECUTES_SUBPROCESS),
+                    replayPolicy = ReplayPolicy.MEMOIZED,
+                    recoveryPolicy = RecoveryPolicy.ExternalSubprocess,
+                ),
+                journaled = journaledRow(sameFingerprint, OperationStatus.RUNNING, payload = "payload-b"),
+                currentOperation = current(otherFingerprint, payload = "payload-a"),
+                operationId = operationId,
+            )
+
+            assertEquals(
+                InvocationReconciliation.Diverged(operationId),
+                resolution,
+                "The recovery hook is armed and would resolve to RecoverRunning; divergence must still " +
+                    "be decided first, otherwise a resumed run acts on a payload the journal does not describe",
+            )
+        } finally {
+            controlDir.toFile().deleteRecursively()
+        }
     }
 }

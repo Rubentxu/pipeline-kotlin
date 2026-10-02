@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.application
+package dev.rubentxu.pipeline.v2.sdk.http
 
 import java.io.IOException
 import java.net.URI
@@ -13,8 +13,6 @@ import java.time.Duration
 import java.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import dev.rubentxu.pipeline.v2.domain.step.http.HttpHeader
-import dev.rubentxu.pipeline.v2.domain.step.http.HttpMethod
 
 /**
  * RP6-C / WU-093 G2 — the ONLY class in this repository that opens a socket.
@@ -33,9 +31,9 @@ import dev.rubentxu.pipeline.v2.domain.step.http.HttpMethod
  *   production leaves it at the default. The seam exists because a test that can only
  *   run against a live host is a test that stops being run.
  */
-class JdkHttpOperations(
+class JdkHttpTransport(
     private val clientFactory: () -> HttpClient = { defaultClient() },
-) : HttpOperations {
+) : HttpTransport {
 
     override suspend fun send(request: HttpSendRequest): HttpTransportResult =
         withContext(Dispatchers.IO) {

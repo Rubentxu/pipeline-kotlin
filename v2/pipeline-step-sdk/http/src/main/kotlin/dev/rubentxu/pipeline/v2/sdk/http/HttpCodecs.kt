@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.application
+package dev.rubentxu.pipeline.v2.sdk.http
 
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
@@ -11,16 +11,12 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import dev.rubentxu.pipeline.v2.domain.step.http.HttpDefaults
-import dev.rubentxu.pipeline.v2.domain.step.http.HttpHeader
-import dev.rubentxu.pipeline.v2.domain.step.http.HttpMethod
-import dev.rubentxu.pipeline.v2.domain.step.http.StatusRange
 
-/** Raised when a `core.httpRequest` payload is not what this Step can speak. */
-class CoreHttpCodecException(message: String) : IllegalArgumentException(message)
+/** Raised when a `http.request` payload is not what this Step can speak. */
+class HttpCodecException(message: String) : IllegalArgumentException(message)
 
 /**
- * THE single authority for the `core.httpRequest` wire format.
+ * THE single authority for the `http.request` wire format.
  *
  * The DSL compiler lowers `StepSpec.HttpRequest` through this object and never
  * authors the format itself. `core.sh` is the frozen counter-example of what happens
@@ -30,11 +26,11 @@ class CoreHttpCodecException(message: String) : IllegalArgumentException(message
  *
  * `Lfc2HttpWireAuthorityFitnessTest` refuses to manufacture that debt for httpRequest.
  */
-object CoreHttpWireCodec : StepCodec<CoreHttpInput> {
+object HttpRequestCodec : StepCodec<HttpRequestInput> {
 
     private val json = Json
 
-    override fun encode(value: CoreHttpInput): EncodedStepValue {
+    override fun encode(value: HttpRequestInput): EncodedStepValue {
         val obj: JsonObject = buildJsonObject {
             put("kind", "httpRequest")
             put("url", value.url)
@@ -63,33 +59,34 @@ object CoreHttpWireCodec : StepCodec<CoreHttpInput> {
             value.body?.let { put("requestBody", it) }
             value.contentType?.let { put("contentType", it) }
             value.acceptType?.let { put("acceptType", it) }
-            put("validResponseCodes", buildJsonObject {
-                put("spec", value.validResponseCodes.joinToString(",") { range ->
+            put(
+                "validResponseCodes",
+                JsonArray(value.validResponseCodes.map { range ->
                     when (range) {
-                        is StatusRange.Single -> range.code.toString()
-                        is StatusRange.Span -> "${range.from}:${range.to}"
+                        is StatusRange.Single -> JsonPrimitive(range.code.toString())
+                        is StatusRange.Span -> JsonPrimitive("${range.from}:${range.to}")
                     }
-                })
-            })
+                }),
+            )
             put("timeoutSeconds", value.timeoutSeconds)
             value.authentication?.let { put("authentication", it.value) }
         }
         return EncodedStepValue(json.encodeToString(JsonObject.serializer(), obj))
     }
 
-    override fun decode(encoded: EncodedStepValue): CoreHttpInput {
+    override fun decode(encoded: EncodedStepValue): HttpRequestInput {
         val obj = parseObject(encoded.value)
         val kind = obj.stringField("kind")
-            ?: throw CoreHttpCodecException("core.httpRequest payload missing mandatory 'kind' field")
+            ?: throw HttpCodecException("http.request payload missing mandatory 'kind' field")
         if (kind != "httpRequest") {
-            throw CoreHttpCodecException("core.httpRequest payload declares kind '$kind'")
+            throw HttpCodecException("http.request payload declares kind '$kind'")
         }
         val url = obj.stringField("url")
-            ?: throw CoreHttpCodecException("core.httpRequest payload missing mandatory 'url' field")
+            ?: throw HttpCodecException("http.request payload missing mandatory 'url' field")
         val methodName = obj.stringField("httpMode") ?: "GET"
         val method = HttpMethod.fromWire(methodName)
-            ?: throw CoreHttpCodecException(
-                "core.httpRequest payload declares unknown httpMode '$methodName'",
+            ?: throw HttpCodecException(
+                "http.request payload declares unknown httpMode '$methodName'",
             )
         val headers = (obj["customHeaders"] as? JsonArray)
             ?.mapNotNull { element ->
@@ -98,11 +95,14 @@ object CoreHttpWireCodec : StepCodec<CoreHttpInput> {
                 HttpHeader.of(name, headerObj.stringField("value") ?: "")
             }
             .orEmpty()
-        val ranges = obj.objectField("validResponseCodes")
-            ?.stringField("spec")
-            ?.let { spec -> StatusRange.parse(spec) }
+        val ranges = (obj["validResponseCodes"] as? JsonArray)
+            ?.mapNotNull { element ->
+                val spec = (element as? JsonPrimitive)?.content ?: return@mapNotNull null
+                StatusRange.parse(spec)?.singleOrNull()
+            }
+            ?.takeIf { it.isNotEmpty() }
             ?: StatusRange.jenkinsDefault()
-        return CoreHttpInput(
+        return HttpRequestInput(
             url = url,
             method = method,
             customHeaders = headers,
@@ -149,70 +149,142 @@ object CoreHttpWireCodec : StepCodec<CoreHttpInput> {
 }
 
 /**
- * The authority for the `core.httpRequest` OUTPUT wire.
+ * The authority for the `http.request` OUTPUT wire.
  *
  * Split out of the Step, as `CoreInputOutputCodec` was, so the contract test can pin the
  * format without going through the handler.
  */
-object CoreHttpOutputCodec : StepCodec<CoreHttpResponse> {
+object HttpResponseCodec : StepCodec<HttpResponseOutput> {
 
     private val json = Json
 
-    override fun encode(value: CoreHttpResponse): EncodedStepValue {
+    /**
+     * The wire form of the carrier.
+     *
+     * It records the ATTEMPT, not a flattened response, and that is the change
+     * that makes the durable record honest. The previous shape wrote
+     * `status = 0` for a request that never answered, so a refused request and a
+     * step that never ran were indistinguishable in the journal — and a reader
+     * could not tell success from failure without re-deriving it. The attempt
+     * case is explicit here, so the round-trip preserves WHICH thing happened.
+     */
+    override fun encode(value: HttpResponseOutput): EncodedStepValue {
         val obj: JsonObject = buildJsonObject {
-            put("kind", "httpResponse")
-            put("url", value.url)
-            put("httpMode", value.method.wireName)
-            put("status", value.status)
-            put(
-                "headers",
-                JsonArray(
-                    value.headers.map { header ->
-                        buildJsonObject {
-                            put("name", header.name.value)
-                            put("value", header.value.value)
-                        }
-                    },
-                ),
-            )
-            put("body", value.body)
-            put("bodySha256", value.bodySha256)
-            put("bodySizeBytes", value.bodySizeBytes)
-            put("bodyTruncated", value.bodyTruncated)
+            put("kind", "httpAttempt")
+            val attempt = value.attempt
+            put("url", attempt.url)
+            put("httpMode", attempt.method.wireName)
+            put("durationMs", attempt.durationMs)
+            when (attempt) {
+                is HttpAttempt.Answered -> {
+                    put("attempt", "answered")
+                    put("status", attempt.response.status)
+                    put("headers", JsonArray(attempt.response.headers.map(::headerObject)))
+                    put("body", attempt.response.body)
+                    put("bodySha256", attempt.response.bodySha256)
+                    put("bodySizeBytes", attempt.response.bodySizeBytes)
+                    put("bodyTruncated", attempt.response.bodyTruncated)
+                }
+                is HttpAttempt.Refused -> {
+                    put("attempt", "refused")
+                    put("status", attempt.status)
+                    put("accepted", JsonArray(attempt.accepted.map(::statusRangeSpec)))
+                }
+                is HttpAttempt.Failed -> {
+                    put("attempt", "failed")
+                    put("failure", attempt.failure.diagnostic)
+                }
+                is HttpAttempt.Unauthorized -> {
+                    put("attempt", "unauthorized")
+                    put("rejection", attempt.rejection.diagnostic)
+                }
+            }
         }
         return EncodedStepValue(json.encodeToString(JsonObject.serializer(), obj))
     }
 
-    override fun decode(encoded: EncodedStepValue): CoreHttpResponse {
+    override fun decode(encoded: EncodedStepValue): HttpResponseOutput {
         val obj = parseObject(encoded.value)
         val kind = obj.stringField("kind")
-            ?: throw CoreHttpCodecException("core.httpRequest output missing mandatory 'kind' field")
-        if (kind != "httpResponse") {
-            throw CoreHttpCodecException("core.httpRequest output declares kind '$kind'")
+            ?: throw HttpCodecException("http.request output missing mandatory 'kind' field")
+        if (kind != "httpAttempt") {
+            throw HttpCodecException("http.request output declares kind '$kind'")
         }
         val url = obj.stringField("url")
-            ?: throw CoreHttpCodecException("core.httpRequest output missing mandatory 'url' field")
+            ?: throw HttpCodecException("http.request output missing mandatory 'url' field")
         val methodName = obj.stringField("httpMode") ?: "GET"
         val method = HttpMethod.fromWire(methodName)
-            ?: throw CoreHttpCodecException("core.httpRequest output declares unknown httpMode '$methodName'")
-        val headers = (obj["headers"] as? JsonArray)
+            ?: throw HttpCodecException("http.request output declares unknown httpMode '$methodName'")
+        val durationMs = obj.longField("durationMs") ?: 0L
+        return HttpResponseOutput(
+            attempt = when (obj.stringField("attempt") ?: "answered") {
+                "answered" -> HttpAttempt.Answered(
+                    url = url,
+                    method = method,
+                    durationMs = durationMs,
+                    response = HttpResponse(
+                        url = url,
+                        method = method,
+                        status = obj.intField("status") ?: 0,
+                        headers = decodeHeaders(obj),
+                        body = obj.stringField("body") ?: "",
+                        bodySha256 = obj.stringField("bodySha256") ?: "",
+                        bodySizeBytes = obj.longField("bodySizeBytes") ?: 0L,
+                        bodyTruncated = obj.booleanField("bodyTruncated") ?: false,
+                    ),
+                )
+                "refused" -> HttpAttempt.Refused(
+                    url = url,
+                    method = method,
+                    durationMs = durationMs,
+                    status = obj.intField("status") ?: 0,
+                    accepted = decodeAccepted(obj),
+                )
+                "failed" -> HttpAttempt.Failed(
+                    url = url,
+                    method = method,
+                    durationMs = durationMs,
+                    failure = HttpFailure.Unreachable(obj.stringField("failure") ?: "the request failed"),
+                )
+                else -> HttpAttempt.Failed(
+                    url = url,
+                    method = method,
+                    durationMs = durationMs,
+                    failure = HttpFailure.Unreachable(
+                        obj.stringField("rejection")
+                            ?: "the credential could not be used",
+                    ),
+                )
+            },
+        )
+    }
+
+    private fun headerObject(header: HttpHeader): JsonObject = buildJsonObject {
+        put("name", header.name.value)
+        put("value", header.value.value)
+    }
+
+    private fun statusRangeSpec(range: StatusRange): JsonPrimitive = when (range) {
+        is StatusRange.Single -> JsonPrimitive(range.code.toString())
+        is StatusRange.Span -> JsonPrimitive("${range.from}:${range.to}")
+    }
+
+    private fun decodeHeaders(obj: JsonObject): List<HttpHeader> =
+        (obj["headers"] as? JsonArray)
             ?.mapNotNull { element ->
                 val headerObj = element as? JsonObject ?: return@mapNotNull null
                 val name = headerObj.stringField("name") ?: return@mapNotNull null
                 HttpHeader.of(name, headerObj.stringField("value") ?: "")
             }
             .orEmpty()
-        return CoreHttpResponse(
-            url = url,
-            method = method,
-            status = obj.intField("status") ?: 0,
-            headers = headers,
-            body = obj.stringField("body") ?: "",
-            bodySha256 = obj.stringField("bodySha256") ?: "",
-            bodySizeBytes = obj.longField("bodySizeBytes") ?: 0L,
-            bodyTruncated = obj.booleanField("bodyTruncated") ?: false,
-        )
-    }
+
+    private fun decodeAccepted(obj: JsonObject): List<StatusRange> =
+        (obj["accepted"] as? JsonArray)
+            ?.mapNotNull { element ->
+                val spec = (element as? JsonPrimitive)?.content ?: return@mapNotNull null
+                StatusRange.parse(spec)?.firstOrNull()
+            }
+            .orEmpty()
 
     override fun schema(): String = """
         {
@@ -236,7 +308,7 @@ object CoreHttpOutputCodec : StepCodec<CoreHttpResponse> {
 internal fun parseObject(raw: String): JsonObject = try {
     Json.parseToJsonElement(raw).jsonObject
 } catch (e: Exception) {
-    throw CoreHttpCodecException("core.httpRequest payload is not a JSON object: ${e.message ?: "parse failed"}")
+    throw HttpCodecException("http.request payload is not a JSON object: ${e.message ?: "parse failed"}")
 }
 
 private fun JsonObject.stringField(name: String): String? =
@@ -251,6 +323,16 @@ private fun JsonObject.booleanField(name: String): Boolean? = when (val raw = st
     "false" -> false
     else -> null
 }
+
+/**
+ * A JSON string field, or `null` when absent, JSON null, or a non-primitive.
+ *
+ * Total on purpose: a wire payload is untrusted input, and a helper that threw
+ * would turn a malformed record into an exception crossing a replay path
+ * instead of a typed codec failure.
+ */
+private fun JsonObject.stringOrNull(name: String): String? =
+    get(name)?.takeIf { it is JsonPrimitive }?.primitiveText()
 
 private fun JsonObject.objectField(name: String): JsonObject? =
     get(name) as? JsonObject

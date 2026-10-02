@@ -47,6 +47,8 @@ import dev.rubentxu.pipeline.v2.domain.step.BODY_CONTINUATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.BODY_INVOKER_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation
+import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressPolicy
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -80,6 +82,17 @@ open class CanonicalRuntimeCapabilityAccess(
     // nested-step sub-contexts) the capability stays unexposed and BOTH
     // Steps fail closed at registry-prepare-time / availability-check time.
     private val artifactIndex: ArtifactIndexCapability? = null,
+    /**
+     * Capabilities contributed by OFFICIAL_PLUGINs, merged verbatim.
+     *
+     * Deliberately an OPAQUE map. `pipeline-application` is the composition
+     * root, so it must be able to hand a plugin the capability that plugin
+     * declared — but naming the plugin's own types here would import the
+     * plugin's vocabulary into core, which is precisely the line
+     * `Lfc2HttpOfficiallyPluginBoundaryFitnessTest` FIT-4 defends. A plugin
+     * contributes its transport; the runtime supplies the PERMISSION.
+     */
+    private val pluginCapabilities: Map<StepCapability, Any> = emptyMap(),
 ) : StepCapabilityAccess {
 
     private val provided: Map<StepCapability, Any> = buildProvided(context)
@@ -107,6 +120,24 @@ open class CanonicalRuntimeCapabilityAccess(
         val builder: MutableMap<StepCapability, Any> = mutableMapOf(
             EVENT_SINK_CAPABILITY to context.eventSink,
         )
+        // RP6-C / LFC-2E3: network egress is PERMISSION, not protocol. The
+        // runtime owns the verdict and the Step declares the requirement, so a
+        // pipeline that reaches for the network without --allow-network is
+        // rejected at prepare-time by the ordinary fail-closed admission path —
+        // before any handler runs and before a socket could exist.
+        if (context.shOptions.networkEgress is NetworkEgressPolicy.Allowed) {
+            builder[NETWORK_EGRESS_CAPABILITY] = context.shOptions.networkEgress
+        }
+        // Plugin-contributed capabilities last, so a plugin may add a seam
+        // without the runtime enumerating it — and may not silently OVERWRITE a
+        // core one, which the duplicate check below refuses.
+        for ((capability, value) in pluginCapabilities) {
+            val existing = builder[capability]
+            require(existing == null || existing === value) {
+                "capability $capability is contributed twice: by the runtime core and by a plugin"
+            }
+            builder[capability] = value
+        }
         val shellOps: ShellOperations = ShOperationsAdapter(
             runIdString = context.runId,
             opId = context.opId,

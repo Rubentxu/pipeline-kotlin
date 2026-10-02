@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.domain.step.http
+package dev.rubentxu.pipeline.v2.sdk.http
 
 /**
  * The HTTP method, as a closed ADT rather than a `String` (RP6-C / WU-093).

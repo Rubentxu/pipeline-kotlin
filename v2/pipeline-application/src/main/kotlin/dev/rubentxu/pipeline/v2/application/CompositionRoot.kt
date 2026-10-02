@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressPolicy
 import dev.rubentxu.pipeline.v2.domain.directivekey.WHEN_DIRECTIVE_KEY
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
@@ -50,6 +51,21 @@ internal fun runCanonicalPipeline(
     // PipelineK-managed. The CLI always states it (WorkspaceIntent).
     workspaceOwnership: dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceOwnership? = null,
     withCredentialsExecutor: WithCredentialsExecutor? = null,
+    /**
+     * RP6-C / LFC-2E3 (`--allow-network`): permit outbound egress for this run.
+     *
+     * FALSE by default. The transport a plugin needs is contributed through
+     * [pluginCapabilities] and the PERMISSION is produced here, so a plugin can
+     * be present in the distribution and still be unable to reach the network
+     * until an operator says so.
+     */
+    allowNetwork: Boolean = false,
+    /**
+     * Capabilities contributed by OFFICIAL_PLUGINs, merged verbatim into the
+     * runtime table. Opaque on purpose: naming a plugin's types here would pull
+     * the plugin's vocabulary into core.
+     */
+    pluginCapabilities: Map<dev.rubentxu.pipeline.v2.domain.step.StepCapability, Any> = emptyMap(),
     // LB-02 / EP-6: caller-composed registry (core + discovered external contributions).
     // Composition happens ONCE in the composition root, BEFORE the canonical-eligibility
     // gate, so contributed keys participate in the gate (eligibility is registry-derived).
@@ -88,6 +104,15 @@ internal fun runCanonicalPipeline(
             // runtime transport, so the ADR-0102 destructive guard reads the real
             // owner of this root instead of re-deriving `Managed`.
             workspaceOwnership = workspaceOwnership,
+            // RP6-C / LFC-2E3: egress is DENIED unless the operator asked for it
+            // with --allow-network. The bridge turns this verdict into the
+            // generic NETWORK_EGRESS_CAPABILITY, and a Step that needs the
+            // network declares it — so the default run cannot reach one.
+            networkEgress = if (allowNetwork) {
+                NetworkEgressPolicy.Allowed
+            } else {
+                NetworkEgressPolicy.Denied
+            },
         ),
         // B1.2c3-S2.3 + LB-02/EP-6: core Steps first, then external plugin contributions.
         stepRegistry = stepRegistry,

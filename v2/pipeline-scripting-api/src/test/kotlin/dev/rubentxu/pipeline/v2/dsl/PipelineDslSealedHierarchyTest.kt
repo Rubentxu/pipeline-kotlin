@@ -8,7 +8,7 @@ import kotlin.reflect.full.primaryConstructor
 /**
  * Tests for the sealed StepSpec hierarchy exhaustiveness.
  *
- * Verifies that the sealed hierarchy contains exactly 34 variants (ML-R9 + WU-RP-033 + WU-091 + WU-092 + WU-093):
+ * Verifies that the sealed hierarchy contains exactly 33 variants (ML-R9 + WU-RP-033 + WU-091 + WU-092):
  * 7 base steps (Echo, Shell, Sleep, Error, Parallel, WithCredentialsBlock, Checkout)
  * + 1 generic RegistryStepSpec (LB-02 / EP-F2)
  * + 1 generic RegistryBlockSpec (WU-RP-033: body-owning open-registry form)
@@ -19,21 +19,20 @@ import kotlin.reflect.full.primaryConstructor
  * + 1 E1.1 / T7: ArtifactQuery (registry-backed, model form)
  * + 1 WU-091 / RP6-A: Lock (core.lock, body-bearing block step)
  * + 1 WU-092 / RP6-B: Input (core.input, conditionally body-bearing block step)
- * + 1 WU-093 / RP6-C: HttpRequest (core.httpRequest, atomic terminal step)
  *
- * GREEN: all 34 variants present
+ * GREEN: all 33 variants present
  */
 @DisplayName("StepSpec sealed hierarchy tests")
 class PipelineDslSealedHierarchyTest {
 
     @Test
-    fun `sealed_hierarchy_is_exhaustive_with_34_kinds`() {
+    fun `sealed_hierarchy_is_exhaustive_with_33_kinds`() {
         val subclasses = StepSpec::class.sealedSubclasses
         val names = subclasses.map { it.simpleName }
         assertEquals(
-            34,
+            33,
             subclasses.size,
-            "StepSpec sealed hierarchy must have exactly 34 variants. " +
+            "StepSpec sealed hierarchy must have exactly 33 variants. " +
                 "Found ${subclasses.size}: ${names.joinToString()}"
         )
     }

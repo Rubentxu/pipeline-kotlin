@@ -227,6 +227,7 @@ subprojects {
             "pipeline-step-sdk/api",        // 1.5% line: pure codec IR + interfaces
             "pipeline-step-sdk/processor",  // 9.4% line: KSP code generator
             "pipeline-step-sdk/junit",      // 15.5% line: dominant case is contract fixtures
+            "pipeline-step-sdk/http",       // contract/fitness dominant; the wire is pinned by golden vectors
             "pipeline-step-sdk/files",      // no line data: only branch/class visible
             "pipeline-scripting-api",       // 32.1% line: pure DSL builder methods
             "pipeline-credentials-api",     // no line data: only branch visible
@@ -315,6 +316,7 @@ dependencies {
         ":pipeline-step-sdk:api",
         ":pipeline-step-sdk:runtime",
         ":pipeline-step-sdk:scm-git",
+        ":pipeline-step-sdk:http",
         ":pipeline-step-sdk:files",
         ":pipeline-step-sdk:utilities",
         ":pipeline-step-sdk:workflow-control",

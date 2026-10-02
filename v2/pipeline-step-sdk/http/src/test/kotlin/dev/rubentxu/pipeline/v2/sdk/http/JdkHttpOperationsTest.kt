@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.application
+package dev.rubentxu.pipeline.v2.sdk.http
 
 import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
@@ -11,8 +11,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
-import dev.rubentxu.pipeline.v2.domain.step.http.HttpHeader
-import dev.rubentxu.pipeline.v2.domain.step.http.HttpMethod
 
 /**
  * RP6-C / WU-093 G2 — the transport, against a REAL local HTTP server.
@@ -24,7 +22,7 @@ import dev.rubentxu.pipeline.v2.domain.step.http.HttpMethod
  * the internet and cannot flake on it.
  *
  * The complementary direction — the Step's contract over a substituted
- * [HttpOperations] — is in `CoreHttpStepContractTest`, which is why this file does not
+ * [HttpTransport] — is in `CoreHttpStepContractTest`, which is why this file does not
  * test the ADTs again.
  */
 @Timeout(120)
@@ -32,7 +30,7 @@ class JdkHttpOperationsTest {
 
     private lateinit var server: HttpServer
     private lateinit var baseUrl: String
-    private val ops = JdkHttpOperations()
+    private val ops = JdkHttpTransport()
     private val counterHits = AtomicInteger()
 
     @BeforeEach

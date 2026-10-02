@@ -4,10 +4,6 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.domain.scm.Scm
-import dev.rubentxu.pipeline.v2.domain.step.http.HttpDefaults
-import dev.rubentxu.pipeline.v2.domain.step.http.HttpHeader
-import dev.rubentxu.pipeline.v2.domain.step.http.HttpMethod
-import dev.rubentxu.pipeline.v2.domain.step.http.StatusRange
 
 /**
  * Sealed hierarchy of steps that a stage can contain.
@@ -416,54 +412,5 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     ) : StepSpec {
         override val name: String get() = "input"
         override val type: String get() = "input"
-    }
-
-    /**
-     * `httpRequest(url, ...)` — one request to a remote service (RP6-C / WU-093).
-     * declarative structural IR only: the compiler lowers this variant through
-     * [dev.rubentxu.pipeline.v2.application.CoreHttpInput] and the single wire
-     * authority `CoreHttpWireCodec`; this type carries no wire vocabulary of its
-     * own.
-     *
-     * The fields are TYPED, not `String`. `method = "GTE"` cannot be written, and
-     * `validResponseCodes` is a validated [StatusRange] list rather than a spec
-     * string parsed after the request already left — which is precisely what
-     * Jenkins does (`HttpRequest.java:552-589`). The Jenkins parameter NAMES are
-     * preserved, so porting a pipeline is a literal-to-typed change on the value
-     * (`method: 'POST'` becomes `method = HttpMethod.Post`), not a relearning.
-     *
-     * There is deliberately no `String` overload of `httpRequest`. Two overloads
-     * whose parameters are all defaulted are ambiguous in Kotlin, and a
-     * string-accepting door would be a SECOND way to state the same invariant —
-     * the one that parses late and the one that fails at a different time. One
-     * door, typed. The Jenkins spellings stay reachable where a migration tool
-     * genuinely needs them, as pure total functions that return `null` rather
-     * than guess: [HttpMethod.fromWire] and [StatusRange.parse].
-     *
-     * `HttpMethod` / `HttpHeader` / `StatusRange` live in `pipeline-domain`, not
-     * in `pipeline-application`, because this file must not name the application
-     * layer: `FArchRP030HexagonalDependencyDirectionTest` forbids
-     * `pipeline-scripting-api` -> `pipeline-application`. Declaring them inward is
-     * what lets the DSL speak the same vocabulary the runtime executes.
-     *
-     * Source-compatibility note (as for `Lock`): adding a case to this sealed
-     * hierarchy is binary-compatible but is SOURCE-ADDITIVE for consumers holding
-     * an exhaustive `when(step)` without an `else`. The only concrete-case
-     * consumer in this repository is the DSL compiler, whose dispatch is guarded
-     * by the LFC-2 exhaustivity fitness and the http wire-authority fitness.
-     */
-    data class HttpRequest(
-        val url: String,
-        val method: HttpMethod = HttpMethod.Get,
-        val customHeaders: List<HttpHeader> = emptyList(),
-        val body: String? = null,
-        val contentType: String? = null,
-        val acceptType: String? = null,
-        val validResponseCodes: List<StatusRange> = StatusRange.jenkinsDefault(),
-        val timeoutSeconds: Int = HttpDefaults.DEFAULT_TIMEOUT_SECONDS,
-        val authentication: CredentialsId? = null,
-    ) : StepSpec {
-        override val name: String get() = "httpRequest"
-        override val type: String get() = "httpRequest"
     }
 }

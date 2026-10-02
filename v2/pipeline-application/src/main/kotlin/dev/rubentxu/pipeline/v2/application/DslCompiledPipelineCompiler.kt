@@ -263,17 +263,6 @@ object DslCompiledPipelineCompiler {
                 parentToken = parentToken,
                 occurrence = occurrence,
             )
-            // WU-093 G3: core.httpRequest is an ATOMIC step, not a block — a
-            // request has no enclosed body. It therefore lowers to the canonical
-            // atomic node with its payload produced exclusively by
-            // CoreHttpWireCodec (G3.4), never by the else catch-all.
-            is StepSpec.HttpRequest -> listOf(
-                OpaqueStepNode(
-                    id = StepId("$parentToken/${stableToken(step.name)}-$occurrence"),
-                    pluginStepId = PluginStepId("core.httpRequest"),
-                    payload = VersionedStepPayload(PAYLOAD_SCHEMA_VERSION, httpRequestPayload(step)),
-                ),
-            )
             is StepSpec.Unstable -> rewriteUnstable(
                 message = step.message,
                 parentToken = parentToken,
@@ -425,39 +414,6 @@ object DslCompiledPipelineCompiler {
         timeoutSeconds = timeoutSeconds,
         reason = reason,
         skipIfLocked = skipIfLocked,
-    )
-
-    /**
-     * WU-093 G3.4: the compiler does NOT hand-write the core.httpRequest wire JSON.
-     * `CoreHttpWireCodec` is THE single authority for that format — the same law
-     * core.lock and core.input already follow, and the `core.sh` dialect split is
-     * the frozen counter-example. Guarded by Lfc2HttpWireAuthorityFitnessTest.
-     */
-    private fun httpRequestPayload(step: StepSpec.HttpRequest): String =
-        CoreHttpWireCodec.encode(step.toCoreHttpInput()).value
-
-    /**
-     * WU-093 G3.3: the compiler knows the `StepSpec.HttpRequest -> CoreHttpInput`
-     * transformation, which is a DOMAIN decision; it does not know the wire
-     * format, which is an ENCODING decision owned by [CoreHttpWireCodec]. Pure,
-     * total, one direction, every field mapped verbatim.
-     *
-     * It deliberately resolves NOTHING here — not a blank URL, not a body sent
-     * with a method that cannot carry one, not a negative timeout. Those are
-     * `httpIntentOf`'s rules, applied once at the Step, so a bad declaration is a
-     * typed rejection rather than a request that reached the world and came back
-     * wrong.
-     */
-    private fun StepSpec.HttpRequest.toCoreHttpInput(): CoreHttpInput = CoreHttpInput(
-        url = url,
-        method = method,
-        customHeaders = customHeaders,
-        body = body,
-        contentType = contentType,
-        acceptType = acceptType,
-        validResponseCodes = validResponseCodes,
-        timeoutSeconds = timeoutSeconds,
-        authentication = authentication,
     )
 
     /**

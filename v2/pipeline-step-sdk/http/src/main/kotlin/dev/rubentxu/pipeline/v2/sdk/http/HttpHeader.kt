@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.domain.step.http
+package dev.rubentxu.pipeline.v2.sdk.http
 
 /**
  * One HTTP header, with its name and value as separate value classes

@@ -1,10 +1,7 @@
-package dev.rubentxu.pipeline.v2.application
+package dev.rubentxu.pipeline.v2.sdk.http
 
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
-import dev.rubentxu.pipeline.v2.domain.step.http.HttpDefaults
-import dev.rubentxu.pipeline.v2.domain.step.http.HttpHeader
-import dev.rubentxu.pipeline.v2.domain.step.http.HttpMethod
-import dev.rubentxu.pipeline.v2.domain.step.http.StatusRange
+import dev.rubentxu.pipeline.v2.domain.FailureKind
 
 /**
  * Typed input of `core.httpRequest` (RP6-C / WU-093).
@@ -19,13 +16,13 @@ import dev.rubentxu.pipeline.v2.domain.step.http.StatusRange
  * credential or decides whether the network is allowed — those are the handler's
  * job, behind declared capabilities.
  *
- * The WHOLE payload is encoded by [CoreHttpWireCodec]; the engine does not probe
+ * The WHOLE payload is encoded by [HttpRequestCodec]; the engine does not probe
  * individual fields. Not annotated `@Serializable` on purpose:
  * `pipeline-application` does not apply the kotlinx-serialization compiler plugin,
  * so the codec is written out explicitly, exactly as `CoreLockInput` and
  * `CoreInputInput` are.
  */
-data class CoreHttpInput(
+data class HttpRequestInput(
     val url: String,
     val method: HttpMethod = HttpMethod.Get,
     val customHeaders: List<HttpHeader> = emptyList(),
@@ -40,6 +37,16 @@ data class CoreHttpInput(
 /** Everything that can make an `httpRequest` declaration unusable, as a closed set. */
 sealed interface HttpRejection {
     val diagnostic: String
+
+    /**
+     * How this declaration error is classified when it reaches a run.
+     *
+     * Every rejection is a [FailureKind.USER] fact: the author wrote something the
+     * Step cannot honour, and no transport, network or server had any part in
+     * it. Deciding that here rather than at the boundary means the classification
+     * is a property of the rejection, not a string somebody re-reads downstream.
+     */
+    val failureKind: FailureKind get() = FailureKind.USER
 
     data class BlankUrl(val attempted: String) : HttpRejection {
         override val diagnostic: String get() = "the URL is blank"
@@ -67,10 +74,27 @@ sealed interface HttpRejection {
     data class BlankHeaderName(val position: Int) : HttpRejection {
         override val diagnostic: String get() = "the header at position $position has a blank name"
     }
+
+    /**
+     * The author asked for a credential this slice cannot honour yet.
+     *
+     * Credential resolution is scheduled for G6, where it arrives through a
+     * declared capability rather than a service locator. Until then a declared
+     * `authentication` is REFUSED, and refusing it is the whole point: silently
+     * dropping the credential and sending the request unauthenticated would
+     * turn a declared secret into a 401 at best and an audit finding at worst,
+     * and the pipeline would look like it had authenticated.
+     */
+    data class CredentialsUnsupported(val id: String) : HttpRejection {
+        override val diagnostic: String get() =
+            "credential '$id' cannot be used by http.request yet: credential resolution is not " +
+                "available in this build. The request was NOT sent. Remove `authentication` to " +
+                "send it unauthenticated on purpose."
+    }
 }
 
 /**
- * The resolved, validated form of an [CoreHttpInput]: what the handler will actually
+ * The resolved, validated form of an [HttpRequestInput]: what the handler will actually
  * do.
  *
  * `httpIntentOf` is PURE and TOTAL. Every way a declaration can be wrong is
@@ -95,7 +119,27 @@ sealed interface HttpIntent {
     data class Rejected(val rejection: HttpRejection) : HttpIntent
 }
 
-internal fun httpIntentOf(input: CoreHttpInput): HttpIntent {
+/**
+ * Projects a READY intent onto the transport's request shape.
+ *
+ * Content negotiation is resolved HERE, not in the transport and not in the
+ * façade, so the headers that travel are the ones the decision produced. The
+ * transport sends what it is given and never invents a `Content-Type`.
+ */
+internal fun HttpIntent.Ready.toSendRequest(): HttpSendRequest = HttpSendRequest(
+    url = url,
+    method = method,
+    headers = headers + buildList {
+        contentType?.let { add(HttpHeader.of("Content-Type", resolveContentType(it))) }
+        acceptType?.let { add(HttpHeader.of("Accept", resolveContentType(it))) }
+    },
+    body = body,
+    timeoutMs = timeoutMs,
+    authorization = null,
+    maxBodyBytes = HttpDefaults.MAX_RESPONSE_BYTES,
+)
+
+internal fun httpIntentOf(input: HttpRequestInput): HttpIntent {
     if (input.url.isBlank()) {
         return HttpIntent.Rejected(HttpRejection.BlankUrl(input.url))
     }
@@ -110,6 +154,11 @@ internal fun httpIntentOf(input: CoreHttpInput): HttpIntent {
     }
     if (input.timeoutSeconds < 0) {
         return HttpIntent.Rejected(HttpRejection.NonPositiveTimeout(input.timeoutSeconds))
+    }
+    // Fail-closed on a credential this build cannot honour. Dropping it and
+    // sending anyway would make an unauthenticated request look authenticated.
+    input.authentication?.let { id ->
+        return HttpIntent.Rejected(HttpRejection.CredentialsUnsupported(id.value))
     }
     return HttpIntent.Ready(
         url = input.url,

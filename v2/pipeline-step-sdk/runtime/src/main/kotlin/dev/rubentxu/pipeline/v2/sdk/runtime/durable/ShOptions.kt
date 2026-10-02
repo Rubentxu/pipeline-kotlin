@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
+import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressPolicy
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceOwnership
 import java.nio.file.Path
@@ -53,6 +54,22 @@ data class ShOptions(
      * erase the user's project under the local-first default.
      */
     val workspaceOwnership: WorkspaceOwnership? = null,
+    /**
+     * Whether this execution may reach the network (LFC-2E3 / WU-093).
+     *
+     * DENIED by default in the data class itself, so a constructor that forgets
+     * to mention it is fail-closed by construction rather than by a condition
+     * somebody has to remember to write. Only `--allow-network` produces
+     * [NetworkEgressPolicy.Allowed].
+     *
+     * It rides here for the same reason `workspaceOwnership` does: it is a
+     * per-execution decision set at the CLI boundary that cannot be
+     * reconstructed downstream, so it has to cross the transport. The runtime
+     * turns it into the generic `NETWORK_EGRESS_CAPABILITY`, and a Step that
+     * needs egress declares that capability — which is how "no network" becomes
+     * an admission rejection instead of a convention.
+     */
+    val networkEgress: NetworkEgressPolicy = NetworkEgressPolicy.Denied,
 ) {
     companion object {
         /**

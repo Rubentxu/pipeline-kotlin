@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.domain.step.http
+package dev.rubentxu.pipeline.v2.sdk.http
 
 /**
  * Declared defaults of `httpRequest`, shared by the DSL surface and the runtime
@@ -21,4 +21,17 @@ object HttpDefaults {
      * bound says `timeoutSeconds = 0`, which survives as `null`.
      */
     const val DEFAULT_TIMEOUT_SECONDS: Int = 30
+
+    /**
+     * How much of a response body this Step is willing to hold in memory and
+     * journal, in bytes.
+     *
+     * One mebibyte is a declared value, not an accident: a pipeline that pulls a
+     * multi-gigabyte artefact through `httpRequest` would otherwise trade a
+     * failed request for an out-of-memory run. The body is TRUNCATED at this
+     * bound and flagged, and [HttpResponseOutput.bodySha256] is still the digest
+     * of the COMPLETE body — so truncation never quietly turns into a different
+     * content, and an author who needs the whole thing can see that it was cut.
+     */
+    const val MAX_RESPONSE_BYTES: Long = 1L * 1024 * 1024
 }

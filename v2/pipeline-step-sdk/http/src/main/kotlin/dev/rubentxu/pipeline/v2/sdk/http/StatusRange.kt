@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.domain.step.http
+package dev.rubentxu.pipeline.v2.sdk.http
 
 /**
  * A range of acceptable status codes (RP6-C / WU-093).

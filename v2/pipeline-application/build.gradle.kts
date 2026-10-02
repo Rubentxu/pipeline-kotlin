@@ -50,6 +50,9 @@ dependencies {
     implementation(project(":pipeline-step-sdk:runtime"))
     implementation(project(":pipeline-step-sdk:files"))
     implementation(project(":pipeline-step-sdk:scm-git"))
+    // RP6-C / LFC-2E3: the HTTP OFFICIAL_PLUGIN ships in the distribution and is
+    // discovered through ServiceLoader, like scm-git and junit.
+    implementation(project(":pipeline-step-sdk:http"))
     // F5.2: JUnit OFFICIAL_PLUGIN is bundled into the distribution so the
     // external discovery seam can resolve it without `--plugin-jar`.
     implementation(project(":pipeline-step-sdk:junit"))
@@ -69,6 +72,7 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit.jupiter)
     testImplementation(project(":pipeline-step-sdk:scm-git"))
+    testImplementation(project(":pipeline-step-sdk:http"))
     // F5.2: JUnit OFFICIAL_PLUGIN (typed report summary + XXE-hardened parser).
     testImplementation(project(":pipeline-step-sdk:junit"))
     // LB-02 / Lane R: external plugin under certification (example.uppercase) — the

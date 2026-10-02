@@ -32,6 +32,17 @@ data class CliFlags(
      */
     val isolated: Boolean = false,
     val sandboxProfile: SandboxProfile = SandboxProfile.NONE,
+    /**
+     * RP6-C / LFC-2E3 (`--allow-network`): whether this run may open outbound
+     * connections. FALSE unless the operator asks for it.
+     *
+     * Default-deny is the whole point, and it is enforced as a MISSING
+     * capability rather than as a check inside a Step: a Step that declares
+     * `NETWORK_EGRESS_CAPABILITY` is rejected at prepare-time when the runtime
+     * did not produce the verdict, so there is no code path in which a Step
+     * reaches the network on a default run.
+     */
+    val allowNetwork: Boolean = false,
     /** External plugin JARs: one list feeds compilation and runtime discovery. */
     val pluginJars: List<String> = emptyList(),
 )
@@ -107,6 +118,12 @@ private class ParseState(
     /** RP034-H / ADR-0101: `--isolated` requests managed scratch. */
     var isolated: Boolean = false,
     var sandboxProfile: SandboxProfile = SandboxProfile.NONE,
+    /**
+     * RP6-C / LFC-2E3: `--allow-network` permits outbound egress for this run.
+     * FALSE by default, so a pipeline that reaches for the network without the
+     * flag is rejected at capability admission rather than quietly succeeding.
+     */
+    var allowNetwork: Boolean = false,
     val pluginJars: MutableList<String> = mutableListOf(),
 )
 
@@ -151,6 +168,7 @@ object CliParser {
                 workspace = state.workspace,
                 isolated = state.isolated,
                 sandboxProfile = state.sandboxProfile,
+                allowNetwork = state.allowNetwork,
                 pluginJars = state.pluginJars.toList(),
             ),
         )
@@ -202,6 +220,15 @@ object CliParser {
             "--plugin-jar" -> {
                 state.pluginJars += value
                 ApplyOutcome.Applied(index + 2)
+            }
+            // RP6-C / LFC-2E3. A BOOLEAN flag with no value, deliberately: the
+            // only question is whether this run may egress at all, and a
+            // `--allow-network=<something>` spelling would invite a per-host
+            // allowlist this runtime does not implement. Until it does, an
+            // all-or-nothing switch is the honest surface.
+            "--allow-network" -> {
+                state.allowNetwork = true
+                ApplyOutcome.Applied(index + 1)
             }
             "--sandbox-profile" -> {
                 state.sandboxProfile = when (value) {

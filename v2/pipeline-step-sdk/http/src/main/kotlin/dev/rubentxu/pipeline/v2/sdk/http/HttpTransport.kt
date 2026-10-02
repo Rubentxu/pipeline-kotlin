@@ -1,45 +1,31 @@
-package dev.rubentxu.pipeline.v2.application
+package dev.rubentxu.pipeline.v2.sdk.http
 
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
-import dev.rubentxu.pipeline.v2.domain.step.http.HttpHeader
-import dev.rubentxu.pipeline.v2.domain.step.http.HttpMethod
 
 /**
- * RP6-C / WU-093 G3-A4.2 — the ONE network seam of the runtime.
+ * The ONE network seam of the `http.request` OFFICIAL_PLUGIN (LFC-2E3 / WU-093).
  *
- * `JdkHttpOperations` is the only class in the repository that opens a socket, exactly
- * as `FileLockCoordinator` is the only one that takes a POSIX lock and
- * `WorkspaceOperationsAdapter` the only one that emits `FileWritten`. A Step that
- * needed a socket for a second reason would be a second seam, and the second seam is
- * where the next untyped `URL(...)` call goes to live.
+ * `JdkHttpTransport` is the only class in this module that opens a socket, and it
+ * lives HERE, inside the plugin, not in `pipeline-application`. HTTP is a protocol
+ * and vendor concern (STEP_ECOSYSTEM_POLICY: `pipeline-plugin-http`; matrix row:
+ * `httpRequest | OFFICIAL_PLUGIN candidate`), so the concrete transport belongs to
+ * the plugin that owns the protocol. Application composes it; it does not know
+ * what HTTP is.
+ *
+ * What application DOES own is the egress POLICY — whether this run may reach the
+ * network at all — and that is not HTTP knowledge, it is a per-execution runtime
+ * decision. It arrives as the generic `NETWORK_EGRESS_CAPABILITY` and is declared
+ * in `requiredCapabilities`, so its absence is a fail-closed admission rejection
+ * before the handler ever runs. A pipeline that reaches for the network without
+ * `--allow-network` therefore never gets a transport to use.
  */
-val HTTP_OPERATIONS_CAPABILITY: StepCapability = StepCapability("httpOperations")
+val HTTP_TRANSPORT_CAPABILITY: StepCapability = StepCapability("http.transport")
 
-/**
- * Whether this execution may reach the network at all.
- *
- * A per-RUN decision, not a per-step or per-scope one, and it defaults to [Denied] in
- * the data class itself — so a constructor that forgets to mention it is fail-closed by
- * construction rather than by a condition somebody has to remember to write.
- *
- * It rides on `ShOptions` because that type already carries a per-execution environment
- * policy (`sandbox`), is set from the CLI, has no DSL surface, and survives the stage
- * re-projection. Anything that cannot be reconstructed downstream has to cross the
- * transport: `workspaceOwnership` says so in its own KDoc, for the same reason.
- */
 sealed interface NetworkPolicy {
     data object Denied : NetworkPolicy
     data object Allowed : NetworkPolicy
 }
 
-/**
- * What to send, and how long the send may take.
- *
- * `authorization` is ALREADY RESOLVED. The handler never holds a `CredentialsId` and
- * never sees a secret: it asks for one by name and the adapter decides what header (if
- * any) that becomes. This is the same line WU-092 drew for `submitter` — a name is
- * attribution, and the decision to emit it is the adapter's.
- */
 data class HttpSendRequest(
     val url: String,
     val method: HttpMethod,
@@ -87,7 +73,7 @@ sealed interface HttpSendOutcome {
  * measuring its own overhead, and a port that took a `Clock` would be a clock the
  * caller has to keep in step.
  */
-interface HttpOperations {
+interface HttpTransport {
     suspend fun send(request: HttpSendRequest): HttpTransportResult
 }
 

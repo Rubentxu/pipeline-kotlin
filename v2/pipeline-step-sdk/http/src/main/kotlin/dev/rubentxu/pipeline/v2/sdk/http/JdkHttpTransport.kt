@@ -11,8 +11,7 @@ import java.security.MessageDigest
 import java.security.NoSuchAlgorithmException
 import java.time.Duration
 import java.util.Base64
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.future.await
 
 /**
  * RP6-C / WU-093 G2 — the ONLY class in this repository that opens a socket.
@@ -27,32 +26,68 @@ import kotlinx.coroutines.withContext
  * whether a credential may be used, whether the network is allowed at all. Here there
  * is only transport.
  *
+ * ## H3.1 — coroutine-native, no parked thread
+ *
+ * The transport AWAITS a `CompletableFuture`; it never parks a thread waiting
+ * for one. The previous shape called the blocking `HttpClient.send` inside
+ * `withContext(Dispatchers.IO)`, which parks an IO worker for the whole
+ * round-trip and scales linearly with concurrency — the wrong shape for a
+ * `parallel` stage running many requests at once.
+ *
+ * ## H3.2 — ONE client per transport instance
+ *
+ * `clientFactory()` used to run inside every `send()`, so production built a
+ * fresh `HttpClient` per request and threw away exactly the connection pool and
+ * keep-alive that concurrent requests exist to amortise. A `HttpClient` is
+ * expensive to construct and is designed to be long-lived and shared.
+ *
+ * ## The law: cancellation is NOT an HTTP failure
+ *
+ * ```text
+ * DNS / refused / reset / TLS  -> Unreachable
+ * HTTP timeout                -> Expired
+ * coroutine cancellation      -> PROPAGATE
+ * ```
+ *
+ * Catching too widely around `await()` would turn a cancelled run into a
+ * reported network failure, and a run that was told to stop would instead
+ * report that the world was at fault. `await()` already cancels the future when
+ * the awaiting coroutine is cancelled, so the only job here is to NOT catch it.
+ *
  * @param clientFactory injectable so the contract can be exercised without a socket;
  *   production leaves it at the default. The seam exists because a test that can only
- *   run against a live host is a test that stops being run.
+ *   run against a live host is a test that stops being run. It is invoked ONCE per
+ *   transport instance (H3.2), which is what makes client reuse observable.
  */
 class JdkHttpTransport(
     private val clientFactory: () -> HttpClient = { defaultClient() },
 ) : HttpTransport {
 
-    override suspend fun send(request: HttpSendRequest): HttpTransportResult =
-        withContext(Dispatchers.IO) {
-            val startedAt = System.nanoTime()
-            val outcome: HttpSendOutcome = try {
-                execute(request)
-            } catch (e: HttpTimeoutException) {
-                HttpSendOutcome.Expired(elapsedMs(startedAt))
-            } catch (e: IOException) {
+    // H3.2: built once, reused for the life of the transport. `lazy`, not eager,
+    // so constructing a transport never opens anything on its own.
+    private val client: HttpClient by lazy(clientFactory)
+
+    override suspend fun send(request: HttpSendRequest): HttpTransportResult {
+        val startedAt = System.nanoTime()
+        // Only the two REAL transport failures are caught. CancellationException is
+        // deliberately NOT in scope: it is the runtime's decision, not a fact about
+        // the network, and swallowing it here is how a stopped run reports that the
+        // world was at fault.
+        val outcome: HttpSendOutcome = try {
+            executeAsync(request)
+        } catch (e: HttpTimeoutException) {
+            HttpSendOutcome.Expired(elapsedMs(startedAt))
+        } catch (e: IOException) {
                 // DNS failure, refused connection, reset, TLS handshake failure. They
                 // are one fact to a caller — the host could not be reached — and the
                 // cause is kept as the diagnostic rather than as a case, because none
                 // of them is something the caller can act on differently.
                 HttpSendOutcome.Unreachable(e.javaClass.simpleName + ": " + (e.message ?: "no detail"))
             }
-            HttpTransportResult(outcome = outcome, durationMs = elapsedMs(startedAt))
-        }
+        return HttpTransportResult(outcome = outcome, durationMs = elapsedMs(startedAt))
+    }
 
-    private fun execute(request: HttpSendRequest): HttpSendOutcome {
+    private suspend fun executeAsync(request: HttpSendRequest): HttpSendOutcome {
         val builder = HttpRequest.newBuilder(URI.create(request.url))
         request.timeoutMs?.let { builder.timeout(Duration.ofMillis(it)) }
         request.headers.forEach { builder.header(it.name.value, it.value.value) }
@@ -79,8 +114,13 @@ class JdkHttpTransport(
             builder.method(javaMethod, HttpRequest.BodyPublishers.noBody())
         }
 
-        val response: HttpResponse<ByteArray> = clientFactory()
-            .send(builder.build(), HttpResponse.BodyHandlers.ofByteArray())
+        // H3.1: the only suspension point. `await()` parks THIS coroutine, not a
+        // thread, and cancels the underlying future if the coroutine is cancelled
+        // — which is the whole reason the send is asynchronous rather than wrapped
+        // in withContext(Dispatchers.IO).
+        val response: HttpResponse<ByteArray> = client
+            .sendAsync(builder.build(), HttpResponse.BodyHandlers.ofByteArray())
+            .await()
         val raw = response.body()
 
         // The digest is of the COMPLETE body, even when the materialised prefix is

@@ -22,6 +22,7 @@ import java.nio.file.Path
  * FIT-6  the wire bytes               come exclusively from HttpRequestCodec
  * FIT-7  ServiceLoader                discovers the contributor
  * FIT-8  ShOptions                    carries FACTS, never SERVICES
+ * FIT-9  the transport                never parks a thread on HTTP
  * ```
  *
  * ## Why these seven and not one
@@ -262,6 +263,37 @@ class Lfc2HttpOfficiallyPluginBoundaryFitnessTest {
             code.contains("networkEgress"),
             "ShOptions must still carry the network egress policy: it is a per-execution fact " +
                 "decided at the CLI boundary, and the runtime turns it into a capability.",
+        )
+    }
+
+    // ── FIT-9: the transport is coroutine-native ───────────────────────────
+
+    @Test
+    fun `FIT-9 the transport awaits a future instead of parking a thread`() {
+        // H3's structural half. The behavioural canaries (C1..C5) live with the
+        // plugin; this one lives here because the shape it forbids is the one a
+        // future refactor would most plausibly reintroduce, and a comment saying
+        // "do not use withContext here" is not a constraint.
+        val transport = v2.resolve(
+            "pipeline-step-sdk/http/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/http/JdkHttpTransport.kt",
+        )
+        val code = codeOnly(transport)
+        for (forbidden in listOf(
+            "withContext(Dispatchers.IO)",
+            ".send(",
+            ".get()",
+        )) {
+            assertTrue(
+                !code.contains(forbidden),
+                "JdkHttpTransport uses '$forbidden'. The transport must await a " +
+                    "CompletableFuture: a blocking send parks an IO worker for the whole " +
+                    "round-trip, which serialises concurrent requests and stops structured " +
+                    "cancellation from reaching the request.",
+            )
+        }
+        assertTrue(
+            code.contains("sendAsync(") && code.contains(".await()"),
+            "JdkHttpTransport must send asynchronously and await the future.",
         )
     }
 }

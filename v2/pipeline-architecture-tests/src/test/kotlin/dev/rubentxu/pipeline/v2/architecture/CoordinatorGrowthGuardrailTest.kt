@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test
  * this ceiling IN THE SAME COMMIT, with the commit message justifying why an
  * extraction could not absorb it.
  *
- * The ceiling is pinned at the exact current size (741 lines). It is
+ * The ceiling is pinned at the exact current size (552 lines). It is
  * deliberately a ratchet, not a final target: PR-020's real property is
  * "the coordinator only coordinates and no Step/body/replay semantics live
  * there", enforced by the concrete-routing fitness tests; this file stops
@@ -36,14 +36,15 @@ class CoordinatorGrowthGuardrailTest {
      * bookends out) -> 2514 (slice 2, stage bookends out) -> 2032 (H3 close)
      * -> 1728 (PR-020 slice 1, the BEFORE_STAGE directive seam out) -> 1701
      * (slice 2a, the dead waitUntil wrapper out) -> 741 (slice 2b, the step
-     * spine and the parallel aggregate out).
+     * spine and the parallel aggregate out) -> 552 (slice 4, the stage body and its `post`
+     * finalizers out).
      *
      * Pinned to the exact current size on purpose. A ceiling left at 2514 while
      * the file is 741 is not a ratchet: it would take 1773 lines of regression to
      * trip, which is the whole class of growth this guard exists to stop. Raising
      * it requires a same-commit justification per the class KDoc.
      */
-    private val maxCoordinatorLines = 741L
+    private val maxCoordinatorLines = 552L
 
     @Test
     fun `the durable coordinator never grows again`() {
@@ -55,7 +56,8 @@ class CoordinatorGrowthGuardrailTest {
             lines <= maxCoordinatorLines,
             "CanonicalDurableRunCoordinator.kt grew to $lines lines (ceiling $maxCoordinatorLines). " +
                 "New responsibilities belong in named engines (RunLifecycle, BodyExecution, " +
-                "Invocation/Recovery, BeforeStageDirective, StepDispatch, ParallelStage), not in the " +
+                "Invocation/Recovery, BeforeStageDirective, StepDispatch, ParallelStage, " +
+                "StageExecution), not in the " +
                 "coordinator. If a same-commit extraction truly cannot absorb " +
                 "the change, raise this ceiling deliberately and justify it in the commit message.",
         )

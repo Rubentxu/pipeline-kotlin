@@ -235,8 +235,6 @@ class CanonicalDurableRunCoordinator(
     )
 
 
-    /** Active context stack for body scope tracking (EM-4). */
-
     /**
      * Effective pre-decode metadata authority (CDE.3-e4.2). An explicit [stepMetadataResolver] wins;
      * otherwise an injected [stepRegistry] opts into the composite (core keys -> legacy authority,
@@ -338,6 +336,14 @@ class CanonicalDurableRunCoordinator(
         controlDirRoot = controlDirRoot,
         workspaceBase = workspaceBase,
     )
+    // TRAIN H4 / PR-020: what a stage DOES once the run has decided to start it — its linear
+    // body, its continuation, and its `post` finalizers. A stage reports a closed verdict and
+    // the context it leaves behind; only this loop decides what the run does next.
+    private val stageExecution = StageExecutionEngine(
+        stepDispatch = stepDispatch,
+        runLifecycle = runLifecycle,
+        eventSink = eventSink,
+    )
 
     suspend fun run(pipeline: CompiledPipeline, runId: RunId): RunOutcome {
         runLifecycle.openRun(pipeline, runId)
@@ -371,7 +377,7 @@ class CanonicalDurableRunCoordinator(
                         // S2-B: a skip is itself a stage outcome. The finalizers that fire for
                         // it are exactly the ones the pure planner selects for Skipped
                         // (always + cleanup); if the author declared none, this is a no-op.
-                        runPostBlock(
+                        stageExecution.runPostBlock(
                             stage = stage,
                             stageIndex = stageIndex,
                             stageFinishedOutcome = "skipped",
@@ -424,7 +430,7 @@ class CanonicalDurableRunCoordinator(
                     val parallelOutcome = parallelStages.runParallelStage(stage, stageIndex, stageShOptions, runId, ambient)
                     when (val continuation = runLifecycle.decideStageContinuation(parallelOutcome, stage.name, runId.value, ambient)) {
                         CanonicalContinuation.Continue -> {
-                            runPostBlock(
+                            stageExecution.runPostBlock(
                                 stage = stage,
                                 stageIndex = stageIndex,
                                 stageFinishedOutcome = "success",
@@ -439,7 +445,7 @@ class CanonicalDurableRunCoordinator(
                         }
                         CanonicalContinuation.ContinueUnstable -> {
                             runLifecycle.fold(RunOutcome.Unstable)
-                            runPostBlock(
+                            stageExecution.runPostBlock(
                                 stage = stage,
                                 stageIndex = stageIndex,
                                 stageFinishedOutcome = "unstable",
@@ -457,7 +463,7 @@ class CanonicalDurableRunCoordinator(
                             // outcome; failure/always/cleanup finalizers MUST run
                             // before the run aborts. The original abort reason wins
                             // unless the finalizers themselves failed.
-                            runPostBlock(
+                            stageExecution.runPostBlock(
                                 stage = stage,
                                 stageIndex = stageIndex,
                                 stageFinishedOutcome = "failed",
@@ -482,55 +488,18 @@ class CanonicalDurableRunCoordinator(
                 // The canonical coordinator emits StageStarted at entry and StageFinished on normal
                 // completion (success/unstable). An aborting stage returns before StageFinished;
                 // RunFinished carries the failure.
-                runLifecycle.stageStarted(runId, stageIndex, stage.name)
-                var stageUnstable = false
-                for (stepIndex in steps1.indices) {
-                    val step = steps1[stepIndex]
-                    val dispatched = stepDispatch.dispatch(step, runId, stage.name, stageIndex, stepIndex, stageShOptions, emptyList(), ambient)
-                    ambient = dispatched.context
-                    when (val continuation = runLifecycle.decideStageContinuation(dispatched.outcome, stage.name, runId.value, ambient)) {
-                        CanonicalContinuation.Continue -> Unit
-                        CanonicalContinuation.ContinueUnstable -> {
-                            runLifecycle.fold(RunOutcome.Unstable)
-                            stageUnstable = true
-                        }
-                        is CanonicalContinuation.Abort -> {
-                            // S2-B: a step failure is still a stage outcome. The
-                            // failure/always/cleanup finalizers MUST run before the run
-                            // aborts, or `post { failure { ... } }` would be dead code
-                            // for the exact case it exists for. The original abort
-                            // reason wins unless the finalizers themselves failed.
-                            runPostBlock(
-                                stage = stage,
-                                stageIndex = stageIndex,
-                                stageFinishedOutcome = "failed",
-                                runId = runId,
-                                stageShOptions = stageShOptions,
-                                ambient = ambient,
-                            )?.let { postFailure ->
-                                runLifecycle.fold(RunOutcome.Failure(postFailure))
-                                return@run runLifecycle.outcome()
-                            }
-                            runLifecycle.fold(RunOutcome.Failure(continuation.failure))
-                            return@run runLifecycle.outcome()
-                        }
+                // TRAIN H4 / PR-020: the stage body, its continuation and its `post`
+                // finalizers live in StageExecutionEngine. The run loop keeps only the two
+                // things a stage may say to a run: carry on carrying this context, or abort
+                // with this typed reason. A collaborator may not write return@run.
+                when (val verdict = stageExecution.runLinearStage(stage, stageIndex, steps1, stageShOptions, runId, ambient)) {
+                    is StageExecutionEngine.StageVerdict.Completed -> ambient = verdict.context
+
+                    is StageExecutionEngine.StageVerdict.Abort -> {
+                        runLifecycle.fold(RunOutcome.Failure(verdict.failure))
+                        return@run runLifecycle.outcome()
                     }
                 }
-                // S2-B: the stage's own steps decided the outcome; the `post`
-                // block finalizes the stage BEFORE its StageFinished, so the
-                // terminal record already includes the finalizers' work.
-                runPostBlock(
-                    stage = stage,
-                    stageIndex = stageIndex,
-                    stageFinishedOutcome = if (stageUnstable) "unstable" else "success",
-                    runId = runId,
-                    stageShOptions = stageShOptions,
-                    ambient = ambient,
-                )?.let { failure ->
-                    runLifecycle.fold(RunOutcome.Failure(failure))
-                    return@run runLifecycle.outcome()
-                }
-                runLifecycle.stageFinished(runId, stageIndex, stage.name, if (stageUnstable) "unstable" else "success")
             }
             // Success: fall through to finally and return
         } catch (e: Exception) {
@@ -550,135 +519,9 @@ class CanonicalDurableRunCoordinator(
         return runLifecycle.outcome()
     }
 
-    /**
-     * EM-5/EM-6 (catcherror-semantics-em56, D1/D2/D3/D5): folds a step outcome into a
-     * continuation, publishing CatchErrorTriggered events at the point of a real failure.
-     *
-     * A real `StepOutcome.Failure` walks the active context stack from the innermost
-     * CatchErrorOverlay outward: every enclosing catchError scope that observes the failure
-     * publishes its own CatchErrorTriggered (its buildResult/stageResult/message). FAILURE
-     * overlays re-throw outward (ERR-S-002 records then aborts at the outermost; ERR-S-007 lets
-     * an enclosing default-UNSTABLE overlay re-catch). The first SUCCESS/UNSTABLE overlay
-     * suppresses and stops the walk. An unstable()-only outcome is never a failure, so it never
-     * enters the walk (ERR-S-008 emits no trigger).
-     */
-
-    /**
-     * Dispatches a step, routing BlockStepNode to [dispatchBody].
-     */
-
-    /**
-     * S2-B: interprets a stage's declared `post` block for a KNOWN stage
-     * outcome. The single stage-level finalizer seam of the canonical
-     * coordinator.
-     *
-     * Decision/interpretation split (Step Constitution rule 7):
-     *  - the PURE decision is `PostCondition.outcomeOf` + `PostPlanner.plan`:
-     *    which blocks fire, in which order, for which outcome. No I/O;
-     *  - the INTERPRETATION is this method: dispatching the selected nodes
-     *    through the SAME canonical `dispatch` spine as stage-body steps, each
-     *    with a deterministic `post:<CONDITION>` [BlockSegment] so journal
-     *    identity, replay and divergence behave exactly like any other step.
-     *
-     * Ordering law: StageStarted < ... < [PostConditionSelected] < post steps
-     * < StageFinished. A declared-but-not-selected block appears only in the
-     * event's `skippedConditions`, never as a silent no-op.
-     *
-     * Failure containment: a FAILING finalizer fails the RUN (typed USER
-     * failure naming the stage and condition) but never rolls back the
-     * remaining finalizers — cleanup is exactly the code that must be allowed
-     * to run after bad news. A post failure therefore ABORTS the run with the
-     * failing finalizer's message; StageFinished is not emitted for a run the
-     * coordinator is failing.
-     *
-     * @return the typed failure to abort the run with, or null when every
-     *         selected finalizer succeeded (including the empty-plan no-op).
-     */
-    private suspend fun runPostBlock(
-        stage: StageNode,
-        stageIndex: Int,
-        stageFinishedOutcome: String,
-        runId: RunId,
-        stageShOptions: ShOptions,
-        ambient: ExecutionContext,
-    ): PipelineFailure? {
-        val postSpec = stage.post ?: return null
-        if (postSpec.isEmpty) return null
-        val stageOutcome = PostCondition.outcomeOf(stageFinishedOutcome)
-            ?: return PipelineFailure(
-                dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
-                "post block for stage '${stage.name}' received unknown stage outcome '$stageFinishedOutcome'; " +
-                    "refusing to select finalizers on an unreadable outcome",
-            )
-        val plan = postSpec.toPostPlan()
-        // The pure decision, made ONCE: if the planner selects nothing for this
-        // outcome, the block is inert for this stage and emits nothing.
-        if (PostPlanner.plan(plan, stageOutcome).isEmpty()) return null
-
-        eventSink.append(
-            dev.rubentxu.pipeline.v2.events.PostConditionSelected(
-                eventId = UUID.randomUUID().toString(),
-                runId = runId.value,
-                sequence = 0L,
-                occurredAt = Instant.now(),
-                stageIndex = stageIndex,
-                stageName = stage.name,
-                stageOutcome = stageFinishedOutcome,
-                selectedConditions = PostPlanner.selectedConditions(plan, stageOutcome).map { it.name },
-                skippedConditions = PostPlanner.skippedConditions(plan, stageOutcome).map { it.name },
-            ),
-        )
-
-        // One decision source: the planner's own condition projection drives
-        // the walk, so the event lists and the executed nodes can never
-        // disagree about which blocks fired.
-        var dispatched = 0
-        for (condition in PostPlanner.selectedConditions(plan, stageOutcome)) {
-            val nodes = plan.bodies[condition].orEmpty()
-            for ((index, node) in nodes.withIndex()) {
-                val bodyPath = listOf(BlockSegment("post:${condition.name}:$index"))
-                val dispatchedStep = stepDispatch.dispatch(
-                    step = node,
-                    runId = runId,
-                    stageName = stage.name,
-                    stageIndex = stageIndex,
-                    stepIndex = POST_BASE_STEP_INDEX + dispatched,
-                    stageShOptions = stageShOptions,
-                    bodyPath = bodyPath,
-                    executionContext = ambient,
-                )
-                dispatched++
-                if (dispatchedStep.outcome !is StepOutcome.Success) {
-                    val reason = "post ${condition.name} finalizer of stage '${stage.name}' failed"
-                    return PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.USER, reason)
-                }
-            }
-        }
-        return null
-    }
-
     private companion object {
         const val REATTACH_TIMEOUT_MS = 60_000L
-
-        /**
-         * Post finalizers dispatch at step indices AFTER every declared body
-         * step (the DSL cap is 512), with the `post:<CONDITION>:<i>` body path
-         * segment carrying the block identity, so a post op can never collide
-         * with a body-step OpId of the same stage.
-         */
-        const val POST_BASE_STEP_INDEX = 1000
     }
-
-    /**
-     * +1 sibling helper for INC-007 (canonical coordinator catchError overlay handler).
-     *
-     * catchError semantics: executes the body. If body fails and buildResult != "FAILURE",
-     * the failure is suppressed and the step succeeds (with UNSTABLE). If buildResult ==
-     * "FAILURE", the failure is propagated. If body succeeds, step succeeds.
-     *
-     * This is the EM-4 canonical body-execution IR replacement for the legacy
-     * rewriteWorkflowControl linearization (core.emit.event + shell + core.emit.event).
-     */
 }
 
 /**
@@ -688,38 +531,6 @@ class CanonicalDurableRunCoordinator(
  * core table answers). Read-only: register/register Throws are impossible here, an
  * invariant this adapter makes unrepresentable.
  */
-/**
- * S2-D: the typed classification of ONE admitted BEFORE_STAGE directive whose
- * declared policy entered the decode seam (Gate | Evaluate), after its OWN
- * codec ran.
- *
- * A directive definition owns its own codec, so the engine cannot know
- * statically what a definition decodes to. This sealed ADT is the single point
- * where that erasure is CHECKED, so a self-contradictory definition (or an
- * undecodable one) becomes a typed value the coordinator can fail closed on,
- * instead of a ClassCastException — or a silently-running stage — escaping from
- * the run loop.
- *
- * Illegal states are unrepresentable: [Evaluated] deliberately carries NO
- * payload, because a decoded Evaluate has no consumer in this phase and
- * carrying `input: Any` would reintroduce the untyped boundary the kernel
- * eradicated at the registry ([dev.rubentxu.pipeline.v2.domain.directive.DirectiveDefinitionAny]).
- * [Denied] centralises the three decode-seam failure causes (not resolvable,
- * Malformed, gate-decoded-to-non-predicate). [GatePredicate] keeps the S2-C
- * meaning: the erased shape of an already-admitted gate, BEFORE composition.
- */
-
-/**
- * S2-D (D3): the reason wording for a Malformed decode in the seam.
- *
- * The denial is fail-closed of the ENGINE, not a veto of the directive: an
- * `Evaluate` observes and cannot veto, so a Malformed is that directive's OWN
- * contract failing (it could not read the arguments its author wrote). The
- * reason names the declared policy so the diagnostic says WHOSE contract
- * failed; the failure kind stays USER either way (the author wrote the args).
- * Total over the closed policy ADT.
- */
-
 private class NoopStepRegistry(private val delegate: StepRegistry?) : StepRegistry {
     override fun register(definition: StepDefinition<*, *>) =
         throw UnsupportedOperationException("NoopStepRegistry is read-only")

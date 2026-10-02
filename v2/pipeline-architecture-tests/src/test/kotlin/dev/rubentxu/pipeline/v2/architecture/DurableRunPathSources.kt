@@ -34,6 +34,7 @@ object DurableRunPathSources {
         "$DURABLE/BeforeStageDirectiveEngine.kt",
         "$DURABLE/StepDispatchEngine.kt",
         "$DURABLE/ParallelStageEngine.kt",
+        "$DURABLE/StageExecutionEngine.kt",
         "$DURABLE/BodyExecutionEngine.kt",
     ).map { ScannerSupport.v2Root().resolve(it) }
 

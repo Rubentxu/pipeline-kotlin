@@ -69,49 +69,36 @@ class ScriptedScopeTest {
     ): Pair<ScriptedRegistryInvoker, InMemoryOperationJournal> {
         val journal = InMemoryOperationJournal(SystemClock())
         val registry = InMemoryStepRegistry().also { CoreShellStep.registerInto(it) }
-        val invoker = ScriptedRegistryInvoker(
+        val invoker = dev.rubentxu.pipeline.v2.application.support.ScriptedInvokerFixture.build(
             registry = registry,
             journal = journal,
-            clock = SystemClock(),
-            runtimeContextFactory = { call ->
-                CanonicalRuntimeContext(
-                    opId = OpId(call.runId, 0, call.invocationOrdinal),
-                    runId = call.runId,
-                    stageName = "scripted",
-                    stageIndex = 0,
-                    stepIndex = call.invocationOrdinal,
-                    shOptions = ShOptions.EMPTY,
-                    controlDirRoot = Files.createTempDirectory("s4a1-scope-"),
-                    eventSink = InMemoryEventStore(),
-                )
-            },
-            capabilityAccessFactory = { context ->
-                object : CanonicalRuntimeCapabilityAccess(context) {
-                    override fun available(): Set<StepCapability> = setOf(SHELL_OPERATIONS_CAPABILITY)
-
-                    @Suppress("UNCHECKED_CAST")
-                    override fun <T : Any> get(key: StepCapability): T {
-                        if (key == SHELL_OPERATIONS_CAPABILITY) {
-                            return object : ShellOperations {
-                                override suspend fun invoke(
-                                    command: dev.rubentxu.pipeline.v2.domain.ShellCommand,
-                                    runId: dev.rubentxu.pipeline.v2.domain.RunId,
-                                    stepIndex: Int,
-                                ): ShellInvocationResult {
-                                    onLaunch()
-                                    return if (command.script == "branch") {
-                                        ShellInvocationResult.Stdout("main\n")
-                                    } else {
-                                        ShellInvocationResult.UnitValue
-                                    }
+        capabilityAccessFactory = { context ->
+                        object : CanonicalRuntimeCapabilityAccess(context) {
+                            override fun available(): Set<StepCapability> = setOf(SHELL_OPERATIONS_CAPABILITY)
+        
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : Any> get(key: StepCapability): T {
+                                if (key == SHELL_OPERATIONS_CAPABILITY) {
+                                    return object : ShellOperations {
+                                        override suspend fun invoke(
+                                            command: dev.rubentxu.pipeline.v2.domain.ShellCommand,
+                                            runId: dev.rubentxu.pipeline.v2.domain.RunId,
+                                            stepIndex: Int,
+                                        ): ShellInvocationResult {
+                                            onLaunch()
+                                            return if (command.script == "branch") {
+                                                ShellInvocationResult.Stdout("main\n")
+                                            } else {
+                                                ShellInvocationResult.UnitValue
+                                            }
+                                        }
+                                    } as T
                                 }
-                            } as T
+                                return super.get(key)
+                            }
                         }
-                        return super.get(key)
-                    }
-                }
-            },
-        )
+                    },
+    )
         return invoker to journal
     }
 

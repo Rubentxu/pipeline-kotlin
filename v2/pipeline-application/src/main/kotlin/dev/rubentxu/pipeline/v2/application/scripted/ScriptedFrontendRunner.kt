@@ -1,13 +1,21 @@
 package dev.rubentxu.pipeline.v2.application.scripted
 
+import dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
+import dev.rubentxu.pipeline.v2.application.durable.DurableInvocationResolver
+import dev.rubentxu.pipeline.v2.application.durable.DurableStepExecutor
+import dev.rubentxu.pipeline.v2.application.durable.ExternalSubprocessRecovery
 import dev.rubentxu.pipeline.v2.application.durable.OpId
+import dev.rubentxu.pipeline.v2.application.durable.RecoveryInterpretationEngine
+import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 
 
@@ -63,10 +71,36 @@ object ScriptedFrontendRunner {
             )
         }
 
+        // ADR-0103 RPL-4 + D7 — the scripted frontend COMPOSES the canonical authorities
+        // instead of owning a second replay protocol. Everything below is existing
+        // production wiring: the same resolver, the same executor, the same recovery
+        // interpretation and the same registry boundary the canonical coordinator uses.
+        //
+        // `ExternalSubprocessRecovery(clock, controlDirRoot)` is the real port, so a scripted
+        // `sh` that was RUNNING when the process died is genuinely recoverable rather than
+        // refused — which is what the previous hand-written `when (status)` table made
+        // impossible.
+        val resolver = DurableInvocationResolver(
+            divergenceDetector = StrictFingerprintDivergenceDetector(),
+            effectReplayPolicy = DefaultEffectReplayPolicy(),
+            journal = journal,
+            runningSubprocessRecovery = ExternalSubprocessRecovery(clock, controlDirRoot),
+        )
+        val executor = DurableStepExecutor(
+            eventSink = eventSink,
+            executionBoundary = RegistryExecutionBoundary.adapt(milestoneStateStore = null),
+            journal = journal,
+        )
+        val interpretation = RecoveryInterpretationEngine(eventSink, journal)
+
         val invoker = ScriptedRegistryInvoker(
             registry = registry,
             journal = journal,
-            clock = clock,
+            eventSink = eventSink,
+            invocationResolver = resolver,
+            stepExecutor = executor,
+            recoveryInterpretation = interpretation,
+            metadataResolver = RegistryStepMetadataResolver.composite(registry),
             runtimeContextFactory = { call ->
                 CanonicalRuntimeContext(
                     opId = OpId(runId, 0, call.invocationOrdinal),

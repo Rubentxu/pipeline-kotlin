@@ -209,7 +209,13 @@ class S4RKernelSpikeTest {
             },
         )
 
-        private val interpretation = RecoveryInterpretationEngine(events, journal, cursors)
+        // ADR-0103 D7: neither collaborator takes a ReplayCursorStore any more. The spike
+        // still holds a `cursors` store, and that is now the POINT rather than an
+        // inconvenience: the scripted spine it models can be exercised end to end with a
+        // cursor store in scope, and the correct answer is that it is never written. Before
+        // D7 a scripted caller had no way to enter the executor at all without handing it a
+        // cursor position it does not have.
+        private val interpretation = RecoveryInterpretationEngine(events, journal)
 
         private val executor = DurableStepExecutor(
             eventSink = events,
@@ -222,7 +228,6 @@ class S4RKernelSpikeTest {
                 onResult = { lastSeamOutput = it.encodedOutput },
             ),
             journal = journal,
-            cursorStore = cursors,
         )
 
         private fun call(): ScriptedRegistryCall = ScriptedRegistryCall(
@@ -294,8 +299,6 @@ class S4RKernelSpikeTest {
                         operationId = operationId,
                         fingerprint = fingerprint,
                         input = input,
-                        runIdValue = runId,
-                        stageIndex = 0,
                         lifecycleContext = lifecycle(),
                     ),
                 )
@@ -331,7 +334,7 @@ class S4RKernelSpikeTest {
                 )
             }
 
-            val outcome = executor.executeAndJournal(
+            val execution = executor.executeAndJournal(
                 operationId = operationId,
                 fingerprint = fingerprint,
                 input = input,
@@ -339,16 +342,20 @@ class S4RKernelSpikeTest {
                 prepared = ready,
                 runtime = runtime,
                 lifecycleContext = lifecycle(),
-                runIdValue = runId,
-                stageIndex = 0,
             )
-            return when (outcome) {
+            return when (val outcome = execution.outcome) {
                 is StepOutcome.Failure -> ScriptedRegistryResult.Failed(outcome.failure)
-                // P1: the canonical executor PERSISTED the encoded value, so recovering it needs no
-                // second execution. The narrowing that makes this necessary is measured in K1:
-                // `DurableStepExecutor.executeAndJournal` returns `StepOutcome`
-                // (`DurableStepExecutor.kt:42`), dropping `CommonExecutionResult.encodedOutput`.
-                else -> materialise(journal.get(operationId, ATTEMPT))
+                // ADR-0103 D5 — the workaround this spike needed is now GONE. It used to
+                // re-read the journal (`journal.get(operationId, ATTEMPT)`) purely to get
+                // back the `encodedOutput` the executor had persisted and then dropped from
+                // its return type; K1 measured exactly that narrowing. The executor now
+                // returns the whole `CommonExecutionResult`, so the value crosses the
+                // boundary in the same value that carried the outcome. No second read, no
+                // temporal coupling between persistence and materialisation.
+                else -> when (val encoded = execution.encodedOutput) {
+                    null -> materialise(journal.get(operationId, ATTEMPT))
+                    else -> ScriptedRegistryResult.Success(encoded)
+                }
             }
         }
 
@@ -450,6 +457,10 @@ class S4RKernelSpikeTest {
             private set
         var capabilityReads: Int = 0
             private set
+        var recoveryProbes: Int = 0
+            private set
+        var lastSeamOutput: EncodedStepValue? = null
+            private set
         var lastDecision: String = "SELF_INTERPRETED"
 
         private val registry = CountingRegistry(CoreStepRegistryFactory.registry()) { handlerInvocations++ }
@@ -457,10 +468,52 @@ class S4RKernelSpikeTest {
         private val events = InMemoryEventStore()
         private val controlDir: Path = Files.createTempDirectory("s4rkernel-script-ctrl-")
 
+        // The scripted mirror carries the SAME instruments as the canonical harness above, so
+        // K1..K7 compare like with like. Under ADR-0103 RPL-4 these are no longer an
+        // alternative protocol the spike is proposing: they are the production authorities,
+        // and the spike's job is to measure what the scripted frontend does when it is
+        // composed from them rather than owning its own.
+        private val resolver = DurableInvocationResolver(
+            divergenceDetector = StrictFingerprintDivergenceDetector(),
+            effectReplayPolicy = DefaultEffectReplayPolicy(),
+            journal = journal,
+            runningSubprocessRecovery = CountingRecovery {
+                recoveryProbes++
+                ExternalSubprocessRecovery(SystemClock(), controlDir)
+            },
+        )
+        private val interpretation = RecoveryInterpretationEngine(events, journal)
+        private val executor = DurableStepExecutor(
+            eventSink = events,
+            executionBoundary = CapturingBoundary(
+                delegate = buildDefaultExecutionBoundary(
+                    dispatcher = CanonicalNodeDispatcher(),
+                    invocationExecutor = null,
+                    stepRegistry = registry,
+                ),
+                onResult = { lastSeamOutput = it.encodedOutput },
+            ),
+            journal = journal,
+        )
+
         private val invoker = ScriptedRegistryInvoker(
+            // The spike measures the collaborators, so it keeps its OWN counting versions
+            // rather than going through ScriptedInvokerFixture: the resolver, the executor
+            // and the recovery interpretation below are the objects K1..K7 assert on.
             registry = registry,
             journal = journal,
-            clock = SystemClock(),
+            eventSink = events,
+            metadataResolver = dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolver.composite(registry),
+            invocationResolver = resolver,
+            stepExecutor = executor,
+            recoveryInterpretation = interpretation,
+            // The canonical-class counters this spike asserts on include capabilityReads, and
+            // the boundary must observe the SAME access factory the invoker admits with —
+            // otherwise PREPARE and EXECUTE would read different observation sources.
+            capabilityAccessFactory = { context ->
+                capabilityReads++
+                CanonicalRuntimeCapabilityAccess(context)
+            },
             runtimeContextFactory = { call ->
                 CanonicalRuntimeContext(
                     opId = OpId(call.runId, 0, call.invocationOrdinal),
@@ -472,10 +525,6 @@ class S4RKernelSpikeTest {
                     controlDirRoot = controlDir,
                     eventSink = events,
                 )
-            },
-            capabilityAccessFactory = { context ->
-                capabilityReads++
-                CanonicalRuntimeCapabilityAccess(context)
             },
         )
 
@@ -700,7 +749,7 @@ class S4RKernelSpikeTest {
     // ------------------------------------------------------------------
 
     @Test
-    fun `k3 a FAILED prior re-executes and repairs the row`() = runBlocking {
+    fun `k3 a FAILED prior re-executes and repairs the row on both surfaces`() = runBlocking {
         val candidate = CandidateSpine("s4rkernel-k3", SH_KEY, shInput("echo s4rkernel-k3"))
         candidate.run()
         candidate.seed(Prior.FAILED)
@@ -720,17 +769,40 @@ class S4RKernelSpikeTest {
         assertEquals(1, candidateRow.handlerInvocations, "K3 PASS: the handler re-runs")
         assertEquals("SUCCEEDED", candidateRow.journalTerminal, "K3 PASS: the row is REPAIRED to SUCCEEDED")
 
+        // ADR-0103 RPL-4 — the differential half of K3 has CONVERGED.
+        //
+        // When SPIKE-017B was written this measured a real defect: the shipped invoker
+        // latched REPLAY_COMPATIBILITY on a FAILED row and left it FAILED, while the canonical
+        // kernel re-ran and repaired it. R1-A replaced the invoker's own `when (status)` table
+        // with `DurableInvocationResolver.reconcileInvocation`, so the scripted surface now
+        // takes the same Execute decision and repairs the row the same way. The assertions
+        // below compare the two surfaces to EACH OTHER rather than to the old defect, so this
+        // test now fails if the surfaces ever drift apart again.
+        // The scripted half no longer exposes a decision label, and that is the shape of the
+        // fix: it no longer CHOOSES one, so there is nothing of its own to report. `lastDecision`
+        // stays `SELF_INTERPRETED` because the invoker has no reason to set it. Convergence is
+        // therefore asserted on the three things both surfaces DO expose — how many times the
+        // handler ran, what the row ended as, and what the caller received.
         assertEquals(
-            0,
-            scriptedRow.handlerInvocations,
-            "K3 differential: the shipped invoker does not re-run, so the row is never repaired",
+            "SELF_INTERPRETED",
+            scriptedRow.decision,
+            "the scripted invoker no longer computes a decision of its own; it delegates. If this " +
+                "label ever changes, a second authority is reappearing.",
         )
-        assertEquals("FAILED", scriptedRow.journalTerminal, "K3 differential: the scripted row stays FAILED")
         assertEquals(
-            "REPLAY_COMPATIBILITY",
-            (scriptedResult as ScriptedRegistryResult.Failed).failure.kind.name,
-            "K3 differential: the shipped invoker latches REPLAY_COMPATIBILITY, confirming the memo " +
-                "row-3 divergence against the candidate on the same run",
+            candidateRow.handlerInvocations,
+            scriptedRow.handlerInvocations,
+            "CONVERGENCE: the handler re-runs on both surfaces.",
+        )
+        assertEquals(
+            candidateRow.journalTerminal,
+            scriptedRow.journalTerminal,
+            "CONVERGENCE: the FAILED row is repaired on both surfaces.",
+        )
+        assertTrue(
+            scriptedResult is ScriptedRegistryResult.Success,
+            "CONVERGENCE: the scripted surface returns the re-executed value instead of latching " +
+                "REPLAY_COMPATIBILITY. Got: $scriptedResult",
         )
     }
 

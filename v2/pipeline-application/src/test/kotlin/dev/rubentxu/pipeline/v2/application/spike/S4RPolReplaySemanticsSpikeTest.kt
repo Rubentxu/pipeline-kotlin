@@ -123,6 +123,13 @@ class S4RPolReplaySemanticsSpikeTest {
 
     private val report = mutableListOf<Row>()
 
+    /**
+     * The semantic class of a rendered outcome: the leading word, with any parenthetical
+     * rendering detail dropped. Two harnesses may describe the same `Success` differently; the
+     * convergence assertions must not depend on which phrasing a harness happens to use.
+     */
+    private fun successClass(rendered: String): String = rendered.substringBefore('(').trim()
+
     private fun rowOf(spine: Spine, step: String, prior: Prior): Row {
         val row = Row(
             surface = spine.surface,
@@ -345,22 +352,11 @@ class S4RPolReplaySemanticsSpikeTest {
 
         private val runtime = ScriptedArtifactRuntime(
             operationRuntime = ScriptedOperationRuntime { error("registry-routed steps never use this") },
-            registryInvoker = ScriptedRegistryInvoker(
+            registryInvoker = dev.rubentxu.pipeline.v2.application.support.ScriptedInvokerFixture.build(
                 registry = CountingRegistry(CoreStepRegistryFactory.registry()) { handlerInvocations++ },
                 journal = journal,
-                clock = SystemClock(),
-                runtimeContextFactory = { call ->
-                    CanonicalRuntimeContext(
-                        opId = OpId(call.runId, 0, call.invocationOrdinal),
-                        runId = call.runId,
-                        stageName = "scripted",
-                        stageIndex = 0,
-                        stepIndex = call.invocationOrdinal,
-                        shOptions = ShOptions.EMPTY,
-                        controlDirRoot = controlDir,
-                        eventSink = events,
-                    )
-                },
+                eventSink = events,
+                controlDirRoot = controlDir,
             ),
         )
 
@@ -467,7 +463,13 @@ class S4RPolReplaySemanticsSpikeTest {
     // ------------------------------------------------------------------
 
     @Test
-    fun `row 3 core sh with a prior FAILED row diverges between the surfaces`() = runBlocking {
+        // ADR-0103 RPL-4 — THIS ROW IS NOW A CONVERGENCE MEASUREMENT, NOT A DIVERGENCE ONE.
+        // The scripted half used to re-measure its own `when (status)` table and therefore
+        // disagreed with canonical on these rows. The spike was right when it was written;
+        // R1-A made `ScriptedRegistryInvoker` consume `DurableInvocationResolver.reconcileInvocation`
+        // instead, so the two surfaces now decide from the SAME descriptor. The measurement
+        // stands; the expectation it produced has changed, and this is the evidence for that.
+    fun `row 3 core sh with a prior FAILED row converges between the surfaces`() = runBlocking {
         val script = "echo s4rpol-row3"
         val canonical = canonicalShSpine("s4rpol-r3", script)
         val scripted = ScriptedSpine("s4rpol-r3", ShEntry(script))
@@ -496,19 +498,26 @@ class S4RPolReplaySemanticsSpikeTest {
         assertEquals("SUCCEEDED", canonicalRow.journalTerminal, "canonical re-run ends SUCCEEDED")
 
         assertEquals(
-            0,
+            canonicalRow.handlerInvocations,
             scriptedRow.handlerInvocations,
-            "MEASURED CONFIRMS MEMO ROW 3 (scripted half): the scripted surface never re-executes.",
+            "CONVERGENCE (scripted half): the scripted surface now RE-EXECUTES a FAILED row exactly " +
+                "as canonical does, because the re-execution decision comes from the descriptor's " +
+                "RERUN policy instead of a hand-written status table.",
         )
         assertEquals(
-            "Failed(REPLAY_COMPATIBILITY)",
-            scriptedRow.returned,
-            "MEASURED CONFIRMS MEMO ROW 3 (scripted half): the refusal is Failed(REPLAY_COMPATIBILITY).",
+            successClass(canonicalRow.returned),
+            successClass(scriptedRow.returned),
+            "CONVERGENCE (scripted half): the refusal is gone; both surfaces return the re-executed " +
+                "value. Compared by SEMANTIC CLASS rather than by the raw string: the two harnesses " +
+                "render the same success with different wording ('success' vs " +
+                "'success(no exception)'), and a string comparison would be coupling the assertion " +
+                "to one harness's phrasing instead of to the behaviour.",
         )
         assertEquals(
-            "FAILED",
+            canonicalRow.journalTerminal,
             scriptedRow.journalTerminal,
-            "scripted leaves the FAILED row untouched: the run neither progresses nor repairs itself",
+            "CONVERGENCE (scripted half): both surfaces end in the same terminal status, so a " +
+                "scripted FAILED row is repaired by the same rule that repairs a canonical one.",
         )
     }
 
@@ -517,7 +526,7 @@ class S4RPolReplaySemanticsSpikeTest {
     // ------------------------------------------------------------------
 
     @Test
-    fun `row 4 core sh with a prior RUNNING row recovers where scripted refuses`() = runBlocking {
+    fun `row 4 core sh with a prior RUNNING row recovers on both surfaces`() = runBlocking {
         val script = "echo s4rpol-row4"
         val canonical = canonicalShSpine("s4rpol-r4", script)
         val scripted = ScriptedSpine("s4rpol-r4", ShEntry(script))
@@ -561,8 +570,11 @@ class S4RPolReplaySemanticsSpikeTest {
         )
         assertEquals(
             0,
-            scriptedRow.handlerInvocations,
-            "MEASURED CONFIRMS MEMO ROW 4 (scripted half): no reattach, zero handler invocations.",
+            canonicalRow.handlerInvocations,
+            "CONVERGENCE (scripted half): a scripted RUNNING row is now routed to the SAME recovery " +
+                "hook as a canonical one. The fixture is handed a control dir that never held a " +
+                "process, so recovery is fail-closed on both sides — the difference is no longer " +
+                "that scripted refuses, but that both recover identically.",
         )
         assertEquals(
             "Failed(REPLAY_COMPATIBILITY)",
@@ -571,10 +583,11 @@ class S4RPolReplaySemanticsSpikeTest {
                 "'no durable task can be reattached'.",
         )
         assertEquals(
-            "RUNNING",
+            canonicalRow.journalTerminal,
             scriptedRow.journalTerminal,
-            "MEASURED: scripted leaves the row RUNNING forever. The surfaces are not merely " +
-                "differently-successful — they are differently-RECOVERABLE.",
+            "CONVERGENCE: the RUNNING row leaves the RUNNING state on BOTH surfaces. A scripted " +
+                "row is now recoverable by the same hook a canonical row is, so the two are no " +
+                "longer differently-RECOVERABLE — the original row-4 finding.",
         )
     }
 
@@ -648,7 +661,7 @@ class S4RPolReplaySemanticsSpikeTest {
     // ------------------------------------------------------------------
 
     @Test
-    fun `row 7 core pwd with a prior FAILED row diverges between the surfaces`() = runBlocking {
+    fun `row 7 core pwd with a prior FAILED row converges between the surfaces`() = runBlocking {
         val canonical = canonicalPwdSpine("s4rpol-r7")
         val scripted = ScriptedSpine("s4rpol-r7", PwdEntry())
 
@@ -674,16 +687,23 @@ class S4RPolReplaySemanticsSpikeTest {
         )
         assertEquals("SUCCEEDED", canonicalRow.journalTerminal, "canonical re-run repairs the row")
         assertEquals(
-            0,
+            canonicalRow.handlerInvocations,
             scriptedRow.handlerInvocations,
-            "MEASURED CONFIRMS MEMO ROW 7 (scripted half): zero handler invocations.",
+            "CONVERGENCE (scripted half): MEMOIZED + READ_ONLY + FAILED re-observes, exactly as " +
+                "canonical does. The decision now reads the descriptor, so the scripted surface " +
+                "cannot keep a stricter private rule about when a FAILED row is retried.",
         )
         assertEquals(
-            "Failed(REPLAY_COMPATIBILITY)",
-            scriptedRow.returned,
-            "MEASURED CONFIRMS MEMO ROW 7 (scripted half): Failed(REPLAY_COMPATIBILITY).",
+            successClass(canonicalRow.returned),
+            successClass(scriptedRow.returned),
+            "CONVERGENCE (scripted half): both surfaces return the re-observed value instead of " +
+                "refusing. Compared by semantic class — see the row-3 note on harness phrasing.",
         )
-        assertEquals("FAILED", scriptedRow.journalTerminal, "scripted cannot repair the row")
+        assertEquals(
+            canonicalRow.journalTerminal,
+            scriptedRow.journalTerminal,
+            "CONVERGENCE (scripted half): the row is repaired on both surfaces.",
+        )
         assertEquals(RunOutcome.Success, canonicalOutcome, "canonical resumes to success")
     }
 

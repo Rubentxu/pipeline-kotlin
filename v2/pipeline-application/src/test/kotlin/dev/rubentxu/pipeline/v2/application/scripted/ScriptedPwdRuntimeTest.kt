@@ -111,11 +111,10 @@ class ScriptedPwdRuntimeTest {
         journal: InMemoryOperationJournal,
         sink: InMemoryEventStore,
         workspaceReads: AtomicInteger = AtomicInteger(0),
-    ): ScriptedRegistryInvoker = ScriptedRegistryInvoker(
+    ): ScriptedRegistryInvoker = dev.rubentxu.pipeline.v2.application.support.ScriptedInvokerFixture.build(
         registry = registry,
         journal = journal,
-        clock = SystemClock(),
-        runtimeContextFactory = { call -> contextFor(call, sink) },
+        eventSink = sink,
         capabilityAccessFactory = { context ->
             SyntheticWorkspaceAccess(
                 context = context,
@@ -197,10 +196,21 @@ class ScriptedPwdRuntimeTest {
         val secondWorkspace = Files.createTempDirectory("lpr402-ws-second-")
         val secondPath = secondWorkspace.toAbsolutePath().toString()
 
-        val emptyRegistry = InMemoryStepRegistry()
+        // ADR-0103 RPL-4: this registry used to be genuinely EMPTY, and the point of that was
+        // to prove the durable decision happens before ANY lookup. That is no longer the law:
+        // the decision consumes the Step's pre-decode metadata (effects, replay policy, recovery
+        // policy), that metadata IS the descriptor, and the descriptor is the single authority
+        // scripted and canonical now share. A Step with no declaration has no policy to obey, so
+        // the invoker fails closed with a typed SCHEMA error rather than inventing one.
+        //
+        // The invariant that survives — and that this still proves — is the one with teeth: a
+        // resume must not CONSULT A CAPABILITY. The platform/workspace observation is a
+        // capability read, and the counter must still end at 0.
+
+        val registry = InMemoryStepRegistry().also { CorePwdStep.registerInto(it) }
         val reuseReads = AtomicInteger(0)
         val reuseObserved = mutableListOf<String>()
-        runtime(invokerObserving(secondWorkspace, emptyRegistry, journal, sink, reuseReads))
+        runtime(invokerObserving(secondWorkspace, registry, journal, sink, reuseReads))
             .execute(runId, compiledEntryPoint(reuseObserved))
 
         assertEquals(listOf(firstPath), reuseObserved, "reuse must reproduce the persisted observation, not the new workspace")
@@ -227,11 +237,11 @@ class ScriptedPwdRuntimeTest {
     fun `fail closed - missing step on fresh throws, never fabricates a String`() = runBlocking {
         val sink = InMemoryEventStore()
         val journal = InMemoryOperationJournal(SystemClock())
-        val emptyRegistry = InMemoryStepRegistry()
+        val registry = InMemoryStepRegistry()
         val observed = mutableListOf<String>()
         val ex = assertThrows(PipelineStepException::class.java) {
             runBlocking {
-                runtime(invokerObserving(Files.createTempDirectory("lpr402-ws-"), emptyRegistry, journal, sink))
+                runtime(invokerObserving(Files.createTempDirectory("lpr402-ws-"), registry, journal, sink))
                     .execute(runId, compiledEntryPoint(observed))
             }
         }

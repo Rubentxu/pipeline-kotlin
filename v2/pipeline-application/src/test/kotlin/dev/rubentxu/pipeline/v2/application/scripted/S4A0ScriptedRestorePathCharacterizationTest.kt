@@ -132,11 +132,9 @@ class S4A0ScriptedRestorePathCharacterizationTest {
 
     private fun invokerOver(journal: InMemoryOperationJournal): ScriptedRegistryInvoker {
         val registry = InMemoryStepRegistry().also { it.register(FixtureStep()) }
-        return ScriptedRegistryInvoker(
+        return dev.rubentxu.pipeline.v2.application.support.ScriptedInvokerFixture.build(
             registry = registry,
             journal = journal,
-            clock = SystemClock(),
-            runtimeContextFactory = ::contextFor,
         )
     }
 
@@ -162,11 +160,20 @@ class S4A0ScriptedRestorePathCharacterizationTest {
 
         val written = journal.get(call.operationId())
         assertTrue(written != null, "the priming invocation must have persisted a row")
+        val foreign = OperationOutput(result = result, durationMs = 1L, finishedAt = 1_700_000_000_000L)
+        // Swap ONLY the payload, preserving whatever row type the writer produced. This test
+        // used to hard-cast to `MemoizedOperation`, which was true while the scripted invoker
+        // wrote its own rows. Under ADR-0103 RPL-4 the canonical `DurableStepExecutor` writes
+        // the row, and it writes a `RerunOperation` — so the cast became a `ClassCastException`
+        // thrown out of `invoke`, which is the very failure mode S4-C4 exists to prevent.
+        // The subject of this test is the foreign PAYLOAD, never the row class.
         journal.append(
-            (written as dev.rubentxu.pipeline.v2.domain.durable.MemoizedOperation).copy(
-                output = OperationOutput(result = result, durationMs = 1L, finishedAt = 1_700_000_000_000L),
-                cachedOutput = OperationOutput(result = result, durationMs = 1L, finishedAt = 1_700_000_000_000L),
-            ),
+            when (written) {
+                is dev.rubentxu.pipeline.v2.domain.durable.MemoizedOperation ->
+                    written.copy(output = foreign, cachedOutput = foreign)
+                is dev.rubentxu.pipeline.v2.domain.durable.RerunOperation -> written.copy(output = foreign)
+                else -> error("unexpected durable row type: ${written!!::class.simpleName}")
+            },
         )
         return journal
     }

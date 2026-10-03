@@ -1,23 +1,30 @@
 package dev.rubentxu.pipeline.v2.application.scripted
 
+import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
+import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
+import dev.rubentxu.pipeline.v2.application.durable.DurableInvocationResolver
+import dev.rubentxu.pipeline.v2.application.durable.DurableStepExecutor
 import dev.rubentxu.pipeline.v2.application.durable.ExecutionPreparation
-import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary
+import dev.rubentxu.pipeline.v2.application.durable.InvocationReconciliation
 import dev.rubentxu.pipeline.v2.application.durable.PreparedRegistryExecution
+import dev.rubentxu.pipeline.v2.application.durable.RecoveryInterpretationEngine
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionPreparation
+import dev.rubentxu.pipeline.v2.application.durable.StepLifecycleContext
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.PipelineStepException
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
-import dev.rubentxu.pipeline.v2.domain.durable.Clock
-import dev.rubentxu.pipeline.v2.domain.durable.MemoizedOperation
+import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.scripting.ScriptedCallSiteId
 import kotlinx.serialization.json.JsonArray
@@ -26,7 +33,6 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /** Closed outcome of one scripted registry-step invocation. Never a fabricated value. */
@@ -81,28 +87,70 @@ data class ScriptedRegistryCall(
  * it must never name or special-case any concrete Step. Architecture fitness
  * enforces that by scanning this source with comments stripped.
  *
- * Fresh/reuse law (the gate's core property):
- * - FRESH: prepare/admit (fail-closed on capabilities BEFORE any effect) → execute the
- *   typed handler exactly once through [RegistryExecutionBoundary] → journal
- *   SUCCEEDED with the encodedOutput → return it decoded.
- * - REUSE: journal SUCCEEDED found for the same durable identity → handler = 0,
- *   capabilities/effects NOT consulted → persisted output decoded → returned.
- *   `reuse_value == persisted_value` and observation count == 0.
+ * ## ADR-0103 RPL-4 — this class no longer interprets durable state
  *
- * Error model: FAIL-CLOSED, never a fabricated output. A SUCCEEDED row without
- * output, an undecodable output, an unknown key, a decode failure, a replay
- * divergence, or a capability-admission failure is an explicit
- * [ScriptedRegistryResult.Failed] carrying an engine/protocol [PipelineFailure] —
- * because the decoded value controls user Kotlin control flow (`if (isUnix())`).
+ * It used to answer `when (existing.status)` with its own table — `SUCCEEDED` → restore,
+ * everything else → `REPLAY_COMPATIBILITY` — and to hash its fingerprint with a hardcoded
+ * `ReplayPolicy.MEMOIZED` regardless of what the Step declared. That made it a SECOND
+ * replay authority with a SECOND, stricter policy than the canonical one: a journalled
+ * FAILED operation failed closed here, while the same operation under the descriptor's own
+ * `RERUN` policy would have been re-executed by the canonical spine.
  *
- * Replay does NOT require capabilities: the durable decision (journal lookup) happens
- * BEFORE any capability admission, so a resume never reconstructs or consults runtime
- * capabilities just to discover that the operation already succeeded.
+ * It now does the only three things a frontend may do:
+ *
+ * ```text
+ * 1. ADDRESS     operationId + OperationInput + fingerprint
+ * 2. OBSERVE     journal.get(operationId)          ← obtaining a fact, not interpreting one
+ * 3. DELEGATE    DurableInvocationResolver.reconcileInvocation(...)
+ * ```
+ *
+ * and then interprets the CLOSED [InvocationReconciliation] ADT — never an
+ * [OperationStatus]. The consequences are visible in what disappeared from this file:
+ * the `when (existing.status)` table, the `ReplayPolicy` literal in the fingerprint call
+ * and the `memoized` import are all gone.
+ *
+ * The two responsibilities that stay are the ones RPL-1 and D4 explicitly reserve for a
+ * frontend: ADDRESSING, and turning a durable row into a typed value through the Step's
+ * DECLARED output codec. The latter is [restoredOutput], which is materialisation, not
+ * decision — it is why a runtime-returning call can hand user Kotlin a real `O`.
+ *
+ * ## What each resolution means here
+ *
+ * ```text
+ * Diverged        → REPLAY_COMPATIBILITY   the durable row is not this invocation
+ * RejectedAbort   → REPLAY_COMPATIBILITY   the Step's policy forbids reusing this history
+ * ReuseCompleted  → materialise the persisted value via the declared outputCodec
+ * RecoverRunning  → see below
+ * Execute         → admit, then DurableStepExecutor, then the declared outputCodec
+ * ```
+ *
+ * `RecoverRunning` is the one resolution that cannot be satisfied here, and it fails closed
+ * for a precise reason rather than by omission. Recovery reattaches to a subprocess that a
+ * previous process observed but did not encode: the canonical arm journals the recovered
+ * terminal status with `output = null`, because no typed value was ever produced by this
+ * runtime. A runtime-returning scripted call must hand user Kotlin a real value
+ * (`if (isUnix())` depends on it), and there is nothing to hand. The terminal row IS
+ * written — the interpretation engine owns that — and the call fails with
+ * `REPLAY_COMPATIBILITY`, which is the kind that means "this runtime cannot replay this
+ * operation safely". This is not a regression: the previous status table failed the same
+ * way on a RUNNING row, and it fails the same way now.
+ *
+ * ## Fresh/reuse law
+ *
+ * - FRESH: fail-closed capability admission BEFORE any effect → execute the typed handler
+ *   exactly once through [dev.rubentxu.pipeline.v2.application.durable.CommonExecutionBoundary]
+ *   → journal the terminal row with the encodedOutput → return it.
+ * - REUSE: the durable decision happens BEFORE any capability admission, so a resume never
+ *   reconstructs or consults runtime capabilities just to discover that the operation
+ *   already succeeded. The persisted output is decoded through the Step's own codec.
+ *   `reuse_value == persisted_value` and handler count is unchanged.
+ *
+ * Replay does NOT require capabilities, and this invoker does not advance the run replay
+ * cursor: a scripted call has no canonical stage position (ADR-0103 D7).
  */
-class ScriptedRegistryInvoker(
+internal class ScriptedRegistryInvoker(
     private val registry: StepRegistry,
     private val journal: OperationJournal,
-    private val clock: Clock,
     private val runtimeContextFactory: (call: ScriptedRegistryCall) -> CanonicalRuntimeContext,
     /**
      * Capability bridge construction. The default is the canonical bridge over the
@@ -110,8 +158,20 @@ class ScriptedRegistryInvoker(
      * are synthetic (e.g. a non-host platform) without changing any production logic.
      * Admission stays fail-closed and replay never consults this factory.
      */
-    private val capabilityAccessFactory: (CanonicalRuntimeContext) -> dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess =
-        { context -> dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess(context) },
+    private val capabilityAccessFactory: (CanonicalRuntimeContext) -> CanonicalRuntimeCapabilityAccess =
+        { context -> CanonicalRuntimeCapabilityAccess(context) },
+    /**
+     * Pre-decode durable metadata authority. Derived from the registry this invoker already
+     * holds, so scripted and canonical resolve a Step's effects, replay policy and recovery
+     * policy through the SAME composite rather than through a second lookup. Overridable for
+     * harnesses that need a different authority, never for production.
+     */
+    private val metadataResolver: StepMetadataResolver =
+        dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolver.composite(registry),
+    private val eventSink: EventSink,
+    private val invocationResolver: DurableInvocationResolver,
+    private val stepExecutor: DurableStepExecutor,
+    private val recoveryInterpretation: RecoveryInterpretationEngine,
 ) {
 
     /** Read-only definition accessor so callers can project typed outputs through the
@@ -185,6 +245,7 @@ class ScriptedRegistryInvoker(
     }
 
     suspend fun invoke(call: ScriptedRegistryCall): ScriptedRegistryResult {
+        // 1. ADDRESS — the frontend's own durable coordinate system (ADR-0103 RPL-1).
         val stepId = scriptedStepId(call.stepKey)
         val input = OperationInput(
             stepId = stepId,
@@ -205,52 +266,99 @@ class ScriptedRegistryInvoker(
         )
         val operationId = call.operationId()
 
-        // Durable decision FIRST: reuse must not require capabilities or any effect.
-        val existing = journal.get(operationId)
-        if (existing != null) {
-            if (existing.fingerprint != fingerprint) {
-                return ScriptedRegistryResult.Failed(
-                    PipelineFailure(FailureKind.REPLAY_COMPATIBILITY, "scripted registry step input diverged"),
-                )
-            }
-            return when (existing.status) {
-                OperationStatus.SUCCEEDED -> restoredOutput(existing.output)
-                OperationStatus.RUNNING -> ScriptedRegistryResult.Failed(
-                    PipelineFailure(
-                        FailureKind.REPLAY_COMPATIBILITY,
-                        "scripted registry step is RUNNING and no durable task can be reattached",
-                    ),
-                )
-                OperationStatus.FAILED,
-                OperationStatus.ABORTED,
-                OperationStatus.FAILED_TIMEOUT,
-                OperationStatus.LOST,
-                -> ScriptedRegistryResult.Failed(
-                    PipelineFailure(
-                        FailureKind.REPLAY_COMPATIBILITY,
-                        "scripted registry step previously ended $${existing.status.name}",
-                    ),
-                )
-                OperationStatus.PENDING,
-                OperationStatus.DIVERGENT,
-                -> ScriptedRegistryResult.Failed(
-                    PipelineFailure(
-                        FailureKind.REPLAY_COMPATIBILITY,
-                        "scripted registry step is not safely replayable from status ${existing.status.name}",
-                    ),
-                )
-            }
-        }
+        // 2. OBSERVE — obtaining the durable fact. ADR-0103 D4: reading a fact is not
+        //    interpreting a protocol. What the fact MEANS is decided below, by the resolver.
+        val journaled: DurableOperation? = journal.get(operationId)
+        // Pre-decode metadata (effects, replay policy, recovery policy) is the Step's own
+        // descriptor, resolved by the SAME composite the canonical coordinator uses. This is
+        // the concrete form of ADR-0103's "StepDescriptor is the single authority": scripted
+        // does not get to have an opinion about what its Steps declare.
+        //
+        // The authority signals an unknown key two ways — `null` on the port, or an
+        // `EngineInvariantViolation` from the composite's hard-defect default — so both are
+        // translated here. Translating at THIS seam is the point: an unknown key is an
+        // ordinary admission failure that user Kotlin can observe, and it must arrive as a
+        // typed `PipelineStepException`, not as an engine defect escaping `invoke`. The
+        // previous hand-written table returned a typed SCHEMA failure for exactly this case,
+        // so the public contract is unchanged; only the authority behind it changed.
+        val metadata = resolveMetadataOrNull(call.stepKey)
+            ?: return ScriptedRegistryResult.Failed(
+                PipelineFailure(
+                    FailureKind.SCHEMA,
+                    "no durable metadata for step '${call.stepKey.value}': it is neither a " +
+                        "legacy executable key nor present in the registry",
+                ),
+            )
+        val currentOperation = RerunOperation(
+            id = operationId,
+            fingerprint = fingerprint,
+            input = input,
+            output = null,
+            status = OperationStatus.PENDING,
+            attempt = ATTEMPT,
+        )
 
-        // FRESH: admission (fail-closed) BEFORE any effect. Capabilities are consulted
-        // only here — never on the reuse path above.
+        // 3. DELEGATE — the canonical decision. This invoker never reads a status to choose.
+        return when (val resolution = invocationResolver.reconcileInvocation(
+            metadata = metadata,
+            journaled = journaled,
+            currentOperation = currentOperation,
+            operationId = operationId,
+        )) {
+            is InvocationReconciliation.Diverged -> notReplayable(
+                "scripted registry step input diverged from its durable history",
+            )
+
+            is InvocationReconciliation.RejectedAbort -> notReplayable(
+                "scripted registry step history cannot be reused under the policy its descriptor declares",
+            )
+
+            // Reuse materialises, it does not decide. The ADT carries no output by design:
+            // mixing the decision with the materialisation is exactly what RPL-5 forbids.
+            InvocationReconciliation.ReuseCompleted -> restoredOutput(journaled?.output)
+
+            // The interpretation engine journals the recovered terminal row and emits the
+            // lifecycle events, because it is the owner of interpreting a resolution. The
+            // typed value still cannot be produced — see the class KDoc.
+            is InvocationReconciliation.RecoverRunning -> {
+                recoveryInterpretation.interpret(
+                    resolution,
+                    RecoveryInterpretationEngine.Request(
+                        operationId = operationId,
+                        fingerprint = fingerprint,
+                        input = input,
+                        lifecycleContext = lifecycleFor(call),
+                    ),
+                )
+                notReplayable(
+                    "scripted registry step was recovered from a running subprocess whose " +
+                        "recovered terminal carries no encoded output, so no typed runtime " +
+                        "value can be materialised without fabricating one",
+                )
+            }
+
+            InvocationReconciliation.Execute -> execute(call, operationId, fingerprint, input, journaled)
+        }
+    }
+
+    /**
+     * The Execute arm. Capability admission stays fail-closed and happens BEFORE any effect,
+     * and the effective execution plus the durable fold are the canonical ones — this class
+     * contributes no `beginOperation`, no terminal append and no cursor write of its own.
+     */
+    private suspend fun execute(
+        call: ScriptedRegistryCall,
+        operationId: String,
+        fingerprint: dev.rubentxu.pipeline.v2.domain.durable.Fingerprint,
+        input: OperationInput,
+        journaled: DurableOperation?,
+    ): ScriptedRegistryResult {
+        val runtime = runtimeContextFactory(call)
         val preparation = RegistryExecutionPreparation.prepare(
             registry = registry,
             key = call.stepKey,
             encodedInput = call.encodedInput,
-            availableCapabilities = capabilityAccessFactory(
-                runtimeContextFactory(call),
-            ).available(),
+            availableCapabilities = capabilityAccessFactory(runtime).available(),
         )
         val ready = when (preparation) {
             is ExecutionPreparation.Ready -> preparation.prepared as PreparedRegistryExecution
@@ -259,29 +367,22 @@ class ScriptedRegistryInvoker(
             )
         }
 
-        journal.append(record(operationId, fingerprint, input, OperationStatus.RUNNING, null))
-        val startedAt = clock.now().toEpochMilli()
-        val result = RegistryExecutionBoundary.coexecute(ready, runtimeContextFactory(call), capabilityAccessFactory)
-        val finishedAt = clock.now().toEpochMilli()
-        val output = result.encodedOutput?.let {
-            OperationOutput(
-                result = JsonPrimitive(it.value),
-                durationMs = (finishedAt - startedAt).coerceAtLeast(0),
-                finishedAt = finishedAt,
-            )
-        }
-        val status = when (result.outcome) {
-            is dev.rubentxu.pipeline.v2.domain.StepOutcome.Success -> OperationStatus.SUCCEEDED
-            is dev.rubentxu.pipeline.v2.domain.StepOutcome.Unstable -> OperationStatus.SUCCEEDED
-            is dev.rubentxu.pipeline.v2.domain.StepOutcome.Failure -> OperationStatus.FAILED
-        }
-        journal.append(record(operationId, fingerprint, input, status, output))
-        return when (result.outcome) {
+        val execution = stepExecutor.executeAndJournal(
+            operationId = operationId,
+            fingerprint = fingerprint,
+            input = input,
+            journaled = journaled,
+            prepared = ready,
+            runtime = runtime,
+            lifecycleContext = lifecycleFor(call),
+        )
+
+        return when (val outcome = execution.outcome) {
             is dev.rubentxu.pipeline.v2.domain.StepOutcome.Failure ->
-                ScriptedRegistryResult.Failed(failureOf(result.outcome))
+                ScriptedRegistryResult.Failed(outcome.failure)
             // A runtime-returning Step MUST produce a value: SUCCEEDED with no encoded
             // output is a protocol violation, never a fabricated Unit/false.
-            else -> when (val encoded = result.encodedOutput) {
+            else -> when (val encoded = execution.encodedOutput) {
                 null -> ScriptedRegistryResult.Failed(
                     PipelineFailure(
                         FailureKind.ENGINE,
@@ -299,11 +400,9 @@ class ScriptedRegistryInvoker(
      *
      * The previous `else -> Success(EncodedStepValue((raw as JsonPrimitive).content))`
      * was the one malformed-durable-state case in this method that was NOT typed,
-     * while every other one — a null output, a RUNNING row, a FAILED row, a
-     * fingerprint divergence, a capability rejection — already carried a
-     * [FailureKind]. `OperationOutput.result` is a `JsonElement`, so a `JsonObject`
-     * or `JsonArray` written by a different codec version reached that cast and
-     * escaped `invoke` as an exception.
+     * while every other one already carried a [FailureKind]. `OperationOutput.result` is
+     * a `JsonElement`, so a `JsonObject` or `JsonArray` written by a different codec
+     * version reached that cast and escaped `invoke` as an exception.
      *
      * `REPLAY_COMPATIBILITY` is the exact kind — "A persisted operation cannot be
      * safely replayed by this runtime" — because a foreign payload IS that.
@@ -314,14 +413,9 @@ class ScriptedRegistryInvoker(
      * accepting it as a primitive would hand a caller a fabricated value for a
      * step that persisted nothing: it is rejected with the same typed failure.
      */
-    private fun restoredOutput(output: dev.rubentxu.pipeline.v2.domain.durable.OperationOutput?): ScriptedRegistryResult =
+    private fun restoredOutput(output: OperationOutput?): ScriptedRegistryResult =
         when (val raw = output?.result) {
-            null -> ScriptedRegistryResult.Failed(
-                PipelineFailure(
-                    FailureKind.REPLAY_COMPATIBILITY,
-                    "SUCCEEDED scripted registry step has no persisted output",
-                ),
-            )
+            null -> notReplayable("SUCCEEDED scripted registry step has no persisted output")
             is JsonPrimitive -> if (raw is JsonNull) {
                 unreadablePersistedOutput("a JSON null")
             } else {
@@ -341,24 +435,40 @@ class ScriptedRegistryInvoker(
             ),
         )
 
-    private fun record(
-        id: String,
-        fingerprint: dev.rubentxu.pipeline.v2.domain.durable.Fingerprint,
-        input: OperationInput,
-        status: OperationStatus,
-        output: OperationOutput?,
-    ): MemoizedOperation = MemoizedOperation(
-        id = id,
-        fingerprint = fingerprint,
-        input = input,
-        output = output,
-        status = status,
-        attempt = ATTEMPT,
-        cachedOutput = output,
+    /**
+     * Lifecycle coordinates for an execution this frontend performs.
+     *
+     * These are the coordinates the scripted runner ALREADY assigns its
+     * [CanonicalRuntimeContext] (`stageName = "scripted"`, `stageIndex = 0`,
+     * `stepIndex = invocationOrdinal`), reused verbatim rather than invented here. They
+     * name WHERE the execution happened for observability; they are not a cursor position,
+     * and this frontend advances no cursor (ADR-0103 D7).
+     */
+    private fun lifecycleFor(call: ScriptedRegistryCall): StepLifecycleContext = StepLifecycleContext(
+        runId = call.runId,
+        stageIndex = 0,
+        stepIndex = call.invocationOrdinal,
+        stepName = call.callSiteId.value,
+        stepType = call.stepKey.value,
     )
 
-    private fun failureOf(outcome: dev.rubentxu.pipeline.v2.domain.StepOutcome): PipelineFailure =
-        (outcome as dev.rubentxu.pipeline.v2.domain.StepOutcome.Failure).failure
+    /**
+     * Total metadata lookup. `EngineInvariantViolation` is the composite resolver's documented
+     * signal for a key that is neither legacy-executable nor registered; it is an ordinary
+     * admission outcome at this boundary, so it becomes a value rather than an exception.
+     */
+    private fun resolveMetadataOrNull(key: PluginStepId) =
+        try {
+            metadataResolver.resolve(key)
+        } catch (_: dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation) {
+            null
+        }
+
+    /** One wording for every "this durable state cannot be replayed" refusal. */
+    private fun notReplayable(reason: String): ScriptedRegistryResult = ScriptedRegistryResult.Failed(
+        PipelineFailure(FailureKind.REPLAY_COMPATIBILITY, reason),
+    )
+
 
     /** `OperationInput.params` is Map<String, JsonElement>; keep the flat object form. */
     private fun flattenParams(obj: JsonObject): Map<String, kotlinx.serialization.json.JsonElement> = obj

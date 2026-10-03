@@ -43,7 +43,7 @@ import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
  * codec, no second journal writer, and no path to the shell that does not
  * declare and admit its capability.
  */
-class RegistryScriptedShellRuntime(
+internal class RegistryScriptedShellRuntime(
     private val invoker: ScriptedRegistryInvoker,
 ) : ScriptedOperationRuntime {
 

@@ -101,12 +101,25 @@ class ScriptedRegistryInvokerTest {
         eventSink = InMemoryEventStore(),
     )
 
-    private fun invokerOver(registry: InMemoryStepRegistry, journal: InMemoryOperationJournal): ScriptedRegistryInvoker =
-        ScriptedRegistryInvoker(
+    /**
+     * @param admitNoCapabilities route the observation source to one that admits NOTHING. The
+     *   Step's DECLARATION is still resolvable, which is the distinction that matters after
+     *   ADR-0103 RPL-4: the replay decision needs the descriptor, and needs no capability.
+     */
+    private fun invokerOver(
+        registry: InMemoryStepRegistry,
+        journal: InMemoryOperationJournal,
+        admitNoCapabilities: Boolean = false,
+    ): ScriptedRegistryInvoker =
+        dev.rubentxu.pipeline.v2.application.support.ScriptedInvokerFixture.build(
             registry = registry,
             journal = journal,
-            clock = SystemClock(),
-            runtimeContextFactory = ::contextFor,
+            capabilityAccessFactory = { context ->
+                object : dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess(context) {
+                    override fun available(): Set<dev.rubentxu.pipeline.v2.domain.step.StepCapability> =
+                        if (admitNoCapabilities) emptySet() else super.available()
+                }
+            },
         )
 
     private fun newCall(input: String = "41", ordinal: Int = 0): ScriptedRegistryCall = ScriptedRegistryCall(
@@ -158,19 +171,29 @@ class ScriptedRegistryInvokerTest {
     }
 
     @Test
-    fun `reuse - durable decision happens BEFORE registry and capability resolution`() = runBlocking {
-        // After a fresh run, a reuse invocation against an invoker whose REGISTRY IS EMPTY
-        // must still succeed: the journal SUCCEEDED hit short-circuits before any registry
-        // resolution or capability admission. This is the replay-does-not-need-capabilities
-        // property (e.g. future isUnix reuse must not consult PLATFORM_IDENTITY).
+    fun `reuse - durable decision happens BEFORE capability admission and handler execution`() = runBlocking {
+        // ADR-0103 RPL-4 NARROWED this law, and the narrowing is the point.
+        //
+        // It used to be proved by handing the reuse an invoker with an EMPTY REGISTRY, on the
+        // theory that the SUCCEEDED journal hit short-circuits before any lookup at all. That
+        // is no longer true and cannot be: the reuse decision consumes the Step's pre-decode
+        // metadata (effects, replay policy, recovery policy), that metadata IS the descriptor,
+        // and the descriptor is the single authority canonical and scripted now share. A Step
+        // with no declaration has no policy to obey, so asking for reuse without one is a
+        // typed SCHEMA failure rather than a silent pass.
+        //
+        // The capability half of the law survives intact and is what has teeth: a resume must
+        // not need to OBSERVE anything. This test now proves it with the declaration present
+        // and the capability absent, which is the shape production actually has.
         val fixture = FixtureStep()
-        val populated = InMemoryStepRegistry().also { it.register(fixture) }
+        val registry = InMemoryStepRegistry().also { it.register(fixture) }
         val journal = InMemoryOperationJournal(SystemClock())
-        invokerOver(populated, journal).invoke(newCall())
+        invokerOver(registry, journal).invoke(newCall())
         assertEquals(1, fixture.handlerInvocations.get())
 
-        val emptyRegistry = InMemoryStepRegistry()
-        val reuseOnlyInvoker = invokerOver(emptyRegistry, journal)
+        // No capability at all: admission would reject this invocation if the durable decision
+        // did not come first.
+        val reuseOnlyInvoker = invokerOver(registry, journal, admitNoCapabilities = true)
         val reuse = reuseOnlyInvoker.invoke(newCall())
         assertTrue(reuse is ScriptedRegistryResult.Success)
         assertEquals("42", (reuse as ScriptedRegistryResult.Success).encodedOutput.value)
@@ -273,7 +296,7 @@ class ScriptedRegistryInvokerTest {
     }
 
     @Test
-    fun `negative - FAILED history replays as failure without re-execution`() = runBlocking {
+    fun `negative - FAILED history re-executes, because the descriptor policy says RERUN`() = runBlocking {
         val fixture = FixtureStep()
         val registry = InMemoryStepRegistry().also { it.register(fixture) }
         val journal = InMemoryOperationJournal(SystemClock())
@@ -284,9 +307,25 @@ class ScriptedRegistryInvokerTest {
         assertTrue(first is ScriptedRegistryResult.Failed)
         val afterFirst = fixture.handlerInvocations.get()
 
+        // ADR-0103 RPL-4: this expectation INVERTED, deliberately.
+        //
+        // The fixture declares `replayPolicy = MEMOIZED` with `effects = [READ_ONLY]`, and under
+        // the ADR-0103 D1 table a journaled FAILED row is not a reuse. Before R1-A the invoker
+        // latched REPLAY_COMPATIBILITY on any non-SUCCEEDED status — a second, stricter policy
+        // than the canonical one, which would have re-observed and repaired the row. Now both
+        // surfaces read the same declaration, so the scripted one retries too.
+        //
+        // The assertion is stated against the FIRST run's count so that it pins the retry, not a
+        // hard-coded 2, and so a future policy change shows up as a diff here rather than as a
+        // mysterious count.
         val again = invoker.invoke(newCall(input = "abc"))
-        assertTrue(again is ScriptedRegistryResult.Failed)
-        assertEquals(afterFirst, fixture.handlerInvocations.get(), "terminal FAILED row must not re-execute")
+        assertTrue(again is ScriptedRegistryResult.Failed, "the retried handler fails again on the same input")
+        assertEquals(
+            afterFirst + 1,
+            fixture.handlerInvocations.get(),
+            "a FAILED row must be RETRIED under the descriptor's own policy — the same number of " +
+                "times canonical would retry it",
+        )
     }
 
     // ---- architecture fitness ---------------------------------------------------

@@ -79,45 +79,32 @@ class S4IdentityOrdinalFalsificationTest {
 
         val runtime = ScriptedArtifactRuntime(
             operationRuntime = ScriptedOperationRuntime { error("sh is registry-routed") },
-            registryInvoker = ScriptedRegistryInvoker(
-                registry = InMemoryStepRegistry().also { CoreShellStep.registerInto(it) },
-                journal = journal,
-                clock = SystemClock(),
-                runtimeContextFactory = { call ->
-                    CanonicalRuntimeContext(
-                        opId = OpId(call.runId, 0, call.invocationOrdinal),
-                        runId = call.runId,
-                        stageName = "scripted",
-                        stageIndex = 0,
-                        stepIndex = call.invocationOrdinal,
-                        shOptions = ShOptions.EMPTY,
-                        controlDirRoot = Files.createTempDirectory("s4id-"),
-                        eventSink = InMemoryEventStore(),
-                    )
-                },
-                capabilityAccessFactory = { context ->
-                    object : CanonicalRuntimeCapabilityAccess(context) {
-                        override fun available(): Set<StepCapability> = setOf(SHELL_OPERATIONS_CAPABILITY)
-
-                        @Suppress("UNCHECKED_CAST")
-                        override fun <T : Any> get(key: StepCapability): T {
-                            if (key == SHELL_OPERATIONS_CAPABILITY) {
-                                return object : ShellOperations {
-                                    override suspend fun invoke(
-                                        command: ShellCommand,
-                                        runId: RunId,
-                                        stepIndex: Int,
-                                    ): ShellInvocationResult {
-                                        launched += command.script
-                                        return ShellInvocationResult.Stdout(command.script)
-                                    }
-                                } as T
-                            }
-                            return super.get(key)
-                        }
-                    }
-                },
-            ),
+            registryInvoker = dev.rubentxu.pipeline.v2.application.support.ScriptedInvokerFixture.build(
+                    registry = InMemoryStepRegistry().also { CoreShellStep.registerInto(it) },
+                    journal = journal,
+                    capabilityAccessFactory = { context ->
+                                        object : CanonicalRuntimeCapabilityAccess(context) {
+                                            override fun available(): Set<StepCapability> = setOf(SHELL_OPERATIONS_CAPABILITY)
+                    
+                                            @Suppress("UNCHECKED_CAST")
+                                            override fun <T : Any> get(key: StepCapability): T {
+                                                if (key == SHELL_OPERATIONS_CAPABILITY) {
+                                                    return object : ShellOperations {
+                                                        override suspend fun invoke(
+                                                            command: ShellCommand,
+                                                            runId: RunId,
+                                                            stepIndex: Int,
+                                                        ): ShellInvocationResult {
+                                                            launched += command.script
+                                                            return ShellInvocationResult.Stdout(command.script)
+                                                        }
+                                                    } as T
+                                                }
+                                                return super.get(key)
+                                            }
+                                        }
+                                    },
+                ),
         )
     }
 

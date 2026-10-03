@@ -231,7 +231,7 @@ sealed interface ScriptedArtifactExecution {
 }
 
 /** Executes one compiled scripted entry point without serializing its continuation. */
-class ScriptedArtifactRuntime(
+internal class ScriptedArtifactRuntime(
     private val operationRuntime: ScriptedOperationRuntime,
     private val registryInvoker: ScriptedRegistryInvoker? = null,
 ) {

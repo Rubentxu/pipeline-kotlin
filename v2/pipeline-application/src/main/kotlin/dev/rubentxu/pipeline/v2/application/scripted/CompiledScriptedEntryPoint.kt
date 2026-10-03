@@ -15,7 +15,6 @@ import dev.rubentxu.pipeline.v2.application.PwdTmpInput
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
 import dev.rubentxu.pipeline.v2.domain.ShellCommand
 import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
-import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint
 import dev.rubentxu.pipeline.v2.scripting.ReturnStatus
 import dev.rubentxu.pipeline.v2.scripting.ReturnStdout
@@ -35,6 +34,40 @@ internal class RuntimeScriptedStepFacade(
     private val scope: ScriptedScope,
     private val registryInvoker: ScriptedRegistryInvoker? = null,
 ) : ScriptedStepFacade {
+
+    /**
+     * S4-A1 — the façade's single seam to durable execution.
+     *
+     * Everything a runtime-returning call needs before it can name a Step is
+     * here, once: the invoker must exist (fail loud, never a fabricated value),
+     * the scope identity, the call-site ordinal, the Step's declared input and
+     * output codecs, and the typed-failure translation.
+     *
+     * A façade body is therefore reduced to the only part that is genuinely
+     * Step-specific — which definition, which input, and which projection of
+     * the typed output. Six near-identical thirty-line bodies collapse to six
+     * three-line ones, and the part that decides durable semantics lives in one
+     * place instead of six that could drift.
+     */
+    private suspend fun <I : Any, O : Any> call(
+        callSite: ScriptedCallSiteId,
+        definition: dev.rubentxu.pipeline.v2.domain.step.StepDefinition<I, O>,
+        input: I,
+    ): O {
+        val invoker = registryInvoker
+            ?: throw dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation(
+                "runtime-returning scripted steps require a registry invoker; " +
+                    "wire ScriptedRegistryInvoker into this entry point runtime",
+            )
+        return invoker.invokeTyped(
+            identity = scope.identity,
+            callSiteId = callSite,
+            invocationOrdinal = scope.nextOrdinal(callSite),
+            definition = definition,
+            input = input,
+        )
+    }
+
     override suspend fun <T> scoped(
         scopeId: ScriptedDynamicScopeId,
         block: suspend ScriptedStepFacade.() -> T,
@@ -81,50 +114,8 @@ internal class RuntimeScriptedStepFacade(
      * when it is absent, the runtime-returning surface is unavailable (fail loud,
      * never a fabricated value).
      */
-    override suspend fun isUnix(callSite: ScriptedCallSiteId): Boolean {
-        val invoker = registryInvoker
-            ?: throw dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation(
-                "runtime-returning scripted steps require a registry invoker; " +
-                    "wire ScriptedRegistryInvoker into this entry point runtime",
-            )
-        val identity = scope.identity
-        val result = invoker.invoke(
-            ScriptedRegistryCall(
-                runId = identity.runId,
-                entryPointId = identity.entryPointId,
-                callSiteId = callSite,
-                dynamicScopePath = identity.dynamicScopePath,
-                invocationOrdinal = scope.nextOrdinal(callSite),
-                stepKey = CoreIsUnixStep.KEY,
-                encodedInput = CoreIsUnixStep.definition.contract.inputCodec.encode(IsUnixInput),
-            ),
-        )
-        return when (result) {
-            is ScriptedRegistryResult.Success -> try {
-                decodeRuntimeBoolean(result.encodedOutput)
-            } catch (e: IllegalArgumentException) {
-                throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
-                    dev.rubentxu.pipeline.v2.domain.PipelineFailure(
-                        dev.rubentxu.pipeline.v2.domain.FailureKind.REPLAY_COMPATIBILITY,
-                        "persisted runtime output is not decodable by the step's declared codec: ${e.message}",
-                    ),
-                )
-            }
-            is ScriptedRegistryResult.Failed -> throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
-                result.failure,
-            )
-        }
-    }
-
-    /**
-     * Typed projection through the Step's DECLARED output codec — never a
-     * hand-written parallel decoder. The codec is static Step-owned code, not a
-     * runtime capability, so the REUSE path (empty registry, zero capabilities)
-     * can still decode the persisted payload with the SAME codec that encoded
-     * it fresh: one output contract, both directions.
-     */
-    private fun decodeRuntimeBoolean(encoded: EncodedStepValue): Boolean =
-        CoreIsUnixStep.definition.contract.outputCodec.decode(encoded).isUnix
+    override suspend fun isUnix(callSite: ScriptedCallSiteId): Boolean =
+        call(callSite, CoreIsUnixStep.definition, IsUnixInput).isUnix
 
     /**
      * WU-LPR-402 — runtime-returning workspace query façade. Mirrors [isUnix]
@@ -140,60 +131,12 @@ internal class RuntimeScriptedStepFacade(
      * the registry authority. Replay never re-observes; it reproduces the
      * persisted `PwdOutput.path`.
      */
-    override suspend fun pwd(callSite: ScriptedCallSiteId, tmp: Boolean): String {
-        val invoker = registryInvoker
-            ?: throw dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation(
-                "runtime-returning scripted steps require a registry invoker; " +
-                    "wire ScriptedRegistryInvoker into this entry point runtime",
-            )
-        val identity = scope.identity
-        val (stepKey, encodedInput) = if (tmp) {
-            CorePwdTmpStep.KEY to CorePwdTmpStep.definition.contract.inputCodec.encode(PwdTmpInput)
+    override suspend fun pwd(callSite: ScriptedCallSiteId, tmp: Boolean): String =
+        if (tmp) {
+            call(callSite, CorePwdTmpStep.definition, PwdTmpInput).path
         } else {
-            CorePwdStep.KEY to CorePwdStep.definition.contract.inputCodec.encode(PwdInput(tmp = false))
+            call(callSite, CorePwdStep.definition, PwdInput(tmp = false)).path
         }
-        val result = invoker.invoke(
-            ScriptedRegistryCall(
-                runId = identity.runId,
-                entryPointId = identity.entryPointId,
-                callSiteId = callSite,
-                dynamicScopePath = identity.dynamicScopePath,
-                invocationOrdinal = scope.nextOrdinal(callSite),
-                stepKey = stepKey,
-                encodedInput = encodedInput,
-            ),
-        )
-        return when (result) {
-            is ScriptedRegistryResult.Success -> try {
-                decodeRuntimePwdPath(tmp, result.encodedOutput)
-            } catch (e: IllegalArgumentException) {
-                throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
-                    dev.rubentxu.pipeline.v2.domain.PipelineFailure(
-                        dev.rubentxu.pipeline.v2.domain.FailureKind.REPLAY_COMPATIBILITY,
-                        "persisted runtime output is not decodable by the step's declared codec: ${e.message}",
-                    ),
-                )
-            }
-            is ScriptedRegistryResult.Failed -> throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
-                result.failure,
-            )
-        }
-    }
-
-    /**
-     * Typed projection through the Step's DECLARED output codec. Both `core.pwd`
-     * and `core.pwd.tmp` produce a `PwdOutput(path: String)`; the codec is
-     * static Step-owned code so REUSE (empty registry, zero capabilities) can
-     * decode the persisted payload with the SAME codec that encoded it fresh.
-     */
-    private fun decodeRuntimePwdPath(tmp: Boolean, encoded: EncodedStepValue): String {
-        val codec = if (tmp) {
-            CorePwdTmpStep.definition.contract.outputCodec
-        } else {
-            CorePwdStep.definition.contract.outputCodec
-        }
-        return codec.decode(encoded).path
-    }
 
     /**
      * WU-LPR-087 (LFC-2R2) — runtime-returning file-read façade. Mirrors the
@@ -209,59 +152,26 @@ internal class RuntimeScriptedStepFacade(
         callSite: ScriptedCallSiteId,
         file: String,
     ): String {
-        val invoker = registryInvoker
-            ?: throw dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation(
-                "runtime-returning scripted steps require a registry invoker; " +
-                    "wire ScriptedRegistryInvoker into this entry point runtime",
-            )
-        val identity = scope.identity
-        val definition = dev.rubentxu.pipeline.v2.application.CoreReadFileStep.definition
-        val result = invoker.invoke(
-            ScriptedRegistryCall(
-                runId = identity.runId,
-                entryPointId = identity.entryPointId,
-                callSiteId = callSite,
-                dynamicScopePath = identity.dynamicScopePath,
-                invocationOrdinal = scope.nextOrdinal(callSite),
-                stepKey = dev.rubentxu.pipeline.v2.application.CoreReadFileStep.KEY,
-                encodedInput = definition.contract.inputCodec.encode(
-                    dev.rubentxu.pipeline.v2.application.CoreReadFileInput(
-                        file = file,
-                        encoding = "UTF-8",
-                    ),
-                ),
-            ),
+        val output = call(
+            callSite,
+            CoreReadFileStep.definition,
+            CoreReadFileInput(file = file, encoding = "UTF-8"),
         )
-        return when (result) {
-            is ScriptedRegistryResult.Success -> try {
-                val output = definition.contract.outputCodec.decode(result.encodedOutput)
-                if (!output.exists) {
-                    throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
-                        dev.rubentxu.pipeline.v2.domain.PipelineFailure(
-                            dev.rubentxu.pipeline.v2.domain.FailureKind.USER,
-                            "readFile($file) reported exists=false; runtime-returning façade cannot materialise content",
-                        ),
-                    )
-                }
-                output.content
-                    ?: throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
-                        dev.rubentxu.pipeline.v2.domain.PipelineFailure(
-                            dev.rubentxu.pipeline.v2.domain.FailureKind.REPLAY_COMPATIBILITY,
-                            "persisted readFile output has exists=true but content=null",
-                        ),
-                    )
-            } catch (e: IllegalArgumentException) {
-                throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
-                    dev.rubentxu.pipeline.v2.domain.PipelineFailure(
-                        dev.rubentxu.pipeline.v2.domain.FailureKind.REPLAY_COMPATIBILITY,
-                        "persisted readFile output is not decodable by the step's declared codec: ${e.message}",
-                    ),
-                )
-            }
-            is ScriptedRegistryResult.Failed -> throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
-                result.failure,
+        if (!output.exists) {
+            throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
+                dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                    dev.rubentxu.pipeline.v2.domain.FailureKind.USER,
+                    "readFile($file) reported exists=false; runtime-returning façade cannot materialise content",
+                ),
             )
         }
+        return output.content
+            ?: throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
+                dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                    dev.rubentxu.pipeline.v2.domain.FailureKind.REPLAY_COMPATIBILITY,
+                    "persisted readFile output has exists=true but content=null",
+                ),
+            )
     }
 
     /**
@@ -273,43 +183,8 @@ internal class RuntimeScriptedStepFacade(
     override suspend fun fileExists(
         callSite: ScriptedCallSiteId,
         file: String,
-    ): Boolean {
-        val invoker = registryInvoker
-            ?: throw dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation(
-                "runtime-returning scripted steps require a registry invoker; " +
-                    "wire ScriptedRegistryInvoker into this entry point runtime",
-            )
-        val identity = scope.identity
-        val definition = dev.rubentxu.pipeline.v2.application.CoreFileExistsStep.definition
-        val result = invoker.invoke(
-            ScriptedRegistryCall(
-                runId = identity.runId,
-                entryPointId = identity.entryPointId,
-                callSiteId = callSite,
-                dynamicScopePath = identity.dynamicScopePath,
-                invocationOrdinal = scope.nextOrdinal(callSite),
-                stepKey = dev.rubentxu.pipeline.v2.application.CoreFileExistsStep.KEY,
-                encodedInput = definition.contract.inputCodec.encode(
-                    dev.rubentxu.pipeline.v2.application.CoreFileExistsInput(file = file),
-                ),
-            ),
-        )
-        return when (result) {
-            is ScriptedRegistryResult.Success -> try {
-                definition.contract.outputCodec.decode(result.encodedOutput).exists
-            } catch (e: IllegalArgumentException) {
-                throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
-                    dev.rubentxu.pipeline.v2.domain.PipelineFailure(
-                        dev.rubentxu.pipeline.v2.domain.FailureKind.REPLAY_COMPATIBILITY,
-                        "persisted fileExists output is not decodable by the step's declared codec: ${e.message}",
-                    ),
-                )
-            }
-            is ScriptedRegistryResult.Failed -> throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
-                result.failure,
-            )
-        }
-    }
+    ): Boolean =
+        call(callSite, CoreFileExistsStep.definition, CoreFileExistsInput(file = file)).exists
 
     /**
      * WU-LPR-087 (LFC-2R2) — runtime-returning `sh(..., returnStdout = true)`
@@ -328,56 +203,27 @@ internal class RuntimeScriptedStepFacade(
         script: String,
         encoding: String?,
     ): String {
-        val invoker = registryInvoker
-            ?: throw dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation(
-                "runtime-returning scripted steps require a registry invoker; " +
-                    "wire ScriptedRegistryInvoker into this entry point runtime",
-            )
-        val identity = scope.identity
-        val definition = CoreShellStep.definition
-        val input = CoreShellInput(
-            command = ShellCommand(
-                script = script,
-                encoding = encoding,
-                label = null,
-                returnMode = ShellReturnMode.STDOUT,
+        val output = call(
+            callSite,
+            CoreShellStep.definition,
+            CoreShellInput(
+                command = ShellCommand(
+                    script = script,
+                    encoding = encoding,
+                    label = null,
+                    returnMode = ShellReturnMode.STDOUT,
+                ),
             ),
         )
-        val result = invoker.invoke(
-            ScriptedRegistryCall(
-                runId = identity.runId,
-                entryPointId = identity.entryPointId,
-                callSiteId = callSite,
-                dynamicScopePath = identity.dynamicScopePath,
-                invocationOrdinal = scope.nextOrdinal(callSite),
-                stepKey = CoreShellStep.KEY,
-                encodedInput = definition.contract.inputCodec.encode(input),
-            ),
-        )
-        return when (result) {
-            is ScriptedRegistryResult.Success -> try {
-                val output = definition.contract.outputCodec.decode(result.encodedOutput)
-                val stdoutValue = (output.result as? dev.rubentxu.pipeline.v2.domain.ShellInvocationResult.Stdout)?.value
-                    ?: throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
-                        dev.rubentxu.pipeline.v2.domain.PipelineFailure(
-                            dev.rubentxu.pipeline.v2.domain.FailureKind.REPLAY_COMPATIBILITY,
-                            "core.sh succeeded but the persisted output is not a Stdout variant " +
-                                "(got ${output.result::class.simpleName}); the sh(returnStdout=true) facade requires ShellReturnMode.STDOUT",
-                        ),
-                    )
-                stdoutValue
-            } catch (e: IllegalArgumentException) {
-                throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
-                    dev.rubentxu.pipeline.v2.domain.PipelineFailure(
-                        dev.rubentxu.pipeline.v2.domain.FailureKind.REPLAY_COMPATIBILITY,
-                        "persisted shReturnStdout output is not decodable by core.sh's declared codec: ${e.message}",
-                    ),
-                )
-            }
-            is ScriptedRegistryResult.Failed -> throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
-                result.failure,
+        val stdoutValue = (output.result as? dev.rubentxu.pipeline.v2.domain.ShellInvocationResult.Stdout)?.value
+            ?: throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
+                dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                    dev.rubentxu.pipeline.v2.domain.FailureKind.REPLAY_COMPATIBILITY,
+                    "core.sh succeeded but the persisted output is not a Stdout variant " +
+                        "(got ${output.result::class.simpleName}); the sh(returnStdout=true) facade requires ShellReturnMode.STDOUT",
+                ),
             )
-        }
+        return stdoutValue
     }
 }
 

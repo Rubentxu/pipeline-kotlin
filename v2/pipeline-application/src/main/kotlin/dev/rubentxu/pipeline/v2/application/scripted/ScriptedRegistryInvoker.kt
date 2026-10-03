@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.application.durable.PreparedRegistryExecution
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionPreparation
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
+import dev.rubentxu.pipeline.v2.domain.PipelineStepException
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.MemoizedOperation
@@ -15,6 +16,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
+import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.scripting.ScriptedCallSiteId
@@ -107,6 +109,70 @@ class ScriptedRegistryInvoker(
      * Step's DECLARED codec — the single output contract, never a parallel decoder. */
     fun definitionFor(key: PluginStepId): dev.rubentxu.pipeline.v2.domain.step.StepDefinition<*, *>? =
         registry.definition(key)
+
+    /**
+     * S4-A1 — THE single typed authority for scripted → registry invocation.
+     *
+     * Everything a runtime-returning scripted call needs is here, exactly once:
+     * the durable identity tuple, the Step's DECLARED input codec, the
+     * execute-or-reuse decision with fail-closed capability admission, the
+     * Step's DECLARED output codec, and the typed-failure translation. A caller
+     * supplies only the call site, the Step it wants, and its typed input; it
+     * receives the typed output or a typed step exception.
+     *
+     * The StepKey is read from [StepDefinition.contract] rather than passed
+     * separately, because a caller that could name a key different from the
+     * definition it handed over would have two sources of truth for one Step.
+     * That is a real drift hazard, not a style preference: the key selects the
+     * definition at admission time, and the definition supplies the codecs that
+     * encode and decode the payload.
+     *
+     * This method stays STEP-AGNOSTIC. It must never name or special-case any
+     * concrete Step; architecture fitness enforces that by scanning this source
+     * with comments stripped.
+     *
+     * It is `internal` on purpose. An external library contributes a
+     * [StepDefinition] and the core invokes it; the library never invokes this
+     * seam itself, so publishing it would widen the surface for no consumer.
+     *
+     * Decoding happens HERE rather than in each caller so that "a persisted
+     * payload the Step's own codec cannot read" is one typed
+     * [FailureKind.REPLAY_COMPATIBILITY] failure instead of six hand-written
+     * copies that could drift.
+     */
+    internal suspend fun <I : Any, O : Any> invokeTyped(
+        identity: ScriptedScopeIdentity,
+        callSiteId: ScriptedCallSiteId,
+        invocationOrdinal: Int,
+        definition: StepDefinition<I, O>,
+        input: I,
+    ): O {
+        val result = invoke(
+            ScriptedRegistryCall(
+                runId = identity.runId,
+                entryPointId = identity.entryPointId,
+                callSiteId = callSiteId,
+                dynamicScopePath = identity.dynamicScopePath,
+                invocationOrdinal = invocationOrdinal,
+                stepKey = definition.contract.key,
+                encodedInput = definition.contract.inputCodec.encode(input),
+            ),
+        )
+        return when (result) {
+            is ScriptedRegistryResult.Success -> try {
+                definition.contract.outputCodec.decode(result.encodedOutput)
+            } catch (e: IllegalArgumentException) {
+                throw PipelineStepException(
+                    PipelineFailure(
+                        FailureKind.REPLAY_COMPATIBILITY,
+                        "persisted runtime output is not decodable by " +
+                            "${definition.contract.key.value}'s declared codec: ${e.message}",
+                    ),
+                )
+            }
+            is ScriptedRegistryResult.Failed -> throw PipelineStepException(result.failure)
+        }
+    }
 
     suspend fun invoke(call: ScriptedRegistryCall): ScriptedRegistryResult {
         val stepId = scriptedStepId(call.stepKey)

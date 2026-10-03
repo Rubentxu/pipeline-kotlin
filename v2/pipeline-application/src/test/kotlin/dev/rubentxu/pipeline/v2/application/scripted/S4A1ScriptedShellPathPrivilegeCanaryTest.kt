@@ -1,82 +1,47 @@
 package dev.rubentxu.pipeline.v2.application.scripted
 
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.stream.Collectors
 
 /**
- * S4-A1 canary — the scripted SHELL path is privileged, and this pins that.
+ * S4-A1 — the scripted shell must reach the durable engine through the REGISTRY.
  *
- * ## What the law says
+ * ## The law
  *
  * STEP CONSTITUTION §5: "Core Steps are a standard bundled plugin set; core and
  * external plugins run the exact same path (`Invoke → Registry → erased adapter
  * → StepHandler → declared capabilities → durable engine → typed result/events`).
  * **No privileged core path.**"
  *
- * ## What the code does
+ * ## What this file replaced
  *
- * Two façades in `CompiledScriptedEntryPoint` reach the durable engine, by two
- * different mechanisms:
+ * `7107f749` added a canary that asserted the OPPOSITE, on purpose: that
+ * `ScriptedFrontendRunner` wired a privileged runtime calling
+ * `ShExecution.invokeShell` directly, skipping the registry preparation step
+ * where `core.sh`'s declared `SHELL_OPERATIONS_CAPABILITY` is admitted.
  *
- * ```
- * pwd / pwd(tmp) / isUnix / readFile / fileExists
- *     -> ScriptedRegistryInvoker.invoke
- *     -> RegistryExecutionPreparation.prepare   (admission, fail-closed)
- *     -> RegistryExecutionBoundary.coexecute    (declared input/output codecs)
- *     -> the Step's own definition, resolved from the registry
+ * `c62d6ff5` then measured reachability and corrected the severity: the
+ * privileged path was BUILT but UNREACHABLE, because the lowering never
+ * rewrites `ScriptedCallKind.Shell` and the host rejects the script at compile
+ * time. So the bypass was latent, not live — and one small fix away from
+ * going live, because fixing the lowering would bind the surviving bare `sh`
+ * straight into whatever `ScriptedOperationRuntime` is wired here.
  *
- * sh(...)  and  sh(..., returnStatus = true)
- *     -> JournaledScriptedOperationRuntime.invoke
- *     -> ShExecution.invokeShell(...)           called DIRECTLY
- *     -> never touches StepRegistry
- * ```
- *
- * `ScriptedFrontendRunner` builds the second one by handing the journal runtime a
- * lambda that calls `ShExecution.invokeShell` — the registry preparation step is
- * simply not on the path.
- *
- * ## Why that is a boundary defect and not a style preference
- *
- * `core.sh` declares:
- *
- * ```
- * requiredCapabilities = setOf(SHELL_OPERATIONS_CAPABILITY)
- * effects              = listOf(Effect.EXECUTES_SUBPROCESS)
- * ```
- *
- * and `SHELL_OPERATIONS_CAPABILITY` is checked in `RegistryExecutionPreparation`,
- * which the scripted shell path skips. `ShExecution.invokeShell` contains **zero**
- * references to capabilities or descriptors. So a scripted `sh(...)` launches a
- * subprocess without ever establishing that the run holds the capability the
- * step declares, while a declarative `sh(...)` in the same product does check.
- *
- * It is production-reachable: `Main.kt` dispatches to the scripted frontend when a
- * scripted entry point is present.
- *
- * ## Why the inversion is the finding
- *
- * The one façade that DOES use the correct spine is `shReturnStdout` — it routes
- * through `ScriptedRegistryInvoker` with `CoreShellStep.KEY`, the declared input
- * codec, the declared output codec and typed `REPLAY_COMPATIBILITY` failures. And
- * S4-A0 proved it is **unreachable**: the mapper's eager `sh` arm is first in its
- * `when` and matches on the callee name alone, so no spelling of `sh` is ever
- * classified `ShellReturnStdout`.
- *
- * So the correct path exists and cannot be taken, while the reachable paths
- * include a privileged one. That is the strongest possible argument that S4-A1
- * is not a refactor for tidiness: unifying the spine is what removes the bypass.
- *
- * These tests assert the CURRENT wiring on purpose, so the defect cannot change
- * silently. They go red the day the shell path is unified, at which point they
- * are rewritten to assert the registry spine.
+ * This is the flip side of that canary. It now pins the fixed law, and it pins
+ * it STRUCTURALLY — by scanning every production source for the call — rather
+ * than by reading one file.
  */
 class S4A1ScriptedShellPathPrivilegeCanaryTest {
 
     private fun source(relative: String): String {
-        val candidates = listOf(relative)
-        val direct = candidates.map(::File).firstOrNull { it.exists() }
-        if (direct != null) return direct.readText()
+        val direct = File(relative)
+        if (direct.exists()) return direct.readText()
         return generateSequence(File(".").absoluteFile) { it.parentFile }
             .map { File(it, relative) }
             .firstOrNull { it.exists() }
@@ -84,83 +49,120 @@ class S4A1ScriptedShellPathPrivilegeCanaryTest {
             ?: error("source not found: $relative")
     }
 
-    private val frontendRunner: String by lazy {
-        source("src/main/kotlin/dev/rubentxu/pipeline/v2/application/scripted/ScriptedFrontendRunner.kt")
-    }
-
-    private val shExecution: String by lazy {
-        source("src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/ShExecution.kt")
-    }
-
-    private val coreShellStep: String by lazy {
-        source("src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreShellStep.kt")
-    }
-
     private fun codeOnly(text: String): String = text
         .split('\n')
         .filterNot { it.trimStart().startsWith("//") || it.trimStart().startsWith("*") || it.trimStart().startsWith("/*") }
         .joinToString("\n")
 
+    private val applicationMain: Path = generateSequence(File(".").absoluteFile) { it.parentFile }
+        .map { it.toPath().resolve("src/main/kotlin/dev/rubentxu/pipeline/v2/application") }
+        .firstOrNull { Files.isDirectory(it) }
+        ?: error("application main source root not found")
+
+    private val applicationSources: List<Pair<String, String>> =
+        Files.walk(applicationMain).use { stream ->
+            stream.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }
+                .map { it.fileName.toString() to codeOnly(Files.readString(it)) }
+                .collect(Collectors.toList())
+        }
+
     @Test
-    fun `CHARACTERIZED DEFECT - the scripted shell runtime calls ShExecution directly, bypassing the registry`() {
-        val code = codeOnly(frontendRunner)
+    fun `the scripted frontend must not reference the shell substrate at all`() {
+        val runner = codeOnly(
+            source("src/main/kotlin/dev/rubentxu/pipeline/v2/application/scripted/ScriptedFrontendRunner.kt"),
+        )
+        assertFalse(
+            "ShExecution" in runner,
+            "ScriptedFrontendRunner must not name the shell substrate. A direct call here " +
+                "bypasses RegistryExecutionPreparation, which is where a Step's declared " +
+                "capabilities are admitted — that was the S4-A1 defect.",
+        )
         assertTrue(
-            code.contains("ShExecution.invokeShell"),
-            "MEASURED DEFECT: ScriptedFrontendRunner hands JournaledScriptedOperationRuntime a " +
-                "lambda that calls ShExecution.invokeShell directly. The registry preparation " +
-                "step — where a Step's declared capabilities are admitted — is not on this " +
-                "path, so the scripted sh runs on a different durable spine from the scripted " +
-                "pwd/isUnix/readFile/fileExists, which all go through ScriptedRegistryInvoker. " +
-                "Fails the day the shell path is unified onto the registry (S4-A1).",
+            "RegistryScriptedShellRuntime" in runner,
+            "ScriptedFrontendRunner must wire the registry-routed shell runtime, so the only " +
+                "scripted path to a subprocess is one that admits SHELL_OPERATIONS_CAPABILITY",
         )
     }
 
     @Test
-    fun `CHARACTERIZED DEFECT - the capability the scripted shell path skips declaring and admitting`() {
-        // The control for the test above: without this, "no capability check" could be
-        // read as "nothing was being checked anyway".
-        assertTrue(
-            coreShellStep.contains("requiredCapabilities = setOf(SHELL_OPERATIONS_CAPABILITY)"),
-            "control: core.sh DOES declare a required capability, so the admission the " +
-                "scripted shell path skips is a real check and not a formality",
-        )
-        val shCode = codeOnly(shExecution)
-        assertTrue(
-            !shCode.contains("Capability") && !shCode.contains("capability"),
-            "MEASURED DEFECT: ShExecution.invokeShell contains no capability reference at " +
-                "all, confirming that nothing on the scripted shell path can admit one. " +
-                "Fails the day admission moves onto this path (S4-A1).",
+    fun `the shell substrate is reachable from exactly one production place - the capability adapter`() {
+        // The strong form of the law. Counting call sites across ALL production
+        // sources catches a new privileged caller anywhere, not just a regression
+        // in the one file the previous canary read.
+        val callers = applicationSources
+            .filter { (_, code) -> "ShExecution.invokeShell(" in code }
+            .map { (name, _) -> name }
+            .distinct()
+            .sorted()
+
+        assertEquals(
+            listOf("ShOperationsAdapter.kt"),
+            callers,
+            "ShExecution.invokeShell must be called from exactly one production place: the " +
+                "adapter bound to SHELL_OPERATIONS_CAPABILITY, which is what certified `core.sh` " +
+                "reaches. Any other caller is a privileged path that skips capability admission.",
         )
     }
 
     @Test
-    fun `CHARACTERIZED - the journal namespace for scripted shell is a hardcoded string, not a registry key`() {
-        val code = codeOnly(source("src/main/kotlin/dev/rubentxu/pipeline/v2/application/scripted/JournaledScriptedOperationRuntime.kt"))
-        assertTrue(
-            code.contains("SCRIPTED_SHELL_STEP_ID = \"scripted.core.sh\""),
-            "MEASURED: the scripted shell journals under a hardcoded namespace string rather " +
-                "than resolving a StepDefinition from the registry, which is the structural " +
-                "reason the two scripted spines cannot be the same code path.",
+    fun `the scripted shell runtime routes through the registry and owns no second codec`() {
+        val runtime = codeOnly(
+            source("src/main/kotlin/dev/rubentxu/pipeline/v2/application/scripted/RegistryScriptedShellRuntime.kt"),
         )
+        assertTrue(
+            "invokeTyped(" in runtime && "CoreShellStep.definition" in runtime,
+            "the scripted shell must invoke core.sh through ScriptedRegistryInvoker.invokeTyped",
+        )
+        // A second journal writer or a hand-rolled wire codec is the same defect in
+        // a different costume, so the retired runtime's distinctive machinery must
+        // not reappear here.
+        //
+        // Checked at TYPE level, not call-syntax level. An earlier version of this
+        // list matched `Fingerprint.compute` and a mutation that merely referenced
+        // the `Fingerprint` type did not trip it — a test that can be satisfied by
+        // naming a type without calling it is weaker than it looks.
+        listOf(
+            "Fingerprint",
+            "MemoizedOperation",
+            "OperationJournal",
+            "OperationStatus",
+            "toWire",
+            "toShellResult",
+            "scripted.core.sh",
+        ).forEach { machinery ->
+            assertFalse(
+                machinery in runtime,
+                "the scripted shell runtime must not re-implement durable machinery " +
+                    "(`$machinery`): the registry invoker owns journaling, identity and codecs",
+            )
+        }
     }
 
     @Test
-    fun `CHARACTERIZED - the correct spine exists but is unreachable`() {
-        // The inversion, pinned from the other side so the two facts cannot drift
-        // apart: a facade that routes through the registry, and a mapper that
-        // classifies every sh as eager so that facade is never called.
-        val entryPoint = codeOnly(
-            source("src/main/kotlin/dev/rubentxu/pipeline/v2/application/scripted/CompiledScriptedEntryPoint.kt"),
+    fun `invokeTyped derives the StepKey from the contract and decodes with the declared codec`() {
+        val invoker = codeOnly(
+            source("src/main/kotlin/dev/rubentxu/pipeline/v2/application/scripted/ScriptedRegistryInvoker.kt"),
         )
         assertTrue(
-            entryPoint.contains("invoker.invoke(") && entryPoint.contains("CoreShellStep.KEY"),
-            "MEASURED: shReturnStdout DOES route through ScriptedRegistryInvoker with " +
-                "CoreShellStep.KEY and the declared codecs — the correct spine exists.",
+            "stepKey = definition.contract.key" in invoker,
+            "the durable identity must take its StepKey from the StepContract handed in, so a " +
+                "caller cannot pass a key that disagrees with the definition whose codecs " +
+                "encode and decode the payload",
         )
         assertTrue(
-            !entryPoint.contains("SHELL_OPERATIONS_CAPABILITY"),
-            "control: the correct spine is not itself doing capability checks inline; it " +
-                "delegates admission to RegistryExecutionPreparation via the invoker",
+            "definition.contract.outputCodec.decode" in invoker,
+            "one output contract in both directions: the codec that encoded the payload must " +
+                "decode it, so REUSE can read a persisted value with an empty registry",
         )
+        // The invoker must stay step-agnostic, or the seam is not actually open.
+        listOf("CoreShellStep", "CorePwdStep", "CoreIsUnixStep", "CoreReadFileStep", "CoreFileExistsStep")
+            .forEach { step ->
+                assertFalse(
+                    step in invoker,
+                    "the invoker must never name a concrete Step (`$step`); it is the generic " +
+                        "seam, and naming a Step here would make core the only thing that can " +
+                        "use it",
+                )
+            }
     }
 }

@@ -212,8 +212,9 @@ class WULpr402RuntimeHonestDslFitnessTest {
 
         assertTrue(pwdBody.isNotBlank(), "could not locate RuntimeScriptedStepFacade.pwd body")
         assertTrue(
-            "invoker.invoke(" in pwdBody,
-            "RuntimeScriptedStepFacade.pwd must call invoker.invoke(...)",
+            "call(" in pwdBody,
+            "RuntimeScriptedStepFacade.pwd must route through the shared typed seam `call(...)`, " +
+                "which is S4-A1's single invokeTyped authority",
         )
         assertTrue(
             "System.getProperty" !in pwdBody,
@@ -228,30 +229,22 @@ class WULpr402RuntimeHonestDslFitnessTest {
             "RuntimeScriptedStepFacade.pwd must NOT construct paths",
         )
 
-        // The two registry StepKeys must both be reachable (the façade
-        // picks one based on the `tmp` flag).
+        // Both registry Step definitions must be reachable (the façade picks one
+        // based on the `tmp` flag).
+        //
+        // S4-A1: this used to require the literal `CorePwdStep.KEY`. It now requires
+        // the `definition`, which is a STRONGER law rather than a weaker one: the
+        // StepKey is read from `definition.contract.key` by the invoker, so naming
+        // the key separately would have been a second source of truth that could
+        // drift from the definition supplying the codecs. The old assertion pinned an
+        // implementation detail and would have blocked the fix it was written to enable.
         assertTrue(
-            "CorePwdStep.KEY" in pwdBody,
-            "RuntimeScriptedStepFacade.pwd must reference CorePwdStep.KEY",
+            "CorePwdStep.definition" in pwdBody,
+            "RuntimeScriptedStepFacade.pwd must reference the core.pwd StepDefinition",
         )
         assertTrue(
-            "CorePwdTmpStep.KEY" in pwdBody,
-            "RuntimeScriptedStepFacade.pwd must reference CorePwdTmpStep.KEY",
-        )
-
-        // The output projection is delegated to the typed helper; the
-        // override calls the helper. Verifying both the override's helper
-        // call AND the helper's codec projection catches a regression in
-        // either layer.
-        assertTrue(
-            "decodeRuntimePwdPath(" in pwdBody,
-            "RuntimeScriptedStepFacade.pwd must delegate projection to decodeRuntimePwdPath",
-        )
-        val decodePwdHelper = extractFunctionBody(stripped, "private fun decodeRuntimePwdPath(")
-        assertTrue(
-            "CorePwdStep.definition.contract.outputCodec" in decodePwdHelper ||
-                "CorePwdTmpStep.definition.contract.outputCodec" in decodePwdHelper,
-            "decodeRuntimePwdPath must project through one of the two declared outputCodecs",
+            "CorePwdTmpStep.definition" in pwdBody,
+            "RuntimeScriptedStepFacade.pwd must reference the core.pwd.tmp StepDefinition",
         )
     }
 
@@ -272,24 +265,40 @@ class WULpr402RuntimeHonestDslFitnessTest {
      * are the projection authority, not the override fun body.
      */
     @Test
-    fun `codec contract — decode(encode(x)) == x for IsUnixOutput and PwdOutput`() {
+    fun `codec contract — the typed seam encodes and decodes through the declared contract only`() {
         val raw = read(runtimeFacadeSource)
         val stripped = stripKotlinCommentsAndDocstrings(raw)
 
-        // isUnix projection must reach the declared outputCodec.
-        val decodeBooleanHelper = extractFunctionBody(stripped, "private fun decodeRuntimeBoolean(")
-        assertTrue(
-            "CoreIsUnixStep.definition.contract.outputCodec.decode" in decodeBooleanHelper,
-            "isUnix projection must decode through CoreIsUnixStep's declared outputCodec (no parallel decoder)",
-        )
+        // S4-A1: the per-facade `decodeRuntimeBoolean` / `decodeRuntimePwdPath`
+        // helpers are gone. They existed so each façade could hand-decode its own
+        // payload; `ScriptedRegistryInvoker.invokeTyped` now decodes every payload
+        // through `definition.contract.outputCodec` in one place. The law this test
+        // protects — "no parallel decoder, only the Step's DECLARED output codec" —
+        // is therefore now asserted at the invoker, which is where the decode
+        // actually happens, and the facades must carry no decoder of their own.
+        listOf("private fun decodeRuntimeBoolean(", "private fun decodeRuntimePwdPath(").forEach { helper ->
+            assertTrue(
+                helper !in stripped,
+                "the facades must not hand-decode payloads any more ($helper): S4-A1 moved " +
+                    "decoding into the single typed seam, and a local decoder is exactly the " +
+                    "parallel contract this fitness exists to prevent",
+            )
+        }
 
-        // pwd projection must reach one of the two declared outputCodecs.
-        val decodePwdHelper = extractFunctionBody(stripped, "private fun decodeRuntimePwdPath(")
-        assertTrue(
-            "CorePwdStep.definition.contract.outputCodec" in decodePwdHelper ||
-                "CorePwdTmpStep.definition.contract.outputCodec" in decodePwdHelper,
-            "pwd projection must decode through CorePwdStep / CorePwdTmpStep's declared outputCodec",
-        )
+        // ...and no facade may reach into a codec directly either.
+        val facadeCodecReads = listOf(
+            "override suspend fun isUnix(",
+            "override suspend fun pwd(",
+            "override suspend fun fileExists(",
+            "override suspend fun readFile(",
+            "override suspend fun shReturnStdout(",
+        ).map { extractFunctionBody(stripped, it) }.filter { it.isNotBlank() }
+        facadeCodecReads.forEach { body ->
+            assertTrue(
+                "outputCodec" !in body,
+                "a facade must not decode through a codec directly; the typed seam owns decoding",
+            )
+        }
     }
 
     /**

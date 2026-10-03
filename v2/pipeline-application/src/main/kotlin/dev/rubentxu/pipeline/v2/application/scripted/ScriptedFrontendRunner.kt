@@ -80,22 +80,11 @@ object ScriptedFrontendRunner {
                 )
             },
         )
-        val shell = JournaledScriptedOperationRuntime(
-            journal = journal,
-            clock = clock,
-            effectRuntime = ScriptedOperationRuntime { operation ->
-                dev.rubentxu.pipeline.v2.application.durable.ShExecution.invokeShell(
-                    command = operation.command,
-                    opId = OpId(runId, 0, operation.invocationOrdinal),
-                    runId = operation.runId,
-                    stageIndex = 0,
-                    stepIndex = operation.invocationOrdinal,
-                    shOptions = shOptions,
-                    controlDirRoot = controlDirRoot,
-                    eventSink = eventSink,
-                )
-            },
-        )
+        // S4-A1 — the scripted shell reaches the durable engine through the SAME
+        // registry spine as every other scripted step. There is deliberately no
+        // second implementation of ScriptedOperationRuntime wired here: the only
+        // path to a subprocess is one that admits SHELL_OPERATIONS_CAPABILITY.
+        val shell = RegistryScriptedShellRuntime(invoker)
 
         val aggregate: StepOutcome = kotlinx.coroutines.runBlocking {
             runBody(entryPoint, runId, invoker, shell)
@@ -107,7 +96,7 @@ object ScriptedFrontendRunner {
         entryPoint: dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint,
         runId: String,
         invoker: ScriptedRegistryInvoker,
-        shell: JournaledScriptedOperationRuntime,
+        shell: ScriptedOperationRuntime,
     ): StepOutcome = try {
         ScriptedRuntime(
             operationRuntime = shell,

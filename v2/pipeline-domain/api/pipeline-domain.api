@@ -1849,6 +1849,41 @@ public final class dev/rubentxu/pipeline/v2/domain/StageNode$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public abstract interface class dev/rubentxu/pipeline/v2/domain/StageOption {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/StageOption$Companion;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/StageOption$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/StageOption$Timeout : dev/rubentxu/pipeline/v2/domain/StageOption {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/StageOption$Timeout$Companion;
+	public fun <init> (J)V
+	public final fun component1 ()J
+	public final fun copy (J)Ldev/rubentxu/pipeline/v2/domain/StageOption$Timeout;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/StageOption$Timeout;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/StageOption$Timeout;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMilliseconds ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class dev/rubentxu/pipeline/v2/domain/StageOption$Timeout$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/StageOption$Timeout$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/domain/StageOption$Timeout;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/domain/StageOption$Timeout;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/StageOption$Timeout$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/domain/StepBody {
 	public abstract fun getDeclared ()Ldev/rubentxu/pipeline/v2/domain/StepBody$Declared;
 }
@@ -2458,6 +2493,20 @@ public final class dev/rubentxu/pipeline/v2/domain/directive/AdmittedDirective {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/directive/AgentLabel {
+	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/directive/AgentLabel;
+	public static fun constructor-impl (Ljava/lang/String;)Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/domain/directive/DirectiveAdmission {
 }
 
@@ -2554,6 +2603,17 @@ public final class dev/rubentxu/pipeline/v2/domain/directive/DirectiveExecutionP
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/directive/DirectiveExecutionPolicy$Resource : dev/rubentxu/pipeline/v2/domain/directive/DirectiveExecutionPolicy {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/directive/DirectivePhase;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/directive/DirectivePhase;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/directive/DirectivePhase;)Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveExecutionPolicy$Resource;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveExecutionPolicy$Resource;Ldev/rubentxu/pipeline/v2/domain/directive/DirectivePhase;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveExecutionPolicy$Resource;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPhase ()Ldev/rubentxu/pipeline/v2/domain/directive/DirectivePhase;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/directive/DirectiveInvocation {
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1-LahLOg8 ()Ljava/lang/String;
@@ -2615,6 +2675,59 @@ public final class dev/rubentxu/pipeline/v2/domain/directive/ErasedDirectiveDefi
 	public fun getKey-LahLOg8 ()Ljava/lang/String;
 	public fun getPhase ()Ldev/rubentxu/pipeline/v2/domain/directive/DirectivePhase;
 	public fun getPolicy ()Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveExecutionPolicy;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement$CapabilitySet : dev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement {
+	public fun <init> (Ljava/util/Set;)V
+	public final fun component1 ()Ljava/util/Set;
+	public final fun copy (Ljava/util/Set;)Ldev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement$CapabilitySet;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement$CapabilitySet;Ljava/util/Set;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement$CapabilitySet;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRequired ()Ljava/util/Set;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement$LocalAny : dev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement$LocalAny;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement$LocalLabels : dev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement {
+	public fun <init> (Ljava/util/Set;)V
+	public final fun component1 ()Ljava/util/Set;
+	public final fun copy (Ljava/util/Set;)Ldev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement$LocalLabels;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement$LocalLabels;Ljava/util/Set;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement$LocalLabels;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLabels ()Ljava/util/Set;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement$Remote : dev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement {
+	public synthetic fun <init> (Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-WWJm5kg ()Ljava/lang/String;
+	public final fun copy-vSkJIwk (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement$Remote;
+	public static synthetic fun copy-vSkJIwk$default (Ldev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement$Remote;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement$Remote;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSelector-WWJm5kg ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirementCodec {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirementCodec;
+	public final fun decode (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveDecodeResult;
+	public final fun encode (Ldev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement;)Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetResolver {
+	public abstract fun acquire (Ldev/rubentxu/pipeline/v2/domain/directive/ExecutionTargetRequirement;)Ldev/rubentxu/pipeline/v2/domain/directive/TargetLeaseResult;
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/domain/directive/GateCompositionDecision {
@@ -2771,6 +2884,20 @@ public final class dev/rubentxu/pipeline/v2/domain/directive/GateVerdict$Unverif
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/directive/RemoteSelector {
+	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/directive/RemoteSelector;
+	public static fun constructor-impl (Ljava/lang/String;)Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/domain/directive/StageDirectiveDecision {
 }
 
@@ -2801,6 +2928,31 @@ public final class dev/rubentxu/pipeline/v2/domain/directive/StageDirectiveDecis
 public final class dev/rubentxu/pipeline/v2/domain/directive/StageDirectivePlanner {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/directive/StageDirectivePlanner;
 	public final fun decide (Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveRegistry;Ldev/rubentxu/pipeline/v2/domain/StageNode;)Ldev/rubentxu/pipeline/v2/domain/directive/StageDirectiveDecision;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/directive/TargetLeaseResult {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/directive/TargetLeaseResult$Granted : dev/rubentxu/pipeline/v2/domain/directive/TargetLeaseResult {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/directive/TargetLeaseResult$Granted;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/directive/TargetLeaseResult$Granted;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/directive/TargetLeaseResult$Granted;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getTargetId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/directive/TargetLeaseResult$Refused : dev/rubentxu/pipeline/v2/domain/directive/TargetLeaseResult {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/directive/TargetLeaseResult$Refused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/directive/TargetLeaseResult$Refused;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/directive/TargetLeaseResult$Refused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/domain/directive/WhenPredicate {
@@ -2893,6 +3045,7 @@ public final class dev/rubentxu/pipeline/v2/domain/directive/WhenPredicateEvalua
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/directivekey/CoreDirectiveKeysKt {
+	public static final fun getAGENT_DIRECTIVE_KEY ()Ljava/lang/String;
 	public static final fun getWHEN_DIRECTIVE_KEY ()Ljava/lang/String;
 }
 

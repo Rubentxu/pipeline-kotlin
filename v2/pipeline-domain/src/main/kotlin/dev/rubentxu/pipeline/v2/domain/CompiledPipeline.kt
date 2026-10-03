@@ -41,6 +41,38 @@ data class EnvironmentSpec(val values: Map<String, String>) {
 }
 
 /**
+ * S3.3 — DEPRECATED. Superseded by [StageOption]; nothing constructs this.
+ *
+ * Retained rather than deleted, for one reason: it is PUBLISHED API. It was a
+ * public class in `dev.rubentxu.pipeline.v2.domain`, so removing it outright
+ * breaks every external plugin author who named it, and
+ * `:pipeline-domain:apiCheck` (binary-compatibility validator) is right to
+ * refuse. This is the same rule already applied to the deprecated
+ * `AgentResolved` event in S3.1: supersede, do not silently break.
+ *
+ * Why it was wrong, stated so the deprecation is informative rather than a
+ * bare marker: a `name: String` / `value: String?` pair cannot express WHICH
+ * options exist, so an option that no interpreter reads is indistinguishable
+ * from one that is. It compiled, serialized, and did nothing — the silent drop
+ * the Semantic Constitution names as a defect class.
+ *
+ * @see StageOption for the carrier that replaced it. No production source
+ *   constructs this type; `FArchS3TypedOptionCarrierFitnessTest` pins that, so
+ *   it cannot quietly return as a producer.
+ */
+@Deprecated(
+    message = "OptionSpec is a name/value bag with no type-level statement of which options " +
+        "exist, so an option nothing reads is indistinguishable from one that is. Use " +
+        "StageOption, whose cases are sealed and therefore force an interpreter to exist.",
+    replaceWith = ReplaceWith("StageOption.Timeout(milliseconds)", "dev.rubentxu.pipeline.v2.domain.StageOption"),
+    level = DeprecationLevel.WARNING,
+)
+@Serializable
+data class OptionSpec(val name: String, val value: String? = null) {
+    init { require(name.isNotBlank()) { "OptionSpec.name must not be blank" } }
+}
+
+/**
  * S3.3 — a stage option, as a CLOSED set of cases rather than a name/value bag.
  *
  * This replaces `OptionSpec(name: String, value: String?)`, which forced a

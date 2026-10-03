@@ -86,22 +86,59 @@ class FArchS3TypedOptionCarrierFitnessTest {
     // ------------------------------------------------------------------
 
     @Test
-    fun `the stringly-typed OptionSpec no longer exists in production source`() {
-        val offenders = productionSources
-            .filter { (_, source) ->
-                // Declaration or construction, not a historical mention in prose
-                // (prose is stripped above) and not the new typed name.
-                Regex("""\b(class|data class|object)\s+OptionSpec\b""").containsMatchIn(source) ||
-                    Regex("""\bOptionSpec\s*\(""").containsMatchIn(source)
+    fun `no production source constructs the deprecated OptionSpec`() {
+        // Re-scoped after `:pipeline-domain:apiCheck` correctly refused the hard
+        // removal of `OptionSpec` from the PUBLISHED `dev.rubentxu.pipeline.v2.domain`
+        // package. The type stays, deprecated, so external plugin authors who
+        // named it are not broken — the same treatment `AgentResolved` got in S3.1.
+        //
+        // The law is therefore NOT "the declaration is gone". The law is "nothing
+        // produces it": a name/value carrier that no producer can reach cannot
+        // reintroduce the silent drop, and that is the property worth pinning.
+        val constructed = productionSources
+            .mapNotNull { (path, source) ->
+                // A CONSTRUCTION is a call, not the class's own primary-constructor
+                // declaration. `data class OptionSpec(` is the retained declaration
+                // this test is built around; `OptionSpec("timeout", "30")` is a
+                // producer, and that is what must not exist.
+                val hits = Regex("""\bOptionSpec\s*\(""").findAll(source).filter { match ->
+                    val before = source.substring(maxOf(0, match.range.first - 24), match.range.first)
+                    !before.contains("class ")
+                }.toList()
+                if (hits.isEmpty()) null else path to hits.size
             }
-            .map { (path, _) -> path.toString() }
+            .map { (path, count) -> "$path ($count call site(s))" }
 
         assertEquals(
             emptyList<String>(),
-            offenders,
-            "OptionSpec(name, value) is a name/value bag with no type-level statement of which " +
-                "options exist, so an option nobody reads is indistinguishable from one that is. " +
-                "Use the StageOption ADT and add a case only alongside its interpreter. Found: $offenders",
+            constructed,
+            "OptionSpec is deprecated and superseded by StageOption, but production source still " +
+                "CONSTRUCTS it, so the stringly-typed carrier is live again. Construct " +
+                "StageOption.Timeout instead. Found: $constructed",
+        )
+    }
+
+    @Test
+    fun `the retained OptionSpec is marked deprecated and points at StageOption`() {
+        // A deprecation that does not say what replaces it is a trap for the next
+        // reader, and a silent removal would have been worse than either.
+        val source = stageOptionSource()
+        val declAt = source.indexOf("data class OptionSpec")
+        assertTrue(declAt > 0, "could not locate the retained OptionSpec declaration")
+
+        // Index-based rather than one regex: the annotation's own text contains
+        // nested parentheses (ReplaceWith("StageOption.Timeout(milliseconds)", ...)),
+        // so a paren-matching regex closes early and then asserts on the wrong span.
+        val preceding = source.substring((declAt - 900).coerceAtLeast(0), declAt)
+        assertTrue(
+            "@Deprecated" in preceding,
+            "OptionSpec is retained for binary compatibility and MUST therefore be annotated " +
+                "@Deprecated; an unannotated retained class reads as a supported carrier",
+        )
+        assertTrue(
+            "StageOption" in preceding,
+            "the deprecation message must name the replacement (StageOption), or it is a bare " +
+                "marker that tells an external author nothing. Span: ${preceding.takeLast(300)}",
         )
     }
 

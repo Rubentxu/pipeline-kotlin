@@ -119,7 +119,7 @@ camelCase variant `core.publishHtml` while the production StepKey is
 + "core.publishHTML": "WU_LPR_090_CORE_PUBLISH_HTML_TIER_B2.md",
 ```
 
-Result: `python3 .agent/scripts/regenerate_step_inventory.py` reports
+Result: `python3 scripts/regenerate-step-inventory.py` reports
 `core.publishHTML` as **CERTIFIED_AT_SHA** with receipt
 `WU_LPR_090_CORE_PUBLISH_HTML_TIER_B2.md`, matching the production
 registry.
@@ -153,7 +153,7 @@ mapping). This is an inventory fidelity correction, not a registry change.
 
 | # | Command | Exit | Evidence | Result |
 |---|---|---|---|---|
-| C1 | `python3 .agent/scripts/regenerate_step_inventory.py` | 0 | script output: `wrote .../STEP_INVENTORY_LFC2E0.md (head_sha=ff17bf9d..., drift=0)`. Inventory now lists `core.publishHTML` as `CERTIFIED_AT_SHA`. | PASS |
+| C1 | `python3 scripts/regenerate-step-inventory.py` | 0 | script output: `wrote .../STEP_INVENTORY_LFC2E0.md (head_sha=ff17bf9d..., drift=0)`. Inventory now lists `core.publishHTML` as `CERTIFIED_AT_SHA`. | PASS |
 | C2 | L1 (targeted): `./gradlew -p v2 :pipeline-application:test --tests "dev.rubentxu.pipeline.v2.application.CoreSleepRegistryPrimaryFitnessTest.production registry contains exactly the registered core steps (post-E1 artifact query)"` | 0 | `BUILD SUCCESSFUL`. Test passes (XML: `<testcase name="production registry..." time="0.0..."/>` no failure children). | PASS |
 | C3 | L2 (class): `./gradlew -p v2 :pipeline-application:test --tests "dev.rubentxu.pipeline.v2.application.CoreSleepRegistryPrimaryFitnessTest"` | 0 | XML `TEST-dev.rubentxu.pipeline.v2.application.CoreSleepRegistryPrimaryFitnessTest.xml` shows 16 testcases, 0 failures, 0 errors. | PASS |
 | C4 | XML canary green: fresh XML timestamps confirm Gradle re-ran the test suite after the fix. | yes | `ls -la v2/pipeline-application/build/test-results/test/TEST-dev.rubentxu.pipeline.v2.application.CoreSleepRegistryPrimaryFitnessTest.xml` shows a fresh mtime (`13:56 UTC` ≈ 11:56 local). | PASS |

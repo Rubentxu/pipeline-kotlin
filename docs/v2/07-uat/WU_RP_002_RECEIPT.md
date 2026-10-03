@@ -165,8 +165,12 @@ risks_residual:
         integration branch) was raised in WU-RP-001 receipt; a process change is
         pending and may be implemented in RP-1 / RP-2 boundary work.
   - R5: Inventory regeneration script is the new source of truth for Step counts.
-        Run `python3 .agent/scripts/regenerate_step_inventory.py --check` (exits 0
+        Run `python3 scripts/regenerate-step-inventory.py --check` (exits 0
         if DRIFT_COUNT==0) on any future burn-down to detect silent drift.
+        (Path updated 2026-10-03 by the RP7-SEM S3 governance WU: the script
+        moved out of `.agent/`, which `AGENTS.md` classifies as NOT authority,
+        into `scripts/`. The `--check` contract and DRIFT_COUNT semantics are
+        unchanged — only the path.)
 
 next_action: WU-RP-002.1 — close the 2 newly surfaced flaky SQLite tests (Lpr041
              DurableSequenceRepairTest + EventHistoryContractTest). Both use

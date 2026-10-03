@@ -179,8 +179,8 @@ pristine:      YES (no merge to main attempted)
 | TRAIN-0 governance (T0.A) | 1 | 5 normative docs | **KEEP** — required for new authority model. |
 | Production-readiness receipts (PRDY-006R, PRDY-006R2, PR-001, PR-002, PR-007, PR-003, PR-004, audit-driven RP-5, B-slice closure, refreshes of CURRENT_STATE) | ~24 | `docs/v2/08-production-readiness/*` | **KEEP** — required for candidate identity. |
 | Production code (sdm v0.40.0-rc1 base + B-slices B1..B4) | ~6 | `v2/pipeline-application/*`, `v2/pipeline-scripting-api/*`, `v2/pipeline-step-sdk/scm-git/*` | **KEEP** — required for candidate SHA. |
-| Scripts (admission-check, classify-open-prs, gen-current-state-projection, gen-current-uat-status) | ~5 | `scripts/*.py` and tests | **KEEP** — required for governance tooling. |
-| `.agent/*` historical projection commits | 5 | `.agent/SESSION_POINTER.md`, `.agent/WORK_JOURNAL.md`, `.agent/TECH_DEBT_BACKLOG.md`, `.agent/TESTING-STATE.md`, `.agent/scripts/regenerate_step_inventory.py` | **KEEP** for now; see T0.B residual. |
+| Scripts (admission-check, classify-open-prs, gen-current-state-projection, gen-current-uat-status, regenerate-step-inventory) | ~6 | `scripts/*.py` and tests | **KEEP** — required for governance tooling. `regenerate-step-inventory` joined this group on 2026-10-03: it declares itself the Step-inventory authority, which it cannot do from `.agent/` while `AGENTS.md` classifies that directory as NOT authority. |
+| `.agent/*` historical projection commits | 4 | `.agent/SESSION_POINTER.md`, `.agent/WORK_JOURNAL.md`, `.agent/TECH_DEBT_BACKLOG.md`, `.agent/TESTING-STATE.md` | **KEEP** for now; see T0.B residual. |
 | `chore(release): bump version` (1 commit) | 1 | version files | **KEEP** — version bump required. |
 | `docs(historico): archive 17 superseded roadmap documents` | 1 | `docs/historico/*` | **KEEP** — historical archive. |
 

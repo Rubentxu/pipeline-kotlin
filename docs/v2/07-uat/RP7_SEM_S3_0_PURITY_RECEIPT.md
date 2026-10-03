@@ -221,6 +221,12 @@ The `v2/` tree is byte-identical between the two SHAs:
 (the SHA-256 of zero bytes). The eight files that differ are documentation plus
 `.agent/scripts/regenerate_step_inventory.py`.
 
+> **Path note (2026-10-03).** The generator was later moved to
+> `scripts/regenerate-step-inventory.py` by the RP7-SEM S3 governance WU, which
+> is the only entry in this list that is NOT a pure documentation change. The
+> statement above is left as written because it was true at the SHA it
+> describes.
+
 The delta is one suite and one test, with identical failure, error and skip
 totals. **Attribution: UNRESOLVED.** What was checked and ruled out:
 

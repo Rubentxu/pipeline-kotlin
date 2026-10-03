@@ -111,6 +111,16 @@ la disciplina de certificación que S7 debe industrializar.
   `WU093_HTTP_IMPLEMENTATION_RECEIPT.md`; cada uno merece decisión propia.
 - No mueve `.agent/scripts/regenerate_step_inventory.py` fuera de `.agent/`, ni
   cierra `PR-ADR-002` de PROPOSED a ACCEPTED.
+
+  **SUPERSEDIDO (2026-10-03, RP7-SEM S3 governance WU).** La primera mitad de
+  esta línea ya no aplica: el generador se movió a
+  `scripts/regenerate-step-inventory.py`. El motivo era una contradicción y no
+  una preferencia de estilo — el script se declara a sí mismo autoridad del
+  inventario, mientras `AGENTS.md` clasifica `.agent/` como «proyección humana
+  opcional / histórico; NO autoridad». Una autoridad declarada no puede vivir en
+  un directorio declarado no autoritativo: ese es exactamente el estado que
+  permite que una sesión futura trate una proyección obsoleta como hecho.
+  `PR-ADR-002` sigue sin cerrarse.
 - No ejecuta las mutaciones M-http-4, 6, 7, 8, 11, 12, 13, 15, 16.
 
 ## 5. Primer paso ejecutable

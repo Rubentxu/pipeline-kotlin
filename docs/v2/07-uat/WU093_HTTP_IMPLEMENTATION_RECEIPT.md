@@ -89,17 +89,30 @@ plugin, and the pivot is recorded in
 
 ## Mutations
 
-**Executed and measured:**
+**Measured. KILLED — the guard caught it:**
 
 | Mutation | Result | Reading |
 |---|---|---|
 | M-http-5A — façade writes the wire by hand, skipping `HttpRequestCodec` | RED in FIT-6 | an authorship guard catches what round-trip cannot see |
-| M-http-5B — codec renames `timeoutSeconds`→`timeout` in encoder **and** decoder | **SURVIVED** | round-trip and byte-identity do not protect the wire vocabulary |
-| M-http-5B′ — same, with the golden vector present | RED | only an assertion on literal bytes catches a coordinated rename |
-| M-http-14 — `maxMaterializedBytes`→`totalBytes.toInt()` in `appendBoundedPrefix`, and `minOf(maxMaterializedBytes, …)` dropped from `ensureCapacity` | RED in 3 tests | see below |
+| M-http-5B′ — codec renames `timeoutSeconds`→`timeout` in encoder **and** decoder, golden vector present | RED | only an assertion on literal bytes catches a coordinated rename |
+| M-http-1 — every input rejection collapsed to one catch-all | RED in `HttpRequestStepContractTest` | the rejection set is closed and each case distinguishable |
+| M-http-2 — `Span(from, to)` accepts `from > to` | RED | the invariant lives in the constructor, so no codec can bypass it |
+| M-http-3 — the adapter ignores the declared `timeoutMs` | RED in `JdkHttpOperationsTest` | the bound is a field that is parsed, not a comment |
+| M-http-14 — `maxMaterializedBytes`→`totalBytes.toInt()`, and `minOf(maxMaterializedBytes, …)` dropped from `ensureCapacity` | RED in 3 tests | see below |
+
+**Measured. SURVIVED — and each survivor is why a whole test file exists.** These
+are the most valuable results in the set, because each one found a place where a
+security property *looked* covered while nothing enforced it:
+
+| Mutation | Result | What it exposed |
+|---|---|---|
+| M-http-5B — the same rename without the golden vector | **SURVIVED** | round-trip and byte-identity do not protect the wire vocabulary; a coordinated rename round-trips perfectly and silently breaks every payload already in a journal |
+| M-http-21 — handler's credential call replaced with `credentialDecisionOf(null, …)` | **SURVIVED** | a refused credential quietly became an anonymous request, and every test stayed green. Testing the selector instead of the selection is how a security property looks covered while nothing enforces it. Hence `HttpCredentialApplicationTest` (K9..K13). |
+| M-http-25 — handler's egress call replaced with a constant `Permitted` | **SURVIVED** | the entire egress gate was decorative and every pure-function test stayed green. Hence the split between `EgressAdmissionTest` and `HttpEgressApplicationTest`, whose property is "a refused destination produces NO socket at all". |
+| M-http-29 — an explicit empty-rules guard in `RestrictedEgressGate` | unreachable by behaviour | it produced byte-identical decisions, so it was removed rather than kept as a comment nobody maintains. A guard that cannot change an outcome is not a guard; the property survives as canary E8. |
 
 M-http-14 in full, since it is the memory law and it was found un-reverted in the
-worktree by the session that recovered this context:
+worktree with no result recorded anywhere:
 
 ```text
 mutation:   BoundedBodySubscriber.appendBoundedPrefix
@@ -116,9 +129,9 @@ result:     RED — C4 "expected 1048576 but was 67108864"
 ```
 
 **Planned and NOT executed — recorded as NOT_RUN, not as passed:**
-M-http-1, 2, 3, 4, 6, 7, 8 (`WU093_G1_G4_IMPLEMENTATION_PLAN.md:23-86`) and
-M-http-11, 12, 13, 15, 16 (H4 canary plan). M-http-15 in particular — classifying a
-mid-body failure as `Unreachable` — is the mutation that would matter most for
+M-http-4, 6, 7, 8 (`WU093_G1_G4_IMPLEMENTATION_PLAN.md:44-86`) and M-http-11, 12,
+13, 15, 16 (H4 canary plan). M-http-15 in particular — classifying a mid-body
+failure as `Unreachable` — is the mutation that would matter most for
 `ResponseInterrupted`, and it has not been run. Its absence is a real gap in this
 receipt, not a formality.
 
@@ -206,15 +219,66 @@ that deserves its own decision and its own receipt:
 4. **Typed diagnostic text is not pinned.** H8-15 and H8-16 assert a non-zero exit
    and zero arrivals, not the exact wording of `Absent` / `WrongKind`.
 5. **The journal sweep proves absence of literals, not of an encrypted copy.**
-6. **Twelve planned mutations were not executed** (see above).
+6. **Nine planned mutations were not executed** (see above): 4, 6, 7, 8, 11, 12, 13,
+   15, 16. Of these, 15 is the one that would most change the risk picture, because
+   it is the mutation that would turn a mid-body failure into `Unreachable`.
 7. **The coordinator sits exactly on its ratchet**: ceiling 562,
    `CanonicalDurableRunCoordinator.kt` 562. Any growth trips the guard, which is the
    intent, not a defect to fix here.
 
+## VERIFY — falsification pass
+
+BUILD creates the thing; VERIFY tries to falsify it. No product code was written in
+this phase. Each row is an attempt to break a claim above, not a restatement of it.
+
+| # | Claim under attack | Method | Result |
+|---|---|---|---|
+| V1 | the certified SHA is real and still on the branch | `git cat-file -t`, `git merge-base --is-ancestor` | HOLDS — resolves as a commit and is an ancestor of HEAD |
+| V2 | the artifact digest in this receipt is the artifact that was tested | recomputed `sha256sum` of the shipped jar | HOLDS — byte-identical to the recorded `1950744d…` |
+| V3 | no `core.httpRequest` / `StepSpec.HttpRequest` survives | repo-wide grep over `v2/` | HOLDS — the only hit is the boundary fitness test's own KDoc describing the defect it prevents |
+| V4 | the compiler does not know `http.request` exists | grep for `httpRequest` under `pipeline-scripting-api/src/main` | HOLDS — zero occurrences |
+| V5 | `pipeline-domain` does not name HTTP | grep for HTTP vocabulary under `pipeline-domain/src/main` | HOLDS, with a finding recorded below |
+| V6 | no secret is observable after a credential was sent | H8-09 precondition plus stdout and journal sweeps | HOLDS — proven against a live credential, not a vacuous one |
+| V7 | replay does not resend | H8-12 | HOLDS — resuming a finished run produces zero arrivals |
+| V8 | the coordinator ratchet is intact | ceiling vs measured size | HOLDS — 562 vs 562, exactly on the ceiling |
+| V9 | the mutation ledger in this receipt is complete | re-derived the ledger from the sources rather than from the plan docs | **FAILED, then corrected** — see below |
+
+### V5, resolved rather than dismissed
+
+`pipeline-domain` *does* contain `http` and `https` scheme knowledge:
+`defaultEgressPortFor` maps them to 80 and 443. Read cold, that looks like the
+domain naming HTTP. It is not a leak, and the reason is the boundary the pivot drew:
+scheme, host and port are properties of a **network destination**, not of the HTTP
+protocol a Step happens to speak. A git-over-https fetch, a registry pull and an
+artefact feed all need the same three facts. Putting them in the plugin would tie an
+allowlist to one Step; duplicating them in the plugin and the gate would create two
+opinions about what port 443 means, which is the failure mode the KDoc names
+explicitly. The plugin keeps the protocol — method, headers, status ranges — and
+`pipeline-domain` keeps the permission. Recorded here because the next reader will
+find the same grep hit and should not have to re-derive it.
+
+### V9, the one that failed
+
+This receipt originally listed four measured mutations. Re-deriving the ledger from
+the sources found three more, and two of them are **survivors**: M-http-21 (the
+handler's credential call replaced with a constant, so a refusal became an anonymous
+request, every test green) and M-http-25 (the handler's egress call replaced with a
+constant `Permitted`, the whole gate decorative, every test green). Those two
+survivors are the reason `HttpCredentialApplicationTest` and
+`HttpEgressApplicationTest` exist as separate files, and an inventory that omits
+them understates the train by its two most instructive results. The table is now
+derived from the sources and lists M-http-1, 2, 3, 5A, 5B, 5B′, 14, 21, 25 and 29.
+
+The lesson is recorded because it applies to the next receipt too: a mutation ledger
+assembled from the *plan* is a list of intentions, and this one had silently become
+that. The sources are the authority for what was measured.
+
 ## Delta between the certified SHA and this document
 
-`530ffa98` is the certified code tuple. `297bde9c` (this AGENTS.md amendment) and
+`530ffa98` is the certified code tuple. `297bde9c` (the AGENTS.md amendment) and
 this receipt are documentation-only commits on top. Per
 `CERTIFICATION_PROTOCOL.md` §7 a later commit is `NOT_YET_RECERTIFIED` until its
-impact is shown; the impact here is that no file under `v2/` changed, so the
-gate, the coverage and the artifact identity above still describe the tree.
+impact is shown; the impact here is that no file under `v2/` changed — the
+`git diff 530ffa98..HEAD -- v2/` output is zero bytes, sha256
+`e3b0c442…` — so the gate, the coverage and the artifact identity above still
+describe the tree.

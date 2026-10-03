@@ -35,6 +35,30 @@ object PureBuilderProbe {
          * work", which is exactly the dishonesty this gate exists to prevent.
          */
         val executedStepCount: Int = 0,
+        /**
+         * S3.0: the event kinds the run actually emitted, in order.
+         *
+         * The S0-C1 gate only needed a step count, which answers "did work
+         * happen". It cannot answer "did the builder emit anything", because a
+         * builder that emitted an event without emitting a step would be
+         * invisible to a step count. The Semantic Conservation Law names events
+         * as a separate thing from steps, so the probe reports them separately
+         * and the witness classifies them.
+         */
+        val eventKinds: List<String> = emptyList(),
+        /**
+         * S3.0: the UNTRUNCATED `stdout + stderr` of the run.
+         *
+         * [summary] truncates its diagnostic at 600 characters for
+         * readability, which is fine for a human reading a failure but not for
+         * an assertion: the installed distribution emits a block of JVM
+         * `sun.misc.Unsafe` warnings on stderr before any pipeline diagnostic,
+         * so a truncated window can lose the very sentence the witness needs to
+         * distinguish "refused for a missing capability" from "refused because
+         * the plugin key is not registered". Both are exit!=0 with zero events,
+         * so only the text separates them.
+         */
+        val diagnostics: String = "",
     ) {
         val admitted: Boolean get() = !rejected
     }
@@ -71,15 +95,17 @@ object PureBuilderProbe {
             val n = e::class.simpleName
             n == "StepSucceeded" || n == "StepFinished" && e.toString().contains("\"outcome\":\"success\"")
         }
+        // S3.0: hoisted out of the summary builder so the caller can classify
+        // the event vocabulary, not just read a count of it.
+        val kinds = events.mapNotNull { it::class.simpleName }
+        val diagnostics = stdout + stderr
         val summary = buildString {
             append("exit=").append(exitCode)
             append(" steps=").append(stepCount)
             append(" events=").append(events.size)
-            val kinds = events.mapNotNull { it::class.simpleName }
             if (kinds.isNotEmpty()) append(" kinds=").append(kinds.joinToString(","))
-            val rejection = stdout + stderr
-            if (rejection.isNotBlank()) {
-                append(" diag=").append(rejection.take(600).replace('\n', ' '))
+            if (diagnostics.isNotBlank()) {
+                append(" diag=").append(diagnostics.take(600).replace('\n', ' '))
             }
         }
 
@@ -93,6 +119,6 @@ object PureBuilderProbe {
                 runFinished.outcome != "success")
         }
 
-        return Outcome(exitCode, rejected, stepCount, summary, executedStepCount)
+        return Outcome(exitCode, rejected, stepCount, summary, executedStepCount, kinds, diagnostics)
     }
 }

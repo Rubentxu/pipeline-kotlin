@@ -20,6 +20,9 @@ import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.scripting.ScriptedCallSiteId
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -290,6 +293,27 @@ class ScriptedRegistryInvoker(
         }
     }
 
+    /**
+     * S4-C4 — TOTAL. A durable payload this runtime cannot read is a typed
+     * [ScriptedRegistryResult.Failed], never a thrown [ClassCastException].
+     *
+     * The previous `else -> Success(EncodedStepValue((raw as JsonPrimitive).content))`
+     * was the one malformed-durable-state case in this method that was NOT typed,
+     * while every other one — a null output, a RUNNING row, a FAILED row, a
+     * fingerprint divergence, a capability rejection — already carried a
+     * [FailureKind]. `OperationOutput.result` is a `JsonElement`, so a `JsonObject`
+     * or `JsonArray` written by a different codec version reached that cast and
+     * escaped `invoke` as an exception.
+     *
+     * `REPLAY_COMPATIBILITY` is the exact kind — "A persisted operation cannot be
+     * safely replayed by this runtime" — because a foreign payload IS that.
+     *
+     * The match is exhaustive over the closed `JsonElement` ADT, so a shape added
+     * later cannot fall through to a fabricated value. `JsonNull` is a
+     * `JsonPrimitive` whose `content` is the four-character string `"null"`, so
+     * accepting it as a primitive would hand a caller a fabricated value for a
+     * step that persisted nothing: it is rejected with the same typed failure.
+     */
     private fun restoredOutput(output: dev.rubentxu.pipeline.v2.domain.durable.OperationOutput?): ScriptedRegistryResult =
         when (val raw = output?.result) {
             null -> ScriptedRegistryResult.Failed(
@@ -298,8 +322,24 @@ class ScriptedRegistryInvoker(
                     "SUCCEEDED scripted registry step has no persisted output",
                 ),
             )
-            else -> ScriptedRegistryResult.Success(EncodedStepValue((raw as JsonPrimitive).content))
+            is JsonPrimitive -> if (raw is JsonNull) {
+                unreadablePersistedOutput("a JSON null")
+            } else {
+                ScriptedRegistryResult.Success(EncodedStepValue(raw.content))
+            }
+            is JsonObject -> unreadablePersistedOutput("a JSON object")
+            is JsonArray -> unreadablePersistedOutput("a JSON array")
         }
+
+    private fun unreadablePersistedOutput(shape: String): ScriptedRegistryResult =
+        ScriptedRegistryResult.Failed(
+            PipelineFailure(
+                FailureKind.REPLAY_COMPATIBILITY,
+                "persisted scripted registry output is $shape, which is not a typed Step output; " +
+                    "the durable state was written by a codec version this runtime cannot read, " +
+                    "and reusing it would fabricate a value",
+            ),
+        )
 
     private fun record(
         id: String,

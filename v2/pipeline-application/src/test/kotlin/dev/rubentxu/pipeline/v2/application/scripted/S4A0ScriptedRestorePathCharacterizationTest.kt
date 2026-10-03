@@ -25,13 +25,18 @@ import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.scripting.ScriptedCallSiteId
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.MethodSource
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -179,42 +184,64 @@ class S4A0ScriptedRestorePathCharacterizationTest {
     }
 
     // ------------------------------------------------------------------
-    // CHARACTERIZED DEFECT — a non-primitive durable payload escapes as an exception
+    // S4-C4 — the cast is gone; every unreadable durable payload is typed
     // ------------------------------------------------------------------
 
-    @Test
-    fun `CHARACTERIZED DEFECT - a persisted JSON OBJECT escapes the restore path as an exception`() {
-        val foreign = JsonObject(mapOf("value" to JsonPrimitive("42")))
+    /**
+     * The three shapes the old `raw as JsonPrimitive` cast could not survive, plus
+     * the one it could survive *wrongly*.
+     *
+     * `JsonNull` is the case the S4-A0 characterization never exercised and the
+     * original code would have accepted: it IS a `JsonPrimitive`, so the cast
+     * succeeds, and `content` is the literal string `"null"`. A step that persisted
+     * nothing would therefore have restored as a caller-visible four-character
+     * value — a fabricated one, which is the thing
+     * [ScriptedRegistryResult] exists to prevent.
+     *
+     * Parameterised over the closed `JsonElement` shape set so a shape added to the
+     * hierarchy later has no path to a fabricated value: the production `when` is
+     * exhaustive over the same ADT, and this test enumerates it independently.
+     */
+    @ParameterizedTest(name = "a persisted {0} becomes a typed REPLAY_COMPATIBILITY failure")
+    @MethodSource("unreadableDurablePayloads")
+    fun `S4-C4 - an unreadable durable payload is a typed failure, never an exception or a fabricated value`(
+        shape: String,
+        payload: JsonElement,
+    ) {
         val outcome = runCatching {
-            runBlocking { invokerOver(journalWithForeignPayload(foreign)).invoke(newCall()) }
+            runBlocking { invokerOver(journalWithForeignPayload(payload)).invoke(newCall()) }
         }
 
         assertTrue(
-            outcome.isFailure,
-            "MEASURED DEFECT: a durable payload that is not a JsonPrimitive reaches the " +
-                "unchecked `raw as JsonPrimitive` cast in restoredOutput and escapes as " +
-                "ClassCastException rather than becoming a ScriptedRegistryResult.Failed with a " +
-                "FailureKind. Every OTHER malformed-durable-state case in this method is typed.",
+            outcome.isSuccess,
+            "S4-C4: a persisted $shape must not throw out of invoke. Got ${outcome.exceptionOrNull()}. " +
+                "An exception here is the defect this slice closed.",
+        )
+        val result = outcome.getOrThrow()
+        assertTrue(
+            result is ScriptedRegistryResult.Failed,
+            "S4-C4: a persisted $shape must be a typed Failed, not a value. Got $result. " +
+                "Returning a value the Step never produced is a fabricated value.",
+        )
+        val failure = (result as ScriptedRegistryResult.Failed).failure
+        assertEquals(
+            dev.rubentxu.pipeline.v2.domain.FailureKind.REPLAY_COMPATIBILITY,
+            failure.kind,
+            "S4-C4: a durable payload this runtime cannot read IS a replay-compatibility failure",
         )
         assertTrue(
-            outcome.exceptionOrNull() is ClassCastException,
-            "MEASURED DEFECT: the escaping throwable is ${outcome.exceptionOrNull()?.let { it::class.simpleName }}, " +
-                "which is exactly the untyped control flow this repository's typed-result law exists to remove. " +
-                "Fails the day the cast is replaced with a typed failure (S4-B / S4-C4).",
+            shape in failure.message,
+            "S4-C4: the failure must name the shape it rejected, so an operator reading " +
+                "a real journal can tell a codec mismatch from a missing output. Got: ${failure.message}",
         )
     }
 
-    @Test
-    fun `CHARACTERIZED DEFECT - the same gap exists for a persisted JSON ARRAY`() {
-        val foreign = JsonObject(mapOf("value" to JsonPrimitive("42"))).jsonObject
-        val foreignArray = kotlinx.serialization.json.JsonArray(listOf(JsonPrimitive("42")))
-        val outcome = runCatching {
-            runBlocking { invokerOver(journalWithForeignPayload(foreignArray)).invoke(newCall()) }
-        }
-        assertTrue(
-            outcome.isFailure && outcome.exceptionOrNull() is ClassCastException,
-            "MEASURED DEFECT: same cause, different payload shape (array instead of object): ${outcome.exceptionOrNull()}",
+    companion object {
+        @JvmStatic
+        fun unreadableDurablePayloads(): List<Arguments> = listOf(
+            Arguments.of("JSON object", JsonObject(mapOf("value" to JsonPrimitive("42")))),
+            Arguments.of("JSON array", JsonArray(listOf(JsonPrimitive("42")))),
+            Arguments.of("JSON null", JsonNull),
         )
-        assertTrue(foreign.values.isNotEmpty(), "control: the object payload really was a JsonObject")
     }
 }

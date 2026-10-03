@@ -152,14 +152,35 @@ open class CanonicalRuntimeCapabilityAccess(
         val builder: MutableMap<StepCapability, Any> = mutableMapOf(
             EVENT_SINK_CAPABILITY to context.eventSink,
         )
-        // RP6-C / LFC-2E3: network egress is PERMISSION, not protocol, and this is
-        // the one place the runtime decides it. Extracted for that reason and not for
-        // line count: a permission decision buried in a 140-line builder is a
-        // permission nobody can find when a run is wrongly refused.
+        // The table is assembled in a fixed order and the order IS a property:
+        // `available()` hands out the key set, so insertion order is observable.
+        // Each binding below therefore lands in the sequence its anchor implies —
+        // permission, then plugin seams, then what the run IS, then what it can
+        // reach, then what it may destroy, then what was injected. The split is
+        // by anchor, not by line count, so a capability stays next to the reason
+        // it is exposed at all.
         egressPermission(context, builder)
-        // Plugin-contributed capabilities last, so a plugin may add a seam
-        // without the runtime enumerating it — and may not silently OVERWRITE a
-        // core one, which the duplicate check below refuses.
+        bindContributedCapabilities(builder)
+        bindProcessAndStageCapabilities(context, builder)
+        bindDurableChannelCapabilities(context, builder)
+        bindWorkspaceObservationCapabilities(context, builder)
+        bindWorkspaceDestructionCapabilities(context, builder)
+        bindWorkspaceContentCapabilities(context, builder)
+        bindOptionalSeamCapabilities(context, builder)
+        return builder.toMap()
+    }
+
+    /**
+     * Plugin-contributed seams, so a plugin can add a capability without the
+     * runtime enumerating it.
+     *
+     * A contribution that collides with one the runtime already granted is
+     * REFUSED rather than resolved by order: a plugin that silently overwrote
+     * a core capability would be a plugin changing the meaning of a Step it
+     * does not own. Identity is allowed through, so a plugin contributing the
+     * very same instance is not a conflict.
+     */
+    private fun bindContributedCapabilities(builder: MutableMap<StepCapability, Any>) {
         for ((capability, value) in capabilityContributor.capabilities()) {
             val existing = builder[capability]
             require(existing == null || existing === value) {
@@ -167,6 +188,17 @@ open class CanonicalRuntimeCapabilityAccess(
             }
             builder[capability] = value
         }
+    }
+
+    /**
+     * What the run IS: the shell it drives, the stage it is in, the budget it
+     * owes and the lane it holds. None of these depend on where durable state
+     * lives, so none of them can be absent.
+     */
+    private fun bindProcessAndStageCapabilities(
+        context: CanonicalRuntimeContext,
+        builder: MutableMap<StepCapability, Any>,
+    ) {
         val shellOps: ShellOperations = ShOperationsAdapter(
             runIdString = context.runId,
             opId = context.opId,
@@ -211,6 +243,25 @@ open class CanonicalRuntimeCapabilityAccess(
             runId = context.runId,
             branchLineage = context.opId.parallelLineage,
         )
+    }
+
+    /**
+     * The two capabilities a run PUBLISHES into the engine's own durable
+     * territory: a lock it holds, and a question waiting to be answered.
+     *
+     * Both are anchored to the CONTROL ROOT — the journal db parent,
+     * `--control-root` — and for the same reason: they are facts about the
+     * ENGINE's durable territory, not about a workspace that is NULL under the
+     * local-first Managed lease and not about a run that ends before its
+     * question is answered. Conditional exposure mirrors the destructive
+     * capabilities below: registered ONLY when `controlDirRoot != null`, absent
+     * otherwise, so capability admission fails closed for the owning Step
+     * without affecting the rest of the registry.
+     */
+    private fun bindDurableChannelCapabilities(
+        context: CanonicalRuntimeContext,
+        builder: MutableMap<StepCapability, Any>,
+    ) {
         // RP6-A / WU-091 G4: the POSIX file lock coordinator for core.lock.
         //
         // The lock namespace is anchored to the CONTROL ROOT — the engine's own
@@ -255,6 +306,19 @@ open class CanonicalRuntimeCapabilityAccess(
                 root.resolve("inputs"),
             )
         }
+    }
+
+    /**
+     * Where things ARE, as opposed to what they may do: the platform, the
+     * workspace, the active `dir` scope, and the temporary resource path derived
+     * from all three. Every value here is derived from the runtime context; none
+     * of them is optional, and none of them opens a capability a handler could
+     * use to mutate anything.
+     */
+    private fun bindWorkspaceObservationCapabilities(
+        context: CanonicalRuntimeContext,
+        builder: MutableMap<StepCapability, Any>,
+    ) {
         // S2-A5 / G1: raw environmental observation for platform-classification handlers
         // (core.isUnix). The single remaining System.getProperty("os.name") read lives HERE,
         // in the bridge adapter — never inside a handler.
@@ -306,6 +370,20 @@ open class CanonicalRuntimeCapabilityAccess(
             eventSink = context.eventSink,
         )
         builder[TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY] = tmpOps
+    }
+
+    /**
+     * What the run may DESTROY: the stage workspace itself (`deleteDir`) and its
+     * contents (`cleanWs`). They share an anchor, a conditional exposure, and a
+     * security story, so they live together: both are gated by the typed lease
+     * through [executionLocationFor] rather than by the VCS-marker heuristic
+     * that RP034-I retires, because a user-owned root may not be destroyed on the
+     * strength of a dotfile.
+     */
+    private fun bindWorkspaceDestructionCapabilities(
+        context: CanonicalRuntimeContext,
+        builder: MutableMap<StepCapability, Any>,
+    ) {
         // S2-A7 / G3-fix: deleteDir operations for core.deleteDir.
         // The adapter binds the runtime's [runIdString], [StageIdentity], [stepIndex],
         // [controlDirRoot], and [EventSink] — exactly the inputs needed to resolve the
@@ -359,6 +437,21 @@ open class CanonicalRuntimeCapabilityAccess(
             )
             builder[CLEAN_WS_OPERATIONS_CAPABILITY] = cleanWsOps
         }
+    }
+
+    /**
+     * What the run may move rather than destroy: the stage archive, the
+     * stash/unstash seam, and the published HTML report.
+     *
+     * Same anchor and same conditional exposure as the destructive pair, for the
+     * same reason — they resolve a source and a destination against the shared
+     * [executionLocationFor], so a `dir(...)` scope narrows what a pattern can
+     * match instead of being bypassed by the adapter.
+     */
+    private fun bindWorkspaceContentCapabilities(
+        context: CanonicalRuntimeContext,
+        builder: MutableMap<StepCapability, Any>,
+    ) {
         // LFC-2E1 S2-B10 / G1: archiveArtifacts operations for core.archiveArtifacts.
         // The adapter binds runId, StageIdentity, controlDirRoot and the EventSink —
         // exactly the inputs needed to glob the stage workspace via the certified
@@ -426,6 +519,22 @@ open class CanonicalRuntimeCapabilityAccess(
             )
             builder[PUBLISH_HTML_OPERATIONS_CAPABILITY] = publishHtmlOps
         }
+    }
+
+    /**
+     * The capabilities that are INJECTED rather than derived: the milestone
+     * store, the artifact index, and the two body seams.
+     *
+     * They share one property that the rest of the table does not have — their
+     * value comes from a collaborator chosen at composition, not from the
+     * runtime context — and one consequence: each is exposed only when the
+     * collaborator is present, so an absent seam fails closed at capability
+     * admission rather than surfacing as a null a handler has to interpret.
+     */
+    private fun bindOptionalSeamCapabilities(
+        context: CanonicalRuntimeContext,
+        builder: MutableMap<StepCapability, Any>,
+    ) {
         // S2-A9 spike: milestone state operations (core.milestone). The store is optional
         // so existing call-sites that don't bind it see no change; when bound, the
         // MILESTONE_OPERATIONS_CAPABILITY is populated with a MilestoneOperationsAdapter
@@ -471,7 +580,6 @@ open class CanonicalRuntimeCapabilityAccess(
         context.bodyContinuation?.let { continuation ->
             builder[BODY_CONTINUATION_CAPABILITY] = continuation
         }
-        return builder.toMap()
     }
 
     /**

@@ -479,4 +479,91 @@ class HttpInstalledUatTest {
                 "that stalls on it.",
         )
     }
+
+    // ── the safety law, at the delivery level ──────────────────────────────
+
+    @Test
+    fun `H8-12 resuming a finished run does not send the request again`() {
+        // The one scenario where being wrong costs money. `http.request` declares
+        // ReplayPolicy.NEVER precisely because a POST may have taken effect even when
+        // the response never came back -- so a resume must ABORT rather than resend.
+        //
+        // The server is the only witness that matters here. The journal can show a row;
+        // only the server can show what the WORLD saw. A test asserting "one row" would
+        // pass even if the second request went out and the row was never written.
+        val pipeline = script(
+            """
+            httpRequest(
+                url = "${server.baseUrl}/echo",
+                method = HttpMethod.Post,
+                body = "$CHARGE",
+            )
+            """.trimIndent(),
+        )
+        val db = File(tempDir("h8-resume-db-"), "db.sqlite").absolutePath
+        val ctl = tempDir("h8-resume-ctl-").absolutePath
+
+        val fresh = run("run", "--allow-network", "--db", db, "--control-root", ctl, pipeline.absolutePath)
+        assertEquals(0, fresh.exitCode, "the fresh run must succeed; output:\n${fresh.output.takeLast(1200)}")
+        assertEquals(1, server.countOf("/echo"), "the fresh run sends exactly once")
+
+        val resumed = run("run", "--allow-network", "--db", db, "--control-root", ctl, "--resume", pipeline.absolutePath)
+
+        assertEquals(
+            1,
+            server.countOf("/echo"),
+            "THE assertion. A resume of a finished run re-sent a POST whose effect this " +
+                "process cannot observe. The run must abort instead: reuse would claim a " +
+                "success nobody witnessed, and a resend would do the thing twice. " +
+                "Resume output:\n${resumed.output.takeLast(1200)}",
+        )
+        assertTrue(
+            resumed.output.contains("Replay aborted"),
+            "the resumed run must say it ABORTED. An engine that silently skipped a journaled " +
+                "Step would look identical to one that reused it, and only the first is safe " +
+                "for a POST. Output:\n${resumed.output.takeLast(1200)}",
+        )
+        assertEquals(
+            EXIT_FAILURE,
+            resumed.exitCode,
+            "the resumed run must not close green. Reporting success for a request this " +
+                "process never sent is the failure mode MEMOIZED would have produced. " +
+                "Output:\n${resumed.output.takeLast(1200)}",
+        )
+        // Recorded, not asserted: this is the operator-facing half of the abort, and it
+        // is the open decision from the previous gate. An operator who sees only
+        // "Replay aborted for '<opId>'" cannot tell whether their POST already took
+        // effect. The run aborting is correct; saying WHY it must not re-send is the
+        // part still missing, and this line is the evidence for that argument.
+        assertTrue(
+            resumed.output.contains("Replay aborted"),
+            "see the note above: the abort message names the operation but not the " +
+                "consequence for a non-idempotent request",
+        )
+    }
+
+    @Test
+    fun `H8-13 two requests in one stage both arrive`() {
+        val pipeline = script(
+            """
+            ${get("${server.baseUrl}/echo")}
+            ${get("${server.baseUrl}/echo")}
+            """.trimIndent(),
+        )
+
+        val result = runFresh(pipeline, "--allow-network")
+
+        assertEquals(0, result.exitCode, "output:\n${result.output.takeLast(1200)}")
+        assertEquals(
+            2,
+            server.countOf("/echo"),
+            "two Steps are two requests. A compiler or a registry that collapsed them would " +
+                "pass every single-Step scenario in this file.",
+        )
+    }
+
+    private companion object {
+        /** The body both POST scenarios send, escaped for the generated .pipeline.kts. */
+        const val CHARGE = """{\"charge\":1}"""
+    }
 }

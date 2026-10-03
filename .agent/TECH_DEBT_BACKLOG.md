@@ -1208,9 +1208,10 @@ b0ff1a11; SDDK closeout at commit `76aca21c929be8206cbcbe5a06763bbdbdaae990`.
   bloquea certificaciones legítimas y entrena a leer ruido como señal).
 **Scope:** 1 test. `v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/
   application/walk/WalkParallelFrameConcurrencyTest.kt`
-**Status:** OPEN — registrado, **no reparado**. Proyección del ítem de ledger
+**Status:** RESOLVED — sustituido por `ParallelBranchConcurrencyDeterminismTest`
+  (barrera determinista que cruza `ParallelStageEngine.launchBranches()`). Ledger
   `bl-bl-01M41RB9V70003883GP92A2N00` (SDDK backlog, P2), que es la autoridad.
-**Receipt:** `docs/v2/07-uat/S4_R1_D_POLICY_TRUTH_TABLE.md` §3.4
+**Receipt:** `docs/v2/07-uat/HAR_PAR_001_PARALLEL_CONCURRENCY_HARNESS.md`
 
 ### Defecto
 
@@ -1243,8 +1244,10 @@ release.await()
 ```
 
 - Si producción se vuelve secuencial: A entra y espera a B/C, que nunca arrancan →
-  **watchdog de deadlock** (segundos) → RED.
+  **watchdog de deadlock** (30 s) → RED. Verificado con la mutación HAR-PAR-001-M1.
 - Si es concurrente: los tres entran, la barrera abre, todos terminan → GREEN.
 
-El timeout queda como **watchdog de deadlock**, nunca como aserción de rendimiento. Con el
-reemplazo, este ítem deja de producir ruido de gate sin perder su capacidad de fallar.
+El timeout quedó como **watchdog de deadlock**, nunca como aserción de rendimiento: el
+reemplazo pasa en 1.989 s y con la mutación secuencial cae por `TimeoutCancellationException`
+a los 31.24 s. Cero ruido de gate, capacidad de fallar intacta y ahora sobre la autoridad
+productiva.

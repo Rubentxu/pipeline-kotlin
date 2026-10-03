@@ -132,66 +132,98 @@ Frozen order per invocation: **divergence → recovery → replay**. Authority:
 overrides any enum name.
 
 Writing this table surfaced a second contradiction in the same authority. The
-precedence actually implemented is **`RERUN` → `NEVER` → `ABORTS_PIPELINE`**:
-both policy branches return before the effects are ever consulted. The decision
-matrix published on `EffectReplayPolicy` states `any | ABORTS_PIPELINE | any |
-any | ABORT`, which the code does not implement. A Step declaring
-`RERUN + ABORTS_PIPELINE` against a `SUCCEEDED` row is **skipped**, not aborted.
+implemented precedence is **`RERUN` → `NEVER` → `ABORTS_PIPELINE`**: both policy
+branches return before the effects are consulted. The decision matrix published
+on `EffectReplayPolicy` states `any | ABORTS_PIPELINE | any | any | ABORT`,
+which the code does not implement. A Step declaring `RERUN + ABORTS_PIPELINE`
+against a `SUCCEEDED` row is **skipped**, not aborted. No current Step triggers
+it — `CoreErrorStep` is `NEVER + ABORTS_PIPELINE`, and the `NEVER` branch
+happens to abort for the same reason — so only an external plugin reaches it
+today.
 
-`ABORTS_PIPELINE` is a containment effect. Letting a policy name pre-empt it
-means a step that promises to abort the pipeline can be replayed from cache
-instead. No current Step triggers it — `CoreErrorStep` is `NEVER +
-ABORTS_PIPELINE`, and the `NEVER` branch happens to abort for the same reason —
-but any external plugin may declare the combination.
+**The first amendment to this ADR narrowed that finding, and it matters.**
+`ABORTS_PIPELINE` does not mean "abort the decision"; it means *this Step, when
+executed, aborts the pipeline*. Making it outrank every branch, including fresh
+execution, would stop `core.error` from ever running, and a Step that never runs
+never aborts. So containment is **not** a decision that precedes admission.
 
-**The precedence is therefore part of this decision, and is changed to match the
-published matrix:** `ABORTS_PIPELINE` is evaluated first, then `NEVER`, then
-`RERUN`, then the `MEMOIZED` rows.
+The replay layer therefore distinguishes two states, and the distinction is part
+of the contract:
 
-| # | replayPolicy | effects | journal | decision |
-|---|---|---|---|---|
-| 1 | any | `ABORTS_PIPELINE` | any | `ABORT` |
-| 2 | `NEVER` | any | journaled (any) | `ABORT` |
-| 3 | `NEVER` | any | fresh | `EXECUTE` |
-| 4 | `RERUN` | any | `SUCCEEDED` | `SKIP` |
-| 5 | `RERUN` | any | not `SUCCEEDED` | `EXECUTE` |
-| 6 | `MEMOIZED` | `READ_ONLY` only | `SUCCEEDED` | `SKIP` |
-| 7 | `MEMOIZED` | `READ_ONLY` only | not `SUCCEEDED` | `EXECUTE` |
-| 8 | `MEMOIZED` | `EXECUTES_SUBPROCESS` or `WRITES_WORKSPACE` | any | `EXECUTE` |
-| 9 | `MEMOIZED` | any | fresh | `EXECUTE` |
+```text
+hasJournalEntry = false
+    the replay layer MUST NOT suppress the legitimate first execution.
+    ABORTS_PIPELINE alone does not suppress it: the abort is the effect
+    being executed, so refusing to execute would silently drop it.
 
-A mixed effect set is **not** memoizable: only an effect set that is purely
-`READ_ONLY` may `SKIP`. The descriptor's `effects: List<Effect>` makes mixed sets
+hasJournalEntry = true + ABORTS_PIPELINE
+    the layer MUST NOT serve an aborting effect from cache, nor re-run it
+    under a weaker policy branch. Fail closed.
+```
+
+The precedence is therefore **`fresh` first**, then containment, then the policy
+branches. Note that hoisting the fresh check to the front changes no decision
+the code currently makes — `MEMOIZED`, `RERUN` and `NEVER` all already execute
+on a fresh invocation — so the reordering carries no compatibility consequence,
+and the fingerprint is unaffected because it encodes the *declared* policy, not
+the decided one.
+
+| # | condition | decision |
+|---|---|---|
+| 1 | no journal entry (first execution) | `EXECUTE` |
+| 2 | journalled **and** `ABORTS_PIPELINE` in effects | `ABORT` |
+| 3 | journalled and `replayPolicy = NEVER` | `ABORT` |
+| 4 | journalled, `RERUN`, outcome `SUCCEEDED` | `SKIP` |
+| 5 | journalled, `RERUN`, outcome not `SUCCEEDED` | `EXECUTE` |
+| 6 | journalled, `MEMOIZED`, effects purely `READ_ONLY`, outcome `SUCCEEDED` | `SKIP` |
+| 7 | journalled, `MEMOIZED`, effects purely `READ_ONLY`, outcome not `SUCCEEDED` | `EXECUTE` |
+| 8 | journalled, `MEMOIZED`, effects include `EXECUTES_SUBPROCESS` or `WRITES_WORKSPACE` | `EXECUTE` |
+
+A mixed effect set is **not** memoisable: only a set that is purely `READ_ONLY`
+may `SKIP`. The descriptor's `effects: List<Effect>` makes mixed sets
 representable, so a Step declaring `READ_ONLY + EXECUTES_SUBPROCESS` executes.
 
-### D2 — The misleading name is corrected by contract and test, not renamed yet
+**Row 2 is the only behaviour that changes**, and before it changes it must be
+witnessed against three cases, so a fix cannot trade one defect for another:
 
-The table in D1 is normative; the enum name is not. `ReplayPolicy.RERUN` means
-"reuse a journalled `SUCCEEDED` result", which is the opposite of what its name
-and documentation claim. Given that this repository has already had four
-honoured-looking declarations that were not, and that this one survived because
-no test exercised it, the name must stop misleading.
+```text
+fresh core.error                 → handler MUST run (row 1)
+existing core.error              → ABORT  (row 2, by NEVER as well as by effect)
+external fixture RERUN + ABORTS_PIPELINE + SUCCEEDED → ABORT (row 2, the defect)
+```
 
-It is **not** renamed in this change. Measured, the rename would touch 49
-references to `ReplayPolicy.RERUN` and 44 to `ReplayDecision.RERUN`, across two
-**public** SDK enums, so it is source-breaking for any external plugin that names
-them. A Kotlin enum admits no alias, so "deprecate without removing" could not
-mean "add the honest name alongside": it would mean either a second constant
-carrying the same meaning, which puts the ambiguity into every `when`, or
-keeping the misleading symbol and fixing its meaning.
+### D2 — The misleading name is fixed by contract and test; the rename is a separate durable epoch
 
-Therefore:
+**D2a — semantics, in force now.** The table in D1 is normative; the enum name
+is not. `ReplayPolicy.RERUN` means "reuse a journalled `SUCCEEDED` result",
+which is the opposite of what its name and documentation claim. Given that this
+repository has already had four honoured-looking declarations that were not, and
+that this one survived because no test exercised it, the name must stop
+misleading. It is **not** renamed here, and a fitness test pins the whole D1
+table against `EffectReplayPolicy.decide` so the meaning cannot drift back
+silently. The name is documentation of the table; the table is the authority.
 
-- `ReplayPolicy.RERUN` and `ReplayDecision.RERUN` **keep their names**, and their
-  documentation is corrected to state what they actually decide.
-- A fitness test pins the whole D1 table against `EffectReplayPolicy.decide`, so
-  the meaning can no longer drift back without turning something red. The
-  declared-vs-implemented contradiction that produced this ADR cannot recur
-  silently.
-- The rename is recorded as **deferred debt** and belongs to a future SDK
-  deprecation cycle with its own gate. It is not a task of this change.
+**D2b — the rename, deferred to an explicit durable compatibility epoch.**
+`ReplayPolicy.RERUN` → `REUSE_ON_SUCCESS` is **not** a Kotlin API rename, and the
+first draft of this ADR treated it as one. It is a change to the durable
+protocol, because the policy is a field of the fingerprint payload:
 
-The table is the authority; the name is documentation of it.
+```text
+FingerprintPayload(stepId, params, runId, attempt, replayPolicy)
+        → JSON.encodeToString(…) → SHA-256
+```
+
+kotlinx.serialization writes an enum **by name**, so the string `RERUN` sits
+inside every hash. Renaming it changes the fingerprint of every operation that
+declares it — `core.sh`, the retry and `waitUntil` related rows, the SDK `sh`,
+any external plugin that declares it — across **both** the canonical and the
+scripted histories, not only the scripted one this ADR is about.
+
+That is a global durable migration, not a side effect of unifying replay, and
+mixing the two would convert a well-founded local correction into a protocol
+migration. It is deferred to its own decision, at a declared compatibility epoch,
+with its own gate. It may happen before v0.47.0, but only if that cut is made
+consciously rather than inherited.
 
 ### D3 — `RunPolicy` is a different axis
 
@@ -275,9 +307,18 @@ this ADR.
 
 ## Acceptance
 
-Accepted 2026-10-03 by the product owner, **with D2 held back**: the
-`RERUN → REUSE_ON_SUCCESS` rename is deferred to its own slice so that no public
-SDK symbol is renamed in this change. Everything else in this ADR is in force.
+Accepted 2026-10-03 by the product owner **with two amendments**:
+
+1. **D1 refined before implementation.** The first draft of this table put
+   `ABORTS_PIPELINE` above every branch, including a fresh first execution. That
+   is wrong: the effect means *this Step, when executed, aborts the pipeline*, so
+   refusing to execute it would drop the abort silently. Containment is now
+   scoped to journalled history, and the three witnesses in D1 must be witnessed
+   before the precedence changes.
+2. **D2 split.** Semantics are fixed now by contract and test (D2a). The rename
+   is a separate durable compatibility epoch (D2b) because the enum name is
+   inside the fingerprint hash, so renaming it would migrate every operation that
+   declares it, on both the canonical and the scripted history.
 
 ## Acceptance gate
 

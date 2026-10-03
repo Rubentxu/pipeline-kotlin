@@ -576,4 +576,45 @@ class Lfc2HttpOfficiallyPluginBoundaryFitnessTest {
                 "forbids.",
         )
     }
+
+    // ── FIT-17: the flag is honoured, and the failure says why ──────────────
+
+    @Test
+    fun `FIT-17 the CLI honours --allow-network and reports why a run failed`() {
+        // The wiring, not the class. `--allow-network` was parsed by the CLI, honoured by
+        // the composition root, and threaded by NOBODY: `runCanonicalPipeline` declared the
+        // parameter with a `false` default, so both call sites compiled, both runs stayed
+        // fail-closed, and the operator's flag did nothing at all.
+        //
+        // A default on a 22-argument function is the quietest way to drop a permission.
+        // It fails CLOSED, so every dashboard stayed green, and the only symptom was a
+        // feature nobody could use. Pinned here rather than trusted to review.
+        //
+        // The second half is the reason the first half took H4.5, H7-D and H8-D1 to find:
+        // a failed run printed "Pipeline finished with FAILURE" and nothing else, so a
+        // Step refused at admission, refused at execute-time, and refused for a missing
+        // network permission were byte-identical in the output. Silence is not cosmetic.
+        val main = codeOnly(
+            v2.resolve(
+                "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/Main.kt",
+            ),
+        )
+        assertTrue(
+            main.contains("allowNetwork = config.allowNetwork"),
+            "Main must pass its parsed --allow-network into runCanonicalPipeline. Without it " +
+                "the flag is accepted, recorded and discarded, and network.egress is " +
+                "withheld on every run -- which is fail-closed and therefore looks safe while " +
+                "being the exact opposite of what the operator asked for.",
+        )
+        // The CALL, not the declaration. A fitness that matches the definition still
+        // passes after every call site is deleted, which is the one mutation that
+        // matters here: M-cli-2 removed the call and left the function, and the
+        // first version of this assertion stayed green through it.
+        assertTrue(
+            main.contains("reportRunFailure(runOutcome.failure)"),
+            "Main must print WHY a run failed. A run that exits 1 without a reason emits " +
+                "byte-identical output for a refused Step, a missing capability and a compile " +
+                "error, which is exactly why three delivery defects shipped unnoticed.",
+        )
+    }
 }

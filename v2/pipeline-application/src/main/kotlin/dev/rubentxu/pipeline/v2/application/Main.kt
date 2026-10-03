@@ -19,6 +19,7 @@ import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.RunIdGenerator
+import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
 import dev.rubentxu.pipeline.v2.credentials.local.LocalCredentialProvider
@@ -378,6 +379,11 @@ fun main(args: Array<String>) {
                 // would mean opening a secret store for a path that has no use for
                 // one.
                 pluginClassLoader = pluginClassLoader,
+                // H8-D1: this path composes its own coordinator and had the same
+                // omission as the durable one. `--allow-network` is a per-RUN
+                // permission; a run whose flag is ignored is a run where the
+                // operator believes they opened the network and did not.
+                allowNetwork = config.allowNetwork,
             )
             else -> {
                 // Fail-closed: non-canonical pipelines are not supported by the canonical bridge.
@@ -781,6 +787,7 @@ fun main(args: Array<String>) {
             stepRegistry = composedStepRegistry,
             secretPatternRegistry = secretPatternRegistry,
             pluginClassLoader = pluginClassLoader,
+            allowNetwork = config.allowNetwork,
         )
         pipelineSpec != null -> {
             // Fail-closed: non-canonical pipelines are not supported by the canonical bridge
@@ -838,10 +845,14 @@ fun main(args: Array<String>) {
                 System.err.println("Pipeline finished with UNSTABLE"); false
             }
             is RunOutcome.Failure -> {
-                System.err.println("Pipeline finished with FAILURE"); true
+                System.err.println("Pipeline finished with FAILURE")
+                reportRunFailure(runOutcome.failure)
+                true
             }
             is RunOutcome.Aborted -> {
-                System.err.println("Pipeline finished with FAILURE"); true
+                System.err.println("Pipeline finished with FAILURE")
+                System.err.println("  cause [ABORTED]: the run was cancelled or interrupted before a terminal outcome")
+                true
             }
         }
     } else {
@@ -854,5 +865,37 @@ fun main(args: Array<String>) {
         }
     }
     if (exitFailure) System.exit(1)
+}
+
+/**
+ * H8-D2 — says WHY the run failed, on the stream an operator is already reading.
+ *
+ * ## The defect this exists to end
+ *
+ * The exit decision has always been correct: a failure exits 1. But the exit carried
+ * no reason. stderr said "Pipeline finished with FAILURE", the JSON envelope's
+ * `RunFinished` carried an empty `diagnostics`, and the typed `PipelineFailure`
+ * message went nowhere an operator could see it.
+ *
+ * That silence is not cosmetic — it is the reason three separate delivery defects
+ * shipped: a Step refused at admission, refused at execute-time, and refused for a
+ * missing network permission all produced **byte-identical** output. A user filing
+ * that report could not have told them apart, and neither could triage.
+ *
+ * ## Why stderr and not the event stream
+ *
+ * The `RunFinished` event is a lifecycle bookend and its shape is a published
+ * contract; widening it is a separate decision. stderr is where the outcome is
+ * already summarised one line above, and where `--allow-network` and every other
+ * operator-facing diagnostic already goes. A message that is emitted nowhere is a
+ * message that does not exist, and this one is the difference between a bug report
+ * and a fix.
+ *
+ * The message is printed as-is, with no prefix of its own: the failure kinds are
+ * already typed, and re-labelling them here would create a second vocabulary.
+ */
+private fun reportRunFailure(failure: PipelineFailure) {
+    System.err.println("  cause [${failure.kind}]: ${failure.message}")
+    failure.cause?.let { System.err.println("  origin: $it") }
 }
 

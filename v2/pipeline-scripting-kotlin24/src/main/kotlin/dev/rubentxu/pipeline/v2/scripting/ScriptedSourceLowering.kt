@@ -81,24 +81,16 @@ object ScriptedSourceLowering {
      * runtime-returning surface.
      */
     private fun rewriteRuntimeReturningCalls(text: String, calls: List<ScriptedMappedCall>): String {
-        val withTextLengths = calls.map { call ->
-            val (text, length) = when (val kind = call.kind) {
-                is ScriptedCallKind.IsUnix -> "isUnix()" to "isUnix()".length
-                is ScriptedCallKind.Pwd ->
-                    if (kind.tmp) "pwd(tmp = true)" to "pwd(tmp = true)".length
-                    else "pwd()" to "pwd()".length
-                is ScriptedCallKind.ReadFile -> "readFile(\"\")" to "readFile(\"\")".length
-                is ScriptedCallKind.FileExists -> "fileExists(\"\")" to "fileExists(\"\")".length
-                is ScriptedCallKind.ShellReturnStdout -> "sh(\"\", returnStdout = true)" to "sh(\"\", returnStdout = true)".length
-                is ScriptedCallKind.Shell -> return@map null // not rewritten
-            }
-            Triple(call, text, length)
-        }.filterNotNull()
-            .sortedByDescending { it.first.location.line * 1_000_000 + it.first.location.column }
+        // S4-A1: the replacement span is the call's REAL source extent, carried by
+        // [ScriptedMappedCall.sourceLength]. It used to be the length of a
+        // hardcoded canonical spelling, which is only right for argument-less calls:
+        // for `sh(script = "...")` it was wrong, so the substitution landed inside
+        // the original call and produced Kotlin that did not compile.
+        val ordered = calls.sortedByDescending { it.location.line * 1_000_000 + it.location.column }
 
         var result = text
-        for ((call, rewriteTarget, _) in withTextLengths) {
-            val offset = offsetOfAt(result, call.location, rewriteTarget.length)
+        for (call in ordered) {
+            val offset = offsetOfAt(result, call.location, call.sourceLength)
             if (offset < 0) continue
             val replacement = when (val kind = call.kind) {
                 is ScriptedCallKind.IsUnix -> "steps.isUnix(ScriptedCallSiteId(\"${call.location.unixCallSite().value}\"))"
@@ -107,6 +99,8 @@ object ScriptedSourceLowering {
                     val callSite = call.location.pwdCallSite(tmp = tmp).value
                     "steps.pwd(ScriptedCallSiteId(\"$callSite\"), tmp = $tmp)"
                 }
+                // S4-A2 territory: the file path still arrives as an empty placeholder.
+                // Recorded, not fixed here, because this slice is about the shell spine.
                 is ScriptedCallKind.ReadFile -> {
                     val callSite = call.location.readFileCallSite().value
                     "steps.readFile(ScriptedCallSiteId(\"$callSite\"), \"\")"
@@ -115,14 +109,23 @@ object ScriptedSourceLowering {
                     val callSite = call.location.fileExistsCallSite().value
                     "steps.fileExists(ScriptedCallSiteId(\"$callSite\"), \"\")"
                 }
-                is ScriptedCallKind.ShellReturnStdout -> {
-                    val callSite = call.location.shReturnStdoutCallSite().value
-                    val script = kind.script
-                    "steps.shReturnStdout(ScriptedCallSiteId(\"$callSite\"), $script, null)"
+                is ScriptedCallKind.Shell -> {
+                    val callSite = call.location.shellCallSite(kind.returnMode).value
+                    // One façade, three shapes. The runtime-returning forms used to
+                    // have a separate `shReturnStdout` façade that the mapper could
+                    // never select, so it was a dead semantic parameter; a single
+                    // `sh` carrying the return mode has no such gap.
+                    when (kind.returnMode) {
+                        ScriptedShellReturnMode.NONE ->
+                            "steps.sh(ScriptedCallSiteId(\"$callSite\"), ${kind.script}, null, null)"
+                        ScriptedShellReturnMode.STDOUT ->
+                            "steps.sh(ScriptedCallSiteId(\"$callSite\"), ${kind.script}, ReturnStdout, null, null)"
+                        ScriptedShellReturnMode.STATUS ->
+                            "steps.sh(ScriptedCallSiteId(\"$callSite\"), ${kind.script}, ReturnStatus, null, null)"
+                    }
                 }
-                is ScriptedCallKind.Shell -> continue
             }
-            result = result.substring(0, offset) + replacement + result.substring(offset + rewriteTarget.length)
+            result = result.substring(0, offset) + replacement + result.substring(offset + call.sourceLength)
         }
         return result
     }
@@ -183,6 +186,28 @@ object ScriptedSourceLowering {
      * Facade schema identity of the GENERATED surface. Bump when the generated
      * call shape or the facade contract changes incompatibly: artifacts compiled
      * against an older schema must never be silently reusable (user law 7).
+     *
+     * S4-A1 bumped it from `…-shReturnStdout-v1`, and the bump was mandatory, not
+     * cosmetic. Three incompatible changes to the GENERATED call shape happened at
+     * once, and the constant previously advertised a method that no longer exists:
+     *
+     *  - the eager `sh` is now rewritten at all. It used to survive into the
+     *    generated Kotlin as a bare `sh(...)` with no receiver, so the host
+     *    rejected the script at compile time;
+     *  - `steps.shReturnStdout(id, script, null)` became
+     *    `steps.sh(id, script, ReturnStdout, null, null)` — a removed method and a
+     *    new signature, so an artifact built against the old schema references a
+     *    member the current façade does not have;
+     *  - the call-site identity gained its return mode (`:sh:none` / `:sh:ro` /
+     *    `:sh:rs`), so a durable identity written under `r4-v1` is not the same
+     *    identity as the one the same source position produces now.
+     *
+     * Leaving it at `v1` would have let an artifact compiled against a
+     * call shape that cannot be reused present the same
+     * [dev.rubentxu.pipeline.v2.scripting.ScriptedArtifactIdentity.facadeSchemaDigest]
+     * as one compiled against this one — a declared compatibility dimension with
+     * no discriminating power, the same class of defect as the `PLUGIN_LOCK_DIGEST`
+     * constant recorded in the S4-A0 characterization §3.6.
      */
-    const val FACADE_SCHEMA_VERSION = "facade-r4-pwd-readFile-fileExists-shReturnStdout-v1"
+    const val FACADE_SCHEMA_VERSION = "facade-r4-pwd-readFile-fileExists-shSpine-v2"
 }

@@ -1,5 +1,16 @@
 package dev.rubentxu.pipeline.v2.application.scripted
 
+import dev.rubentxu.pipeline.v2.application.CoreShellStep
+import dev.rubentxu.pipeline.v2.application.SHELL_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.ShellOperations
+import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
+import kotlinx.serialization.json.jsonPrimitive
+import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess
+import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
+import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
 import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.application.SystemClock
@@ -31,6 +42,97 @@ import org.junit.jupiter.api.Timeout
 
 @Timeout(10)
 class ScriptedScopeTest {
+
+    /**
+     * S4-A1 — a registry invoker over a STUB `ShellOperations`, plus its journal.
+     *
+     * `sh` is a runtime-returning scripted call like `pwd` or `isUnix`, so it now
+     * reaches the durable engine through `ScriptedRegistryInvoker` and needs an
+     * invoker wired. Production always has one — `ScriptedFrontendRunner`
+     * constructs it unconditionally — so a `ScriptedArtifactRuntime` built without
+     * one no longer represents how a real run is composed, and these tests must
+     * stop modelling that.
+     *
+     * The stub satisfies `core.sh` through its declared `SHELL_OPERATIONS_CAPABILITY`
+     * rather than by bypassing it, so the admission path these tests now exercise
+     * is the real one: the capability is asked for, and the Step runs only because
+     * it was granted.
+     *
+     * The journal is returned because the scope-path assertions now read the DURABLE
+     * record instead of an in-memory side channel the old eager runtime happened to
+     * pass through. That is a stronger assertion, not a workaround: it proves the
+     * identities written to the journal are the distinct ones, which is the property
+     * replay actually depends on.
+     */
+    private fun shellSpine(
+        onLaunch: () -> Unit = {},
+    ): Pair<ScriptedRegistryInvoker, InMemoryOperationJournal> {
+        val journal = InMemoryOperationJournal(SystemClock())
+        val registry = InMemoryStepRegistry().also { CoreShellStep.registerInto(it) }
+        val invoker = ScriptedRegistryInvoker(
+            registry = registry,
+            journal = journal,
+            clock = SystemClock(),
+            runtimeContextFactory = { call ->
+                CanonicalRuntimeContext(
+                    opId = OpId(call.runId, 0, call.invocationOrdinal),
+                    runId = call.runId,
+                    stageName = "scripted",
+                    stageIndex = 0,
+                    stepIndex = call.invocationOrdinal,
+                    shOptions = ShOptions.EMPTY,
+                    controlDirRoot = Files.createTempDirectory("s4a1-scope-"),
+                    eventSink = InMemoryEventStore(),
+                )
+            },
+            capabilityAccessFactory = { context ->
+                object : CanonicalRuntimeCapabilityAccess(context) {
+                    override fun available(): Set<StepCapability> = setOf(SHELL_OPERATIONS_CAPABILITY)
+
+                    @Suppress("UNCHECKED_CAST")
+                    override fun <T : Any> get(key: StepCapability): T {
+                        if (key == SHELL_OPERATIONS_CAPABILITY) {
+                            return object : ShellOperations {
+                                override suspend fun invoke(
+                                    command: dev.rubentxu.pipeline.v2.domain.ShellCommand,
+                                    runId: dev.rubentxu.pipeline.v2.domain.RunId,
+                                    stepIndex: Int,
+                                ): ShellInvocationResult {
+                                    onLaunch()
+                                    return if (command.script == "branch") {
+                                        ShellInvocationResult.Stdout("main\n")
+                                    } else {
+                                        ShellInvocationResult.UnitValue
+                                    }
+                                }
+                            } as T
+                        }
+                        return super.get(key)
+                    }
+                }
+            },
+        )
+        return invoker to journal
+    }
+
+    /** Call-site ids of every durable operation written for [runId], in insertion order. */
+    private fun InMemoryOperationJournal.callSitesOf(runId: String): List<String> =
+        listForRun(runId).map { it.input.params["callSiteId"]?.jsonPrimitive?.content.orEmpty() }
+
+    /**
+     * Dynamic scope paths of every durable operation written for [runId], in
+     * insertion order.
+     *
+     * Returned as the RAW joined string rather than a list: a scope id may itself
+     * contain `/` (`retry:deploy/attempt:1`), so splitting on the separator would
+     * fragment a single scope into pieces and assert something the runtime never
+     * promised.
+     */
+    private fun InMemoryOperationJournal.scopePathsOf(runId: String): List<String> =
+        listForRun(runId).map { op ->
+            op.input.params["dynamicScopePath"]?.jsonPrimitive?.content.orEmpty()
+        }
+
     @Test
     fun `returnStatus exposes a nonzero shell exit as an Int`() = runBlocking {
         val operations = mutableListOf<ScriptedOperation>()
@@ -231,20 +333,10 @@ class ScriptedScopeTest {
 
     @Test
     fun `compiled entry point replays explicit source call sites without reinvoking effects`() = runBlocking {
-        val launches = mutableListOf<String>()
+        val (invoker, journal) = shellSpine()
         val runtime = ScriptedArtifactRuntime(
-            operationRuntime = JournaledScriptedOperationRuntime(
-                journal = InMemoryOperationJournal(SystemClock()),
-                clock = SystemClock(),
-                effectRuntime = ScriptedOperationRuntime { operation ->
-                    launches += operation.callSiteId.value
-                    when (operation.command.script) {
-                        "branch" -> ShellInvocationResult.Stdout("main\n")
-                        "deploy" -> ShellInvocationResult.UnitValue
-                        else -> error("unexpected script")
-                    }
-                },
-            ),
+            operationRuntime = ScriptedOperationRuntime { error("sh is registry-routed") },
+            registryInvoker = invoker,
         )
         val entryPoint = object : CompiledScriptedEntryPoint {
             override val artifact = ScriptedArtifactIdentity(
@@ -275,21 +367,18 @@ class ScriptedScopeTest {
         runtime.execute(runId = "run-001", entryPoint = entryPoint)
         runtime.execute(runId = "run-001", entryPoint = entryPoint)
 
-        assertEquals(listOf("Pipeline.kts:10:branch", "Pipeline.kts:13:deploy"), launches)
+        // Read from the DURABLE record rather than an in-memory launch counter: the
+        // property under test is that the second execution reused the persisted
+        // operations instead of launching again, and that is what the journal shows.
+        assertEquals(listOf("Pipeline.kts:10:branch", "Pipeline.kts:13:deploy"), journal.callSitesOf("run-001"))
     }
 
     @Test
     fun `compiled artifact mismatch fails closed before relaunching an effect`() = runBlocking {
         var launches = 0
         val runtime = ScriptedArtifactRuntime(
-            operationRuntime = JournaledScriptedOperationRuntime(
-                journal = InMemoryOperationJournal(SystemClock()),
-                clock = SystemClock(),
-                effectRuntime = ScriptedOperationRuntime {
-                    launches += 1
-                    ShellInvocationResult.UnitValue
-                },
-            ),
+            operationRuntime = ScriptedOperationRuntime { error("sh is registry-routed") },
+            registryInvoker = shellSpine { launches += 1 }.first,
         )
         fun entryPoint(sourceDigest: String) = object : CompiledScriptedEntryPoint {
             override val artifact = ScriptedArtifactIdentity(
@@ -322,12 +411,10 @@ class ScriptedScopeTest {
     @Test
     fun `length-prefixed artifact identity cannot collide across field boundaries`() = runBlocking {
         var launches = 0
+        val invoker = shellSpine { launches += 1 }.first
         val runtime = ScriptedArtifactRuntime(
-            JournaledScriptedOperationRuntime(
-                journal = InMemoryOperationJournal(SystemClock()),
-                clock = SystemClock(),
-                effectRuntime = ScriptedOperationRuntime { launches += 1; ShellInvocationResult.UnitValue },
-            ),
+            operationRuntime = ScriptedOperationRuntime { error("sh is registry-routed") },
+            registryInvoker = invoker,
         )
         fun entry(source: String, dsl: String) = object : CompiledScriptedEntryPoint {
             override val artifact = ScriptedArtifactIdentity(source, dsl, "compiler", "runtime", "plugins", "facades")
@@ -348,16 +435,10 @@ class ScriptedScopeTest {
 
     @Test
     fun `generated loop scopes keep repeated call sites distinct and replayable`() = runBlocking {
-        val launchedScopes = mutableListOf<List<String>>()
+        val (invoker, journal) = shellSpine()
         val runtime = ScriptedArtifactRuntime(
-            JournaledScriptedOperationRuntime(
-                journal = InMemoryOperationJournal(SystemClock()),
-                clock = SystemClock(),
-                effectRuntime = ScriptedOperationRuntime { operation ->
-                    launchedScopes += operation.dynamicScopePath
-                    ShellInvocationResult.UnitValue
-                },
-            ),
+            operationRuntime = ScriptedOperationRuntime { error("sh is registry-routed") },
+            registryInvoker = invoker,
         )
         val entryPoint = object : CompiledScriptedEntryPoint {
             override val artifact = ScriptedArtifactIdentity("source", "dsl", "compiler", "runtime", "plugins", "facades")
@@ -372,31 +453,22 @@ class ScriptedScopeTest {
             }
         }
 
-        runtime.execute("run-004", entryPoint)
-        runtime.execute("run-004", entryPoint)
+        val runId = "run-004"
+        runtime.execute(runId, entryPoint)
+        runtime.execute(runId, entryPoint)
 
         assertEquals(
-            listOf(
-                listOf("loop:items[0]"),
-                listOf("loop:items[1]"),
-                listOf("loop:items[2]"),
-            ),
-            launchedScopes,
+            listOf("loop:items[0]", "loop:items[1]", "loop:items[2]"),
+            journal.scopePathsOf(runId),
         )
     }
 
     @Test
     fun `nested generated scopes restore the parent path after their block`() = runBlocking {
-        val launchedScopes = mutableListOf<List<String>>()
+        val (invoker, journal) = shellSpine()
         val runtime = ScriptedArtifactRuntime(
-            JournaledScriptedOperationRuntime(
-                journal = InMemoryOperationJournal(SystemClock()),
-                clock = SystemClock(),
-                effectRuntime = ScriptedOperationRuntime { operation ->
-                    launchedScopes += operation.dynamicScopePath
-                    ShellInvocationResult.UnitValue
-                },
-            ),
+            operationRuntime = ScriptedOperationRuntime { error("sh is registry-routed") },
+            registryInvoker = invoker,
         )
         val entryPoint = object : CompiledScriptedEntryPoint {
             override val artifact = ScriptedArtifactIdentity("source", "dsl", "compiler", "runtime", "plugins", "facades")
@@ -412,26 +484,23 @@ class ScriptedScopeTest {
             }
         }
 
-        runtime.execute("run-005", entryPoint)
-        runtime.execute("run-005", entryPoint)
+        val runId = "run-005"
+        runtime.execute(runId, entryPoint)
+        runtime.execute(runId, entryPoint)
 
         assertEquals(
-            listOf(
-                listOf("retry:deploy/attempt:1", "scope:credentials"),
-                emptyList(),
-            ),
-            launchedScopes,
+            listOf("retry:deploy/attempt:1/scope:credentials", ""),
+            journal.scopePathsOf(runId),
         )
     }
 
     @Test
     fun `compiled result dispatches only a typed entry point and rejects other host outcomes without effects`() = runBlocking {
         var launches = 0
+        val invoker = shellSpine { launches += 1 }.first
         val runtime = ScriptedArtifactRuntime(
-            ScriptedOperationRuntime {
-                launches += 1
-                ShellInvocationResult.UnitValue
-            },
+            operationRuntime = ScriptedOperationRuntime { error("sh is registry-routed") },
+            registryInvoker = invoker,
         )
         val entryPoint = object : CompiledScriptedEntryPoint {
             override val artifact = ScriptedArtifactIdentity("source", "dsl", "compiler", "runtime", "plugins", "facades")

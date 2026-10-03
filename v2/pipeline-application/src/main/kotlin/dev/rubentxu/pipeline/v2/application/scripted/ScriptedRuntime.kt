@@ -168,7 +168,8 @@ class ScriptedScope internal constructor(
     ).block()
 
     /** Source identity for the registry invoker (LFC-2R / R2). */
-    internal val identity: ScriptedScopeIdentity = ScriptedScopeIdentity(runId, entryPointId, dynamicScopePath)
+    internal val identity: ScriptedScopeIdentity =
+        ScriptedScopeIdentity(runId, entryPointId, dynamicScopePath, definitionDigest)
 
     /**
      * Next invocation ordinal for one call site within this scope path — the same
@@ -189,6 +190,19 @@ internal data class ScriptedScopeIdentity(
     val runId: String,
     val entryPointId: String,
     val dynamicScopePath: List<String>,
+    /**
+     * S4-A1: the compiled artifact identity this execution came from.
+     *
+     * The retired `JournaledScriptedOperationRuntime` put this into its
+     * `OperationInput`, so two different compiled artifacts of the same source
+     * position produced different fingerprints and the second run failed closed
+     * with REPLAY_COMPATIBILITY. Unifying the spine dropped it, which meant a
+     * scripted registry step would replay happily across two different artifacts.
+     * `ScriptedScopeTest` caught the regression, and the property is restored here
+     * rather than the test being relaxed: unifying spines must not lose a
+     * guarantee the retired spine had.
+     */
+    val definitionDigest: String,
 )
 
 internal fun ShellInvocationResult.asUnit() = when (this) {

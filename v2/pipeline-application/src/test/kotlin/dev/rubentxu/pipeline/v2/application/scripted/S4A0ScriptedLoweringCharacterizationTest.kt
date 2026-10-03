@@ -61,8 +61,17 @@ class S4A0ScriptedLoweringCharacterizationTest {
         return result as LoweringResult.Generated
     }
 
+    /**
+     * Simple names of the mapped kinds, with the `sh` shape appended so a test can
+     * see WHICH of the three shapes was classified rather than only that it was `sh`.
+     */
     private fun kinds(generated: LoweringResult.Generated): List<String> =
-        generated.mappedCalls.map { it.kind.toString() }
+        generated.mappedCalls.map { call ->
+            when (val kind = call.kind) {
+                is ScriptedCallKind.Shell -> "Shell:${kind.returnMode}"
+                else -> kind.toString()
+            }
+        }
 
     /**
      * The statements inside the generated `execute(steps)` body.
@@ -116,13 +125,16 @@ class S4A0ScriptedLoweringCharacterizationTest {
     }
 
     @Test
-    fun `an eager sh is left untouched, which is correct`() {
+    fun `S4-A1 - an eager sh IS rewritten now, onto the facade, with its script intact`() {
         val generated = lower("""sh("echo hi")""")
-        assertEquals(listOf("Shell"), kinds(generated))
+        assertEquals(listOf("Shell:NONE"), kinds(generated))
         assertEquals(
-            """sh("echo hi")""",
+            """steps.sh(ScriptedCallSiteId("s4a0:1:1:sh:none"), "echo hi", null, null)""",
             body(generated),
-            "an eager sh must NOT be rewritten: it has no runtime value to return",
+            "S4-A1: an eager sh is a REAL runtime-returning call and must be rewritten onto " +
+                "the facade. Leaving it untouched is what made a scripted sh fail to compile " +
+                "with `Unresolved reference 'sh'`: the bare call survived into the generated " +
+                "Kotlin with no receiver.",
         )
     }
 
@@ -150,27 +162,31 @@ class S4A0ScriptedLoweringCharacterizationTest {
             kinds(generated),
             "the mapper DOES accept readFile with a real path",
         )
-        // The authored call is 24 characters; the rewriter consumes 12 and the
-        // tail of the author's argument survives past the rewritten call.
+        // S4-A1: the SPAN defect is FIXED. The replacement now consumes the call's
+        // real source extent (ScriptedMappedCall.sourceLength) rather than the length
+        // of the empty-form spelling, so no fragment survives. The trailing `nfig.yaml")`
+        // is gone, which is what made the generated source invalid Kotlin.
         assertEquals(
-            """val c = steps.readFile(ScriptedCallSiteId("s4a0:1:9:readFile"), "")nfig.yaml")""",
+            """val c = steps.readFile(ScriptedCallSiteId("s4a0:1:9:readFile"), "")""",
             body(generated),
-            "MEASURED DEFECT: the rewrite consumes the length of readFile(\"\") regardless of " +
-                "the authored argument, so a real path leaves a fragment behind and the generated " +
-                "source is not valid Kotlin. If this test fails, the span was fixed — rewrite it " +
-                "to assert the whole-call rewrite (S4-B2).",
+            "S4-A1: the whole call must be replaced, leaving no fragment of the authored " +
+                "argument behind.\n\nWHAT IS STILL WRONG, and is NOT fixed here: the PATH is " +
+                "still an empty placeholder. The call now COMPILES and reads the empty path, " +
+                "so it fails with a typed USER failure instead of failing to compile — a " +
+                "louder, more localised failure, but still wrong. Carrying the path needs " +
+                "the PSI argument expression, which is S4-A2.",
         )
     }
 
     @Test
-    fun `CHARACTERIZED DEFECT - fileExists with a real path is truncated to invalid Kotlin`() {
+    fun `S4-A1 - the fileExists span defect is fixed, while the empty-path payload is not`() {
         val generated = lower("""val e = fileExists("config.yaml")""")
         assertEquals(listOf("FileExists"), kinds(generated))
         assertEquals(
-            """val e = steps.fileExists(ScriptedCallSiteId("s4a0:1:9:fileExists"), "")nfig.yaml")""",
+            """val e = steps.fileExists(ScriptedCallSiteId("s4a0:1:9:fileExists"), "")""",
             body(generated),
-            "MEASURED DEFECT: same cause as readFile, with a 14-character empty-form span. " +
-                "Fails the day the span is fixed (S4-B2).",
+            "S4-A1: the whole call must be replaced, leaving no fragment of the authored " +
+                "argument behind. The path is still an empty placeholder (S4-A2).",
         )
     }
 
@@ -180,42 +196,44 @@ class S4A0ScriptedLoweringCharacterizationTest {
     // ==================================================================
 
     @Test
-    fun `CHARACTERIZED DEFECT - sh with returnStdout is classified EAGER and never rewritten`() {
+    fun `S4-A1 - sh with returnStdout is classified STDOUT and rewritten to the facade`() {
         val generated = lower("""val out = sh("echo hi", returnStdout = true)""")
         assertEquals(
-            listOf("Shell"),
+            listOf("Shell:STDOUT"),
             kinds(generated),
-            "MEASURED DEFECT: the author asked for stdout as a typed value and the mapper " +
-                "classified it as the EAGER sh, because the eager branch is the FIRST arm of the " +
-                "when and tests only the callee name, so the runtime-returning arm below it can " +
-                "never be selected. `ScriptedCallKind.ShellReturnStdout` is unreachable.",
+            "S4-A1: the mapper now distinguishes the three sh shapes by ARGUMENT FORM in a " +
+                "single arm, so the requested shape survives classification instead of being " +
+                "swallowed by the eager branch. Previously every sh was classified the same " +
+                "way and `returnStdout = true` was a silent semantic drop.",
         )
         assertEquals(
-            """val out = sh("echo hi", returnStdout = true)""",
+            """val out = steps.sh(ScriptedCallSiteId("s4a0:1:11:sh:ro"), "echo hi", ReturnStdout, null, null)""",
             body(generated),
-            "MEASURED DEFECT: the call is left as the raw eager sh, so `out` binds to whatever " +
-                "the eager call yields and the author's returnStdout = true is a silent semantic " +
-                "drop. The mapper's own KDoc claims this case is 'distinct from the eager " +
-                "sh(...) branch above — both compile-time legal'; the code does not implement " +
-                "that distinction.",
+            "S4-A1: the call must be rewritten through the facade with the marker overload, " +
+                "so the author's requested shape reaches the runtime as a typed value.",
         )
     }
 
     @Test
-    fun `CHARACTERIZED DEFECT - no sh spelling can ever reach ShellReturnStdout`() {
-        // The consequence, stated separately so it cannot be read as one bad
-        // input. Every unqualified `sh(...)` is classified Shell, whatever its
-        // arguments, so no authoring of `sh` reaches the runtime-returning arm.
-        val spellings = listOf(
+    fun `S4-A1 - every sh spelling now reaches a classified shape, none is silently eager`() {
+        // RETRACTS the characterization this file previously carried. `ShellReturnStdout`
+        // no longer exists: one `Shell` kind carries the shape in its payload, so the old
+        // "no spelling can reach the runtime-returning arm" statement is not just false,
+        // it is unanswerable. What replaces it is the property that actually matters —
+        // no authoring of `sh` is classified as the no-value shape when it asks for a
+        // value.
+        val asking = listOf(
             """sh("echo hi", returnStdout = true)""",
             """val a = sh("x", returnStdout = true)""",
             """val b = sh(script = "x", returnStdout = true)""",
             """if (isUnix()) { sh("x", returnStdout = true) }""",
+            """val c = sh("x", returnStatus = ReturnStatus)""",
         )
-        for (spelling in spellings) {
+        for (spelling in asking) {
             assertTrue(
-                kinds(lower(spelling)).none { it.startsWith("ShellReturnStdout") },
-                "no spelling of sh reaches the runtime-returning arm, but <$spelling> did",
+                kinds(lower(spelling)).none { it == "Shell:NONE" },
+                "a sh call that asks for a value must never be classified as the no-value " +
+                    "shape, but <$spelling> was",
             )
         }
     }
@@ -246,7 +264,8 @@ class S4A0ScriptedLoweringCharacterizationTest {
             invocationOrdinal = 0,
             stepKey = PluginStepId("core.pwd"),
             encodedInput = EncodedStepValue("{}"),
-        )
+            definitionDigest = "s4-test-artifact-v1",
+)
         val second = base.copy(invocationOrdinal = 1)
         val third = base.copy(invocationOrdinal = 2)
 
@@ -285,7 +304,8 @@ class S4A0ScriptedLoweringCharacterizationTest {
             invocationOrdinal = 0,
             stepKey = PluginStepId("core.pwd"),
             encodedInput = EncodedStepValue("{}"),
-        )
+            definitionDigest = "s4-test-artifact-v1",
+)
         val insideScope = first.copy(dynamicScopePath = listOf("loop-0"))
         assertNotEquals(
             first.operationId(),

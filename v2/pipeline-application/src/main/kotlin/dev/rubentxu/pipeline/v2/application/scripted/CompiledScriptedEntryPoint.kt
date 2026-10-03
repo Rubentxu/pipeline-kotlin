@@ -14,6 +14,7 @@ import dev.rubentxu.pipeline.v2.application.PwdInput
 import dev.rubentxu.pipeline.v2.application.PwdTmpInput
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
 import dev.rubentxu.pipeline.v2.domain.ShellCommand
+import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
 import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint
 import dev.rubentxu.pipeline.v2.scripting.ReturnStatus
@@ -75,13 +76,24 @@ internal class RuntimeScriptedStepFacade(
         RuntimeScriptedStepFacade(this, registryInvoker).block()
     }
 
+    /**
+     * S4-A1 — all three `sh` shapes reach the durable engine through the registry,
+     * so the scripted frontend admits `core.sh`'s declared
+     * `SHELL_OPERATIONS_CAPABILITY` on the same path a declarative `sh` does.
+     *
+     * They previously routed to `scope.invokeAt`, which is the eager
+     * `ScriptedOperationRuntime` seam. In production that seam is now
+     * registry-routed too, so either way the capability is admitted; routing the
+     * façade directly is what makes that true by construction rather than by
+     * remembering which runtime was wired.
+     */
     override suspend fun sh(
         callSite: ScriptedCallSiteId,
         script: String,
         encoding: String?,
         label: String?,
     ) {
-        scope.invokeAt(callSite, ShellCommand(script, encoding, label, ShellReturnMode.NONE)).asUnit()
+        shell(callSite, script, encoding, label, ShellReturnMode.NONE).asUnit()
     }
 
     override suspend fun sh(
@@ -90,7 +102,7 @@ internal class RuntimeScriptedStepFacade(
         returnStdout: ReturnStdout,
         encoding: String?,
         label: String?,
-    ): String = scope.invokeAt(callSite, ShellCommand(script, encoding, label, ShellReturnMode.STDOUT)).asStdout()
+    ): String = shell(callSite, script, encoding, label, ShellReturnMode.STDOUT).asStdout()
 
     override suspend fun sh(
         callSite: ScriptedCallSiteId,
@@ -98,7 +110,22 @@ internal class RuntimeScriptedStepFacade(
         returnStatus: ReturnStatus,
         encoding: String?,
         label: String?,
-    ): Int = scope.invokeAt(callSite, ShellCommand(script, encoding, label, ShellReturnMode.STATUS)).asStatus()
+    ): Int = shell(callSite, script, encoding, label, ShellReturnMode.STATUS).asStatus()
+
+    /** One call, three shapes: the return mode is the only thing that varies. */
+    private suspend fun shell(
+        callSite: ScriptedCallSiteId,
+        script: String,
+        encoding: String?,
+        label: String?,
+        returnMode: ShellReturnMode,
+    ): ShellInvocationResult = call(
+        callSite = callSite,
+        definition = CoreShellStep.definition,
+        input = CoreShellInput(
+            command = ShellCommand(script = script, encoding = encoding, label = label, returnMode = returnMode),
+        ),
+    ).result
 
     /**
      * LFC-2R / R2 — the first runtime-returning scripted consumer of the generic
@@ -185,46 +212,6 @@ internal class RuntimeScriptedStepFacade(
         file: String,
     ): Boolean =
         call(callSite, CoreFileExistsStep.definition, CoreFileExistsInput(file = file)).exists
-
-    /**
-     * WU-LPR-087 (LFC-2R2) — runtime-returning `sh(..., returnStdout = true)`
-     * façade. Mirrors the existing `pwd` impl shape but routes through
-     * [CoreShellStep] with [ShellReturnMode.STDOUT]: identity + encoded input
-     * → invoker → encoded output → Step's declared codec → captured stdout
-     * String.
-     *
-     * Reuses the certified `core.sh` Step; no new StepKey, no new capability.
-     * The rewriter produces `steps.shReturnStdout(callSite, script)` calls
-     * with the script text preserved; the façade encodes the same script with
-     * `returnMode = STDOUT` and decodes `CoreShellOutput.stdout`.
-     */
-    override suspend fun shReturnStdout(
-        callSite: ScriptedCallSiteId,
-        script: String,
-        encoding: String?,
-    ): String {
-        val output = call(
-            callSite,
-            CoreShellStep.definition,
-            CoreShellInput(
-                command = ShellCommand(
-                    script = script,
-                    encoding = encoding,
-                    label = null,
-                    returnMode = ShellReturnMode.STDOUT,
-                ),
-            ),
-        )
-        val stdoutValue = (output.result as? dev.rubentxu.pipeline.v2.domain.ShellInvocationResult.Stdout)?.value
-            ?: throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
-                dev.rubentxu.pipeline.v2.domain.PipelineFailure(
-                    dev.rubentxu.pipeline.v2.domain.FailureKind.REPLAY_COMPATIBILITY,
-                    "core.sh succeeded but the persisted output is not a Stdout variant " +
-                        "(got ${output.result::class.simpleName}); the sh(returnStdout=true) facade requires ShellReturnMode.STDOUT",
-                ),
-            )
-        return stdoutValue
-    }
 }
 
 /** Closed result of selecting a host compilation for durable scripted execution. */

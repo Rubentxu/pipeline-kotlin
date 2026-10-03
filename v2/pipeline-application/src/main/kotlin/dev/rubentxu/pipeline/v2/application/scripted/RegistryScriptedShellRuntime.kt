@@ -53,6 +53,7 @@ class RegistryScriptedShellRuntime(
                 runId = operation.runId,
                 entryPointId = operation.entryPointId,
                 dynamicScopePath = operation.dynamicScopePath,
+                definitionDigest = operation.definitionDigest,
             ),
             callSiteId = operation.callSiteId,
             invocationOrdinal = operation.invocationOrdinal,

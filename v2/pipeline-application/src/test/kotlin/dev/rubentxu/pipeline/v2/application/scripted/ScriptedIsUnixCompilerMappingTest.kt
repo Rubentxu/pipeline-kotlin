@@ -105,7 +105,7 @@ class ScriptedIsUnixCompilerMappingTest {
         val generated = (lowering as LoweringResult.Generated)
         // Exactly ONE isUnix call was mapped from the real source.
         assertEquals(1, generated.mappedCalls.count { it.kind == ScriptedCallKind.IsUnix })
-        assertEquals(0, generated.mappedCalls.count { it.kind == ScriptedCallKind.Shell })
+        assertEquals(0, generated.mappedCalls.count { it.kind is ScriptedCallKind.Shell })
 
         val script = """
             val recorded = mutableListOf<String>()
@@ -191,7 +191,7 @@ class ScriptedIsUnixCompilerMappingTest {
         val mapping = KotlinScriptedSourceMapper().map(ScriptedSource(sourceId, tricky))
         val mapped = mapping as ScriptedSourceMapping.Mapped
         assertEquals(0, mapped.calls.count { it.kind == ScriptedCallKind.IsUnix })
-        assertEquals(0, mapped.calls.count { it.kind == ScriptedCallKind.Shell })
+        assertEquals(0, mapped.calls.count { it.kind is ScriptedCallKind.Shell })
     }
 
     @Test

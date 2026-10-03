@@ -50,6 +50,12 @@ data class ScriptedRegistryCall(
     val invocationOrdinal: Int,
     val stepKey: PluginStepId,
     val encodedInput: EncodedStepValue,
+    /**
+     * S4-A1: the compiled artifact identity, carried in the operation input so the
+     * fingerprint is bound to it. Without this a scripted registry step replays
+     * across two different compiled artifacts of the same source position.
+     */
+    val definitionDigest: String,
 ) {
     init {
         require(runId.isNotBlank()) { "Scripted run id must not be blank" }
@@ -156,6 +162,7 @@ class ScriptedRegistryInvoker(
                 invocationOrdinal = invocationOrdinal,
                 stepKey = definition.contract.key,
                 encodedInput = definition.contract.inputCodec.encode(input),
+                definitionDigest = identity.definitionDigest,
             ),
         )
         return when (result) {
@@ -185,6 +192,7 @@ class ScriptedRegistryInvoker(
                 put("dynamicScopePath", JsonPrimitive(call.dynamicScopePath.joinToString("/")))
                 put("invocationOrdinal", JsonPrimitive(call.invocationOrdinal))
                 put("encodedInput", JsonPrimitive(call.encodedInput.value))
+                put("definitionDigest", JsonPrimitive(call.definitionDigest))
             }.let(::flattenParams),
             runId = call.runId,
             attempt = ATTEMPT,

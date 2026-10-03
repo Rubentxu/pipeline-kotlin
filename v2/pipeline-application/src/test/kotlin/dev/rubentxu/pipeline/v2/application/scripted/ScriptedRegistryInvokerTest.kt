@@ -117,6 +117,7 @@ class ScriptedRegistryInvokerTest {
         invocationOrdinal = ordinal,
         stepKey = FixtureStep.KEY,
         encodedInput = EncodedStepValue(input),
+        definitionDigest = "s4-test-artifact-v1",
     )
 
     // ---- FRESH ----------------------------------------------------------------

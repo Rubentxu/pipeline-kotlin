@@ -122,6 +122,7 @@ class S4A0ScriptedRestorePathCharacterizationTest {
         invocationOrdinal = 0,
         stepKey = FixtureStep.KEY,
         encodedInput = EncodedStepValue("41"),
+        definitionDigest = "s4-test-artifact-v1",
     )
 
     private fun invokerOver(journal: InMemoryOperationJournal): ScriptedRegistryInvoker {

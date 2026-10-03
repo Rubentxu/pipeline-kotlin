@@ -1,12 +1,13 @@
 package dev.rubentxu.pipeline.v2.application.scripted
 
-import dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint
 import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
 import dev.rubentxu.pipeline.v2.scripting.KotlinScriptedSourceMapper
 import dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult
 import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
 import dev.rubentxu.pipeline.v2.scripting.ScriptedCallKind
+import dev.rubentxu.pipeline.v2.scripting.ScriptedShellReturnMode
 import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceId
+import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceMapping
 import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceLowering
 import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceLowering.LoweringResult
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -16,41 +17,30 @@ import org.junit.jupiter.api.Timeout
 import java.util.concurrent.TimeUnit
 
 /**
- * S4-A1 MEASUREMENT — can a scripted `sh(...)` run at all, and is the privileged
- * runtime reachable?
+ * S4-A1 — a scripted `sh(...)` must COMPILE and carry its script and its shape.
  *
- * ## Why this suite exists, and what it corrects
+ * ## What this file replaced
  *
- * `S4A1ScriptedShellPathPrivilegeCanaryTest` proves by reading that
- * `ScriptedFrontendRunner` builds `JournaledScriptedOperationRuntime` with a
- * lambda calling `ShExecution.invokeShell` directly, skipping the registry
- * preparation step where `core.sh`'s declared `SHELL_OPERATIONS_CAPABILITY` is
- * admitted. It was reported as a production-reachable capability bypass.
+ * `c62d6ff5` measured the opposite and it was the right measurement at the time:
+ * a scripted `sh(script = "printf hi")` was classified `ScriptedCallKind.Shell`,
+ * the lowering declined to rewrite it, the bare `sh` survived into the generated
+ * Kotlin with no receiver, and the host rejected the script at compile time with
+ * `Unresolved reference 'sh'`.
  *
- * Reading proves WIRING, not REACHABILITY. Measuring reachability changed the
- * severity, and the correction belongs on the face of the evidence rather than
- * quietly folded into a later commit. The measured chain is:
+ * That was measured because reading had already shown the privileged shell
+ * runtime was wired but unreachable. Closing the bypass (a272990c) was necessary
+ * but not sufficient: fixing the lowering without it would have converted a loud
+ * compile error into a silent capability-admission bypass. This file is the
+ * other half — it asserts that the shell now works, and through which spine.
  *
- * ```
- * real user source:  sh(script = "printf hi")
- *   → KotlinScriptedSourceMapper   classifies it as ScriptedCallKind.Shell
- *   → ScriptedSourceLowering        returns `null` for Shell — NOT rewritten
- *   → generated Kotlin still contains a bare `sh(...)`
- *   → Kotlin host compile            ERROR: Unresolved reference 'sh'
- * ```
+ * ## Why compile-success is the load-bearing assertion
  *
- * The failure is at COMPILE TIME, before any execution. So:
- *
- * 1. A scripted pipeline containing `sh(...)` does not build. The most common
- *    step in the DSL is unusable in the scripted runtime.
- * 2. The privileged runtime is BUILT but UNREACHABLE. The capability bypass is
- *    LATENT, not live — a landmine, not an exploit.
- * 3. It is one small fix away from going live: give the compiled path a
- *    call-site provider and the raw `sh` binds to `ScriptedScope.sh`, which
- *    routes straight into the unadmitted privileged runtime.
- *
- * Point 3 is the argument for the fix being spine unification rather than a
- * call-site patch. Patching the call site without unifying arms the landmine.
+ * "It compiles" is the weakest possible statement about a generated program. On
+ * its own it proves nothing about semantics. It is load-bearing HERE only because
+ * the other assertions pin what the compiled program actually does: it maps to
+ * a façade call, it carries the script text, it carries the requested shape, and
+ * the façade it calls is registry-routed. A lowering that emitted arbitrary
+ * valid Kotlin would fail those.
  */
 @Timeout(value = 180, unit = TimeUnit.SECONDS)
 class S4A1ScriptedShellReachabilityMeasurementTest {
@@ -83,63 +73,129 @@ class S4A1ScriptedShellReachabilityMeasurementTest {
     private fun diagnosticsOf(result: ScriptCompilationResult): String =
         (result as? ScriptCompilationResult.Failure)?.diagnostics?.joinToString("; ").orEmpty()
 
-    @Test
-    fun `MEASURED - a scripted sh call is classified Shell, is never rewritten, and the generated source does not compile`() {
-        val generated = lower("""sh(script = "printf hi")""")
-
-        assertEquals(
-            1,
-            generated.mappedCalls.count { it.kind == ScriptedCallKind.Shell },
-            "the mapper should classify the single unqualified sh(...) as ScriptedCallKind.Shell",
-        )
-        assertEquals(
-            0,
-            generated.mappedCalls.count { it.kind is ScriptedCallKind.ShellReturnStdout },
-            "CHARACTERIZED: the runtime-returning arm ShellReturnStdout is unreachable, because the " +
-                "eager Shell arm matches on the callee name alone and is tested first. " +
-                "Fails when the mapper disambiguates by argument form (S4-A2).",
-        )
-
-        // The load-bearing step: the lowering declines to rewrite Shell at all.
+    private fun compileAndRequireSuccess(sourceText: String, what: String): LoweringResult.Generated {
+        val generated = lower(sourceText)
+        val result = compileOrDiagnostics(generated)
         assertTrue(
-            generated.source.contains("""sh(script = "printf hi")"""),
-            "CHARACTERIZED: ScriptedCallKind.Shell yields `null` from the lowering and is therefore " +
-                "NOT rewritten, so the bare sh(...) survives into the generated Kotlin. " +
+            result is ScriptCompilationResult.Success,
+            "a scripted `$what` must compile. Got: ${diagnosticsOf(result)}\n\n" +
+                "GENERATED SOURCE WAS:\n${generated.source}",
+        )
+        return generated
+    }
+
+    @Test
+    fun `a scripted sh call is rewritten to a facade call carrying its script and its shape, and compiles`() {
+        val generated = compileAndRequireSuccess("""sh(script = "printf hi")""", "sh(...)")
+
+        val shell = generated.mappedCalls.single().kind
+        assertTrue(shell is ScriptedCallKind.Shell, "expected a Shell kind, got $shell")
+        assertEquals(
+            "\"printf hi\"",
+            (shell as ScriptedCallKind.Shell).script,
+            "the mapper must carry the script text through, not an empty placeholder: the " +
+                "previous lowering had no script at all, which is why it declined to rewrite",
+        )
+        assertEquals(
+            ScriptedShellReturnMode.NONE,
+            shell.returnMode,
+            "sh(script) with no return flag is the NONE shape",
+        )
+        assertTrue(
+            generated.source.contains("steps.sh("),
+            "the call must be rewritten onto the facade so it binds to a receiver.\n" +
                 "GENERATED SOURCE WAS:\n${generated.source}",
         )
         assertTrue(
-            !generated.source.contains("steps.sh"),
-            "control: no façade call is generated for sh, so RuntimeScriptedStepFacade.sh cannot be " +
-                "reached from a compiled entry point",
-        )
-
-        // ...and the bare call therefore has no receiver to bind to.
-        val diagnostics = diagnosticsOf(compileOrDiagnostics(generated))
-        assertTrue(
-            diagnostics.contains("Unresolved reference 'sh'"),
-            "MEASURED: the user's script does not build. Expected the Kotlin host to reject the bare " +
-                "sh(...) left in the generated source, but got: $diagnostics\n\n" +
-                "Fails when the Shell arm gains a façade rewrite (S4-A2).",
+            !generated.source.contains("sh(script ="),
+            "no bare sh(...) may survive into the generated Kotlin; it has no receiver and " +
+                "cannot resolve",
         )
     }
 
     @Test
-    fun `CONTROL - a scripted source without sh compiles, so the rejection above is specific to sh and not a harness artifact`() {
-        // If this control ever failed, the rejection in the test above would prove
-        // nothing: the harness, not `sh`, would be at fault.
-        val generated = lower("val unix = isUnix()")
-        val result = compileOrDiagnostics(generated)
+    fun `the three sh shapes are distinguished by argument form and each reaches the same facade`() {
+        val cases = listOf(
+            Triple("""sh("echo a")""", ScriptedShellReturnMode.NONE, "\"echo a\", null, null"),
+            Triple(
+                """sh("echo b", returnStdout = true)""",
+                ScriptedShellReturnMode.STDOUT,
+                "ReturnStdout",
+            ),
+            Triple(
+                """sh("echo c", returnStatus = ReturnStatus)""",
+                ScriptedShellReturnMode.STATUS,
+                "ReturnStatus",
+            ),
+            // The marker spelling the public DSL actually uses.
+            Triple(
+                """sh("echo d", returnStdout = ReturnStdout)""",
+                ScriptedShellReturnMode.STDOUT,
+                "ReturnStdout",
+            ),
+        )
 
-        assertTrue(
-            result is ScriptCompilationResult.Success,
-            "CONTROL: a sh-free scripted source must still compile through the same harness, otherwise " +
-                "the compile rejection measured above is a harness artifact rather than a defect. " +
-                "Got: ${diagnosticsOf(result)}",
+        cases.forEach { (source, expectedMode, expectedCallToken) ->
+            val generated = compileAndRequireSuccess(source, source)
+            val kind = generated.mappedCalls.single().kind
+            assertTrue(kind is ScriptedCallKind.Shell, "$source must map to Shell, got $kind")
+            assertEquals(
+                expectedMode,
+                (kind as ScriptedCallKind.Shell).returnMode,
+                "$source must map to $expectedMode",
+            )
+            assertTrue(
+                generated.source.contains(expectedCallToken),
+                "$source must be rewritten through the `sh` facade with `$expectedCallToken`.\n" +
+                    "GENERATED SOURCE WAS:\n${generated.source}",
+            )
+        }
+    }
+
+    @Test
+    fun `an illegal sh shape is rejected instead of being given an invented meaning`() {
+        // Both flags at once is not a fourth shape. Resolving it would require
+        // choosing which value the user gets, and there is no basis for the choice.
+        val mapping = KotlinScriptedSourceMapper().map(
+            dev.rubentxu.pipeline.v2.scripting.ScriptedSource(
+                sourceId = sourceId,
+                text = """sh("echo", returnStdout = true, returnStatus = ReturnStatus)""",
+            ),
         )
         assertTrue(
+            mapping is ScriptedSourceMapping.InvalidSyntax,
+            "a sh call requesting both returnStdout and returnStatus must be rejected, not " +
+                "silently resolved. Got: $mapping",
+        )
+        assertTrue(
+            (mapping as ScriptedSourceMapping.InvalidSyntax).diagnostics
+                .any { it.message.contains("mutually exclusive") },
+            "the rejection must say WHY, so a user can fix the script. Got: ${mapping.diagnostics}",
+        )
+    }
+
+    @Test
+    fun `a sh call with no script is rejected rather than rewritten to run nothing`() {
+        // The previous mapper substituted an empty string here, producing a shell
+        // command that ran nothing and reported success.
+        val mapping = KotlinScriptedSourceMapper().map(
+            dev.rubentxu.pipeline.v2.scripting.ScriptedSource(
+                sourceId = sourceId,
+                text = """sh(encoding = "UTF-8")""",
+            ),
+        )
+        assertTrue(
+            mapping is ScriptedSourceMapping.InvalidSyntax,
+            "a sh call with no script argument must be rejected. Got: $mapping",
+        )
+    }
+
+    @Test
+    fun `CONTROL - a sh-free scripted source still compiles, so the harness is not what decides`() {
+        val generated = compileAndRequireSuccess("val unix = isUnix()", "isUnix()")
+        assertTrue(
             generated.mappedCalls.count { it.kind == ScriptedCallKind.IsUnix } == 1,
-            "control: the sh-free fixture really did map a facade-bound call, proving the mapper and " +
-                "lowering pipeline is live for the kinds it does handle",
+            "control: the sh-free fixture really did map a facade-bound call",
         )
     }
 }

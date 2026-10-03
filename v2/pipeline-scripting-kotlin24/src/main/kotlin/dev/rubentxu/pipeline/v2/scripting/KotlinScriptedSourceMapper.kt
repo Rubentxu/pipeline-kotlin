@@ -39,13 +39,46 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
             file.accept(object : KtTreeVisitorVoid() {
                 override fun visitCallExpression(expression: KtCallExpression) {
                     val isDotQualified = expression.parent is KtDotQualifiedExpression
+                    val location = source.locationAt(expression.textRange.startOffset)
                     when {
                         // Unqualified generator-level `sh(...)`: a shell step call.
-                        expression.calleeExpression?.text == "sh" && !isDotQualified ->
-                            calls += ScriptedMappedCall(
-                                ScriptedCallKind.Shell,
-                                source.locationAt(expression.textRange.startOffset),
-                            )
+                        //
+                        // S4-A1. ONE arm, not two. The eager arm used to match on
+                        // the callee name alone and was tested first, so the
+                        // runtime-returning arm below it could never fire; and the
+                        // eager arm carried no script, so the lowering had nothing
+                        // to rewrite with and declined, leaving a bare `sh` in the
+                        // generated Kotlin that failed to compile. The three legal
+                        // shapes are now distinguished by ARGUMENT FORM here, once.
+                        expression.calleeExpression?.text == "sh" && !isDotQualified -> {
+                            val requested = expression.shellReturnFlags()
+                            val script = expression.scriptTextOrNull()
+                            when {
+                                requested.stdout && requested.status ->
+                                    diagnostics += source.diagnosticAt(
+                                        offset = expression.textRange.startOffset,
+                                        message = "sh(...) cannot request both returnStdout and " +
+                                            "returnStatus; the three shapes are mutually exclusive",
+                                    )
+                                script == null ->
+                                    diagnostics += source.diagnosticAt(
+                                        offset = expression.textRange.startOffset,
+                                        message = "sh(...) requires a script argument",
+                                    )
+                                else -> calls += ScriptedMappedCall(
+                                    ScriptedCallKind.Shell(
+                                        script = script,
+                                        returnMode = when {
+                                            requested.stdout -> ScriptedShellReturnMode.STDOUT
+                                            requested.status -> ScriptedShellReturnMode.STATUS
+                                            else -> ScriptedShellReturnMode.NONE
+                                        },
+                                    ),
+                                    location,
+                                    expression.textRange.length,
+                                )
+                            }
+                        }
                         // Unqualified runtime-returning `isUnix()`: platform query step
                         // (LFC-2R / R3). Argument-less by contract; qualified/receiver
                         // forms are NOT generator calls.
@@ -54,7 +87,8 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
                             expression.valueArguments.isEmpty() ->
                             calls += ScriptedMappedCall(
                                 ScriptedCallKind.IsUnix,
-                                source.locationAt(expression.textRange.startOffset),
+                                location,
+                                expression.textRange.length,
                             )
                         // Unqualified runtime-returning `pwd()` / `pwd(tmp=true)`:
                         // workspace query step (WU-LPR-402). Argument-less → core.pwd,
@@ -63,7 +97,8 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
                             !isDotQualified ->
                             calls += ScriptedMappedCall(
                                 ScriptedCallKind.Pwd(tmp = expression.hasNamedArgTrue("tmp")),
-                                source.locationAt(expression.textRange.startOffset),
+                                location,
+                                expression.textRange.length,
                             )
                         // Unqualified runtime-returning `readFile(...)`: workspace file-read
                         // step (LFC-2R2). The argument is the path; encoding defaults at the
@@ -73,7 +108,8 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
                             expression.valueArguments.isNotEmpty() ->
                             calls += ScriptedMappedCall(
                                 ScriptedCallKind.ReadFile,
-                                source.locationAt(expression.textRange.startOffset),
+                                location,
+                                expression.textRange.length,
                             )
                         // Unqualified runtime-returning `fileExists(...)`: workspace
                         // file-existence check (LFC-2R2). The argument is the path.
@@ -82,17 +118,8 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
                             expression.valueArguments.isNotEmpty() ->
                             calls += ScriptedMappedCall(
                                 ScriptedCallKind.FileExists,
-                                source.locationAt(expression.textRange.startOffset),
-                            )
-                        // Unqualified runtime-returning `sh(..., returnStdout = true)`:
-                        // captures stdout as a typed value (LFC-2R2). Distinct from
-                        // the eager `sh(...)` branch above — both compile-time legal.
-                        expression.calleeExpression?.text == "sh" &&
-                            !isDotQualified &&
-                            expression.hasNamedArgTrue("returnStdout") ->
-                            calls += ScriptedMappedCall(
-                                ScriptedCallKind.ShellReturnStdout(script = expression.scriptText()),
-                                source.locationAt(expression.textRange.startOffset),
+                                location,
+                                expression.textRange.length,
                             )
                     }
                     super.visitCallExpression(expression)
@@ -142,15 +169,60 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
         }
 
     /**
-     * Returns the textual form of the FIRST positional argument (assumed to be the
-     * `script` parameter for `sh(...)`). Used by [ScriptedCallKind.ShellReturnStdout]
-     * to carry the script text into the rewrite target.
+     * Which runtime-returning shape a `sh(...)` call asks for.
+     *
+     * Both spellings of each flag are recognised: `returnStdout = true` and the
+     * marker form `returnStdout = ReturnStdout` that the public DSL actually uses.
+     * Checking only the boolean spelling would have classified the documented
+     * spelling as NONE and quietly run a command whose value the user expected to
+     * read.
+     *
+     * Both flags are reported rather than resolved, because asking for both is an
+     * invalid program the caller must reject, not a shape to invent meaning for.
      */
-    private fun KtCallExpression.scriptText(): String =
-        valueArguments.firstOrNull { it.getArgumentName()?.asName?.asString() == null }
+    private fun KtCallExpression.shellReturnFlags(): ShellReturnFlags {
+        fun requested(name: String, marker: String): Boolean = valueArguments.any { arg ->
+            arg.getArgumentName()?.asName?.asString() == name &&
+                arg.getArgumentExpression()?.text?.trim()?.let {
+                    it.equals("true", ignoreCase = true) ||
+                        it.equals("1") ||
+                        it.substringAfterLast('.') == marker
+                } == true
+        }
+        return ShellReturnFlags(
+            stdout = requested("returnStdout", "ReturnStdout"),
+            status = requested("returnStatus", "ReturnStatus"),
+        )
+    }
+
+    /** The two independently observable return-mode requests of a `sh(...)` call. */
+    private data class ShellReturnFlags(val stdout: Boolean, val status: Boolean)
+
+    /**
+     * The `script` argument of a `sh(...)` call, in either legal spelling.
+     *
+     * Both `sh("echo hi")` and `sh(script = "echo hi")` are ordinary Kotlin, so
+     * both must be recognised. The argument is carried as PSI TEXT rather than a
+     * literal, which is what lets `sh(command)` pass a variable through: the
+     * generated call is then `steps.sh(callSite, command, null, null)`, valid
+     * Kotlin that resolves the same value at run time.
+     *
+     * S4-A1: returns `null` when there is no `script` argument at all, so the
+     * caller can reject the call. The previous version searched only positional
+     * arguments and substituted an empty string for anything else, so the
+     * NAMED form silently became a shell command running nothing and reported
+     * success — the silent placeholder the Semantic Constitution forbids. A test
+     * fixture using `sh(script = ...)` had been passing on that behaviour.
+     */
+    private fun KtCallExpression.scriptTextOrNull(): String? =
+        valueArguments
+            .firstOrNull { arg ->
+                val name = arg.getArgumentName()?.asName?.asString()
+                name == null || name == "script"
+            }
             ?.getArgumentExpression()
             ?.text
-            ?: ""
+            ?.takeIf { it.isNotEmpty() }
 
     private companion object {
         /** Kotlin compiler PSI application state is process-global. */

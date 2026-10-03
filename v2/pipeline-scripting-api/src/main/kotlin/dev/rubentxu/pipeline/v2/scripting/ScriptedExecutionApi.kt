@@ -47,10 +47,26 @@ data class ScriptedSourceLocation(
         require(column > 0) { "Scripted source column must be positive" }
     }
 
-    /** Stable source identity emitted for a generated `sh` call. */
-    fun shellCallSite(): ScriptedCallSiteId = ScriptedCallSiteId(
-        "${sourceId.value}:$line:$column:sh",
-    )
+    /**
+     * Stable source identity emitted for a generated `sh` call, in any of its
+     * three shapes.
+     *
+     * S4-A1: the shape is part of the identity because two `sh` calls at the same
+     * source position with different return modes have different semantics and
+     * different outputs. A previously separate `shReturnStdoutCallSite` carried
+     * the `:ro` suffix; the mode now carries it directly, so the identity has one
+     * place to be wrong instead of two.
+     */
+    fun shellCallSite(returnMode: ScriptedShellReturnMode = ScriptedShellReturnMode.NONE): ScriptedCallSiteId =
+        ScriptedCallSiteId(
+            "${sourceId.value}:$line:$column:sh:${
+                when (returnMode) {
+                    ScriptedShellReturnMode.NONE -> "none"
+                    ScriptedShellReturnMode.STDOUT -> "ro"
+                    ScriptedShellReturnMode.STATUS -> "rs"
+                }
+            }",
+        )
 
     /**
      * Stable source identity emitted for a generated runtime-returning platform
@@ -103,17 +119,6 @@ data class ScriptedSourceLocation(
     fun fileExistsCallSite(): ScriptedCallSiteId = ScriptedCallSiteId(
         "${sourceId.value}:$line:$column:fileExists",
     )
-
-    /**
-     * Stable source identity emitted for a generated runtime-returning
-     * `sh(...)` invocation with `returnStdout = true` (LFC-2R2).
-     * Deliberately DISTINCT from [shellCallSite] (eager `sh`): the same
-     * source position with different `returnStdout` arity must never
-     * collide on one durable identity.
-     */
-    fun shReturnStdoutCallSite(): ScriptedCallSiteId = ScriptedCallSiteId(
-        "${sourceId.value}:$line:$column:sh:ro",
-    )
 }
 
 /** Source text supplied to a compiler-backed scripted source mapper. */
@@ -133,7 +138,27 @@ fun interface ScriptedSourceMapper {
  * speculative buckets.
  */
 sealed interface ScriptedCallKind {
-    data object Shell : ScriptedCallKind
+    /**
+     * A scripted `sh(...)` call, in any of its three legal shapes.
+     *
+     * S4-A1. This was previously TWO kinds — a payload-free `data object Shell`
+     * and a `data class ShellReturnStdout(script)` — distinguished by which arm
+     * of the mapper's `when` fired first. That was a defect, not a design: the
+     * eager arm matched on the callee name alone, so `ShellReturnStdout` could
+     * never be selected, and the payload-free `Shell` had no script text to
+     * rewrite with, so the lowering declined to rewrite it and the bare `sh`
+     * survived into the generated Kotlin with no receiver. The user script was
+     * then rejected at compile time with `Unresolved reference 'sh'`.
+     *
+     * One case with its own typed payload replaces both. The disambiguation
+     * lives in [returnMode] and nowhere else, so there is no order in which two
+     * arms can compete, and every shape carries the script it needs.
+     */
+    data class Shell(
+        val script: String,
+        val returnMode: ScriptedShellReturnMode,
+    ) : ScriptedCallKind
+
     data object IsUnix : ScriptedCallKind
 
     /**
@@ -167,15 +192,28 @@ sealed interface ScriptedCallKind {
      * REUSE reproduces the persisted observation without re-stat-ing.
      */
     data object FileExists : ScriptedCallKind
+}
 
-    /**
-     * Runtime-returning `sh(...)` invocation with `returnStdout = true`
-     * (LFC-2R2). Distinct from [Shell] (which is eager / Unit). The
-     * rewriter uses [script] to produce the textual rewrite target
-     * `steps.shReturnStdout(callSite, script)`; the façade then routes
-     * through the registry Step (`core.sh` with `returnStdout = true`).
-     */
-    data class ShellReturnStdout(val script: String) : ScriptedCallKind
+/**
+ * The three legal shapes of a scripted `sh(...)` call.
+ *
+ * A closed enum rather than two booleans on [ScriptedCallKind.Shell]: the
+ * shapes are mutually exclusive, and `returnStdout = true, returnStatus = true`
+ * is not a third shape but an invalid program, which the mapper rejects rather
+ * than resolving. A flag pair would have to invent a meaning for it.
+ *
+ * NONE is a real shape with its own meaning — the call produces no value — so
+ * it is a case here rather than a nullable field.
+ */
+enum class ScriptedShellReturnMode {
+    /** `sh(script)` — the call runs for its effect and returns nothing. */
+    NONE,
+
+    /** `sh(script, returnStdout = true)` — returns the captured stdout. */
+    STDOUT,
+
+    /** `sh(script, returnStatus = true)` — returns the process exit code. */
+    STATUS,
 }
 
 /**
@@ -194,14 +232,26 @@ fun ScriptedCallKind.isRuntimeReturning(): Boolean = when (this) {
     is ScriptedCallKind.Pwd -> true
     ScriptedCallKind.ReadFile -> true
     ScriptedCallKind.FileExists -> true
-    is ScriptedCallKind.ShellReturnStdout -> true
-    ScriptedCallKind.Shell -> false
+    // S4-A1: `sh` is runtime-returning in two of its three shapes. The decision
+    // reads the payload rather than comparing against a subtype, so adding a
+    // shape later cannot silently change which form a call takes.
+    is ScriptedCallKind.Shell -> returnMode != ScriptedShellReturnMode.NONE
 }
 
-/** One mapped runtime-effectful call: its kind and exact source location. */
+/**
+ * One mapped runtime-effectful call: its kind and its EXACT source extent.
+ *
+ * S4-A1: [sourceLength] is the character length of the original call expression.
+ * The lowering replaces that exact span, so it has to know how long the span
+ * really is rather than guessing from the callee. Previously the length came
+ * from a hardcoded canonical spelling, which is only correct for argument-less
+ * calls: `sh(script = "...")` has an arbitrary length, and a wrong length makes
+ * the rewrite land mid-token and produce Kotlin that does not compile.
+ */
 data class ScriptedMappedCall(
     val kind: ScriptedCallKind,
     val location: ScriptedSourceLocation,
+    val sourceLength: Int,
 )
 
 /** Closed result of parsing source for generated scripted calls. */
@@ -211,7 +261,7 @@ sealed interface ScriptedSourceMapping {
     ) : ScriptedSourceMapping {
         /** Back-compat view: the mapped `sh` calls in source order. */
         val shellCalls: List<ScriptedSourceLocation>
-            get() = calls.filter { it.kind == ScriptedCallKind.Shell }.map { it.location }
+            get() = calls.filter { it.kind is ScriptedCallKind.Shell }.map { it.location }
     }
 
     data class InvalidSyntax(
@@ -354,17 +404,12 @@ interface ScriptedStepFacade {
      */
     suspend fun fileExists(callSite: ScriptedCallSiteId, file: String): Boolean
 
-    /**
-     * Runtime-returning shell invocation with `returnStdout = true` (LFC-2R2).
-     * Mirrors the existing [sh] overloads but returns the captured stdout as
-     * a String. The route is the same: registry Step (`core.sh`) with
-     * `returnStdout = true` and the Step's declared output codec decoded.
-     */
-    suspend fun shReturnStdout(
-        callSite: ScriptedCallSiteId,
-        script: String,
-        encoding: String? = null,
-    ): String
+    // S4-A1: `shReturnStdout` is REMOVED, not deprecated. It was a second spelling
+    // of the `sh(..., returnStdout = true)` overload, and the mapper could never
+    // select it, so it was a dead semantic parameter: a published declaration that
+    // nothing could reach. Its two jobs are now done by the surviving overload
+    // (stdout as a String) and by `ScriptedShellReturnMode` (the disambiguation),
+    // each in exactly one place.
 }
 
 private fun stableScriptedArtifactKey(fields: List<String>): String = fields.joinToString(separator = "") { field ->

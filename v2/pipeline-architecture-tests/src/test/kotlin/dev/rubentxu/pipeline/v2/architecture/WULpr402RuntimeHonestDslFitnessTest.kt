@@ -286,13 +286,25 @@ class WULpr402RuntimeHonestDslFitnessTest {
         }
 
         // ...and no facade may reach into a codec directly either.
+        // S4-A1: `shReturnStdout` is listed no longer because it was REMOVED from
+        // the facade; the surviving entry is `sh`, which now carries all three
+        // shapes. Listing a member that does not exist would make this fitness
+        // vacuous for the shell surface — `extractFunctionBody` returns blank and
+        // the entry is silently filtered out, so the check would pass while
+        // inspecting nothing.
         val facadeCodecReads = listOf(
             "override suspend fun isUnix(",
             "override suspend fun pwd(",
             "override suspend fun fileExists(",
             "override suspend fun readFile(",
-            "override suspend fun shReturnStdout(",
+            "override suspend fun sh(",
         ).map { extractFunctionBody(stripped, it) }.filter { it.isNotBlank() }
+        assertEquals(
+            5,
+            facadeCodecReads.size,
+            "every runtime-returning facade must still be present for this fitness to inspect it; " +
+                "a vanished override would make the law below pass vacuously",
+        )
         facadeCodecReads.forEach { body ->
             assertTrue(
                 "outputCodec" !in body,

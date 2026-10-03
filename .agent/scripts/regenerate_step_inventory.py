@@ -59,6 +59,11 @@ CERTIFIED_RECEIPTS = {
     "core.stash": "WU_LPR_089_CORE_STASH_UNSTASH_TIER_B1.md",
     "core.unstash": "WU_LPR_089_CORE_STASH_UNSTASH_TIER_B1.md",
     "core.publishHTML": "WU_LPR_090_CORE_PUBLISH_HTML_TIER_B2.md",
+    # RP-6 closeout (2026-10-03): the three items RP-6 actually queued, each of which
+    # the inventory still carried as TBD / NO_GO long after it shipped.
+    "core.lock": "WU091_LOCK_RELEASE_RECEIPT.md",     # RP6-A / WU-091
+    "core.input": "WU092_INPUT_RELEASE_RECEIPT.md",   # RP6-B / WU-092
+    "http.request": "WU093_HTTP_IMPLEMENTATION_RECEIPT.md",  # RP6-C / WU-093, OFFICIAL_PLUGIN
     "core.artifact.query": None,  # E1.1 bridge; G6/G8 pending
     # TRAIN-040-FINAL F2 exact-candidate official plugin certification.
     "scm-git.checkout": "TRAIN_040_F2_OFFICIAL_PLUGIN_CERTIFICATION_RECEIPT.md",
@@ -141,23 +146,30 @@ def parse_legacy_dispatcher_keys(path: Path) -> list[str]:
 
 
 def parse_sdk_step_keys() -> list[tuple[str, str]]:
-    """Return [(step_key, source_path)] for every PluginStepId(...) in pipeline-step-sdk plugins."""
+    """Return [(step_key, source_path)] for every PluginStepId(...) in pipeline-step-sdk plugins.
+
+    The contract a plugin Step is discovered by is the `PluginStepId("…")` literal, not
+    the name of the file it happens to sit in. This used to filter on `*Key.kt` and
+    `*Contract.kt`, which is a naming accident rather than a rule, and it had a real
+    cost: `http.request` declares its key in `HttpRequestStep.kt`
+    (`HttpRequestKey.VALUE = PluginStepId("http.request")`), matched neither suffix, and
+    a CERTIFIED_AT_SHA Step was therefore invisible to the inventory. A Step becoming
+    invisible because of its filename is the failure mode this program exists to
+    prevent, so the filter is gone and the whole SDK tree is scanned.
+    """
     matches = []
-    # pathlib.rglob('Key.kt') (without wildcard prefix) returns 0 results on this filesystem;
-    # use a glob that anchors at the directory and walks recursively. rglob from the
-    # repo-root relative path also failed (0 results); rglob from the absolute SDK root
-    # returns the expected 9 (utilities) + 1 (junit) + 1 (scm-git/Contract.kt) = 11.
     sdk_root = REPO_ROOT / "v2/pipeline-step-sdk"
-    seen_paths = set()
-    for kt in sdk_root.rglob("*"):  # walk everything under the SDK
+    for kt in sorted(sdk_root.rglob("*.kt")):  # walk every Kotlin source under the SDK
         if not kt.is_file():
             continue
-        if kt.name.endswith("Key.kt") or kt.name.endswith("Contract.kt"):
-            seen_paths.add(kt)
-    for kt in sorted(seen_paths):
+        rel = str(kt.relative_to(REPO_ROOT))
+        # Main sources only. A test that asserts on a Step's key literal is not a
+        # declaration of it, and counting both listed `http.request` twice.
+        if "/build/" in rel or "/src/test/" in rel:
+            continue
         text = kt.read_text()
         for m in re.finditer(r'PluginStepId\("([a-zA-Z0-9_.\-]+)"\)', text):
-            matches.append((m.group(1), str(kt.relative_to(REPO_ROOT))))
+            matches.append((m.group(1), rel))
     return sorted(set(matches), key=lambda t: t[0])
 
 
@@ -192,6 +204,11 @@ def resolve_core_step_key(class_short: str) -> str | None:
         "Stash": "core.stash",
         "Unstash": "core.unstash",
         "PublishHtml": "core.publishHTML",
+        # RP-6 (2026-10-03). Both were registered in production before this table knew
+        # them, which is why the inventory carried them as absent rather than as TBD:
+        # an unmapped class reads as "not a Step", not as "a Step I have not looked up".
+        "Lock": "core.lock",
+        "Input": "core.input",
     }
     return mapping.get(class_short)
 
@@ -382,15 +399,27 @@ def render_markdown(inv: dict) -> str:
     lines.append("- External plugin StepDefinitions enter runtime through `StepDefinitionContributor`")
     lines.append("  (ServiceLoader SPI), never by manual registration.")
     lines.append("")
-    lines.append("## Tier B queue (RP-6 scope)")
+    lines.append("## Tier B queue (RP-6 scope) — CLOSED at RP6-CLOSEOUT")
     lines.append("")
-    lines.append("Per `docs/v2/05-roadmap/ROADMAP.md` §8, the post-RP-5 reconciliation will")
-    lines.append("decide Tier B and C. Current state:")
-    lines.append("- `core.input` (WU-092): TBD")
-    lines.append("- `core.httpRequest` (WU-093): TBD")
-    lines.append("- Tier B #3 (`core.lock`, WU-LPR-091): **NO_GO** per SESSION_POINTER; preserved in stash.")
-    lines.append("- Tier B #4 (`core.publishHTML`, WU-LPR-090 phase-a): **REGISTERED** (RP-1 reconciles).")
-    lines.append("- Tier C (readTOML/writeTOML, tar/untar): TBD by product decision.")
+    lines.append("RP-6 ran its three queued items and all three reached CERTIFIED_AT_SHA. The")
+    lines.append("states below were `TBD` / `NO_GO` until 2026-10-03; `NO_GO per")
+    lines.append("SESSION_POINTER` was a stale reading of a non-authoritative file, and `TBD`")
+    lines.append("simply had not been revisited since the queue was written.")
+    lines.append("")
+    lines.append("- `core.lock` (RP6-A / WU-091): **CERTIFIED_AT_SHA**, POSIX file backend,")
+    lines.append("  receipt `WU091_LOCK_RELEASE_RECEIPT.md`.")
+    lines.append("- `core.input` (RP6-B / WU-092): **CERTIFIED_AT_SHA**, receipt")
+    lines.append("  `WU092_INPUT_RELEASE_RECEIPT.md`.")
+    lines.append("- `http.request` (RP6-C / WU-093): **CERTIFIED_AT_SHA** as an")
+    lines.append("  **OFFICIAL_PLUGIN**, NOT a core Step, receipt")
+    lines.append("  `WU093_HTTP_IMPLEMENTATION_RECEIPT.md`. Delivery was pivoted from")
+    lines.append("  `core.httpRequest` to a plugin on ecosystem-policy grounds; see")
+    lines.append("  `WU093_HTTP_DELIVERY_RECONCILIATION.md`.")
+    lines.append("- `core.publishHTML` (WU-LPR-090 phase-a): **REGISTERED**, not in RP-6 scope.")
+    lines.append("- WU-094 (`markdown-toolkit-plugin`): **NOT STARTED by decision.** It was a")
+    lines.append("  proposal, not a requirement; RP-6 does not manufacture an exit criterion")
+    lines.append("  from a TBD. It moves to a later train if real demand appears.")
+    lines.append("- Tier C (readTOML/writeTOML, tar/untar): **NOT STARTED by decision**, same rule.")
     lines.append("")
     lines.append("## References")
     lines.append("")

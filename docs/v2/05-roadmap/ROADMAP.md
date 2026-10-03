@@ -163,6 +163,30 @@ Todos simultáneos en la MISMA candidata: RP-0..4 cerrados; checks obligatorios 
 
 Tras RP-5, reconciliar Tier A y B existentes sin reimplementar capacidades certificadas. Cola provisional heredada: WU-091 core.lock → WU-092 core.input → WU-093 core.httpRequest → WU-094 por concretar mediante inventario y decisión de producto; Tier C (readTOML/writeTOML, tar/untar) sólo si necesidad real y clasificación vigente lo requiere. Mantener distinción entre 20 REGISTERED y CERTIFIED por SHA; junit.results es plugin externo, no un nuevo core universal. Cada Step: contrato tipado, registro sin bypass, capability + policy, semántica/replay/cancelación, compilación positiva/negativa, fitness, UAT instalada, Jenkins-diff donde aplique y recibo verificable. No sumar features a core por comodidad: vendor/toolchains/contenedores van a plugins independientes y versionados.
 
+**Estado de RP-6: CLOSED en RP6-CLOSEOUT (2026-10-03).** La cola se ejecutó completa y sus tres
+elementos llegaron a `CERTIFIED_AT_SHA`:
+
+| WU | Step | Forma de entrega | Recibo |
+|---|---|---|---|
+| RP6-A / WU-091 | `core.lock` | core BlockStep, backend de fichero POSIX | `WU091_LOCK_RELEASE_RECEIPT.md` |
+| RP6-B / WU-092 | `core.input` | core Step | `WU092_INPUT_RELEASE_RECEIPT.md` |
+| RP6-C / WU-093 | `http.request` | **OFFICIAL_PLUGIN**, NO core Step | `WU093_HTTP_IMPLEMENTATION_RECEIPT.md` |
+
+**WU-093 se deliveró como plugin, no como `core.httpRequest`.** La cola de arriba nombra la forma
+superada y se conserva como registro de lo que se decidió; la vigente está en
+`docs/v2/07-uat/WU093_HTTP_DELIVERY_RECONCILIATION.md` y en
+`docs/v2/03-specifications/STEP_ECOSYSTEM_POLICY.md` (`pipeline-plugin-http`: typed
+`httpRequest`). La clasificación no fue una preferencia de implementación: la política de
+ecosistema ya situaba HTTP como concern de protocolo/vendor antes de que RP6-C empezara.
+
+**WU-094 NO se abre.** Fue una *propuesta* (`markdown-toolkit-plugin`), no un requisito, y RP-6 no
+convierte un TBD en criterio de salida. Pasa a un train posterior si aparece demanda real. Lo
+mismo para Tier C: `NOT STARTED by decision`, no por falta de tiempo. Inventario regenerado:
+`docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md`.
+
+**PRODUCT-GATE sigue `BLOCKED_EXTERNAL`** mientras no exista superficie de CI (ver la política de
+verificación en `AGENTS.md`). El STEP-CERT de los tres Steps no lo vuelve verde.
+
 **WU-094 (proposed): plugin externo `markdown-toolkit-plugin` — multi-step library para procesar Markdown en pipelines.**
 - **Motivación**: pipelines de libros (book-builder skill) y de docs-as-code necesitan renderizar Markdown a HTML, generar TOC y validar headings dentro del pipeline. Hoy esto se hace con `sh("markdownlint ...")` / `sh("md-to-pdf ...")` invocando binarios externos, lo que mezcla el transcript de consola con la salida tipada y depende de tooling presente en la imagen CI. Un plugin externo dedicado permite tipar la salida (`{ htmlPath, byteCount, sha256 }`), separar el canal tipado del transcript (mismo principio que `core.sh`), y declarar `ReplayPolicy.NEVER` cuando el render escribe a disco.
 - **Forma**: nueva carpeta `examples/markdown-toolkit-plugin` siguiendo **exactamente** el patrón de `examples/example-uppercase-plugin` (mismo `build.gradle.kts`, mismo `StepDefinitionContributor` SPI, mismo `StepDefinitionContributor`/`StepCodec`/`StepContract` flujo, mismo burn-down G0..G8 hasta CERTIFIED). NO se toca `pipeline-application`, NO se añade StepKey en `CoreStepRegistryFactory`, NO se modifica coordinator.

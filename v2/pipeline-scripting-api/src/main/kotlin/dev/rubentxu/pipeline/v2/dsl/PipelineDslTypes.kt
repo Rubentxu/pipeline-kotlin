@@ -46,11 +46,29 @@ data class EnvironmentSpec(
  * a runtime interpreter (projectShellOptions -> ShOptions.timeoutMs). Stage-level
  * `retry`/`skip` were removed (WU-RP-032): retry semantics live in the retry
  * Block Step (durable control row, ADR-0075); skip is not a durable-engine concept.
- * Invalid surface is unrepresentable instead of accepted-and-dropped.
+ *
+ * S3-R1-B: the validity of `timeout` is enforced HERE as well as in [OptionsScope], and
+ * both consult the same [StageTimeout] authority. The [init] is not redundant defence —
+ * this data class is public API, so a consumer of the typed model can construct one
+ * without ever touching the DSL, and until this block existed that path admitted
+ * `OptionsSpec(timeout = Long.MAX_VALUE)` straight into the compiler's
+ * `Math.multiplyExact`. "Invalid surface is unrepresentable" is a claim about the MODEL,
+ * and a model with no `init` did not make it.
  */
 data class OptionsSpec(
     val timeout: Long? = null,
-)
+) {
+    init {
+        // Reached only when `timeout` is non-null, so it can be named directly.
+        require(timeout == null || StageTimeout.isValid(timeout)) {
+            "OptionsSpec.timeout must be between 1 and ${StageTimeout.MAX_SECONDS} seconds, " +
+                "was $timeout. Two separate things are wrong with that: a timeout of zero or " +
+                "less is not a deadline, and a value this large has no millisecond form that " +
+                "fits a Long, so it could never be projected into one. Omit the option to " +
+                "declare no stage-wide deadline, which is a different statement."
+        }
+    }
+}
 
 /**
  * Timeout configuration.

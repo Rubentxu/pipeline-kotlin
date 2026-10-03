@@ -377,7 +377,7 @@ class CanonicalDurableRunCoordinator(
 
                     is BeforeStageDirectiveEngine.Verdict.Denied -> {
                         runLifecycle.fold(RunOutcome.Failure(PipelineFailure(
-                            dev.rubentxu.pipeline.v2.domain.FailureKind.USER,
+                            verdict.kind,
                             verdict.reason,
                         )))
                         return@run runLifecycle.outcome()

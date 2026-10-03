@@ -29,10 +29,26 @@ val WHEN_DIRECTIVE_KEY: DirectiveKey = DirectiveKey("core.when")
  * script would declare a key nothing resolves — which is exactly the defect the
  * predicate codec already guards against for `when`.
  *
- * It is NOT yet registered by a [dev.rubentxu.pipeline.v2.domain.directive.DirectiveDefinition].
- * The carrier exists (see `ExecutionTargetRequirement`); the definition, the
- * resolver and the interpreter do not. A stage declaring `core.agent` is
- * therefore denied fail-closed by the registry, which is the correct behaviour
- * for a key with no interpreter and the reason the DSL still throws.
+ * S3-R1-D: this paragraph used to say the key was "NOT yet registered" by a
+ * [dev.rubentxu.pipeline.v2.domain.directive.DirectiveDefinition], that "the
+ * definition, the resolver and the interpreter do not [exist]", and that "the
+ * DSL still throws". All three were false from S3.1 onward and had been read as
+ * true by anyone consulting the source: `AgentDirectiveDefinition`,
+ * `LocalExecutionTargetResolver`, the `DirectiveExecutionPolicy.Resource`
+ * interpretation in `BeforeStageDirectiveEngine` and `StageScope.agent(...)`
+ * have all existed since then. The KDoc survived because nothing checks prose
+ * against code, and a stale capability claim is the same defect class as a stale
+ * capability: it tells a reader to expect behaviour that is not there.
+ *
+ * What the key resolves to today:
+ *  - declared phase: BEFORE_STAGE (a body must not start before its target is resolved)
+ *  - declared policy: [dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy.Resource]
+ *  - carrier: [dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement]
+ *  - interpreter: the Resource branch of `BeforeStageDirectiveEngine.interpret`
+ *
+ * A stage declaring `core.agent` is NOT denied fail-closed by the registry any
+ * more. It is decoded, composed, and resolved; `Remote` is the case that is
+ * refused, and it is refused at resolution with a diagnostic naming RP-8 rather
+ * than by failing to resolve the key.
  */
 val AGENT_DIRECTIVE_KEY: DirectiveKey = DirectiveKey("core.agent")

@@ -34,6 +34,29 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  *    a round trip untouched.
  *  - **Total, and it never throws on user input.** Every failure is a value.
  *
+ *    That sentence was an aspiration until S3-R1, and three payload-derived
+ *    numbers broke it. Each is now refused before it can act, and the reasons
+ *    are recorded here rather than only in the test names:
+ *
+ *    ```
+ *    a declared arity of 0
+ *        -> LocalLabels/CapabilitySet would violate their own non-empty
+ *           invariant; refused as Malformed instead of built and caught
+ *
+ *    a declared arity larger than the remaining bytes
+ *        -> refused by ByteCursor.canSatisfyArity BEFORE any ArrayList is sized,
+ *           because "L 2147483647 " is five characters and used to ask the JVM
+ *           for room for ~2^31 references
+ *
+ *    a declared string length near Int.MAX_VALUE
+ *        -> the bounds check subtracts rather than adds, so it cannot wrap
+ *    ```
+ *
+ *    The claim is falsifiable rather than aspirational: `S3R1AgentCodecTotalityTest`
+ *    holds a hostile-payload sweep plus a counter-test, and the engine guard in
+ *    `BeforeStageDirectiveEngine` is a second, independent line of defence for
+ *    the day a future case reintroduces a throwable.
+ *
  * Human readability was traded away deliberately, for the same reason
  * [WhenPredicateCodec] did: the DSL is where a human reads the declaration, and
  * a silently weakened constraint is far worse than a terse one.
@@ -44,6 +67,18 @@ object ExecutionTargetRequirementCodec {
     private const val LOCAL_LABELS = "L"
     private const val CAPABILITY_SET = "C"
     private const val REMOTE = "R"
+
+    /**
+     * The smallest arity a constrained requirement may declare.
+     *
+     * One, not zero, and the reason is semantic rather than syntactic: an empty
+     * label set or capability set means "no constraint", which is what
+     * [ExecutionTargetRequirement.LocalAny] already says. Allowing `L 0` would
+     * give one meaning two encodings, and the two encodings decode to different
+     * requirements, so a replay comparison could report drift where the program
+     * is identical - or the reverse.
+     */
+    private const val MIN_ARITY = 1
 
     /**
      * Encode a requirement. TOTAL: every case of the sealed hierarchy produces
@@ -74,6 +109,12 @@ object ExecutionTargetRequirementCodec {
      * Decode a requirement. TOTAL: returns [DirectiveDecodeResult.Malformed]
      * for every malformed input and never throws, so a corrupt payload is a
      * value the engine can deny on rather than an exception crossing the seam.
+     *
+     * Total here means TOTAL on the encoded argument, and it is a statement
+     * about behaviour under hostile input rather than about the happy path. The
+     * failures are validated at the boundary and returned as values; this
+     * function does not catch exceptions, because a decoder that had to catch
+     * its own preconditions would be evidence that it was not validating them.
      */
     fun decode(encoded: String): DirectiveDecodeResult<ExecutionTargetRequirement> {
         // A cursor over BYTES, not over whitespace-separated tokens.
@@ -106,6 +147,12 @@ object ExecutionTargetRequirementCodec {
 
     private fun readLabels(cursor: ByteCursor): DirectiveDecodeResult<ExecutionTargetRequirement> {
         val count = cursor.readCount() ?: return malformed("LocalLabels arity missing")
+        // A zero arity is refused HERE, as a value, rather than being built and
+        // caught later. `LocalLabels` requires a non-empty set, and an empty
+        // label set is indistinguishable from `LocalAny`, so the payload is
+        // lying about which case it means - exactly what Malformed is for.
+        if (count < MIN_ARITY) return malformed("LocalLabels arity must be at least 1; use LocalAny for an unconstrained target")
+        if (!cursor.canSatisfyArity(count)) return malformed("LocalLabels declares $count labels but the payload is too short to hold them")
         val labels = cursor.readStrings(count) ?: return malformed("LocalLabels payload truncated")
         if (labels.any { it.isBlank() }) return malformed("LocalLabels carries a blank label")
         return cursor.closed(
@@ -116,6 +163,8 @@ object ExecutionTargetRequirementCodec {
 
     private fun readCapabilities(cursor: ByteCursor): DirectiveDecodeResult<ExecutionTargetRequirement> {
         val count = cursor.readCount() ?: return malformed("CapabilitySet arity missing")
+        if (count < MIN_ARITY) return malformed("CapabilitySet arity must be at least 1; use LocalAny for an unconstrained target")
+        if (!cursor.canSatisfyArity(count)) return malformed("CapabilitySet declares $count capabilities but the payload is too short to hold them")
         val keys = cursor.readStrings(count) ?: return malformed("CapabilitySet payload truncated")
         if (keys.any { it.isBlank() }) return malformed("CapabilitySet carries a blank capability key")
         return cursor.closed(
@@ -161,7 +210,26 @@ object ExecutionTargetRequirementCodec {
 
         fun atEnd(): Boolean = index >= bytes.size
 
+        /** Bytes not yet consumed. Never negative, so it is safe to subtract. */
+        fun remaining(): Int = bytes.size - index
+
         private fun peek(): Int? = bytes.getOrNull(index)?.toInt()?.and(0xFF)
+
+        /**
+         * Can this payload POSSIBLY hold [count] further entries?
+         *
+         * Every entry costs at least one byte, so a count larger than what is
+         * left is a claim the payload has already disproved. Checking that
+         * before allocating is what keeps a declared arity from driving a
+         * reservation: `L 2147483647 ` is five characters and used to ask the
+         * JVM for room for ~2^31 references.
+         *
+         * Necessary, not sufficient: passing this does not mean the entries are
+         * well formed, it only means the bytes to hold them plausibly exist. The
+         * readers still verify each one, and a count that survives this check is
+         * bounded by the size of the input rather than by a claim inside it.
+         */
+        fun canSatisfyArity(count: Int): Boolean = count >= 0 && count <= remaining()
 
         /**
          * Close the parse: nothing may follow a complete requirement.
@@ -225,12 +293,26 @@ object ExecutionTargetRequirementCodec {
             if (declared < 0) return null
             if (atEnd() || peek()!! != ':'.code) return null
             index++
-            if (index + declared > bytes.size) return null
+            // SUBTRACT, never add. `declared` is only bounded by toIntOrNull, so
+            // `index + declared` wraps negative at Int.MAX_VALUE, the bounds
+            // check passes, and the cursor hands String a range that does not
+            // exist. `remaining()` is non-negative by construction, so the same
+            // comparison cannot overflow.
+            if (declared > remaining()) return null
             val value = String(bytes, index, declared, Charsets.UTF_8)
             index += declared
             return value
         }
 
+        /**
+         * Read exactly [count] entries, or nothing at all.
+         *
+         * The preallocation is safe only because callers prove the arity
+         * satisfiable first ([canSatisfyArity]); this function is private to the
+         * cursor and must not be called with a bare payload-derived count. The
+         * reservation is therefore bounded by the size of the input rather than
+         * by a number the input merely claims.
+         */
         fun readStrings(count: Int): List<String>? {
             val out = ArrayList<String>(count)
             repeat(count) {

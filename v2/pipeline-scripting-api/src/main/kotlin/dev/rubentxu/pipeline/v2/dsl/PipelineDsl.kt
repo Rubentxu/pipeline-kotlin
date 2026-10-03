@@ -191,7 +191,16 @@ class EnvironmentScope {
  */
 @StepDslMarker
 class OptionsScope {
-    var timeout: Long? = null
+    /**
+     * S3-R1-B: PRIVATE, and the removal is the point.
+     *
+     * This was a public `var timeout: Long?` sitting beside `fun timeout(seconds)`.
+     * Inside `options { … }` the scope is the receiver, so `timeout = 5` was a third door
+     * into the same value that no diagnostic guarded, which is how an unvalidated timeout
+     * reached the compiler even after the function was tightened. One door now: the
+     * function, which validates.
+     */
+    private var timeout: Long? = null
 
     fun timeout(seconds: Long) {
         // S3.3: author input is validated HERE, at the construction boundary,
@@ -201,10 +210,16 @@ class OptionsScope {
         //  - the diagnostic names the author, not an internal carrier;
         //  - `StageOption.Timeout`'s own invariant can then be a plain
         //    precondition, because this is the only way to reach it.
-        require(seconds > 0) {
-            "options { timeout($seconds) } must be positive. A timeout of $seconds seconds is " +
-                "not a deadline: it would never fire. If you meant 'no limit', omit the option " +
-                "entirely, which is a different declaration."
+        //
+        // S3-R1-B: the check is `StageTimeout.isValid`, the SAME authority `OptionsSpec`
+        // consults, because until they shared one bound `timeout(Long.MAX_VALUE)` passed
+        // here and failed in the compiler as `long overflow`.
+        require(StageTimeout.isValid(seconds)) {
+            "options { timeout($seconds) } must be between 1 and ${StageTimeout.MAX_SECONDS} " +
+                "seconds. A timeout of $seconds seconds is not a deadline: at or below zero it " +
+                "would never fire, and above the bound it has no millisecond form that fits a " +
+                "Long, so it could never be projected into one. If you meant 'no limit', omit " +
+                "the option entirely, which is a different declaration."
         }
         timeout = seconds
     }

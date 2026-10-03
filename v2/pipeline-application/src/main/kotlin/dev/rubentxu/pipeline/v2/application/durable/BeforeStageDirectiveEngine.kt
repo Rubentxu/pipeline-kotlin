@@ -2,7 +2,9 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.LocalExecutionTargetResolver
 import dev.rubentxu.pipeline.v2.domain.directive.AdmittedDirective
+import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveDecodeResult
+import dev.rubentxu.pipeline.v2.domain.directive.DirectiveDefinitionAny
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy
 import dev.rubentxu.pipeline.v2.domain.directive.DirectivePhase
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry
@@ -85,8 +87,20 @@ internal class BeforeStageDirectiveEngine(
         /** The stage starts. Its declared seam directives were admitted and, if gated, satisfied. */
         data object Admitted : Verdict
 
-        /** Fail the run closed with a typed USER failure carrying [reason]. */
-        data class Denied(val reason: String) : Verdict
+        /**
+         * Fail the run closed, carrying [reason] and the [kind] the failure is
+         * classified as.
+         *
+         * [kind] defaults to [FailureKind.USER] because almost every denial here
+         * IS the author's: a gate that cannot be decoded, a target nothing
+         * satisfies. S3-R1-A added the one case that is not — a definition that
+         * faulted is a PLUGIN defect, and reporting it as USER would point an
+         * operator at their pipeline to fix a bug in ours, and would count our
+         * bug among the user's in every run dashboard. The coordinator applies
+         * [kind] verbatim; it does not classify, because the engine is where the
+         * distinction between the two causes is actually known.
+         */
+        data class Denied(val reason: String, val kind: FailureKind = FailureKind.USER) : Verdict
 
         /**
          * The stage is skipped because a gate was not satisfied. NOT a denial: a skip is a stage
@@ -132,7 +146,42 @@ internal class BeforeStageDirectiveEngine(
                     reason = reason,
                 ),
             )
-            return Verdict.Denied(reason)
+            return Verdict.Denied(reason, deniedDirective.kind)
+        }
+
+        // S3-R1-C: check the resource declarations for conflict BEFORE resolving any of
+        // them, and while they are still pure values.
+        //
+        // Order is the whole point. Resolving first would acquire a target for the first
+        // declaration and only then discover the second one contradicts it, so the
+        // conflicting stage would have emitted an ExecutionTargetResolved — an observer
+        // would see a target granted for a stage that never ran, and declaration order
+        // would decide which of two contradictory requirements was honoured.
+        //
+        // The law is read from the POLICY the definition declared, never from the key, so
+        // it holds for a second resource directive contributed later.
+        val declaredResources = decoded.filterIsInstance<DecodedBeforeStage.Requirement>().map {
+            dev.rubentxu.pipeline.v2.domain.directive.ResourceCompositionPlanner.DeclaredResource(
+                it.key,
+                it.requirement,
+            )
+        }
+        val resourceConflict =
+            dev.rubentxu.pipeline.v2.domain.directive.ResourceCompositionPlanner.compose(declaredResources)
+        if (resourceConflict is dev.rubentxu.pipeline.v2.domain.directive.ResourceCompositionDecision.Conflicting) {
+            eventSink.append(
+                DirectiveDenied(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runId.value,
+                    sequence = 0L,
+                    occurredAt = Instant.now(),
+                    stageIndex = stageIndex,
+                    stageName = stage.name,
+                    directiveKey = resourceConflict.key.value,
+                    reason = resourceConflict.reason,
+                ),
+            )
+            return Verdict.Denied(resourceConflict.reason, FailureKind.USER)
         }
 
         // S3.1: resolve declared execution-target requirements BEFORE composing gates.
@@ -273,6 +322,62 @@ internal class BeforeStageDirectiveEngine(
     }
 
     /**
+     * S3-R1-A: the outcome of decoding through a definition's OWN codec, with the
+     * definition's own failure kept structurally distinct.
+     *
+     * Private to this file and deliberately NOT a case of [DecodedBeforeStage]. Two
+     * reasons, both learned the hard way:
+     *
+     *  - [DecodedBeforeStage] is consumed with `firstNotNullOfOrNull { it as? …Denied }`,
+     *    so a new case added there would be DROPPED SILENTLY and the stage would proceed.
+     *    An internal fault must arrive as the `Denied` case that path already handles,
+     *    which is why the distinction is made here and then funnelled into it.
+     *  - the fault is a boundary property of this engine, not a shape a definition can
+     *    legitimately return, so it does not belong in the published
+     *    [DirectiveDecodeResult] algebra.
+     */
+    private sealed interface DecodeOutcome {
+        data class Read(val result: DirectiveDecodeResult<Any>) : DecodeOutcome
+
+        /**
+         * The definition threw instead of returning a value.
+         *
+         * Per the [DirectiveDecodeResult] KDoc this is the case the domain says must be
+         * "reported differently": a definition that cannot read its own arguments is a
+         * programming error, not an expected operational outcome, and an author who
+         * malformed a payload must not be pointed at a plugin bug.
+         */
+        data class DefinitionFault(val failure: Exception) : DecodeOutcome
+    }
+
+    /**
+     * S3-R1-A: decode through the registry with the boundary guarded.
+     *
+     * [DirectiveRegistry.decodeAny] contracts that the engine "fails closed on it without
+     * exception-based control flow", but nothing enforced that: a definition contributed
+     * through the open [DirectiveContributor] SPI is third-party code, and a codec that threw
+     * on a payload carried an exception straight through this seam into the run loop,
+     * instead of a [DirectiveDecodeResult] the engine could deny on. Definitions are
+     * contributed by plugins, so the kernel cannot assume their totality — it has to hold
+     * the boundary they were admitted through.
+     *
+     * Catches [Exception] and NOT [Throwable], on purpose. Every realistic definition fault
+     * is an [Exception] — arithmetic, index, type, argument, state. An [Error] is the JVM
+     * reporting genuine resource exhaustion, and relabelling that as "this directive is
+     * broken" would be a false diagnosis pointed at the wrong owner, so it propagates.
+     *
+     * The bundled definitions are all total after S3-R1-A, so this guard is a second line of
+     * defence, not the mechanism the first one relies on: it exists for the day an external
+     * definition reintroduces what the codec tests now prevent.
+     */
+    private fun decodeThrough(definition: DirectiveDefinitionAny, encodedArguments: String): DecodeOutcome =
+        try {
+            DecodeOutcome.Read(definition.decodeAny(encodedArguments))
+        } catch (definitionFault: Exception) {
+            DecodeOutcome.DefinitionFault(definitionFault)
+        }
+
+    /**
      * Decode one admitted seam directive through its own definition codec, then classify the
      * decode into the seam ADT WITHOUT an unchecked cast. A definition that declares policy Gate
      * but decodes to anything other than a WhenPredicate is a self-contradiction, and the only
@@ -281,56 +386,71 @@ internal class BeforeStageDirectiveEngine(
      */
     private fun decode(entry: AdmittedDirective, directiveRegistry: DirectiveRegistry?): DecodedBeforeStage {
         val key = entry.invocation.key
-        return when (val result = directiveRegistry?.find(key)?.decodeAny(entry.invocation.encodedArguments)) {
-            null -> DecodedBeforeStage.Denied(key, "was admitted but is not resolvable in the registry")
+        val definition = directiveRegistry?.find(key)
+            ?: return DecodedBeforeStage.Denied(key, "was admitted but is not resolvable in the registry")
+        return when (val outcome = decodeThrough(definition, entry.invocation.encodedArguments)) {
+            is DecodeOutcome.DefinitionFault -> DecodedBeforeStage.Denied(
+                key = key,
+                reason = definitionFaultReason(definition, outcome.failure),
+                kind = FailureKind.PLUGIN,
+            )
 
-            is DirectiveDecodeResult.Malformed -> DecodedBeforeStage.Denied(key, seamDecodeFailureReason(entry.policy, result.reason))
+            is DecodeOutcome.Read -> decodeResult(key, entry.policy, entry.invocation.encodedArguments, outcome.result)
+        }
+    }
 
-            is DirectiveDecodeResult.Decoded -> when (entry.policy) {
-                is DirectiveExecutionPolicy.Gate -> {
-                    val input = result.input
-                    if (input is WhenPredicate) {
-                        DecodedBeforeStage.GatePredicate(key, input)
-                    } else {
-                        DecodedBeforeStage.Denied(
-                            key,
-                            "declared policy Gate but decoded to " + input::class.simpleName + ", not a WhenPredicate",
-                        )
-                    }
+    private fun decodeResult(
+        key: DirectiveKey,
+        policy: DirectiveExecutionPolicy,
+        encodedArguments: String,
+        result: DirectiveDecodeResult<Any>,
+    ): DecodedBeforeStage = when (result) {
+        is DirectiveDecodeResult.Malformed -> DecodedBeforeStage.Denied(key, seamDecodeFailureReason(policy, result.reason))
+
+        is DirectiveDecodeResult.Decoded -> when (policy) {
+            is DirectiveExecutionPolicy.Gate -> {
+                val input = result.input
+                if (input is WhenPredicate) {
+                    DecodedBeforeStage.GatePredicate(key, input)
+                } else {
+                    DecodedBeforeStage.Denied(
+                        key,
+                        "declared policy Gate but decoded to " + input::class.simpleName + ", not a WhenPredicate",
+                    )
                 }
+            }
 
-                // Observes and continues; the typed input is discarded (Directive.kt:
-                // "evaluate and continue... observes but cannot veto").
-                is DirectiveExecutionPolicy.Evaluate -> DecodedBeforeStage.Evaluated(key)
+            // Observes and continues; the typed input is discarded (Directive.kt:
+            // "evaluate and continue... observes but cannot veto").
+            is DirectiveExecutionPolicy.Evaluate -> DecodedBeforeStage.Evaluated(key)
 
-                // Unreachable through the seam filter (Gate | Evaluate only), but the policy
-                // ADT is closed and the match must be total: a policy that cannot be
-                // interpreted in this seam is a typed denial, never a silent continue.
-                is DirectiveExecutionPolicy.ProvideContext -> DecodedBeforeStage.Denied(
-                    key,
-                    "declared policy provide-context is not interpretable in the BEFORE_STAGE decode seam",
-                )
+            // Unreachable through the seam filter (Gate | Evaluate only), but the policy
+            // ADT is closed and the match must be total: a policy that cannot be
+            // interpreted in this seam is a typed denial, never a silent continue.
+            is DirectiveExecutionPolicy.ProvideContext -> DecodedBeforeStage.Denied(
+                key,
+                "declared policy provide-context is not interpretable in the BEFORE_STAGE decode seam",
+            )
 
-                // S3.1: a resource request decodes to its REQUIREMENT, not to a predicate.
-                // The seam is right for it - both are considered before the body - but the
-                // shape is different, so it is a distinct case rather than a reused one.
-                // [encoded] is carried alongside so the resolution event can report what was
-                // DECLARED without re-encoding and risking a divergent byte sequence.
-                is DirectiveExecutionPolicy.Resource -> {
-                    val input = result.input
-                    if (input is ExecutionTargetRequirement) {
-                        DecodedBeforeStage.Requirement(
-                            key,
-                            input,
-                            entry.invocation.encodedArguments,
-                        )
-                    } else {
-                        DecodedBeforeStage.Denied(
-                            key,
-                            "declared policy Resource but decoded to " + input::class.simpleName +
-                                ", not an ExecutionTargetRequirement",
-                        )
-                    }
+            // S3.1: a resource request decodes to its REQUIREMENT, not to a predicate.
+            // The seam is right for it - both are considered before the body - but the
+            // shape is different, so it is a distinct case rather than a reused one.
+            // [encodedArguments] is carried alongside so the resolution event can report what
+            // was DECLARED without re-encoding and risking a divergent byte sequence.
+            is DirectiveExecutionPolicy.Resource -> {
+                val input = result.input
+                if (input is ExecutionTargetRequirement) {
+                    DecodedBeforeStage.Requirement(
+                        key,
+                        input,
+                        encodedArguments,
+                    )
+                } else {
+                    DecodedBeforeStage.Denied(
+                        key,
+                        "declared policy Resource but decoded to " + input::class.simpleName +
+                            ", not an ExecutionTargetRequirement",
+                    )
                 }
             }
         }
@@ -519,10 +639,14 @@ internal sealed interface DecodedBeforeStage {
     /**
      * Fail-closed: the directive's decode contract failed (or the policy cannot
      * be interpreted in this seam). The stage never starts.
+     *
+     * [kind] is [FailureKind.USER] for every case where the author is at fault,
+     * and [FailureKind.PLUGIN] for the one case where the definition is — S3-R1-A.
      */
     data class Denied(
         override val key: dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey,
         val reason: String,
+        val kind: FailureKind = FailureKind.USER,
     ) : DecodedBeforeStage
 }
 internal fun seamDecodeFailureReason(
@@ -541,3 +665,24 @@ internal fun seamDecodeFailureReason(
     is dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy.Resource ->
         "declared policy resource whose arguments could not be decoded: " + decodeReason
 }
+
+/**
+ * S3-R1-A: the reason when a definition FAULTED, as distinct from a payload that
+ * failed to decode.
+ *
+ * The two must never read alike, because they have different owners and different
+ * remedies. A [DirectiveDecodeResult.Malformed] means the AUTHOR wrote something the
+ * definition cannot read, and the fix is to the program. A fault means the DEFINITION
+ * is broken, the fix is to the plugin, and a user must never be sent to their pipeline
+ * to fix our bug. Collapsing the two would make every definition crash look like user
+ * error.
+ *
+ * Names the definition, the failure type and its message, so a genuine bug stays
+ * diagnosable after it has been turned into a denial. Does NOT include the encoded
+ * payload: the arguments are author-supplied and may carry sensitive values, and a
+ * crash diagnostic is not a licence to echo them into an event.
+ */
+internal fun definitionFaultReason(definition: DirectiveDefinitionAny, failure: Exception): String =
+    "definition '" + definition.key.value + "' faulted while decoding its arguments (" +
+        failure::class.simpleName + ": " + failure.message + "); this is a defect in the directive " +
+        "implementation, not in the pipeline"

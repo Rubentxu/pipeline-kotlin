@@ -893,10 +893,18 @@ object DslCompiledPipelineCompiler {
     // S3.3: the typed value now goes straight into the [StageOption] ADT. It used
     // to be flattened to `OptionSpec("timeout", it.toString())` and recovered by
     // the interpreter with a name filter plus `toLongOrNull`, which made the
-    // carrier survive only as text. The seconds-to-milliseconds conversion is
-    // total here rather than throwing from `Math.multiplyExact` inside the
-    // interpreter, and a non-positive value is rejected by the ADT's own
-    // invariant rather than becoming a stage that fails at run time.
+    // carrier survive only as text. A non-positive value is rejected by the
+    // ADT's own invariant rather than becoming a stage that fails at run time.
+    //
+    // S3-R1-B: the KDoc here used to say this conversion was total. It was not:
+    // `OptionsSpec` had no validation, so `Math.multiplyExact` was a live
+    // `ArithmeticException` reachable from `OptionsSpec(timeout = Long.MAX_VALUE)`
+    // and from `options { timeout(Long.MAX_VALUE) }`. Both doors now consult one
+    // shared bound (`StageTimeout`, inside the DSL module), so the seconds reaching
+    // this function are already in `1..Long.MAX_VALUE / 1_000` and the multiply
+    // cannot overflow. `multiplyExact` is therefore KEPT: it is now an assertion
+    // that the boundary holds rather than a crash site, and deleting it would
+    // remove the check that would catch a future door opened without the bound.
     private fun dev.rubentxu.pipeline.v2.dsl.OptionsSpec?.toOptions(): List<StageOption> {
         if (this == null) return emptyList()
         return buildList {

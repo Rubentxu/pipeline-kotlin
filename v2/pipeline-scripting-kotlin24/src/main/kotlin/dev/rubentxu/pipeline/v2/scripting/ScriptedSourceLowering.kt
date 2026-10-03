@@ -99,15 +99,17 @@ object ScriptedSourceLowering {
                     val callSite = call.location.pwdCallSite(tmp = tmp).value
                     "steps.pwd(ScriptedCallSiteId(\"$callSite\"), tmp = $tmp)"
                 }
-                // S4-A2 territory: the file path still arrives as an empty placeholder.
-                // Recorded, not fixed here, because this slice is about the shell spine.
+                // S4-DATA: the author's own path EXPRESSION is re-scoped into the
+                // façade call, exactly as `sh` does with its script. A literal `""`
+                // was written here before, which both dropped the path and left the
+                // argument's text trailing after the rewritten call.
                 is ScriptedCallKind.ReadFile -> {
                     val callSite = call.location.readFileCallSite().value
-                    "steps.readFile(ScriptedCallSiteId(\"$callSite\"), \"\")"
+                    "steps.readFile(ScriptedCallSiteId(\"$callSite\"), ${kind.pathExpression})"
                 }
                 is ScriptedCallKind.FileExists -> {
                     val callSite = call.location.fileExistsCallSite().value
-                    "steps.fileExists(ScriptedCallSiteId(\"$callSite\"), \"\")"
+                    "steps.fileExists(ScriptedCallSiteId(\"$callSite\"), ${kind.pathExpression})"
                 }
                 is ScriptedCallKind.Shell -> {
                     val callSite = call.location.shellCallSite(kind.returnMode).value

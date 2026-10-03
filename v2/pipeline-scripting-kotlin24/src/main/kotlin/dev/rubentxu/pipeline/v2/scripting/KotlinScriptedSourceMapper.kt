@@ -103,24 +103,19 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
                         // Unqualified runtime-returning `readFile(...)`: workspace file-read
                         // step (LFC-2R2). The argument is the path; encoding defaults at the
                         // façade.
+                        //
+                        // S4-DATA. The author's path EXPRESSION is carried, as PSI text,
+                        // from this same KtCallExpression. It used to be a payload-free kind,
+                        // so the lowering wrote a literal `""` and the real argument survived
+                        // past the rewritten call, producing Kotlin that does not compile.
                         expression.calleeExpression?.text == "readFile" &&
-                            !isDotQualified &&
-                            expression.valueArguments.isNotEmpty() ->
-                            calls += ScriptedMappedCall(
-                                ScriptedCallKind.ReadFile,
-                                location,
-                                expression.textRange.length,
-                            )
+                            !isDotQualified ->
+                            recordPathArgument(source, expression, "file", ScriptedCallKind::ReadFile, calls, diagnostics)
                         // Unqualified runtime-returning `fileExists(...)`: workspace
                         // file-existence check (LFC-2R2). The argument is the path.
                         expression.calleeExpression?.text == "fileExists" &&
-                            !isDotQualified &&
-                            expression.valueArguments.isNotEmpty() ->
-                            calls += ScriptedMappedCall(
-                                ScriptedCallKind.FileExists,
-                                location,
-                                expression.textRange.length,
-                            )
+                            !isDotQualified ->
+                            recordPathArgument(source, expression, "file", ScriptedCallKind::FileExists, calls, diagnostics)
                     }
                     super.visitCallExpression(expression)
                 }
@@ -223,6 +218,61 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
             ?.getArgumentExpression()
             ?.text
             ?.takeIf { it.isNotEmpty() }
+
+    /**
+     * Records a `readFile`/`fileExists` call, carrying the author's path expression.
+     *
+     * S4-DATA. Three cases are possible and each is decided HERE, at the call
+     * expression the arguments actually belong to — not in the lowering, which never
+     * sees the arguments:
+     *
+     *  - exactly the one path argument, positional or named: mapped, carrying its text;
+     *  - no argument at all: **rejected**. The previous `valueArguments.isNotEmpty()`
+     *    guard meant such a call was not mapped, and an unmapped call is still a call
+     *    the author wrote — it would have survived into the generated Kotlin as a bare
+     *    `readFile` and failed with `Unresolved reference`. That is a fail-open, not a
+     *    validation.
+     *  - more than the one argument: **rejected**. `readFile("a", "b")` has no meaning;
+     *    the lowering emits a two-argument façade call, so a second argument would be
+     *    dropped in silence — a semantic drop, which the Semantic Constitution forbids.
+     */
+    private fun recordPathArgument(
+        source: ScriptedSource,
+        expression: KtCallExpression,
+        argumentName: String,
+        construct: (String) -> ScriptedCallKind,
+        calls: MutableList<ScriptedMappedCall>,
+        diagnostics: MutableList<ScriptedSourceDiagnostic>,
+    ) {
+        val callee = expression.calleeExpression?.text ?: return
+        val candidates = expression.valueArguments.filter { arg ->
+            val name = arg.getArgumentName()?.asName?.asString()
+            name == null || name == argumentName
+        }
+        when {
+            candidates.size != 1 -> diagnostics += source.diagnosticAt(
+                offset = expression.textRange.startOffset,
+                message = "$callee(...) takes exactly one $argumentName argument and got " +
+                    "${candidates.size}; an argument this runtime cannot map is rejected here " +
+                    "rather than dropped in the generated call",
+            )
+            else -> {
+                val text = candidates.single().getArgumentExpression()?.text
+                if (text.isNullOrEmpty()) {
+                    diagnostics += source.diagnosticAt(
+                        offset = expression.textRange.startOffset,
+                        message = "$callee(...) requires a $argumentName expression to evaluate",
+                    )
+                } else {
+                    calls += ScriptedMappedCall(
+                        construct(text),
+                        source.locationAt(expression.textRange.startOffset),
+                        expression.textRange.length,
+                    )
+                }
+            }
+        }
+    }
 
     private companion object {
         /** Kotlin compiler PSI application state is process-global. */

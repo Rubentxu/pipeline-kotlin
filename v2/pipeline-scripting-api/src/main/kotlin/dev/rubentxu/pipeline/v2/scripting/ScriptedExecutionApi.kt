@@ -182,16 +182,32 @@ sealed interface ScriptedCallKind {
      * control returns to Kotlin. FRESH observes through the registry Step
      * (`core.readFile`); REUSE reproduces the persisted observation
      * without re-reading the file.
+     *
+     * S4-DATA. [pathExpression] is the author's ORIGINAL Kotlin expression, as
+     * PSI text, not its value. It was a payload-free `data object` before, so the
+     * lowering had nothing to put in the call and wrote a literal `""` — which
+     * both dropped the user's path and, combined with the hardcoded span, left
+     * the argument's own text trailing after the rewritten call, producing
+     * Kotlin that does not compile.
+     *
+     * Carrying the EXPRESSION rather than the value is what makes
+     * `readFile(file)`, `readFile("$dir/config.yaml")` and
+     * `readFile(resolve(p))` work at all: the generated call is the same text
+     * re-scoped, so the expression is evaluated where the author put it. This is
+     * the same rule [Shell] already follows for its `script`.
      */
-    data object ReadFile : ScriptedCallKind
+    data class ReadFile(val pathExpression: String) : ScriptedCallKind
 
     /**
      * Runtime-returning workspace file existence check (LFC-2R2). Mirrors
      * [IsUnix] and [Pwd]: the returned Boolean is a durable runtime value.
      * FRESH observes through the registry Step (`core.fileExists`);
      * REUSE reproduces the persisted observation without re-stat-ing.
+     *
+     * S4-DATA. Carries the author's original expression as PSI text, for the
+     * same reason and with the same property as [ReadFile.pathExpression].
      */
-    data object FileExists : ScriptedCallKind
+    data class FileExists(val pathExpression: String) : ScriptedCallKind
 }
 
 /**
@@ -230,8 +246,8 @@ enum class ScriptedShellReturnMode {
 fun ScriptedCallKind.isRuntimeReturning(): Boolean = when (this) {
     ScriptedCallKind.IsUnix -> true
     is ScriptedCallKind.Pwd -> true
-    ScriptedCallKind.ReadFile -> true
-    ScriptedCallKind.FileExists -> true
+    is ScriptedCallKind.ReadFile -> true
+    is ScriptedCallKind.FileExists -> true
     // S4-A1: `sh` is runtime-returning in two of its three shapes. The decision
     // reads the payload rather than comparing against a subtype, so adding a
     // shape later cannot silently change which form a call takes.

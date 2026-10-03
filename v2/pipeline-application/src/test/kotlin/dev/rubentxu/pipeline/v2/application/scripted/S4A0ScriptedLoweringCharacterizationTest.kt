@@ -64,11 +64,19 @@ class S4A0ScriptedLoweringCharacterizationTest {
     /**
      * Simple names of the mapped kinds, with the `sh` shape appended so a test can
      * see WHICH of the three shapes was classified rather than only that it was `sh`.
+     *
+     * S4-DATA: the simple name is used rather than `toString()`, because `readFile`
+     * and `fileExists` now carry their argument expression and a data-class
+     * `toString()` would make every kind assertion depend on the payload text.
+     * Tests that care about the payload assert it directly.
      */
     private fun kinds(generated: LoweringResult.Generated): List<String> =
         generated.mappedCalls.map { call ->
             when (val kind = call.kind) {
                 is ScriptedCallKind.Shell -> "Shell:${kind.returnMode}"
+                is ScriptedCallKind.ReadFile -> "ReadFile"
+                is ScriptedCallKind.FileExists -> "FileExists"
+                is ScriptedCallKind.Pwd -> "Pwd(tmp=${kind.tmp})"
                 else -> kind.toString()
             }
         }
@@ -139,54 +147,32 @@ class S4A0ScriptedLoweringCharacterizationTest {
     }
 
     @Test
-    fun `the empty-argument readFile is the one form whose span happens to be right`() {
-        val generated = lower("""val c = readFile("")""")
+    fun `S4-DATA - readFile carries the authored path expression`() {
+        val generated = lower("""val c = readFile("config.yaml")""")
         assertEquals(listOf("ReadFile"), kinds(generated))
         assertEquals(
-            """val c = steps.readFile(ScriptedCallSiteId("s4a0:1:9:readFile"), "")""",
+            """val c = steps.readFile(ScriptedCallSiteId("s4a0:1:9:readFile"), "config.yaml")""",
             body(generated),
-            "readFile(\"\") is 12 characters, which is exactly the hardcoded span",
+            "S4-DATA: the author's own expression is re-scoped into the façade call. It used " +
+                "to be a literal \"\", which dropped the path; and combined with the old " +
+                "hardcoded span it left `nfig.yaml\")` trailing after the rewritten call, so " +
+                "the generated source did not compile.",
         )
     }
 
     // ==================================================================
-    // CHARACTERIZED DEFECT 1 of 3 — the span is the EMPTY-argument form
-    // Destination: S4-B2 (exact PSI matching)
+    // S4-DATA — the path EXPRESSION is carried, so the call is usable
+    // Corpus: see S4DataArgumentExpressionTest for the non-literal forms
     // ==================================================================
 
     @Test
-    fun `CHARACTERIZED DEFECT - readFile with a real path is truncated to invalid Kotlin`() {
-        val generated = lower("""val c = readFile("config.yaml")""")
-        assertEquals(
-            listOf("ReadFile"),
-            kinds(generated),
-            "the mapper DOES accept readFile with a real path",
-        )
-        // S4-A1: the SPAN defect is FIXED. The replacement now consumes the call's
-        // real source extent (ScriptedMappedCall.sourceLength) rather than the length
-        // of the empty-form spelling, so no fragment survives. The trailing `nfig.yaml")`
-        // is gone, which is what made the generated source invalid Kotlin.
-        assertEquals(
-            """val c = steps.readFile(ScriptedCallSiteId("s4a0:1:9:readFile"), "")""",
-            body(generated),
-            "S4-A1: the whole call must be replaced, leaving no fragment of the authored " +
-                "argument behind.\n\nWHAT IS STILL WRONG, and is NOT fixed here: the PATH is " +
-                "still an empty placeholder. The call now COMPILES and reads the empty path, " +
-                "so it fails with a typed USER failure instead of failing to compile — a " +
-                "louder, more localised failure, but still wrong. Carrying the path needs " +
-                "the PSI argument expression, which is S4-A2.",
-        )
-    }
-
-    @Test
-    fun `S4-A1 - the fileExists span defect is fixed, while the empty-path payload is not`() {
+    fun `S4-DATA - fileExists carries the authored path expression`() {
         val generated = lower("""val e = fileExists("config.yaml")""")
         assertEquals(listOf("FileExists"), kinds(generated))
         assertEquals(
-            """val e = steps.fileExists(ScriptedCallSiteId("s4a0:1:9:fileExists"), "")""",
+            """val e = steps.fileExists(ScriptedCallSiteId("s4a0:1:9:fileExists"), "config.yaml")""",
             body(generated),
-            "S4-A1: the whole call must be replaced, leaving no fragment of the authored " +
-                "argument behind. The path is still an empty placeholder (S4-A2).",
+            "S4-DATA: same property as readFile — the expression, not a placeholder.",
         )
     }
 

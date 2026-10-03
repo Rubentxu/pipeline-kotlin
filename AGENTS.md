@@ -218,6 +218,121 @@ B. INC reclassification promoting a QUARANTINED component.
 C. Compatibility shim required by an in-flight UAT.
 D. Backlog item with documented Exit criterion + Gate owner.
 
+## SEMANTIC CONSTITUTION (MANDATORY)
+
+Integrated from `docs/pipelinek-semantic-evolution/07-AGENTS-patch.md` (RP7-SEM-0,
+2026-10-03). This is the general law; **STEP CONSTITUTION & EXTENSIBILITY below
+specialises it for Steps**, and the two MUST NOT be read as parallel authorities.
+
+### 1. Every public DSL construct is classified exactly once
+
+```text
+DECLARATIVE_DIRECTIVE · ATOMIC_STEP · BLOCK_STEP · PURE_BUILDER · SCRIPTED_RUNTIME_CALL
+```
+
+The classification MUST appear in the machine-readable DSL Surface Manifest
+(`docs/v2/surface/DSL_SURFACE_MANIFEST.md`) and be protected by fitness tests. A
+construct with no classification is not "unclassified pending review"; it is a
+construct whose semantics nobody has checked.
+
+### 2. Semantic Conservation Law
+
+A DSL construct is valid **only** if one of these is true:
+
+1. its user intent has an **explicit typed carrier** in IR/metadata/runtime invocation;
+2. it is a **pure desugar** to another supported carrier, with semantic-equivalence tests;
+3. it **fails closed** before any effect.
+
+Forbidden, each of which has been a real defect class in this repository rather
+than a hypothetical:
+
+```text
+semantic drop                      flatten-with-loss
+silent no-op                       default success
+dead semantic parameter            metadata accepted but never interpreted
+retroactive mutation that does nothing
+tests that claim semantic compatibility from compilation alone
+```
+
+**What this means for a new construct.** "It compiles" and "the test passes" are
+not conservation. Ask which of the three it is, and if the answer is a pure
+desugar, which test proves equivalence rather than merely co-existence.
+
+### 3. Pure builders are referentially transparent
+
+Configuration builders MUST NOT append a Step, emit an event, acquire a capability
+or perform I/O. `scmGit(...)` is the reference pattern: it builds a `CheckoutSpec`,
+and `checkout(...)` owns the effect. A builder that performs the effect is a Step
+wearing a builder's name, and the distinction is exactly what makes the DSL
+constructible outside a run.
+
+### 4. Directives are not Steps
+
+`when`, `post`, `agent`, declarative `environment`, `options` and future stage or
+pipeline orchestration constructs MUST use the Directive model. They MUST NOT be
+encoded as fake Steps or flattened bodies. The engine may switch only over the
+closed `DirectiveExecutionPolicy` ADT — **never over a concrete `DirectiveKey`**,
+which is the same closed-world defect the Step registry was split to remove.
+
+### 5. Block Steps keep the shared body machinery
+
+Block semantics remain owned by `StepBody` + `BodyExecutionPolicy` +
+`BodyInvoker`/`BranchInvoker`. Never create a bespoke block dispatcher for a new
+Step.
+
+### 6. Runtime-returning DSL returns the real value
+
+A runtime-returning function MUST return the real typed value through the durable
+scripted seam. It MUST NOT read host global state in the DSL, fabricate placeholder
+values, or lower to an eager value-less Step while pretending to return something.
+
+### 7. Compiler / lowering law
+
+Compiler, PSI and KSP layers may provide parsing, source identity, metadata
+generation and typed lowering. They MUST NOT contain concrete Step or directive
+semantics, nor a `when(key)` semantic dispatcher. **Any source-transformation
+mismatch MUST fail compilation** — never skip a rewrite and continue with altered
+semantics.
+
+### 8. Events are semantics, not logging
+
+1. Events are semantic API, not logs.
+2. Every supported Step/directive declares its observable event contract.
+3. **Exactly one layer owns each event family's emission.**
+4. Payloads are typed, versioned, and registered through an open `EventRegistry`.
+5. Events MUST NOT contain credential material.
+6. External observers cannot change run outcome.
+7. Control-affecting reactions MUST be explicit durable reactors/directives
+   producing typed commands.
+8. External delivery is **at-least-once with idempotent reaction identity**; never
+   claim exactly-once delivery.
+9. Replay tests MUST prove no forbidden duplicate semantic events or effects.
+
+### 9. External Library Constitution
+
+An external library MAY contribute Steps, directives and events only through the
+public registries/contributor interfaces. It MUST NOT:
+
+- require a core StepKey or directiveKey branch;
+- import coordinator internals;
+- reach the journal or event-store implementation directly;
+- create global state;
+- bypass capability admission;
+- introduce a new body/directive structural shape without a core ADR + version bump;
+- register an event without schema, version and emission authority.
+
+**A new external construct built from existing shapes MUST require zero semantic
+changes to core.** `http.request` is the worked proof: a Step + events + a
+capability contributed with no compiler branch and no `StepSpec` variant.
+
+### 10. Certification Law
+
+A construct is `CERTIFIED` only when evidence bound to the **exact candidate** SHA
+proves: typed carrier, semantic discriminant, negative fail-closed behaviour, typed
+outcome, event contract, replay/resume, and installed-distribution behaviour.
+Compilation alone is insufficient, and so is an older receipt — a receipt is
+evidence for its own SHA and inherits nothing.
+
 ## STEP SEMANTICS (MANDATORY)
 
 1. Jenkins familiarity: step names, parameters, semantics, and outcomes MUST
@@ -235,6 +350,10 @@ D. Backlog item with documented Exit criterion + Gate owner.
    converted to a comment, no-op, or empty shell.
 
 ## STEP CONSTITUTION & EXTENSIBILITY (MANDATORY)
+
+Specialises **SEMANTIC CONSTITUTION §1, §4, §5, §9** above for Steps. Where the two
+could be read as separate authorities, the Semantic Constitution is the general law
+and this section is its Step-level application.
 
 StepSpec is declarative structural IR (demonstrated by EP-F2.5 production
 reachability audit, `docs/v2/07-uat/LB02_EP_F2_5_STEPSPEC_EXECUTION_DECOUPLING.md`):

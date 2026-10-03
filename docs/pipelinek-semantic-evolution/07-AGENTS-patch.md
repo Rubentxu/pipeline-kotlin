@@ -1,5 +1,12 @@
 # Proposed AGENTS.md Additions
 
+> **INTEGRATED — RP7-SEM-0, 2026-10-03.** This material now lives in the normative
+> `AGENTS.md` as the **SEMANTIC CONSTITUTION (MANDATORY)** section, immediately before
+> STEP SEMANTICS, with **STEP CONSTITUTION & EXTENSIBILITY** explicitly framed as its
+> Step-level specialisation. This file is kept as the proposal of record: what was
+> accepted, in what words, and by which WU. It is **not** authority. Where the two
+> differ, `AGENTS.md` wins.
+
 Merge this material into the existing V2 rules; do not create a second AGENTS authority.
 
 ## DSL SEMANTIC CONSTITUTION (MANDATORY)

@@ -59,6 +59,18 @@ class HermeticHttpServer private constructor(
 
     fun countOf(path: String): Int = requests.count { it.path == path }
 
+    /**
+     * How many distinct client sockets served these requests.
+     *
+     * Connection reuse is not observable from the client: `HttpClient` reusing a
+     * keep-alive connection and opening a fresh one look identical to every assertion
+     * that only counts requests. The server sees the peer port, so it is the only
+     * witness — and reuse is worth measuring, because a per-request connection is a
+     * per-request TLS handshake and a per-request round trip in a pipeline that calls
+     * a remote service in a loop.
+     */
+    fun distinctClientSockets(): Int = requests.mapNotNull { it.peerPort }.distinct().size
+
     val authority: String get() = "127.0.0.1:$port"
 
     /**
@@ -89,6 +101,8 @@ class HermeticHttpServer private constructor(
         val bodyLength: Int,
         val carriedAuthorization: Boolean,
         val userAgent: String?,
+        /** The client's ephemeral port, which is a socket identity. */
+        val peerPort: Int?,
     )
 
     companion object {
@@ -136,6 +150,7 @@ class HermeticHttpServer private constructor(
                 bodyLength = exchange.requestBody.readAllBytes().size,
                 carriedAuthorization = exchange.requestHeaders.containsKey("Authorization"),
                 userAgent = exchange.requestHeaders.getFirst("User-Agent"),
+                peerPort = exchange.remoteAddress?.port,
             )
 
             try {

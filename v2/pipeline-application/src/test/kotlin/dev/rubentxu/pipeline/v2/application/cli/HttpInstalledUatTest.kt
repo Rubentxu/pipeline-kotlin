@@ -68,7 +68,7 @@ class HttpInstalledUatTest {
 
     // ── harness ─────────────────────────────────────────────────────────────
 
-    private data class CliResult(val exitCode: Int, val output: String)
+    private data class CliResult(val exitCode: Int, val output: String, val peakRssBytes: Long?)
 
     /**
      * The CLI's failure exit.
@@ -133,8 +133,14 @@ class HttpInstalledUatTest {
         }
         poller.stop()
         return CliResult(
-            proc.exitValue(),
-            proc.inputStream.bufferedReader().readText() + " PEAK_RSS=" + (poller.peakBytes ?: -1L),
+            exitCode = proc.exitValue(),
+            output = proc.inputStream.bufferedReader().readText() +
+                " PEAK_RSS=" + (poller.peakBytes ?: -1L),
+            // Carried on the result rather than parsed back out of the text, so a
+            // memory scenario that forgets to assert on it still prints it in the
+            // failure. Re-collecting evidence for a regression is a tax nobody pays
+            // twice.
+            peakRssBytes = poller.peakBytes,
         )
     }
 
@@ -390,5 +396,87 @@ class HttpInstalledUatTest {
                     "receipt would quote. Output:\n${combined.takeLast(2000)}",
             )
         }
+    }
+
+    // ── the property H4 was written for ────────────────────────────────────
+
+    @Test
+    fun `H8-10 peak memory does not scale with the size of the response`() {
+        // H4's claim, measured from OUTSIDE the process:
+        //
+        //   peak RSS  =  O(maxBodyBytes)      and NOT  O(responseSize)
+        //
+        // `HttpDefaults.MAX_RESPONSE_BYTES` is 1 MiB and is not author-configurable,
+        // so the variable under test is the RESPONSE SIZE. If the plugin materialised
+        // the body before truncating — the pre-H4 shape — a 256 MiB response would
+        // cost 256 MiB of heap and this assertion would fail by a wide margin.
+        //
+        // A ratio, not a ceiling. A JVM baseline of several hundred MiB dwarfs the
+        // signal, so an absolute limit would only ever measure the launcher; comparing
+        // two runs that differ ONLY in response size measures the thing that matters.
+        val sizes = listOf(
+            1L * 1024 * 1024,
+            32L * 1024 * 1024,
+            256L * 1024 * 1024,
+        )
+
+        val peaks = sizes.map { bytes ->
+            val pipeline = script(get("${server.baseUrl}/large?bytes=$bytes"))
+            val result = runFresh(pipeline, "--allow-network", timeoutMinutes = 5)
+            assertEquals(
+                0,
+                result.exitCode,
+                "the $bytes-byte response must succeed; output:\n${result.output.takeLast(1200)}",
+            )
+            result.peakRssBytes
+        }
+
+        if (peaks.any { it == null }) {
+            // No /proc: say so rather than skip silently. A memory claim that was not
+            // measured must not read as a memory claim that passed.
+            println("H8-10 SKIPPED: peak RSS is unavailable on this platform (no /proc)")
+            return
+        }
+
+        val measured = peaks.mapIndexed { i, peak -> sizes[i] to peak!! }
+        measured.forEach { (bytes, peak) ->
+            println("H8-10 response=${bytes / (1024 * 1024)} MiB  peakRSS=${peak / (1024 * 1024)} MiB")
+        }
+
+        val (smallBytes, smallPeak) = measured.first()
+        val (largeBytes, largePeak) = measured.last()
+        val extraBody = largeBytes - smallBytes
+        val extraPeak = largePeak - smallPeak
+
+        assertTrue(
+            extraPeak < extraBody / 4,
+            "peak RSS grew by ${extraPeak / (1024 * 1024)} MiB when the response grew by " +
+                "${extraBody / (1024 * 1024)} MiB. A bounded subscriber that hashes and counts " +
+                "without materialising should add roughly the 1 MiB it retains and NOTHING " +
+                "per body byte. Growth proportional to the body is the pre-H4 defect.",
+        )
+    }
+
+    @Test
+    fun `H8-11 sequential requests reuse one connection`() {
+        // The client cannot see this: a reused keep-alive socket and a fresh one look
+        // identical to any assertion that counts requests. The server can, because the
+        // client port is the socket identity.
+        val pipeline = script(
+            listOf("/ok", "/ok", "/ok").joinToString("\n") { get("${server.baseUrl}$it") },
+        )
+
+        val result = runFresh(pipeline, "--allow-network")
+
+        assertEquals(0, result.exitCode, "output:\n${result.output.takeLast(1200)}")
+        assertEquals(3, server.countOf("/ok"), "three requests must have arrived")
+        assertEquals(
+            1,
+            server.distinctClientSockets(),
+            "three sequential requests to the same host must share one socket. A new " +
+                "connection per request is a new handshake and a new round trip per call, " +
+                "which is the difference between a pipeline that polls a service and one " +
+                "that stalls on it.",
+        )
     }
 }

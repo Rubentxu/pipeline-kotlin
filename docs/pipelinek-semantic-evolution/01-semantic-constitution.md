@@ -100,6 +100,29 @@ Examples:
 
 It is suspend/runtime semantics, not eager graph construction.
 
+### 2.6 Unsupported (fail-closed)
+
+A public surface that exists only so a rejected call names itself instead of
+failing with a bare Kotlin signature error, and that ALWAYS throws with a
+diagnostic.
+
+Examples:
+
+- `agent(label, remoteUri?)` while no execution-target resolver exists
+- the removed `retry(count, delay)` retrofit
+- the removed `retry(n, conditions)` overload
+
+This is a category, not a state, and the distinction is load-bearing. The five
+categories above each answer "what shape does this construct have inside the
+pipeline". This one answers a structurally different question: "does this
+public surface exist with no runtime semantics at all?" A construct refused
+before execution has no shape in the pipeline — no IR, no interpreter, no
+effect — so it cannot be forced into one of the five without lying about it.
+
+The refusal itself is the contract, and it is enforced: the manifest fitness
+pins that such a stub still throws at call time, so a stub cannot quietly
+become a no-op that reports success.
+
 ## 3. Semantic Conservation Law
 
 Every public construct must satisfy exactly one of:

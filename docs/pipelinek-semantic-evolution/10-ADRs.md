@@ -6,7 +6,9 @@ These ADRs update the existing architecture. They should reference/supersede onl
 
 Decision:
 
-Every public DSL symbol is exactly one of Directive / Atomic Step / Block Step / Pure Builder / Scripted Runtime Call. Intent must have a carrier, pure desugar, or fail closed.
+Every public DSL symbol is exactly one of six categories: Directive / Atomic Step / Block Step / Pure Builder / Scripted Runtime Call / Unsupported (fail-closed). Intent must have a carrier, pure desugar, or fail closed.
+
+The sixth is a category rather than a state because it answers a structurally different question. The first five describe what shape a construct has inside the pipeline; a construct refused before execution has no such shape, so it cannot honestly be filed under one of them. As of RP7-SEM-0 the manifest carries 50 constructs in the five and 3 in the sixth, and `FArchS0SurfaceManifestTest` enforces the closed six-value set plus the fact that those stubs still throw.
 
 Supersedes any documentation that treats mere compilation/canonicality as semantic support.
 

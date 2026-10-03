@@ -235,6 +235,25 @@ The classification MUST appear in the machine-readable DSL Surface Manifest
 construct with no classification is not "unclassified pending review"; it is a
 construct whose semantics nobody has checked.
 
+**Scope of the five, stated because measuring it found the gap.** These five answer
+one question: *what shape does this construct have inside the pipeline?* A construct
+that is **refused before execution** has no such shape — no IR, no interpreter, no
+effect to describe — so it is not missing a category, it is outside that question.
+`UNSUPPORTED_FAIL_CLOSED` is the **sixth category** for exactly that case, and it is
+already the enforced value: `FArchS0SurfaceManifestTest` carries it in its closed
+category set and separately pins that such stubs still throw at call time, so the
+classification cannot be satisfied by a stub that quietly succeeds.
+
+```text
+one of the five             →  it enters the pipeline
+UNSUPPORTED_FAIL_CLOSED     →  it is refused, and that refusal is the contract
+neither                     →  a defect: nobody has said what it is
+```
+
+As of RP7-SEM-0 the manifest carries 50 constructs in the five and 3 as
+`UNSUPPORTED_FAIL_CLOSED` (`agent`, `retry (retrofit)`, `retry conditions`), with
+none in the third state.
+
 ### 2. Semantic Conservation Law
 
 A DSL construct is valid **only** if one of these is true:

@@ -11,7 +11,7 @@ import dev.rubentxu.pipeline.v2.domain.Digest
 import dev.rubentxu.pipeline.v2.domain.DeterministicIdGenerator
 import dev.rubentxu.pipeline.v2.domain.EnvironmentSpec
 import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
-import dev.rubentxu.pipeline.v2.domain.OptionSpec
+import dev.rubentxu.pipeline.v2.domain.StageOption
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.PostSpec
 import dev.rubentxu.pipeline.v2.domain.StageBody
@@ -889,10 +889,18 @@ object DslCompiledPipelineCompiler {
     // WU-RP-032 / DSL-008: stage options surface carries ONLY timeout (the only option
     // with a runtime interpreter, projected via projectShellOptions). retry/skip were
     // removed from the DSL surface; unrepresentable instead of accepted-and-dropped.
-    private fun dev.rubentxu.pipeline.v2.dsl.OptionsSpec?.toOptions(): List<OptionSpec> {
+    //
+    // S3.3: the typed value now goes straight into the [StageOption] ADT. It used
+    // to be flattened to `OptionSpec("timeout", it.toString())` and recovered by
+    // the interpreter with a name filter plus `toLongOrNull`, which made the
+    // carrier survive only as text. The seconds-to-milliseconds conversion is
+    // total here rather than throwing from `Math.multiplyExact` inside the
+    // interpreter, and a non-positive value is rejected by the ADT's own
+    // invariant rather than becoming a stage that fails at run time.
+    private fun dev.rubentxu.pipeline.v2.dsl.OptionsSpec?.toOptions(): List<StageOption> {
         if (this == null) return emptyList()
         return buildList {
-            timeout?.let { add(OptionSpec("timeout", it.toString())) }
+            timeout?.let { add(StageOption.Timeout(Math.multiplyExact(it, 1_000L))) }
         }
     }
 

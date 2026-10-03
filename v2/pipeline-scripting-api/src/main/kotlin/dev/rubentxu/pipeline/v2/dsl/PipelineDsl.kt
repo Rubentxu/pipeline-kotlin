@@ -194,6 +194,18 @@ class OptionsScope {
     var timeout: Long? = null
 
     fun timeout(seconds: Long) {
+        // S3.3: author input is validated HERE, at the construction boundary,
+        // rather than being carried as a raw Long and rejected later. Two things
+        // are decided by doing it now:
+        //
+        //  - the diagnostic names the author, not an internal carrier;
+        //  - `StageOption.Timeout`'s own invariant can then be a plain
+        //    precondition, because this is the only way to reach it.
+        require(seconds > 0) {
+            "options { timeout($seconds) } must be positive. A timeout of $seconds seconds is " +
+                "not a deadline: it would never fire. If you meant 'no limit', omit the option " +
+                "entirely, which is a different declaration."
+        }
         timeout = seconds
     }
 

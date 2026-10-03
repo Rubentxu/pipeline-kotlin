@@ -277,4 +277,55 @@ class S3EnvironmentSemanticWitnessTest {
                 "silent new exposure: $timeline",
         )
     }
+
+    // ------------------------------------------------------------------
+    // S3.3: options are validated at the construction boundary
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `a non-positive options timeout is refused when the pipeline is declared, not at run time`() {
+        // S3.3: `StageOption.Timeout` rejects a non-positive duration in its own
+        // invariant, and `OptionsScope.timeout` rejects it before that. Both are
+        // checked here through the REAL installed distribution, so what is proven
+        // is that an author writing `timeout(0)` or `timeout(-5)` cannot reach a
+        // run — the old shape carried the raw Long through the compiler and only
+        // discovered the problem inside the interpreter.
+        for (bad in listOf(0L, -5L)) {
+            val dir = Files.createTempDirectory("s3opt")
+            val scriptPath = dir.resolve("bad.pipeline.kts")
+            Files.writeString(
+                scriptPath,
+                """
+                pipeline {
+                    stages {
+                        stage("bad") {
+                            options { timeout($bad) }
+                            sh("true")
+                        }
+                    }
+                }
+                """.trimIndent(),
+            )
+            val out = dir.resolve("out.txt")
+            val process = ProcessBuilder(appBin.toString(), "run", scriptPath.toAbsolutePath().toString())
+                .directory(dir.toFile())
+                .redirectOutput(ProcessBuilder.Redirect.to(out.toFile()))
+                .redirectError(ProcessBuilder.Redirect.PIPE)
+                .start()
+            val exit = process.waitFor()
+            val stdout = Files.readString(out).trim()
+            val stderr = process.errorStream.bufferedReader().readText()
+
+            assertTrue(
+                exit != 0,
+                "options { timeout($bad) } must be REFUSED, but the run exited 0. A zero or " +
+                    "negative deadline is not a deadline: it either never fires or fires before the " +
+                    "stage starts, and both look like a working timeout to the author.",
+            )
+            assertTrue(
+                stdout.isEmpty() || !stdout.contains("StepStarted"),
+                "a refused pipeline must not have started a step. stdout=$stdout stderr=$stderr",
+            )
+        }
+    }
 }

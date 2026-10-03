@@ -48,7 +48,13 @@ class DslCompiledPipelineCompilerTest {
 
         assertEquals("build.pipeline.kts", compiled.source.path)
         assertEquals(mapOf("CI" to "true"), compiled.stages.single().environment.values)
-        assertEquals(listOf("timeout=30"), compiled.stages.single().options.map { "${it.name}=${it.value}" })
+        // S3.3: asserts the TYPED carrier, not a rendering of it. The previous
+        // assertion compared "timeout=30" — the same string an `OptionSpec`
+        // carrying a duration of 30 MILLISECONDS would have produced.
+        assertEquals(
+            listOf(dev.rubentxu.pipeline.v2.domain.StageOption.Timeout(30_000L)),
+            compiled.stages.single().options,
+        )
 
         val body = compiled.stages.single().body as StageBody.Steps
         assertEquals(listOf("build/echo-0", "build/sh-0"), body.steps.map { it.id.value })
@@ -59,13 +65,25 @@ class DslCompiledPipelineCompilerTest {
     }
 
     @Test
-    fun `stage-level agent is rejected instead of compiling to unread metadata`() {
-        // S0 Semantic Honesty Gate: agent(label) at stage level used to compile
-        // into StageNode.agent while NO runtime component ever read it (no
-        // distributor, no scheduler; the agent label never reached any event).
-        // Metadata without an interpreter is a silent lie, so the DSL now
-        // refuses the call instead of storing it.
-        val ex = assertThrows<IllegalArgumentException> {
+    fun `stage-level agent compiles to a carried, decodable directive rather than unread metadata`() {
+        // S0 Semantic Honesty Gate, INVERTED by S3.1. The original assertion was
+        // that `agent(label)` must THROW: at stage level it compiled into
+        // StageNode.agent while no runtime component ever read it, and metadata
+        // without an interpreter is a silent lie.
+        //
+        // S3.1 gave it a carrier (`ExecutionTargetRequirement`), a resolver
+        // (`ExecutionTargetResolver`) and an interpreter (the BEFORE_STAGE
+        // `Resource` policy), so refusing the call is no longer the honest
+        // answer — it would be refusing a construct whose semantics now exist.
+        // The INTENT is preserved and made falsifiable in the new direction: the
+        // construct must compile AND must carry a directive the owning definition
+        // can decode. An `agent` that compiled into metadata nothing read would
+        // fail the decode half, which is the original lie in its new shape.
+        //
+        // This test was left RED by e92c9d4e: S3.1 shipped without running the
+        // full application suite, and the deferred full gate is what would have
+        // caught it. Recorded rather than quietly fixed.
+        val agentSource = """
             pipeline {
                 stages {
                     stage("Build") {
@@ -74,10 +92,41 @@ class DslCompiledPipelineCompilerTest {
                     }
                 }
             }
-        }
+        """.trimIndent()
+        val stage = DslCompiledPipelineCompiler.compile(
+            spec = pipeline {
+                stages {
+                    stage("Build") {
+                        agent("linux")
+                        echo("hello")
+                    }
+                }
+            },
+            sourcePath = "agent.pipeline.kts",
+            sourceContent = agentSource,
+            pluginLockDigest = Digest("lock-v1"),
+        ).stages.single()
+
+        val directive = stage.directives.singleOrNull { it.key == "core.agent" }
         assertTrue(
-            (ex.message ?: "").contains("agent"),
-            "diagnostic must name the unsupported construct, got: ${ex.message}",
+            directive != null,
+            "agent(label) must carry exactly one core.agent directive; carried: " +
+                stage.directives.map { it.key },
+        )
+        val decoded = dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirementCodec
+            .decode(directive!!.encodedArguments)
+        assertTrue(
+            decoded is dev.rubentxu.pipeline.v2.domain.directive.DirectiveDecodeResult.Decoded,
+            "the carried requirement must be decodable by the definition that owns the key, or it " +
+                "is the unread metadata this test was written to prevent: $decoded",
+        )
+        assertEquals(
+            setOf("linux"),
+            (decoded as dev.rubentxu.pipeline.v2.domain.directive.DirectiveDecodeResult.Decoded)
+                .input.let {
+                    (it as dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement.LocalLabels)
+                        .labels.map { label -> label.value }.toSet()
+                },
         )
     }
 

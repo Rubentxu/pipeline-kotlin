@@ -8,7 +8,7 @@ import dev.rubentxu.pipeline.v2.domain.Digest
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
-import dev.rubentxu.pipeline.v2.domain.OptionSpec
+import dev.rubentxu.pipeline.v2.domain.StageOption
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
@@ -161,7 +161,7 @@ class CanonicalDurableRunCoordinatorTest {
                 StageNode(
                     id = StageId("build"),
                     name = "build",
-                    options = listOf(OptionSpec("timeout", "1")),
+                    options = listOf(StageOption.Timeout(1_000L)),
                     body = StageBody.Steps(
                         listOf(
                             OpaqueStepNode(

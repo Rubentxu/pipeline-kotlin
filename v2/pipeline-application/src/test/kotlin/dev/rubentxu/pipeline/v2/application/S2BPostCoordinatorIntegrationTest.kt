@@ -67,7 +67,7 @@ class S2BPostCoordinatorIntegrationTest {
     private fun pipelineWithPost(
         stageCommand: String,
         post: PostSpec,
-        stageOptions: List<dev.rubentxu.pipeline.v2.domain.OptionSpec> = emptyList(),
+        stageOptions: List<dev.rubentxu.pipeline.v2.domain.StageOption> = emptyList(),
     ): CompiledPipeline = CompiledPipeline(
         id = DefinitionId("s2b-post"),
         source = SourceDescriptor("S2BPost.pipeline.kts", Digest("s2b-post")),

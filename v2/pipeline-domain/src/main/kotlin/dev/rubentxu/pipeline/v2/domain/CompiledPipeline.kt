@@ -9,7 +9,7 @@ data class CompiledPipeline(
     val id: DefinitionId,
     val source: SourceDescriptor,
     val environment: EnvironmentSpec = EnvironmentSpec.empty(),
-    val options: List<OptionSpec> = emptyList(),
+    val options: List<StageOption> = emptyList(),
     val parameters: List<ParameterSpec> = emptyList(),
     val tools: List<ToolSpec> = emptyList(),
     val stages: List<StageNode>,
@@ -40,9 +40,73 @@ data class EnvironmentSpec(val values: Map<String, String>) {
     companion object { fun empty() = EnvironmentSpec(emptyMap()) }
 }
 
+/**
+ * S3.3 — a stage option, as a CLOSED set of cases rather than a name/value bag.
+ *
+ * This replaces `OptionSpec(name: String, value: String?)`, which forced a
+ * stringly-typed hole through the whole path: the DSL held a typed `Long`,
+ * the compiler flattened it to `OptionSpec("timeout", it.toString())`, and the
+ * interpreter recovered it with `options.filter { it.name == "timeout" }`
+ * followed by `toLongOrNull`. A name a typo away from silence, a payload that
+ * could not survive the trip, and three exception escapes for what are ordinary
+ * author mistakes.
+ *
+ * ## Why only one case
+ *
+ * `02-directive-model.md` sketches `Timeout`, `Retry`, `SkipDefaultCheckout`
+ * and `Timestamps`, then states the rule that decides it: *"Every option must
+ * map to a real policy/interpreter or be rejected."* Only `Timeout` has one
+ * (`StageNode.projectShellOptions` -> `ShOptions.timeoutMs`); the other three
+ * were removed from the DSL surface in WU-RP-032 precisely because nothing
+ * read them. Adding their cases here would re-create the defect the previous
+ * shape had — a declared option with no interpreter — inside a more
+ * respectable-looking type. The ADT grows a case on the day an interpreter
+ * exists, not on the day the document lists it.
+ *
+ * ## Proof that the sealed-ness is load-bearing
+ *
+ * Mutation M-s3-3 added `data object Timestamps : StageOption` — a declared case
+ * with no interpreter, precisely the §8 violation. It did not compile:
+ *
+ * ```
+ * e: CanonicalStructuralDecisions.kt:292:12 'when' expression must be exhaustive.
+ *    Add the 'Timestamps' branch or an 'else' branch.
+ * ```
+ *
+ * So the §8 rule is enforced by the build, not by discipline. An uninterpreted
+ * option cannot be added without the interpreter being forced to name it, and
+ * the interpreter has no `else` to absorb it.
+ *
+ * ## Why the invariant lives in the constructor
+ *
+ * `Timeout` rejects a non-positive duration at construction, so an invalid
+ * deadline is unrepresentable rather than representable-and-rejected later.
+ * That deletes the interpreter's whole failure surface: it no longer needs a
+ * "multiple timeout options" check, a parse, a positivity check or an overflow
+ * guard, so a closed `when` over this interface is total by construction
+ * rather than by an `else` that hides an unhandled case.
+ */
 @Serializable
-data class OptionSpec(val name: String, val value: String? = null) {
-    init { require(name.isNotBlank()) { "OptionSpec.name must not be blank" } }
+sealed interface StageOption {
+
+    /**
+     * A stage-wide shell deadline.
+     *
+     * Distinct from the `timeout()` BLOCK Step, which is a body with its own
+     * `TimeoutScheduled`/`TimeoutTriggered` events. This produces no such
+     * event: a breach surfaces as the governed step's own
+     * `StepFailed(failureKind = TIMEOUT)`.
+     */
+    @Serializable
+    data class Timeout(val milliseconds: Long) : StageOption {
+        init {
+            require(milliseconds > 0) {
+                "StageOption.Timeout must be positive, was ${milliseconds}ms. A deadline of " +
+                    "zero or less is not a deadline: it would either never fire or fire before " +
+                    "the stage starts, and both look like a working timeout to the author."
+            }
+        }
+    }
 }
 
 @Serializable
@@ -122,7 +186,7 @@ data class StageNode(
     val id: StageId,
     val name: String,
     val environment: EnvironmentSpec = EnvironmentSpec.empty(),
-    val options: List<OptionSpec> = emptyList(),
+    val options: List<StageOption> = emptyList(),
     val whenCondition: ConditionSpec? = null,
     val input: InputSpec? = null,
     val body: StageBody,

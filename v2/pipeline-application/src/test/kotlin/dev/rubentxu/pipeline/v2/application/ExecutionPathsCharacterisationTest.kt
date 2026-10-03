@@ -286,7 +286,7 @@ class ExecutionPathsCharacterisationTest {
     // P8 — stage-level metadata projection
     // ------------------------------------------------------------------
     @Test
-    fun `P8 stage environment and options project to StageNode metadata while agent fails closed`() {
+    fun `P8 stage environment and options project to StageNode metadata, and agent carries a directive`() {
         val spec = pipeline {
             stages {
                 stage("Build") {
@@ -299,19 +299,36 @@ class ExecutionPathsCharacterisationTest {
         val compiled = compile(spec)
         val stage = compiled.stages.single()
 
-        val agentRejected = assertThrows<IllegalArgumentException> {
-            pipeline {
-                stages {
-                    stage("Build") {
-                        agent("linux")
-                        echo("hello")
-                    }
+        // S3.1 replaced the S0 assertion that `agent` fails closed. It no longer
+        // does: the construct has a carrier and an interpreter, so the honest
+        // check is that it carries a decodable directive. Left RED by e92c9d4e
+        // (S3.1 shipped without the full application suite) and fixed here.
+        val withAgent = pipeline {
+            stages {
+                stage("Build") {
+                    agent("linux")
+                    echo("hello")
                 }
             }
         }
-        assertTrue(agentRejected.message!!.contains("agent"))
+        val agentStage = compile(withAgent).stages.single()
+        val agentDirective = agentStage.directives.singleOrNull { it.key == "core.agent" }
+        assertTrue(
+            agentDirective != null,
+            "agent(label) must carry a core.agent directive; carried: ${agentStage.directives.map { it.key }}",
+        )
+        assertTrue(
+            dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirementCodec
+                .decode(agentDirective!!.encodedArguments)
+                is dev.rubentxu.pipeline.v2.domain.directive.DirectiveDecodeResult.Decoded,
+            "the carried agent requirement must decode, or it is metadata no interpreter reads",
+        )
         assertEquals(mapOf("CI" to "true"), stage.environment.values)
-        assertEquals(listOf("timeout=30"), stage.options.map { "${it.name}=${it.value}" })
+        // S3.3: the typed carrier, not a string rendering of it.
+        assertEquals(
+            listOf(dev.rubentxu.pipeline.v2.domain.StageOption.Timeout(30_000L)),
+            stage.options,
+        )
         assertTrue(compiled.supportsCanonicalDurableExecution())
     }
 }

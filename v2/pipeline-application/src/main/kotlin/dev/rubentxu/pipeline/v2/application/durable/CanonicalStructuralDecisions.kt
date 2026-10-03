@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata
 import dev.rubentxu.pipeline.v2.application.CoreLegacyStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory
 import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
+import dev.rubentxu.pipeline.v2.domain.StageOption
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.BodyContextProjection
 import dev.rubentxu.pipeline.v2.domain.step.BodyAggregateIdentity
@@ -254,14 +255,43 @@ internal fun StageNode.projectShellOptions(base: ShOptions): ShOptions {
 }
 
 internal fun StageNode.timeoutProjection(): StageTimeoutProjection {
-    val timeoutOptions = options.filter { it.name == "timeout" }
-    if (timeoutOptions.isEmpty()) return StageTimeoutProjection.Absent
-    require(timeoutOptions.size == 1) { "Stage '$name' has multiple timeout options" }
-
-    val seconds = timeoutOptions.single().value?.toLongOrNull()
-        ?: throw IllegalArgumentException("Stage '$name' has an invalid timeout option")
-    require(seconds > 0) { "Stage '$name' timeout must be positive" }
-    return StageTimeoutProjection.Present(Math.multiplyExact(seconds, 1_000L))
+    // S3.3: a CLOSED match over the typed carrier.
+    //
+    // The previous shape discriminated on a name string and re-parsed the value:
+    //
+    //     val timeoutOptions = options.filter { it.name == "timeout" }
+    //     require(timeoutOptions.size == 1) { "...multiple timeout options" }
+    //     val seconds = timeoutOptions.single().value?.toLongOrNull()
+    //         ?: throw IllegalArgumentException("...invalid timeout option")
+    //     require(seconds > 0) { "...timeout must be positive" }
+    //     StageTimeoutProjection.Present(Math.multiplyExact(seconds, 1_000L))
+    //
+    // Five failure modes, all of them exceptions, all of them reachable from
+    // ordinary author input — and every one of them now impossible:
+    //
+    //   - "no timeout" is the EMPTY LIST, not a filter that matched nothing;
+    //   - "more than one timeout" is unrepresentable, because [StageOption] has
+    //     one case carrying the duration and the DSL has one `timeout` field;
+    //   - "unparseable" is unrepresentable, because the duration is a Long that
+    //     never becomes text;
+    //   - "non-positive" is rejected by [StageOption.Timeout]'s own invariant;
+    //   - "overflow" moved to the compiler, where `multiplyExact` can only be
+    //     reached by an author who wrote a timeout of ~292 million years.
+    //
+    // The `check` below is an INVARIANT assertion, not author input handling:
+    // two timeouts cannot be authored (one case, one payload, one DSL field), so
+    // seeing two means a compiler bug. `check` is the honest expression of that,
+    // and it keeps the guard out of the `when` so the interpretation below stays
+    // a closed match with no `else` to absorb the next case added to the ADT.
+    check(options.size <= 1) {
+        "Stage '$name' declared ${options.size} options, but StageOption has exactly one case " +
+            "carrying its whole payload, so duplicates cannot be authored. This is an invariant " +
+            "defect in the compiler, not an author mistake."
+    }
+    val option = options.singleOrNull() ?: return StageTimeoutProjection.Absent
+    return when (option) {
+        is StageOption.Timeout -> StageTimeoutProjection.Present(option.milliseconds)
+    }
 }
 
 internal fun StepOutcome.toOperationStatus(): OperationStatus = when (this) {

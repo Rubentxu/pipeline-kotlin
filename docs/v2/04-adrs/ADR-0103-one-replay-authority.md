@@ -2,7 +2,7 @@
 type: adr
 id: ADR-0103
 title: "One replay authority: address and semantics are separate concerns"
-status: proposed
+status: accepted
 date: 2026-10-03
 deciders: "Rubentxu (product owner)"
 supersedes: null
@@ -164,21 +164,34 @@ A mixed effect set is **not** memoizable: only an effect set that is purely
 `READ_ONLY` may `SKIP`. The descriptor's `effects: List<Effect>` makes mixed sets
 representable, so a Step declaring `READ_ONLY + EXECUTES_SUBPROCESS` executes.
 
-### D2 — `RERUN` is renamed, because the name is the surviving defect
+### D2 — The misleading name is corrected by contract and test, not renamed yet
 
 The table in D1 is normative; the enum name is not. `ReplayPolicy.RERUN` means
 "reuse a journalled `SUCCEEDED` result", which is the opposite of what its name
 and documentation claim. Given that this repository has already had four
 honoured-looking declarations that were not, and that this one survived because
-no test exercised it, the name is corrected as part of the change:
+no test exercised it, the name must stop misleading.
 
-```text
-ReplayPolicy.RERUN        → ReplayPolicy.REUSE_ON_SUCCESS
-ReplayDecision.RERUN      → ReplayDecision.EXECUTE
-```
+It is **not** renamed in this change. Measured, the rename would touch 49
+references to `ReplayPolicy.RERUN` and 44 to `ReplayDecision.RERUN`, across two
+**public** SDK enums, so it is source-breaking for any external plugin that names
+them. A Kotlin enum admits no alias, so "deprecate without removing" could not
+mean "add the honest name alongside": it would mean either a second constant
+carrying the same meaning, which puts the ambiguity into every `when`, or
+keeping the misleading symbol and fixing its meaning.
 
-This is mechanical and carries no semantic change on its own. It is required so
-that the next reader is not misled by the one artefact that outlives the fix.
+Therefore:
+
+- `ReplayPolicy.RERUN` and `ReplayDecision.RERUN` **keep their names**, and their
+  documentation is corrected to state what they actually decide.
+- A fitness test pins the whole D1 table against `EffectReplayPolicy.decide`, so
+  the meaning can no longer drift back without turning something red. The
+  declared-vs-implemented contradiction that produced this ADR cannot recur
+  silently.
+- The rename is recorded as **deferred debt** and belongs to a future SDK
+  deprecation cycle with its own gate. It is not a task of this change.
+
+The table is the authority; the name is documentation of it.
 
 ### D3 — `RunPolicy` is a different axis
 
@@ -246,8 +259,9 @@ addendum corrects it without rewriting the original:
 - `ParallelStageEngine` and the canonical caller gain a typed output channel they
   do not have today.
 - Prior scripted history fails explicitly instead of being reinterpreted.
-- `ReplayPolicy.RERUN` stops being a lie, and its decision column is pinned by a
-  test rather than by a comment.
+- `ReplayPolicy.RERUN` stops being undocumented truth and becomes documented
+  contract, with its decision column pinned by a test rather than by a comment.
+  The rename is deferred to a future SDK deprecation cycle.
 - Dynamic iteration identity is explicitly **out of scope** here and remains
   governed by ADR-S4-R2, which may only be written after ADR-0093's overstatement
   is corrected and the replay semantics above are in force.
@@ -259,8 +273,14 @@ Loop iteration identity; `nextOrdinal`; `dynamicScopePath` composition; the
 carrier. Each has its own owner and none of them may be settled by implementing
 this ADR.
 
+## Acceptance
+
+Accepted 2026-10-03 by the product owner, **with D2 held back**: the
+`RERUN → REUSE_ON_SUCCESS` rename is deferred to its own slice so that no public
+SDK symbol is renamed in this change. Everything else in this ADR is in force.
+
 ## Acceptance gate
 
-This ADR may be accepted before implementation. Implementation must not begin
-until it is accepted, and must not be certified until the S4-R-POL differential
-passes for every row of D1 on both surfaces.
+Implementation must not be certified until the S4-R-POL differential passes for
+every row of D1 on both surfaces, and until the D1 table is pinned by a fitness
+test against `EffectReplayPolicy.decide`.

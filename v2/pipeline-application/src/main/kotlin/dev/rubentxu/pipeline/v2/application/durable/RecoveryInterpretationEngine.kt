@@ -8,7 +8,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
-import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 
 /**
  * TRAIN H3 / PR-019 — the INTERPRETATION half of durable recovery.
@@ -36,30 +35,43 @@ import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
  *
  *  - [InvocationReconciliation.Diverged] settles a typed INFRASTRUCTURE failure and does NOT
  *    emit lifecycle events, because the step never starts.
- *  - [InvocationReconciliation.RecoverRunning] runs the lifecycle boundary, writes the
- *    recovered terminal status, and advances the cursor only when the recovered outcome is a
- *    success.
+ *  - [InvocationReconciliation.RecoverRunning] runs the lifecycle boundary and writes the
+ *    recovered terminal status.
  *  - [InvocationReconciliation.ReuseCompleted] settles a success with NO lifecycle event and
  *    NO journal write: the row is already terminal, and re-emitting would duplicate it.
  *  - [InvocationReconciliation.RejectedAbort] runs the lifecycle boundary around a typed
  *    INFRASTRUCTURE failure, because the step started and must finish observably.
+ *
+ * ## ADR-0103 D7 — no replay cursor, and no traversal coordinates
+ *
+ * This engine used to take a `ReplayCursorStore` and advance it on a recovered success, and
+ * its [Request] carried `runIdValue` + `stageIndex` purely to do so. Both are gone. The
+ * cursor models where the canonical RUN resumes, which is traversal state; interpreting a
+ * recovery is not traversal. Leaving the store here would also have split cursor ownership
+ * between this engine and the executor, which is the two-owner shape D7 exists to remove.
+ *
+ * The consequence is the signal that the boundary is now correct: with `runIdValue` and
+ * `stageIndex` deleted as unused, every remaining field of [Request] is a durable fact
+ * about the operation or the lifecycle coordinates of the execution. Nothing here needs a
+ * canonical stage position, so a frontend that has none can reuse this engine as-is.
  */
 internal class RecoveryInterpretationEngine(
     private val eventSink: EventSink,
     private val journal: OperationJournal,
-    private val cursorStore: ReplayCursorStore,
 ) {
 
     /**
      * The durable facts an interpretation needs. Deliberately not the whole runtime context:
      * this engine decides nothing, it only performs the effects its own resolution names.
+     *
+     * `runIdValue` and `stageIndex` were removed under ADR-0103 D7. They existed only to
+     * advance the replay cursor, and an unused field is exactly how a responsibility
+     * reappears in the wrong class later.
      */
     data class Request(
         val operationId: String,
         val fingerprint: Fingerprint,
         val input: OperationInput,
-        val runIdValue: String,
-        val stageIndex: Int,
         val lifecycleContext: StepLifecycleContext,
     )
 
@@ -106,9 +118,6 @@ internal class RecoveryInterpretationEngine(
                     attempt = 1,
                 ),
             )
-            if (outcome is StepOutcome.Success) {
-                cursorStore.advance(request.runIdValue, request.operationId, request.stageIndex)
-            }
             RecoveryInterpretation.Settled(outcome)
         }
 

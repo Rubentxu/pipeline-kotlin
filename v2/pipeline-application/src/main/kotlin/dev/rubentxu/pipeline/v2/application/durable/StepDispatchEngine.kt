@@ -94,6 +94,18 @@ internal class StepDispatchEngine(
     private val bodyExecutionEngine: BodyExecutionEngine,
     private val bodyPolicyResolver: BodyPolicyResolver,
     private val runLifecycle: RunLifecycleEngine,
+    /**
+     * ADR-0103 D7 — the replay cursor is traversal state, so it lives here and nowhere
+     * else. `ReplayCursor(runId, lastOpId, stageIndex, savedAt)` models where the canonical
+     * RUN resumes; the values needed to write it (`runId`, `operationId`, `stageIndex`) are
+     * all facts of this traversal and none of them are facts of an operation. The executor
+     * and the recovery engine both lost their copy so that ownership is not split.
+     *
+     * This class is the CURRENT single authority, not a permanent name: the law is that
+     * the cursor belongs to the canonical structural/run traversal, so this dependency
+     * moves with the traversal if the traversal is ever refactored.
+     */
+    private val cursorStore: dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore,
     private val stepRegistry: StepRegistry?,
     private val bodyInvokerAdapter: CanonicalBodyInvokerAdapter,
     private val controlDirRoot: Path?,
@@ -382,23 +394,37 @@ internal class StepDispatchEngine(
         )
         // TRAIN H3 / PR-019: the four recovery resolutions are interpreted by
         // RecoveryInterpretationEngine; only Execute — which IS the invocation — stays here.
-        // The arms were moved verbatim, including which ones emit lifecycle events, write the
-        // journal and advance the cursor.
-        when (
-            val interpretation = recoveryInterpretation.interpret(
-                reconcileInvocation(metadata, journaled, currentOperation, operationId),
-                RecoveryInterpretationEngine.Request(
-                    operationId = operationId,
-                    fingerprint = fingerprint,
-                    input = input,
-                    runIdValue = runId.value,
-                    stageIndex = stageIndex,
-                    lifecycleContext = lifecycleContext,
-                ),
-            )
-        ) {
-            is RecoveryInterpretationEngine.RecoveryInterpretation.Settled ->
+        // The arms were moved verbatim, including which ones emit lifecycle events and
+        // write the journal.
+        //
+        // ADR-0103 D7: the resolution is NAMED rather than inlined into the call. Naming it
+        // is what lets the cursor decision below see both halves of the fact — the
+        // resolution (RecoverRunning or not) and the interpreted outcome (success or not) —
+        // without any arm of the interpretation engine having to carry a traversal flag.
+        val resolution = reconcileInvocation(metadata, journaled, currentOperation, operationId)
+        val interpretation = recoveryInterpretation.interpret(
+            resolution,
+            RecoveryInterpretationEngine.Request(
+                operationId = operationId,
+                fingerprint = fingerprint,
+                input = input,
+                lifecycleContext = lifecycleContext,
+            ),
+        )
+        when (interpretation) {
+            is RecoveryInterpretationEngine.RecoveryInterpretation.Settled -> {
+                // D7: a recovered success advances the run cursor, and only a recovered
+                // success does. The predicate is `is Success`, NOT `advancesCanonicalCursor()`:
+                // recovery has always been stricter than execution about Unstable, and D7
+                // relocated the cursor without being licensed to change what advances.
+                if (
+                    resolution is InvocationReconciliation.RecoverRunning &&
+                    interpretation.outcome is StepOutcome.Success
+                ) {
+                    cursorStore.advance(runId.value, operationId, stageIndex)
+                }
                 return Dispatched(interpretation.outcome, contextAfterOverlay)
+            }
             RecoveryInterpretationEngine.RecoveryInterpretation.ProceedToExecution -> Unit
         }
 
@@ -433,7 +459,14 @@ internal class StepDispatchEngine(
         }
 
         // WU-RP-031 E4: effective execution + durable folding extracted to DurableStepExecutor.
-        val outcome = stepExecutor.executeAndJournal(
+        // The carrier survives the boundary (ADR-0103 D5): `encodedOutput` is persisted by
+        // the executor AND returned, so no consumer has to re-derive the typed value.
+        //
+        // D7: the cursor advance lives HERE, after the terminal journal append the executor
+        // has already returned from. That ordering is the ReplayCursorStore R-C mitigation
+        // and it is structural, not incidental: the append is inside executeAndJournal, the
+        // advance is after it returns.
+        val execution = stepExecutor.executeAndJournal(
             operationId = operationId,
             fingerprint = fingerprint,
             input = input,
@@ -441,10 +474,11 @@ internal class StepDispatchEngine(
             prepared = prepared,
             runtime = runtime,
             lifecycleContext = lifecycleContext,
-            runIdValue = runId.value,
-            stageIndex = stageIndex,
         )
-        return Dispatched(outcome, contextAfterOverlay)
+        if (execution.outcome.advancesCanonicalCursor()) {
+            cursorStore.advance(runId.value, operationId, stageIndex)
+        }
+        return Dispatched(execution.outcome, contextAfterOverlay)
     }
 
     /**

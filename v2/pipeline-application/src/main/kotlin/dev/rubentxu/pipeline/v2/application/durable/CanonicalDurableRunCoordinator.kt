@@ -282,12 +282,11 @@ class CanonicalDurableRunCoordinator(
             capabilityContributor = capabilityContributor,
         )
 
-    // WU-RP-031 E4: effective execution + durable folding behind a narrow collaborator.
+    // WU-RP-031 E4 / ADR-0103 D7: the executor folds ONE operation; the traversal owns the cursor.
     private val stepExecutor: DurableStepExecutor = DurableStepExecutor(
         eventSink = eventSink,
         executionBoundary = executionBoundary,
         journal = journal,
-        cursorStore = cursorStore,
     )
 
     // C3 / WU-PR-017: the run-lifecycle bookends and the running outcome live in
@@ -298,10 +297,10 @@ class CanonicalDurableRunCoordinator(
     // flow, because only the owner of the loop may decide what the run does next.
     private val beforeStageDirectives = BeforeStageDirectiveEngine(eventSink, gateContext, gateEvaluator)
     // TRAIN H3 / PR-019: the INTERPRETATION of a recovery resolution. The DECISION already
-    // lives in invocationResolver; this engine performs the journal write, cursor advance and
-    // lifecycle events that a resolution names, and reports ProceedToExecution for the one
-    // resolution that is not a recovery case.
-    private val recoveryInterpretation = RecoveryInterpretationEngine(eventSink, journal, cursorStore)
+    // lives in invocationResolver; this engine performs the journal write and the lifecycle
+    // events that a resolution names, and reports ProceedToExecution for the one resolution
+    // that is not a recovery case. ADR-0103 D7: it advances no cursor — that is traversal state.
+    private val recoveryInterpretation = RecoveryInterpretationEngine(eventSink, journal)
     private val bodyExecutionEngine = BodyExecutionEngine(
         eventSink,
         clock,
@@ -327,6 +326,7 @@ class CanonicalDurableRunCoordinator(
         bodyExecutionEngine = bodyExecutionEngine,
         bodyPolicyResolver = bodyPolicyResolver,
         runLifecycle = runLifecycle,
+        cursorStore = cursorStore,
         stepRegistry = stepRegistry,
         bodyInvokerAdapter = bodyInvokerAdapter,
         controlDirRoot = controlDirRoot,

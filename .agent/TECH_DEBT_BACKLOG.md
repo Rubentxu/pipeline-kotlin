@@ -1198,3 +1198,53 @@ Closed in the TRAIN-0 closure thread by autonomous WI
 
 **Audit:** evidence `df2680d8-59ec-4dcb-a769-a41b15bba829` attached to WI
 b0ff1a11; SDDK closeout at commit `76aca21c929be8206cbcbe5a06763bbdbdaae990`.
+
+---
+
+## HAR-PAR-001 — WalkParallelFrameConcurrencyTest is vacuous as a production certification (P2)
+
+**Detected:** 2026-10-03, durante el gate de slice de S4-R1-D.
+**Severity:** P2 (deuda de harness; no toca producción, pero un gate rojo por este test
+  bloquea certificaciones legítimas y entrena a leer ruido como señal).
+**Scope:** 1 test. `v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/
+  application/walk/WalkParallelFrameConcurrencyTest.kt`
+**Status:** OPEN — registrado, **no reparado**. Proyección del ítem de ledger
+  `bl-bl-01M41RB9V70003883GP92A2N00` (SDDK backlog, P2), que es la autoridad.
+**Receipt:** `docs/v2/07-uat/S4_R1_D_POLICY_TRUTH_TABLE.md` §3.4
+
+### Defecto
+
+El test crea sus propios `async(Dispatchers.IO)` y hace `Thread.sleep(100)`. **No invoca
+`ParallelStageEngine`.** La autoridad productiva es `ParallelStageEngine.launchBranches()`
+(línea 187) con `supervisorScope` (195) y `async(Dispatchers.Default)` (198) — verificado.
+El test afirma algo sobre `kotlinx.coroutines` y lo deja pasar como si afirmara algo sobre el
+motor de branches.
+
+Consecuencia observable: su presupuesto de 150 ms de reloj de pared sobre un trabajo ideal de
+100 ms (margen del 50 %) se degrada bajo saturación. **Segunda ocurrencia registrada**:
+156 ms en `S2C_DIRECTIVE_COMPOSITION_RECEIPT.md` §5 (que ya lo declaró "deuda observada" y se
+negó a tocar el umbral), 160 ms en el gate de S4-R1-D.
+
+### Criterio de salida
+
+Sustituir por una **barrera determinista que cruce la autoridad productiva** —no por subir
+el umbral a 180/200 ms, y no por otro test de timing:
+
+```text
+ParallelStageEngine → launchBranches() → supervisorScope → async → StepDispatchEngine
+
+branch A enters ─┐
+branch B enters ─┼→ la barrera abre sólo cuando los 3 han entrado
+branch C enters ─┘
+
+entered.incrementAndGet()
+if (entered == 3) release.complete(Unit)
+release.await()
+```
+
+- Si producción se vuelve secuencial: A entra y espera a B/C, que nunca arrancan →
+  **watchdog de deadlock** (segundos) → RED.
+- Si es concurrente: los tres entran, la barrera abre, todos terminan → GREEN.
+
+El timeout queda como **watchdog de deadlock**, nunca como aserción de rendimiento. Con el
+reemplazo, este ítem deja de producir ruido de gate sin perder su capacidad de fallar.

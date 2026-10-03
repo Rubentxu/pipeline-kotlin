@@ -192,15 +192,38 @@ class EnvironmentScope {
 @StepDslMarker
 class OptionsScope {
     /**
-     * S3-R1-B: PRIVATE, and the removal is the point.
+     * S3-R1-B: the declared stage-wide timeout, in seconds.
      *
-     * This was a public `var timeout: Long?` sitting beside `fun timeout(seconds)`.
-     * Inside `options { … }` the scope is the receiver, so `timeout = 5` was a third door
-     * into the same value that no diagnostic guarded, which is how an unvalidated timeout
-     * reached the compiler even after the function was tightened. One door now: the
-     * function, which validates.
+     * Public, and VALIDATING, which is a correction rather than a detail. This was
+     * a bare `var` with no setter, sitting beside `fun timeout(seconds)`, so inside
+     * `options { … }` — where this scope is the receiver — `timeout = 5` was a
+     * second way in that no diagnostic guarded. That was not hypothetical: the
+     * certified `UatLocal004TimeoutTest` fixtures write exactly `timeout = 2L` /
+     * `timeout = 3L`.
+     *
+     * Making the property private was the first fix and it was the WRONG one. It
+     * removes the bypass, and it also breaks every existing `.pipeline.kts` that
+     * assigns the property, which is a source break in a published DSL surface
+     * disguised as a hardening. The full gate caught exactly that: two timeout
+     * UATs failed to compile with "Cannot access 'var timeout': it is private".
+     *
+     * So the property stays and the SETTER validates. That keeps the two syntaxes
+     * (`timeout(30)` and `timeout = 30`) while making the unvalidated door
+     * impossible rather than merely unused — and the setter and the function
+     * delegate to [StageTimeout], so they cannot drift apart, which is what
+     * produced the overflow in the first place.
      */
-    private var timeout: Long? = null
+    var timeout: Long? = null
+        set(value) {
+            require(value == null || StageTimeout.isValid(value)) {
+                "options { timeout } must be between 1 and ${StageTimeout.MAX_SECONDS} seconds, " +
+                    "was $value. Two separate things are wrong with that: a timeout of zero or " +
+                    "less is not a deadline, and a value this large has no millisecond form that " +
+                    "fits a Long, so it could never be projected into one. If you meant " +
+                    "'no limit', omit the option entirely, which is a different declaration."
+            }
+            field = value
+        }
 
     fun timeout(seconds: Long) {
         // S3.3: author input is validated HERE, at the construction boundary,
@@ -211,16 +234,8 @@ class OptionsScope {
         //  - `StageOption.Timeout`'s own invariant can then be a plain
         //    precondition, because this is the only way to reach it.
         //
-        // S3-R1-B: the check is `StageTimeout.isValid`, the SAME authority `OptionsSpec`
-        // consults, because until they shared one bound `timeout(Long.MAX_VALUE)` passed
-        // here and failed in the compiler as `long overflow`.
-        require(StageTimeout.isValid(seconds)) {
-            "options { timeout($seconds) } must be between 1 and ${StageTimeout.MAX_SECONDS} " +
-                "seconds. A timeout of $seconds seconds is not a deadline: at or below zero it " +
-                "would never fire, and above the bound it has no millisecond form that fits a " +
-                "Long, so it could never be projected into one. If you meant 'no limit', omit " +
-                "the option entirely, which is a different declaration."
-        }
+        // S3-R1-B: delegates to the validating setter rather than repeating the
+        // check, so the function and the property have ONE authority between them.
         timeout = seconds
     }
 

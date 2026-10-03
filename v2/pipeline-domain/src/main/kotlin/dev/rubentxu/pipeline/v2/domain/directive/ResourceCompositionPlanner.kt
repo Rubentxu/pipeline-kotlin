@@ -4,7 +4,7 @@ package dev.rubentxu.pipeline.v2.domain.directive
  * S3-R1-C — resource composition: the PURE decision layer over already-admitted
  * and already-decoded resource directives.
  *
- * ## Why this exists when the only Resource key is `core.agent`
+ * ## Why this exists when the only Resource key in production is the agent one
  *
  * Because the law is about the POLICY, not the key. A stage runs on ONE target, so two
  * target requests describe a state the model does not have — and before this planner
@@ -14,11 +14,11 @@ package dev.rubentxu.pipeline.v2.domain.directive
  * host. In RP-8, when a target is a real lease, it is acquire-acquire on one resource
  * with no defined composition.
  *
- * The tempting fix is to test the key:
- *
- * ```
- * if (key == "core.agent") …          // WRONG
- * ```
+ * The tempting fix is to test the key against a hardcoded name, which the
+ * kernel fitness rejects by design: a namespaced directive literal must not
+ * appear in this module at all, not even in prose. That is the right rule, and
+ * the KDoc here is written to respect it rather than to quote the forbidden
+ * fix verbatim.
  *
  * and it is wrong in the way this repository has already been wrong twice: a central
  * switch on a concrete name (STEP CONSTITUTION §7), correct today and silently wrong the

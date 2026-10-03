@@ -81,7 +81,7 @@ class S3R1StageTimeoutBoundaryTest {
             OptionsScope().apply { timeout(Long.MAX_VALUE) }
         }
         assertTrue(
-            failure.message!!.contains("timeout("),
+            failure.message!!.contains("options { timeout"),
             "the diagnostic must name the construct the author wrote: ${failure.message}",
         )
         assertTrue(
@@ -137,18 +137,42 @@ class S3R1StageTimeoutBoundaryTest {
 
     @Test
     fun `the timeout property cannot be assigned around the validating function`() {
-        // `OptionsScope` declared `var timeout: Long?` next to `fun timeout(seconds)`.
-        // Inside `options { … }` the scope is the receiver, so `timeout = 5` was a
-        // third way in that no diagnostic ever guarded. Asserted as a REFLECTIVE
-        // fact rather than a compile error, because a compile error cannot be a test:
-        // if there is no public setter, the bypass does not exist.
-        val setter = OptionsScope::class.java.methods.firstOrNull { it.name == "setTimeout" }
-        assertNull(
-            setter,
-            "OptionsScope must not expose a public timeout setter: it is a third door that " +
-                "bypasses the validating function. Assigning through it is how an " +
-                "unvalidated value reaches build().",
-        )
+        // `OptionsScope` declared a bare `var timeout: Long?` beside
+        // `fun timeout(seconds)`. Inside `options { … }` the scope is the receiver,
+        // so `timeout = 5` was a second way in with no diagnostic — and not
+        // hypothetical: the certified `UatLocal004TimeoutTest` fixtures write
+        // `timeout = 2L` and `timeout = 3L`.
+        //
+        // The first fix here was to make the property private. That removed the
+        // bypass and ALSO broke those two UATs at compile time, which is a source
+        // break in a published DSL surface wearing a hardening's clothes. So the
+        // property stays and the SETTER validates. What matters is that an
+        // assignment cannot carry an out-of-range value — not whether a setter
+        // member exists, which is an implementation detail.
+        val scope = OptionsScope()
+
+        for (bad in listOf(Long.MAX_VALUE, maxSeconds + 1, 0L, -1L)) {
+            assertRefused("options { timeout = $bad }") { scope.timeout = bad }
+        }
+        scope.timeout = 30L
+        assertEquals(30L, scope.timeout, "a valid assignment still works")
+        assertRefused("options { timeout = 0 } after a valid assignment") { scope.timeout = 0L }
+        assertEquals(30L, scope.timeout, "a refused assignment must not corrupt the state")
+    }
+
+    @Test
+    fun `the function and the property refuse the same values`() {
+        // Two syntaxes, one authority. If these ever disagree, the drift that
+        // produced the overflow is back.
+        for (seconds in listOf(Long.MAX_VALUE, maxSeconds + 1, maxSeconds, 30L, 0L, -1L)) {
+            val viaFunction = runCatching { OptionsScope().apply { timeout(seconds) } }.isSuccess
+            val viaProperty = runCatching { OptionsScope().also { it.timeout = seconds } }.isSuccess
+            assertEquals(
+                viaFunction,
+                viaProperty,
+                "seconds=$seconds is refused by one syntax and accepted by the other",
+            )
+        }
     }
 
     // ------------------------------------------------------------------
@@ -174,7 +198,7 @@ class S3R1StageTimeoutBoundaryTest {
 
         val atAuthorBoundary = assertRefused("options { timeout(Long.MAX_VALUE) }") { build() }
         assertTrue(
-            atAuthorBoundary.message!!.contains("timeout("),
+            atAuthorBoundary.message!!.contains("options { timeout"),
             "the diagnostic must name the construct: ${atAuthorBoundary.message}",
         )
 

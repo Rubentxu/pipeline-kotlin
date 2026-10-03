@@ -43,17 +43,17 @@ class FileLockCoordinatorTest {
     private fun coordinator() = FileLockCoordinator(lockRoot)
 
     /** The linear lane of run-a: the owner the re-entrancy rows use. */
-    private val OWNER = LockOwner(ExecutionLaneId.of("run-a", emptyList()))
+    private val owner = LockOwner(ExecutionLaneId.of("run-a", emptyList()))
 
     /** SAME run, DIFFERENT parallel lane — a sibling `parallel` branch. */
-    private val SIBLING_LANE_OWNER =
+    private val siblingLaneOwner =
         LockOwner(ExecutionLaneId.of("run-a", listOf(1)))
 
     /** A different run entirely. */
-    private val OTHER_OWNER = LockOwner(ExecutionLaneId.of("run-b", emptyList()))
+    private val otherOwner = LockOwner(ExecutionLaneId.of("run-b", emptyList()))
 
     /** An owner that never acquires anything. */
-    private val UNRELATED_OWNER = LockOwner(ExecutionLaneId.of("run-never-seen", emptyList()))
+    private val unrelatedOwner = LockOwner(ExecutionLaneId.of("run-never-seen", emptyList()))
 
     // ------------------------------------------------------------- the happy path
 
@@ -61,17 +61,17 @@ class FileLockCoordinatorTest {
     fun `a free resource is acquired and released`() = runBlocking {
         val c = coordinator()
 
-        val admission = c.acquire(OWNER, "staging", LockIntent.Now)
+        val admission = c.acquire(owner, "staging", LockIntent.Now)
 
         assertEquals(LockAdmission.Acquired("staging", reentrant = false), admission)
-        assertTrue(c.isHeldLocally(OWNER, "staging"))
-        c.release(LockHold(OWNER, "staging"))
-        assertFalse(c.isHeldLocally(OWNER, "staging"))
+        assertTrue(c.isHeldLocally(owner, "staging"))
+        c.release(LockHold(owner, "staging"))
+        assertFalse(c.isHeldLocally(owner, "staging"))
     }
 
     @Test
     fun `acquiring a lock file is created under the lock root`() = runBlocking {
-        coordinator().acquire(OWNER, "staging", LockIntent.Now)
+        coordinator().acquire(owner, "staging", LockIntent.Now)
 
         val files = Files.list(lockRoot).use { it.toList() }
         assertEquals(1, files.size, "one resource means one lock file, got $files")
@@ -87,8 +87,8 @@ class FileLockCoordinatorTest {
     fun `a nested acquire is re-entrant and counted`() = runBlocking {
         val c = coordinator()
 
-        val outer = c.acquire(OWNER, "staging", LockIntent.Now)
-        val inner = c.acquire(OWNER, "staging", LockIntent.Now)
+        val outer = c.acquire(owner, "staging", LockIntent.Now)
+        val inner = c.acquire(owner, "staging", LockIntent.Now)
 
         assertEquals(LockAdmission.Acquired("staging", reentrant = false), outer)
         assertEquals(
@@ -96,22 +96,22 @@ class FileLockCoordinatorTest {
             inner,
             "a second take by the same holder is a re-entrant acquisition, not contention",
         )
-        assertEquals(2, c.depthOf(OWNER, "staging"))
+        assertEquals(2, c.depthOf(owner, "staging"))
     }
 
     @Test
     fun `the hold survives until the outermost release`() = runBlocking {
         val c = coordinator()
-        c.acquire(OWNER, "staging", LockIntent.Now)
-        c.acquire(OWNER, "staging", LockIntent.Now)
+        c.acquire(owner, "staging", LockIntent.Now)
+        c.acquire(owner, "staging", LockIntent.Now)
 
-        c.release(LockHold(OWNER, "staging"))
+        c.release(LockHold(owner, "staging"))
         assertTrue(
-            c.isHeldLocally(OWNER, "staging"),
+            c.isHeldLocally(owner, "staging"),
             "releasing one level of a re-entrant chain must not free the resource",
         )
-        c.release(LockHold(OWNER, "staging"))
-        assertFalse(c.isHeldLocally(OWNER, "staging"))
+        c.release(LockHold(owner, "staging"))
+        assertFalse(c.isHeldLocally(owner, "staging"))
     }
 
     /**
@@ -122,9 +122,9 @@ class FileLockCoordinatorTest {
     @Test
     fun `a nested acquire never denies, so a nested body is never silently skipped`() = runBlocking {
         val c = coordinator()
-        c.acquire(OWNER, "a", LockIntent.Now)
+        c.acquire(owner, "a", LockIntent.Now)
 
-        val nested = c.acquire(OWNER, "a", LockIntent.Now)
+        val nested = c.acquire(owner, "a", LockIntent.Now)
 
         assertTrue(
             nested is LockAdmission.Acquired,
@@ -139,9 +139,9 @@ class FileLockCoordinatorTest {
     fun `a resource held by another owner is denied`() = runBlocking {
         val holder = coordinator()
         val contender = coordinator()
-        holder.acquire(OWNER, "staging", LockIntent.Now)
+        holder.acquire(owner, "staging", LockIntent.Now)
 
-        val admission = contender.acquire(OTHER_OWNER, "staging", LockIntent.Now)
+        val admission = contender.acquire(otherOwner, "staging", LockIntent.Now)
 
         assertEquals(
             LockAdmission.Denied(LockDenialReason.Held),
@@ -155,9 +155,9 @@ class FileLockCoordinatorTest {
     fun `a timeout under a waiting intent is a timeout, not a skip`() = runBlocking {
         val holder = coordinator()
         val contender = coordinator()
-        holder.acquire(OWNER, "staging", LockIntent.Now)
+        holder.acquire(owner, "staging", LockIntent.Now)
 
-        val admission = contender.acquire(OTHER_OWNER, "staging", LockIntent.UpTo(120))
+        val admission = contender.acquire(otherOwner, "staging", LockIntent.UpTo(120))
 
         val denial = admission as? LockAdmission.Denied
         assertTrue(denial is LockAdmission.Denied, "expected a denial, got $admission")
@@ -176,7 +176,7 @@ class FileLockCoordinatorTest {
     /**
      * The distinction the whole owner design exists for. Re-entrant by PROCESS
      * would let a second run in the same JVM walk into a resource the first run is
-     * holding; re-entrant by DURABLE OWNER does not.
+     * holding; re-entrant by DURABLE owner does not.
      */
     /**
      * THE law, stated in one row. Same run, different parallel lane, must
@@ -186,9 +186,9 @@ class FileLockCoordinatorTest {
     @Test
     fun `same run but a different parallel lane contends`() = runBlocking {
         val c = coordinator()
-        c.acquire(OWNER, "db", LockIntent.Now)
+        c.acquire(owner, "db", LockIntent.Now)
 
-        val admission = c.acquire(SIBLING_LANE_OWNER, "db", LockIntent.Now)
+        val admission = c.acquire(siblingLaneOwner, "db", LockIntent.Now)
 
         assertEquals(
             LockAdmission.Denied(LockDenialReason.Held),
@@ -201,13 +201,13 @@ class FileLockCoordinatorTest {
     @Test
     fun `a sibling lane does not re-enter a hold taken by another lane`() = runBlocking {
         val c = coordinator()
-        c.acquire(OWNER, "db", LockIntent.Now)
+        c.acquire(owner, "db", LockIntent.Now)
 
-        c.acquire(SIBLING_LANE_OWNER, "db", LockIntent.Now)
+        c.acquire(siblingLaneOwner, "db", LockIntent.Now)
 
         assertEquals(
             1,
-            c.depthOf(OWNER, "db"),
+            c.depthOf(owner, "db"),
             "a denied sibling must not have deepened the real holder's chain",
         )
     }
@@ -216,8 +216,8 @@ class FileLockCoordinatorTest {
     fun `a nested acquire in the SAME lane still re-enters`() = runBlocking {
         val c = coordinator()
 
-        c.acquire(OWNER, "db", LockIntent.Now)
-        val nested = c.acquire(OWNER, "db", LockIntent.Now)
+        c.acquire(owner, "db", LockIntent.Now)
+        val nested = c.acquire(owner, "db", LockIntent.Now)
 
         assertEquals(
             LockAdmission.Acquired("db", reentrant = true),
@@ -225,33 +225,33 @@ class FileLockCoordinatorTest {
             "a nested lock is a deeper body in the same lane, not contention; denying it " +
                 "would deadlock the run against its own legitimate hold",
         )
-        assertEquals(2, c.depthOf(OWNER, "db"))
+        assertEquals(2, c.depthOf(owner, "db"))
     }
 
     /** Depth 2 -> 1 -> 0, with the resource actually freed only at 0. */
     @Test
     fun `release walks the depth down and frees only at zero`() = runBlocking {
         val c = coordinator()
-        c.acquire(OWNER, "db", LockIntent.Now)
-        c.acquire(OWNER, "db", LockIntent.Now)
+        c.acquire(owner, "db", LockIntent.Now)
+        c.acquire(owner, "db", LockIntent.Now)
 
-        c.release(LockHold(OWNER, "db"))
-        assertEquals(1, c.depthOf(OWNER, "db"))
+        c.release(LockHold(owner, "db"))
+        assertEquals(1, c.depthOf(owner, "db"))
         assertTrue(
-            c.isHeldLocally(OWNER, "db"),
+            c.isHeldLocally(owner, "db"),
             "at depth 1 the OS lock must still be held",
         )
         assertEquals(
             LockAdmission.Denied(LockDenialReason.Held),
-            c.acquire(SIBLING_LANE_OWNER, "db", LockIntent.Now),
+            c.acquire(siblingLaneOwner, "db", LockIntent.Now),
             "a sibling must still be locked out while depth is 1",
         )
 
-        c.release(LockHold(OWNER, "db"))
-        assertEquals(0, c.depthOf(OWNER, "db"))
+        c.release(LockHold(owner, "db"))
+        assertEquals(0, c.depthOf(owner, "db"))
         assertEquals(
             LockAdmission.Acquired("db", reentrant = false),
-            c.acquire(SIBLING_LANE_OWNER, "db", LockIntent.Now),
+            c.acquire(siblingLaneOwner, "db", LockIntent.Now),
             "only at depth 0 is the resource actually free for another lane",
         )
     }
@@ -260,18 +260,18 @@ class FileLockCoordinatorTest {
     @Test
     fun `the three outcomes of the ownership law`() = runBlocking {
         val c = coordinator()
-        c.acquire(OWNER, "db", LockIntent.Now)
+        c.acquire(owner, "db", LockIntent.Now)
 
         assertTrue(
-            c.acquire(OWNER, "db", LockIntent.Now) is LockAdmission.Acquired,
+            c.acquire(owner, "db", LockIntent.Now) is LockAdmission.Acquired,
             "same run + same lane must re-enter",
         )
         assertTrue(
-            c.acquire(SIBLING_LANE_OWNER, "db", LockIntent.Now) is LockAdmission.Denied,
+            c.acquire(siblingLaneOwner, "db", LockIntent.Now) is LockAdmission.Denied,
             "same run + different lane must contend",
         )
         assertTrue(
-            c.acquire(OTHER_OWNER, "db", LockIntent.Now) is LockAdmission.Denied,
+            c.acquire(otherOwner, "db", LockIntent.Now) is LockAdmission.Denied,
             "different run must contend",
         )
     }
@@ -284,11 +284,11 @@ class FileLockCoordinatorTest {
     @Test
     fun `a cancelled acquire propagates cancellation instead of returning a denial`() = runBlocking {
         val holder = coordinator()
-        holder.acquire(OWNER, "db", LockIntent.Now)
+        holder.acquire(owner, "db", LockIntent.Now)
         val contender = coordinator()
 
         val waiter = launch(Dispatchers.Default) {
-            contender.acquire(OTHER_OWNER, "db", LockIntent.UpTo(120_000))
+            contender.acquire(otherOwner, "db", LockIntent.UpTo(120_000))
         }
         delay(200) // let it enter the poll loop
         waiter.cancelAndJoin()
@@ -299,7 +299,7 @@ class FileLockCoordinatorTest {
                 "the caller treat a cancellation as a timeout and keep going",
         )
         assertTrue(
-            holder.isHeldLocally(OWNER, "db"),
+            holder.isHeldLocally(owner, "db"),
             "the cancelled waiter must not have disturbed the real holder",
         )
     }
@@ -317,12 +317,12 @@ class FileLockCoordinatorTest {
     @Test
     fun `a contended acquire suspends instead of blocking its thread`() = runBlocking {
         val holder = coordinator()
-        holder.acquire(OWNER, "db", LockIntent.Now)
+        holder.acquire(owner, "db", LockIntent.Now)
         val contender = coordinator()
 
         val single = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
         try {
-            val waiter = async(single) { contender.acquire(OTHER_OWNER, "db", LockIntent.UpTo(900)) }
+            val waiter = async(single) { contender.acquire(otherOwner, "db", LockIntent.UpTo(900)) }
             var worstGapMillis = 0L
             var ticks = 0
             var previous = System.nanoTime()
@@ -353,9 +353,9 @@ class FileLockCoordinatorTest {
     @Test
     fun `a different durable owner contends even in the same process`() = runBlocking {
         val runA = coordinator()
-        runA.acquire(OWNER, "staging", LockIntent.Now)
+        runA.acquire(owner, "staging", LockIntent.Now)
 
-        val admission = runA.acquire(OTHER_OWNER, "staging", LockIntent.Now)
+        val admission = runA.acquire(otherOwner, "staging", LockIntent.Now)
 
         assertEquals(
             LockAdmission.Denied(LockDenialReason.Held),
@@ -363,7 +363,7 @@ class FileLockCoordinatorTest {
             "the process is not the owner; two runs sharing a JVM must still exclude",
         )
         assertTrue(
-            runA.isHeldLocally(OWNER, "staging"),
+            runA.isHeldLocally(owner, "staging"),
             "the denied attempt must not have disturbed the real holder",
         )
     }
@@ -371,12 +371,12 @@ class FileLockCoordinatorTest {
     @Test
     fun `a release from another owner does not free the hold`() = runBlocking {
         val c = coordinator()
-        c.acquire(OWNER, "staging", LockIntent.Now)
+        c.acquire(owner, "staging", LockIntent.Now)
 
-        c.release(LockHold(OTHER_OWNER, "staging"))
+        c.release(LockHold(otherOwner, "staging"))
 
         assertTrue(
-            c.isHeldLocally(OWNER, "staging"),
+            c.isHeldLocally(owner, "staging"),
             "one owner releasing a hold keyed to another owner is a hazard, not a no-op",
         )
     }
@@ -388,9 +388,9 @@ class FileLockCoordinatorTest {
         // would deadlock a run against its own earlier hold.
         val first = coordinator()
         val second = coordinator()
-        first.acquire(OWNER, "staging", LockIntent.Now)
+        first.acquire(owner, "staging", LockIntent.Now)
 
-        val admission = second.acquire(OWNER, "staging", LockIntent.Now)
+        val admission = second.acquire(owner, "staging", LockIntent.Now)
 
         assertTrue(
             admission is LockAdmission.Acquired,
@@ -402,11 +402,11 @@ class FileLockCoordinatorTest {
     fun `contention does not stop an unrelated resource from being taken`() = runBlocking {
         val holder = coordinator()
         val contender = coordinator()
-        holder.acquire(OWNER, "staging", LockIntent.Now)
+        holder.acquire(owner, "staging", LockIntent.Now)
 
         assertEquals(
             LockAdmission.Acquired("other", reentrant = false),
-            contender.acquire(OWNER, "other", LockIntent.Now),
+            contender.acquire(owner, "other", LockIntent.Now),
             "one held resource must not block every other resource",
         )
     }
@@ -416,14 +416,14 @@ class FileLockCoordinatorTest {
     @Test
     fun `releasing a hold nobody took is a no-op`() = runBlocking {
         val holder = coordinator()
-        holder.acquire(OWNER, "staging", LockIntent.Now)
+        holder.acquire(owner, "staging", LockIntent.Now)
 
         // Nothing was ever acquired for this owner, so this release must find no
         // hold and leave the real one alone.
-        coordinator().release(LockHold(UNRELATED_OWNER, "staging"))
+        coordinator().release(LockHold(unrelatedOwner, "staging"))
 
         assertTrue(
-            holder.isHeldLocally(OWNER, "staging"),
+            holder.isHeldLocally(owner, "staging"),
             "a release for an owner that never acquired must not free the real holder",
         )
     }
@@ -431,14 +431,14 @@ class FileLockCoordinatorTest {
     @Test
     fun `releasing twice does not disturb a later holder`() = runBlocking {
         val first = coordinator()
-        first.acquire(OWNER, "staging", LockIntent.Now)
-        first.release(LockHold(OWNER, "staging"))
-        first.release(LockHold(OWNER, "staging"))
+        first.acquire(owner, "staging", LockIntent.Now)
+        first.release(LockHold(owner, "staging"))
+        first.release(LockHold(owner, "staging"))
 
         val second = coordinator()
         assertEquals(
             LockAdmission.Acquired("staging", reentrant = false),
-            second.acquire(OWNER, "staging", LockIntent.Now),
+            second.acquire(owner, "staging", LockIntent.Now),
             "a double release must not free a hold acquired afterwards",
         )
     }
@@ -449,9 +449,9 @@ class FileLockCoordinatorTest {
     fun `distinct resource names get distinct lock files`() = runBlocking {
         val c = coordinator()
 
-        c.acquire(OWNER, "staging", LockIntent.Now)
-        c.acquire(OWNER, "staging/1", LockIntent.Now)
-        c.acquire(OWNER, "../escape", LockIntent.Now)
+        c.acquire(owner, "staging", LockIntent.Now)
+        c.acquire(owner, "staging/1", LockIntent.Now)
+        c.acquire(owner, "../escape", LockIntent.Now)
 
         val files = Files.list(lockRoot).use { it.toList() }
         assertEquals(
@@ -464,7 +464,7 @@ class FileLockCoordinatorTest {
 
     @Test
     fun `a traversal name cannot escape the lock root`() = runBlocking {
-        coordinator().acquire(OWNER, "../../etc/passwd", LockIntent.Now)
+        coordinator().acquire(owner, "../../etc/passwd", LockIntent.Now)
 
         val files = Files.list(lockRoot).use { it.toList() }
         assertEquals(1, files.size, "the lock file must stay under the lock root, got $files")

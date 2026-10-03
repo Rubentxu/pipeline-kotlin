@@ -13,11 +13,12 @@ S4-A1 replaces it and S4-B2 rewrites it. Everything below was measured by runnin
 the real `ScriptedSourceMapper` + `ScriptedSourceLowering` over real source text,
 not inferred by reading.
 
-Evidence, 14/14 green across two suites in
+Evidence, 17/17 green across three suites in
 `v2/pipeline-application/src/test/…/scripted/`:
 
 - `S4A0ScriptedLoweringCharacterizationTest` — 11 tests, the mapper/lowering half.
 - `S4A0ScriptedRestorePathCharacterizationTest` — 3 tests, the durable-restore half.
+- `S4A0ScriptedUnstableOutcomeCharacterizationTest` — 3 tests, the outcome vocabulary.
 
 ---
 
@@ -60,7 +61,7 @@ returning distinction for plain `sh` is right.**
 
 ---
 
-## 3. Four characterized defects, and one claim retracted
+## 3. Five characterized defects, and one claim retracted
 
 Each is asserted as a *pinned* characterization: the test asserts the broken
 behaviour, so the defect cannot change silently, and it goes RED the day someone
@@ -198,7 +199,38 @@ S4-C4 must fail closed on.
 This is the same defect class RP7-SEM-S3-R1 just corrected in the agent codec,
 in a file nobody had exercised with hostile durable state.
 
-### 3.5 Observed alongside: the plugin-lock dimension of the artifact identity is a constant
+### 3.5 The `Unstable` marker cannot cross the registry seam
+
+**Destination: S4-C (replay) — the run-level consequence is an OPEN QUESTION,
+not a proven defect.**
+
+`StepOutcome` has three cases and one is deliberate:
+
+```
+data object Unstable   // "completed but with a non-fatal warning (e.g. warnError
+                       //  matched a known pattern and the script returned 0)."
+```
+
+It is produced for real — `CoreShellStep` derives it from an UNSTABLE marker,
+`CoreEmitEventStep` and `CoreMilestoneStep` return it directly — and it is
+load-bearing: `MainScriptedSupport` maps `StepOutcome.Unstable` to
+`RunOutcome.Unstable`.
+
+Two vocabularies cannot carry it, both proven structurally:
+
+- `OperationStatus` has no member that can represent an unstable outcome, so
+  `ScriptedRegistryInvoker` journals it as `SUCCEEDED`.
+- `ScriptedRegistryResult` is exactly `Success | Failed`, and neither can say
+  "this succeeded but is unstable" — so widening the durable enum alone would
+  not be enough; the invoker's own result type would have to widen too.
+
+**What is NOT proven here:** that a resumed RUN reports a different outcome from
+the original. That depends on how `ScriptedFrontendRunner` aggregates per-call
+results, which this characterization does not trace end to end. It is the open
+question S4-C must answer, and it is recorded as a question rather than asserted
+as a defect.
+
+### 3.6 Observed alongside: the plugin-lock dimension of the artifact identity is a constant
 
 Not a separate test, but measured while reading the same file and recorded here
 because S4-C5 depends on it.

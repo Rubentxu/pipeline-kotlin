@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Timeout
  * the internet and cannot flake on it.
  *
  * The complementary direction — the Step's contract over a substituted
- * [HttpTransport] — is in `CoreHttpStepContractTest`, which is why this file does not
+ * [HttpTransport] — is in [HttpRequestStepContractTest], which is why this file does not
  * test the ADTs again.
  */
 @Timeout(120)

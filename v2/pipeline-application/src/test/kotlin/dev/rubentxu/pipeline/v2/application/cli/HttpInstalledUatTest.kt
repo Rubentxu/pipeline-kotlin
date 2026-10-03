@@ -3,6 +3,11 @@ package dev.rubentxu.pipeline.v2.application.cli
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import dev.rubentxu.pipeline.v2.application.support.HermeticHttpServer
 import dev.rubentxu.pipeline.v2.application.support.ProcessPeakRss
+import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
+import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.credentials.Credential
+import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
+import dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -11,6 +16,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.io.File
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
@@ -68,7 +74,21 @@ class HttpInstalledUatTest {
 
     // ── harness ─────────────────────────────────────────────────────────────
 
-    private data class CliResult(val exitCode: Int, val output: String, val peakRssBytes: Long?)
+    private data class CliResult(
+        val exitCode: Int,
+        val output: String,
+        val peakRssBytes: Long?,
+        /**
+         * The run's durable journal, when the scenario went through [runFresh].
+         *
+         * Carried so a redaction scenario can read the bytes the run actually
+         * persisted. Asserting a secret is absent from stdout is half the claim;
+         * the other half is that it is absent from what a later run would replay
+         * from, and that file is not reachable from a scenario that does not know
+         * its path.
+         */
+        val journal: File? = null,
+    )
 
     /**
      * The CLI's failure exit.
@@ -121,9 +141,15 @@ class HttpInstalledUatTest {
     private fun run(
         vararg args: String,
         timeoutMinutes: Long = 5,
+        env: Map<String, String> = emptyMap(),
         onStart: (Long) -> Unit = {},
     ): CliResult {
-        val proc = ProcessBuilder(binary.absolutePath, *args).redirectErrorStream(true).start()
+        val builder = ProcessBuilder(binary.absolutePath, *args).redirectErrorStream(true)
+        // `environment()` ADDS to the inherited environment rather than replacing it, so
+        // a scenario that passes one variable does not silently strip PATH from the
+        // launcher it is trying to exercise.
+        builder.environment().putAll(env)
+        val proc = builder.start()
         val poller = ProcessPeakRss.poll(proc.pid())
         onStart(proc.pid())
         if (!proc.waitFor(timeoutMinutes, TimeUnit.MINUTES)) {
@@ -148,20 +174,70 @@ class HttpInstalledUatTest {
         pipeline: File,
         vararg extraArgs: String,
         timeoutMinutes: Long = 5,
+        env: Map<String, String> = emptyMap(),
     ): CliResult {
-        val db = File(tempDir("h8-db-"), "db.sqlite").absolutePath
+        val db = File(tempDir("h8-db-"), "db.sqlite")
         val ctl = tempDir("h8-ctl-").absolutePath
         return run(
             "run",
             "--db",
-            db,
+            db.absolutePath,
             "--control-root",
             ctl,
             *extraArgs,
             pipeline.absolutePath,
             timeoutMinutes = timeoutMinutes,
+            env = env,
+        ).let { it.copy(journal = db.takeIf { file -> file.isFile }) }
+    }
+
+    /**
+     * A real `credentials.bin`, and the environment the CLI reads it from.
+     *
+     * Written through [LocalSecretStore] rather than by hand, because a fixture that
+     * does not go through the product's own store is a fixture that would still pass
+     * if the store format changed under it. The passphrase is returned rather than
+     * kept in a field so that no scenario can reach it by accident — a secret held by
+     * the harness is a secret the harness can print in a failure message.
+     */
+    private fun credentialStoreEnv(
+        id: String,
+        username: String,
+        password: String,
+    ): Map<String, String> = credentialStoreEnv(
+        UsernamePassword(
+            id = CredentialsId(id),
+            username = username,
+            password = password.toByteArray(StandardCharsets.UTF_8),
+        ),
+    )
+
+    /**
+     * The same environment, built around an ARBITRARY [Credential].
+     *
+     * The username/password overload cannot express the wrong-kind case, and the
+     * wrong-kind case is one of the two halves that make a credential test worth
+     * running: a store that only ever holds a supported kind proves nothing about
+     * what happens when it holds an unsupported one.
+     */
+    private fun credentialStoreEnv(credential: Credential): Map<String, String> {
+        val storePath = tempDir("h8-store-").toPath().resolve("credentials.bin")
+        val passphrase = "h8-${credential.id.value}-passphrase"
+        LocalSecretStore(storePath, passphrase.toCharArray()).use { store ->
+            store.add(credential.id, credential)
+        }
+        // The passphrase is read from the String, never from a CharArray the store
+        // still holds. `LocalSecretStore.close()` zeroes that array in place — a
+        // deliberate hardening — so a CharArray captured before the `use` block
+        // hands ProcessBuilder nineteen NUL characters, and the failure surfaces as
+        // "Invalid environment variable value" pointing at the harness rather than
+        // at the thing that erased it.
+        return mapOf(
+            "PIPELINE_CREDENTIALS_STORE" to storePath.toString(),
+            "PIPELINE_STORE_PASSPHRASE" to passphrase,
         )
     }
+
 
     // ── the permission laws, first ─────────────────────────────────────────
 
@@ -379,21 +455,72 @@ class HttpInstalledUatTest {
         )
     }
 
+    /**
+     * A secret that is actually sent must not be observable anywhere afterwards.
+     *
+     * ## The defect this replaces
+     *
+     * This scenario used to run with NO credential store at all and then assert that
+     * `"s3cr3t"` was absent from the output. That was a green that could not fail:
+     * with no store the credential never resolved, the header was never built, and
+     * the literal had no path to the console in the first place. It would have kept
+     * passing after someone added a debug log of the Authorization header, which is
+     * precisely the regression it was supposed to catch.
+     *
+     * A redaction canary is only evidence when the secret is LIVE. So the store is
+     * real here, H8-14's success is asserted first to prove the secret really was
+     * resolved and sent, and only then are the observable surfaces swept.
+     *
+     * ## Why the journal is swept too
+     *
+     * stdout is what a CI log keeps. The journal is what the next run REPLAYS FROM,
+     * so a secret there outlives the run that leaked it and is copied into every
+     * subsequent attempt. It is read as raw bytes rather than queried, because the
+     * claim is about bytes on disk and not about which column happens to hold them.
+     */
     @Test
-    fun `H8-09 no secret reaches stdout`() {
+    fun `H8-09 no secret reaches stdout or the journal`() {
+        val env = credentialStoreEnv("stage", "stage", "s3cr3t")
         val pipeline = script(
             """httpRequest(url = "${server.baseUrl}/basic-auth", authentication = CredentialsId("stage"))""",
         )
 
-        val result = runFresh(pipeline, "--allow-network")
-        val combined = result.output
+        val result = runFresh(pipeline, "--allow-network", env = env)
 
+        // The precondition. Without it the assertions below are vacuous, and a
+        // vacuous redaction test is worse than none: it is a green that lies.
+        assertEquals(
+            0,
+            result.exitCode,
+            "this scenario is only meaningful if the credential really resolved and the " +
+                "request really carried it. If the run failed, the secret was never sent " +
+                "and 'no secret in the output' proves nothing. Output:\n${result.output.takeLast(1500)}",
+        )
+        assertTrue(
+            server.requests.any { it.path == "/basic-auth" && it.carriedAuthorization },
+            "the server must have seen an Authorization header, or the secret was never " +
+                "in play and the redaction assertions below are theatre",
+        )
+
+        val combined = result.output
         for (secret in listOf("s3cr3t", "c3N0YWdl", "Basic ")) {
             assertFalse(
                 combined.contains(secret),
                 "the credential leaked into the run output as '$secret'. A secret in stdout " +
                     "reaches every CI log that keeps it, and this run's output is what a " +
                     "receipt would quote. Output:\n${combined.takeLast(2000)}",
+            )
+        }
+
+        val journal = result.journal
+            ?: error("the run wrote no journal, so 'no secret in the journal' cannot be asserted")
+        val journalBytes = journal.readBytes()
+        for (secret in listOf("s3cr3t", "c3N0YWdl")) {
+            assertFalse(
+                journalBytes.toString(StandardCharsets.ISO_8859_1).contains(secret),
+                "the credential was persisted into the run journal as '$secret'. The journal " +
+                    "is what a later attempt replays FROM, so a secret here outlives the run " +
+                    "that leaked it. Journal: $journal",
             )
         }
     }
@@ -447,13 +574,28 @@ class HttpInstalledUatTest {
         val (largeBytes, largePeak) = measured.last()
         val extraBody = largeBytes - smallBytes
         val extraPeak = largePeak - smallPeak
+        val ratio = extraPeak.toDouble() / extraBody.toDouble()
 
+        // A RATIO, and the threshold is chosen to still catch the defect it exists
+        // for. A subscriber that materialised the body before truncating — the
+        // pre-H4 shape — would add roughly one byte of peak per body byte, i.e. a
+        // ratio of 1.0 or more, plus the retained copy. A subscriber that hashes and
+        // counts without materialising adds a constant, so its ratio trends to zero
+        // as the body grows.
+        //
+        // Measured: 0.19 on an idle machine, 0.26 under load average ~15. The first
+        // version of this test cut at 0.25, which is inside the noise a loaded box
+        // produces — it failed at 0.26 having passed at 0.19, so it was measuring
+        // the machine, not the subscriber. 0.5 sits a factor of two below the defect
+        // and a factor of two above the observed noise, which is the only interval
+        // in which this assertion says something about http.request.
         assertTrue(
-            extraPeak < extraBody / 4,
+            ratio < 0.5,
             "peak RSS grew by ${extraPeak / (1024 * 1024)} MiB when the response grew by " +
-                "${extraBody / (1024 * 1024)} MiB. A bounded subscriber that hashes and counts " +
-                "without materialising should add roughly the 1 MiB it retains and NOTHING " +
-                "per body byte. Growth proportional to the body is the pre-H4 defect.",
+                "${extraBody / (1024 * 1024)} MiB (ratio ${"%.2f".format(ratio)}). A bounded " +
+                "subscriber that hashes and counts without materialising should add " +
+                "roughly the 1 MiB it retains and NOTHING per body byte. Growth " +
+                "proportional to the body is the pre-H4 defect.",
         )
     }
 
@@ -561,6 +703,190 @@ class HttpInstalledUatTest {
                 "pass every single-Step scenario in this file.",
         )
     }
+
+    // ── the three H8-C holes ───────────────────────────────────────────────
+
+    /**
+     * The positive half of H8-08, and it is not redundant with it.
+     *
+     * H8-08 proves a credential that cannot be resolved never opens a socket. A
+     * handler that resolved nothing AT ALL — that is, one which treats every
+     * `authentication` as unresolvable — passes H8-08, passes H8-09, and is
+     * useless. Only a request that actually arrives carrying the header can tell
+     * "credentials work" from "credentials always fail".
+     *
+     * And the server is still the witness: the pipeline could log an Authorization
+     * header it never sent.
+     */
+    @Test
+    fun `H8-14 a resolvable credential authenticates, and the server saw the header`() {
+        val env = credentialStoreEnv("stage", "stage", "s3cr3t")
+        val pipeline = script(
+            """httpRequest(url = "${server.baseUrl}/basic-auth", authentication = CredentialsId("stage"))""",
+        )
+
+        val result = runFresh(pipeline, "--allow-network", env = env)
+
+        assertEquals(
+            0,
+            result.exitCode,
+            "a credential that resolves must let the request through. /basic-auth answers 401 " +
+                "to anything but the right pair, and 401 is inside the Jenkins default " +
+                "100..399, so a run that sent no header would close GREEN here. " +
+                "Output:\n${result.output.takeLast(1500)}",
+        )
+        val arrivals = server.requests.filter { it.path == "/basic-auth" }
+        assertEquals(1, arrivals.size, "exactly one request, and it must have reached the server")
+        assertTrue(
+            arrivals.single().carriedAuthorization,
+            "the server received no Authorization header, so a 200 here would mean the " +
+                "endpoint is not the one under test. The recorder keeps a BOOLEAN rather " +
+                "than the header value, on purpose: a witness that stores credentials is a " +
+                "witness that eventually prints them into a failure message.",
+        )
+    }
+
+    /**
+     * The OTHER fail-closed half, and it is not the one H8-08 already covers.
+     *
+     * H8-08 runs with no credential store at all, which exercises
+     * `StoreUnavailable`. This runs with a store that is present, openable and
+     * correctly unlocked — and simply does not contain the requested name. That is
+     * `Absent`, a different case with a different human cause (a typo in the pipeline,
+     * not a missing configuration), and a plugin that collapsed the two would still
+     * pass H8-08.
+     *
+     * The store holds a REAL, RESOLVABLE credential under a different name, so the run
+     * is not refused for want of infrastructure. If it still sends nothing, the refusal
+     * is about the name and nothing else.
+     */
+    @Test
+    fun `H8-15 an unknown name in a working store is refused and sends nothing`() {
+        val env = credentialStoreEnv("stage", "stage", "s3cr3t")
+        val pipeline = script(
+            """httpRequest(url = "${server.baseUrl}/basic-auth", authentication = CredentialsId("stge"))""",
+        )
+
+        val result = runFresh(pipeline, "--allow-network", env = env)
+
+        assertEquals(
+            exitFailure,
+            result.exitCode,
+            "a name the store does not hold is a typed failure; output:\n${result.output.takeLast(1500)}",
+        )
+        assertEquals(
+            0,
+            server.countOf("/basic-auth"),
+            "THE assertion. The store was healthy and held a valid credential under another " +
+                "name, and the request still must not be sent. Degrading an unresolvable name " +
+                "into an anonymous request is the defect: the pipeline would report success " +
+                "having silently dropped the authentication the author asked for.",
+        )
+    }
+
+    /**
+     * The wrong-kind half, and the one that justifies the narrow port.
+     *
+     * `BasicCredentialSource` can only ever return a username and a password. A
+     * `SecretText` is a real, decryptable credential that is simply not one of those, so
+     * this is a credential the run was entitled to read and still must not put on the
+     * wire. A wider port — a `CredentialProvider`, say — would have to make this decision
+     * too, and would make it with more authority than the request needs.
+     *
+     * `SecretText` is chosen over `SshPrivateKey`/`Certificate` because it is the shape a
+     * pipeline author reaches for by mistake, so it is the case most likely to be met.
+     */
+    @Test
+    fun `H8-16 a credential of the wrong kind is refused and sends nothing`() {
+        val env = credentialStoreEnv(
+            SecretText(
+                id = CredentialsId("token"),
+                bytes = "not-a-username-password".toByteArray(StandardCharsets.UTF_8),
+            ),
+        )
+        val pipeline = script(
+            """httpRequest(url = "${server.baseUrl}/basic-auth", authentication = CredentialsId("token"))""",
+        )
+
+        val result = runFresh(pipeline, "--allow-network", env = env)
+
+        assertEquals(
+            exitFailure,
+            result.exitCode,
+            "a credential the plugin cannot use is a typed failure, not a silent downgrade; " +
+                "output:\n${result.output.takeLast(1500)}",
+        )
+        assertEquals(
+            0,
+            server.countOf("/basic-auth"),
+            "THE assertion. The credential resolved — the store was readable and the entry " +
+                "existed — and the request still must not be sent. 'It resolved' is not " +
+                "'it is usable', and only the server can tell the two apart.",
+        )
+    }
+
+    /**
+     * ## The cancellation scenario this file does NOT have, and why
+     *
+     * H8 was meant to include a cancellation scenario. It is absent because
+     * `timeout { }` does not bound `http.request`, and the mechanism is not a bug in
+     * the transport:
+     *
+     * ```text
+     * timeout(time = 2, unit = "SECONDS") { … }
+     *     └── BodyExecutionEngine.projectScope
+     *            └── ScopedBody(stageShOptions.copy(timeoutMs = effective))
+     *                   └── consumed by the core.sh WATCHDOG
+     *                          └── http.request never reads it
+     * ```
+     *
+     * `core.sh` honours the block budget because it is the shell Step and the
+     * watchdog is its budget. `http.request` carries its own `timeoutSeconds` in its
+     * input and ignores `ShOptions.timeoutMs` entirely. A measured run of
+     * `timeout(2s) { httpRequest("/slow?ms=30000") }` against the installed binary
+     * aborts after ~35s — the Step's own default — not after 2s.
+     *
+     * So the Jenkins-idiomatic `timeout(time: 5, unit: 'MINUTES') { httpRequest(…) }`
+     * places NO bound on the request today. Closing that means the handler has to
+     * read `EXECUTION_BUDGET_CAPABILITY` and derive `min(step, block)`, which is a
+     * behaviour change to a Step — and H8 is the certification block, not the place
+     * to change what is being certified. It is recorded as a known limitation with
+     * this mechanism, and the scenario is left unwritten rather than written to
+     * assert that a 35s wait is correct.
+     *
+     * H8-07 remains the timeout evidence, and it is honest about its scope: it
+     * proves the Step's OWN `timeoutSeconds` is enforced and does not hang the run.
+     */
+
+    /**
+     * ## The H4 digest scenario this file also does NOT have, and why
+     *
+     * H4's law is that the digest covers the bytes the process never kept. It is
+     * proven in-process by the module's own subscriber tests. It cannot be proven
+     * here, for one reason with two halves:
+     *
+     * ```text
+     * 1. stdout   — no DomainEvent carries a Step's typed output.
+     *               StepFinished has no output field and there is no
+     *               StepOutputCaptured, so `pipelinek run` reports that the Step
+     *               succeeded and nothing about status, body, digest or truncation.
+     *
+     * 2. journal  — `operation_journal.output` does not hold the readable envelope
+     *               for this Step either. The stored bytes are not the JSON the
+     *               codec produces (verified against a real 8 MiB run).
+     * ```
+     *
+     * Together those are one operator-facing fact: **a Step's output is not
+     * observable from the installed distribution.** An author who wants to know
+     * what a request returned has nowhere to look.
+     *
+     * Reading it would take either a published-contract change (an output-carrying
+     * event, which is a new member of `DomainEvent` and therefore a new member of
+     * `pipeline-events.api`) or a decryption key the CLI deliberately does not
+     * expose. H8 is the block that certifies, not the block that changes what is
+     * certified, so both are recorded as known limitations and the scenario is left
+     * unwritten rather than written to assert something the product cannot say.
+     */
 
     private companion object {
         /** The body both POST scenarios send, escaped for the generated .pipeline.kts. */

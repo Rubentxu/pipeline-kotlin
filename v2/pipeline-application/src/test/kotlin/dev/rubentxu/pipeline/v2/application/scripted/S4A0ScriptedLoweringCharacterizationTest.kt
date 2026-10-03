@@ -1,11 +1,15 @@
 package dev.rubentxu.pipeline.v2.application.scripted
 
+import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.scripting.KotlinScriptedSourceMapper
 import dev.rubentxu.pipeline.v2.scripting.ScriptedCallKind
+import dev.rubentxu.pipeline.v2.scripting.ScriptedCallSiteId
 import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceId
 import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceLowering
 import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceLowering.LoweringResult
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -217,29 +221,76 @@ class S4A0ScriptedLoweringCharacterizationTest {
     }
 
     // ==================================================================
-    // CHARACTERIZED DEFECT 3 of 3 — identity has no loop ordinal
-    // Destination: S4-C1
+    // IDENTITY — corrected characterization
     // ==================================================================
 
     @Test
-    fun `CHARACTERIZED DEFECT - a call inside a loop gets one identity, not one per iteration`() {
-        val generated = lower(
-            """
-            for (i in 0 until 3) {
-                val v = pwd()
-            }
-            """.trimIndent(),
+    fun `a loop at one call site does get distinct durable identities per iteration`() {
+        // CORRECTS an earlier characterization in this file, which claimed the
+        // lowering's single call site meant all iterations shared one identity.
+        // That was wrong, and the correction matters more than the original
+        // claim: the RUNTIME assigns the ordinal, not the lowering.
+        //
+        //   ScriptedScope.ordinals : MutableMap<callSiteId + scopePath, Int>
+        //   ScriptedScope.nextOrdinal(callSite) -> and increments
+        //
+        // so `for (i in 0 until 3) { pwd() }` lowers to one call site and still
+        // executes under ordinals 0, 1, 2. The property S4-C1 needs is therefore
+        // ALREADY satisfied, and what remains for S4-C1 is the caveat below, not
+        // the ordinal itself.
+        val base = ScriptedRegistryCall(
+            runId = "run",
+            entryPointId = "entry",
+            callSiteId = ScriptedCallSiteId("entry:1:9:pwd"),
+            dynamicScopePath = emptyList(),
+            invocationOrdinal = 0,
+            stepKey = PluginStepId("core.pwd"),
+            encodedInput = EncodedStepValue("{}"),
         )
-        val callSites = Regex("""ScriptedCallSiteId\("([^"]+)"\)""").findAll(generated.source)
-            .map { it.groupValues[1] }
-            .toList()
+        val second = base.copy(invocationOrdinal = 1)
+        val third = base.copy(invocationOrdinal = 2)
+
+        assertNotEquals(
+            base.operationId(),
+            second.operationId(),
+            "iterations 0 and 1 of the same call site must not share a durable identity",
+        )
+        assertNotEquals(second.operationId(), third.operationId())
         assertEquals(
-            1,
-            callSites.size,
-            "MEASURED DEFECT: the loop body lowers to ONE call site, so all three iterations " +
-                "share one identity. There is no loop ordinal in the call-site derivation " +
-                "(${callSites}), which is what S4-C1 has to add before replay can distinguish " +
-                "iteration 0 from iteration 2.",
+            base.operationId(),
+            base.copy().operationId(),
+            "the same call site and ordinal MUST reproduce the same identity — that is what " +
+                "makes replay work at all",
+        )
+    }
+
+    @Test
+    fun `CHARACTERIZED CAVEAT - an ordinal is an EXECUTION COUNT, not a structural position`() {
+        // The real S4-C1/C2 constraint, stated correctly. Identity is
+        // (callSite, scopePath, ordinal) and the ordinal is produced by a
+        // per-scope counter that lives in process memory. Replay is therefore
+        // correct only while the resumed execution REACHES each call site the
+        // same number of times. That holds when every branch decision is made
+        // from a journaled value, which is exactly what S4-C2 has to prove.
+        //
+        // This is a constraint, not a proven defect: no test here shows replay
+        // drifting. It is recorded so S4-C1/C2 is designed against the real
+        // mechanism rather than against the assumption that the ordinal is
+        // derived from source structure.
+        val first = ScriptedRegistryCall(
+            runId = "run",
+            entryPointId = "entry",
+            callSiteId = ScriptedCallSiteId("entry:1:9:pwd"),
+            dynamicScopePath = emptyList(),
+            invocationOrdinal = 0,
+            stepKey = PluginStepId("core.pwd"),
+            encodedInput = EncodedStepValue("{}"),
+        )
+        val insideScope = first.copy(dynamicScopePath = listOf("loop-0"))
+        assertNotEquals(
+            first.operationId(),
+            insideScope.operationId(),
+            "the same call site under a different dynamic scope must have its own identity",
         )
     }
 }

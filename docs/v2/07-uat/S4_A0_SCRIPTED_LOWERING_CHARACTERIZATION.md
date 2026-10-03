@@ -1,14 +1,23 @@
 # S4-A0 — Scripted runtime characterization
 
-**Status: CHARACTERIZED. No production code changed by this slice.**
+**Status: CHARACTERIZED. No production code changed by this slice.
+
+**Correction on the record:** the first version of this document claimed that a
+call inside a loop shares one identity because the lowering emits one call site.
+That was wrong and is retracted in §3.3 — the runtime assigns the ordinal. A
+characterization suite that is never re-checked against the code is just a
+second source of stale claims.**
 
 The point of S4-A0 is to establish what the scripted path actually does before
 S4-A1 replaces it and S4-B2 rewrites it. Everything below was measured by running
 the real `ScriptedSourceMapper` + `ScriptedSourceLowering` over real source text,
 not inferred by reading.
 
-Evidence: `S4A0ScriptedLoweringCharacterizationTest`, 10/10 green, pinned in
-`v2/pipeline-application/src/test/…/scripted/`.
+Evidence, 14/14 green across two suites in
+`v2/pipeline-application/src/test/…/scripted/`:
+
+- `S4A0ScriptedLoweringCharacterizationTest` — 11 tests, the mapper/lowering half.
+- `S4A0ScriptedRestorePathCharacterizationTest` — 3 tests, the durable-restore half.
 
 ---
 
@@ -51,7 +60,7 @@ returning distinction for plain `sh` is right.**
 
 ---
 
-## 3. Three characterized defects
+## 3. Four characterized defects, and one claim retracted
 
 Each is asserted as a *pinned* characterization: the test asserts the broken
 behaviour, so the defect cannot change silently, and it goes RED the day someone
@@ -123,23 +132,73 @@ The code does not implement that distinction. This is a falsified source claim i
 shipped code — the same class as the S3 claims this repository just corrected in
 RP7-SEM-S3-R1.
 
-### 3.3 Call-site identity has no loop ordinal
+### 3.3 Identity: the ordinal EXISTS — a correction to this document's first version
 
-**Destination: S4-C1.**
+**This section replaces an earlier claim that was wrong.**
+
+The first version of this characterization asserted that a call inside a loop
+lowers to one call site and therefore all iterations share one identity, and
+named S4-C1 as the destination. **That was false, and it is retracted.**
+
+`ScriptedScope` assigns the ordinal at RUNTIME, not at lowering:
+
+```kotlin
+private val ordinals: MutableMap<String, Int>          // key: callSiteId + scopePath
+internal fun nextOrdinal(callSiteId: ScriptedCallSiteId): Int {
+    val ordinal = ordinals.getOrDefault(ordinalKey, 0)
+    ordinals[ordinalKey] = ordinal + 1
+    return ordinal
+}
+```
+
+`ScriptedRegistryCall.operationId()` folds `callSiteId`, `dynamicScopePath` and
+`invocationOrdinal` into the durable identity. So `for (i in 0 until 3) { pwd() }`
+lowers to one call site and still executes under ordinals 0, 1, 2 — the property
+S4-C1 was specified to produce is already there.
+
+**The real constraint, and what S4-C1/C2 must design against:** the ordinal is an
+**execution count**, not a structural position, and the counter is process-local.
+Replay is correct only while the resumed execution *reaches each call site the
+same number of times*. That holds when every branch decision is made from a
+journaled value — which is exactly what S4-C2 has to prove. It is a constraint,
+not a proven defect: no test here shows replay drifting.
+
+### 3.4 The restore path has an unchecked cast
+
+**Destination: S4-C4 (codec/schema mismatch fail-closed).**
+
+`ScriptedRegistryInvoker.restoredOutput` ends in:
+
+```kotlin
+else -> ScriptedRegistryResult.Success(EncodedStepValue((raw as JsonPrimitive).content))
+```
+
+`OperationOutput.result` is a `JsonElement`, so a `JsonObject` or `JsonArray`
+reaches that cast. Every OTHER malformed-durable-state case in that method — a
+null output, a RUNNING row, a FAILED row, a fingerprint divergence, a capability
+rejection — is a typed `ScriptedRegistryResult.Failed` with a `FailureKind`. This
+one is an exception crossing the restore path.
+
+**Measured, not asserted.** The characterization lets the invoker write a correct
+SUCCEEDED row, then replaces only the payload with a foreign JSON shape, leaving
+the id and fingerprint intact, and re-invokes:
 
 ```
-for (i in 0 until 3) { val v = pwd() }
+persisted JsonPrimitive  -> Success("42")                       typed
+persisted JsonObject     -> ClassCastException escapes invoke  NOT typed
+persisted JsonArray      -> ClassCastException escapes invoke  NOT typed
 ```
 
-lowers to exactly **one** `ScriptedCallSiteId`, so all three iterations share one
-identity. The identity is `sourceId:line:column:kind`; there is no ordinal and no
-structural path. Replay cannot distinguish iteration 0 from iteration 2, and the
-durable fingerprint that should tell them apart does not exist yet.
+The fingerprint is deliberately not hand-built in that test: reproducing the
+invoker's own `OperationInput` would duplicate the logic under test and drift on
+the next change. Priming with a real invocation models the actual scenario —
+durable state written by a different codec version — which is precisely what
+S4-C4 must fail closed on.
 
-This is exactly the `callsite-X / iteration-N` shape S4-C1 is specified to
-produce, so the characterization names the gap it must close.
+This is the same defect class RP7-SEM-S3-R1 just corrected in the agent codec,
+in a file nobody had exercised with hostile durable state.
 
-### 3.4 Observed alongside: the plugin-lock dimension of the artifact identity is a constant
+### 3.5 Observed alongside: the plugin-lock dimension of the artifact identity is a constant
 
 Not a separate test, but measured while reading the same file and recorded here
 because S4-C5 depends on it.
@@ -177,6 +236,10 @@ Concretely, for S4-A1:
   migration, not part of it.
 - The eager/returning distinction must be decided in the **mapper**, before
   lowering, because today the first `when` arm swallows it.
+- The restore path's unchecked cast must become a typed failure before any
+  migration relies on it: `invokeTyped` inherits whatever totality the path it
+  replaces has, and a codec migration is exactly when foreign durable payloads
+  start appearing.
 
 For S4-B2, the evidence is now concrete rather than predicted: an exact PSI match
 has to cover the argument expressions, or defect 3.1 recurs in a more expensive

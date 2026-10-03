@@ -270,10 +270,82 @@ data class ScriptedMappedCall(
     val sourceLength: Int,
 )
 
+/**
+ * One `for` loop whose body must run inside a STRUCTURAL dynamic scope.
+ *
+ * S4-IDENTITY I2. This is the piece the lowering never emitted, and its absence
+ * is why the arrival ordinal was the only thing distinguishing loop iterations.
+ * The S4-IDENTITY I1 falsification measured what that costs: with a distinct
+ * argument per iteration the input fingerprint refuses the reuse, but with the
+ * SAME argument the resume silently skips an owed effect and orphans its row.
+ *
+ * The scope id is derived from the loop's own POSITION, never from its parameter
+ * name: two `for (i in …)` loops in one file are different loops and must not
+ * compose the same dynamic path. This is the same shape as
+ * [ScriptedSourceLocation.loopScope] minus the iteration suffix, and the omission
+ * is deliberate — see [scopeId].
+ *
+ * ## What this does and does not fix
+ *
+ * I2a is the COMPILER half. The runtime half — `ScriptedScope.scoped` extending
+ * `dynamicScopePath`, and its ordinal counter being keyed by
+ * (call site, scope path) — already existed and is already covered by
+ * `ScriptedScopeTest`. So after I2a a scripted call inside a loop carries:
+ *
+ * ```text
+ * dynamicScopePath = ["loop:<sourceId>:<line>:<column>"]
+ * invocationOrdinal = 0, 1, 2 …      // counted WITHIN that scope
+ * ```
+ *
+ * The ordinal is still an arrival counter and is still not durable, so **I2a does
+ * NOT close the I1 silent-no-op defect.** What it changes is that the ordinal is
+ * now scoped to an identified loop instead of floating in a global arrival count,
+ * which is the structure I2b needs in order to replace the arrival counter with a
+ * deterministic occurrence path. Claiming I1 fixed here would be the exact
+ * "declaration not honoured" defect S4-A1b already had to undo once.
+ */
+data class ScriptedLoopScope(
+    /** Offset of the loop body block's `{`. */
+    val bodyStartOffset: Int,
+    /** Offset of the loop body block's `}`. */
+    val bodyEndOffset: Int,
+    /**
+     * The loop parameter, e.g. `i` in `for (i in …)`.
+     *
+     * Carried for diagnostics and for the generated source's legibility. It is
+     * deliberately NOT part of [scopeId]: parameter names are not unique within a
+     * file, and identity must not depend on something the author may reuse.
+     */
+    val loopParameter: String,
+    val location: ScriptedSourceLocation,
+) {
+    /**
+     * The scope id this loop contributes to the dynamic path, once per body.
+     *
+     * Identifies the LOOP, not an iteration of it. An iteration index cannot be
+     * emitted here: this string is a constant in the generated source, evaluated
+     * before the body runs, and nothing in the emitted code knows the iteration
+     * number. `ScriptedSourceLocation.loopScope(iteration)` models a
+     * per-iteration scope, which is what I2b must make expressible — by giving the
+     * runtime a durable occurrence index to hang that suffix on. Emitting
+     * `[0]` here would be a fabricated identity.
+     */
+    val scopeId: ScriptedDynamicScopeId
+        get() = ScriptedDynamicScopeId(
+            "loop:${location.sourceId.value}:${location.line}:${location.column}",
+        )
+}
+
 /** Closed result of parsing source for generated scripted calls. */
 sealed interface ScriptedSourceMapping {
     data class Mapped(
         val calls: List<ScriptedMappedCall>,
+        /**
+         * S4-IDENTITY I2: the `for` loops whose bodies need a structural scope.
+         * Empty when the source has no loop, which is the case the old offset-locked
+         * rewriter was written for.
+         */
+        val loopScopes: List<ScriptedLoopScope> = emptyList(),
     ) : ScriptedSourceMapping {
         /** Back-compat view: the mapped `sh` calls in source order. */
         val shellCalls: List<ScriptedSourceLocation>

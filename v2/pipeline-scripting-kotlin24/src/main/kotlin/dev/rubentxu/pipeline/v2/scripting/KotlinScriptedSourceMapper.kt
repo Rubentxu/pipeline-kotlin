@@ -6,6 +6,8 @@ import org.jetbrains.kotlin.com.intellij.openapi.util.Disposer
 import org.jetbrains.kotlin.com.intellij.psi.PsiErrorElement
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.psi.KtCallExpression
+import org.jetbrains.kotlin.psi.KtForExpression
+import org.jetbrains.kotlin.psi.KtBlockExpression
 import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
 import org.jetbrains.kotlin.psi.KtPsiFactory
 import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
@@ -34,9 +36,39 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
                 source.text,
             )
             val calls = mutableListOf<ScriptedMappedCall>()
+            val loopScopes = mutableListOf<ScriptedLoopScope>()
             val diagnostics = mutableListOf<ScriptedSourceDiagnostic>()
 
             file.accept(object : KtTreeVisitorVoid() {
+                /**
+                 * S4-IDENTITY I2 — record every `for` loop with a BLOCK body.
+                 *
+                 * The lowering wraps these bodies in `steps.scoped(…)`, which is what
+                 * turns an iteration from "the Nth time we arrived here" into a
+                 * structural occurrence path. Without it the only thing separating
+                 * two iterations was `ScriptedScope.nextOrdinal`, and the I1
+                 * falsification measured what that costs when the argument does not
+                 * vary: a resume silently skips an owed effect and orphans its row.
+                 *
+                 * Only BLOCK bodies are recorded. A braceless body is a single
+                 * statement with no braces to wrap, and it is left alone rather than
+                 * rejected — rejecting it would be a new failure mode for a program
+                 * shape that works today through the arrival counter.
+                 */
+                override fun visitForExpression(expression: KtForExpression) {
+                    val parameter = expression.loopParameter
+                    val body = expression.body as? KtBlockExpression
+                    if (parameter != null && body != null) {
+                        loopScopes += ScriptedLoopScope(
+                            bodyStartOffset = body.textRange.startOffset,
+                            bodyEndOffset = body.textRange.endOffset - 1,
+                            loopParameter = parameter.name ?: "_",
+                            location = source.locationAt(expression.textRange.startOffset),
+                        )
+                    }
+                    super.visitForExpression(expression)
+                }
+
                 override fun visitCallExpression(expression: KtCallExpression) {
                     val isDotQualified = expression.parent is KtDotQualifiedExpression
                     val location = source.locationAt(expression.textRange.startOffset)
@@ -130,7 +162,7 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
             })
 
             if (diagnostics.isEmpty()) {
-                ScriptedSourceMapping.Mapped(calls)
+                ScriptedSourceMapping.Mapped(calls, loopScopes)
             } else {
                 ScriptedSourceMapping.InvalidSyntax(diagnostics)
             }

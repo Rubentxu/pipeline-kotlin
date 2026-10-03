@@ -53,7 +53,7 @@ object ScriptedSourceLowering {
     ): LoweringResult = when (val mapping = mapper.map(ScriptedSource(sourceId, sourceText))) {
         is ScriptedSourceMapping.InvalidSyntax -> LoweringResult.InvalidSyntax(mapping.diagnostics)
         is ScriptedSourceMapping.Mapped -> {
-            val body = rewriteRuntimeReturningCalls(sourceText, mapping.calls)
+            val body = rewrite(sourceText, mapping.calls, mapping.loopScopes)
             val artifact = ScriptedArtifactIdentity(
                 sourceDigest = sha256(sourceText),
                 dslApiVersion = DSL_API_VERSION,
@@ -71,73 +71,119 @@ object ScriptedSourceLowering {
     }
 
     /**
-     * Rewrites each mapped runtime-returning call to its façade form
-     * (`steps.<kind>(ScriptedCallSiteId(...), ...)`). Walks offsets in REVERSE
-     * order so earlier replacements never shift later ranges.
+     * S4-IDENTITY I2 — one edit pass, every offset resolved against the ORIGINAL text.
      *
-     * Handles the LFC-2R2 family: `isUnix()`, `pwd()`/`pwd(tmp=true)`,
-     * `readFile(...)`, `fileExists(...)`, `sh(..., returnStdout = true)`. The
-     * eager `sh(...)` branch is unchanged because it never enters the
-     * runtime-returning surface.
+     * This replaces an offset-locked rewriter that resolved each call's position
+     * against the *already-rewritten* buffer. That worked only because the loop
+     * wrappers did not exist: a wrapper spanning a body changes the offsets of
+     * everything inside it, so per-call resolution against a mutating buffer and
+     * structural scoping cannot coexist. Resolving every edit up front, against
+     * immutable source text, and applying them back-to-front makes the two
+     * composable and removes the "mis-attribution is bounded by line/column
+     * uniqueness" caveat entirely.
+     *
+     * Two kinds of edit:
+     *  - call rewrites, over [ScriptedMappedCall.sourceLength] — the call's real
+     *    source extent, not the length of a canonical spelling;
+     *  - loop-scope insertions, two pure insertions per loop (open after `{`, close
+     *    before `}`), which is what makes nested loops fall out correctly: an
+     *    insertion never invalidates an offset, and back-to-front application keeps
+     *    every earlier offset exact.
      */
-    private fun rewriteRuntimeReturningCalls(text: String, calls: List<ScriptedMappedCall>): String {
-        // S4-A1: the replacement span is the call's REAL source extent, carried by
-        // [ScriptedMappedCall.sourceLength]. It used to be the length of a
-        // hardcoded canonical spelling, which is only right for argument-less calls:
-        // for `sh(script = "...")` it was wrong, so the substitution landed inside
-        // the original call and produced Kotlin that did not compile.
-        val ordered = calls.sortedByDescending { it.location.line * 1_000_000 + it.location.column }
+    private fun rewrite(
+        text: String,
+        calls: List<ScriptedMappedCall>,
+        loopScopes: List<ScriptedLoopScope>,
+    ): String {
+        val edits = mutableListOf<TextEdit>()
 
-        var result = text
-        for (call in ordered) {
-            val offset = offsetOfAt(result, call.location, call.sourceLength)
-            if (offset < 0) continue
-            val replacement = when (val kind = call.kind) {
-                is ScriptedCallKind.IsUnix -> "steps.isUnix(ScriptedCallSiteId(\"${call.location.unixCallSite().value}\"))"
-                is ScriptedCallKind.Pwd -> {
-                    val tmp = kind.tmp
-                    val callSite = call.location.pwdCallSite(tmp = tmp).value
-                    "steps.pwd(ScriptedCallSiteId(\"$callSite\"), tmp = $tmp)"
-                }
-                // S4-DATA: the author's own path EXPRESSION is re-scoped into the
-                // façade call, exactly as `sh` does with its script. A literal `""`
-                // was written here before, which both dropped the path and left the
-                // argument's text trailing after the rewritten call.
-                is ScriptedCallKind.ReadFile -> {
-                    val callSite = call.location.readFileCallSite().value
-                    "steps.readFile(ScriptedCallSiteId(\"$callSite\"), ${kind.pathExpression})"
-                }
-                is ScriptedCallKind.FileExists -> {
-                    val callSite = call.location.fileExistsCallSite().value
-                    "steps.fileExists(ScriptedCallSiteId(\"$callSite\"), ${kind.pathExpression})"
-                }
-                is ScriptedCallKind.Shell -> {
-                    val callSite = call.location.shellCallSite(kind.returnMode).value
-                    // One façade, three shapes. The runtime-returning forms used to
-                    // have a separate `shReturnStdout` façade that the mapper could
-                    // never select, so it was a dead semantic parameter; a single
-                    // `sh` carrying the return mode has no such gap.
-                    when (kind.returnMode) {
-                        ScriptedShellReturnMode.NONE ->
-                            "steps.sh(ScriptedCallSiteId(\"$callSite\"), ${kind.script}, null, null)"
-                        ScriptedShellReturnMode.STDOUT ->
-                            "steps.sh(ScriptedCallSiteId(\"$callSite\"), ${kind.script}, ReturnStdout, null, null)"
-                        ScriptedShellReturnMode.STATUS ->
-                            "steps.sh(ScriptedCallSiteId(\"$callSite\"), ${kind.script}, ReturnStatus, null, null)"
-                    }
-                }
-            }
-            result = result.substring(0, offset) + replacement + result.substring(offset + call.sourceLength)
+        for (scope in loopScopes) {
+            val scopeId = scope.scopeId.value
+            edits += TextEdit(
+                offset = scope.bodyStartOffset + 1,
+                length = 0,
+                replacement = "\nsteps.scoped(ScriptedDynamicScopeId(\"$scopeId\")) {",
+            )
+            edits += TextEdit(scope.bodyEndOffset, 0, "\n}")
         }
+
+        for (call in calls) {
+            val start = offsetOf(text, call.location)
+            if (start < 0 || start + call.sourceLength > text.length) continue
+            edits += TextEdit(start, call.sourceLength, facadeCall(call))
+        }
+
+        // Back-to-front. Ties on the same offset resolve by construction order, so
+        // a stable sort makes the output deterministic rather than incidental.
+        var result = text
+        edits.sortedWith(compareByDescending<TextEdit> { it.offset }.thenBy { it.order })
+            .forEach { edit ->
+                result = result.substring(0, edit.offset) +
+                    edit.replacement +
+                    result.substring(edit.offset + edit.length)
+            }
         return result
     }
 
     /**
-     * Reverse mapping of the mapper's 1-based line/column to a text offset.
-     * The [length] is the expected rewrite-target span at that offset; the call
-     * site is rejected if the source text doesn't match.
+     * One text substitution, resolved against the original source.
+     *
+     * [order] exists only to make same-offset edits deterministic; it is not part of
+     * the substitution's meaning.
      */
-    private fun offsetOfAt(text: String, location: ScriptedSourceLocation, length: Int): Int {
+    private class TextEdit(
+        val offset: Int,
+        val length: Int,
+        val replacement: String,
+        val order: Int = 0,
+    )
+
+    /** The façade call text for one mapped call. */
+    private fun facadeCall(call: ScriptedMappedCall): String = when (val kind = call.kind) {
+        is ScriptedCallKind.IsUnix -> "steps.isUnix(ScriptedCallSiteId(\"${call.location.unixCallSite().value}\"))"
+        is ScriptedCallKind.Pwd -> {
+            val tmp = kind.tmp
+            val callSite = call.location.pwdCallSite(tmp = tmp).value
+            "steps.pwd(ScriptedCallSiteId(\"$callSite\"), tmp = $tmp)"
+        }
+        // S4-DATA: the author's own path EXPRESSION is re-scoped into the
+        // façade call, exactly as `sh` does with its script. A literal `""`
+        // was written here before, which both dropped the path and left the
+        // argument's text trailing after the rewritten call.
+        is ScriptedCallKind.ReadFile -> {
+            val callSite = call.location.readFileCallSite().value
+            "steps.readFile(ScriptedCallSiteId(\"$callSite\"), ${kind.pathExpression})"
+        }
+        is ScriptedCallKind.FileExists -> {
+            val callSite = call.location.fileExistsCallSite().value
+            "steps.fileExists(ScriptedCallSiteId(\"$callSite\"), ${kind.pathExpression})"
+        }
+        is ScriptedCallKind.Shell -> {
+            val callSite = call.location.shellCallSite(kind.returnMode).value
+            // One façade, three shapes. The runtime-returning forms used to
+            // have a separate `shReturnStdout` façade that the mapper could
+            // never select, so it was a dead semantic parameter; a single
+            // `sh` carrying the return mode has no such gap.
+            when (kind.returnMode) {
+                ScriptedShellReturnMode.NONE ->
+                    "steps.sh(ScriptedCallSiteId(\"$callSite\"), ${kind.script}, null, null)"
+                ScriptedShellReturnMode.STDOUT ->
+                    "steps.sh(ScriptedCallSiteId(\"$callSite\"), ${kind.script}, ReturnStdout, null, null)"
+                ScriptedShellReturnMode.STATUS ->
+                    "steps.sh(ScriptedCallSiteId(\"$callSite\"), ${kind.script}, ReturnStatus, null, null)"
+            }
+        }
+    }
+
+    /**
+     * The mapper's 1-based line/column to a character offset in [text].
+     *
+     * Resolved once, against the untouched source. `-1` when the location does not
+     * exist in this text, in which case the call is left alone rather than rewritten
+     * at a guessed offset — the same refusal `offsetOfAt` made, now without the
+     * buffer it used to consult.
+     */
+    private fun offsetOf(text: String, location: ScriptedSourceLocation): Int {
         var offset = 0
         var line = 1
         while (line < location.line && offset < text.length) {
@@ -145,15 +191,8 @@ object ScriptedSourceLowering {
             offset++
         }
         if (line != location.line) return -1
-        val lineStart = offset
-        val columnStart = lineStart + location.column - 1
-        if (columnStart + length > text.length) return -1
-        // We can't always match the literal text because the rewriter is invoked
-        // for an unknown rewrite-target span. Instead we accept any call-shaped
-        // text: identifiers and parens, no semicolons at the start. This is a
-        // permissive offset locator; the rewriting strategy is offset-locked, so
-        // mis-attribution is bounded by the line/column uniqueness within the file.
-        return columnStart
+        val start = offset + location.column - 1
+        return if (start in 0..text.length) start else -1
     }
 
     private fun generatedSource(sourceId: ScriptedSourceId, body: String): String = """

@@ -154,6 +154,7 @@ Descriptores reales de los Steps de referencia:
 | 6 | `core.pwd` | `SUCCEEDED` | `SKIP` | `restoredOutput` | no |
 | 7 | `core.pwd` | `FAILED` | `RERUN` | `Failed(REPLAY_COMPATIBILITY)` | **SÍ — activa** |
 | 8 | `core.error` | `SUCCEEDED` | `ABORT` (falla cerrado) | **`restoredOutput` (reutiliza)** | **SÍ — latente, crítica** |
+| 9 | `core.sh` | fresh | fingerprint bajo `RERUN` (política del descriptor) | fingerprint bajo `MEMOIZED` (literal) | **SÍ — identidad, añadida por el spike** |
 
 **Lectura de las tres divergencias que importan:**
 
@@ -215,3 +216,67 @@ implementación
 ```
 
 Cero código productivo hasta que los tres spikes hayan producido evidencia.
+
+## 8. Resultado medido — SPIKE S4-R-POL
+
+Ejecutado el 2026-10-03. **Las 8 filas confirmadas, más una no listada.**
+
+```text
+cd v2 && ./gradlew :pipeline-application:test --tests \
+    "dev.rubentxu.pipeline.v2.application.spike.S4RPolReplaySemanticsSpikeTest"
+exit 0 · BUILD SUCCESSFUL in 18s · tests=8 failures=0 errors=0 skipped=0
+```
+
+Ambas superficies se ejercitaron con su cableado real: la canónica con la
+composición de `CoordinatorFixture` y `CoreStepRegistryFactory.registry()`, la
+scripted con `ScriptedArtifactRuntime` + `ScriptedRegistryInvoker` (el mismo
+esqueleto que I1). Los estados previos se siembran **clonando la fila que la
+propia producción escribió**, de modo que el fingerprint que se compara es el del
+motor y la puerta de divergencia no contamina la medición.
+
+### 8.1 Fila 9 — el hallazgo que la derivación estática no vio
+
+`ScriptedRegistryInvoker` hashea con el literal `ReplayPolicy.MEMOIZED`; el
+canónico hashea con la política del descriptor. Para un Step `RERUN` las dos
+superficies **persisten identidades durable distintas del mismo Step en el mismo
+estado de journal**. Una fila escrita por `pipeline {}` y otra escrita por
+`script {}` nunca se reconocen entre sí.
+
+La medición no lee el literal: `policyOf` recalcula el hash con cada política
+candidata y devuelve la que coincide con el hash realmente persistido.
+
+Consecuencia que corrige el riesgo anotado en §6 del memo: propagar `descriptor.replayPolicy` sí
+cambiaría el hash de toda fila `core.sh` persistida, pero **ese hash ya es
+incorrecto hoy**. No es que el arreglo rompa historia: es que la historia ya
+persistida bajo scripted tiene una identidad que no corresponde a su Step.
+
+### 8.2 Veredicto: divergencia de COMPORTAMIENTO, no de nombre
+
+`ADR-S4-R1` es un **rediseño**, no un rename. Tres razones medidas:
+
+1. **Filas 3 y 7 — un fallo se repara en canónico y queda bloqueada permanentemente en scripted.** El
+   mismo Step con fila `FAILED` se re-ejecuta y la fila pasa a `SUCCEEDED` en
+   canónico; en scripted devuelve `REPLAY_COMPATIBILITY` y la fila `FAILED`
+   queda intocada **de forma permanente**. Un run reanudado se comporta distinto según
+   haya entrado por `pipeline {}` o por `script {}`.
+2. **Fila 4 — la recuperabilidad diverge, no sólo el éxito.** En canónico la
+   fila `RUNNING` entra en la rama de recuperación y **sale** de ese estado
+   (`LOST`, fail-closed). En scripted nunca sale de `RUNNING` y no puede
+   reconvergir. Lo medido es la rama de recuperación con directorio de control
+   virgen; el reenganche de un proceso vivo queda confirmado **en su estructura**
+   (entra en la rama, no re-ejecuta el handler) pero no en su desenlace, porque
+   exigiría lanzar un subproceso real.
+3. **Fila 9 — divergencia de identidad, con el hash actual ya siendo erróneo.**
+
+Lo único que es sólo nombre es `RERUN + SUCCEEDED → SKIP`
+(`EffectReplayPolicy.kt:74-79`) contra su propia documentación: naming debt
+confirmado, pero un síntoma superficial. Renombrar el ADT no arregla 3, 4 ni 9.
+
+### 8.3 Lo que el spike no pudo observar
+
+- **Reenganche de un proceso vivo** (fila 4): requiere un subproceso real en
+  ejecución; no es medible en un test de spike.
+- **`core.error` desde scripted** (fila 8): no forzado. `ScriptedStepFacade` no
+  declara `error(...)` y los StepKeys que la fachada puede enrutar son todos
+  `RERUN`/`MEMOIZED`. La divergencia de la fila 8 es **fuga de contención**, no
+  incidente.

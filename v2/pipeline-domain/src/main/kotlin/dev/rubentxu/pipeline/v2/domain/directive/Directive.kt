@@ -100,6 +100,24 @@ sealed interface DirectiveExecutionPolicy {
      * or veto the outcome.
      */
     data object ProvideContext : DirectiveExecutionPolicy
+
+    /**
+     * S3.1: the directive must be RESOLVED to a resource before the stage body
+     * runs, and a failure to resolve it stops the stage.
+     *
+     * This is the structural shape an execution-target request needs, and it is
+     * genuinely distinct from [Gate]: a gate *decides* whether to proceed from
+     * a predicate, while a resource *acquires* something the body then depends
+     * on. Collapsing them would either let a resource request veto a stage
+     * without a predicate to evaluate, or force a gate to pretend it acquired
+     * something.
+     *
+     * [phase] reuses [DirectivePhase] rather than introducing a second,
+     * resource-specific phase vocabulary. One phase axis is one authority: a
+     * parallel enum would mean every phase-keyed decision in the planner and
+     * the engine has to be written twice and could disagree.
+     */
+    data class Resource(val phase: DirectivePhase) : DirectiveExecutionPolicy
 }
 
 /**

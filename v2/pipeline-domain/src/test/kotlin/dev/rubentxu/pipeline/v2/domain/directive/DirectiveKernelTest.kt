@@ -116,12 +116,23 @@ class DirectiveKernelTest {
 
     @Test
     fun `the policy hierarchy is the closed structural contract`() {
-        // A new directive reuses an existing case. It never widens the ADT, so
-        // the engine's `when` stays exhaustive and needs no new branch.
+        // A directive normally REUSES an existing case, so the engine's `when`
+        // stays exhaustive without a new branch. That held for S2 (`when` used
+        // Gate, `post` used Evaluate/ProvideContext).
+        //
+        // S3.1 widened the ADT ONCE, on purpose, and the compiler is what
+        // enforced it: adding `Resource` broke every exhaustive `when` over the
+        // policy, in the engine and here, and each one had to decide what a
+        // resource request means rather than inherit a default. That is the
+        // property working. A closed ADT that can be widened silently would not
+        // be a contract, and the directive-model document already anticipated
+        // this case by requiring a core architectural version for a new
+        // orchestration shape.
         val policies: List<DirectiveExecutionPolicy> = listOf(
             DirectiveExecutionPolicy.Evaluate,
             DirectiveExecutionPolicy.Gate("predicate"),
             DirectiveExecutionPolicy.ProvideContext,
+            DirectiveExecutionPolicy.Resource(DirectivePhase.BEFORE_STAGE),
         )
 
         val described = policies.map { policy ->
@@ -129,11 +140,12 @@ class DirectiveKernelTest {
                 is DirectiveExecutionPolicy.Evaluate -> "evaluate"
                 is DirectiveExecutionPolicy.Gate -> "gate:${policy.predicate}"
                 is DirectiveExecutionPolicy.ProvideContext -> "context"
+                is DirectiveExecutionPolicy.Resource -> "resource:${policy.phase}"
             }
         }
 
         assertEquals(
-            listOf("evaluate", "gate:predicate", "context"),
+            listOf("evaluate", "gate:predicate", "context", "resource:BEFORE_STAGE"),
             described,
             "every policy case must be interpretable without inspecting the directive key",
         )

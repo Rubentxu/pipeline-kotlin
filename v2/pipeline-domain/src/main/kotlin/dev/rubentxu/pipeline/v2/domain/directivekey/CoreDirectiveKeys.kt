@@ -18,3 +18,21 @@ import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
  * already guards against.
  */
 val WHEN_DIRECTIVE_KEY: DirectiveKey = DirectiveKey("core.when")
+
+/**
+ * S3.1 — the registered name of the bundled `agent` execution-target request.
+ *
+ * Published from the same place, and for the same reason, as
+ * [WHEN_DIRECTIVE_KEY]: the DSL module depends only on `pipeline-domain`, so
+ * this is the one place both the script and the runtime can read without one
+ * of them inventing the name. Divergence here is silent by construction — a
+ * script would declare a key nothing resolves — which is exactly the defect the
+ * predicate codec already guards against for `when`.
+ *
+ * It is NOT yet registered by a [dev.rubentxu.pipeline.v2.domain.directive.DirectiveDefinition].
+ * The carrier exists (see `ExecutionTargetRequirement`); the definition, the
+ * resolver and the interpreter do not. A stage declaring `core.agent` is
+ * therefore denied fail-closed by the registry, which is the correct behaviour
+ * for a key with no interpreter and the reason the DSL still throws.
+ */
+val AGENT_DIRECTIVE_KEY: DirectiveKey = DirectiveKey("core.agent")

@@ -194,6 +194,11 @@ internal class BeforeStageDirectiveEngine(
                                 is DirectiveExecutionPolicy.Evaluate -> "evaluate"
                                 is DirectiveExecutionPolicy.Gate -> "gate"
                                 is DirectiveExecutionPolicy.ProvideContext -> "provide-context"
+                                // S3.1: observable like any other admitted policy. A resource
+                                // request that is admitted and then refused is still an admitted
+                                // request, and collapsing the two would make "declared and never
+                                // resolved" indistinguishable from "never declared".
+                                is DirectiveExecutionPolicy.Resource -> "resource"
                             },
                         ),
                     )
@@ -257,6 +262,17 @@ internal class BeforeStageDirectiveEngine(
                 is DirectiveExecutionPolicy.ProvideContext -> DecodedBeforeStage.Denied(
                     key,
                     "declared policy provide-context is not interpretable in the BEFORE_STAGE decode seam",
+                )
+
+                // S3.1: a resource request is RESOLVED, not decoded into a predicate, so it
+                // does not belong in this seam either. Denied with a diagnostic that names
+                // the gap rather than skipping it: a request that is admitted and then
+                // silently dropped is the accepted-metadata defect this train exists to
+                // remove. The resolver seam lands with the S3.1 definition.
+                is DirectiveExecutionPolicy.Resource -> DecodedBeforeStage.Denied(
+                    key,
+                    "declared policy resource is not interpretable in the BEFORE_STAGE decode " +
+                        "seam; an execution-target request is resolved, not decoded into a predicate",
                 )
             }
         }
@@ -397,4 +413,7 @@ internal fun seamDecodeFailureReason(
 
     is dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy.ProvideContext ->
         "declared policy provide-context whose arguments could not be decoded: " + decodeReason
+
+    is dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy.Resource ->
+        "declared policy resource whose arguments could not be decoded: " + decodeReason
 }

@@ -223,6 +223,46 @@ verificación en `AGENTS.md`). El STEP-CERT de los tres Steps no lo vuelve verde
 
 Plugins de reportes/testing/artifacts/toolchains/SCM/HTTP y coordinación local priorizados por dogfooding. Sandbox opcional OS/container y límites verificables, secreto/egress, almacenamiento local robusto, migraciones de schema, cobertura de plataforma Linux/macOS/Windows declarada por separado. Antes de extender el SDK: compatibilidad semántica/binary, identidad/digest/provenance/versión del plugin, cargas externas en instalación limpia y certificación idéntica a core. Estudiar Cedar/policy con un spike y ADR; no activar enforcement opaco sin pruebas de deny/allow/versioning.
 
+### 9.1 Secuencia de RP-7 (integrada 2026-10-03, `RP7_INTEGRATION_DISPOSITION.md`)
+
+Antes de §9 era Roadmap con una cola y dos paquetes completos esperando fuera de
+él. Los tres son ahora una secuencia, y sólo esta sección es la autoridad.
+
+```text
+RP7-SEM-0  constitution patch: 07-AGENTS-patch.md → AGENTS.md      ← PRIMER PASO
+  ↓
+RP7-SEM    Convergencia semántica        docs/pipelinek-semantic-evolution/
+  ├─ S3  agent / environment / options   02-directive-model.md
+  ├─ S4  Scripted Runtime v2             03-scripted-runtime.md
+  ├─ S5  Reactive Event Spine v2         04-events-reactivity.md
+  ├─ S6  Plugin SDK v2                   05-step-plugin-sdk-v2.md
+  ├─ S7  Certification Harness v2        06-certification-harness-v2.md
+  └─ S8  Migración / compatibilidad      08-roadmap.md, 11-release-cut.md
+  ↓
+RP7-ASX    Agent-first / secretless      docs/proposals/pipelinek-agent-secretless/
+  ASX-0 baseline · ASX-1 capability kernel · ASX-2 scopes · ASX-3 providers
+  ASX-4 tool projections · ASX-5 inline CLI · ASX-6 MCP/skills · ASX-7 certificación
+  ↓
+RP7-LOCAL  sandbox, resource limits, policy/Cedar, storage, provenance  ← SIN PAQUETE
+```
+
+**S0–S2 de `pipelinek-semantic-evolution` están YA SATISFECHOS o PARCIALES y no se
+reejecutan** — la tabla de reconciliación está en
+`docs/v2/07-uat/RP7_INTEGRATION_DISPOSITION.md` §1. Reejecutarlos destruiría trabajo ya
+certificado.
+
+`ASX` va después de `SEM` y no en paralelo: **ASX-0 congela `core.sh`,
+`withCredentials`, fingerprints, replay, events y payload antes de tocar secretos**, y
+ese freeze no significa nada sobre una superficie semántica todavía inestable.
+
+`http.request` es el reference plugin de S6 y el primer caso real de S7: ya probó el
+seam sin rama de compilador y ya recoge la disciplina de certificación que S7 debe
+industrializar.
+
+**`RP7-LOCAL` no tiene paquete canónico.** La descripción de §9 es su única autoridad
+y no basta para implementar. Abrirlo es decisión abierta, registrada como tal.
+`RP8` (§10) y `RP9` (§11) conservan su autoridad actual y no se amplían aquí.
+
 ## 10. RP-8 — Control plane, ejecución remota y protocolo
 
 **Dependencias:** RP-5 producto local estable, RP-7 contratos/persistencia/identidad, ADR de threat model y versionado. Recuperar M4 E5-02..10 como INPUT histórico, NO como código listo para integrar sin revalidar. Vertical: worker aislado → handshake/protobuf versionado → leases/fencing → ACK/replay/event ordering → reconexión → cancelación → multi-worker → resiliencia. Requerir mTLS/autorización, compatibilidad N/N-1, backpressure, límites, pruebas kill/network partition/duplicate y observabilidad. Seleccionar backend de transporte por spike, no por preferencia heredada. Remote storage/protocol/API incompatibles requieren autorización explícita.

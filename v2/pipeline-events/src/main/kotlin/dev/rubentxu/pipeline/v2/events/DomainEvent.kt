@@ -164,7 +164,29 @@ data class StepFinished(
 /**
  * Emitted when an agent is resolved for parallel execution.
  * Records which agent label was selected and any associated metadata.
+ *
+ * @deprecated S3.1. This event has never had a producer, and the reason is
+ *   now on record rather than merely absent: its payload is a LABEL plus an
+ *   optional remote URI, and neither can express the semantics that actually
+ *   exist. `LocalAny` has no label, and a `CapabilitySet` requirement is not a
+ *   label at all — the only way to emit this event for those would be to
+ *   invent a label, which is precisely the "metadata accepted but never
+ *   interpreted" shape the Semantic Conservation Law forbids.
+ *
+ *   [ExecutionTargetResolved] carries the declared requirement and the granted
+ *   target instead, so every case of the requirement hierarchy is
+ *   representable and an observer can tell a satisfied requirement from an
+ *   absent one.
+ *
+ *   The type is retained, not deleted, because it is part of a published SDK
+ *   surface and removing it would be a binary-compatibility break for a
+ *   payload nobody can produce. It is a schema variant for compatibility, not a
+ *   live contract.
  */
+@Deprecated(
+    "Superseded by ExecutionTargetResolved; never had a producer and its label-shaped " +
+        "payload cannot express LocalAny or CapabilitySet.",
+)
 data class AgentResolved(
     override val eventId: String,
     override val runId: String,
@@ -174,6 +196,36 @@ data class AgentResolved(
     val remoteUri: String?,
 ) : DomainEvent {
     override val kind: String get() = "AgentResolved"
+}
+
+/**
+ * S3.1 — emitted when a declared execution-target requirement is RESOLVED to a
+ * concrete target, before the stage body runs.
+ *
+ * Both halves are carried as data: [requirement] is the declared constraint,
+ * [targetId] is what satisfied it. An observer therefore cannot confuse a stage
+ * that asked for nothing with a stage that asked and was refused — the refusal
+ * is a [DirectiveDenied], and the absence of this event means the requirement
+ * was never declared.
+ *
+ * [requirement] is the encoded wire form rather than a parsed type on purpose:
+ * this module is the event vocabulary and does not depend on the directive
+ * kernel, so it cannot name `ExecutionTargetRequirement` without an inward
+ * dependency. The value is the same canonical encoding the runtime decoded, so
+ * an observer comparing it against the script sees exactly what was declared.
+ */
+data class ExecutionTargetResolved(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stageIndex: Int,
+    val stageName: String,
+    val directiveKey: String,
+    val requirement: String,
+    val targetId: String,
+) : DomainEvent {
+    override val kind: String get() = "ExecutionTargetResolved"
 }
 
 /**

@@ -273,9 +273,18 @@ class FArchS0SurfaceManifestTest {
         // it could only ever reject. Its typed replacement (`whenGate` /
         // `whenEnvIs` / `whenEnvPresent`) is covered by the manifest rows in
         // section 2 and by the directive gate UAT.
-        val throwing = listOf(
-            Triple("agent", arrayOf("linux"), 2),
-        )
+        //
+        // `agent` was REMOVED from this list in S3.1. It was the last LIVE
+        // fail-closed stub: the old `agent(label)` stored a label no runtime
+        // component read, and refusing the call was the honest response. S3.1
+        // gave it a carrier, a resolver and an interpreter, so the DSL builder
+        // is real and the manifest row moved to section 1 as a
+        // DECLARATIVE_DIRECTIVE. The list is therefore empty on purpose, and
+        // that is a measured state rather than a neutered test: the two
+        // remaining UNSUPPORTED_FAIL_CLOSED rows (`retry` retrofit, `retry`
+        // conditions) describe constructs already deleted from the surface, so
+        // there is no live stub left to pin.
+        val throwing = listOf<Triple<String, Array<String>, Int>>()
         val scope = dev.rubentxu.pipeline.v2.dsl.StageScope("manifest-probe")
         for ((name, args, arity) in throwing) {
             val fn = dslClasses.firstNotNullOfOrNull { cls ->
@@ -303,6 +312,75 @@ class FArchS0SurfaceManifestTest {
         // (no List-taking overload) and StepSpecRetryCapabilityTest (throws with the
         // removed-consumer diagnostic). Duplicating that here would race the overload
         // resolution, so the manifest check relies on those two dedicated pins.
+    }
+
+    @Test
+    fun `agent is no longer a fail-closed stub and records a real encoded directive`() {
+        // The counterpart of the emptied list above, and the reason that list is
+        // safe to leave empty.
+        //
+        // Removing `agent` from the throwing-stub list would otherwise turn
+        // `fail-closed stubs still throw at call time` into a test that can only
+        // pass: an empty loop proves nothing, so a future regression that restored
+        // the `Nothing`-returning stub — or, worse, silently turned `agent` into
+        // an accepted no-op — would leave the surface green and the manifest row
+        // a lie. This test fails in both directions instead:
+        //
+        //   throws      -> someone reinstated a stub the manifest calls a real
+        //                 DECLARATIVE_DIRECTIVE (the manifest row is now a lie)
+        //   no directive -> the builder accepted the call and threw the
+        //                 requirement away, which is the silent no-op the
+        //                 Semantic Constitution names as a defect class
+        //
+        // It therefore pins BOTH halves of the S3.1 flip: the construct is live,
+        // and what it records is a decodable carrier rather than a discarded
+        // string.
+        val scope = dev.rubentxu.pipeline.v2.dsl.StageScope("agent-probe")
+        val fn = dslClasses.firstNotNullOfOrNull { cls ->
+            cls.memberFunctions.firstOrNull { it.name == "agent" && it.parameters.size == 3 }
+        } ?: error("agent(label?, remoteUri?) vanished from the DSL surface - update the manifest")
+
+        val ex = try {
+            fn.call(scope, "linux", null)
+            null
+        } catch (t: Throwable) {
+            t
+        }
+        check(ex == null) {
+            "agent is a DECLARATIVE_DIRECTIVE in the manifest and must NOT throw. If the call " +
+                "above threw, the surface still refuses a construct whose semantics are now " +
+                "implemented: ${(ex as? java.lang.reflect.InvocationTargetException)?.targetException ?: ex}"
+        }
+
+        // Read the directives out of the built StageSpec rather than off the
+        // scope's own field: StageSpec is the IR the compiler actually lowers,
+        // so this asserts the carrier SURVIVED the DSL, which is the claim the
+        // manifest row makes. Reading an intermediate field would pass even if a
+        // later step dropped the list on the floor.
+        val stageSpec = scope.toStageBuilder().build()
+        val directives = stageSpec.directives
+        val agentDirective = directives.singleOrNull { it.key == "core.agent" }
+        check(agentDirective != null) {
+            "agent(label = \"linux\") must record exactly one core.agent directive carrying the " +
+                "declared requirement; recorded instead: ${directives.map { it.key }}"
+        }
+        check(agentDirective!!.encodedArguments.isNotEmpty()) {
+            "the recorded core.agent directive carries no encoded requirement - a directive " +
+                "nobody can decode is a dead semantic parameter"
+        }
+        val decoded = dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirementCodec
+            .decode(agentDirective.encodedArguments)
+        check(decoded is dev.rubentxu.pipeline.v2.domain.directive.DirectiveDecodeResult.Decoded) {
+            "the recorded requirement must be DECODABLE by the definition that owns the key; " +
+                "a payload the codec rejects is a dead semantic parameter: $decoded"
+        }
+        val requirement = decoded.input
+        check(
+            requirement is dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement.LocalLabels &&
+                requirement.labels.map { it.value }.toSet() == setOf("linux"),
+        ) {
+            "the encoded requirement must decode back to the declared label; got: $requirement"
+        }
     }
 
     @Test

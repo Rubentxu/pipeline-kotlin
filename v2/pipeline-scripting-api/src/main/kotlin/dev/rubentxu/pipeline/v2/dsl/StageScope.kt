@@ -729,6 +729,89 @@ class StageScope(
     }
 
     /**
+     * S3.1 — declare the execution target this stage requires (Jenkins-familiar `agent`).
+     *
+     * This call used to be a stub that always threw, and the reason it had to
+     * throw is the reason it now exists: the old `agent(label)` stored a label
+     * that no runtime component ever read, which is metadata without an
+     * interpreter and therefore a silent lie. There is now an interpreter — the
+     * resolver seam in the BEFORE_STAGE directive engine — so the declaration
+     * has both a carrier and a consumer, and the stub is retired rather than
+     * left to rot beside a working alternative.
+     *
+     * This is a PURE builder. It encodes a declared requirement and appends a
+     * directive; it performs no effect, reads no clock and manufactures no
+     * runtime value, which is what Semantic Constitution law 3 requires of a
+     * builder and what `FArchS3PureBuilderPurityTest` now enforces
+     * structurally.
+     *
+     * A [label] becomes `LocalLabels`; a [remoteUri] becomes `Remote`, which is
+     * CARRIED AND DECODED but refused at resolution, because this runtime has no
+     * remote allocator until RP-8. That refusal is the honest outcome: the stage
+     * fails closed with a diagnostic naming RP-8, rather than quietly running on
+     * the local host and ignoring the selector the author wrote.
+     *
+     * @throws IllegalArgumentException if neither is supplied, or if both are,
+     *   which is a contradiction rather than a stricter constraint.
+     */
+    fun agent(label: String? = null, remoteUri: String? = null) {
+        require(label != null || remoteUri != null) {
+            "agent requires a label, a remoteUri, or both: declaring no constraint at all is " +
+                "what agentAny() is for, so an empty declaration should say so explicitly"
+        }
+        require(!(label != null && remoteUri != null)) {
+            "agent(label = \"$label\", remoteUri = \"$remoteUri\") is contradictory: a remote " +
+                "target is selected by selector, not by label. Declare a local label target or a " +
+                "remote selector target, not both."
+        }
+        val requirement = if (remoteUri != null) {
+            dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement.Remote(
+                dev.rubentxu.pipeline.v2.domain.directive.RemoteSelector(remoteUri),
+            )
+        } else {
+            dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement.LocalLabels(
+                setOf(dev.rubentxu.pipeline.v2.domain.directive.AgentLabel(label!!)),
+            )
+        }
+        stageDirectives = stageDirectives + appendAgentRequirement(requirement)
+    }
+
+    /**
+     * S3.1 — declare an execution target with no constraint beyond "somewhere local".
+     *
+     * Distinct from leaving the field blank: the author said "any local target",
+     * and it encodes differently, so an observer can tell a deliberate
+     * [dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement.LocalAny]
+     * from a stage that never mentioned an agent at all.
+     */
+    fun agentAny() {
+        stageDirectives = stageDirectives + appendAgentRequirement(
+            dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement.LocalAny,
+        )
+    }
+
+    /**
+     * S3.1 — declare that the target must provide specific capabilities.
+     *
+     * The requirement is checked against what the run was actually GRANTED, not
+     * against what the runtime could provide in principle, so a stage cannot ask
+     * for a capability nobody bound and be told yes.
+     */
+    fun agentWithCapabilities(vararg capabilities: String) {
+        require(capabilities.isNotEmpty()) {
+            "agentWithCapabilities requires at least one capability key; use agentAny() for an " +
+                "unconstrained local target, because an empty set is indistinguishable from it"
+        }
+        stageDirectives = stageDirectives + appendAgentRequirement(
+            dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement.CapabilitySet(
+                capabilities
+                    .map { dev.rubentxu.pipeline.v2.domain.step.StepCapability(it) }
+                    .toSet(),
+            ),
+        )
+    }
+
+    /**
      * Jenkins-familiar form: gate a stage on an exact variable value.
      *
      * This is a DECLARATION: the comparison happens at run time against the

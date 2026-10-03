@@ -264,25 +264,6 @@ open class StageScopeCore(
         withCredentials(listOf(StepSpec.CredentialsBinding.string(credentialsId, variable)), block)
     }
 
-    /**
-     * REMOVED (S0 Semantic Honesty Gate / Semantic Conservation Law).
-     *
-     * `agent(label)` used to project an [AgentSpec] into `CompiledPipeline.agent` and
-     * `StageNode.agent`, but NO runtime component ever read it: there is no agent
-     * distributor or scheduler, and the label never reached any event. Metadata
-     * without an interpreter is a silent lie, so the DSL refuses the call instead of
-     * storing it. Reinstate only together with a real interpreter that consumes the
-     * label end-to-end.
-     *
-     * @throws IllegalArgumentException always.
-     */
-    @Suppress("UnusedParameter") // parameters retained so a rejected call fails
-    // with THIS diagnostic instead of a bare Kotlin signature error.
-    fun agent(label: String, remoteUri: String? = null): Nothing = throw IllegalArgumentException(
-        "agent(\"$label\") is not supported: the compiled definition used to store the label but " +
-            "no runtime component ever read it (no distributor, no scheduler; it never reached an " +
-            "event). Metadata without an interpreter is a silent lie; remove the agent() call.",
-    )
 
     fun script(block: ScriptScope.() -> Unit) {
         val scope = ScriptScope()

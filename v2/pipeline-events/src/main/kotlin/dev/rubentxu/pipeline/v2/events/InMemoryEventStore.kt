@@ -77,6 +77,7 @@ class InMemoryEventStore : EventSink {
             // ML-R9 error-handling events (T-06)
             is CatchErrorTriggered -> event.copy(sequence = assignedSequence)
             is DirectiveAdmitted -> event.copy(sequence = assignedSequence)
+            is ExecutionTargetResolved -> event.copy(sequence = assignedSequence)
             is DirectiveDenied -> event.copy(sequence = assignedSequence)
             is GateEvaluated -> event.copy(sequence = assignedSequence)
             is StageMarkedUnstable -> event.copy(sequence = assignedSequence)

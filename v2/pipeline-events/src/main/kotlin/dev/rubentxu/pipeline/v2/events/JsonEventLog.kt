@@ -183,6 +183,17 @@ object JsonEventLog {
                 agentLabel = EventJsonFields.stringField(s, "agentLabel") ?: "",
                 remoteUri = EventJsonFields.stringField(s, "remoteUri")?.takeIf { it.isNotEmpty() },
             )
+            "ExecutionTargetResolved" -> ExecutionTargetResolved(
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+                stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0,
+                stageName = EventJsonFields.stringField(s, "stageName") ?: "",
+                directiveKey = EventJsonFields.stringField(s, "directiveKey") ?: "",
+                requirement = EventJsonFields.stringField(s, "requirement") ?: "",
+                targetId = EventJsonFields.stringField(s, "targetId") ?: "",
+            )
             "ParallelBranchStarted" -> ParallelBranchStarted(
                 eventId = eventId,
                 runId = runId,

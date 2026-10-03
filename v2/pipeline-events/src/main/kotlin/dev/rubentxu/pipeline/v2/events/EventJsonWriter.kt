@@ -165,6 +165,18 @@ internal object EventJsonWriter {
                 sb.append(",\"remoteUri\":")
                 sb.append(EventJsonWriter.jsonString(event.remoteUri ?: ""))
             }
+            is ExecutionTargetResolved -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"directiveKey\":")
+                sb.append(EventJsonWriter.jsonString(event.directiveKey))
+                sb.append(",\"requirement\":")
+                sb.append(EventJsonWriter.jsonString(event.requirement))
+                sb.append(",\"targetId\":")
+                sb.append(EventJsonWriter.jsonString(event.targetId))
+            }
             is ParallelBranchStarted -> {
                 sb.append(",\"branchIndex\":")
                 sb.append(event.branchIndex)

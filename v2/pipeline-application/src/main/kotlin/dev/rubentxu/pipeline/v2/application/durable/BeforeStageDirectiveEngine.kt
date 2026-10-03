@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.LocalExecutionTargetResolver
 import dev.rubentxu.pipeline.v2.domain.directive.AdmittedDirective
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveDecodeResult
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveExecutionPolicy
@@ -10,10 +11,14 @@ import dev.rubentxu.pipeline.v2.domain.directive.StageDirectiveDecision
 import dev.rubentxu.pipeline.v2.domain.directive.StageDirectivePlanner
 import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate
+import dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement
+import dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetResolver
+import dev.rubentxu.pipeline.v2.domain.directive.TargetLeaseResult
 import dev.rubentxu.pipeline.v2.events.DirectiveAdmitted
 import dev.rubentxu.pipeline.v2.events.DirectiveDenied
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.GateEvaluated
+import dev.rubentxu.pipeline.v2.events.ExecutionTargetResolved
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.events.StageSkipped
 import java.time.Instant
@@ -46,6 +51,33 @@ internal class BeforeStageDirectiveEngine(
     private val eventSink: EventSink,
     private val gateContext: (dev.rubentxu.pipeline.v2.domain.EnvironmentSpec) -> dev.rubentxu.pipeline.v2.domain.directive.GateContext,
     private val gateEvaluator: (WhenPredicate, dev.rubentxu.pipeline.v2.domain.directive.GateContext) -> dev.rubentxu.pipeline.v2.domain.directive.GateVerdict,
+    /**
+     * S3.1: the ONE seam allowed to answer "does a target exist".
+     *
+     * Injected rather than constructed, so the engine interprets a decision it
+     * did not make. A coordinator that both decided satisfiability and applied
+     * the result would be the same defect the S3.1 port exists to prevent.
+     *
+     * The default lives HERE, on the consumer, rather than as another
+     * parameter on the coordinator's constructor, and that placement is
+     * deliberate. `CoordinatorGrowthGuardrailTest` ratchets that constructor
+     * at 562 lines and instructs that new responsibilities belong in named
+     * engines; a resolver default is the engine's own dependency, and the
+     * coordinator that merely forwarded one was buying nothing but a line.
+     * `WULpr402RuntimeHonestDslFitnessTest` forbids host-environment reads
+     * outside the canonical capability bridges, and the previous default read
+     * `os.name` inline to build a `PlatformIdentity`. Letting the resolver
+     * reach the platform through the `RuntimeConfig` port fixes that at the
+     * source rather than by relocating the read: the coordinator no longer
+     * knows a host exists, and the platform has exactly one authority —
+     * `SystemRuntimeConfig` — which is what `core.isUnix` already uses, so the
+     * two cannot disagree about which machine the run is on.
+     *
+     * The override seam is preserved for when a composition root really does
+     * know the granted capability set; until then the default refuses a
+     * `CapabilitySet` requirement loudly instead of granting it speculatively.
+     */
+    private val targetResolver: ExecutionTargetResolver = LocalExecutionTargetResolver(),
 ) {
 
     /** What the run must do next. Closed: the coordinator matches it exhaustively. */
@@ -102,6 +134,16 @@ internal class BeforeStageDirectiveEngine(
             )
             return Verdict.Denied(reason)
         }
+
+        // S3.1: resolve declared execution-target requirements BEFORE composing gates.
+        //
+        // Order matters and is not arbitrary. A gate answers "may this stage
+        // proceed"; a resource answers "what is it running on". Resolving first
+        // means a stage that both gates and targets never reports a resolution
+        // for a body that was going to be skipped, and the resolution event
+        // therefore means "this stage is about to run somewhere specific".
+        val unresolved = resolveRequirements(decoded, stage, stageIndex, runId)
+        if (unresolved != null) return unresolved
 
         // S2-D: only GATE predicates compose; a decoded Evaluate is observed and dropped by
         // this filter. gateKeys therefore stays the GATE keys — GateEvaluated keeps gate
@@ -214,7 +256,12 @@ internal class BeforeStageDirectiveEngine(
                         .getValue(DirectivePhase.BEFORE_STAGE)
                         .filter {
                             it.policy is DirectiveExecutionPolicy.Gate ||
-                                it.policy is DirectiveExecutionPolicy.Evaluate
+                                it.policy is DirectiveExecutionPolicy.Evaluate ||
+                                // S3.1: a resource request is resolved in this seam too. It
+                                // is the same phase as a gate - before the body - and
+                                // filtering it out here would make it admitted and then
+                                // invisible, which is the accepted-metadata defect.
+                                it.policy is DirectiveExecutionPolicy.Resource
                         },
                 )
             }
@@ -264,18 +311,81 @@ internal class BeforeStageDirectiveEngine(
                     "declared policy provide-context is not interpretable in the BEFORE_STAGE decode seam",
                 )
 
-                // S3.1: a resource request is RESOLVED, not decoded into a predicate, so it
-                // does not belong in this seam either. Denied with a diagnostic that names
-                // the gap rather than skipping it: a request that is admitted and then
-                // silently dropped is the accepted-metadata defect this train exists to
-                // remove. The resolver seam lands with the S3.1 definition.
-                is DirectiveExecutionPolicy.Resource -> DecodedBeforeStage.Denied(
-                    key,
-                    "declared policy resource is not interpretable in the BEFORE_STAGE decode " +
-                        "seam; an execution-target request is resolved, not decoded into a predicate",
-                )
+                // S3.1: a resource request decodes to its REQUIREMENT, not to a predicate.
+                // The seam is right for it - both are considered before the body - but the
+                // shape is different, so it is a distinct case rather than a reused one.
+                // [encoded] is carried alongside so the resolution event can report what was
+                // DECLARED without re-encoding and risking a divergent byte sequence.
+                is DirectiveExecutionPolicy.Resource -> {
+                    val input = result.input
+                    if (input is ExecutionTargetRequirement) {
+                        DecodedBeforeStage.Requirement(
+                            key,
+                            input,
+                            entry.invocation.encodedArguments,
+                        )
+                    } else {
+                        DecodedBeforeStage.Denied(
+                            key,
+                            "declared policy Resource but decoded to " + input::class.simpleName +
+                                ", not an ExecutionTargetRequirement",
+                        )
+                    }
+                }
             }
         }
+    }
+
+    /**
+     * S3.1: resolve every declared execution target, observing each outcome.
+     *
+     * Returns a [Verdict.Denied] on the FIRST refusal and null when every
+     * requirement was satisfied. A denial is emitted as a [DirectiveDenied] and
+     * a grant as an [ExecutionTargetResolved], so an observer can tell the
+     * three cases apart: declared and satisfied, declared and refused, and
+     * never declared at all.
+     */
+    private fun resolveRequirements(
+        decoded: List<DecodedBeforeStage>,
+        stage: StageNode,
+        stageIndex: Int,
+        runId: RunId,
+    ): Verdict? {
+        for (entry in decoded.filterIsInstance<DecodedBeforeStage.Requirement>()) {
+            when (val result = targetResolver.acquire(entry.requirement)) {
+                is TargetLeaseResult.Granted -> eventSink.append(
+                    ExecutionTargetResolved(
+                        eventId = UUID.randomUUID().toString(),
+                        runId = runId.value,
+                        sequence = 0L,
+                        occurredAt = Instant.now(),
+                        stageIndex = stageIndex,
+                        stageName = stage.name,
+                        directiveKey = entry.key.value,
+                        requirement = entry.encoded,
+                        targetId = result.targetId,
+                    ),
+                )
+
+                is TargetLeaseResult.Refused -> {
+                    val reason = "stage '" + stage.name + "' execution target: " + result.reason
+                    eventSink.append(
+                        DirectiveDenied(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId.value,
+                            sequence = 0L,
+                            occurredAt = Instant.now(),
+                            stageIndex = stageIndex,
+                            stageName = stage.name,
+                            directiveKey = entry.key.value,
+                            reason = reason,
+                        ),
+                    )
+                    return Verdict.Denied(reason)
+                }
+            }
+        }
+        return null
     }
 
     /**
@@ -385,6 +495,20 @@ internal sealed interface DecodedBeforeStage {
     data class GatePredicate(
         override val key: dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey,
         val predicate: dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate,
+    ) : DecodedBeforeStage
+
+    /**
+     * S3.1: a resource request decoded to its requirement.
+     *
+     * [encoded] is the exact byte sequence the script declared, carried so the
+     * resolution event reports the declaration rather than a re-encoding of
+     * it. Re-encoding would be a silent way for the event and the program to
+     * disagree.
+     */
+    data class Requirement(
+        override val key: dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey,
+        val requirement: ExecutionTargetRequirement,
+        val encoded: String,
     ) : DecodedBeforeStage
 
     /** Evaluate decoded: observes and continues; nothing is consumed. */

@@ -12,6 +12,7 @@ import dev.rubentxu.pipeline.v2.events.CredentialBound
 import dev.rubentxu.pipeline.v2.events.CredentialUnbound
 import dev.rubentxu.pipeline.v2.events.CredentialUsed
 import dev.rubentxu.pipeline.v2.events.DirectiveAdmitted
+import dev.rubentxu.pipeline.v2.events.ExecutionTargetResolved
 import dev.rubentxu.pipeline.v2.events.DirectiveDenied
 import dev.rubentxu.pipeline.v2.events.GateEvaluated
 import dev.rubentxu.pipeline.v2.events.DirDeleted
@@ -84,6 +85,7 @@ internal object SequenceAssigner {
         is ArtifactArchiveFailed -> event.copy(sequence = sequence)
         is CatchErrorTriggered -> event.copy(sequence = sequence)
         is DirectiveAdmitted -> event.copy(sequence = sequence)
+        is ExecutionTargetResolved -> event.copy(sequence = sequence)
         is DirectiveDenied -> event.copy(sequence = sequence)
         is GateEvaluated -> event.copy(sequence = sequence)
         is CompilationFinished -> event.copy(sequence = sequence)

@@ -190,6 +190,15 @@ internal fun runCanonicalPipeline(
                     WhenDirectiveDefinition()
                 )
             )
+            // S3.1: `core.agent` enters through the SAME open registry as every other
+            // directive. If resolving an execution target had needed its own
+            // registration path, the seam would not be open, and the whole point of
+            // the Resource policy is that the engine reads the policy rather than the key.
+            builder.add(
+                dev.rubentxu.pipeline.v2.domain.directive.ErasedDirectiveDefinition(
+                    AgentDirectiveDefinition()
+                )
+            )
             if (pluginClassLoader != null) {
                 val previousTccl = Thread.currentThread().contextClassLoader
                 Thread.currentThread().contextClassLoader = pluginClassLoader

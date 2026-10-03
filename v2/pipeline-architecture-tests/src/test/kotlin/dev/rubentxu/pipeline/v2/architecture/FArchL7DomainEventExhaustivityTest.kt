@@ -103,9 +103,10 @@ class FArchL7DomainEventExhaustivityTest {
      * 67. HttpResponseReceived (RP6-C / WU-093 §5 — a response arrived, any status)
      * 68. HttpStatusRejected (RP6-C / WU-093 §5 — status outside what the author listed)
      * 69. HttpRequestFailed (RP6-C / WU-093 §5 — no response at all)
+     * 70. ExecutionTargetResolved (RP7-SEM S3.1 — a target was granted or refused)
      */
     @Test
-    fun `domain_event_sealed_hierarchy_has_69_variants`() {
+    fun `domain_event_sealed_hierarchy_has_70_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
@@ -124,7 +125,16 @@ class FArchL7DomainEventExhaustivityTest {
         // rule is now stated rather than remembered: ANY sealed hierarchy growth MUST
         // move this pin in the same commit that adds the variant. A pin that is
         // renamed but not re-valued is a false green waiting for the next gate.
-        val expectedCount = 69
+        // +1 through RP7-SEM S3.1: ExecutionTargetResolved, the event that makes
+        // `agent` observable. This pin is the FOURTH copy of this count in the repo
+        // (the DomainEventRoundTripTest sibling in pipeline-events, this one in
+        // pipeline-architecture-tests, and the numbered KDoc list above all restate
+        // it), which is itself the defect: a hand-maintained integer in four places
+        // is a count that will be wrong again. It is left duplicated deliberately
+        // rather than "fixed" in a semantic-change commit — collapsing the copies
+        // is a governance WU of its own, and quietly deleting a pin here would
+        // trade a loud, dated failure for a silent one.
+        val expectedCount = 70
 
         assertEquals(
             expectedCount,

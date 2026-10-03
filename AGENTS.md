@@ -25,7 +25,20 @@ Al INICIO de CADA sesión, antes de editar código:
 4. Identificar la unidad de trabajo activa (TRAIN) y el WorkItem READY dentro del TRAIN. Identificar NEXT_WU, base SHA, precondiciones, ADR/contratos, código consumidor, UAT y criterios de salida. No retomar automáticamente la próxima WU de un handoff antiguo ni ejecutar una cola paralela.
 5. Verificar qué evidencia pertenece al SHA exacto. Certificaciones/recibos de v0.39.0 o de commits anteriores NO hacen verde main. Si falta verificación, escribir NOT_RUN/BLOCKED; jamás PASS por mera presencia de tests, tag, log o recibo antiguo.
 6. Para ejecutar Gradle desde la raíz, el wrapper está en v2/gradlew: usar cd v2 && ./gradlew <tasks> o v2/gradlew -p v2 <tasks>. Las instrucciones antiguas que usan ./gradlew -p v2 desde la raíz son erróneas; NO copiarlas sin corregir la ruta.
-7. No avanzar nuevos Steps mientras RP-0/RP-1 estén abiertos. Seguir la escalera de tests por impacto; cuando el gate requiere CI completo, lanzar CI para el NUEVO SHA y registrar jobs realmente ejecutados.
+7. No avanzar nuevos Steps mientras RP-0/RP-1 estén abiertos. Seguir la escalera de tests por impacto; cuando el gate requiere verificación completa, ejecutarla sobre el NUEVO SHA y registrar lo realmente ejecutado (argv, exit, tareas ejecutadas, clases, tests, fallos, errores, skips) junto al SHA.
+
+   **Política de verificación (2026-10-03). Sustituye a la instrucción anterior de "lanzar CI para el nuevo SHA", que ya no es ejecutable.** No existe integración continua remota en este repositorio: `754ddda0` ("chore(ci): remove dead GitHub Actions workflows", 2026-09-30) retiró `lpr0-ci.yml`, `release.yml`, `v2-baseline.yml` y `sdkman-publish.yml` tras 60 runs cancelados consecutivos con los runners self-hosted offline desde 2026-09-28, cerrando el ítem de backlog `bl-bl-01M3STVZ0Z000387KNMMQ96E00` (P2). `.github/workflows/` está vacío y `gh run list` sólo devuelve jobs de Dependabot, que no verifican este código.
+
+   Consecuencia operativa: **"CI verde" no es una evidencia disponible aquí.** Declarar PASS a partir de la ausencia de CI sería un falso verde por construcción, y declarar NOT_RUN como PASS lo sería también. El gate que sustituye al remoto es, y se exige completo:
+
+   ```text
+   cd v2 && ./gradlew check --rerun-tasks     # sobre el SHA exacto, árbol limpio
+   + UAT contra la distribución instalada    # mismos bytes que el SHA
+   + recibo inmutable por SHA                 # docs/v2/07-uat/
+   ```
+
+   `CERTIFICATION_PROTOCOL.md` §4 separa dos gates y esta política no los mezcla: **STEP-CERT** (Step completo y ejecutable en el SHA, matriz C01..C19, recibo G0..G8) **no exige CI remoto** y es el nivel al que se certifica un Step; **PRODUCT-GATE** (UAT obligatorias, "CI real del SHA", cobertura, SAST, distZip reproducible) **sí lo exige** y queda por tanto `BLOCKED_EXTERNAL` mientras no exista superficie de CI, sin que ello/contamine el STEP-CERT. Un Step-CERT nuevo tampoco vuelve verde el PRODUCT-GATE. Si se reintroduce CI remota, se reintroduce en este bloque y en `CERTIFICATION_PROTOCOL.md` por decisión registrada, no por inercia.
+
 
 Al FINAL de cada bloque sustancial del TRAIN activo: la unidad de cierre es el propio SDDK cycle (TRAIN). Actualizar `sddk cycle transition` o `sddk capability` según el contrato del TRAIN; emitir receipt inmutable nuevo por SHA cuando haya pruebas. Una interrupción preserva el estado OPEN del cycle lease. Si Git/CI contradice SDDK, registrar la divergencia y tomar Git/CI como realidad observada.
 

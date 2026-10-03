@@ -109,6 +109,34 @@ open class CanonicalRuntimeCapabilityAccess(
             ?: throw IllegalArgumentException("capability unavailable to this invocation: $key")
 
     /**
+     * Exposes [NETWORK_EGRESS_CAPABILITY] only when this run is entitled to ASK.
+     *
+     * The runtime owns this decision and the Step declares the requirement, so a
+     * pipeline that reaches for the network without `--allow-network` is rejected at
+     * prepare-time by the ordinary fail-closed admission path — before any handler
+     * runs and before a socket could exist.
+     *
+     * H6 reads `permitsAny` rather than testing the gate against its
+     * implementations. A run with no network entitlement at all never sees the
+     * capability, so the default is still refused at ADMISSION and not inside a
+     * handler; a run with an allowlist does get the capability and is refused per
+     * destination by the gate itself. Both are refusals, but they are different
+     * operator facts and they arrive through different mechanisms on purpose — which
+     * is also why this is a PROPERTY read and not a `when (gate)`: the runtime does
+     * not know which gates exist, only that a gate can say whether the question is on
+     * the table.
+     */
+    private fun egressPermission(
+        context: CanonicalRuntimeContext,
+        builder: MutableMap<StepCapability, Any>,
+    ) {
+        val gate = context.shOptions.networkEgress
+        if (gate.permitsAny) {
+            builder[NETWORK_EGRESS_CAPABILITY] = gate
+        }
+    }
+
+    /**
      * Build the capability table for a given runtime context.
      *
      * [SHELL_OPERATIONS_CAPABILITY] is exposed ONLY when the runtime context can produce a
@@ -124,23 +152,11 @@ open class CanonicalRuntimeCapabilityAccess(
         val builder: MutableMap<StepCapability, Any> = mutableMapOf(
             EVENT_SINK_CAPABILITY to context.eventSink,
         )
-        // RP6-C / LFC-2E3: network egress is PERMISSION, not protocol. The
-        // runtime owns the decision and the Step declares the requirement, so a
-        // pipeline that reaches for the network without --allow-network is
-        // rejected at prepare-time by the ordinary fail-closed admission path —
-        // before any handler runs and before a socket could exist.
-        //
-        // H6 reads `permitsAny` rather than testing the gate against its
-        // implementations. A run with no network entitlement at all never sees the
-        // capability, so the default is still refused at ADMISSION and not inside a
-        // handler; a run with an allowlist does get the capability and is refused
-        // per destination by the gate itself. Both are refusals, but they are
-        // different operator facts and they arrive through different mechanisms on
-        // purpose.
-        val egressGate = context.shOptions.networkEgress
-        if (egressGate.permitsAny) {
-            builder[NETWORK_EGRESS_CAPABILITY] = egressGate
-        }
+        // RP6-C / LFC-2E3: network egress is PERMISSION, not protocol, and this is
+        // the one place the runtime decides it. Extracted for that reason and not for
+        // line count: a permission decision buried in a 140-line builder is a
+        // permission nobody can find when a run is wrongly refused.
+        egressPermission(context, builder)
         // Plugin-contributed capabilities last, so a plugin may add a seam
         // without the runtime enumerating it — and may not silently OVERWRITE a
         // core one, which the duplicate check below refuses.

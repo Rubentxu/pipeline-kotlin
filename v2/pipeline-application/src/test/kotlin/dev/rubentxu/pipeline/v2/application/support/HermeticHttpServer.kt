@@ -112,7 +112,6 @@ class HermeticHttpServer private constructor(
          */
         fun start(
             credentials: Pair<String, String> = "stage" to "s3cr3t",
-            bodyDelayMs: Long = 0L,
         ): HermeticHttpServer {
             val server = HttpServer.create(
                 InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0),
@@ -126,7 +125,7 @@ class HermeticHttpServer private constructor(
             // the block every time would make the memory test measure the server.
             val cache = java.util.concurrent.ConcurrentHashMap<Int, ByteArray>()
 
-            server.createContext("/") { exchange -> instance.route(exchange, expected, cache, bodyDelayMs) }
+            server.createContext("/") { exchange -> instance.route(exchange, expected, cache) }
             // Daemon threads, or a forked UAT that ends first leaves the JVM unable to exit.
             server.executor = Executors.newFixedThreadPool(8) { r ->
                 Thread(r, "h8-http-uat").apply { isDaemon = true }
@@ -139,7 +138,6 @@ class HermeticHttpServer private constructor(
             exchange: HttpExchange,
             expectedBasic: String,
             cache: java.util.concurrent.ConcurrentHashMap<Int, ByteArray>,
-            bodyDelayMs: Long,
         ) {
             val path = exchange.requestURI.path
             val query = exchange.requestURI.query

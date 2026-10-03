@@ -149,7 +149,7 @@ class Lfc2HttpOfficiallyPluginBoundaryFitnessTest {
         val offenders = ScannerSupport.findImports(
             appRoot,
             listOf("dev.rubentxu.pipeline.v2.sdk.http."),
-        ).filter { finding -> finding.file.toString() !in WIRING_EXEMPT_FILES }
+        ).filter { finding -> finding.file.toString() !in wiringExemptFiles }
         assertTrue(
             offenders.isEmpty(),
             "pipeline-application imports the HTTP plugin's own vocabulary in " +
@@ -173,7 +173,7 @@ class Lfc2HttpOfficiallyPluginBoundaryFitnessTest {
      * whether the Step may run at all, and it does that through the GENERIC
      * `network.egress` verdict without referencing HTTP.
      */
-    private val WIRING_EXEMPT_FILES = listOf(
+    private val wiringExemptFiles = listOf(
         v2.resolve(
             "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CompositionRoot.kt",
         ).toString(),

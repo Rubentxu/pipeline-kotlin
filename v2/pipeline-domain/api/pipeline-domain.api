@@ -3427,6 +3427,7 @@ public final class dev/rubentxu/pipeline/v2/domain/durable/DurableTaskTerminal$L
 public final class dev/rubentxu/pipeline/v2/domain/durable/Effect : java/lang/Enum {
 	public static final field ABORTS_PIPELINE Ldev/rubentxu/pipeline/v2/domain/durable/Effect;
 	public static final field EXECUTES_SUBPROCESS Ldev/rubentxu/pipeline/v2/domain/durable/Effect;
+	public static final field NETWORKS Ldev/rubentxu/pipeline/v2/domain/durable/Effect;
 	public static final field READ_ONLY Ldev/rubentxu/pipeline/v2/domain/durable/Effect;
 	public static final field WRITES_WORKSPACE Ldev/rubentxu/pipeline/v2/domain/durable/Effect;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
@@ -4779,6 +4780,12 @@ public final class dev/rubentxu/pipeline/v2/domain/step/AggregateDurableRole : j
 	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/step/AggregateDurableRole;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/step/AllowAll : dev/rubentxu/pipeline/v2/domain/step/NetworkEgressGate {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/step/AllowAll;
+	public fun decide (Ldev/rubentxu/pipeline/v2/domain/step/EgressDestination;)Ldev/rubentxu/pipeline/v2/domain/step/EgressDecision;
+	public fun getPermitsAny ()Z
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/step/AttemptSegment {
 	public synthetic fun <init> (ILjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public synthetic fun <init> (ILjava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -5476,6 +5483,11 @@ public final class dev/rubentxu/pipeline/v2/domain/step/CancellationReason$Compa
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/step/CompositeCapabilityContributor : dev/rubentxu/pipeline/v2/domain/step/RuntimeCapabilityContributor {
+	public fun <init> (Ljava/util/List;)V
+	public fun capabilities ()Ljava/util/Map;
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/domain/step/ContextOverlayDescriptor {
 }
 
@@ -5535,6 +5547,12 @@ public final class dev/rubentxu/pipeline/v2/domain/step/Delivery : java/lang/Enu
 	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/step/Delivery;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/step/DenyAll : dev/rubentxu/pipeline/v2/domain/step/NetworkEgressGate {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/step/DenyAll;
+	public fun decide (Ldev/rubentxu/pipeline/v2/domain/step/EgressDestination;)Ldev/rubentxu/pipeline/v2/domain/step/EgressDecision;
+	public fun getPermitsAny ()Z
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/step/Digest {
 	public fun <init> (Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -5543,6 +5561,68 @@ public final class dev/rubentxu/pipeline/v2/domain/step/Digest {
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getValue ()Ljava/lang/String;
 	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/EgressDecision {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/EgressDecision$Allowed : dev/rubentxu/pipeline/v2/domain/step/EgressDecision {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/step/EgressDecision$Allowed;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/EgressDecision$Refused : dev/rubentxu/pipeline/v2/domain/step/EgressDecision {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/EgressRefusal;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/EgressRefusal;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/EgressRefusal;)Ldev/rubentxu/pipeline/v2/domain/step/EgressDecision$Refused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/EgressDecision$Refused;Ldev/rubentxu/pipeline/v2/domain/step/EgressRefusal;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/EgressDecision$Refused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/domain/step/EgressRefusal;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/EgressDestination {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;I)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()I
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;I)Ldev/rubentxu/pipeline/v2/domain/step/EgressDestination;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/EgressDestination;Ljava/lang/String;Ljava/lang/String;IILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/EgressDestination;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHost ()Ljava/lang/String;
+	public final fun getPort ()I
+	public final fun getScheme ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/EgressRefusal : java/lang/Enum {
+	public static final field DestinationNotPermitted Ldev/rubentxu/pipeline/v2/domain/step/EgressRefusal;
+	public static final field NetworkNotPermitted Ldev/rubentxu/pipeline/v2/domain/step/EgressRefusal;
+	public static final field UnjudgeableDestination Ldev/rubentxu/pipeline/v2/domain/step/EgressRefusal;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/EgressRefusal;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/step/EgressRefusal;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/EgressRule {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/Integer;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;)Ldev/rubentxu/pipeline/v2/domain/step/EgressRule;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/EgressRule;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/EgressRule;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHost ()Ljava/lang/String;
+	public final fun getPort ()Ljava/lang/Integer;
+	public final fun getScheme ()Ljava/lang/String;
+	public fun hashCode ()I
+	public final fun permits (Ldev/rubentxu/pipeline/v2/domain/step/EgressDestination;)Z
 	public fun toString ()Ljava/lang/String;
 }
 
@@ -5676,6 +5756,16 @@ public final class dev/rubentxu/pipeline/v2/domain/step/InterpretedBody$Unimplem
 	public fun toString ()Ljava/lang/String;
 }
 
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/NetworkEgressGate {
+	public abstract fun decide (Ldev/rubentxu/pipeline/v2/domain/step/EgressDestination;)Ldev/rubentxu/pipeline/v2/domain/step/EgressDecision;
+	public abstract fun getPermitsAny ()Z
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/NetworkEgressKt {
+	public static final fun defaultEgressPortFor (Ljava/lang/String;)Ljava/lang/Integer;
+	public static final fun getNETWORK_EGRESS_CAPABILITY ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/step/ParallelPolicy {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/step/ParallelPolicy$Companion;
 	public synthetic fun <init> (Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -5772,6 +5862,12 @@ public final class dev/rubentxu/pipeline/v2/domain/step/RegistryStepInvoker : de
 	public fun invoke-8FtRcd8 (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/StepHandlerContext;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/step/RestrictedEgressGate : dev/rubentxu/pipeline/v2/domain/step/NetworkEgressGate {
+	public fun <init> (Ljava/util/List;)V
+	public fun decide (Ldev/rubentxu/pipeline/v2/domain/step/EgressDestination;)Ldev/rubentxu/pipeline/v2/domain/step/EgressDecision;
+	public fun getPermitsAny ()Z
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/step/RetryPolicy {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/step/RetryPolicy$Companion;
 	public synthetic fun <init> (Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -5798,6 +5894,10 @@ public final synthetic class dev/rubentxu/pipeline/v2/domain/step/RetryPolicy$$s
 
 public final class dev/rubentxu/pipeline/v2/domain/step/RetryPolicy$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/RuntimeCapabilityContributor {
+	public abstract fun capabilities ()Ljava/util/Map;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/step/SemVer {

@@ -78,7 +78,7 @@ class HttpInstalledUatTest {
      * product's actual behaviour was correct in all of them — which is the worst kind
      * of red: it teaches the next reader to distrust the assertions.
      */
-    private val EXIT_FAILURE = 1
+    private val exitFailure = 1
 
     private fun tempDir(prefix: String): File =
         Files.createTempDirectory(prefix).toFile().also { scratch += it }
@@ -170,7 +170,7 @@ class HttpInstalledUatTest {
         val result = runFresh(script(get("${server.baseUrl}/ok")))
 
         assertEquals(
-            EXIT_FAILURE,
+            exitFailure,
             result.exitCode,
             "a run with no --allow-network must fail; output:\n${result.output.takeLast(1500)}",
         )
@@ -261,7 +261,7 @@ class HttpInstalledUatTest {
 
         val bad = runFresh(refused, "--allow-network")
         assertEquals(
-            EXIT_FAILURE,
+            exitFailure,
             bad.exitCode,
             "500 is outside the Jenkins default 100..399; output:\n${bad.output.takeLast(1500)}",
         )
@@ -283,7 +283,7 @@ class HttpInstalledUatTest {
         )
 
         assertEquals(
-            EXIT_FAILURE,
+            exitFailure,
             result.exitCode,
             "a truncated body is a failure; output:\n${result.output.takeLast(1500)}",
         )
@@ -341,7 +341,7 @@ class HttpInstalledUatTest {
         )
 
         assertEquals(
-            EXIT_FAILURE,
+            exitFailure,
             result.exitCode,
             "a request that outran its own timeout must fail the step; " +
                 "output:\n${result.output.takeLast(1500)}",
@@ -366,7 +366,7 @@ class HttpInstalledUatTest {
         val result = runFresh(pipeline, "--allow-network")
 
         assertEquals(
-            EXIT_FAILURE,
+            exitFailure,
             result.exitCode,
             "a missing credential is a typed failure; output:\n${result.output.takeLast(1500)}",
         )
@@ -524,7 +524,7 @@ class HttpInstalledUatTest {
                 "for a POST. Output:\n${resumed.output.takeLast(1200)}",
         )
         assertEquals(
-            EXIT_FAILURE,
+            exitFailure,
             resumed.exitCode,
             "the resumed run must not close green. Reporting success for a request this " +
                 "process never sent is the failure mode MEMOIZED would have produced. " +

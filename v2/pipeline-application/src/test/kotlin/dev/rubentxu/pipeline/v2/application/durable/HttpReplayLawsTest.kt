@@ -94,7 +94,7 @@ import java.nio.file.Files
 @Timeout(30)
 class HttpReplayLawsTest {
 
-    private val HTTP_KEY = PluginStepId("http.request")
+    private val httpKey = PluginStepId("http.request")
     private val url = "https://api.example.test/v1/things"
 
     /** Counts sends. The ONLY thing these tests are allowed to infer about the network. */
@@ -114,7 +114,7 @@ class HttpReplayLawsTest {
 
     private fun node(payload: String = payload()) = OpaqueStepNode(
         id = StepId("build/request"),
-        pluginStepId = HTTP_KEY,
+        pluginStepId = httpKey,
         payload = VersionedStepPayload("dsl-v1", payload),
     )
 
@@ -161,7 +161,7 @@ class HttpReplayLawsTest {
         )
 
     private fun operationInput(runId: String, payload: String = payload()) = OperationInput(
-        stepId = HTTP_KEY.value,
+        stepId = httpKey.value,
         params = mapOf("payload" to JsonPrimitive(payload)),
         runId = runId,
         attempt = 1,
@@ -181,7 +181,7 @@ class HttpReplayLawsTest {
      */
     private fun engineFingerprint(input: OperationInput) = Fingerprint.compute(
         input,
-        HTTP_KEY.value,
+        httpKey.value,
         HttpRequestStep.definition.contract.descriptor.replayPolicy,
         1,
     )
@@ -440,7 +440,7 @@ class HttpReplayLawsTest {
             parentBodyPath = emptyList(),
             attempt = 1,
             childIndex = 0,
-            childPluginStepId = HTTP_KEY,
+            childPluginStepId = httpKey,
         )
         val secondAttempt = RetryIdentityFactory.childOperationId(
             runId = "h7-retry",
@@ -449,7 +449,7 @@ class HttpReplayLawsTest {
             parentBodyPath = emptyList(),
             attempt = 2,
             childIndex = 0,
-            childPluginStepId = HTTP_KEY,
+            childPluginStepId = httpKey,
         )
 
         assertNotEquals(
@@ -493,7 +493,7 @@ class HttpReplayLawsTest {
             ),
         ).value
         val input = OperationInput(
-            stepId = HTTP_KEY.value,
+            stepId = httpKey.value,
             params = mapOf("payload" to JsonPrimitive(keyed)),
             runId = "h7-keyed",
             attempt = 1,

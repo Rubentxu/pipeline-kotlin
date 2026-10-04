@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
 import dev.rubentxu.pipeline.v2.events.DirEntered
 import dev.rubentxu.pipeline.v2.events.DirExited
@@ -56,8 +57,12 @@ class S0SemanticWitnessMatrixTest {
 
     private val appBin: Path by lazy { AppBinSupport.discover() }
 
-    private fun run(script: String): Pair<Int, List<DomainEvent>> {
+    private fun run(script: String): Triple<Int, List<DomainEvent>, Path> {
         val dir = Files.createTempDirectory("s0witness")
+        // S4/M1: name the control dir instead of letting it follow the invocation CWD. The
+        // witness that reads process output reads it from the Output Plane, and a reader that
+        // had to guess where the plane landed would be asserting on a default, not on the run.
+        val controlDir = dir.resolve("control")
         val scriptPath = dir.resolve("witness.pipeline.kts")
         Files.writeString(scriptPath, script.trimIndent())
         val stdoutFile = dir.resolve("events.json")
@@ -66,7 +71,16 @@ class S0SemanticWitnessMatrixTest {
         // inherited CWD pointed `sh` at the module source root and the W-stash
         // witness deposited `stashme.txt` into `v2/pipeline-application/`. The
         // scratch directory is the workspace for the whole run instead.
-        val process = ProcessBuilder(appBin.toString(), "run", scriptPath.toAbsolutePath().toString())
+        val process = ProcessBuilder(
+            appBin.toString(),
+            "run",
+            // Options must precede the script path: CliParser stops consuming flags at the first
+            // non-flag argument, so a trailing `--control-root` would be dropped in silence and
+            // the Output Plane would be read from the default location instead.
+            "--control-root",
+            controlDir.toAbsolutePath().toString(),
+            scriptPath.toAbsolutePath().toString(),
+        )
             .directory(dir.toFile())
             .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
             .redirectError(ProcessBuilder.Redirect.PIPE)
@@ -75,8 +89,23 @@ class S0SemanticWitnessMatrixTest {
         val stdout = Files.readString(stdoutFile).trim()
         val stderr = process.errorStream.bufferedReader().readText()
         assertTrue(stdout.startsWith("[") && stdout.endsWith("]"), "event log must be a JSON array: $stdout$stderr")
-        return exitCode to JsonEventLog.decode(stdout)
+        return Triple(exitCode, JsonEventLog.decode(stdout), controlDir)
     }
+
+    /**
+     * Process output for the run's `sh` steps, read from the Output Plane.
+     *
+     * Distinct from [echoContents] on purpose. `core.echo` is a semantic event and belongs in
+     * the event log; `sh` is a process and its output belongs to the Output Plane (ADR-M1 D3).
+     * Reading both through one accessor is how the two channels got conflated in the first
+     * place.
+     */
+    private fun processOutput(events: List<DomainEvent>, controlDir: Path): String =
+        ConsolePlaneProbe.transcriptsOfSteps(controlDir, events, stepType = "sh")
+
+    /** The `core.echo` semantic events, joined. This one legitimately lives in the event log. */
+    private fun echoContents(events: List<DomainEvent>): String =
+        events.filterIsInstance<EchoOutputCaptured>().joinToString("\n") { it.content }
 
     private fun outcomeOf(events: List<DomainEvent>): String =
         (events.last() as RunFinished).outcome
@@ -108,7 +137,7 @@ class S0SemanticWitnessMatrixTest {
 
     @Test
     fun `W-script sh echo - positive, authority events, replay`() {
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -122,9 +151,24 @@ class S0SemanticWitnessMatrixTest {
         )
         assertEquals(0, exit)
         assertEquals("success", outcomeOf(events))
+        // Two authorities, two assertions, no overlap. `core.echo` is a semantic Step and
+        // publishes its text as an event; `sh` launches a process whose output is the Output
+        // Plane's. Reading the `sh` half out of EchoOutputCaptured is what this migration
+        // removed — it went RED with an empty observation while the pipeline was perfectly
+        // healthy, which is the worst way for a witness to be wrong.
         val echoes = events.filterIsInstance<EchoOutputCaptured>()
         assertTrue(echoes.any { it.content.contains("s0-spine-echo") }, "echo authority event missing: $events")
-        assertTrue(echoes.any { it.content.contains("s0-spine-sh") }, "sh stdout capture missing: $events")
+        assertFalse(
+            echoes.any { it.content.contains("s0-spine-sh") },
+            "process output must NOT be smuggled through the event plane; if this is set, a " +
+                "second authority for stdout has been reintroduced: $events",
+        )
+        val shOut = processOutput(events, controlDir)
+        assertTrue(shOut.contains("s0-spine-sh"), "sh stdout missing from the Output Plane: $events")
+        assertFalse(
+            shOut.contains("s0-spine-echo"),
+            "the echo text must not be reconstructed into the process transcript either: $shOut",
+        )
         // REPLAY: the persisted log is the authority; re-encoding the decoded timeline is
         // NOT lossless (escape normalisation), so replay is judged against the raw stdout
         // re-decode instead.
@@ -151,7 +195,7 @@ class S0SemanticWitnessMatrixTest {
 
     @Test
     fun `W-script negative - failing sh fails the run with observable outcome`() {
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -174,7 +218,7 @@ class S0SemanticWitnessMatrixTest {
     @Test
     fun `W-env stage environment propagates into the shell process`() {
         val marker = Files.createTempFile("s0env", ".txt").toAbsolutePath().toString()
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -202,7 +246,7 @@ class S0SemanticWitnessMatrixTest {
         // The BLOCK timeout() owns the TimeoutScheduled/TimeoutTriggered authority events.
         // The options { timeout(n) } directive projects to the shell deadline instead
         // (StepFailed with failureKind=TIMEOUT) - witnessed separately below.
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -220,13 +264,13 @@ class S0SemanticWitnessMatrixTest {
         assertEquals("failure", outcomeOf(events))
         assertTrue(events.any { it is TimeoutScheduled }, "TimeoutScheduled authority event missing: $events")
         assertTrue(events.any { it is TimeoutTriggered }, "TimeoutTriggered authority event missing: $events")
-        assertFalse(events.any { it is EchoOutputCaptured && it.content.contains("never-reached") },
+        assertFalse(echoContents(events).contains("never-reached"),
             "steps after the timeout must not run")
     }
 
     @Test
     fun `W-options timeout directive projects a shell deadline StepFailed-TIMEOUT`() {
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -256,7 +300,7 @@ class S0SemanticWitnessMatrixTest {
     fun `W-retry fail-then-succeed reexecutes body exactly maxAttempts times`() {
         val marker = Files.createTempFile("s0retry", ".marker").toAbsolutePath().toString()
         Files.deleteIfExists(Path.of(marker))
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -281,7 +325,7 @@ class S0SemanticWitnessMatrixTest {
 
     @Test
     fun `W-retry negative - all attempts exhausted fails the run`() {
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -307,7 +351,7 @@ class S0SemanticWitnessMatrixTest {
 
     @Test
     fun `W-dir dir block enters and exits the directory`() {
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -330,7 +374,7 @@ class S0SemanticWitnessMatrixTest {
     @Test
     fun `W-withEnv withEnv block carries scoped env into children`() {
         val marker = Files.createTempFile("s0withenv", ".txt").toAbsolutePath().toString()
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -346,7 +390,7 @@ class S0SemanticWitnessMatrixTest {
         )
         assertEquals(0, exit, "scoped env must reach the child shell: $events")
         assertEquals("success", outcomeOf(events))
-        assertTrue(events.any { it is EchoOutputCaptured && it.content.contains("done") })
+        assertTrue(echoContents(events).contains("done"))
     }
 
     // ------------------------------------------------------------------
@@ -355,7 +399,7 @@ class S0SemanticWitnessMatrixTest {
 
     @Test
     fun `W-catchError contained failure is caught and run stays green`() {
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -372,13 +416,13 @@ class S0SemanticWitnessMatrixTest {
         assertEquals(0, exit, "a contained failure must not fail the build")
         assertEquals("unstable", outcomeOf(events), "catchError default projection is UNSTABLE (ADR-0054)")
         assertTrue(events.any { it is CatchErrorTriggered }, "CatchErrorTriggered authority event missing: $events")
-        assertTrue(events.any { it is EchoOutputCaptured && it.content.contains("after-catch") },
+        assertTrue(echoContents(events).contains("after-catch"),
             "steps after catchError must run")
     }
 
     @Test
     fun `W-warnError marks the stage unstable instead of failing`() {
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -445,7 +489,7 @@ class S0SemanticWitnessMatrixTest {
 
     @Test
     fun `W-milestone emits MilestoneReached with the ordinal`() {
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -470,7 +514,7 @@ class S0SemanticWitnessMatrixTest {
         val payload = dir.resolve("payload.txt")
         Files.writeString(payload, "s0-stash-payload")
         val scriptDir = dir.toAbsolutePath().toString()
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -498,7 +542,7 @@ class S0SemanticWitnessMatrixTest {
 
     @Test
     fun `W-parallel branches run and project branch authority events`() {
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -532,7 +576,7 @@ class S0SemanticWitnessMatrixTest {
     fun `W-waitUntil predicate polls until it succeeds and projects poll events`() {
         val marker = Files.createTempFile("s0wait", ".marker").toAbsolutePath().toString()
         Files.deleteIfExists(Path.of(marker))
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -553,7 +597,7 @@ class S0SemanticWitnessMatrixTest {
 
     @Test
     fun `W-timestamps decorator block enters and exits`() {
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {

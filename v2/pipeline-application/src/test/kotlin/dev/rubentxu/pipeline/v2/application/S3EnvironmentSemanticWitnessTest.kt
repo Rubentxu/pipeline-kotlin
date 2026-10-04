@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.RunFinished
@@ -56,12 +57,28 @@ class S3EnvironmentSemanticWitnessTest {
 
     private val appBin: Path by lazy { AppBinSupport.discover() }
 
-    private fun run(script: String): Pair<Int, List<DomainEvent>> {
+    private fun run(script: String): Triple<Int, List<DomainEvent>, Path> {
         val dir = Files.createTempDirectory("s3env")
+        // S4/M1: the control dir is named on the command line instead of being inferred from the
+        // invocation CWD. These witnesses assert on process output, and process output is the
+        // Output Plane's authority; a reader that had to guess where the plane landed would be
+        // asserting on a default rather than on the run.
+        val controlDir = dir.resolve("control")
         val scriptPath = dir.resolve("witness.pipeline.kts")
         Files.writeString(scriptPath, script.trimIndent())
         val stdoutFile = dir.resolve("events.json")
-        val process = ProcessBuilder(appBin.toString(), "run", scriptPath.toAbsolutePath().toString())
+        val process = ProcessBuilder(
+            appBin.toString(),
+            "run",
+            // ORDER IS LOAD-BEARING: CliParser stops consuming options at the first argument
+            // that is not a flag, so anything after the script path is ignored in silence. A
+            // `--control-root` written after the script reads as if the plane were redirected
+            // when it was not, and every read then fails for a reason that has nothing to do
+            // with the pipeline under test.
+            "--control-root",
+            controlDir.toAbsolutePath().toString(),
+            scriptPath.toAbsolutePath().toString(),
+        )
             .directory(dir.toFile())
             .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
             .redirectError(ProcessBuilder.Redirect.PIPE)
@@ -70,15 +87,21 @@ class S3EnvironmentSemanticWitnessTest {
         val stdout = Files.readString(stdoutFile).trim()
         val stderr = process.errorStream.bufferedReader().readText()
         assertTrue(stdout.startsWith("[") && stdout.endsWith("]"), "event log must be a JSON array: $stdout$stderr")
-        return exitCode to JsonEventLog.decode(stdout)
+        return Triple(exitCode, JsonEventLog.decode(stdout), controlDir)
     }
 
     private fun outcomeOf(events: List<DomainEvent>): String = (events.last() as RunFinished).outcome
 
-    /** Every step stdout the run captured, joined. */
-    private fun capturedStdout(events: List<DomainEvent>): String =
-        events.filterIsInstance<dev.rubentxu.pipeline.v2.events.EchoOutputCaptured>()
-            .joinToString("\n") { it.content }
+    /**
+     * Every process transcript this run produced, read from the Output Plane.
+     *
+     * These witnesses used to read `EchoOutputCaptured.content` and went RED with an empty
+     * string after M1 moved the bytes out of events — the pipeline was fine, the reader was
+     * pointed at a channel that no longer carries output. The claims are unchanged; the
+     * authority is the one that owns the bytes.
+     */
+    private fun processOutput(events: List<DomainEvent>, controlDir: Path): String =
+        ConsolePlaneProbe.transcriptsOfSteps(controlDir, events, stepType = "sh")
 
     // ------------------------------------------------------------------
     // The load-bearing witness: a patch, not ambient state
@@ -86,7 +109,7 @@ class S3EnvironmentSemanticWitnessTest {
 
     @Test
     fun `a stage environment does not leak into a later stage or the engine's own environment`() {
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -101,10 +124,10 @@ class S3EnvironmentSemanticWitnessTest {
             }
             """,
         )
-        assertEquals(0, exit, "both stages must succeed: ${capturedStdout(events)}")
+        assertEquals(0, exit, "both stages must succeed: ${processOutput(events, controlDir)}")
         assertEquals("success", outcomeOf(events))
 
-        val out = capturedStdout(events)
+        val out = processOutput(events, controlDir)
         assertTrue(
             out.contains("declared=only-here"),
             "the declared stage must SEE its own environment value: $out",
@@ -124,7 +147,7 @@ class S3EnvironmentSemanticWitnessTest {
 
     @Test
     fun `a later declaration of the same key inside the block wins`() {
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -139,12 +162,12 @@ class S3EnvironmentSemanticWitnessTest {
             }
             """,
         )
-        assertEquals(0, exit, "re-declaring a key is a legal override, not a failure: ${capturedStdout(events)}")
+        assertEquals(0, exit, "re-declaring a key is a legal override, not a failure: ${processOutput(events, controlDir)}")
         assertEquals("success", outcomeOf(events))
         assertTrue(
-            capturedStdout(events).contains("precedence=second"),
+            processOutput(events, controlDir).contains("precedence=second"),
             "the LAST declaration must win (Map semantics), not the first and not an error: " +
-                capturedStdout(events),
+                processOutput(events, controlDir),
         )
     }
 
@@ -154,7 +177,7 @@ class S3EnvironmentSemanticWitnessTest {
 
     @Test
     fun `sibling stages each see only their own environment`() {
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -170,9 +193,9 @@ class S3EnvironmentSemanticWitnessTest {
             }
             """,
         )
-        assertEquals(0, exit, capturedStdout(events))
+        assertEquals(0, exit, processOutput(events, controlDir))
         assertEquals("success", outcomeOf(events))
-        val out = capturedStdout(events)
+        val out = processOutput(events, controlDir)
         assertTrue(out.contains("siblingA=from-a"), "stage a must see its own value: $out")
         assertTrue(
             out.contains("siblingB=from-b"),
@@ -192,7 +215,7 @@ class S3EnvironmentSemanticWitnessTest {
         // gate would evaluate against the engine's environment and the stage would
         // be SKIPPED — the discriminating failure for a "propagated to sh only"
         // implementation.
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -205,12 +228,12 @@ class S3EnvironmentSemanticWitnessTest {
             }
             """,
         )
-        assertEquals(0, exit, capturedStdout(events))
+        assertEquals(0, exit, processOutput(events, controlDir))
         assertEquals("success", outcomeOf(events))
         assertTrue(
-            capturedStdout(events).contains("gate=open"),
+            processOutput(events, controlDir).contains("gate=open"),
             "the gate must be satisfied by the stage's own environment, or the stage is skipped: " +
-                capturedStdout(events),
+                processOutput(events, controlDir),
         )
     }
 
@@ -219,7 +242,7 @@ class S3EnvironmentSemanticWitnessTest {
         // The negative leg of the same consumer: a gate that does not match must
         // SKIP, proving the value reached the gate rather than the gate always
         // passing.
-        val (exit, events) = run(
+        val (exit, events, controlDir) = run(
             """
             pipeline {
                 stages {
@@ -232,16 +255,26 @@ class S3EnvironmentSemanticWitnessTest {
             }
             """,
         )
-        assertEquals(0, exit, "a skip is a stage outcome, not a run failure: ${capturedStdout(events)}")
+        assertEquals(0, exit, "a skip is a stage outcome, not a run failure: ${processOutput(events, controlDir)}")
         assertEquals("success", outcomeOf(events))
+        // A skipped stage produced no `StepStarted`, so the Output Plane has no stream for it
+        // and `processOutput` is empty. That emptiness is CORROBORATION, not the proof: on its
+        // own it is equally consistent with a reader aimed at the wrong run, which is why the
+        // load-bearing assertion is the `StageSkipped` event below. The two together say the
+        // gate did its job — the body was never entered, and nothing about the run was lost.
         assertTrue(
-            !capturedStdout(events).contains("SHOULD_NOT_RUN"),
+            !processOutput(events, controlDir).contains("SHOULD_NOT_RUN"),
             "the gate must actually gate: a body that ran proves the predicate was ignored: " +
-                capturedStdout(events),
+                processOutput(events, controlDir),
         )
         assertTrue(
             events.any { it is dev.rubentxu.pipeline.v2.events.StageSkipped },
             "the skip must be observable as an event, not inferred from a missing body: $events",
+        )
+        assertTrue(
+            events.none { it is dev.rubentxu.pipeline.v2.events.StepStarted },
+            "a skipped stage must not have started any step; a StepStarted here would mean the " +
+                "body ran regardless of the gate: $events",
         )
     }
 
@@ -257,7 +290,7 @@ class S3EnvironmentSemanticWitnessTest {
         // echo it. If a future change starts emitting it, THIS test is what turns
         // green into a finding instead of a silent new exposure.
         val secretish = "s3-env-value-do-not-echo-918273645"
-        val (_, events) = run(
+        val (_, events, controlDir) = run(
             """
             pipeline {
                 stages {

@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
+import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import dev.rubentxu.pipeline.v2.application.durable.ExecutionPreparation
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionPreparation
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
@@ -192,12 +193,16 @@ class ShStepContractSuiteTest {
     @Test
     fun `plain sh — stdout and stderr are both observable in the durable console transcript (C3)`() = runBlocking {
         val events = InMemoryEventStore()
-        val (coord, _) = harness(events)
+        val controlRoot = tempDir.resolve("control")
+        val (coord, _) = harness(events, controlRoot)
         val runId = RunId("sh-both")
         val outcome = coord.run(pipeline(shNode("echo OUT; echo ERR >&2")), runId)
         assertEquals(RunOutcome.Success, outcome)
-        val caps = events.eventsFor(runId.value).filterIsInstance<EchoOutputCaptured>().toList()
-        val content = caps.joinToString("") { it.content }
+        // S4/M1: process output is the Output Plane's authority (ADR-M1 D3). Reading it from
+        // EchoOutputCaptured is the conflation that migration closed, and this test read it there
+        // before the bytes moved — which is why it went RED with an empty string rather than
+        // with a wrong value. The claim below is unchanged: both channels must be observable.
+        val content = ConsolePlaneProbe.singleStepTranscript(controlRoot, runId.value)
         assertTrue(content.contains("OUT"), "plain sh stdout must be observable; got ${content}")
         assertTrue(content.contains("ERR"), "plain sh stderr must be observable; got ${content}")
     }
@@ -349,10 +354,19 @@ class ShStepContractSuiteTest {
         assertTrue(result is dev.rubentxu.pipeline.v2.domain.ShellInvocationResult.Stdout, "returnStdout must yield a typed Stdout value")
         val value = (result as dev.rubentxu.pipeline.v2.domain.ShellInvocationResult.Stdout).value
         assertTrue(value.contains("OUT"), "typed stdout value must carry OUT; got ${value}")
-        val content = events.eventsFor("rt-capture").filterIsInstance<EchoOutputCaptured>().toList()
-            .joinToString("") { it.content }
+        // S4/M1: the stderr channel is observed on the Output Plane. This row is the load-bearing
+        // proof that the typed value and the console transcript are DIFFERENT channels — read
+        // from the plane, it is the only way "ERR is observable AND OUT is not observable here"
+        // says anything: `OUT` living in `value` is the whole point, and the transcript must not
+        // merely fail to complain about it, it must demonstrably not carry it.
+        val content = ConsolePlaneProbe.transcript(
+            controlDirRoot = tempDir.resolve("rt-capture"),
+            runId = "rt-capture",
+            stageIndex = 0,
+            stepIndex = 0,
+        )
         assertTrue(content.contains("ERR"), "stderr must remain observable; got ${content}")
-        assertTrue(!content.contains("OUT"), "stdout must NOT be re-emitted as a console event; got ${content}")
+        assertTrue(!content.contains("OUT"), "stdout must NOT appear in the console transcript; got ${content}")
     }
 
     @Test
@@ -372,6 +386,16 @@ class ShStepContractSuiteTest {
         assertTrue(result is dev.rubentxu.pipeline.v2.domain.ShellInvocationResult.Stdout)
         val value = (result as dev.rubentxu.pipeline.v2.domain.ShellInvocationResult.Stdout).value
         assertTrue(value.contains("RTONLY"), "stdout value must carry RTONLY; got ${value}")
+        // KNOWN-VACUOUS, recorded rather than dressed up. This row asserts that stderr produced
+        // no console event — but since M1 it asserts that a CHANNEL THAT CARRIES NOTHING is
+        // empty, so it would pass identically if the observation were simply broken. The
+        // discriminating version belongs on the Output Plane, and writing it requires the
+        // measured answer to a question this test does not currently pose: does a capture-mode
+        // run with silent stderr OPEN an empty stream in the plane, or write no stream at all?
+        // The two are different contracts (empty page vs. refusal) and guessing between them is
+        // how a harness ends up certifying its own assumption. Deliberately NOT resolved here.
+        // Carried to B2, where Output Plane retention and empty-stream semantics are certified
+        // with a real crash/restart harness; that measurement becomes this row's evidence.
         val caps = events.eventsFor("rt-empty-err").filterIsInstance<EchoOutputCaptured>().toList()
         assertTrue(caps.isEmpty(), "no stderr means no console event; got ${caps.map { it.content }}")
     }

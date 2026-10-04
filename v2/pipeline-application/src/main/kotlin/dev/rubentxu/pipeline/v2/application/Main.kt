@@ -249,7 +249,29 @@ fun main(args: Array<String>) {
             scriptPath.toString(),
             scriptContent,
         )
-        val controlDirRoot: Path = java.nio.file.Files.createTempDirectory("pipelinek-inmem-run")
+        // `--control-root` is honoured HERE TOO, and it used not to be. The flag is parsed and
+        // validated in the durable branch (ML-R1) and was silently ignored in this one, which
+        // hard-coded a fresh temp directory per run. That made the flag mean two different
+        // things depending on whether `--db` was present, and it made the Output Plane
+        // unreachable from the CLI on the DEFAULT path: `pipeline console --control-dir X`
+        // could not be pointed at a run that had not been given a database.
+        //
+        // That is not a cosmetic inconsistency. M1 moved process output into the plane
+        // (ADR-M1 D2/D3), so "where the plane is written" IS the product question, and a flag
+        // that answers it only on one of two execution paths is a flag that cannot be relied on
+        // to observe the default one. The default is unchanged: with no `--control-root`, this
+        // still creates a private temp directory.
+        val controlDirRoot: Path = if (config.controlRoot != null) {
+            try {
+                validateControlRoot(config.controlRoot)
+            } catch (e: IllegalArgumentException) {
+                System.err.println("Error: ${e.message}")
+                System.exit(2)
+                throw e // unreachable
+            }
+        } else {
+            java.nio.file.Files.createTempDirectory("pipelinek-inmem-run")
+        }
         val runIdDirectory = RunIdDirectory(controlDirRoot.resolve("last-run"))
         val fresh = UuidRunIdGenerator().next()
         runIdDirectory.record(definitionId, fresh)

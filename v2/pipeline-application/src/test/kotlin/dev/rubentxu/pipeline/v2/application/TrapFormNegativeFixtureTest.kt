@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -45,7 +46,19 @@ class TrapFormNegativeFixtureTest {
         val appBin = AppBinSupport.discover()
         val fixture = trapFixture()
 
-        val pb = ProcessBuilder(appBin.toString(), "run", fixture.toString())
+        // S4/M1: bash's diagnostic reaches the process transcript, which is the Output Plane's
+        // authority — it is not an event, and it is not the CLI's stdout (that is the event log).
+        // The control dir is named so the plane is read where it was actually written.
+        val controlDir = java.nio.file.Files.createTempDirectory("trapform-control")
+        val pb = ProcessBuilder(
+            appBin.toString(),
+            "run",
+            // Options before the script path: CliParser stops consuming flags at the first
+            // non-flag argument, so a trailing `--control-root` is dropped in silence.
+            "--control-root",
+            controlDir.toAbsolutePath().toString(),
+            fixture.toString(),
+        )
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
 
@@ -58,13 +71,23 @@ class TrapFormNegativeFixtureTest {
         assertTrue(exitCode != 0,
             "trap form must cause non-zero exit; got $exitCode. stderr: $stderr")
 
-        // 2. The bash bad-substitution diagnostic must appear in stdout events
-        //    (specifically as EchoOutputCaptured.content). Spanish locale
-        //    renders this as `sustitución errónea`; English as `bad substitution`.
-        val trapText = stdout.contains("sustitución errónea") ||
-            stdout.contains("bad substitution")
+        // 2. The bash bad-substitution diagnostic must appear in the process transcript.
+        //    Spanish locale renders this as `sustitución errónea`; English as
+        //    `bad substitution`. It used to be read out of the event log's stdout, which
+        //    only ever carried it while `sh` output was duplicated into EchoOutputCaptured;
+        //    the bytes now live in the Output Plane and are read from there. The claim is
+        //    identical — bash rejected the trap form, and that rejection is observable.
+        val decoded = dev.rubentxu.pipeline.v2.events.JsonEventLog.decode(stdout)
+        val processOut = ConsolePlaneProbe.transcriptsOfSteps(
+            controlDir,
+            decoded,
+            stepType = "sh",
+        )
+        val trapText = processOut.contains("sustitución errónea") ||
+            processOut.contains("bad substitution")
         assertTrue(trapText,
-            "stdout events must contain 'sustitución errónea' or 'bad substitution' (bash rejecting the trap form), got: $stdout")
+            "the process transcript must contain 'sustitución errónea' or 'bad substitution' " +
+                "(bash rejecting the trap form). processOut=[$processOut] events=$stdout")
 
         // 3. Compile must have SUCCEEDED.  If the trap form ever becomes a
         //    Kotlin compile error, this assertion flips and we know the
@@ -80,8 +103,7 @@ class TrapFormNegativeFixtureTest {
         // none (the source compiles cleanly).  We assert by absence of
         // CompilationFinished with non-empty ERROR diagnostics — keep this
         // loose: any single ERROR diagnostic would flip the test.
-        val events = dev.rubentxu.pipeline.v2.events.JsonEventLog.decode(stdout)
-        val compileFinished = events.filterIsInstance<dev.rubentxu.pipeline.v2.events.CompilationFinished>().firstOrNull()
+        val compileFinished = decoded.filterIsInstance<dev.rubentxu.pipeline.v2.events.CompilationFinished>().firstOrNull()
         assertNotNull(compileFinished, "must emit CompilationFinished event")
         val errors = compileFinished!!.diagnostics.filter {
             it.severity == dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity.ERROR

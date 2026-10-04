@@ -9,8 +9,8 @@ import dev.rubentxu.pipeline.v2.domain.ShellCommand
 import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellFiles
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
+import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
-import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -70,9 +70,25 @@ class Lpr011r2SecretRedactionAtRestUatTest {
     private fun rawCount(file: Path, needle: String): Int =
         if (!Files.exists(file)) 0 else Files.readString(file).split(needle).size - 1
 
-    private fun eventRawCount(events: List<*>, runId: String, needle: String): Int =
-        events.filterIsInstance<EchoOutputCaptured>().filter { it.runId == runId }
-            .sumOf { it.content.split(needle).size - 1 }
+    /**
+     * Raw occurrences of [needle] in the transcript held by the OUTPUT PLANE.
+     *
+     * This replaces counting occurrences inside `EchoOutputCaptured`, and the replacement is not
+     * cosmetic. M1 made the plane the owner of process bytes, so that channel stopped carrying
+     * them — and every `assertEquals(0, eventRawCount(...))` in this file became an assertion
+     * about an empty channel. Zero read from a channel that never had the bytes proves nothing
+     * about redaction; it proves the reader was looking somewhere the secret never went. For a
+     * suite whose whole law is "zero raw secret bytes may reach an observable surface", that is
+     * the one thing it must not be able to claim, so the count is taken where the bytes now are.
+     *
+     * [needle] is counted in the plane only. The durable `console.log` file is a SEPARATE
+     * surface with its own retention rules, and the rows below that assert on it keep doing so
+     * deliberately: a transcript can be retained on disk for post-mortem after a failed run.
+     */
+    private fun planeRawCount(controlRoot: Path, runId: String, needle: String): Int =
+        ConsolePlaneProbe
+            .transcript(controlRoot, runId, stageIndex = 0, stepIndex = 0)
+            .split(needle).size - 1
 
     // 1. whole secret, plain mode, SUCCESS run: cleanup deletes the control dir,
     // so at-rest content is proven by the live-window and retention tests below;
@@ -83,7 +99,7 @@ class Lpr011r2SecretRedactionAtRestUatTest {
         val controlRoot = Files.createTempDirectory("r2-whole")
         val sink = InMemoryEventStore()
         invoke(adapter(runId, controlRoot, registry(), sink), runId, "echo $secret")
-        assertEquals(0, eventRawCount(sink.eventsFor(runId).toList(), runId, secret),
+        assertEquals(0, planeRawCount(controlRoot, runId, secret),
             "successful-run event must carry zero raw secret bytes")
     }
 
@@ -98,7 +114,7 @@ class Lpr011r2SecretRedactionAtRestUatTest {
             "printf '%s' '${secret.substring(0, half)}'; sleep 0.05; printf '%s\\n' '${secret.substring(half)}'")
         val log = consoleLog(controlRoot, runId)
         assertEquals(0, rawCount(log, secret), "split secret must never persist raw")
-        assertEquals(0, eventRawCount(sink.eventsFor(runId).toList(), runId, secret))
+        assertEquals(0, planeRawCount(controlRoot, runId, secret))
     }
 
     // 3. split across many small writes (chunk boundary stress)
@@ -110,7 +126,7 @@ class Lpr011r2SecretRedactionAtRestUatTest {
         // printf one char at a time, no separators: forces boundary stress
         val chars = secret.chunked(1).joinToString("") { c -> "printf '%s' '$c';" }
         invoke(adapter(runId, controlRoot, registry(), sink), runId, chars)
-        assertEquals(0, eventRawCount(sink.eventsFor(runId).toList(), runId, secret),
+        assertEquals(0, planeRawCount(controlRoot, runId, secret),
             "byte-wise secret must never reach the observable plane raw")
     }
 
@@ -123,7 +139,7 @@ class Lpr011r2SecretRedactionAtRestUatTest {
         invoke(adapter(runId, controlRoot, registry(), sink), runId, "echo $secret 1>&2")
         assertEquals(0, rawCount(consoleLog(controlRoot, runId), secret),
             "stderr secret must never persist raw")
-        assertEquals(0, eventRawCount(sink.eventsFor(runId).toList(), runId, secret))
+        assertEquals(0, planeRawCount(controlRoot, runId, secret))
     }
 
     // 5. THE Gate-1 proof: failing child + retained control dir
@@ -139,7 +155,7 @@ class Lpr011r2SecretRedactionAtRestUatTest {
         assertEquals(0, rawCount(log, secret),
             "GATE-1: retained failing transcript must contain zero raw secret bytes")
         assertTrue(Files.readString(log).contains("****"), "redaction marker must be present")
-        assertEquals(0, eventRawCount(sink.eventsFor(runId).toList(), runId, secret))
+        assertEquals(0, planeRawCount(controlRoot, runId, secret))
     }
 
     // 6. timeout/interruption retention
@@ -163,7 +179,7 @@ class Lpr011r2SecretRedactionAtRestUatTest {
         assertTrue(Files.exists(log), "timeout-retained transcript must exist")
         assertEquals(0, rawCount(log, secret),
             "timeout-killed transcript must contain zero raw secret bytes")
-        assertEquals(0, eventRawCount(sink.eventsFor(runId).toList(), runId, secret))
+        assertEquals(0, planeRawCount(controlRoot, runId, secret))
     }
 
     // 7. DURING EXECUTION proof: redaction before persistence, not cleanup-time
@@ -279,7 +295,12 @@ class Lpr011r2SecretRedactionAtRestUatTest {
         val controlRoot = Files.createTempDirectory("r2-legacy")
         val sink = InMemoryEventStore()
         invoke(adapter(runId, controlRoot, null, sink), runId, "echo $secret")
-        assertEquals(1, eventRawCount(sink.eventsFor(runId).toList(), runId, secret),
+        // The NEGATIVE control for every row above, so the zeros mean something: with no
+        // registry the redaction pump is absent and the secret must survive RAW. If this ever
+        // reads 0, either redaction became unconditional (and the "explicit" in the
+        // composition is a lie) or the reader lost the stream — which is why it is counted on
+        // the plane rather than inferred from an empty event channel.
+        assertEquals(1, planeRawCount(controlRoot, runId, secret),
             "null registry = explicit legacy composition, raw behavior preserved")
     }
 
@@ -293,7 +314,7 @@ class Lpr011r2SecretRedactionAtRestUatTest {
         invoke(adapter(runId, controlRoot, registry(), sink), runId,
             "for i in \$(seq 1 20000); do echo line-${'$'}i filler filler filler; done")
         val elapsed = System.currentTimeMillis() - start
-        assertEquals(0, eventRawCount(sink.eventsFor(runId).toList(), runId, secret))
+        assertEquals(0, planeRawCount(controlRoot, runId, secret))
         assertTrue(elapsed < 60_000, "pump must not stall the hot path; took ${elapsed}ms")
     }
 
@@ -325,16 +346,17 @@ fun `typed capturedStdout value never leaks raw into the observable event plane`
             stepIndex = 0,
         )
     }
-    // Observable events: the console transcript event (stderr-only in capture
-    // mode) must be sanitized; stdout must NOT be re-emitted as a console event.
-    val contents = sink.eventsFor(runId).toList()
-        .filterIsInstance<EchoOutputCaptured>()
-        .filter { it.runId == runId }
-        .map { it.content }
-    for (c in contents) {
-        assertFalse(c.contains(secret),
-            "observable event leaked raw secret (typed-value boundary violation): [$c]")
-    }
+    // The observable surface: the Output Plane transcript (stderr-only in capture mode) must be
+    // sanitized. It used to assert over EchoOutputCaptured contents, which after M1 is a list
+    // that is always empty for a `sh` step — so the loop below proved nothing at all. The typed
+    // stdout value is EXACT by contract and is deliberately NOT read here: the law is that its
+    // exactness must not become a leak into any observable surface, which is only checkable
+    // against the surface itself.
+    val planeTranscript = ConsolePlaneProbe
+        .transcript(controlRoot, runId, stageIndex = 0, stepIndex = 0)
+    assertFalse(planeTranscript.contains(secret),
+        "the observable transcript leaked the raw secret (typed-value boundary violation): " +
+            "[$planeTranscript]")
     // Retained-file at-rest check as well.
     assertEquals(0, rawCount(consoleLog(controlRoot, runId), secret),
         "stderr transcript on disk must contain zero raw secret bytes")

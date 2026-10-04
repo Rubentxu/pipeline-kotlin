@@ -267,9 +267,17 @@ subprojects {
 }
 
 // WU-RP-040 R5: SAST (detekt). Applied to every Kotlin subproject with a single
-// shared config; NOT wired into `check` (the gate runs it as an explicit CI job
-// over a curated security/correctness subset — see lpr0-ci.yml). This keeps the
-// incremental round gate cheap while the SAST report stays per-run evidence.
+// shared config, and wired into each subproject's own `check` so the root
+// `check` inherits it.
+//
+// This block used to assert that detekt was NOT in `check` and pointed at
+// `lpr0-ci.yml` as the authority that ran it instead. That workflow was deleted
+// in `754ddda0` (2026-09-30) after 60 consecutive cancelled runs against offline
+// self-hosted runners. The comment therefore described a gate that no longer
+// existed, and SAST quietly stopped being enforced by anything. The fix is not
+// to restore the comment's claim or to recreate the workflow; it is to make the
+// local command say what it actually does, so `./gradlew check` fails on a new
+// static-analysis finding with no external dependency.
 subprojects {
     pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
         pluginManager.apply("dev.detekt")
@@ -297,6 +305,11 @@ subprojects {
                 html.required.set(true)
                 checkstyle.required.set(true)
             }
+        }
+        // Detekt 2.x no longer self-attaches to `check` (detekt 1.x did), so the
+        // attachment has to be stated here or SAST is not part of the gate at all.
+        tasks.named("check") {
+            dependsOn(tasks.named("detekt"))
         }
     }
 }

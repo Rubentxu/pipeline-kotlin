@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
@@ -17,25 +19,30 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
-
-import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 
 /**
  * UAT-EVT-002: multi-step pipeline fixture test.
  *
  * Full DSL multi-step evaluation with 2 stages (build, test) x 2 steps each.
- * Produces 22 events: RunStarted, CompilationStarted, CompilationFinished,
+ * Produces 16 events: CompilationStarted, CompilationFinished, RunStarted,
  * StageStarted(build) + StepStarted(echo) + EchoOutputCaptured + StepFinished(echo)
- *   + StepStarted(sh) + EchoOutputCaptured + StepFailed + StepFinished(sh) + StageFinished(build),
+ *   + StepStarted(sh) + StepFinished(sh) + StageFinished(build),
  * StageStarted(test) + StepStarted(echo) + EchoOutputCaptured + StepFinished(echo)
- *   + StepStarted(sh) + EchoOutputCaptured + StepFailed + StepFinished(sh) + StageFinished(test),
+ *   + StepStarted(sh) + StepFinished(sh) + StageFinished(test),
  * RunFinished.
  *
- * The 2 extra StepFailed events are emitted by INC-R8-ARC-001 (sh non-zero exit
- * emits StepFailed). The `make` and `make test` commands fail because no Makefile
- * exists in the test working directory.
+ * The two `sh` steps emit no output event, by design and since M1: the event plane carries
+ * semantic facts, and a process's stdout is bytes, not a fact about the run. The test reads
+ * those bytes from the Output Plane through [ConsolePlaneProbe] and still asserts all four
+ * texts, so coverage was moved, not dropped. It was 20 events while `sh` output was still
+ * duplicated into the event log.
+ *
+ * The fixture uses succeeding commands, so no StepFailed is expected: under the legacy
+ * record-only walker the `make` steps were simulated as StepFailed (INC-R8-ARC-001), and that
+ * simulation is exactly what real execution replaced.
  */
 @Timeout(120)
 class UatEvt002MultiStepReplayTest {
@@ -68,15 +75,26 @@ class UatEvt002MultiStepReplayTest {
 
     @Test
     fun `multi-step script compiles successfully`() {
-        val (stdout, events) = runAndDecode()
-        // Durable-spine timeline (LF-0208: sh steps REALLY execute now):
-        // 2 compilation events + 2 run events + 2x (StageStarted + 2x
-        // (StepStarted + EchoOutputCaptured + StepFinished) + StageFinished)
-        // = 20. Both echo and successful sh steps expose their real output.
+        val (stdout, events, controlDir) = runAndDecode()
+        // Durable-spine timeline (LF-0208: sh steps REALLY execute now), recounted against the
+        // run that actually happened rather than against an arithmetic guess:
+        //
+        //   CompilationStarted, CompilationFinished, RunStarted          =  3
+        //   per stage: StageStarted + (StepStarted/Echo/StepFinished)      =  4
+        //              + (StepStarted/StepFinished)                       =  2
+        //              + StageFinished                                     =  1   -> 7 each
+        //   RunFinished                                                    =  1
+        //                                                                   =  3 + 14 + 1 = 18
+        //
+        // It was 20 while `sh` output was duplicated into the event log; the two `sh` steps
+        // lost their EchoOutputCaptured and nothing else moved. The four texts asserted below
+        // are still all observed — two as events, two from the plane. What no longer exists is
+        // the second authority that let stdout be read from events in the first place.
+        //
         // INC-R8-ARC-001 historical note: under the legacy record-only
         // walker the make steps were simulated as StepFailed; under real
         // execution the fixture uses succeeding commands.
-        assertEquals(20, events.size, "Expected 20 events from multi-step fixture: $stdout")
+        assertEquals(18, events.size, "Expected 18 events from multi-step fixture: $stdout")
 
         assertTrue(events[0] is CompilationStarted, "events[0] must be CompilationStarted (durable spine)")
         assertTrue(events[1] is CompilationFinished, "events[1] must be CompilationFinished")
@@ -98,13 +116,15 @@ class UatEvt002MultiStepReplayTest {
         assertEquals(2, stageFinishedEvents.size, "Must have 2 StageFinished events")
         assertEquals(4, stepStartedEvents.size, "Must have 4 StepStarted events")
         assertEquals(4, stepFinishedEvents.size, "Must have 4 StepFinished events")
-        // EchoOutputCaptured is emitted for both echo and successful sh steps.
-        // DurableShellExecutor captures the sh log before cleanup removes the
-        // control directory, so output is observable instead of being lost.
-        assertEquals(4, echoCapturedEvents.size, "Must have 4 EchoOutputCaptured events (one per step)")
-        val capturedContent = echoCapturedEvents.joinToString("\n") { it.content }
+        // `core.echo` is a semantic Step, so its text is a fact about the run and earns an
+        // event. The two `sh` steps have no such event any more, and that is the migration
+        // working: their output is read from the Output Plane just below. Counting 4 here
+        // again would resurrect the conflation this receipt is closing.
+        assertEquals(2, echoCapturedEvents.size, "Must have 2 EchoOutputCaptured events (one per echo step)")
+        val processOut = ConsolePlaneProbe.transcriptsOfSteps(controlDir, events, stepType = "sh")
+        val observedOutput = echoCapturedEvents.joinToString("\n") { it.content } + "\n" + processOut
         listOf("compiling", "build-ok", "testing", "test-ok").forEach { expected ->
-            assertTrue(capturedContent.contains(expected), "Captured output must contain `$expected`")
+            assertTrue(observedOutput.contains(expected), "Observed output must contain `$expected`")
         }
         // Real execution: succeeding commands produce no StepFailed events.
         assertEquals(0, stepFailedEvents.size, "No StepFailed events expected: ${stepFailedEvents.map { it.message }}")
@@ -143,8 +163,19 @@ class UatEvt002MultiStepReplayTest {
         assertTrue(rf.diagnostics.isEmpty(), "RunFinished diagnostics must be empty: ${rf.diagnostics}")
     }
 
-    private fun runAndDecode(): Pair<String, List<DomainEvent>> {
-        val pb = ProcessBuilder(appBin.toString(), "run", multiStepScript.toString())
+    private fun runAndDecode(): Triple<String, List<DomainEvent>, Path> {
+        // S4/M1: the control dir is named, not inferred from the invocation CWD, because the
+        // assertions below read process output and process output is the Output Plane's.
+        val controlDir = Files.createTempDirectory("uat-evt002-control")
+        val pb = ProcessBuilder(
+            appBin.toString(),
+            "run",
+            // Options before the script path: CliParser stops consuming flags at the first
+            // non-flag argument, so a trailing `--control-root` is dropped in silence.
+            "--control-root",
+            controlDir.toAbsolutePath().toString(),
+            multiStepScript.toString(),
+        )
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
         val process = pb.start()
@@ -155,6 +186,6 @@ class UatEvt002MultiStepReplayTest {
             throw IllegalStateException("CLI exited with $exitCode. stderr: $stderr")
         }
         val events = JsonEventLog.decode(stdout)
-        return stdout to events
+        return Triple(stdout, events, controlDir)
     }
 }

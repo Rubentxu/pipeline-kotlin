@@ -336,54 +336,21 @@ strict lexical order — eager adds and suspend calls share one ordered sequence
 
 ---
 
-## 11. Addendum 2026-10-04 — what SPIKE-016 did and did not establish
+## 11. Scope clarification — the authority lives in ADR-0103
 
-This is a **clarification**, not a rewrite. Sections 1-10 above stand as accepted; nothing here
-changes the decision, only the scope of the claim it carries.
+Section 5 of this ADR closes with *"including loops (S16-E5) … This is proven infrastructure,
+not a bet."* Read as feasibility that is true; read as production authority for loop **iteration
+identity** it over-claims.
 
-### The over-strong sentence
+**That correction is not written here.** It is carried, in the authoritative form and accepted by
+the product owner on 2026-10-03, by the *Addendum to ADR-0093* inside
+[ADR-0103](ADR-0103-one-replay-authority.md), whose conclusion is:
 
-Section 5 closes:
+> SPIKE-016 proved the **feasibility** of deterministic script replay with loops in its own
+> harness. It did **not** establish the production authority for loop iteration identity.
+> Production identity is governed by ADR-S4-R2.
 
-> SPIKE-016's hypothesis … **PASSED**, including loops (S16-E5) and nested blocks (S16-E6).
-> This is **proven infrastructure**, not a bet.
-
-Read as a statement about *feasibility*, it is true. Read as a statement about *production
-authority for loop iteration identity*, it over-claims, and S16-E5 is what makes it read that
-way: "loops replay" is a property of the **harness** that was run, not a property the harness
-could establish about how production must name a loop iteration.
-
-### What SPIKE-016 actually proved
-
-```text
-SPIKE-016 proved feasibility of deterministic scripted replay with loops,
-including loops and nested blocks, IN ITS OWN HARNESS.
-```
-
-It did **not** establish:
-
-- the production authority for loop iteration identity;
-- which quantity identifies an iteration (element value, arrival count, positional ordinal);
-- how that identity is reconstructed at replay;
-- that the harness's identity model is the one production would use.
-
-### The gap was discovered later, and it was real
-
-The S4 identity work found the production scripted path carrying a cursor whose unit was
-*arrivals at the Step*, not *entry into the iteration*. Those diverge on the first loop that
-either skips an effect or calls a Step more than once per iteration — so the identity a
-production run recorded was not the identity SPIKE-016's harness had exercised. Nothing in
-S16-E5 could have caught that, because the harness never claimed to be the production model.
-
-### Resolution
-
-Production loop-iteration identity is governed by the durable replay laws in `AGENTS.md`
-(**DR-5** deterministic replay-local state, **DR-6** positional loop identity, **DR-7** scope
-before effect) together with ADR-0103 (one replay authority) and ADR-0066 (call-site identity
-determinism). Those are the authorities. This ADR remains the authority for the *structured DSL
-runtime-return model* it decided, and its SPIKE-016 reference is to be read under this
-clarification.
-
-Provenance is preserved deliberately: SPIKE-016's result is not retracted, and this ADR is not
-rewritten, because the over-claim is corrected by scope rather than by erasing the sentence that
-made it.
+This section exists only to point at that addendum, because an earlier draft of it restated the
+correction in full here. Two independent copies of a normative clarification are two authorities,
+which is the defect class ADR-0103 exists to remove. Sections 1-10 above stand as accepted; nothing
+in this ADR changes its decision.

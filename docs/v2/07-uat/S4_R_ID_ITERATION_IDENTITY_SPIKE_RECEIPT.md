@@ -154,10 +154,36 @@ identidad.
 
 ---
 
-## 3. Consecuencia: ADR-S4-R2 es obligatoria
+## 3. Consecuencia: ADR-S4-R2 es obligatoria — y su nombre ya estaba reservado
 
 El objetivo activo ya la preveía —«el ADR debe salir de evidencia, no de gusto»— y la evidencia
-acaba de llegar. Los cinco puntos que el brief exigía fijar:
+acaba de llegar. **Pero el nombre y el alcance exacto ya estaban escritos**, en
+[ADR-0103](../04-adrs/ADR-0103-one-replay-authority.md), cuya sección *Out of scope* nombra
+literalmente lo que le toca a esta futura autoridad:
+
+> Loop iteration identity; `nextOrdinal`; `dynamicScopePath` composition; the `while` and
+> braceless-`for` laws; `PLUGIN_LOCK_DIGEST`; the `Unstable` outcome carrier. Each has its own
+> owner and none of them may be settled by implementing this ADR.
+
+Y su *Addendum to ADR-0093*, aceptado por el owner el 2026-10-03, concluye:
+
+> Production identity is governed by ADR-S4-R2.
+
+**Esto reordena lo que este spike aporta.** Tres consecuencias concretas:
+
+1. **LaPrecondición ya se cumple.** ADR-0103 dice que ADR-S4-R2 «may only be written after
+   ADR-0093's overstatement is corrected and the replay semantics above are in force». La
+   sobreafirmación está corregida desde el 2026-10-03, y la semántica de replay está en vigor
+   desde R1-E (`d0077253`). **No queda ninguna precondición pendiente.**
+2. **El hallazgo de `while` no es una sorpresa: es confirmar un scope ya reservado.** ADR-0103
+   nombra *the `while` … laws* como trabajo de ADR-S4-R2. Este spike **muestra que ese hueco está
+   vacío de verdad**: no es que exista una ley que este spike no encuentra, es que no hay
+   ninguna. Eso convierte una incógnita en un hecho medido, que es justo lo que un spike debe hacer.
+3. **El spike cubre 3 de los 5 puntos del scope.** `nextOrdinal` y `dynamicScopePath` composition
+   son el objeto central de §1-§2. La ley `while` y la `braceless-for` son §2.0. Quedan fuera de
+   esta medición: `PLUGIN_LOCK_DIGEST` y el carrier de `Unstable`, que ya tienen su propio recibo.
+
+Los cinco puntos que el brief exigía fijar:
 
 ```text
 quién produce el índice de iteración   -> la frontera del LOOP, no el facade ni el invoker
@@ -173,7 +199,14 @@ frontera del loop) por una razón estructural, no por gusto: D2 (`withIndex()`) 
 del iterador sobre Kotlin arbitrario, lo cual es una transformación mucho más invasiva para obtener
 un índice que el contador ya disponible en el punto del loop.
 
-### 3.1 El slice que falta ya tiene nombre
+### 3.1 Una reserva sobre la reserva
+
+`while` y `braceless-for` tienen unaproperty que `for` no tiene: **no son structuralmente
+delimitados por una llave**, así que el lowering no tiene el `bodyStartOffset`/`bodyEndOffset` que
+`ScriptedLoopScope` exige hoy. Medir su ley no es sólo decidir qué scope reciben, sino decidir si
+el propio `ScriptedLoopScope` necesita otra forma. Eso no se ha medido y no se afirma aquí.
+
+### 3.2 El slice que falta ya tiene nombre
 
 El KDoc de `S4IdentityLoopScopeTest` ya lo dice, y este spike lo confirma:
 

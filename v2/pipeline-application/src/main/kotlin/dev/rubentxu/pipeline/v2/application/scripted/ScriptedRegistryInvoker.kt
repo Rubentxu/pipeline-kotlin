@@ -207,16 +207,37 @@ data class ScriptedRegistryCall(
  * fail-closed case, and the journal row is left `RUNNING` by the interpretation engine: an
  * operation whose external effect is unknown is neither re-run nor closed.
  *
- * `RecoverRunning` is the one resolution that cannot be satisfied here, and it fails closed
- * for a precise reason rather than by omission. Recovery reattaches to a subprocess that a
- * previous process observed but did not encode: the canonical arm journals the recovered
- * terminal status with `output = null`, because no typed value was ever produced by this
- * runtime. A runtime-returning scripted call must hand user Kotlin a real value
- * (`if (isUnix())` depends on it), and there is nothing to hand. The terminal row IS
- * written — the interpretation engine owns that — and the call fails with
- * `REPLAY_COMPATIBILITY`, which is the kind that means "this runtime cannot replay this
- * operation safely". This is not a regression: the previous status table failed the same
- * way on a RUNNING row, and it fails the same way now.
+ * `RecoverRunning` is the one resolution this frontend cannot satisfy, and it fails closed rather
+ * than by omission. **But the reason depends on WHICH terminal was recovered, and collapsing the
+ * two cases is a conservation-of-information defect, not a simplification.**
+ *
+ * ```text
+ * terminal carried no value facts          → failing closed is CORRECT
+ *   LOST / no exit code ever observed
+ *   TIMEOUT with no captured output
+ *   → the substrate never told us what the program computed.
+ *     There is nothing to hand user Kotlin, and `Status(0)` / `""` / `Unit` would be fabrication.
+ *
+ * terminal DID carry value facts           → failing closed is a CURRENT CANONICAL GAP
+ *   Exited(exitCode = 42)                   → the exit code is on the control dir. Observed.
+ *   Exited(0, capturedStdout = "abc")      → the output file is on the control dir. Observed.
+ *   → `sh(returnStatus = true)` with exit 42 is `Status(42) · Success`, and the authority that
+ *     knows that already exists: `classifyShellTerminal(terminal, returnMode)`.
+ *     Failing closed here loses `returnMode` BEFORE the authority that can interpret it.
+ * ```
+ *
+ * So the honest statement of this arm's limit is: **this frontend does not yet project a recovered
+ * terminal through the Step's own declared contract.** It is not that a recovered value can never be
+ * reconstructed — an observed `exitCode` is not a fabricated value. The capability is missing
+ * because the projection does not exist yet, and that is tracked as manifestation 2 of
+ * `implementation conformance: PARTIAL` in ADR-S4-R1, closed by S4-F1-C under §2.7. The failing-closed
+ * behaviour is correct for the no-facts terminals and is a stand-in for the not-yet-built projection
+ * on the rest.
+ *
+ * Meanwhile: the terminal row IS written — the interpretation engine owns that — and the call fails
+ * with `REPLAY_COMPATIBILITY`, which is the kind that means "this runtime cannot replay this
+ * operation safely". This is not a regression: the previous status table failed the same way on a
+ * RUNNING row, and it fails the same way now.
  *
  * ## Fresh/reuse law
  *
@@ -423,7 +444,9 @@ internal class ScriptedRegistryInvoker(
 
             // The interpretation engine journals the recovered terminal row and emits the
             // lifecycle events, because it is the owner of interpreting a resolution. The
-            // typed value still cannot be produced — see the class KDoc.
+            // typed value still cannot be produced HERE — see the class KDoc, and note that
+            // "here" is load-bearing: a terminal that carries observed facts is a different
+            // case from one that does not, and only the former is this arm's real limit.
             is InvocationReconciliation.RecoverRunning -> {
                 recoveryInterpretation.interpret(
                     resolution,
@@ -435,9 +458,9 @@ internal class ScriptedRegistryInvoker(
                     ),
                 )
                 notReplayable(
-                    "scripted registry step was recovered from a running subprocess whose " +
-                        "recovered terminal carries no encoded output, so no typed runtime " +
-                        "value can be materialised without fabricating one",
+                    "scripted registry step was recovered from a running subprocess; the recovered " +
+                        "terminal is journaled, but this frontend does not yet materialise a typed " +
+                        "runtime value from it (ADR-S4-R1 §2.7, closed by F1-C)",
                 )
             }
 

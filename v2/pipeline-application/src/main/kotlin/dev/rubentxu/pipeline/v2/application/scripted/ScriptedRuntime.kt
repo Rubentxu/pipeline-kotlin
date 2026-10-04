@@ -109,22 +109,19 @@ fun interface ScriptedOperationRuntime {
 }
 
 /**
- * Reconciles an already scheduled scripted operation without invoking its effect
- * again. A resolver must return a terminal result only after it has observed one.
+ * RETIRED IN S4-F1-B — the scripted recovery seam.
+ *
+ * `RunningScriptedOperationReconciler` and `ScriptedRunningResolution` used to be the only way a
+ * scripted operation left `RUNNING` could be recovered. Both existed to serve
+ * `JournaledScriptedOperationRuntime` and `DurableScriptedOperationReconciler`, a second durable
+ * stack that production never constructed. With those gone, this port had ZERO production
+ * consumers, which made it worse than dead code: it was the hook where a second reconciliation
+ * authority could be plugged back in, and it sat in `src/main` looking like part of the contract.
+ *
+ * Recovery for the scripted surface is the CANONICAL one —
+ * `DurableInvocationResolver` plus `ExternalSubprocessRecovery` plus `RecoveryInterpretationEngine` —
+ * and `ScriptedRegistryInvoker` already consumes it. There is deliberately no scripted variant left.
  */
-fun interface RunningScriptedOperationReconciler {
-    suspend fun reconcile(operation: ScriptedOperation): ScriptedRunningResolution
-}
-
-/** Closed result of attempting to recover a scripted operation left RUNNING. */
-sealed interface ScriptedRunningResolution {
-    data object Unavailable : ScriptedRunningResolution
-
-    data class Terminal(
-        val result: ShellInvocationResult,
-        val status: dev.rubentxu.pipeline.v2.domain.durable.OperationStatus,
-    ) : ScriptedRunningResolution
-}
 
 /** Internal source identity provider; generated façades replace the fixed test adapter. */
 fun interface ScriptedCallSiteProvider {
@@ -276,10 +273,10 @@ internal data class ScriptedScopeIdentity(
     /**
      * S4-A1: the compiled artifact identity this execution came from.
      *
-     * The retired `JournaledScriptedOperationRuntime` put this into its
-     * `OperationInput`, so two different compiled artifacts of the same source
-     * position produced different fingerprints and the second run failed closed
-     * with REPLAY_COMPATIBILITY. Unifying the spine dropped it, which meant a
+     * The scripted durable spine that production never built — the `JournaledScriptedOperationRuntime`
+     * of old, deleted in S4-F1-B — put this into its `OperationInput`, so two different compiled
+     * artifacts of the same source position produced different fingerprints and the second run
+     * failed closed with REPLAY_COMPATIBILITY. Unifying the spine dropped it, which meant a
      * scripted registry step would replay happily across two different artifacts.
      * `ScriptedScopeTest` caught the regression, and the property is restored here
      * rather than the test being relaxed: unifying spines must not lose a

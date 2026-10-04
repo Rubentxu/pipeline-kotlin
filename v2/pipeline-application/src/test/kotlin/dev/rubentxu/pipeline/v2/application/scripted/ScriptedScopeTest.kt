@@ -1,10 +1,13 @@
 package dev.rubentxu.pipeline.v2.application.scripted
 
+import dev.rubentxu.pipeline.v2.application.CoreShellOutput
 import dev.rubentxu.pipeline.v2.application.CoreShellStep
 import dev.rubentxu.pipeline.v2.application.SHELL_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.ShellOperations
 import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.serialization.json.jsonPrimitive
@@ -37,6 +40,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CancellationException
 import java.nio.file.Files
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import dev.rubentxu.pipeline.v2.application.support.settled
@@ -65,9 +69,22 @@ class ScriptedScopeTest {
      * identities written to the journal are the distinct ones, which is the property
      * replay actually depends on.
      */
+    /**
+     * `resultFor` comes FIRST on purpose: `onLaunch` must stay last so the existing
+     * `shellSpine { launches += 1 }` trailing-lambda call sites keep binding to it. Putting the
+     * new parameter last would silently rebind them to `resultFor` and fail on the return type —
+     * a harness change that breaks callers it never touched.
+     */
     private fun shellSpine(
+        resultFor: (dev.rubentxu.pipeline.v2.domain.ShellCommand) -> ShellInvocationResult = { command ->
+            if (command.script == "branch") {
+                ShellInvocationResult.Stdout("main\n")
+            } else {
+                ShellInvocationResult.UnitValue
+            }
+        },
         onLaunch: () -> Unit = {},
-    ): Pair<ScriptedRegistryInvoker, InMemoryOperationJournal> {
+    ): Triple<ScriptedRegistryInvoker, InMemoryOperationJournal, InMemoryStepRegistry> {
         val journal = InMemoryOperationJournal(SystemClock())
         val registry = InMemoryStepRegistry().also { CoreShellStep.registerInto(it) }
         val invoker = dev.rubentxu.pipeline.v2.application.support.ScriptedInvokerFixture.build(
@@ -87,11 +104,7 @@ class ScriptedScopeTest {
                                             stepIndex: Int,
                                         ): ShellInvocationResult {
                                             onLaunch()
-                                            return if (command.script == "branch") {
-                                                ShellInvocationResult.Stdout("main\n")
-                                            } else {
-                                                ShellInvocationResult.UnitValue
-                                            }
+                                            return resultFor(command)
                                         }
                                     } as T
                                 }
@@ -100,7 +113,7 @@ class ScriptedScopeTest {
                         }
                     },
     )
-        return invoker to journal
+        return Triple(invoker, journal, registry)
     }
 
     /** Call-site ids of every durable operation written for [runId], in insertion order. */
@@ -171,22 +184,28 @@ class ScriptedScopeTest {
         assertEquals(ShellExitException::class, failure?.javaClass?.kotlin)
     }
 
+    /**
+     * S4-F1-B — MIGRATED to the canonical authority.
+     *
+     * This used to run on `JournaledScriptedOperationRuntime`, a second durable stack that owned
+     * its own fingerprint, its own replay table and its own status mapping, and that production
+     * never constructed. Asserting a law THROUGH it certified that stack rather than the product:
+     * the canonical scripted path could have disagreed about reuse entirely and this test would
+     * have stayed green. The same law, asserted through `ScriptedRegistryInvoker`, cannot.
+     */
     @Test
     fun `completed scripted status is replayed without reinvoking the effect`() = runBlocking {
         var launches = 0
-        val runtime = JournaledScriptedOperationRuntime(
-            journal = InMemoryOperationJournal(SystemClock()),
-            clock = SystemClock(),
-            effectRuntime = ScriptedOperationRuntime {
-                launches += 1
-                settled(ShellInvocationResult.Status(42))
-            },
+        val (invoker, _, registry) = shellSpine(
+            onLaunch = { launches += 1 },
+            resultFor = { ShellInvocationResult.Status(42) },
+        )
+        val runtime = ScriptedRuntime(
+            operationRuntime = RegistryScriptedShellRuntime(invoker),
+            callSites = ScriptedCallSiteProvider.fixed("scripted-test/replayed-status"),
         )
 
-        suspend fun invokeStatus(): Int = ScriptedRuntime(
-            operationRuntime = runtime,
-            callSites = ScriptedCallSiteProvider.fixed("scripted-test/replayed-status"),
-        ).run(definitionDigest = "test-v1", entryPointId = "main") {
+        suspend fun invokeStatus(): Int = runtime.run(definitionDigest = "test-v1", entryPointId = "main") {
             sh(script = "exit 42", returnStatus = ReturnStatus)
         }
 
@@ -195,22 +214,20 @@ class ScriptedScopeTest {
         assertEquals(1, launches)
     }
 
+    /** S4-F1-B — MIGRATED, same reason as the row above. */
     @Test
     fun `changed scripted input fails closed without reinvoking the effect`() = runBlocking {
         var launches = 0
-        val runtime = JournaledScriptedOperationRuntime(
-            journal = InMemoryOperationJournal(SystemClock()),
-            clock = SystemClock(),
-            effectRuntime = ScriptedOperationRuntime {
-                launches += 1
-                settled(ShellInvocationResult.Status(0))
-            },
+        val (invoker, _, registry) = shellSpine(
+            onLaunch = { launches += 1 },
+            resultFor = { ShellInvocationResult.Status(0) },
+        )
+        val runtime = ScriptedRuntime(
+            operationRuntime = RegistryScriptedShellRuntime(invoker),
+            callSites = ScriptedCallSiteProvider.fixed("scripted-test/divergence"),
         )
 
-        suspend fun invokeStatus(script: String): Int = ScriptedRuntime(
-            operationRuntime = runtime,
-            callSites = ScriptedCallSiteProvider.fixed("scripted-test/divergence"),
-        ).run(definitionDigest = "test-v1", entryPointId = "main") {
+        suspend fun invokeStatus(script: String): Int = runtime.run(definitionDigest = "test-v1", entryPointId = "main") {
             sh(script = script, returnStatus = ReturnStatus)
         }
 
@@ -220,65 +237,175 @@ class ScriptedScopeTest {
         assertEquals(1, launches)
     }
 
+    /**
+     * S4-F1-B — REPLACES the retired `running durable shell reattaches without relaunching the
+     * effect` row, and asserts a STRICTLY STRONGER claim.
+     *
+     * The retired row launched a real durable process, detached it, and recovered it through
+     * `DurableScriptedOperationReconciler` — the scripted recovery path that production never
+     * constructs. It asserted the scripted surface could return a typed `42` from a recovered
+     * terminal, through an authority that does not exist in production. That much was fiction.
+     *
+     * **What is NOT fiction, and what this row must not be read as saying:** the current canonical
+     * spine does not materialise a typed value from a recovered terminal, and that is not a law —
+     * it is a gap. The substrate preserves enough facts for *some* return modes. This very row
+     * launches a `returnStatus` shell that exits 42, so the exit code is an OBSERVED fact, not a
+     * fabricated one, and `sh(returnStatus = true)` with exit 42 is `Status(42) · Success` under
+     * the contract that already exists (`classifyShellTerminal` → `ShellStepOutcomeClassifier`).
+     * Today that evidence is narrowed before it reaches the Step-specific projection. That is
+     * manifestation 2 of `implementation conformance: PARTIAL` in ADR-S4-R1, and S4-F1-C owns its
+     * closure under §2.7.
+     *
+     * The distinction this row turns on is the one that separates fabrication from conservation:
+     *
+     * ```text
+     * LOST / no facts observed    → failing closed is CORRECT (no `42` exists to hand)
+     * Exited(42) / exit code seen → failing closed is a GAP      (a `42` was observed)
+     * ```
+     *
+     * The observation injected below is deliberately `Lost`, so this row certifies the correct case
+     * and says out loud which case it is not certifying. A row that injected `Exited(42)` and
+     * asserted the same typed failure would be certifying a defect as desired behaviour.
+     *
+     * Two things replace the retired row, and both are true where the old row was fiction:
+     *
+     * 1. The REATTACH-NOT-RELAUNCH law is certified canonically by `S4-R-REC` rows 4-10, which
+     *    drive the real coordinator and assert the handler does not run.
+     * 2. The scripted behaviour on a recovered terminal is now asserted HERE: recovery happens,
+     *    nothing is relaunched, and a terminal with no value facts fails closed rather than
+     *    inventing one.
+     *
+     * The observation is scripted rather than real, which is legitimate HERE and was not in the old
+     * row: the property under test is what the scripted surface does WITH a recovery resolution,
+     * and that is decided by the invoker. Constructing real processes would have tested the
+     * observer again, not the invoker.
+     *
+     * The first cut of this row failed with `launches == 1` and the failure was MINE, not the
+     * product's: recovery is only ever consulted for a journal row that is `RUNNING`, and the
+     * fixture started from an empty journal, so the resolver correctly decided the operation was
+     * FRESH and executed it. Substituting the observer does not make recovery apply — it makes
+     * recovery *observable* once something leaves a `RUNNING` row behind. The row now creates that
+     * row first, which is the state a crashed worker actually leaves.
+     */
     @Test
-    fun `running durable shell reattaches without relaunching the effect`() = runBlocking {
-        val controlRoot = Files.createTempDirectory("scripted-reattach")
-        try {
-            val journal = InMemoryOperationJournal(SystemClock())
-            val executor = DurableShellExecutor()
-            var launches = 0
-            val firstRuntime = JournaledScriptedOperationRuntime(
-                journal = journal,
-                clock = SystemClock(),
-                effectRuntime = ScriptedOperationRuntime { operation ->
-                    launches += 1
-                    val controlDir = controlRoot.resolve(operation.operationId())
-                    val process = executor.launch(
-                        controlDir = controlDir,
-                        scriptContent = "sleep 1; exit 42",
-                        opId = operation.operationId(),
-                        config = DurableShConfig.fromSystemProperties(),
-                        captureStdout = false,
-                    )
-                    executor.detach(process, controlDir)
-                    throw CancellationException("simulated runtime stop after durable launch")
-                },
-            )
+    fun `a recovered terminal is recovered rather than relaunched, and no typed value is fabricated`() = runBlocking {
+        var launches = 0
+        val journal = InMemoryOperationJournal(SystemClock())
+        val registry = InMemoryStepRegistry().also { CoreShellStep.registerInto(it) }
+        val capabilityAccessFactory = { context: CanonicalRuntimeContext ->
+            object : CanonicalRuntimeCapabilityAccess(context) {
+                override fun available(): Set<StepCapability> = setOf(SHELL_OPERATIONS_CAPABILITY)
 
-            val first = ScriptedRuntime(firstRuntime, ScriptedCallSiteProvider.fixed("scripted-test/reattach"))
-            runCatching {
-                first.run(definitionDigest = "test-v1", entryPointId = "main") {
-                    sh(script = "sleep 1; exit 42", returnStatus = ReturnStatus)
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : Any> get(key: StepCapability): T {
+                    if (key == SHELL_OPERATIONS_CAPABILITY) {
+                        return object : ShellOperations {
+                            override suspend fun invoke(
+                                command: dev.rubentxu.pipeline.v2.domain.ShellCommand,
+                                runId: dev.rubentxu.pipeline.v2.domain.RunId,
+                                stepIndex: Int,
+                            ): ShellInvocationResult {
+                                launches += 1
+                                // The scripted call asks for `returnStatus`, so the substrate must
+                                // answer with a Status. Returning UnitValue here is not a harness
+                                // convenience — the engine rejects it with
+                                // `EngineInvariantViolation: Shell runtime returned UnitValue for
+                                // STATUS mode`, which is the correct fail-closed behaviour and the
+                                // reason this stub states the mode it claims to satisfy.
+                                return ShellInvocationResult.Status(42)
+                            }
+                        } as T
+                    }
+                    return super.get(key)
                 }
             }
-
-            val recovered = ScriptedRuntime(
-                operationRuntime = JournaledScriptedOperationRuntime(
-                    journal = journal,
-                    clock = SystemClock(),
-                    effectRuntime = ScriptedOperationRuntime { error("must not relaunch a RUNNING operation") },
-                    runningReconciler = DurableScriptedOperationReconciler(
-                        controlDirRoot = controlRoot,
-                        clock = SystemClock(),
-                        shell = executor,
-                        reattachTimeoutMs = 5_000,
-                    ),
-                ),
-                callSites = ScriptedCallSiteProvider.fixed("scripted-test/reattach"),
-            )
-
-            val status = recovered.run(definitionDigest = "test-v1", entryPointId = "main") {
-                sh(script = "sleep 1; exit 42", returnStatus = ReturnStatus)
-            }
-
-            assertEquals(42, status)
-            assertEquals(1, launches)
-        } finally {
-            terminateDurableTestProcesses(controlRoot)
-            controlRoot.toFile().deleteRecursively()
         }
+        val callSites = ScriptedCallSiteProvider.fixed("scripted-test/recovered-terminal")
+
+        // 1. Run it once through the canonical path so a real durable row exists.
+        val executing = dev.rubentxu.pipeline.v2.application.support.ScriptedInvokerFixture.build(
+            registry = registry,
+            journal = journal,
+            capabilityAccessFactory = capabilityAccessFactory,
+        )
+        ScriptedRuntime(RegistryScriptedShellRuntime(executing), callSites)
+            .run(definitionDigest = "test-v1", entryPointId = "main") {
+                sh(script = "exit 42", returnStatus = ReturnStatus)
+            }
+        assertEquals(1, launches, "PRECONDITION: the first run executes exactly once")
+
+        // 2. Leave the row RUNNING — the state a worker that died mid-effect leaves behind.
+        val source = journal.listForRun("test-v1").single()
+        journal.append(
+            dev.rubentxu.pipeline.v2.domain.durable.RerunOperation(
+                id = source.id,
+                fingerprint = source.fingerprint,
+                input = source.input,
+                output = null,
+                status = dev.rubentxu.pipeline.v2.domain.durable.OperationStatus.RUNNING,
+                attempt = source.attempt,
+            ),
+        )
+
+        // 3. The same call again. Recovery is now REQUIRED, and the substrate observation is
+        //    scripted — the ONE thing this harness substitutes. The resolver still decides, and
+        //    the interpreter still journals the terminal.
+        val recovering = dev.rubentxu.pipeline.v2.application.support.ScriptedInvokerFixture.build(
+            registry = registry,
+            journal = journal,
+            capabilityAccessFactory = capabilityAccessFactory,
+            runningSubprocessRecovery = {
+                dev.rubentxu.pipeline.v2.application.durable.RunningSubprocessObservation.Recovered(
+                    dev.rubentxu.pipeline.v2.application.durable.RecoveredTerminal.Lost(
+                        PipelineFailure(FailureKind.INFRASTRUCTURE, "reattach window closed"),
+                    ),
+                )
+            },
+        )
+        val failure = runCatching {
+            ScriptedRuntime(RegistryScriptedShellRuntime(recovering), callSites)
+                .run(definitionDigest = "test-v1", entryPointId = "main") {
+                    sh(script = "exit 42", returnStatus = ReturnStatus)
+                }
+        }.exceptionOrNull()
+
+        assertEquals(
+            1,
+            launches,
+            "the effect is NEVER relaunched on a recovered terminal — recovery, not a second launch",
+        )
+        assertTrue(
+            failure is PipelineStepException,
+            "and the scripted surface fails TYPED. NOTE WHICH TERMINAL THIS ROW INJECTS: a LOST " +
+                "terminal, which carries NO value facts — no exit code was ever observed, so " +
+                "failing closed here is correct and `Status(0)` would be fabrication. This row " +
+                "does NOT certify that a recovered `returnStatus` can never yield its exit code: " +
+                "an `Exited(42)` terminal DOES carry that fact, and the current spine narrowing it " +
+                "before the Step-owned projection is the canonical gap F1-C owns (ADR-S4-R1 §2.7). " +
+                "Got $failure",
+        )
     }
 
+    /**
+     * S4-F1-B — MIGRATED to the canonical authority, and this one gets STRONGER.
+     *
+     * `CoreShellCodec` encodes and decodes `durableFailure` on the canonical durable wire, so the
+     * provenance this test cares about is carried by the product and not by the retired stack. The
+     * migrated row therefore proves a stronger claim than the original, and it proves it in a
+     * stronger PLACE.
+     *
+     * The original read `durableFailure` off the value the runtime handed back, which was decoded by
+     * `JournaledScriptedOperationRuntime`'s own JSON reader. That reader existed only in the retired
+     * class, so the row certified a serialisation nothing else in the repository could produce or
+     * consume. The migrated row reads the provenance back out of the **journal row's encoded
+     * output**, decoded by the same `CoreShellCodec` a real `core.sh` uses. That is what "survives
+     * terminal replay" has to mean if it is to mean anything durable: the record is on the wire, not
+     * in a value that only this stack can build.
+     *
+     * The call itself throws, because a failed `core.sh` fails the Step — that is correct product
+     * behaviour, and the first cut of this row mistook it for a migration defect. The provenance is
+     * in the durable record, so the assertion reads the record.
+     */
     @Test
     fun `durable failure provenance survives terminal replay`() = runBlocking {
         val provenance = FailureRecord(
@@ -291,39 +418,72 @@ class ScriptedScopeTest {
             details = mapOf("controlDir" to "/tmp/control"),
         )
         var launches = 0
-        val runtime = JournaledScriptedOperationRuntime(
-            journal = InMemoryOperationJournal(SystemClock()),
-            clock = SystemClock(),
-            effectRuntime = ScriptedOperationRuntime {
-                launches += 1
-                settled(
-                    ShellInvocationResult.Failed(
-                        failure = PipelineFailure(FailureKind.INFRASTRUCTURE, "worker disappeared"),
-                        durableFailure = provenance,
-                    ),
+        val (invoker, journal, registry) = shellSpine(
+            onLaunch = { launches += 1 },
+            resultFor = {
+                ShellInvocationResult.Failed(
+                    failure = PipelineFailure(FailureKind.INFRASTRUCTURE, "worker disappeared"),
+                    durableFailure = provenance,
                 )
             },
         )
-        val operation = ScriptedOperation(
-            definitionDigest = "test-v1",
-            entryPointId = "main",
-            callSiteId = ScriptedCallSiteId("scripted-test/provenance"),
-            dynamicScopePath = emptyList(),
-            invocationOrdinal = 0,
-            command = dev.rubentxu.pipeline.v2.domain.ShellCommand("exit 1"),
+        val runtime = ScriptedRuntime(
+            operationRuntime = RegistryScriptedShellRuntime(invoker),
+            callSites = ScriptedCallSiteProvider.fixed("scripted-test/provenance"),
         )
 
-        val initial = runtime.invoke(operation).value as ShellInvocationResult.Failed
-        val replayed = runtime.invoke(operation).value as ShellInvocationResult.Failed
+        val failure = runCatching {
+            runtime.run(definitionDigest = "test-v1", entryPointId = "main") {
+                sh(script = "exit 1", returnStatus = ReturnStatus)
+            }
+        }.exceptionOrNull()
+        assertTrue(
+            failure is PipelineStepException,
+            "a failed shell fails the Step, and the provenance is in the DURABLE record rather than " +
+                "in a returned value. Got $failure",
+        )
 
-        assertEquals(provenance, initial.durableFailure)
-        assertEquals(provenance, replayed.durableFailure)
-        assertEquals(1, launches)
+        // The record, decoded by the product's OWN codec — taken from the registry CONTRACT, not a
+        // private reference and not a re-implementation. The cast is about the static type only; if
+        // the definition were not `core.sh`'s, the decode and the assertions below would fail rather
+        // than quietly pass.
+        val output = journal.listForRun("test-v1").single().output
+        assertTrue(
+            output != null,
+            "the failed terminal still persisted its encoded output, which is where the " +
+                "provenance lives. A `null` here would mean the wire lost information the value " +
+                "object still had — the R14 defect, one layer down.",
+        )
+        val definition = registry.definition(CoreShellStep.KEY)
+        assertTrue(
+            definition != null,
+            "PRECONDITION: `core.sh` is registered, so its codec is reachable from the registry " +
+                "contract rather than hardcoded here.",
+        )
+        @Suppress("UNCHECKED_CAST")
+        val contract = (definition as StepDefinition<Any, CoreShellOutput>).contract
+        val decoded = contract.outputCodec.decode(
+            EncodedStepValue(output!!.result.jsonPrimitive.content),
+        )
+        val decodedFailure = decoded.result as ShellInvocationResult.Failed
+        assertEquals(
+            provenance,
+            decodedFailure.durableFailure,
+            "the provenance round-trips through the canonical durable wire: encoded by the " +
+                "product's codec on the way out, decoded by the same codec on the way back. This " +
+                "is the claim the retired row could not make — its reader existed only inside the " +
+                "class being deleted.",
+        )
+        assertEquals(
+            1,
+            launches,
+            "and the effect ran once: reading the record is replay, not a second launch.",
+        )
     }
 
     @Test
     fun `compiled entry point replays explicit source call sites without reinvoking effects`() = runBlocking {
-        val (invoker, journal) = shellSpine()
+        val (invoker, journal, _) = shellSpine()
         val runtime = ScriptedArtifactRuntime(
             operationRuntime = ScriptedOperationRuntime { error("sh is registry-routed") },
             registryInvoker = invoker,
@@ -425,7 +585,7 @@ class ScriptedScopeTest {
 
     @Test
     fun `generated loop scopes keep repeated call sites distinct and replayable`() = runBlocking {
-        val (invoker, journal) = shellSpine()
+        val (invoker, journal, _) = shellSpine()
         val runtime = ScriptedArtifactRuntime(
             operationRuntime = ScriptedOperationRuntime { error("sh is registry-routed") },
             registryInvoker = invoker,
@@ -455,7 +615,7 @@ class ScriptedScopeTest {
 
     @Test
     fun `nested generated scopes restore the parent path after their block`() = runBlocking {
-        val (invoker, journal) = shellSpine()
+        val (invoker, journal, _) = shellSpine()
         val runtime = ScriptedArtifactRuntime(
             operationRuntime = ScriptedOperationRuntime { error("sh is registry-routed") },
             registryInvoker = invoker,

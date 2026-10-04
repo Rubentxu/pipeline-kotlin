@@ -11,13 +11,14 @@ import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
  * ## Why this type exists
  *
  * The eager [ScriptedScope.sh] surface reaches durable execution through the
- * [ScriptedOperationRuntime] seam. That seam had a second implementation,
- * [JournaledScriptedOperationRuntime], which journaled a hardcoded
- * `scripted.core.sh` namespace and then called `ShExecution.invokeShell`
- * directly. It never consulted `StepRegistry`, so it never ran
- * `RegistryExecutionPreparation`, and therefore never admitted the
+ * [ScriptedOperationRuntime] seam. That seam HAD a second implementation —
+ * the `JournaledScriptedOperationRuntime` of old, deleted in S4-F1-B — which
+ * journaled a hardcoded `scripted.core.sh` namespace and then called
+ * `ShExecution.invokeShell` directly. It never consulted `StepRegistry`, so it
+ * never ran `RegistryExecutionPreparation`, and therefore never admitted the
  * `SHELL_OPERATIONS_CAPABILITY` that `core.sh` declares. A declarative `sh` in
- * the same product does check it. That asymmetry is a security-boundary defect.
+ * the same product does check it. That asymmetry was a security-boundary defect,
+ * and the second implementation is now gone rather than merely unreachable.
  *
  * ## Why it is not reachable today, and why that is not a reason to keep it
  *

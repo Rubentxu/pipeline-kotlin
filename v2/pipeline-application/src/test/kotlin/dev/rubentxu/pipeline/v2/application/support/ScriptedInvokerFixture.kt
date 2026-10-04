@@ -14,6 +14,7 @@ import dev.rubentxu.pipeline.v2.application.durable.ExternalSubprocessRecovery
 import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.application.durable.RecoveryInterpretationEngine
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary
+import dev.rubentxu.pipeline.v2.application.durable.RunningSubprocessRecovery
 import dev.rubentxu.pipeline.v2.application.durable.toStepOutcome
 import dev.rubentxu.pipeline.v2.application.scripted.ScriptedOperationResult
 import dev.rubentxu.pipeline.v2.application.scripted.ScriptedRegistryCall
@@ -75,6 +76,7 @@ internal object ScriptedInvokerFixture {
         shOptions: ShOptions = ShOptions.EMPTY,
         capabilityAccessFactory: (CanonicalRuntimeContext) -> CanonicalRuntimeCapabilityAccess =
             { CanonicalRuntimeCapabilityAccess(it) },
+        runningSubprocessRecovery: RunningSubprocessRecovery? = null,
     ): ScriptedRegistryInvoker = ScriptedRegistryInvoker(
         registry = registry,
         journal = journal,
@@ -84,7 +86,15 @@ internal object ScriptedInvokerFixture {
             divergenceDetector = StrictFingerprintDivergenceDetector(),
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             journal = journal,
-            runningSubprocessRecovery = ExternalSubprocessRecovery(clock, controlDirRoot),
+            // S4-F1-B — the substrate observation is the ONE thing a harness legitimately
+            // substitutes, because it is the boundary. `null` keeps the real
+            // `ExternalSubprocessRecovery`, which is what every other scripted harness wants and
+            // what production composes. Supplying a value replaces the OBSERVATION, never the
+            // authority: the resolver still decides applicability and the interpreter still
+            // persists. A harness that substituted the decision instead would be the second
+            // authority this fixture exists to prevent.
+            runningSubprocessRecovery = runningSubprocessRecovery
+                ?: ExternalSubprocessRecovery(clock, controlDirRoot),
         ),
         stepExecutor = DurableStepExecutor(
             eventSink = eventSink,

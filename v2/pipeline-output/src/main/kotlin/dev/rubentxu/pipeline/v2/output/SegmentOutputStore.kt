@@ -390,14 +390,12 @@ class SegmentOutputStore(
                     }
                     if (read == 0) break
                     val reservation = reserve(windowBytes)
-                    try {
-                        reservation.write(window.copyOf(read))
-                        committed = reservation.commit()
-                    } catch (failure: Throwable) {
-                        // The reservation is already durable; leave it for recovery rather than
-                        // pretending the bytes never existed.
-                        throw failure
-                    }
+                    // No try/catch around this: if the write or the commit fails, the reservation
+                    // is already durable and is deliberately left on disk for recover() to release.
+                    // Swallowing it here would strand it; catching it just to rethrow would be a
+                    // no-op with a comment attached.
+                    reservation.write(window.copyOf(read))
+                    committed = reservation.commit()
                 }
             }
             return committed

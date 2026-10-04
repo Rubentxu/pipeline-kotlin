@@ -236,7 +236,7 @@ object OutputAdoption {
     }
 
     /** The refusal that must survive into every conformance artefact. */
-    val POWER_LOSS_NOT_CLAIMED: String =
+    const val POWER_LOSS_NOT_CLAIMED: String =
         "A process that dies loses nothing it acknowledged. That is the proven property. Durability " +
             "across power loss is NOT claimed and is not authorisable without a demonstrated fsync " +
             "discipline (data, then metadata and index)."

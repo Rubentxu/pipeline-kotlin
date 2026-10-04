@@ -40,6 +40,12 @@ object CompiledPipelineValidator {
                 is StageBody.Matrix -> require(body.matrix.axes.isNotEmpty()) {
                     "Matrix stage '${stage.name}' must define at least one axis"
                 }
+                // S4-F2: a scripted body is validated BY CONSTRUCTION. `ScriptedStageRef`'s init
+                // rejects a blank artifact key or entry point, so there is nothing left to assert
+                // here and inventing an assertion would only be a restatement of the type. What
+                // cannot be checked statically is whether the artifact RESOLVES, and that is an
+                // edge concern answered fail-closed at dispatch, not a compile-time property.
+                is StageBody.Scripted -> Unit
             }
             stage.post?.conditions?.values?.flatten()?.forEach { step ->
                 visitStep(step, "post-condition of stage '${stage.name}'", depth = 0)

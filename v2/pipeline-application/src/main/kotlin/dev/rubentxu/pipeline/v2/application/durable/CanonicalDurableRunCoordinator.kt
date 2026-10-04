@@ -500,8 +500,8 @@ class CanonicalDurableRunCoordinator(
                     }
                     continue@stagesLoop
                 }
-                val steps1 = steps
-                    ?: throw IllegalArgumentException("Canonical durable coordinator supports only linear or parallel stage bodies")
+                // Fail closed on a body shape this spine does not run, and NAME the shape.
+                val steps1 = steps ?: throw IllegalArgumentException("Unsupported ${stage.body::class.simpleName} in '${stage.name}'")
                 // D5: Per-stage workspaceRoot override at dispatch boundary
                 // C1: Workspace pre-creation - ensure stage workspace exists before shell dispatch
                 // LFC-2 / ERR-S-004: restore stage bookends lost in the LF-0208 spine migration.

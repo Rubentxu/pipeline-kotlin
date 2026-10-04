@@ -265,6 +265,56 @@ sealed interface StageBody {
     data class Parallel(val branches: List<StageNode>) : StageBody
     @Serializable
     data class Matrix(val matrix: MatrixSpec) : StageBody
+
+    /**
+     * S4-F2 (ADR-S4-F2) — a stage whose body is a COMPILED SCRIPTED ARTIFACT.
+     *
+     * A distinct case rather than a flag, and the distinction is not cosmetic: it makes a hybrid
+     * body unrepresentable instead of merely discouraged. A stage that mixes eager steps with
+     * runtime calls has no defined lexical ordering between them, and a flag would let it be
+     * written down before anyone had decided what that ordering means.
+     *
+     * The payload is an IDENTITY, not the artifact. `pipeline-domain` deliberately depends on
+     * nothing but kotlinx-serialization and coroutines, so it cannot name `ScriptedArtifactIdentity`
+     * (owned by `pipeline-scripting-api`) or `CompiledScriptedEntryPoint` (owned by
+     * `pipeline-application`) without inverting the dependency. The IR therefore carries the key
+     * the artifact's own identity already produced, and the EDGE resolves it — the same arrangement
+     * as `PluginStepId` naming a Step that lives in a registry.
+     */
+    @Serializable
+    data class Scripted(val ref: ScriptedStageRef) : StageBody
+}
+
+/**
+ * S4-F2 — reference to a compiled scripted artifact, carrying only what the canonical spine needs
+ * in order to RECONCILE a stage: which artifact, and which entry point inside it.
+ *
+ * ## Why this holds a key and not the six identity fields
+ *
+ * `ScriptedArtifactIdentity` owns `sourceDigest`, `dslApiVersion`, `compilerAdapterVersion`,
+ * `runtimeCompatibilityVersion`, `pluginLockDigest` and `facadeSchemaDigest`, plus
+ * `fingerprintMaterial()` — the collision-free material the replay fingerprint already consumes.
+ *
+ * Copying those six fields here would create a SECOND authority for the same identity, and two
+ * authorities that decide the same thing get eliminated rather than synchronised. So the computation
+ * stays where it lives and this type transports its result.
+ *
+ * ## What this boundary does and does not lose
+ *
+ * It loses the ARTIFACT, which is executable and not serialisable, and keeps its IDENTITY, which is
+ * the only thing the spine needs. The same rule as `classifyShellTerminal` receiving a terminal
+ * instead of an `OperationStatus`: the fact travels, its meaning is applied by whoever owns it.
+ */
+@Serializable
+data class ScriptedStageRef(
+    /** `ScriptedArtifactIdentity.fingerprintMaterial()`. Never recomputed here. */
+    val artifactKey: String,
+    val entryPointId: String,
+) {
+    init {
+        require(artifactKey.isNotBlank()) { "ScriptedStageRef.artifactKey must not be blank" }
+        require(entryPointId.isNotBlank()) { "ScriptedStageRef.entryPointId must not be blank" }
+    }
 }
 
 @kotlinx.serialization.Polymorphic

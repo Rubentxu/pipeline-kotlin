@@ -52,6 +52,14 @@ object CompiledExecutionPlanner {
                     units += CompiledExecutionUnit.Concurrent(branchSteps)
                 }
                 is StageBody.Matrix -> error("Matrix planning is not supported yet for stage '${stage.name}'")
+
+                // S4-F2: a scripted body contributes NO static unit, and that is a fact rather
+                // than a gap. The planner enumerates structure known at COMPILE time, and a
+                // scripted body has none by construction: its steps are produced at RUN time by
+                // the artifact. Emitting a placeholder unit here would be the declarative
+                // "fake runtime return" the semantic constitution forbids, and emitting nothing
+                // leaves the run with nothing to dispatch statically — which is the truth.
+                is StageBody.Scripted -> Unit
             }
         }
 

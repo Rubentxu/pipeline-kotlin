@@ -56,7 +56,7 @@ class SharedModelCompositionFitnessTest {
 
     private val sharedModel = listOf(
         SharedType("ReplayPolicy", "pipeline-domain", setOf("pipeline-application")),
-        SharedType("OperationStatus", "pipeline-domain", setOf("pipeline-application", "pipeline-events")),
+        SharedType("OperationStatus", "pipeline-domain", setOf("pipeline-application", "pipeline-events-store")),
         SharedType("BlockSegment", "pipeline-domain", setOf("pipeline-application")),
         SharedType("RecoveryPolicy", "pipeline-domain", setOf("pipeline-application")),
         SharedType("BodyExecutionPolicy", "pipeline-domain", setOf("pipeline-application")),

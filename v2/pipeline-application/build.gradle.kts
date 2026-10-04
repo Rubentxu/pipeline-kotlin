@@ -112,6 +112,36 @@ tasks.test {
     dependsOn(":pipeline-application:installDist")
     dependsOn(":buildExamplePlugin", ":buildExternalDirectivePlugin", ":buildExampleBlockPlugin")
     useJUnitPlatform()
+
+    // ── Cross-module inputs, declared ────────────────────────────────────────────
+    //
+    // A handful of tests here read OTHER modules on purpose, because the law they enforce is about
+    // a boundary rather than about code in this one: `RetentionAuthorityFitnessTest` scans
+    // `:pipeline-output` and `:pipeline-output-store` and reads their `build.gradle.kts`, and
+    // `A4_8LegacyRegistrySemanticParityTest` walks the source trees of `:pipeline-domain` and both
+    // event plane modules.
+    //
+    // BLOCK 2 widened that set: the Output Plane and the event plane each became two modules, and a
+    // fitness that named one of the halves was silently measuring half of a plane it claimed to
+    // cover. Gradle's up-to-date check only sees declared inputs, and none of those reads went
+    // through this test source set — so editing the module a fitness watches left the task
+    // UP-TO-DATE and the guard reporting its previous answer.
+    //
+    // Per module rather than one tree rooted at `v2`: rooting there makes the declared input
+    // overlap every other module's build directory and Gradle refuses the task. The obvious fix,
+    // `exclude("**/build/**")`, is forbidden by `FArch011V2NoCompileExcludesTest`, which rejects the
+    // token `exclude(` in any build file — and it is right to. Naming each module's own directories
+    // avoids the overlap without the token.
+    val crossModuleDirs = rootProject.subprojects.map { it.projectDir }
+
+    inputs.files(crossModuleDirs.map { it.resolve("build.gradle.kts") })
+        .withPropertyName("crossModuleBuildFiles")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+
+    inputs.files(crossModuleDirs.map { it.resolve("src/main/kotlin") })
+        .withPropertyName("crossModuleProductionSources")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+
     // WU-RP-005 (docs/v2/07-uat/WU_RP_005_TEST_EFFICIENCY_RECEIPT.md):
     // measured decision under AGENTS.md rule 11 exception path. The suite is
     // dominated by ~5s-per-fork installed-CLI invocations with no timing

@@ -48,6 +48,11 @@ dependencies {
     // only java.sql, so the driver is a classpath fact rather than a compile-time one.
     implementation(libs.sqlite.jdbc)
 
+    // Test-only. `RealHistoryParityTest` lives here rather than in `:pipeline-event-harness`
+    // because it drives a real `JsonEventLog`, and the harness is a leaf that may depend only
+    // inward on the contract — see `FArch020EventHarnessIsolationTest`. The harness's own contract
+    // test stays there; the parity test belongs beside the store it reads.
+    testImplementation(project(":pipeline-event-harness"))
     testImplementation(libs.kotlin.reflect)
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")

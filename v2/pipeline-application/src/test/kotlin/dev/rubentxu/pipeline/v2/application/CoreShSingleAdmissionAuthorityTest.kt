@@ -83,7 +83,7 @@ class CoreShSingleAdmissionAuthorityTest {
         source.fileName.toString() == "CoreShSingleAdmissionAuthorityTest.kt"
 
     /** Matches a top-level function or `suspend fun` declaration, capturing its name. */
-    private val FUNCTION_DECLARATION = Regex("""^(?:@\w+\s+)*(?:public |internal |private )?(?:suspend )?fun\s+(\w+)""")
+    private val functionDeclaration = Regex("""^(?:@\w+\s+)*(?:public |internal |private )?(?:suspend )?fun\s+(\w+)""")
 
     private fun Path.relativeToV2(): String = toString().removePrefix("$v2Root/").removePrefix("$v2Root\\")
 
@@ -237,7 +237,7 @@ class CoreShSingleAdmissionAuthorityTest {
         var current: String? = null
         val body = StringBuilder()
         for (line in text.lines()) {
-            val declaration = FUNCTION_DECLARATION.find(line.trim())
+            val declaration = functionDeclaration.find(line.trim())
             if (declaration != null) {
                 current?.let { result[it] = body.toString() }
                 current = declaration.groupValues[1]

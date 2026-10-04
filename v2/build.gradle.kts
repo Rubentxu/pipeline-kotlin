@@ -47,7 +47,32 @@ repositories {
 //
 // No breaking commits; pipeline-domain.api is purely additive (+21/-0), so the 0.x
 // convention keeps the MINOR bump: 0.45.0 -> 0.46.0.
-version = "0.46.0"
+//
+// S4 train, derived from history since v0.46.0 (63ef3220):
+//
+//     docs(adr)             de1c812c  ADR-S4-F2 ACCEPTED — StageBody.Scripted de primera clase
+//     feat(domain)          0c04b543  StageBody.Scripted y ScriptedStageRef (base de F2)
+//     refactor(durable)     fa72c901  una sola regla de finalizacion de stage (B0)
+//     Merge:                9deaa9f9  absorbe el M1 Output Plane (8 commits, SHAs preservados)
+//     fix(s4-m1)            294aea19  una sola autoridad de salida de proceso (B1)
+//     test(output)          63dda75f  el contrato medido del plano para un paso sin salida (B2a)
+//     feat(output)          051fb610  autoridad de retencion propia del Output Plane (B2b)
+//     fix(output)           4f82fd3a  soltar una reserva nunca falla ni inventa bytes (B2c)
+//     fix(test)             (este)    el corpus release-scale vuelve a mirar donde estan los bytes
+//
+// `v0.46.0` remains a certified, immutable tag over the bytes at 63ef3220 and is NOT reused.
+// New public surface arrives rather than being removed: a new `pipeline-output` module
+// (OutputStore, the four ports, OutputCursor), `StageBody.Scripted`, and the durable/process
+// transcript separation. Nothing pre-existing was taken away, so the 0.x convention takes the
+// MINOR component: 0.46.0 -> 0.47.0. MINOR rather than PATCH because the added module and the
+// added `StageBody` case both change what a consumer can build against, and because
+// `EchoOutputCaptured` stops carrying process output — which is a semantic change even though the
+// type still exists.
+//
+// TRAIN P3 identity law below: the product version is final from the moment the candidate is
+// built, and the tag is applied afterwards to exactly the certified bytes. So this line opens the
+// 0.47.0 train WITHOUT creating a tag and WITHOUT claiming certification.
+version = "0.47.0"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

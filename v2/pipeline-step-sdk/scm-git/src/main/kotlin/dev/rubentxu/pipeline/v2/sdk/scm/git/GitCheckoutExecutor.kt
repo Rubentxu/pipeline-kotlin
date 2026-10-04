@@ -262,7 +262,7 @@ open class GitCheckoutExecutor(
             }
 
             // SHA different - fetch and reset
-            val fetchResult = gitFetch(req, workspace, env)
+            val fetchResult = gitFetch(workspace, env)
             if (fetchResult.isFailure) {
                 val durationMs = System.currentTimeMillis() - startMs
                 emitEvent(req, GitCheckoutFailed(
@@ -278,7 +278,7 @@ open class GitCheckoutExecutor(
                 return Result.failure(fetchResult.exceptionOrNull() ?: IllegalStateException("Fetch failed"))
             }
 
-            val resetResult = gitResetHard(req, workspace, remoteSha, env)
+            val resetResult = gitResetHard(workspace, remoteSha, env)
             if (resetResult.isFailure) {
                 val durationMs = System.currentTimeMillis() - startMs
                 emitEvent(req, GitCheckoutFailed(
@@ -316,7 +316,7 @@ open class GitCheckoutExecutor(
 
         // No .git - clone
         Files.createDirectories(workspace)
-        val cloneResult = gitClone(req, url, branch, workspace, env)
+        val cloneResult = gitClone(url, branch, workspace, env)
         if (cloneResult.isFailure) {
             val durationMs = System.currentTimeMillis() - startMs
             emitEvent(req, GitCheckoutFailed(
@@ -459,7 +459,7 @@ open class GitCheckoutExecutor(
         }
     }
 
-    private fun gitFetch(req: GitCheckoutRequest, workspace: Path, env: Map<String, String>): Result<Unit> {
+    private fun gitFetch(workspace: Path, env: Map<String, String>): Result<Unit> {
         return try {
             val args = listOf("git", "-C", workspace.toString(), "fetch")
             val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 1000)
@@ -470,7 +470,7 @@ open class GitCheckoutExecutor(
         }
     }
 
-    private fun gitResetHard(req: GitCheckoutRequest, workspace: Path, sha: String, env: Map<String, String>): Result<Unit> {
+    private fun gitResetHard(workspace: Path, sha: String, env: Map<String, String>): Result<Unit> {
         return try {
             val args = listOf("git", "-C", workspace.toString(), "reset", "--hard", sha)
             val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 1000)
@@ -481,7 +481,7 @@ open class GitCheckoutExecutor(
         }
     }
 
-    private fun gitClone(req: GitCheckoutRequest, url: String, branch: String, workspace: Path, env: Map<String, String>): Result<Unit> {
+    private fun gitClone(url: String, branch: String, workspace: Path, env: Map<String, String>): Result<Unit> {
         return try {
             val args = listOf("git", "clone", "--branch", branch, url, workspace.toString())
             val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 2 * 1000)

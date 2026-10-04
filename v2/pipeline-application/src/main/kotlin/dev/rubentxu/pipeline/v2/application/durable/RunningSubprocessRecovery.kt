@@ -54,9 +54,9 @@ import java.nio.file.Path
  * is an observer that can be asked to skip recovery, and a caller must not be able to declare its
  * own way out of it.
  *
- * @see RecoveryObservation for why the vocabulary lives next to the port rather than beside the
- *   decision: conflating "what I decided" with "what I saw" is the same category error that let
- *   the three facts share one sentinel.
+ * @see RunningSubprocessObservation for why the vocabulary lives next to the port rather than
+ *   beside the decision: conflating "what I decided" with "what I saw" is the same category error
+ *   that let the three facts share one sentinel.
  */
 internal fun interface RunningSubprocessRecovery {
 

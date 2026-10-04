@@ -32,6 +32,7 @@
                     <ID>LongMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$suspend fun run: RunOutcome</ID>
     <ID>LongMethod:Main.kt:fun main</ID>
     <ID>LongMethod:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$override fun publish: PublishHtmlResult</ID>
+    <ID>LongMethod:StepDispatchEngine.kt:StepDispatchEngine$suspend fun dispatch: Dispatched</ID>
     <ID>LongMethod:UatLocal002ResumeAfterKillTest.kt:UatLocal002ResumeAfterKillTest$@Test fun `resume after kill reads result txt no reexec`</ID>
     <ID>LongMethod:WaitUntilEngine.kt:WaitUntilEngine$suspend fun execute: StepOutcome</ID>
     <ID>MaxLineLength:CanonicalCoordinatorScopeStackTest.kt:CanonicalCoordinatorScopeStackTest$"""{"kind":"CatchErrorEntered","buildResult":"UNSTABLE","stageResult":"UNSTABLE","enteredAt":"${System.currentTimeMillis()}"}"""</ID>

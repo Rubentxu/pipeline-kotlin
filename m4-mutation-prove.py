@@ -18,7 +18,7 @@ CURSOR = ROOT / "v2/pipeline-output/src/main/kotlin/dev/rubentxu/pipeline/v2/out
 BACKUP = {p: p.read_text() for p in (STORE, CURSOR)}
 
 LOSSLESS = "a deterministic stream of pseudo-random bytes round-trips with no missing or duplicated byte"
-RANGE = "an arbitrary range of a long stream equals the same slice of the whole read"
+PAST_COMMIT = "a range that ends past the committed extent is refused, never clamped"
 RESTART = "a restart mid-stream resumes at the committed offset with no gap and no repeat"
 IDEMPOTENT = "recovery is safe to run twice, and after an interrupted recovery"
 DANGLING = "a commit count ahead of the readable bytes is treated as uncommitted, not as content"
@@ -47,15 +47,44 @@ MUTATIONS = [
         "                unbackedBytes += maxOf(0L, committedLocked(layout) - readableEndLocked(layout))",
         "                unbackedBytes += 0L",
     ),
+    # Q5 IS RETIRED, and the cause is now established. The earlier session recorded it as an
+    # unexplained hole. It is not a hole, and it is not weak coverage: `readRange` has NO clamping
+    # branch to mutate. It refuses first -
+    #
+    #     if (to > extent) return Refused(OffsetBeyondCommitted(to, extent))
+    #     readRangeLocked(layout, stream, from, to)
+    #
+    # - so by the time the mutated call site is reached, `to <= extent` holds and
+    # `minOf(to, extent)` is identically `to`. The mutation rewrites a term that the guard directly
+    # above it has already pinned. A mutation that cannot fail is a guard that does not exist, and
+    # keeping it would have left a permanent red row that means nothing.
+    #
+    # The real clamping in this store lives on the PAGING path, which is reachable, and Q6 below
+    # kills it. The refusal this mutation appeared to attack is directly tested in
+    # SegmentOutputStoreTest: a range past the committed extent must return
+    # OffsetBeyondCommitted, and an inverted or empty range must return InvalidRange.
+    #
+    # RANGE is therefore not deleted, it is REPOINTED at the mutation the old row was reaching for.
+    # Removing the refusal is reachable, unlike the clamp that followed it.
+    #
+    # Writing that mutation also surfaced a real gap, which is the better half of this story: the
+    # `to > extent` refusal in `readRange` had NO test at all. The paged path proves the refusal for
+    # cursors, and the inverted-range test only ever reached the `to <= from` branch, so nothing
+    # drove `readRange` past the extent. The contract had a branch indistinguishable from its
+    # neighbour. `a range that ends past the committed extent is refused, never clamped` now covers
+    # it, and it is the guard this row is measured against.
+    #
+    # The original `an arbitrary range of a long stream equals the same slice of the whole read`
+    # test is untouched and still valuable; it simply is not what this mutation breaks.
     (
-        # Q5 IS STILL OPEN. The mutation applies and the suite stays green, and the reason was not
-        # established within the session that wrote it. Recorded as an open item rather than as
-        # coverage: the range-agreement test only asks for ranges INSIDE the committed extent, so it
-        # may simply never exercise the clamping branch. Until that is resolved this row is a hole,
-        # and the harness says so.
-        "Q5", "a byte range silently clamps to what is readable instead of refusing", RANGE, STORE,
-        "readRangeLocked(layout, stream, from, to)",
-        "readRangeLocked(layout, stream, from, minOf(to, extent))",
+        "Q5", "a range past the committed extent is clamped instead of refused", PAST_COMMIT, STORE,
+        "            if (to > extent) {\n"
+        "                return@withStreamLock OutputReadResult.Refused(\n"
+        "                    OutputRefusal.OffsetBeyondCommitted(to, extent),\n"
+        "                )\n"
+        "            }\n"
+        "            readRangeLocked(layout, stream, from, to)",
+        "            readRangeLocked(layout, stream, from, minOf(to, extent))",
     ),
     (
         "Q6", "a page is no longer bounded by maxBytes", SLOW, STORE,
@@ -70,7 +99,7 @@ MUTATIONS = [
     (
         "Q8", "recovery is no longer idempotent in the stable field", IDEMPOTENT, STORE,
         "                committedBytes += committedLocked(layout)",
-        "                committedBytes += committedLocked(layout) + reservationsReleased.toLong()",
+        "                committedBytes += committedLocked(layout) + releasedReservations.toLong()",
     ),
     (
         "Q9", "the writer buffers the whole producer instead of one window", WINDOW, STORE,

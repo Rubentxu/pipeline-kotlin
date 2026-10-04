@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.output
 
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Tag
@@ -123,6 +124,43 @@ class OutputPlaneConformanceTest {
                 "range [$from, $to) disagreed with the whole read",
             )
         }
+    }
+
+    @Test
+    fun `a range that ends past the committed extent is refused, never clamped`(@TempDir root: Path) {
+        val store = SegmentOutputStore(root)
+        store.recover()
+        val stream = OutputStreamId("range-beyond")
+        store.open(stream).reserve(8).apply { write(bytes("1234")) }.commit()
+
+        // A range that starts inside the committed extent and ends past it is the exact shape a
+        // sloppy reader produces when it asks for "the rest of the line" without knowing the line
+        // length. Clamping is the tempting implementation and it is the wrong one: the caller asked
+        // for a window it did not get, and a short read that is not announced as a short read is
+        // indistinguishable from a stream that ended. So the store refuses and names the boundary.
+        //
+        // This case was MISSING until a mutation asked for it. `readRange`'s `to > extent` refusal
+        // had no test: the paged path proves the refusal for cursors, and the inverted-range test
+        // only ever reached the `to <= from` branch, so nothing ever drove `to > extent` through
+        // `readRange`. The contract had a branch that no test could distinguish from its neighbour.
+        val refused = assertInstanceOf(
+            OutputReadResult.Refused::class.java,
+            store.readRange(stream, 0, 99),
+            "a range ending past the committed extent must be refused, not clamped to 4 bytes",
+        )
+        assertEquals(
+            OutputRefusal.OffsetBeyondCommitted(requested = 99L, committed = 4L),
+            refused.reason,
+            "the refusal must name the requested end and the committed boundary",
+        )
+
+        // And the boundary itself must still be readable, so the refusal is about exceeding the
+        // extent rather than about ranges being fragile.
+        assertEquals(
+            "1234",
+            (store.readRange(stream, 0, 4) as OutputReadResult.Page).page.bytes.toString(StandardCharsets.UTF_8),
+            "a range ending exactly at the committed extent must be served",
+        )
     }
 
     // ------------------------------------------------------ restart mid-stream

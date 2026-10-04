@@ -435,7 +435,26 @@ class SegmentOutputStore(
         return SealedSegment(base, length, file)
     }
 
+    /**
+     * Shrinks [file] to [size] bytes, and does nothing when that is impossible or unnecessary.
+     *
+     * Two failure modes were closed here, and both were reachable from [OutputReservation.abandon]
+     * on an ordinary path:
+     *
+     * 1. **A file that does not exist.** `FileChannel.open(..., WRITE)` without `CREATE` throws
+     *    `NoSuchFileException`, and a stream that has committed nothing has no `cur.seg` at all. A
+     *    release that throws is the worst possible failure for this method: the caller cannot free
+     *    the range it is trying to free, so the reservation stays outstanding until a recovery pass
+     *    has to rescue it. Truncating nothing to nothing is the correct answer, not an error.
+     * 2. **A size larger than the file.** `FileChannel.truncate` *extends* a file, padding it with
+     *    zero bytes. A release that grew the segment would leave a hole of NULs inside a stream,
+     *    which is precisely the permanent gap [OutputCrashInvariant.I3_ORDER_IS_DENSE] forbids and
+     *    which no reader could tell from real output.
+     */
     private fun truncateTo(file: Path, size: Long) {
+        if (!Files.exists(file)) return
+        val current = Files.size(file)
+        if (size >= current) return
         FileChannel.open(file, StandardOpenOption.WRITE).use { it.truncate(size) }
     }
 

@@ -3,7 +3,6 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
 import dev.rubentxu.pipeline.v2.events.DomainEvent
-import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.FileWritten
 import dev.rubentxu.pipeline.v2.events.GitCheckoutCompleted
 import dev.rubentxu.pipeline.v2.events.JsonEventLog

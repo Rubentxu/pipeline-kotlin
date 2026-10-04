@@ -29,6 +29,9 @@ import java.nio.file.Path
  */
 class SegmentOutputStoreTest {
 
+    /** Payload committed after an empty reservation was released, to prove the stream is reusable. */
+    private val firstBlock = "written after an empty release\n"
+
     private fun bytes(s: String) = s.toByteArray(StandardCharsets.UTF_8)
 
     private fun page(result: OutputReadResult): OutputPage =
@@ -49,6 +52,89 @@ class SegmentOutputStoreTest {
     }
 
     // ------------------------------------------------------------------ basics
+
+    @Test
+    fun `a reservation abandoned before a single byte was written leaves the stream intact`(@TempDir root: Path) {
+        // The half of I6 nobody covered. `crashAfterWriting` above dies between write and commit;
+        // the witness in OutputAdoption says "kill between reserve and write", and that is a
+        // different durable state: `cur.res` exists and `cur.seg` may not exist at all.
+        //
+        // It is also the one a writer hits on the ordinary path — a producer that yields nothing
+        // still took a reservation, and the caller releases it rather than leaking the range.
+        val store = SegmentOutputStore(root)
+        store.recover()
+        val stream = OutputStreamId("run/reserved-never-written")
+        val payload = "committed before the empty reservation\n"
+
+        store.open(stream).reserve(payload.length).apply {
+            write(bytes(payload))
+        }.commit()
+        val committedBefore = store.open(stream).reserve(64)
+
+        committedBefore.abandon()
+
+        // Dense order, and the earlier bytes still readable: releasing an unused range must cost
+        // nothing that was already promised to a reader.
+        val result = store.read(stream, OutputCursor.start(stream), 1024)
+        val page = assertInstanceOf(OutputReadResult.Page::class.java, result, "got $result").page
+        assertEquals(payload, String(page.bytes, StandardCharsets.UTF_8))
+        assertEquals(payload.length.toLong(), store.committedExtent(stream))
+    }
+
+    @Test
+    fun `a reservation abandoned before any write still releases the range for reuse`(@TempDir root: Path) {
+        // The reuse half of the same invariant: abandon() returns the base precisely so the range
+        // can be taken again, and the reused range must land at exactly that offset — dense, with
+        // no hole and no overlap.
+        val store = SegmentOutputStore(root)
+        store.recover()
+        val stream = OutputStreamId("run/empty-reservation-reuse")
+        val first = "first committed block\n"
+
+        store.open(stream).reserve(first.length).apply { write(bytes(first)) }.commit()
+        val base = store.open(stream).reserve(32).abandon()
+        store.open(stream).reserve(first.length).apply { write(bytes(first)) }.commit()
+
+        assertEquals(
+            first.length.toLong(),
+            base,
+            "an unwritten reservation must release from the committed offset, not from its own limit",
+        )
+        // Two commits of the same payload is two blocks of bytes, and reading them back as one
+        // doubled block is the correct answer — the second write is a second acknowledged append,
+        // not a rewrite. What must NOT happen is a hole or an overlap, so the assertion is on the
+        // extent and on both halves, not on a stream that "still looks the same".
+        val extent = store.committedExtent(stream)
+        assertEquals(2L * first.length, extent, "the reused range must extend the stream, not replace it")
+        val result = store.read(stream, OutputCursor.start(stream), 1024)
+        val page = assertInstanceOf(OutputReadResult.Page::class.java, result, "got $result").page
+        assertEquals(first + first, String(page.bytes, StandardCharsets.UTF_8), "the stream must be dense")
+    }
+
+    @Test
+    fun `abandoning a reservation on a stream that never wrote is not an error`(@TempDir root: Path) {
+        // The extreme of the same path: no committed bytes means no `cur.seg` to truncate. Release
+        // has to be total — a caller that took a reservation and got nothing has to be able to give
+        // it back, and the range is still reusable afterwards.
+        val store = SegmentOutputStore(root)
+        store.recover()
+        val stream = OutputStreamId("run/never-written-at-all")
+
+        val base = store.open(stream).reserve(16).abandon()
+
+        assertEquals(0L, base, "nothing was committed, so the range starts at zero")
+        // A reserved-then-released stream is a KNOWN stream holding nothing, not an unknown one:
+        // `reserve` created its directory, so `committedExtent` answers 0 rather than null. The
+        // distinction matters because "empty" is a fact a console can report and "I have never heard
+        // of this run" is not.
+        assertEquals(0L, store.committedExtent(stream), "a released empty reservation leaves an empty stream")
+        // And the stream is still usable afterwards, which is the point of returning the base.
+        store.open(stream).reserve(firstBlock.length).apply { write(bytes(firstBlock)) }.commit()
+        assertEquals(firstBlock.length.toLong(), store.committedExtent(stream))
+        val result = store.read(stream, OutputCursor.start(stream), 1024)
+        val page = assertInstanceOf(OutputReadResult.Page::class.java, result, "got $result").page
+        assertEquals(firstBlock, String(page.bytes, StandardCharsets.UTF_8))
+    }
 
     @Test
     fun `committed bytes read back byte-identical`(@TempDir root: Path) {

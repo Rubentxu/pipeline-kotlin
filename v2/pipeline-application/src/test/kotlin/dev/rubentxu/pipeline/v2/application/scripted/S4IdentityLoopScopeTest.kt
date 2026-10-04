@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import dev.rubentxu.pipeline.v2.application.support.settled
 
 /**
  * S4-IDENTITY I2a — the compiler emits a STRUCTURAL scope for a `for` body.
@@ -388,7 +389,7 @@ class S4IdentityLoopScopeTest {
         val runtime = ScriptedRuntime(
             operationRuntime = ScriptedOperationRuntime { operation ->
                 captured += operation
-                ShellInvocationResult.UnitValue
+                settled(ShellInvocationResult.UnitValue)
             },
             callSites = ScriptedCallSiteProvider.fixed("site"),
         )
@@ -420,7 +421,7 @@ class S4IdentityLoopScopeTest {
         val runtime = ScriptedRuntime(
             operationRuntime = ScriptedOperationRuntime { operation ->
                 captured += operation
-                ShellInvocationResult.UnitValue
+                settled(ShellInvocationResult.UnitValue)
             },
             callSites = ScriptedCallSiteProvider.fixed("site"),
         )

@@ -39,6 +39,7 @@ import java.nio.file.Files
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import dev.rubentxu.pipeline.v2.application.support.settled
 
 @Timeout(10)
 class ScriptedScopeTest {
@@ -126,7 +127,7 @@ class ScriptedScopeTest {
         val runtime = ScriptedRuntime(
             operationRuntime = ScriptedOperationRuntime { operation ->
                 operations += operation
-                ShellInvocationResult.Status(42)
+                settled(ShellInvocationResult.Status(42))
             },
             callSites = ScriptedCallSiteProvider.fixed("scripted-test/sh-status"),
         )
@@ -143,7 +144,7 @@ class ScriptedScopeTest {
     @Test
     fun `returnStdout exposes stdout as a String`() = runBlocking {
         val runtime = ScriptedRuntime(
-            operationRuntime = ScriptedOperationRuntime { ShellInvocationResult.Stdout("main\n") },
+            operationRuntime = ScriptedOperationRuntime { settled(ShellInvocationResult.Stdout("main\n")) },
             callSites = ScriptedCallSiteProvider.fixed("scripted-test/sh-stdout"),
         )
 
@@ -158,7 +159,7 @@ class ScriptedScopeTest {
     fun `default shell failure throws the typed shell exception`() = runBlocking {
         val runtime = ScriptedRuntime(
             operationRuntime = ScriptedOperationRuntime {
-                ShellInvocationResult.Failed(PipelineFailure(FailureKind.SCRIPT, "shell exited with code 7"))
+                settled(ShellInvocationResult.Failed(PipelineFailure(FailureKind.SCRIPT, "shell exited with code 7")))
             },
             callSites = ScriptedCallSiteProvider.fixed("scripted-test/sh-failure"),
         )
@@ -178,7 +179,7 @@ class ScriptedScopeTest {
             clock = SystemClock(),
             effectRuntime = ScriptedOperationRuntime {
                 launches += 1
-                ShellInvocationResult.Status(42)
+                settled(ShellInvocationResult.Status(42))
             },
         )
 
@@ -202,7 +203,7 @@ class ScriptedScopeTest {
             clock = SystemClock(),
             effectRuntime = ScriptedOperationRuntime {
                 launches += 1
-                ShellInvocationResult.Status(0)
+                settled(ShellInvocationResult.Status(0))
             },
         )
 
@@ -295,9 +296,11 @@ class ScriptedScopeTest {
             clock = SystemClock(),
             effectRuntime = ScriptedOperationRuntime {
                 launches += 1
-                ShellInvocationResult.Failed(
-                    failure = PipelineFailure(FailureKind.INFRASTRUCTURE, "worker disappeared"),
-                    durableFailure = provenance,
+                settled(
+                    ShellInvocationResult.Failed(
+                        failure = PipelineFailure(FailureKind.INFRASTRUCTURE, "worker disappeared"),
+                        durableFailure = provenance,
+                    ),
                 )
             },
         )
@@ -310,8 +313,8 @@ class ScriptedScopeTest {
             command = dev.rubentxu.pipeline.v2.domain.ShellCommand("exit 1"),
         )
 
-        val initial = runtime.invoke(operation) as ShellInvocationResult.Failed
-        val replayed = runtime.invoke(operation) as ShellInvocationResult.Failed
+        val initial = runtime.invoke(operation).value as ShellInvocationResult.Failed
+        val replayed = runtime.invoke(operation).value as ShellInvocationResult.Failed
 
         assertEquals(provenance, initial.durableFailure)
         assertEquals(provenance, replayed.durableFailure)

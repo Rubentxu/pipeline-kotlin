@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.scripted
 
+import dev.rubentxu.pipeline.v2.application.durable.toStepOutcome
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
@@ -38,7 +39,25 @@ class JournaledScriptedOperationRuntime(
     private val runningReconciler: RunningScriptedOperationReconciler =
         RunningScriptedOperationReconciler { ScriptedRunningResolution.Unavailable },
 ) : ScriptedOperationRuntime {
-    override suspend fun invoke(operation: ScriptedOperation): ShellInvocationResult {
+    /**
+     * S4-D2 — COMPATIBILITY ADAPTATION, not a redesign.
+     *
+     * The port now carries the outcome beside the value, so this legacy path has to supply one.
+     * It supplies it by REUSING the single classifier authority, [toStepOutcome], on the very
+     * value it already produced — it does not define a new mapping, and it does not branch on
+     * any Step.
+     *
+     * The FRESH path is the exception: the inner [effectRuntime] already decided the outcome, so
+     * that one is propagated verbatim. Re-deriving it here would be a second classification of a
+     * fact that was never lost, which is the defect this slice exists to remove.
+     *
+     * KNOWN LIMITATION, unchanged and not introduced here: [toStepOutcome] has no `Unstable` arm
+     * — `Status` classifies as `Success`. So on THIS path a replayed UNSTABLE shell still reports
+     * `Success`. That is pre-existing behaviour of a class that production never constructs (see
+     * the reachability note in the S4-D2 receipt), and closing it would mean giving the
+     * classifier a `Unstable` arm, i.e. the second semantic implementation the owner ruled out.
+     */
+    override suspend fun invoke(operation: ScriptedOperation): ScriptedOperationResult {
         val input = operation.toOperationInput()
         val fingerprint = Fingerprint.compute(input, SCRIPTED_SHELL_STEP_ID, ReplayPolicy.MEMOIZED, ATTEMPT)
         val operationId = operation.operationId()
@@ -51,14 +70,16 @@ class JournaledScriptedOperationRuntime(
 
         val startedAt = clock.now().toEpochMilli()
         journal.append(operationRecord(operationId, fingerprint, input, OperationStatus.RUNNING, null))
-        val result = effectRuntime.invoke(operation)
+        val settled = effectRuntime.invoke(operation)
         val output = OperationOutput(
-            result = result.toWire(),
+            result = settled.value.toWire(),
             durationMs = (clock.now().toEpochMilli() - startedAt).coerceAtLeast(0),
             finishedAt = clock.now().toEpochMilli(),
         )
-        journal.append(operationRecord(operationId, fingerprint, input, result.toOperationStatus(), output))
-        return result
+        journal.append(
+            operationRecord(operationId, fingerprint, input, settled.value.toOperationStatus(), output),
+        )
+        return settled
     }
 
     private fun operationRecord(
@@ -80,13 +101,13 @@ class JournaledScriptedOperationRuntime(
     private suspend fun DurableOperation.toReplayResult(
         operation: ScriptedOperation,
         fingerprint: Fingerprint,
-    ): ShellInvocationResult = when (status) {
+    ): ScriptedOperationResult = when (status) {
         OperationStatus.SUCCEEDED,
         OperationStatus.FAILED,
         OperationStatus.ABORTED,
         OperationStatus.FAILED_TIMEOUT,
         OperationStatus.LOST,
-        -> output?.result?.jsonObject?.toShellResult()
+        -> output?.result?.jsonObject?.toShellResult()?.classified()
             ?: replayFailure("terminal scripted operation has no serialized result")
 
         OperationStatus.RUNNING -> reconcileRunning(operation, fingerprint)
@@ -96,10 +117,14 @@ class JournaledScriptedOperationRuntime(
         -> replayFailure("scripted operation is not safely replayable from status $status")
     }
 
+    /** S4-D2: the ONE classifier, applied to the ONE value this path already produced. */
+    private fun ShellInvocationResult.classified(): ScriptedOperationResult =
+        ScriptedOperationResult(value = this, outcome = toStepOutcome())
+
     private suspend fun reconcileRunning(
         operation: ScriptedOperation,
         fingerprint: Fingerprint,
-    ): ShellInvocationResult = when (val resolution = runningReconciler.reconcile(operation)) {
+    ): ScriptedOperationResult = when (val resolution = runningReconciler.reconcile(operation)) {
         ScriptedRunningResolution.Unavailable ->
             replayFailure("scripted operation is RUNNING and no durable task can be reattached")
 
@@ -119,7 +144,7 @@ class JournaledScriptedOperationRuntime(
                     output = output,
                 ),
             )
-            resolution.result
+            resolution.result.classified()
         }
     }
 
@@ -188,7 +213,7 @@ class JournaledScriptedOperationRuntime(
                 operationId = requireText("operationId"),
             ),
         )
-        else -> replayFailure("unknown scripted result wire format")
+        else -> replayWireFailure("unknown scripted result wire format")
     }
 
     private fun JsonObject.requireText(name: String): String = this[name]?.jsonPrimitive?.content
@@ -225,9 +250,18 @@ class JournaledScriptedOperationRuntime(
         fields()
     }
 
-    private fun replayFailure(message: String): ShellInvocationResult.Failed = ShellInvocationResult.Failed(
-        PipelineFailure(FailureKind.REPLAY_COMPATIBILITY, message),
-    )
+    /**
+     * S4-D2: the typed failure is built ONCE and the outcome is obtained from the single
+     * classifier, so this method cannot encode a second opinion about what a replay failure is.
+     */
+    private fun replayFailure(message: String): ScriptedOperationResult =
+        replayWireFailure(message).classified()
+
+    /** The BARE failure, for the wire decoder, which returns a value and not a port result. */
+    private fun replayWireFailure(message: String): ShellInvocationResult.Failed =
+        ShellInvocationResult.Failed(
+            PipelineFailure(FailureKind.REPLAY_COMPATIBILITY, message),
+        )
 
     private companion object {
         const val ATTEMPT = 1

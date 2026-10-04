@@ -53,12 +53,14 @@ internal fun runScriptedFrontend(
         )
     }
     return when (outcome) {
+        // S4-D2: the aggregate is ALREADY a RunOutcome, produced by RunOutcomeReducer inside
+        // `runBody`. This branch used to re-derive it from a StepOutcome with a second
+        // hand-written Success/Unstable/Failure table — precedence written twice, with the copy
+        // here able to disagree with the reducer that is supposed to own it. The reducer is now
+        // the only place precedence is expressed, and `Unstable` reaches this line because it was
+        // never dropped upstream rather than because this `when` happens to have a case for it.
         is dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.Outcome.Completed ->
-            when (val aggregate = outcome.aggregate) {
-                is dev.rubentxu.pipeline.v2.domain.StepOutcome.Success -> RunOutcome.Success
-                is dev.rubentxu.pipeline.v2.domain.StepOutcome.Unstable -> RunOutcome.Unstable
-                is dev.rubentxu.pipeline.v2.domain.StepOutcome.Failure -> RunOutcome.Failure(aggregate.failure)
-            }
+            outcome.aggregate
         is dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.Outcome.ArtifactIncompatible -> {
             // Fail closed (compatibility law): never silently replay an incompatible artifact.
             System.err.println("Error: ${outcome.message}")

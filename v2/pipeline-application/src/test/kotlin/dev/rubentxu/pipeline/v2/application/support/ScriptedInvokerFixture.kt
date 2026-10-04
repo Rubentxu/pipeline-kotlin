@@ -14,8 +14,11 @@ import dev.rubentxu.pipeline.v2.application.durable.ExternalSubprocessRecovery
 import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.application.durable.RecoveryInterpretationEngine
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary
+import dev.rubentxu.pipeline.v2.application.durable.toStepOutcome
+import dev.rubentxu.pipeline.v2.application.scripted.ScriptedOperationResult
 import dev.rubentxu.pipeline.v2.application.scripted.ScriptedRegistryCall
 import dev.rubentxu.pipeline.v2.application.scripted.ScriptedRegistryInvoker
+import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
@@ -41,8 +44,19 @@ import java.nio.file.Path
  * algorithm, and it deliberately keeps the REAL `ExternalSubprocessRecovery` so a scripted
  * `sh` that was RUNNING when the process died behaves the way production behaves.
  */
-internal object ScriptedInvokerFixture {
+/**
+ * S4-D2 — test-side adapter for the operation-runtime port.
+ *
+ * S4-D2 made [ScriptedOperationRuntime] return a value AND its canonical outcome. Harnesses that
+ * stand in for a shell have to supply both, and the honest way to do that is to run the value
+ * through the SAME classifier production uses — not to hardcode an expected outcome next to the
+ * result it is supposed to classify. A helper that asserted the outcome would let a test assert
+ * its own premise.
+ */
+internal fun settled(value: ShellInvocationResult): ScriptedOperationResult =
+    ScriptedOperationResult(value = value, outcome = value.toStepOutcome())
 
+internal object ScriptedInvokerFixture {
     /**
      * @param controlDirRoot recovery substrate root AND the runtime context's control root.
      *   Defaults to a fresh temp directory because that is what every scripted harness needs:

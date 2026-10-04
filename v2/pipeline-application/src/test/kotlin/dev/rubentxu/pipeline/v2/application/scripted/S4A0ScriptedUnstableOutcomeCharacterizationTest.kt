@@ -38,6 +38,26 @@ import org.junit.jupiter.api.Test
  * original. That depends on how `ScriptedFrontendRunner` aggregates the
  * per-call results, which this suite does not trace end to end. It is recorded
  * as the open question S4-C must answer, not asserted as a defect.
+ *
+ * ## S4-D2 — this file is half characterization, half non-regression
+ *
+ * The defect measured here is CLOSED by S4-D2, and the history is kept rather than rewritten:
+ *
+ * ```text
+ * BEFORE D2
+ *   Unstable was representable in the ADTs, but it was LOST in scripted.
+ *   Two propagation losses: the invoker collapsed it into Success(encoded),
+ *   and runBody discarded the result and hardcoded Success.
+ *
+ * RESOLVED BY D2
+ *   The representation did NOT change. What was repaired is PROPAGATION:
+ *   the outcome is derived from the typed carrier (outcomeOf) and carried
+ *   beside the value, and the frontend reduces with RunOutcomeReducer.
+ * ```
+ *
+ * The test that characterised the ADT's narrowness still passes — for a different reason, now
+ * stated in its assertion message. The end-to-end non-regression lives in
+ * `S4D2ScriptedUnstablePreservationTest`.
  */
 class S4A0ScriptedUnstableOutcomeCharacterizationTest {
 
@@ -55,19 +75,35 @@ class S4A0ScriptedUnstableOutcomeCharacterizationTest {
     }
 
     @Test
-    fun `CHARACTERIZED - the invoker's result type cannot carry an unstable marker either`() {
-        // The same loss one level up, and the reason widening the durable enum alone
-        // would not be enough: even if the status could say UNSTABLE, this sealed
-        // result has only two cases and neither can express it.
+    fun `CHARACTERIZED then RESOLVED - the invoker result stays narrow on purpose, and the outcome moved`() {
+        // TRANSITION RECORD — this test changed meaning on purpose when S4-D2 landed, and the
+        // change is stated here rather than made silently in the expectation.
+        //
+        //   BEFORE D2
+        //     Unstable WAS representable in the ADTs, but it was LOST in scripted. The invoker
+        //     returned a bare value and the frontend hardcoded Success, so the marker never
+        //     reached the run.
+        //
+        //   RESOLVED BY D2
+        //     The representation did NOT change. `ScriptedRegistryResult` is still exactly
+        //     {Success, Failed} — widening it with an `Unstable` case would have DUPLICATED a
+        //     semantic fact the typed carrier already owns. What was repaired is PROPAGATION:
+        //     `ScriptedTypedResult.from(value)` now derives the outcome from the carrier via
+        //     `outcomeOf`, and the frontend reduces the recorded outcomes with `RunOutcomeReducer`.
+        //
+        // The second half of this test is the non-regression side: the same narrow ADT is now
+        // correct BECAUSE the outcome travels beside the value instead of inside the ADT.
         val cases = ScriptedRegistryResult::class.java.declaredClasses
             .map { it.simpleName }
             .toSet()
         assertTrue(
             cases == setOf("Success", "Failed"),
-            "CHARACTERIZED: ScriptedRegistryResult is exactly $cases — Success carries an " +
-                "encoded output, Failed carries a PipelineFailure. Neither can say 'this " +
-                "succeeded but is unstable', so a consumer of the invoker cannot recover the " +
-                "marker that StepOutcome.Unstable carried.",
+            "RESOLVED BY D2: ScriptedRegistryResult is still exactly $cases, and that is now " +
+                "deliberate. It answers 'did the durable invocation deliver a usable value?', " +
+                "not 'was that value unstable?'. An Unstable case here would be a second " +
+                "authority able to disagree with the typed carrier. The outcome travels in " +
+                "ScriptedTypedResult, which derives it with outcomeOf and cannot be built with " +
+                "a value and a disagreeing outcome.",
         )
     }
 

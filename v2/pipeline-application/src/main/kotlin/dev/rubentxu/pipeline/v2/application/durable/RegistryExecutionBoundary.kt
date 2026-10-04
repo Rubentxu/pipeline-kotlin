@@ -183,9 +183,13 @@ object RegistryExecutionBoundary {
             // output). The boundary stays Step-agnostic — it NEVER branches on
             // `core.sh` or any other concrete StepKey; the typed carrier is the
             // only authority for the outcome projection.
+            //
+            // S4-D2: the projection itself now lives in `outcomeOf`, beside the
+            // carrier, because the scripted frontend needs the identical answer.
+            // Calling it here is what makes the boundary and the scripted path
+            // ONE authority instead of two inline copies of one rule.
             val outcome: dev.rubentxu.pipeline.v2.domain.StepOutcome =
-                (produced as? dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput)?.outcome
-                    ?: dev.rubentxu.pipeline.v2.domain.StepOutcome.Success
+                dev.rubentxu.pipeline.v2.domain.durable.outcomeOf(produced)
             CommonExecutionResult(
                 outcome = outcome,
                 encodedOutput = encoded,

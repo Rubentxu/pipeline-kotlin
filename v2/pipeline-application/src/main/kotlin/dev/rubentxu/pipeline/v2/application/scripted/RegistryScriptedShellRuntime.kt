@@ -47,8 +47,16 @@ internal class RegistryScriptedShellRuntime(
     private val invoker: ScriptedRegistryInvoker,
 ) : ScriptedOperationRuntime {
 
-    override suspend fun invoke(operation: ScriptedOperation): ShellInvocationResult =
-        invoker.invokeTyped(
+    /**
+     * S4-D2: the decoded `CoreShellOutput` carries BOTH the value the program receives and the
+     * canonical outcome. Narrowing to `.result` alone is what discarded the outcome and let an
+     * `Unstable` scripted shell report `Success`; both halves now cross the port.
+     *
+     * No classifier is reimplemented here: `typed.outcome` is `outcomeOf(CoreShellOutput)`, the
+     * same projection the canonical boundary applied when the handler ran.
+     */
+    override suspend fun invoke(operation: ScriptedOperation): ScriptedOperationResult {
+        val typed = invoker.invokeTyped(
             identity = ScriptedScopeIdentity(
                 runId = operation.runId,
                 entryPointId = operation.entryPointId,
@@ -59,5 +67,7 @@ internal class RegistryScriptedShellRuntime(
             invocationOrdinal = operation.invocationOrdinal,
             definition = CoreShellStep.definition,
             input = CoreShellInput(command = operation.command),
-        ).result
+        )
+        return ScriptedOperationResult(value = typed.value.result, outcome = typed.outcome)
+    }
 }

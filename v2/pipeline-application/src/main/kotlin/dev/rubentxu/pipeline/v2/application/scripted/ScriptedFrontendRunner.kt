@@ -9,6 +9,8 @@ import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.application.durable.RecoveryInterpretationEngine
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
+import dev.rubentxu.pipeline.v2.domain.RunOutcome
+import dev.rubentxu.pipeline.v2.domain.RunOutcomeReducer
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
@@ -43,10 +45,19 @@ object ScriptedFrontendRunner {
         val identity: dev.rubentxu.pipeline.v2.scripting.ScriptedArtifactIdentity,
     )
 
-    /** Closed result of one scripted frontend run. */
+    /**
+     * Closed result of one scripted frontend run.
+     *
+     * S4-D2: [Completed.aggregate] is a [RunOutcome], not a [StepOutcome]. It used to be a
+     * `StepOutcome` that [dev.rubentxu.pipeline.v2.application.MainScriptedSupport] then mapped to
+     * a `RunOutcome` with a second hand-written table — so precedence was written twice, and the
+     * copy in the frontend could disagree with the reducer that is supposed to own it. Reducing
+     * here and carrying the result makes `RunOutcome.kt`'s claim true: the run's outcome is
+     * produced by `RunOutcomeReducer` and by nothing else.
+     */
     sealed interface Outcome {
-        /** Body completed; aggregate outcome is the terminal failure if any step failed. */
-        data class Completed(val aggregate: StepOutcome) : Outcome
+        /** Body completed; the aggregate is the single reduction of every recorded outcome. */
+        data class Completed(val aggregate: dev.rubentxu.pipeline.v2.domain.RunOutcome) : Outcome
 
         /** The compiled artifact is incompatible with the current runtime/facade schema. */
         data class ArtifactIncompatible(val message: String) : Outcome
@@ -120,33 +131,55 @@ object ScriptedFrontendRunner {
         // path to a subprocess is one that admits SHELL_OPERATIONS_CAPABILITY.
         val shell = RegistryScriptedShellRuntime(invoker)
 
-        val aggregate: StepOutcome = kotlinx.coroutines.runBlocking {
+        val aggregate: RunOutcome = kotlinx.coroutines.runBlocking {
             runBody(entryPoint, runId, invoker, shell)
         }
         return Outcome.Completed(aggregate)
     }
 
+    /**
+     * S4-D2 — the ONE place a scripted run's outcome is decided.
+     *
+     * The collector is created HERE, above the `try`, and handed to the runtime. That placement
+     * is the whole point: if the runtime owned it, a body that threw would abort the scope that
+     * holds it and the `catch` below could not reach a snapshot, so the failure would never
+     * reach the reducer. Owning it outside is what lets one reduction see every outcome,
+     * including the one that ended the body.
+     *
+     * Precedence is NOT decided here. `RunOutcomeReducer` owns it, once, for the whole run. This
+     * function used to return a hardcoded `StepOutcome.Success` after discarding the runtime's
+     * result, which is how an `Unstable` step reported a successful run; and the frontend then
+     * re-mapped that into a `RunOutcome` with a second table.
+     */
     private suspend fun runBody(
         entryPoint: dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint,
         runId: String,
         invoker: ScriptedRegistryInvoker,
         shell: ScriptedOperationRuntime,
-    ): StepOutcome = try {
-        ScriptedRuntime(
-            operationRuntime = shell,
-            callSites = ScriptedCallSiteProvider {
-                error("Compiled scripted entry points must supply explicit call-site ids")
-            },
-        ).run(
-            definitionDigest = entryPoint.artifact.fingerprintMaterial(),
-            entryPointId = entryPoint.entryPointId,
-            runId = runId,
-        ) {
-            entryPoint.execute(RuntimeScriptedStepFacade(this, invoker))
+    ): RunOutcome {
+        val outcomes = ScriptedOutcomeCollector()
+        try {
+            ScriptedRuntime(
+                operationRuntime = shell,
+                callSites = ScriptedCallSiteProvider {
+                    error("Compiled scripted entry points must supply explicit call-site ids")
+                },
+            ).run(
+                definitionDigest = entryPoint.artifact.fingerprintMaterial(),
+                entryPointId = entryPoint.entryPointId,
+                runId = runId,
+                outcomes = outcomes,
+            ) {
+                entryPoint.execute(RuntimeScriptedStepFacade(this, invoker))
+            }
+        } catch (e: dev.rubentxu.pipeline.v2.domain.PipelineStepException) {
+            // Recorded EXACTLY ONCE, here. `invokeTyped` throws rather than returning a failed
+            // result, so nothing upstream already recorded this failure. It joins the list
+            // instead of short-circuiting the reduction, so `Failure > Unstable > Success` keeps
+            // a single authority.
+            outcomes.record(StepOutcome.Failure(e.failure))
         }
-        StepOutcome.Success
-    } catch (e: dev.rubentxu.pipeline.v2.domain.PipelineStepException) {
-        StepOutcome.Failure(e.failure)
+        return RunOutcomeReducer.reduce(outcomes.snapshot())
     }
 }
 

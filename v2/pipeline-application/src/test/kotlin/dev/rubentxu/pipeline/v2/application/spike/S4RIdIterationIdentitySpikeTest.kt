@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import dev.rubentxu.pipeline.v2.application.support.settled
 
 /**
  * S4-R-ID — SPIKE, measurement only. **Zero production change.**
@@ -84,7 +85,7 @@ class S4RIdIterationIdentitySpikeTest {
         val runtime = ScriptedRuntime(
             operationRuntime = ScriptedOperationRuntime { operation ->
                 recorded += operation
-                ShellInvocationResult.UnitValue
+                settled(ShellInvocationResult.UnitValue)
             },
             callSites = ScriptedCallSiteProvider.fixed("pipeline.kts:1:step"),
         )

@@ -60,13 +60,18 @@ internal class RuntimeScriptedStepFacade(
                 "runtime-returning scripted steps require a registry invoker; " +
                     "wire ScriptedRegistryInvoker into this entry point runtime",
             )
-        return invoker.invokeTyped(
+        // S4-D2: `invokeTyped` hands back the value AND the canonical outcome. The outcome is
+        // recorded here — the one place that sees every runtime-returning call — and only the
+        // value crosses into Kotlin. The program never sees, and must never set, the outcome.
+        val settled = invoker.invokeTyped(
             identity = scope.identity,
             callSiteId = callSite,
             invocationOrdinal = scope.nextOrdinal(callSite),
             definition = definition,
             input = input,
         )
+        scope.recordOutcome(settled.outcome)
+        return settled.value
     }
 
     override suspend fun <T> scoped(

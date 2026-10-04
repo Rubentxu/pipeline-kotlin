@@ -35,13 +35,79 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-/** Closed outcome of one scripted registry-step invocation. Never a fabricated value. */
+/**
+ * Closed outcome of one scripted registry-step invocation. Never a fabricated value.
+ *
+ * This ADT is about DELIVERY, not semantics. It answers "did the durable invocation hand the
+ * program a usable value?", and it deliberately does not answer "was that value unstable?":
+ *
+ * - [Success] — the durable invocation produced or restored a usable ENCODED value. It says
+ *   nothing about the Step's semantic outcome, which is recovered from the decoded value through
+ *   [dev.rubentxu.pipeline.v2.domain.durable.outcomeOf].
+ * - [Failed] — the invocation CANNOT deliver a value to the program. This is broader than a
+ *   transport error: it also covers a real semantic `StepOutcome.Failure`, a replay/protocol
+ *   incompatibility, an admission refusal, and a payload the Step's own codec cannot decode.
+ *
+ * Widening this ADT with a `Unstable` case would duplicate a semantic fact the typed carrier
+ * already owns, and would create a second authority able to disagree with it.
+ */
 sealed interface ScriptedRegistryResult {
-    /** The step succeeded; [encodedOutput] is the step's typed output in wire form. */
+    /**
+     * The invocation delivered a usable encoded value: either freshly executed, or restored from
+     * the journal. NOT "the Step succeeded" — the semantic outcome lives in the decoded value.
+     */
     data class Success(val encodedOutput: EncodedStepValue) : ScriptedRegistryResult
 
-    /** The step executed (fresh or reconciled) and failed; carries the typed failure. */
+    /** The invocation cannot deliver a value to the program; carries the typed reason. */
     data class Failed(val failure: PipelineFailure) : ScriptedRegistryResult
+}
+
+/**
+ * S4-D2 — what [ScriptedRegistryInvoker.invokeTyped] hands back: the decoded value the Kotlin
+ * program receives, and the canonical outcome recovered from it.
+ *
+ * Both frontend call paths need both halves. The program needs the value; the run needs the
+ * outcome. Returning only the value is what made `Unstable` unrepresentable at this seam.
+ *
+ * ## The carrier TRANSPORTS; it never CLASSIFIES
+ *
+ * The constructor is private and the only way in is [from], which derives the outcome from the
+ * value it is given. A public `ScriptedTypedResult(value, outcome)` would permit
+ *
+ * ```kotlin
+ * ScriptedTypedResult(value = unstableCarrier, outcome = StepOutcome.Success)   // illegal
+ * ```
+ *
+ * and that is precisely the defect this slice removes: two sources of truth about one fact,
+ * free to disagree. Here they cannot be built apart.
+ *
+ * ## Why there is no separate "outcome the boundary already decided" factory
+ *
+ * Because the invoker does not use the boundary's `StepOutcome` at all. FRESH and REUSE both
+ * arrive here as `Success(encoded)`, are decoded by the Step's own `outputCodec`, and read the
+ * outcome from the decoded carrier. That single line is what makes
+ * `outcome(FRESH) == outcome(REUSE)` true BY CONSTRUCTION. Threading the boundary's outcome
+ * alongside it would reintroduce two answers to the same question — the canonical one and the
+ * scripted one — which is the two-authority shape ADR-0103 R1-E removed.
+ */
+class ScriptedTypedResult<O : Any> private constructor(
+    val value: O,
+    val outcome: dev.rubentxu.pipeline.v2.domain.StepOutcome,
+) {
+    companion object {
+        /** The only construction: the outcome is DERIVED, never supplied. */
+        fun <O : Any> from(value: O): ScriptedTypedResult<O> = ScriptedTypedResult(
+            value = value,
+            outcome = dev.rubentxu.pipeline.v2.domain.durable.outcomeOf(value),
+        )
+    }
+
+    override fun toString(): String = "ScriptedTypedResult(value=$value, outcome=$outcome)"
+
+    override fun equals(other: Any?): Boolean = other is ScriptedTypedResult<*> &&
+        value == other.value && outcome == other.outcome
+
+    override fun hashCode(): Int = 31 * value.hashCode() + outcome.hashCode()
 }
 
 /**
@@ -232,7 +298,7 @@ internal class ScriptedRegistryInvoker(
         invocationOrdinal: Int,
         definition: StepDefinition<I, O>,
         input: I,
-    ): O {
+    ): ScriptedTypedResult<O> {
         val result = invoke(
             ScriptedRegistryCall(
                 runId = identity.runId,
@@ -245,17 +311,26 @@ internal class ScriptedRegistryInvoker(
                 definitionDigest = identity.definitionDigest,
             ),
         )
+        // S4-D2: FRESH and REUSE converge on ONE line. Both arrive here as
+        // `Success(encoded)`, both are decoded through the Step's own declared codec, and both
+        // recover their outcome from the decoded carrier. That is why outcome(FRESH) ==
+        // outcome(REUSE) holds by construction rather than by two implementations happening to
+        // agree. The durable status cannot be the source: an Unstable Step is journalled
+        // SUCCEEDED, exactly like a successful one.
         return when (result) {
-            is ScriptedRegistryResult.Success -> try {
-                definition.contract.outputCodec.decode(result.encodedOutput)
-            } catch (e: IllegalArgumentException) {
-                throw PipelineStepException(
-                    PipelineFailure(
-                        FailureKind.REPLAY_COMPATIBILITY,
-                        "persisted runtime output is not decodable by " +
-                            "${definition.contract.key.value}'s declared codec: ${e.message}",
-                    ),
-                )
+            is ScriptedRegistryResult.Success -> {
+                val decoded: O = try {
+                    definition.contract.outputCodec.decode(result.encodedOutput)
+                } catch (e: IllegalArgumentException) {
+                    throw PipelineStepException(
+                        PipelineFailure(
+                            FailureKind.REPLAY_COMPATIBILITY,
+                            "persisted runtime output is not decodable by " +
+                                "${definition.contract.key.value}'s declared codec: ${e.message}",
+                        ),
+                    )
+                }
+                ScriptedTypedResult.from(decoded)
             }
             is ScriptedRegistryResult.Failed -> throw PipelineStepException(result.failure)
         }

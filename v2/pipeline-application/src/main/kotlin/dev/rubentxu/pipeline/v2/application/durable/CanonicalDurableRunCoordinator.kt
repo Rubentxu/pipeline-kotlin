@@ -177,12 +177,19 @@ class CanonicalDurableRunCoordinator(
     private val reattachPoll: ((Path, Long) -> Int?)? = null,
 
     /**
-     * S4 retention: what a run's terminal state does to its output. Consulted in exactly one place —
-     * the `finally` of [run], which every exit passes through. The runtime knows a run ended;
-     * [RunOutputRetention] is the only production seam that can turn that into an `OutputPruneIntent`,
-     * so the store is never told and cannot learn. Null leaves a run's output where it is.
+     * S4 retention: what a run's terminal state does to its output, consulted in exactly one place —
+     * the `finally` of [run]. [RunOutputRetention] is the only production seam that can turn that
+     * into an `OutputPruneIntent`, so the store is never told and cannot learn.
      */
     private val outputRetention: RunOutputRetention? = null,
+
+    /**
+     * S4-F2 — how a [StageBody.Scripted] body becomes a runnable artifact. Injected because the
+     * registry is composed where artifacts are compiled, not here. `null` means this coordinator
+     * cannot run scripted bodies, and a scripted stage then says exactly that rather than
+     * degrading into a stage that quietly did nothing.
+     */
+    private val scriptedStageExecution: ScriptedStageExecution? = null,
 ) {
     /**
      * Compatibility constructor for the consolidated capability bundle.
@@ -457,37 +464,36 @@ class CanonicalDurableRunCoordinator(
                 if (steps == null && stage.body is StageBody.Parallel) {
                     // Workspace creation is required before branch dispatch (D5/C1 reuse).
                     val parallelOutcome = parallelStages.runParallelStage(stage, stageIndex, stageShOptions, runId, ambient)
-                    // S4-F2: post-block + StageFinished are ONE rule, in StageExecutionEngine.
-                    // These three arms used to spell it out and had already drifted — they passed
-                    // outcome strings where the engine passed StageOutcome. A stage being FAILED
-                    // does not emit StageFinished; RunFinished carries that.
-                    when (val continuation = runLifecycle.decideStageContinuation(parallelOutcome, stage.name, runId.value, ambient)) {
-                        CanonicalContinuation.Continue -> stageExecution.finalizeStage(
-                            stage, stageIndex, StageVerdictOutcome.SUCCESS, runId, stageShOptions, ambient,
-                        )
-                        CanonicalContinuation.ContinueUnstable -> {
-                            runLifecycle.fold(RunOutcome.Unstable)
-                            stageExecution.finalizeStage(
-                                stage, stageIndex, StageVerdictOutcome.UNSTABLE, runId, stageShOptions, ambient,
-                            )
-                        }
-                        is CanonicalContinuation.Abort -> {
-                            // A parallel branch failure is still a stage outcome; failure/always/
-                            // cleanup finalizers MUST run before the run aborts. The original abort
-                            // reason wins unless the finalizers themselves failed.
-                            stageExecution.finalizeStage(
-                                stage, stageIndex, StageVerdictOutcome.FAILED, runId, stageShOptions, ambient,
-                                emitStageFinished = false,
-                            )?.let { postFailure ->
-                                runLifecycle.fold(RunOutcome.Failure(postFailure))
-                                return@run runLifecycle.outcome()
-                            }
-                            runLifecycle.fold(RunOutcome.Failure(continuation.failure))
+                    // S4-F2: post-block + StageFinished are ONE rule, in StageExecutionEngine, and
+                    // this arm used to spell it out with outcome STRINGS while the engine passed
+                    // StageOutcome — a copy that had already drifted. It is a call now, and it is
+                    // the SAME call the scripted body makes.
+                    when (val verdict = stageExecution.finalizeStageOutcome(
+                        parallelOutcome, stage, stageIndex, runId, stageShOptions, ambient,
+                    )) {
+                        is StageExecutionEngine.StageVerdict.Completed -> ambient = verdict.context
+                        is StageExecutionEngine.StageVerdict.Abort -> {
+                            runLifecycle.fold(RunOutcome.Failure(verdict.failure))
                             return@run runLifecycle.outcome()
                         }
-                    }?.let { postFailure ->
-                        runLifecycle.fold(RunOutcome.Failure(postFailure))
-                        return@run runLifecycle.outcome()
+                    }
+                    continue@stagesLoop
+                }
+                // S4-F2: a scripted body enters the SAME spine. The continuation rule and the
+                // finalisation live in StageExecutionEngine, so this arm is a call, not a copy.
+                if (steps == null && stage.body is StageBody.Scripted) {
+                    val scripted = scriptedStageExecution ?: throw EngineInvariantViolation(
+                        "stage '${stage.name}' has a scripted body but no ScriptedStageExecution is " +
+                            "bound, so it cannot be resolved to an artifact. Bind it in the composition root.",
+                    )
+                    when (val verdict = stageExecution.runScriptedStage(
+                        stage, stageIndex, scripted, stageShOptions, runId, ambient,
+                    )) {
+                        is StageExecutionEngine.StageVerdict.Completed -> ambient = verdict.context
+                        is StageExecutionEngine.StageVerdict.Abort -> {
+                            runLifecycle.fold(RunOutcome.Failure(verdict.failure))
+                            return@run runLifecycle.outcome()
+                        }
                     }
                     continue@stagesLoop
                 }
@@ -526,9 +532,8 @@ class CanonicalDurableRunCoordinator(
             // C3 / WU-PR-017: the closing bookend is the engine's; the correlation
             // invariant (RunFinished only if RunStarted was emitted) lives there.
             runLifecycle.closeRun(runId)
-            // S4 retention: the run has ended, which is the only moment that can authorise discarding
-            // its output. Not gated on the bookend invariant above — that asks whether RunFinished may
-            // be EMITTED, this asks whether the run ENDED. The seam reports its own diagnostics.
+            // S4 retention: the run has ENDED, the only moment that can authorise discarding its
+            // output. Not gated on the bookend invariant: that asks whether RunFinished may be EMITTED.
             outputRetention?.onRunTerminal(runId)
         }
         return runLifecycle.outcome()

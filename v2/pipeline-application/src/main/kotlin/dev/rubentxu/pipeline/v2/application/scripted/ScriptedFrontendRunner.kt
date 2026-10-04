@@ -73,6 +73,7 @@ object ScriptedFrontendRunner {
         clock: Clock,
         shOptions: ShOptions,
         controlDirRoot: java.nio.file.Path,
+        structure: ScriptedStructuralAddress = ScriptedStructuralAddress.WholeProgram,
     ): Outcome {
         // Fail-closed artifact compatibility: never silently replay an old artifact.
         if (entryPoint.artifact.fingerprintMaterial() != expectedArtifact.fingerprintMaterial()) {
@@ -117,11 +118,17 @@ object ScriptedFrontendRunner {
             metadataResolver = RegistryStepMetadataResolver.composite(registry),
             runtimeContextFactory = { call ->
                 CanonicalRuntimeContext(
-                    opId = OpId(runId, 0, call.invocationOrdinal),
+                    // S4-F2: the STRUCTURAL address of an operation depends on WHERE the body
+                    // runs, and the two places are not the same. A whole-program scripted entry
+                    // has no canonical stage, so it keeps stage 0 and the invocation ordinal as
+                    // its step. A scripted STAGE inside a canonical run must carry its real stage
+                    // index, or its operations would answer to the same keys as a sibling stage
+                    // and two bodies would fight over one journal row.
+                    opId = OpId(runId, structure.stageIndex, structure.stepIndexFor(call.invocationOrdinal)),
                     runId = call.runId,
-                    stageName = "scripted",
-                    stageIndex = 0,
-                    stepIndex = call.invocationOrdinal,
+                    stageName = structure.stageName,
+                    stageIndex = structure.stageIndex,
+                    stepIndex = structure.stepIndexFor(call.invocationOrdinal),
                     shOptions = shOptions,
                     controlDirRoot = controlDirRoot,
                     eventSink = eventSink,
@@ -184,6 +191,65 @@ object ScriptedFrontendRunner {
         }
         return RunOutcomeReducer.reduce(outcomes.snapshot())
     }
+}
+
+/**
+ * Where a scripted body structurally RUNS, which is what decides the address of its operations.
+ *
+ * ## Why this is a value and not a flag
+ *
+ * A `Boolean inCanonicalRun` would have left the reader to infer the two real cases from a `when`
+ * elsewhere, and the third case — a body that is neither — would have had to be asserted rather
+ * than expressed. Two cases, each carrying its own address, and the compiler refuses the shapes
+ * that do not exist.
+ *
+ * ## Why the stage index is not optional detail
+ *
+ * A scripted stage inside a canonical run is not a program; it is a stage. Its operations live in
+ * the SAME journal the declarative steps use, and `OpId` is `runId-s{stageIndex}-{stepIndex}`. A
+ * hardcoded `stageIndex = 0` would therefore address a scripted stage at index 2 as though it were
+ * the stage at index 0 — two bodies, one row, and the second one to run would read the first one's
+ * durable facts as its own replay evidence. That is the failure the two-scheme identity law
+ * (R4A-L1) exists to make impossible, so the address is derived, never assumed.
+ */
+sealed interface ScriptedStructuralAddress {
+
+    /** The stage position and the name a body is addressed by, as an `OpId` needs them. */
+    val stageIndex: Int
+    val stageName: String
+
+    /**
+     * The CLI's whole-program entry point: no canonical stage exists, so the body is stage 0 and
+     * the invocation ordinal is the step. This is the historical behaviour, kept verbatim so the
+     * standalone frontend's durable identities do not move.
+     */
+    data object WholeProgram : ScriptedStructuralAddress {
+        override val stageIndex: Int = 0
+        override val stageName: String = "scripted"
+    }
+
+    /**
+     * A stage body inside a canonical run: it carries the stage's real position and name, so its
+     * operations cannot collide with a sibling stage's.
+     */
+    data class InCanonicalStage(
+        override val stageIndex: Int,
+        override val stageName: String,
+    ) : ScriptedStructuralAddress {
+        init {
+            require(stageIndex >= 0) { "a canonical stage index is not negative: $stageIndex" }
+            require(stageName.isNotBlank()) { "a canonical stage name is not blank" }
+        }
+    }
+
+    /**
+     * The step index an operation gets inside the body.
+     *
+     * Both cases use the invocation ordinal, and that is deliberate: within one body the ordinals
+     * are the body's own sequence, and the two-scheme law keeps them root-namespaced so they never
+     * collide with structural keys. What differs between the cases is the STAGE, not the step.
+     */
+    fun stepIndexFor(invocationOrdinal: Int): Int = invocationOrdinal
 }
 
 /**

@@ -128,6 +128,99 @@ internal class StageExecutionEngine(
     }
 
     /**
+     * S4-F2 — runs one SCRIPTED stage body, through the same rule as a linear one.
+     *
+     * ## Why this is a method and not a coordinator branch
+     *
+     * The continuation decision and the finalisation are [finalizeStage]'s, and a scripted stage
+     * obeys both for the same reasons a linear stage does: a `failure`/`always`/`cleanup` finalizer
+     * has to run when the body did not reach its end, and `StageFinished` must not be emitted for a
+     * stage whose run is being failed. Writing those rules again in the coordinator would have been
+     * the third copy — the two the [finalizeStage] KDoc already records as having drifted.
+     *
+     * ## What a refusal is
+     *
+     * A body that could not run is a **stage failure**, not an empty stage. A run that reported
+     * SUCCESS because a scripted stage was silently skipped would be the silent no-op the semantic
+     * constitution forbids, so the refusal travels as a [StepOutcome.Failure] into the SAME
+     * continuation rule, which means the failure finalizers run before the run aborts.
+     *
+     * ## What this does not do
+     *
+     * It does not advance the canonical replay cursor, and neither does anything else on this path:
+     * a scripted stage's operations are journaled in the scripted namespace and reused by their own
+     * replay policy, so a resumed run re-enters the body rather than skipping it. That is the
+     * whole-program scripted guarantee, and ADR-0103 D7 records the open question of whether a
+     * scripted stage ought eventually to carry a cursor position of its own.
+     */
+    suspend fun runScriptedStage(
+        stage: StageNode,
+        stageIndex: Int,
+        scriptedExecution: ScriptedStageExecution,
+        stageShOptions: ShOptions,
+        runId: RunId,
+        ambient: ExecutionContext,
+    ): StageVerdict {
+        runLifecycle.stageStarted(runId, stageIndex, stage.name)
+        val bodyOutcome = when (val verdict = scriptedExecution.run(stage, stageIndex, runId, stageShOptions)) {
+            is ScriptedStageExecution.Verdict.Completed -> verdict.outcome
+            is ScriptedStageExecution.Verdict.Refused -> StepOutcome.Failure(
+                PipelineFailure(
+                    kind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
+                    message = "scripted stage '${stage.name}' did not run: ${verdict.reason.describe()}",
+                ),
+            )
+        }
+        return finalizeStageOutcome(bodyOutcome, stage, stageIndex, runId, stageShOptions, ambient)
+    }
+
+    /**
+     * S4-F2 — the stage TAIL, shared by every body shape that produces one outcome.
+     *
+     * A linear stage folds after every step, so it cannot use this; but a `parallel` body and a
+     * `scripted` body each produce exactly one outcome for the whole stage, and both need the same
+     * two things: decide the continuation, then finalise. Those two steps were written out in the
+     * coordinator's parallel arm — with outcome STRINGS, which had already drifted from the enum
+     * the engine passed — and would have been written a third time for the scripted arm.
+     *
+     * So the tail lives here, once, and both arms are a call. Ordering is unchanged:
+     * `StageStarted < body < PostConditionSelected < post steps < StageFinished`.
+     */
+    suspend fun finalizeStageOutcome(
+        bodyOutcome: StepOutcome,
+        stage: StageNode,
+        stageIndex: Int,
+        runId: RunId,
+        stageShOptions: ShOptions,
+        ambient: ExecutionContext,
+    ): StageVerdict = when (
+        val continuation = runLifecycle.decideStageContinuation(bodyOutcome, stage.name, runId.value, ambient)
+    ) {
+        CanonicalContinuation.Continue -> {
+            finalizeStage(stage, stageIndex, StageOutcome.SUCCESS, runId, stageShOptions, ambient)
+                ?.let { failure -> return StageVerdict.Abort(failure, ambient) }
+            StageVerdict.Completed(StageOutcome.SUCCESS, ambient)
+        }
+        CanonicalContinuation.ContinueUnstable -> {
+            runLifecycle.fold(dev.rubentxu.pipeline.v2.domain.RunOutcome.Unstable)
+            finalizeStage(stage, stageIndex, StageOutcome.UNSTABLE, runId, stageShOptions, ambient)
+                ?.let { failure -> return StageVerdict.Abort(failure, ambient) }
+            StageVerdict.Completed(StageOutcome.UNSTABLE, ambient)
+        }
+        is CanonicalContinuation.Abort -> {
+            // A body that did not reach its end is still a stage outcome: the failure/always/
+            // cleanup finalizers MUST run before the run aborts. A finalizer that itself fails
+            // replaces the reason, because the run is being failed either way and the later
+            // failure is the more recent truth.
+            val failure = finalizeStage(
+                stage, stageIndex, StageOutcome.FAILED, runId, stageShOptions, ambient,
+                emitStageFinished = false,
+            ) ?: continuation.failure
+            StageVerdict.Abort(failure, ambient)
+        }
+    }
+
+    /**
      * S4-F2 — the ONE place where a stage that has already REACHED AN OUTCOME is finalised.
      *
      * ## Why this exists, and why it is here rather than in the coordinator

@@ -443,13 +443,34 @@ subprojects {
 // could not compile from a clean checkout.
 val sdkRepoDir = layout.buildDirectory.dir("sdk-repo")
 
+/**
+ * The modules whose contract is PUBLISHED, as an explicit list.
+ *
+ * BLOCK 2 is what turns this from two entries into four. An external consumer — `pipelinek-fabric`
+ * first of all — has to resolve these as ordinary Maven coordinates produced from THIS source
+ * revision, with no source or composite dependency on this repository.
+ *
+ * The list is here, and not spelled out one task per module, so that "what is published" is a
+ * single readable sentence. A module that is not on it is not published, and its absence is a
+ * decision rather than an oversight: `:pipeline-output-store` and `:pipeline-events-store` carry
+ * the filesystem, JDBC and replay implementations precisely so that they CANNOT be on it.
+ *
+ * A module joins by being appended here AND applying `maven-publish` with a `sdk` publication AND
+ * declaring every dependency that reaches its public ABI as `api`. All three, because each of the
+ * other two without this one is a publication whose POM cannot compile a consumer.
+ */
+val publishedContractModules = listOf(
+    "pipeline-domain",
+    "pipeline-scripting-api",
+    // BLOCK 2: the event contract (envelope, cursor, read/paging) and the output read contract.
+    "pipeline-events",
+    "pipeline-output",
+)
+
 val publishSdkForExternalPlugin by tasks.registering {
     group = "build"
-    description = "Publishes the SDK artifacts the external example plugin compiles against."
-    dependsOn(
-        ":pipeline-domain:publishSdkPublicationToSdkRepository",
-        ":pipeline-scripting-api:publishSdkPublicationToSdkRepository",
-    )
+    description = "Publishes the published-contract artifacts an external consumer compiles against."
+    dependsOn(publishedContractModules.map { ":$it:publishSdkPublicationToSdkRepository" })
 }
 
 val buildExamplePlugin by tasks.registering(Exec::class) {

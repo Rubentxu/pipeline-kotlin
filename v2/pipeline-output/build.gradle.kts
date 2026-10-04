@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm")
+    `maven-publish`
 }
 
 group = "dev.rubentxu.pipeline.v2"
@@ -13,7 +14,10 @@ kotlin {
 }
 
 dependencies {
-    implementation(libs.kotlin.stdlib)
+    // `api`: every published type here is a value class, data class or interface over stdlib
+    // types, so `implementation` would put the stdlib at `runtime` scope in the POM and hand a
+    // consumer a contract whose own types it cannot resolve at compile time.
+    api(libs.kotlin.stdlib)
     // Deliberately NO dependency on :pipeline-events. The independence of the output plane from
     // the event plane is the whole point of ADR-M1 D3, so it is enforced by the module graph
     // rather than by a convention somebody can violate. :pipeline-domain is also absent: an output
@@ -37,5 +41,26 @@ tasks.test {
     testLogging {
         events("failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+}
+
+// BLOCK 2: the published output contract. An external consumer (Fabric's console reader) resolves
+// OutputStreamId, OutputCursor, OutputPage, OutputReadPort, OutputReadResult and OutputRefusal as
+// ordinary Maven coordinates from THIS source revision.
+//
+// `:pipeline-output-store` is deliberately absent and deliberately has no `maven-publish` of its
+// own: this artifact carries no writer, no recovery entry point and no filesystem authority, so
+// nothing a consumer resolves here can become a second writer of the Output Plane.
+publishing {
+    publications {
+        create<MavenPublication>("sdk") {
+            from(components["java"])
+        }
+    }
+    repositories {
+        maven {
+            name = "sdk"
+            url = uri(rootProject.layout.buildDirectory.dir("sdk-repo"))
+        }
     }
 }

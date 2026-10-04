@@ -25,7 +25,13 @@ pitest {
 }
 
 dependencies {
-    implementation(libs.kotlinx.serialization.json)
+    // BLOCK 2: `api`, not `implementation`. This module was already published before BLOCK 2, and
+    // it declared the serialization API as `implementation`, which writes `runtime` scope into the
+    // POM. The ABI dump settles whether that was wrong rather than taste: `api/pipeline-domain.api`
+    // carries 535 references to `kotlinx/serialization`, so a consumer that names any of the ten
+    // `@Serializable` domain types and touches its `Companion.serializer()` cannot compile against a
+    // POM that keeps the serialization API off its compile classpath.
+    api(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.kotlinx.serialization.json)

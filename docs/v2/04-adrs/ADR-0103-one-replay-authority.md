@@ -272,6 +272,58 @@ is bumped (`r3-runtime-v1` → the next value) because that is the dimension whi
 already exists to declare a durable model change; no parallel schema version is
 introduced.
 
+### D7 — The replay cursor is traversal state, and one traversal owns it
+
+> **Provenance.** This clause was cited as "ADR-0103 D7" from production sources
+> (`StepDispatchEngine`, `DurableStepExecutor`, `RecoveryInterpretationEngine`,
+> `ScriptedRegistryInvoker`, `CanonicalDurableRunCoordinator`) and from two tests
+> **before it existed in this ADR**: the document carried RPL-1..RPL-5 and D1..D6
+> and no D7. The law was real and enforced — `D7ReplayCursorOwnershipFitnessTest`
+> pins every clause below — but it had no published home, so the code was citing a
+> phantom. It is written down here, in the ADR that owns the subject, **describing
+> what the fitness already enforces**. No behaviour changed with it.
+
+`ReplayCursor(runId, lastOpId, stageIndex, savedAt)` — the `stageIndex` is
+documented as *"the stage index at which execution should resume"*. It answers
+**where the RUN continues**, so it is a property of a traversal over a stage
+graph and not of an operation. Everything a durable operation knows about itself
+— id, fingerprint, input, output, status, effects, replay and recovery policy — is
+independent of which stage it happened to run in.
+
+That misplacement had a measured cost. `DurableStepExecutor` held a
+`ReplayCursorStore` and advanced it, and `RecoveryInterpretationEngine` held a
+second one and advanced it too. Both were answering "where does the run continue"
+from a class whose job is "what happened to this operation".
+
+So:
+
+1. **`DurableStepExecutor` and `RecoveryInterpretationEngine` MUST NOT depend on
+   `ReplayCursorStore`.** They interpret a durable operation, not a traversal.
+2. **Exactly one production component may advance the cursor: the canonical
+   structural/run dispatch** (`StepDispatchEngine`), and only on two paths:
+   an executed non-failure (Unstable **advances**) and a recovered success
+   (Unstable does **not**). The asymmetry is deliberate and is not to be quietly
+   unified: whether recovery should be as strict as execution about Unstable is a
+   separate question with its own work item.
+3. **A whole-program scripted frontend holds no cursor.** A generator-level
+   scripted entry point has no stage, so it has no cursor position; its durable
+   identity is `entryPoint / callSite / dynamicScope / ordinal` in a
+   root-namespaced scheme. A dependency there could only have been satisfied by a
+   fabricated or a no-op store, which is the tell that the dependency belonged to
+   the wrong class.
+4. A source-level guard that forbids `journal.get` in a frontend is a **design
+   error**: the frontend legitimately obtains durable facts in its own namespace.
+   What is forbidden is interpreting the durable protocol.
+
+**Not decided by this clause, and required before the path is built.** A stage
+whose body is `StageBody.Scripted` is neither of the two cases above: it is not a
+single operation, and it is not a stage-less program — it **is** a stage inside a
+canonical run, and therefore it has a cursor position that the scripted frontend
+currently cannot express. Whether such a stage advances the canonical cursor, and
+on which rule, is a **durable protocol decision** about resume. It is deliberately
+left open here rather than answered by analogy, because answering it by analogy
+is how a resume silently rewinds.
+
 ## Addendum to ADR-0093
 
 ADR-0093 states that SPIKE-016 proved loops and that this is *"proven

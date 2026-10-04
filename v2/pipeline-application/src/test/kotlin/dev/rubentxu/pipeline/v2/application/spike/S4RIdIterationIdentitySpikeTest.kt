@@ -371,4 +371,145 @@ class S4RIdIterationIdentitySpikeTest {
                 "ordinals for iterations that never ran. Property SATISFIED.",
         )
     }
+
+    // ==================================================================
+    // LOOP FORMS — the gap the first run of this spike declared
+    // ==================================================================
+
+    @Test
+    fun `MEASURED - repeat while and do-while receive NO structural scope at all`() {
+        val forms = mapOf(
+            "repeat" to """
+                repeat(3) {
+                    sh("build")
+                }
+            """.trimIndent(),
+            "while" to """
+                var i = 0
+                while (i < 3) {
+                    sh("build")
+                    i = i + 1
+                }
+            """.trimIndent(),
+            "do-while" to """
+                var i = 0
+                do {
+                    sh("build")
+                    i = i + 1
+                } while (i < 3)
+            """.trimIndent(),
+        )
+
+        forms.forEach { (form, source) ->
+            val mapping = KotlinScriptedSourceMapper().map(ScriptedSource(sourceId, source))
+            assertTrue(
+                mapping is ScriptedSourceMapping.Mapped,
+                "the mapper must accept $form, but reported $mapping",
+            )
+            val scopes = (mapping as ScriptedSourceMapping.Mapped).loopScopes
+            assertTrue(
+                scopes.isEmpty(),
+                "MEASURED — A REAL GAP, not a characterisation. The mapper records a structural " +
+                    "loop scope for `for` and for NOTHING ELSE: its only visitor overrides are " +
+                    "visitForExpression, visitCallExpression and visitErrorElement. So a " +
+                    "`$form` loop body gets no `steps.scoped(...)` at all.\n\n" +
+                    "The consequence for identity is stronger than the one measured for `for`: " +
+                    "with no scope, every iteration of a `$form` loop shares the ROOT dynamic " +
+                    "scope path, so the only thing distinguishing two iterations is the arrival " +
+                    "counter — the property DR-6 forbids, with no structural half at all to " +
+                    "build on. I2b has to decide what a `$form` loop's identity is; today " +
+                    "nothing in the compiler or the runtime has an opinion.\n\n" +
+                    "Recorded here rather than asserted as a defect: the mapper is not WRONG " +
+                    "about anything it was asked to do, it simply was never extended to these " +
+                    "forms. The scope of ADR-S4-R2 therefore has to include them, or it has to " +
+                    "say explicitly that they are out of scope.",
+            )
+        }
+    }
+
+    @Test
+    fun `MEASURED - a repeat loop falls back to root scope and pure arrival counting`() {
+        // The runtime half of the previous row, with the same shape `for` would have had.
+        val operations = runRecording {
+            repeat(3) {
+                sh("build")
+            }
+        }
+
+        assertEquals(3, operations.size)
+        assertEquals(
+            listOf(emptyList<String>(), emptyList(), emptyList()),
+            operations.map { it.dynamicScopePath },
+            "MEASURED: all three iterations of a `repeat` loop report the ROOT dynamic scope, " +
+                "empty. There is no loop site in the path at all, not even the per-site constant " +
+                "a `for` loop gets.",
+        )
+        assertEquals(
+            listOf(0, 1, 2),
+            ordinalsOf(operations),
+            "MEASURED: and the only thing separating them is the arrival count. Which is the " +
+                "P5 violation with nothing structural to offset it.",
+        )
+    }
+
+    @Test
+    fun `MEASURED - two loops reusing one parameter name get two distinct scope paths`() {
+        val source = """
+            for (i in listOf("a", "b")) {
+                sh("first")
+            }
+            for (i in listOf("c")) {
+                sh("second")
+            }
+        """.trimIndent()
+
+        val mapping = KotlinScriptedSourceMapper().map(ScriptedSource(sourceId, source))
+        assertTrue(
+            mapping is ScriptedSourceMapping.Mapped,
+            "the mapper must accept this source, but reported $mapping",
+        )
+        val scopeIds = (mapping as ScriptedSourceMapping.Mapped).loopScopes.map { it.scopeId.value }
+
+        assertEquals(2, scopeIds.size, "two `for` loops, two structural scopes")
+        assertNotEquals(
+            scopeIds[0],
+            scopeIds[1],
+            "MEASURED: two loops reusing the SAME parameter name get two distinct scope ids, " +
+                "because the id is derived from the loop's position and not from the name. " +
+                "Property SATISFIED — and it is the fault S4IdentityLoopScopeTest already pinned " +
+                "when the first draft derived the id from the parameter.",
+        )
+    }
+
+    // ==================================================================
+    // RE-EXECUTION WITNESS — the necessary condition, and NOT a restart proof
+    // ==================================================================
+
+    @Test
+    fun `MEASURED P10 - re-executing the same body reconstructs identical operation ids in identical order`() {
+        // A necessary condition for surviving a restart: the identity must be a function of the
+        // body alone, not of anything accumulated in the process. The ordinals map is created
+        // fresh per run, so a second run re-derives it from the script rather than reading it.
+        val body: suspend ScriptedScope.() -> Unit = {
+            for (iteration in 0..2) {
+                scoped(loopScope) { sh("build") }
+            }
+        }
+
+        val first = runRecording(body)
+        val second = runRecording(body)
+
+        assertEquals(
+            first.map { it.operationId() },
+            second.map { it.operationId() },
+            "MEASURED P10: two independent executions of the same body produce the same " +
+                "operation ids in the same order. Determinism of reconstruction HOLDS for the " +
+                "arrival model, which is why P1 can be satisfied at all.",
+        )
+        assertEquals(
+            first.map { it.invocationOrdinal },
+            second.map { it.invocationOrdinal },
+            "and the ordinals themselves are re-derived, not remembered.",
+        )
+    }
 }

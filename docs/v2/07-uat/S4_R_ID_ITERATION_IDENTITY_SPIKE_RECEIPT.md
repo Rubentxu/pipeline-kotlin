@@ -101,6 +101,29 @@ produce aquí `sh ordinal = 0`, mientras que una identidad posicional lo situar�
 | P7 | `continue` no renumera lo anterior | **SATISFECHA, con asimetría** | ordinales `0,1` intactos; ver abajo |
 | P8 | `break` no inventa iteraciones | **SATISFECHA** | un solo ordinal, `0` |
 | P9 | sin acceso al journal | **SATISFECHA** | identidad completa sin estado durable alguno |
+| P10 | misma entrada durable → mismos caminos | **SATISFECHA** | dos ejecuciones ⇒ mismos IDs, mismo orden |
+
+### 2.0 Formas de loop: el hueco que la primera pasada declaró, y era el grande
+
+La primera pasada de este spike (9 casos) declaró que no cubría `repeat`, `repeat` anidado ni bucles
+con nombre compartido. Al cubrirlos apareció algo que **empeora el diagnóstico**:
+
+**`repeat`, `while` y `do..while` no reciben scope estructural alguno.** El mapper sobrescribe
+exactamente tres visitors — `visitForExpression`, `visitCallExpression`, `visitErrorElement` — y
+sólo el primero registra un `ScriptedLoopScope`.
+
+Medido en las dos mitades:
+
+| forma | scope emitido | path de las 3 iteraciones | identidad |
+|---|---|---|---|
+| `for` | uno, **constante** por sitio | `loop:<site>` (idéntico en las 3) | llegada + scope del sitio |
+| `repeat` / `while` / `do..while` | **ninguno** | `[]` raíz, **idéntico en las 3** | **sólo llegada** |
+
+Consecuencia: para un `for`, DR-6 queda violado pero **hay una mitad estructural sobre la que
+construir** — el sitio. Para un `repeat`, no hay ni sitio: la identidad es el contador de llegadas
+y nada más. Es la violación de DR-6 en su forma más desnuda, y **el alcance de ADR-S4-R2 tiene que
+incluirlas o declarar explícitamente que quedan fuera**. Hoy nadie tiene opinión sobre ellas: no es
+que el mapper acierte mal, es que nunca se le pidió.
 
 ### 2.1 P7 es SATISFECHA pero con una asimetría que conviene no pasar por alto
 
@@ -109,12 +132,24 @@ contador **no puede distinguir `continue` de una llegada condicional**: ambos co
 iteración» en «qué llegada». Es la misma raíz que P5, vista por otro lado, y por eso la fila lo dice
 en su mensaje en vez de declarar la propiedad simplemente satisfecha.
 
-### 2.2 Por qué esto NO es un bug de corrección hoy
+### 2.2 P10 y lo que NO es
+
+Re-ejecutar el mismo cuerpo produce **los mismos `operationId` en el mismo orden**: el mapa de
+ordinales se crea fresco por run (`mutableMapOf()`), luego se **re-deriva del script**, no se
+recuerda. Eso es la condición **necesaria** para sobrevivir a un restart.
+
+**No es una prueba de restart.** El brief pedía *fresh → kill → recompile SAME compatible artifact
+→ resume* comparando el set y el orden de los IDs, y eso exige un proceso forzado. Lo que aquí se
+mide es determinismo de reconstrucción **en el mismo proceso**, que es necesario pero no
+suficiente. Confundir las dos cosas sería exactamente el salto que la HARNESS FIDELITY LAW
+prohíbe en §1.
+
+### 2.3 Por qué el defecto NO es un bug de corrección hoy
 
 P1 muestra que, en una ejecución fresca y determinista, la identidad **sí** es distinta por
 iteración. El defecto no es que dos iteraciones colisionen; es que la identidad **no lleva el hecho
 que DR-6 exige que lleve**. La distinción importa al fusionar historia, al comparar un run reanudado
-contra uno original, y al diagnosing por qué dos operaciones distintas sharean material de
+contra uno original, y al diagnosticar por qué dos operaciones distintas comparten material de
 identidad.
 
 ---
@@ -153,21 +188,31 @@ confirma que la medición de I2a fue honesta y que la deuda que I2a declaraba es
 
 ## 4. Evidencia
 
+Dos pasadas. La primera (9 casos) cerró el hallazgo de DR-6; la segunda (13 casos) cubre las
+formas de loop que la primera declaró y que resultaron ser el hueco mayor.
+
 ```text
+pASADA 1
 cmd    cd v2 && ./gradlew :pipeline-application:test \
                      --tests '*S4RIdIterationIdentitySpikeTest' --rerun-tasks
 log    s4rid-spike.log
 sha256 49bf3f9808b7193d7a8953c96d4f07928951e9f6e30725cf28474becd27bc6b4
-EXIT=0  BUILD SUCCESSFUL  0 líneas "^e: "
-       9 tests · 0 failures · 0 errors · 0 skipped
+EXIT=0  0 "^e: " · 9 tests · 0 failures · 0 errors · 0 skipped
+
+PASADA 2  (anade repeat / while / do-while, nombre compartido y P10)
+log    s4rid-spike2.log
+sha256 b78dadb585fedd333ec0cbd90bf12da4d5f3047eb71e3c30ad3b52bf4fab3ae3
+EXIT=0  0 "^e: " · 13 tests · 0 failures · 0 errors · 0 skipped
 ```
 
-Salida de `TEST-…S4RIdIterationIdentitySpikeTest.xml`: `tests="9" skipped="0" failures="0" errors="0"`,
-con los nueve casos nombrados `MEASURED …`.
+Los trece casos nombrados `MEASURED …` están en el XML de JUnit, que da
+`tests="13" skipped="0" failures="0" errors="0"`.
 
-Compilación verificada de forma independiente: la clase apareció en
-`build/classes/kotlin/test/…/spike/` con 9 métodos públicos, porque un `BUILD SUCCESSFUL in 3s` sin
-`^e:` no basta para creer que compiló.
+Las dos pasadas compilaron de verdad, y eso se comprobó aparte porque un
+`BUILD SUCCESSFUL in 3s` sin `^e:` no basta: la clase apareció en
+`build/classes/kotlin/test/…/spike/` con 9 y luego 13 métodos públicos. La
+segunda pasada además **no compiló a la primera**: dos `()()` en los nombres de
+método saltaron como `^e:` reales y se corrigieron antes de volver a ejecutar.
 
 ## 5. Lo que este recibo NO hace
 

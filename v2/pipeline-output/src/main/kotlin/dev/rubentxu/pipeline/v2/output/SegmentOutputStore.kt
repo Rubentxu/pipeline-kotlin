@@ -98,7 +98,7 @@ class SegmentOutputStore(
     }
 
     override fun read(stream: OutputStreamId, cursor: OutputCursor, maxBytes: Int): OutputReadResult {
-        requireRecovered()
+        if (!recovered) return OutputReadResult.Refused(OutputRefusal.RecoveryNotCompleted)
         if (maxBytes <= 0) {
             return OutputReadResult.Refused(
                 OutputRefusal.InvalidRange(cursor.committedOffset, cursor.committedOffset),
@@ -126,7 +126,7 @@ class SegmentOutputStore(
     }
 
     override fun readRange(stream: OutputStreamId, from: Long, to: Long): OutputReadResult {
-        requireRecovered()
+        if (!recovered) return OutputReadResult.Refused(OutputRefusal.RecoveryNotCompleted)
         val layout = layout(stream)
         if (!Files.isDirectory(layout.streamDir)) {
             return OutputReadResult.Refused(OutputRefusal.UnknownStream(stream))
@@ -258,6 +258,29 @@ class SegmentOutputStore(
 
     // -------------------------------------------------------------- internals
 
+    /**
+     * The unreconciled-state guard, for the operations whose return type CANNOT express a refusal.
+     *
+     * ## One condition, one representation — per return type
+     *
+     * [OutputRefusal.RecoveryNotCompleted] is part of the closed refusal ADT, and a read that hits
+     * an unrecovered store answers with it: `read` and `readRange` return
+     * [OutputReadResult.Refused]. They are total functions, and a total function that throws for a
+     * value its own result type can name is not total. This store used to throw from both, which
+     * meant a caller that handled every refusal still got an exception out of it — the same hole
+     * [OutputRefusal.DanglingCommit] documents for the I4 case.
+     *
+     * The other three keep throwing, and the reason is the return type rather than a preference:
+     *
+     * | operation | returns | why it cannot refuse in-band |
+     * |---|---|---|
+     * | [open] | [OutputStreamHandle] | a handle, not a result — no case to put the refusal in |
+     * | [committedExtent] | `Long?` | `null` already means "no committed extent"; a second meaning would make the two indistinguishable |
+     * | [prune] | [OutputPruneReport] | a report of what was done; "refused to try" is not a report |
+     *
+     * So the condition has exactly one representation in each shape, and the one place where two
+     * shapes could have claimed it now has one.
+     */
     private fun requireRecovered() {
         check(recovered) {
             "reads and appends require OutputRecoveryPort.recover() first (O3): refusing to act on " +

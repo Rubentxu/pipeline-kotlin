@@ -239,13 +239,59 @@ class SegmentOutputStoreTest {
         val store = SegmentOutputStore(root)
         // No recover() call. A store that reconciles lazily has already served a reader from an
         // unreconciled state, so the read must be refused rather than attempted.
-        val error = assertThrows(IllegalStateException::class.java) {
-            store.read(OutputStreamId("unreconciled"), OutputCursor.start(OutputStreamId("unreconciled")), 10)
-        }
-        assertTrue(
-            error.message!!.contains("recover()"),
-            "the refusal must name the missing entry point, got: ${error.message}",
+        //
+        // It used to be asserted as a thrown IllegalStateException, which contradicted the port's
+        // own KDoc ("refuses reads with OutputRefusal.RecoveryNotCompleted rather than guessing")
+        // and left a caller that handled every refusal still catching an exception. The condition
+        // has one representation now, and it is the one the contract names.
+        val stream = OutputStreamId("unreconciled")
+
+        val read = store.read(stream, OutputCursor.start(stream), 10)
+        assertInstanceOf(OutputReadResult.Refused::class.java, read, "read must refuse in-band, got $read")
+        assertEquals(
+            OutputRefusal.RecoveryNotCompleted,
+            (read as OutputReadResult.Refused).reason,
+            "the refusal must be the O3 case, not some other answer",
         )
+
+        val ranged = store.readRange(stream, 0L, 10L)
+        assertInstanceOf(OutputReadResult.Refused::class.java, ranged, "readRange must refuse too, got $ranged")
+        assertEquals(OutputRefusal.RecoveryNotCompleted, (ranged as OutputReadResult.Refused).reason)
+    }
+
+    @Test
+    fun `O3 - the unreconciled refusal is distinct from an unknown stream`(@TempDir root: Path) {
+        // The two must not collapse. "The store is not ready" and "this stream was never opened"
+        // are different facts, and a caller that retries on one must not retry on the other.
+        val store = SegmentOutputStore(root)
+        val stream = OutputStreamId("absent")
+        val beforeRecovery = store.read(stream, OutputCursor.start(stream), 10)
+        store.recover()
+        val afterRecovery = store.read(stream, OutputCursor.start(stream), 10)
+
+        assertEquals(
+            OutputRefusal.RecoveryNotCompleted,
+            (beforeRecovery as OutputReadResult.Refused).reason,
+        )
+        assertEquals(
+            OutputRefusal.UnknownStream(stream),
+            (afterRecovery as OutputReadResult.Refused).reason,
+        )
+    }
+
+    @Test
+    fun `O3 - the operations that cannot refuse in-band still refuse loudly`(@TempDir root: Path) {
+        // open, committedExtent and prune return a handle, a Long? and a report respectively —
+        // none of which can carry a refusal without inventing an ambiguous value. They keep
+        // throwing, and this row is what stops that from decaying into a silent wrong answer.
+        val store = SegmentOutputStore(root)
+        val stream = OutputStreamId("unreconciled")
+
+        assertThrows(IllegalStateException::class.java) { store.open(stream) }
+        assertThrows(IllegalStateException::class.java) { store.committedExtent(stream) }
+        assertThrows(IllegalStateException::class.java) {
+            store.prune(OutputPruneIntent.OperatorReleased(runId = "unreconciled", requestedBy = "test"))
+        }
     }
 
     @Test
@@ -596,10 +642,12 @@ class SegmentOutputStoreTest {
         val stream = OutputStreamId("discharge")
         val store = SegmentOutputStore(root)
 
-        val refusedBefore = assertThrows(IllegalStateException::class.java) {
-            store.read(stream, OutputCursor.start(stream), 1)
-        }
-        assertNotNull(refusedBefore)
+        val refusedBefore = store.read(stream, OutputCursor.start(stream), 1)
+        assertEquals(
+            OutputRefusal.RecoveryNotCompleted,
+            (refusedBefore as OutputReadResult.Refused).reason,
+            "O3 is discharged by a typed refusal, which is what the port contract names",
+        )
 
         store.recover()
         val reservation = store.open(stream).reserve(4)

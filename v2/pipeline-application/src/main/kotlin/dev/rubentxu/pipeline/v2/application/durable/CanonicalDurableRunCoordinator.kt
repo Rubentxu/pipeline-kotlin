@@ -175,6 +175,14 @@ class CanonicalDurableRunCoordinator(
      * on the observer's constructor; the composition-root view is [CoordinatorCaps.reattachPoll].
      */
     private val reattachPoll: ((Path, Long) -> Int?)? = null,
+
+    /**
+     * S4 retention: what a run's terminal state does to its output. Consulted in exactly one place —
+     * the `finally` of [run], which every exit passes through. The runtime knows a run ended;
+     * [RunOutputRetention] is the only production seam that can turn that into an `OutputPruneIntent`,
+     * so the store is never told and cannot learn. Null leaves a run's output where it is.
+     */
+    private val outputRetention: RunOutputRetention? = null,
 ) {
     /**
      * Compatibility constructor for the consolidated capability bundle.
@@ -518,6 +526,10 @@ class CanonicalDurableRunCoordinator(
             // C3 / WU-PR-017: the closing bookend is the engine's; the correlation
             // invariant (RunFinished only if RunStarted was emitted) lives there.
             runLifecycle.closeRun(runId)
+            // S4 retention: the run has ended, which is the only moment that can authorise discarding
+            // its output. Not gated on the bookend invariant above — that asks whether RunFinished may
+            // be EMITTED, this asks whether the run ENDED. The seam reports its own diagnostics.
+            outputRetention?.onRunTerminal(runId)
         }
         return runLifecycle.outcome()
     }

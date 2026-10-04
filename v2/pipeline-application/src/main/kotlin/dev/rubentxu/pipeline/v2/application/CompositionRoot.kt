@@ -8,8 +8,11 @@ import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinat
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedWaitUntilControlJournal
+import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
+import dev.rubentxu.pipeline.v2.application.durable.RunOutputRetention
 import dev.rubentxu.pipeline.v2.application.durable.credentials.WithCredentialsExecutorScopeAdapter
 import dev.rubentxu.pipeline.v2.credentials.executor.WithCredentialsExecutor
+import dev.rubentxu.pipeline.v2.output.RetainUntil
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
@@ -175,6 +178,23 @@ internal fun runCanonicalPipeline(
         // instance is shared between the producer (archive with name=...) and
         // the consumer (artifactQuery) within the run.
         artifactIndex = dev.rubentxu.pipeline.v2.application.durable.ArtifactIndexAdapter.build(),
+        // S4 retention: the run's terminal state is the ONLY thing that can authorise discarding
+        // its output, and the runtime is the authority that knows it. Declared here — ONCE, where
+        // every other composition decision is declared — so the policy is a value a reviewer can
+        // read rather than a branch somebody can find at the call site.
+        //
+        // `ExplicitReleaseOnly`, and the reason is the product's own console: `pipeline console
+        // --control-dir` reads the transcript of a run that ALREADY FINISHED, so a
+        // `RunTerminalPlus` here would delete the very output the product exists to serve. That is
+        // a product decision, and it has a stated consequence: nothing releases automatically, and
+        // the operator-release surface that would exercise `OperatorReleased` is not built yet.
+        //
+        // The store arrives as a SUPPLIER, so this policy that retains never opens (and never
+        // recovers) the Output Plane for the release it will not perform.
+        outputRetention = RunOutputRetention(
+            retention = { OutputPlaneProvider.storeFor(controlDirRoot) },
+            policy = RetainUntil.ExplicitReleaseOnly,
+        ),
         // S1-D: fold external directive contributions discovered under the plugin
         // classloader's TCCL. Null loader => null registry => legacy behaviour.
         //

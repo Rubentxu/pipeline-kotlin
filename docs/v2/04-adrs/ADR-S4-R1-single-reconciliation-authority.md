@@ -1,6 +1,7 @@
 # ADR-S4-R1 — Una única autoridad durable de reconciliación
 
-**Estado:** `ACCEPTED` — decisión de ownership tomada. `implementation conformance: PARTIAL`
+**Estado:** `ACCEPTED` — decisión de ownership tomada. `implementation conformance: SATISFIED`
+(cierre en `4429e4ca`; antes `PARTIAL`, con dos manifestaciones)
 **Work item:** `f24f3ac0-b889-407c-9e46-f5e524120818`
 **Sustituye a:** el alcance de replay que `ADR-0103` dejó explícitamente fuera (§ Out of scope)
 **Une:** el spike `S4-R-REC` y el epoch `R1-E`, que son la misma decisión arquitectónica
@@ -10,19 +11,26 @@
 > observer · authority · interpreter es el correcto; no afirma que ya esté implementado en todas
 > partes. El ADR decide; los recibos de implementación demuestran conformidad.
 >
-> `conformance: PARTIAL` no señala una lista de tareas sueltas, sino **dos manifestaciones de la
-> misma ley** — una frontera pierde información antes de alcanzar a su autoridad legítima. Las dos
-> las cierra F1-C:
+> `conformance: SATISFIED`. Hasta `4429e4ca` leía `PARTIAL`, y no señalaba una lista de tareas
+> sueltas: señalaba **dos manifestaciones de la misma ley** — una frontera pierde información antes
+> de alcanzar a su autoridad legítima. Las dos están cerradas:
 >
-> | # | manifestación | estrecho | dueño del cierre |
+> | # | manifestación | estrecho | cerrado en |
 > |---|---|---|---|
-> | 1 | **execution carrier narrowing** | `CommonExecutionResult` → `StepOutcome` dentro del spine durable | F1-C3 (R14) |
-> | 2 | **recovery evidence narrowing** | hechos del terminal (`exitCode`, salida observada) → terminal semántico Step-specific, en el observer | F1-C1 + F1-C2 |
+> | 1 | **execution carrier narrowing** | `CommonExecutionResult` → `StepOutcome` dentro del spine durable | `4429e4ca` (F1-C3, R14) |
+> | 2 | **recovery evidence narrowing** | hechos del terminal (`exitCode`, salida observada) → terminal semántico Step-specific, en el observer | `4429e4ca` (F1-C1 + F1-C2) |
 >
 > La segunda se descubrió **midiendo**, después de que este ADR se aceptara, y es la razón por la que
-> `conformance` enumera dos filas y no una: el observer clasificaba `exitCode != 0` como
+> `conformance` enumeraba dos filas y no una: el observer clasificaba `exitCode != 0` como
 > `Failed(SCRIPT)` sin saber que `sh(returnStatus = true)` con salida 42 es `Status(42) · Success`.
 > Un `exitCode` observado **no** es un valor fabricado; perderlo sí es perder información.
+>
+> Ambos cierres son afirmaciones de comportamiento, así que ambos llevan una mutación que los mata
+> (`M-F1-C1`, `M-F1-C2`, `M-F1-C3`) y un fitness que defiende la forma después
+> (`RecoveredValueSpineFitnessTest`). La que se ganó su sitio es `M-F1-C3`: **sobrevivió** a los 50
+> tests del radio de impacto, porque la matriz de verdad lee el journal y el estrechamiento sólo
+> afecta al consumidor. R14 sólo podía certificarse en la frontera del consumidor, y hasta que esa
+> fila existió la afirmación estaba implementada y sin probar.
 
 **Este documento ya no hace cero cambios de código.** Se escribió como decisión pura sobre esa base, y
 después la implementaron:
@@ -31,11 +39,13 @@ después la implementaron:
 |---|---|
 | `b1540033` · `39e8ff03` | §2.2, §2.3 — la rama de reattach expirada pasa a ser observable y se **mide** el colapso |
 | `9966b997` | §0.2, §2.4, §2.6 — el observer da el hecho, la autoridad el significado, el intérprete proyecta |
-| el commit que introduce esta fila | §4 — D-4 **cerrada por eliminación**; 357 líneas de segunda autoridad fuera de `src/main`, cinco sitios de test migrados a la autoridad canónica, y `SingleDurableAuthorityFitnessTest` dejando la ley defendida (§4.2) |
+| `5c021496` | §4 — D-4 **cerrada por eliminación**; 357 líneas de segunda autoridad fuera de `src/main`, cinco sitios de test migrados a la autoridad canónica, y `SingleDurableAuthorityFitnessTest` dejando la ley defendida (§4.2) |
+| `4429e4ca` | §2.3, §2.4, §2.7 — **conformance `SATISFIED`**: el observer da hechos, la materialización es del Step, y el carrier llega entero al consumidor |
 
 Evidencia: `S4_R1_3B_REATTACH_WINDOW_EXPIRED_RECEIPT.md`,
-`S4_R1_3C_OBSERVER_FACT_AUTHORITY_MEANING_RECEIPT.md` y
-`S4_R1_F1B_SINGLE_DURABLE_AUTHORITY_RECEIPT.md`. §0.2, §0.3 y §2.6 se añadieron después, con la
+`S4_R1_3C_OBSERVER_FACT_AUTHORITY_MEANING_RECEIPT.md`,
+`S4_R1_F1B_SINGLE_DURABLE_AUTHORITY_RECEIPT.md` y
+`S4_R1_F1C_RECOVERED_VALUE_SPINE_RECEIPT.md`. §0.2, §0.3 y §2.6 se añadieron después, con la
 medición ya hecha: el texto normativo ya no se adelanta a la evidencia.
 
 ---

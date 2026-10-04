@@ -40,7 +40,7 @@ import java.nio.file.Path
 class ConsoleReadServiceTest {
 
     /** A literal `$` for a shell script embedded in a Kotlin string. */
-    private val DOLLAR: String = "$" + "$"
+    private val dollarLiteral: String = "$" + "$"
 
     @BeforeEach
     fun resetProvider() {
@@ -108,7 +108,7 @@ class ConsoleReadServiceTest {
         val runId = "r-paged"
         val opId = runSh(
             controlDirRoot, workspaceRoot,
-            "for i in $(seq 1 400); do echo \"row-${DOLLAR}i-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"; done",
+            "for i in $(seq 1 400); do echo \"row-${dollarLiteral}i-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"; done",
             runId,
         )
 

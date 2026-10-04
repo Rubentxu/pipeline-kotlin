@@ -29,7 +29,6 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EnvModel
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.StepContext
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
-import dev.rubentxu.pipeline.v2.sdk.runtime.sh as sdkSh
 import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.Path

@@ -11,7 +11,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
-import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.GitCheckoutCompleted
 import dev.rubentxu.pipeline.v2.events.GitCheckoutFailed
@@ -244,7 +243,7 @@ open class GitCheckoutExecutor(
         // Step 1: Check if .git exists
         if (Files.exists(gitDir)) {
             // Existing checkout - check SHA equality
-            val currentSha = revParse(req, workspace, "HEAD", env)
+            val currentSha = revParse(workspace, "HEAD", env)
             if (currentSha != null && currentSha == remoteSha) {
                 // SHA equal - no-op
                 val durationMs = System.currentTimeMillis() - startMs
@@ -334,7 +333,7 @@ open class GitCheckoutExecutor(
         }
 
         // Get cloned SHA
-        val sha = revParse(req, workspace, "HEAD", env) ?: remoteSha
+        val sha = revParse(workspace, "HEAD", env) ?: remoteSha
 
         // Append changelog
         if (spec.changelog) {
@@ -450,13 +449,10 @@ open class GitCheckoutExecutor(
         }
     }
 
-    private fun revParse(req: GitCheckoutRequest, workspace: Path, ref: String, env: Map<String, String>): String? {
+    private fun revParse(workspace: Path, ref: String, env: Map<String, String>): String? {
         return try {
             val args = listOf("git", "-C", workspace.toString(), "rev-parse", ref)
             val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 1000)
-            if (captured.stderr.isNotBlank()) {
-                emitEcho(req, "git rev-parse stderr: ${captured.stderr}")
-            }
             if (captured.succeeded) captured.stdout.trim() else null
         } catch (e: Exception) {
             null
@@ -467,12 +463,6 @@ open class GitCheckoutExecutor(
         return try {
             val args = listOf("git", "-C", workspace.toString(), "fetch")
             val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 1000)
-            if (captured.stdout.isNotBlank()) {
-                emitEcho(req, captured.stdout)
-            }
-            if (captured.stderr.isNotBlank()) {
-                emitEcho(req, "git fetch stderr: ${captured.stderr}")
-            }
             if (captured.succeeded) Result.success(Unit)
             else Result.failure(IllegalStateException("git fetch failed${captured.stderr.prependIndent()}"))
         } catch (e: Exception) {
@@ -484,12 +474,6 @@ open class GitCheckoutExecutor(
         return try {
             val args = listOf("git", "-C", workspace.toString(), "reset", "--hard", sha)
             val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 1000)
-            if (captured.stdout.isNotBlank()) {
-                emitEcho(req, captured.stdout)
-            }
-            if (captured.stderr.isNotBlank()) {
-                emitEcho(req, "git reset --hard stderr: ${captured.stderr}")
-            }
             if (captured.succeeded) Result.success(Unit)
             else Result.failure(IllegalStateException("git reset --hard failed${captured.stderr.prependIndent()}"))
         } catch (e: Exception) {
@@ -501,12 +485,6 @@ open class GitCheckoutExecutor(
         return try {
             val args = listOf("git", "clone", "--branch", branch, url, workspace.toString())
             val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 2 * 1000)
-            if (captured.stdout.isNotBlank()) {
-                emitEcho(req, captured.stdout)
-            }
-            if (captured.stderr.isNotBlank()) {
-                emitEcho(req, "git clone stderr: ${captured.stderr}")
-            }
             if (captured.succeeded) Result.success(Unit)
             else Result.failure(IllegalStateException("git clone failed${captured.stderr.prependIndent()}"))
         } catch (e: Exception) {
@@ -515,25 +493,27 @@ open class GitCheckoutExecutor(
     }
 
     /**
-     * Emits git command stdout/stderr through EchoOutputCaptured events.
-     * The RedactingEventSink will redact any secret patterns before persisting.
+     * Emits a SEMANTIC event about what the checkout did.
+     *
+     * ## Why git's own stdout does not come through here
+     *
+     * This used to have a sibling, `emitEcho`, which pushed `git`'s stdout and stderr into
+     * `EchoOutputCaptured`. That was a second authority over process bytes, and ADR-M1 D2 gives
+     * those bytes to the Output Plane — which this module does not reach. So `scm.git` was
+     * keeping the transcript alive in the event log as a side effect of having an `EventSink`.
+     *
+     * Removing it loses nothing a caller could act on:
+     *
+     *  - **Failures** already carry their stderr, in the typed failure itself
+     *    (`"git clone failed${captured.stderr.prependIndent()}"`).
+     *  - **Progress** lines like `Cloning into '…'` are process logging, not a semantic fact, and
+     *    their rightful home is the transcript — not the event plane.
+     *
+     * What this DOES leave open, stated plainly rather than papered over: this module still has no
+     * path to the Output Plane, so a `git` transcript is not retrievable through a cursor today.
+     * That is a capability gap, not a second authority, and it closes when the Output Plane is
+     * published as a contract plugins can write to.
      */
-    private fun emitEcho(req: GitCheckoutRequest, content: String) {
-        if (content.isBlank()) return
-        try {
-            req.eventSink.append(EchoOutputCaptured(
-                eventId = newEventId(),
-                runId = req.runId,
-                sequence = 0L,
-                occurredAt = Instant.now(clock),
-                stepIndex = req.stepIndex,
-                content = content,
-            ))
-        } catch (e: Exception) {
-            System.err.println("Warning: failed to emit EchoOutputCaptured: ${e.message}")
-        }
-    }
-
     private fun emitEvent(req: GitCheckoutRequest, event: dev.rubentxu.pipeline.v2.events.DomainEvent) {
         try {
             req.eventSink.append(event)

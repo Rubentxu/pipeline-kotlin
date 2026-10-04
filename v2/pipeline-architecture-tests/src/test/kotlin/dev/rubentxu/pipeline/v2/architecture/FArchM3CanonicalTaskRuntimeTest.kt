@@ -204,7 +204,6 @@ class FArchM3CanonicalTaskRuntimeTest {
             "pipeline-step-sdk/scm-git/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/scm/git/GitChangelogWriter.kt",
             "pipeline-artefacts-local/src/main/kotlin/dev/rubentxu/pipeline/v2/artefacts/local/TarWriter.kt",
             "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/ShExecution.kt",
-            "pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/StepExecutors.kt",
         )
         for (relative in migratedFiles) {
             val path = v2Root.resolve(relative)
@@ -219,6 +218,42 @@ class FArchM3CanonicalTaskRuntimeTest {
                 "$relative must reference the task runtime after LF-0305/0306/0307",
             )
         }
+
+        // P1: the SDK's own `core.sh` was a SECOND declaration of a StepKey the
+        // canonical CoreShellStep already owns, with `requiredCapabilities = emptyList()`
+        // where the canonical one demands SHELL_OPERATIONS_CAPABILITY, and it published
+        // process stdout/stderr into EchoOutputCaptured — a second authority over the very
+        // bytes ADR-M1 D2 gave to the Output Plane. It had zero call-sites and its generated
+        // descriptor had zero consumers, so it was removed rather than shimmed.
+        //
+        // The consequence for this fitness is a distinction the old list could not express.
+        // StepExecutors.kt no longer RUNS anything, so demanding that it reference the task
+        // runtime would be a rule about a file that executes no process — it could only be
+        // satisfied by keeping dead code alive. So the two obligations are separated: EVERY
+        // one of these files may never construct a process directly, and only the ones that
+        // actually execute one must route through the runtime. That is a sharper law, not a
+        // weaker one: reintroducing a direct process anywhere below still fails, and now the
+        // runtime requirement tracks the files that genuinely need it.
+        val noDirectProcessFiles = migratedFiles + listOf(
+            "pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/StepExecutors.kt",
+        )
+        for (relative in noDirectProcessFiles) {
+            val source = sanitizedSource(v2Root.resolve(relative))
+            assertFalse(
+                source.contains("ProcessBuilder("),
+                "$relative must not construct processes directly — use the runtime (LF-0305/0306/0307)",
+            )
+        }
+        assertFalse(
+            sanitizedSource(
+                v2Root.resolve(
+                    "pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/StepExecutors.kt",
+                ),
+            ).contains("id = \"core.sh\""),
+            "StepExecutors.kt must not re-declare core.sh: the canonical descriptor lives in " +
+                "CoreShellStep, and a second declaration with weaker requiredCapabilities is a " +
+                "second admission authority (P1).",
+        )
 
         // LF-0308 deletion: ProcessExecutor and ShellResult are gone. Any
         // surviving reference is a regression — the legacy PB wrapper must

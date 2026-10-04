@@ -198,9 +198,24 @@ interface OutputRecoveryPort {
     fun recover(): OutputRecoveryReport
 }
 
-/** What a recovery pass found and repaired. */
+/**
+ * What a recovery pass found and repaired.
+ *
+ * [committedBytes] is the **stable** part: it is the same however many times recovery runs, so a
+ * caller can assert idempotence on it. The other two are *work this pass did* and are zero on a
+ * second call, which is correct — a recovery that has nothing left to repair must say so rather
+ * than repeat its first-pass numbers. The first version had no stable field at all, so the only
+ * way to check idempotence was to compare two reports that are *supposed* to differ.
+ */
 data class OutputRecoveryReport(
     val streamsReconciled: Int,
+    val committedBytes: Long,
     val bytesReleased: Long,
     val reservationsReleased: Int,
+    /**
+     * Bytes a commit record claims that the payload does not hold. **Non-zero means the store is
+     * damaged and is NOT repaired automatically** — see [OutputNotEstablished.CORRUPT_COMMIT_RECORD].
+     * A read that would need those bytes fails loudly rather than returning a plausible short page.
+     */
+    val bytesUnbacked: Long,
 )

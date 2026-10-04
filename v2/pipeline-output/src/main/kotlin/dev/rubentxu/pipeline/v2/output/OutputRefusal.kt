@@ -44,6 +44,19 @@ sealed interface OutputRefusal {
 
     /** The read was attempted before [OutputRecoveryPort.recover] completed. O3. */
     data object RecoveryNotCompleted : OutputRefusal
+
+    /**
+     * A committed offset exists that the payload cannot back. I4.
+     *
+     * This was an `IOException` in the first version, which was a hole in the closed ADT: a
+     * caller that handles every refusal still got an exception out of a total function. A short
+     * page would be worse still, because it is indistinguishable from a complete one — so the
+     * answer is a refusal that says the bytes are missing, not a page that silently omits them.
+     */
+    data class DanglingCommit(
+        val requestedEnd: Long,
+        val readableBytes: Long,
+    ) : OutputRefusal
 }
 
 /** A read that either produced a bounded page or was refused. */

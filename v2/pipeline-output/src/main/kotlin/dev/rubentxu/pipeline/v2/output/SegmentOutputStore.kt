@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.v2.output
 
-import java.io.IOException
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
@@ -157,6 +156,8 @@ class SegmentOutputStore(
         var streams = 0
         var releasedReservations = 0
         var releasedBytes = 0L
+        var committedBytes = 0L
+        var unbackedBytes = 0L
 
         Files.newDirectoryStream(streamRoot).use { entries ->
             for (entry in entries) {
@@ -170,12 +171,14 @@ class SegmentOutputStore(
                 )
                 releasedBytes += reconcile(layout)
                 if (Files.deleteIfExists(layout.reservationFile)) releasedReservations++
+                unbackedBytes += maxOf(0L, committedLocked(layout) - readableEndLocked(layout))
+                committedBytes += committedLocked(layout)
                 streams++
             }
         }
 
         recovered = true
-        OutputRecoveryReport(streams, releasedBytes, releasedReservations)
+        OutputRecoveryReport(streams, committedBytes, releasedBytes, releasedReservations, unbackedBytes)
     }
 
     // -------------------------------------------------------------- internals
@@ -223,13 +226,28 @@ class SegmentOutputStore(
         val committed = committedLocked(layout)
         val onDisk = if (Files.exists(layout.segmentFile)) Files.size(layout.segmentFile) else 0L
         val currentBase = currentBaseLocked(layout)
-        val currentEnd = currentBase + onDisk
-        if (currentEnd > committed) {
-            truncateTo(layout.segmentFile, onDisk - (currentEnd - committed))
-            return currentEnd - committed
+        val readableEnd = currentBase + onDisk
+        if (readableEnd > committed) {
+            truncateTo(layout.segmentFile, onDisk - (readableEnd - committed))
+            return readableEnd - committed
         }
+        // A commit record AHEAD of the payload is detected and reported, and deliberately NOT
+        // repaired. Clamping down to the readable end is the obvious fix and is worse than the
+        // defect: the bytes between the last real commit and the readable end were never
+        // acknowledged, so clamping would publish them (I2). Clamping back to the last real commit
+        // is not decidable from the segment alone either, because the record is precisely what was
+        // lost. So the claim stands, is counted in bytesUnbacked, and the reads that would need it
+        // fail loudly (I4) instead of returning a short page that reads as an end of stream.
+        //
+        // Deciding what a corrupt commit record MEANS is a product decision, and this store does
+        // not make it silently. See OutputNotEstablished.CORRUPT_COMMIT_RECORD.
         return 0L
     }
+
+    /** One past the last byte physically readable in the current segment. */
+    private fun readableEndLocked(layout: Layout): Long =
+        currentBaseLocked(layout) +
+            (if (Files.exists(layout.segmentFile)) Files.size(layout.segmentFile) else 0L)
 
     /** The global committed offset: the O2 authority. */
     private fun committedLocked(layout: Layout): Long =
@@ -286,12 +304,12 @@ class SegmentOutputStore(
         }
 
         if (written != target.size) {
-            // A committed offset that cannot be fully served is a dangling commit (I4). Throwing is
-            // deliberate: a short page would be indistinguishable from a complete one, and a reader
-            // that cannot tell the difference will silently lose bytes.
-            throw IOException(
-                "stream ${stream.value}: committed offset $to but only $written bytes readable at " +
-                    "[$from, $to) — dangling commit (I4)",
+            // A committed offset that cannot be fully served is a dangling commit (I4). A short page
+            // would be indistinguishable from a complete one, and this used to be an IOException —
+            // which was a hole in the closed ADT, since a caller handling every refusal could still
+            // be thrown out of a total function.
+            return OutputReadResult.Refused(
+                OutputRefusal.DanglingCommit(requestedEnd = to, readableBytes = written.toLong()),
             )
         }
 

@@ -27,9 +27,36 @@ tasks.test {
     // Required, not optional. Without it Gradle defaults to the JUnit 4 runner, discovers zero
     // JUnit 5 tests, and reports BUILD SUCCESSFUL with an empty result set — a green gate that ran
     // nothing. This module's first build did exactly that.
-    useJUnitPlatform()
+    useJUnitPlatform {
+        // The 1 GiB soak is a conformance artefact, not a per-commit cost. It runs through
+        // `performanceTest` below, which is the same split :pipeline-credentials-api uses for its
+        // redactor probe. Excluding it here is necessary but NOT sufficient: the Kover plugin
+        // re-attaches every discovered Test task as an input to koverGenerateArtifactJvm, so the
+        // probe is disabled as a coverage source rather than merely tag-excluded.
+        excludeTags("performance")
+    }
     testLogging {
         events("failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+}
+
+tasks.register<Test>("performanceTest") {
+    group = "performance"
+    description = "Runs the @Tag(\"performance\") conformance probes in isolation (PR-015 methodology)."
+    useJUnitPlatform {
+        includeTags("performance")
+    }
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    // A 1 GiB soak measures a machine; it must not share one with other test executions.
+    setMaxParallelForks(1)
+}
+
+kover {
+    currentProject {
+        instrumentation {
+            disabledForTestTasks.add("performanceTest")
+        }
     }
 }

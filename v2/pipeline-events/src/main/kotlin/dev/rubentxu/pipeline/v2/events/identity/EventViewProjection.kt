@@ -6,11 +6,28 @@ import kotlinx.serialization.json.JsonObject
 /**
  * WU-LPR-050 — Read-side projection of an event history query.
  *
- * The [MainEventsCli][dev.rubentxu.pipeline.v2.application.MainEventsCli] is
- * the canonical reader; it accepts `--view <mode>` and `--format <fmt>` and
- * delegates the projection to [EventViewProjection]. The projection is a
- * pure `(envelope, mode, format) -> String` function so it is trivially
- * testable and replaceable.
+ * ## CORRECTION (M1-P3). This KDoc was false and said so at length.
+ *
+ * It claimed that [MainEventsCli][dev.rubentxu.pipeline.v2.application.MainEventsCli]
+ * "accepts `--view <mode>` and `--format <fmt>` and delegates the projection" here. It accepts
+ * neither flag: its parser is `--db / --runId / --kind / --subject / --limit / --after-cursor` and
+ * nothing else. **This projection has no production caller at all** — only its own test reaches
+ * it. That was found by RCE's promotion of the OUT-B item and confirmed here against the current
+ * HEAD.
+ *
+ * The claim was not harmless documentation drift. It described an integration that a reader would
+ * reasonably go looking for, and the way to find it was `--view console`.
+ *
+ * ## Why the `console` mode is deprecated rather than merely documented
+ *
+ * It filters envelopes by `EchoOutputCaptured`. Since M1-P2 that event no longer carries **process**
+ * output — it carries the semantic `core.echo` event only. So a "console" view that selects on it
+ * can only ever return a subset of console, which is the dangerous kind of wrong: it looks like it
+ * works, and it silently drops whatever a process printed. Filtering events to reconstruct a
+ * console is also exactly the event-sequence-for-output-cursor conflation that `ADR-M1 D3` forbids.
+ *
+ * The real console reader is [dev.rubentxu.pipeline.v2.application.ConsoleReadService], which
+ * addresses the Output Plane by committed byte offset.
  *
  * ## Modes
  *
@@ -22,8 +39,9 @@ import kotlinx.serialization.json.JsonObject
  *    / ParallelBranchFinished / etc. The agent-friendly default.
  *  - `full` — alias for `events` (every envelope). Reserved for explicit
  *    parity with the `--view full` CLI surface.
- *  - `console` — only `EchoOutputCaptured` envelopes (the typed console
- *    transcript projection). Useful for streaming what the steps printed.
+ *  - `console` — DEPRECATED. Selects `EchoOutputCaptured` envelopes, which since M1-P2 carry the
+ *    semantic `core.echo` event and NOT process output. It cannot show a process console. Use
+ *    [dev.rubentxu.pipeline.v2.application.ConsoleReadService].
  *  - `quiet` — only `RunFinished` envelopes (the aggregate outcome).
  *
  * ## Formats
@@ -118,7 +136,17 @@ enum class ViewMode {
     EVENTS,
     /** Alias for [EVENTS]. Reserved for CLI parity. */
     FULL,
-    /** Only `EchoOutputCaptured` envelopes (typed console transcript). */
+    /**
+     * DEPRECATED — semantic `core.echo` envelopes only, never a process console.
+     *
+     * Kept so the closed enum stays source-compatible for a caller that wants echo events, and so
+     * the wrong thing is named rather than quietly available. A process console is read through
+     * [dev.rubentxu.pipeline.v2.application.ConsoleReadService].
+     */
+    @Deprecated(
+        message = "selects semantic core.echo events, not process output; use ConsoleReadService for a console",
+        replaceWith = ReplaceWith("dev.rubentxu.pipeline.v2.application.ConsoleReadService.read(...)"),
+    )
     CONSOLE,
     /** Only `RunFinished` envelopes (the aggregate outcome). */
     QUIET,

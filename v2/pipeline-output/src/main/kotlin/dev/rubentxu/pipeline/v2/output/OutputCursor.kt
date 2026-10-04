@@ -65,7 +65,43 @@ data class OutputCursor(
     companion object {
         /** The position before the first committed byte of [stream]. */
         fun start(stream: OutputStreamId): OutputCursor = OutputCursor(stream, 0L)
+
+        /**
+         * Token prefix for a serialised output cursor.
+         *
+         * Deliberately **not** the event plane's `evt-cursor-v1:`. Two prefixes, two planes, and a
+         * consumer that pastes an event cursor where an output cursor belongs gets a decode
+         * failure rather than a plausible offset into the wrong bytes. The event sequence and the
+         * committed byte offset are different orders ([ADR-M1 D3]); the wire format says so too.
+         */
+        const val TOKEN_PREFIX: String = "out-cursor-v1"
+
+        /**
+         * Parse a token produced by [encode]. Returns `null` for anything else, including an
+         * `evt-cursor-v1:` token — see [TOKEN_PREFIX].
+         */
+        fun decode(token: String): OutputCursor? {
+            val parts = token.split(':')
+            if (parts.size != 3) return null
+            if (parts[0] != TOKEN_PREFIX) return null
+            val offset = parts[2].toLongOrNull() ?: return null
+            if (offset < 0) return null
+            val stream = runCatching {
+                java.net.URLDecoder.decode(parts[1], Charsets.UTF_8)
+            }.getOrNull() ?: return null
+            if (stream.isBlank()) return null
+            return OutputCursor(OutputStreamId(stream), offset)
+        }
     }
+
+    /**
+     * Serialise for a CLI or an HTTP continuation token.
+     *
+     * The stream id is percent-escaped because it contains `/` as a path separator, and an
+     * unescaped separator would make the token ambiguous about where the stream ends.
+     */
+    fun encode(): String =
+        "$TOKEN_PREFIX:${java.net.URLEncoder.encode(stream.value, Charsets.UTF_8)}:$committedOffset"
 }
 
 /**

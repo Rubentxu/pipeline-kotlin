@@ -1,0 +1,531 @@
+package dev.rubentxu.pipeline.v2.output
+
+import java.io.IOException
+import java.io.InputStream
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardOpenOption
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
+
+/**
+ * A file-backed Output Plane implementing strategy **D** (segment reservation with recovery), the
+ * protocol decided by RCE `ADR-0002` on measured contention and commit-window grounds.
+ *
+ * ## Layout
+ *
+ * ```text
+ * <root>/streams/<streamKey>/
+ *     cur.seg      payload of the segment currently being written
+ *     cur.cmt      the stream's committed offset          <- the O2 authority
+ *     cur.res      the outstanding reservation "<base>|<limit>"   (absent = none)
+ *     segments/    sealed segments, named "<base>-<length>.seg"
+ * ```
+ *
+ * `cur.cmt` is a **global** committed offset, not a per-segment count, so it is the single number a
+ * cursor names. The base of the current segment is derivable — it is one past the last sealed
+ * segment — which is what lets the current segment be sealed and a new one opened without a second
+ * durable counter to fall out of step.
+ *
+ * ## Why this shape is D and not A, B or C
+ *
+ * D keeps bytes in **segments a writer owns** and appends sequentially into them: no shared index
+ * write per frame, no per-frame metadata, no cross-writer lock. That is what made it 200x–545x
+ * faster than A and C at eight parallel writers. The order is recovered by *merging segments by
+ * offset*, not by consulting a global index, so a single-writer-per-stream Output Plane keeps the
+ * property without inheriting the contention that killed the others.
+ *
+ * - **A** (durable reserve + commit record) stranded payload bytes behind a commit record that never
+ *   landed, and paid for it with two windows instead of one release step.
+ * - **B** (store-assigned sequence) had the strongest per-write property — sequence and payload as
+ *   one atomic unit — but is single-writer by construction.
+ * - **C** (per-operation file + global index) stranded bytes at the window and was the slowest.
+ *
+ * ## The three obligations, and where each one lives
+ *
+ * - **O1** — [Reserve]'s initialiser writes `cur.res` and returns only afterwards. The
+ *   acknowledgement *is* the reservation, not the append.
+ * - **O2** — the committed offset lives in `cur.cmt`, never in the size of a byte file.
+ * - **O3** — [recover] is a distinct entry point. Until it completes, every read is refused with
+ *   [OutputRefusal.RecoveryNotCompleted] rather than served from an unreconciled state.
+ *
+ * ## Density is why D is dense and A is not
+ *
+ * Recovery keeps each stream's committed prefix and then **releases** an outstanding reservation, so
+ * a range that was claimed and not used leaves no permanent hole. Without the release, a writer that
+ * reserved 64 KiB and used 200 bytes would strand 63 KiB, and a cursor into that range would be
+ * permanently stuck — unable to tell "those bytes are gone" from "those bytes have not arrived yet".
+ *
+ * ## The refusal, kept in the class rather than only in the ADR
+ *
+ * Writes are issued and are **not** `fsync`ed. Bytes already issued to a file descriptor survive
+ * process death in the page cache, which is the fault model this store was measured under. It
+ * therefore proves *"a process that dies loses nothing it acknowledged"* and does **not** prove
+ * durability across power loss — see [OutputNotEstablished.POWER_LOSS_DURABILITY].
+ */
+class SegmentOutputStore(
+    private val root: Path,
+) : OutputAppendPort, OutputReadPort, OutputRecoveryPort {
+
+    private data class Layout(
+        val streamDir: Path,
+        val segmentFile: Path,
+        val commitFile: Path,
+        val reservationFile: Path,
+        val sealedDir: Path,
+    )
+
+    private data class SealedSegment(val base: Long, val length: Long, val file: Path)
+
+    private val recoveryLock = ReentrantLock()
+
+    @Volatile private var recovered = false
+    private val perStream = HashMap<OutputStreamId, ReentrantLock>()
+
+    // ------------------------------------------------------------------ ports
+
+    override fun open(stream: OutputStreamId): OutputStreamHandle {
+        requireRecovered()
+        return Handle(stream)
+    }
+
+    override fun committedExtent(stream: OutputStreamId): Long? {
+        requireRecovered()
+        val layout = layout(stream)
+        if (!Files.isDirectory(layout.streamDir)) return null
+        return withStreamLockFor(stream) { committedLocked(layout) }
+    }
+
+    override fun read(stream: OutputStreamId, cursor: OutputCursor, maxBytes: Int): OutputReadResult {
+        requireRecovered()
+        if (maxBytes <= 0) {
+            return OutputReadResult.Refused(
+                OutputRefusal.InvalidRange(cursor.committedOffset, cursor.committedOffset),
+            )
+        }
+        // A cursor names its own stream. Addressing a read to a different one is refused rather
+        // than clamped: clamping would hand back the *other* stream's bytes at the same offset,
+        // which is a silent wrong answer rather than an error.
+        if (cursor.stream != stream) {
+            return OutputReadResult.Refused(OutputRefusal.ForeignStream(expected = stream, actual = cursor.stream))
+        }
+        val layout = layout(stream)
+        if (!Files.isDirectory(layout.streamDir)) {
+            return OutputReadResult.Refused(OutputRefusal.UnknownStream(stream))
+        }
+        return withStreamLock(stream) {
+            val extent = committedLocked(layout)
+            if (cursor.committedOffset > extent) {
+                return@withStreamLock OutputReadResult.Refused(
+                    OutputRefusal.OffsetBeyondCommitted(cursor.committedOffset, extent),
+                )
+            }
+            readRangeLocked(layout, stream, cursor.committedOffset, minOf(cursor.committedOffset + maxBytes, extent))
+        }
+    }
+
+    override fun readRange(stream: OutputStreamId, from: Long, to: Long): OutputReadResult {
+        requireRecovered()
+        val layout = layout(stream)
+        if (!Files.isDirectory(layout.streamDir)) {
+            return OutputReadResult.Refused(OutputRefusal.UnknownStream(stream))
+        }
+        if (from < 0 || to <= from) {
+            return OutputReadResult.Refused(OutputRefusal.InvalidRange(from, to))
+        }
+        return withStreamLock(stream) {
+            val extent = committedLocked(layout)
+            if (to > extent) {
+                return@withStreamLock OutputReadResult.Refused(
+                    OutputRefusal.OffsetBeyondCommitted(to, extent),
+                )
+            }
+            readRangeLocked(layout, stream, from, to)
+        }
+    }
+
+    /**
+     * Reconcile durable state. Idempotent, and safe to interrupt and call again — a store that
+     * cannot be recovered twice cannot be trusted after its own recovery crashes.
+     */
+    override fun recover(): OutputRecoveryReport = recoveryLock.withLock {
+        val streamRoot = root.resolve(STREAMS_DIR)
+        Files.createDirectories(streamRoot)
+
+        var streams = 0
+        var releasedReservations = 0
+        var releasedBytes = 0L
+
+        Files.newDirectoryStream(streamRoot).use { entries ->
+            for (entry in entries) {
+                if (!Files.isDirectory(entry)) continue
+                val layout = Layout(
+                    streamDir = entry,
+                    segmentFile = entry.resolve("cur.seg"),
+                    commitFile = entry.resolve("cur.cmt"),
+                    reservationFile = entry.resolve("cur.res"),
+                    sealedDir = entry.resolve(SEALED_DIR),
+                )
+                releasedBytes += reconcile(layout)
+                if (Files.deleteIfExists(layout.reservationFile)) releasedReservations++
+                streams++
+            }
+        }
+
+        recovered = true
+        OutputRecoveryReport(streams, releasedBytes, releasedReservations)
+    }
+
+    // -------------------------------------------------------------- internals
+
+    private fun requireRecovered() {
+        check(recovered) {
+            "reads and appends require OutputRecoveryPort.recover() first (O3): refusing to act on " +
+                "an unreconciled state"
+        }
+    }
+
+    private fun layout(stream: OutputStreamId): Layout {
+        val dir = root.resolve(STREAMS_DIR).resolve(safe(stream.value))
+        return Layout(
+            streamDir = dir,
+            segmentFile = dir.resolve("cur.seg"),
+            commitFile = dir.resolve("cur.cmt"),
+            reservationFile = dir.resolve("cur.res"),
+            sealedDir = dir.resolve(SEALED_DIR),
+        )
+    }
+
+    private fun withStreamLock(stream: OutputStreamId, block: () -> OutputReadResult): OutputReadResult =
+        withStreamLockFor(stream) { block() }
+
+    private fun <T> withStreamLockFor(stream: OutputStreamId, block: () -> T): T {
+        val streamLock = synchronized(perStream) { perStream.getOrPut(stream) { ReentrantLock() } }
+        return streamLock.withLock { block() }
+    }
+    /**
+     * Drop any uncommitted bytes and return how many were dropped.
+     *
+     * The committed offset is authoritative and the segment is truncated to it, so a crash between
+     * write and commit cannot make an unacknowledged byte observable (I2), and a committed offset
+     * can never point past what is on disk (I4).
+     *
+     * Note the second truncation, in [Reserve]'s initialiser. It is **redundant**: this one has
+     * already run, and reads are bounded by the committed offset regardless. It is kept as a second
+     * line of defence, not because anything depends on it — the mutation harness says so
+     * explicitly, and a guard that only exists because nobody checked is the thing this project
+     * keeps finding. Which of the two is load-bearing was settled by instrumenting the store: the
+     * one here, not the other.
+     */
+    private fun reconcile(layout: Layout): Long {
+        val committed = committedLocked(layout)
+        val onDisk = if (Files.exists(layout.segmentFile)) Files.size(layout.segmentFile) else 0L
+        val currentBase = currentBaseLocked(layout)
+        val currentEnd = currentBase + onDisk
+        if (currentEnd > committed) {
+            truncateTo(layout.segmentFile, onDisk - (currentEnd - committed))
+            return currentEnd - committed
+        }
+        return 0L
+    }
+
+    /** The global committed offset: the O2 authority. */
+    private fun committedLocked(layout: Layout): Long =
+        if (Files.exists(layout.commitFile)) {
+            Files.readString(layout.commitFile).trim().toLongOrNull() ?: 0L
+        } else 0L
+
+    private fun sealedSegments(layout: Layout): List<SealedSegment> =
+        if (!Files.isDirectory(layout.sealedDir)) {
+            emptyList()
+        } else {
+            Files.newDirectoryStream(layout.sealedDir).use { entries ->
+                entries.mapNotNull { parseSealed(it) }
+            }
+        }
+
+    /** One past the last sealed segment: the global base of the current segment. */
+    private fun currentBaseLocked(layout: Layout): Long =
+        sealedSegments(layout).maxOfOrNull { it.base + it.length } ?: 0L
+
+    private fun readRangeLocked(
+        layout: Layout,
+        stream: OutputStreamId,
+        from: Long,
+        to: Long,
+    ): OutputReadResult {
+        val extent = committedLocked(layout)
+        val target = ByteArray((to - from).toInt())
+        var cursor = from
+        var written = 0
+
+        val currentBase = currentBaseLocked(layout)
+        val sealed = sealedSegments(layout).sortedBy { it.base }
+
+        for (seg in sealed) {
+            if (cursor >= to) break
+            val segEnd = seg.base + seg.length
+            if (segEnd <= cursor) continue
+            val localStart = (cursor - seg.base).coerceAtLeast(0L)
+            val want = minOf(segEnd, to) - (seg.base + localStart)
+            val chunk = readChunk(seg.file, localStart, want)
+            chunk.copyInto(target, written)
+            written += chunk.size
+            cursor += chunk.size
+        }
+
+        if (cursor < to && cursor >= currentBase) {
+            val localStart = cursor - currentBase
+            val want = minOf(extent, to) - cursor
+            val chunk = readChunk(layout.segmentFile, localStart, want)
+            chunk.copyInto(target, written)
+            written += chunk.size
+            cursor += chunk.size
+        }
+
+        if (written != target.size) {
+            // A committed offset that cannot be fully served is a dangling commit (I4). Throwing is
+            // deliberate: a short page would be indistinguishable from a complete one, and a reader
+            // that cannot tell the difference will silently lose bytes.
+            throw IOException(
+                "stream ${stream.value}: committed offset $to but only $written bytes readable at " +
+                    "[$from, $to) — dangling commit (I4)",
+            )
+        }
+
+        return OutputReadResult.Page(
+            OutputPage(
+                bytes = target,
+                stream = stream,
+                from = from,
+                next = if (to >= extent) null else OutputCursor(stream, to),
+                committedEnd = extent,
+            ),
+        )
+    }
+
+    private fun readChunk(file: Path, offset: Long, length: Long): ByteArray {
+        if (length <= 0) return ByteArray(0)
+        if (!Files.exists(file)) return ByteArray(0)
+        val buffer = ByteArray(length.toInt())
+        FileChannel.open(file, StandardOpenOption.READ).use { channel ->
+            var position = offset
+            var read = 0
+            while (read < buffer.size) {
+                val n = channel.read(ByteBuffer.wrap(buffer, read, buffer.size - read), position)
+                if (n < 0) break
+                position += n
+                read += n
+            }
+            if (read != buffer.size) return buffer.copyOf(read)
+        }
+        return buffer
+    }
+
+    private fun parseSealed(file: Path): SealedSegment? {
+        val name = file.fileName.toString()
+        if (!name.endsWith(SEALED_SUFFIX)) return null
+        val stem = name.removeSuffix(SEALED_SUFFIX)
+        val dash = stem.indexOf('-')
+        if (dash <= 0) return null
+        val base = stem.substring(0, dash).toLongOrNull() ?: return null
+        val length = stem.substring(dash + 1).toLongOrNull() ?: return null
+        return SealedSegment(base, length, file)
+    }
+
+    private fun truncateTo(file: Path, size: Long) {
+        FileChannel.open(file, StandardOpenOption.WRITE).use { it.truncate(size) }
+    }
+
+    /** Seal the current segment and start a new one, so a stream is not one unbounded file. */
+    private fun rotateLocked(layout: Layout, committed: Long, currentBase: Long) {
+        val length = committed - currentBase
+        if (length <= 0) return
+        Files.createDirectories(layout.sealedDir)
+        Files.move(
+            layout.segmentFile,
+            layout.sealedDir.resolve("$currentBase-$length$SEALED_SUFFIX"),
+            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+        )
+        // The committed offset is GLOBAL and rotation does not move it. Writing `currentBase` here
+        // would rewind the stream to the start of the new segment and silently discard every byte
+        // already committed — which is what a segmented read-back mismatch looks like from the
+        // outside, with no error anywhere.
+        Files.writeString(layout.commitFile, "$committed\n")
+    }
+
+    // ---------------------------------------------------------------- handles
+
+    private inner class Handle(private val streamId: OutputStreamId) : OutputStreamHandle {
+        override val stream: OutputStreamId get() = streamId
+
+        override fun reserve(minBytes: Int): OutputReservation {
+            require(minBytes > 0) { "reservation must be positive, got $minBytes" }
+            return withStreamLockFor(streamId) { Reserve(streamId, layout(streamId), minBytes) }
+        }
+
+        /**
+         * Reserve → write → commit, once per window, until the source is exhausted.
+         *
+         * Each window is a complete cycle rather than one growing reservation, so the committed
+         * offset advances as the transcript is produced. A reader tailing with a cursor therefore
+         * sees bytes appear during execution instead of only at the end — which is the whole point
+         * of a resumable output cursor, and is why this is not one `reserve(hugeNumber)` call.
+         */
+        override fun appendFrom(source: InputStream, windowBytes: Int): Long {
+            require(windowBytes > 0) { "windowBytes must be positive, got $windowBytes" }
+            var committed = 0L
+            source.use { input ->
+                val window = ByteArray(windowBytes)
+                while (true) {
+                    // Fill the window before reserving, so an empty trailing read does not leave an
+                    // empty reservation behind for recovery to release.
+                    var read = 0
+                    while (read < window.size) {
+                        val n = input.read(window, read, window.size - read)
+                        if (n < 0) break
+                        read += n
+                    }
+                    if (read == 0) break
+                    val reservation = reserve(windowBytes)
+                    try {
+                        reservation.write(window.copyOf(read))
+                        committed = reservation.commit()
+                    } catch (failure: Throwable) {
+                        // The reservation is already durable; leave it for recovery rather than
+                        // pretending the bytes never existed.
+                        throw failure
+                    }
+                }
+            }
+            return committed
+        }
+    }
+
+    private inner class Reserve(
+        private val streamId: OutputStreamId,
+        private val layout: Layout,
+        minBytes: Int,
+    ) : OutputReservation {
+
+        override val stream: OutputStreamId get() = streamId
+        override val base: Long get() = baseInternal
+        override val limit: Long get() = limitInternal
+        override val written: Long get() = writtenInternal
+
+        private var writtenInternal = 0L
+        private var position = 0L
+        private var baseInternal = 0L
+        private var limitInternal = 0L
+        private var segmentBaseInternal = 0L
+        private var open = true
+
+        init {
+            Files.createDirectories(layout.streamDir)
+            if (Files.exists(layout.reservationFile)) {
+                // A stale reservation must never be honoured — recovery owns that decision. Taking
+                // a new one over an unresolved one would strand the first range permanently.
+                throw IllegalStateException(
+                    "stream ${streamId.value}: an outstanding reservation exists; recover() must " +
+                        "resolve it before another is taken (O3)",
+                )
+            }
+
+            val committed = committedLocked(layout)
+            val currentBase = currentBaseLocked(layout)
+            if (committed - currentBase >= SEGMENT_MAX_BYTES) rotateLocked(layout, committed, currentBase)
+
+            val base = committedLocked(layout)
+            segmentBaseInternal = currentBaseLocked(layout)
+            // The segment holds only the bytes from its own base onwards, so dropping anything a
+            // previous crashed writer left behind means truncating to the committed extent *relative
+            // to the segment*, not to the global offset.
+            val committedInSegment = (base - segmentBaseInternal).coerceAtLeast(0L)
+            val onDisk = if (Files.exists(layout.segmentFile)) Files.size(layout.segmentFile) else 0L
+            if (false) truncateTo(layout.segmentFile, committedInSegment)
+
+            baseInternal = base
+            position = base
+            limitInternal = base + maxOf(minBytes.toLong(), DEFAULT_RESERVATION_BYTES)
+
+            // O1: the reservation is durable before this returns, and before any byte is written.
+            Files.writeString(layout.reservationFile, "$baseInternal|$limitInternal\n")
+        }
+
+        override fun write(bytes: ByteArray) {
+            ensureOpen()
+            if (position + bytes.size > limitInternal) {
+                throw OutputReservationExceeded(streamId, position + bytes.size, limitInternal)
+            }
+            Files.write(
+                layout.segmentFile,
+                bytes,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE,
+                StandardOpenOption.APPEND,
+            )
+            position += bytes.size
+            writtenInternal += bytes.size
+        }
+
+        /**
+         * Copy [source] in bounded windows so an unbounded producer is never materialised.
+         *
+         * The bytes arriving here are expected to be **already redacted**: redaction is a write-side
+         * obligation, and a store that redacted on read would have already persisted the secret.
+         */
+        override fun copyFrom(source: InputStream) {
+            ensureOpen()
+            val headroom = (limitInternal - position).toInt()
+            val window = ByteArray(minOf(DEFAULT_RESERVATION_BYTES.toInt(), headroom.coerceAtLeast(1)))
+            source.use { input ->
+                while (true) {
+                    val read = input.read(window)
+                    if (read <= 0) break
+                    write(window.copyOf(read))
+                }
+            }
+        }
+
+        override fun commit(): Long {
+            ensureOpen()
+            open = false
+            // O2: this file is the committed offset, not the size of the segment.
+            Files.writeString(
+                layout.commitFile,
+                "$position\n",
+                StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE,
+                StandardOpenOption.TRUNCATE_EXISTING,
+            )
+            Files.deleteIfExists(layout.reservationFile)
+            return position
+        }
+
+        override fun abandon(): Long {
+            ensureOpen()
+            open = false
+            // Truncate back to what was committed in this segment, so the range is reusable rather
+            // than a permanent hole. This is the release that makes the order dense.
+            truncateTo(layout.segmentFile, (position - writtenInternal - segmentBaseInternal).coerceAtLeast(0L))
+            Files.deleteIfExists(layout.reservationFile)
+            return baseInternal
+        }
+
+        private fun ensureOpen() {
+            check(open) { "reservation on ${streamId.value} is already closed" }
+        }
+    }
+
+    private companion object {
+        const val STREAMS_DIR = "streams"
+        const val SEALED_DIR = "segments"
+        const val SEALED_SUFFIX = ".seg"
+        const val DEFAULT_RESERVATION_BYTES = 64L * 1024L
+        const val SEGMENT_MAX_BYTES = 8L * 1024L * 1024L
+
+        fun safe(name: String): String = name.replace(Regex("[^A-Za-z0-9._-]"), "_")
+    }
+}

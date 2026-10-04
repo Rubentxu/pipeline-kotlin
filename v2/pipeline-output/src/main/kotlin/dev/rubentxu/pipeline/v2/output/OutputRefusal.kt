@@ -1,0 +1,53 @@
+package dev.rubentxu.pipeline.v2.output
+
+/**
+ * Why an output read was refused.
+ *
+ * A **closed** ADT on purpose: a caller must handle every reason, so adding a new refusal mode is a
+ * compile error at the call site rather than a silent fallthrough. That matters most for
+ * [ForeignStream], which is the case an implementation is most tempted to paper over by returning
+ * an empty page — an empty page is a valid answer, and conflating it with "wrong stream" would let
+ * a caller read position 0 of a different stream and believe it had read nothing.
+ *
+ * @see ADR-M1 §D3
+ */
+sealed interface OutputRefusal {
+
+    /**
+     * The cursor names [actual] but the read was addressed to [expected].
+     *
+     * A cursor from stream A is not a valid position in stream B even at offset 0. The store
+     * refuses instead of clamping, because a clamped read is a silent wrong answer.
+     */
+    data class ForeignStream(
+        val expected: OutputStreamId,
+        val actual: OutputStreamId,
+    ) : OutputRefusal
+
+    /** No stream with this id has ever been opened. */
+    data class UnknownStream(val stream: OutputStreamId) : OutputRefusal
+
+    /**
+     * The cursor's committed offset is beyond the stream's committed extent.
+     *
+     * This is not corruption: it is what a cursor looks like after the bytes it named were
+     * discarded by a recovery that released an unused reservation. The refusal is closed so the
+     * caller is forced to re-anchor rather than to read past the end.
+     */
+    data class OffsetBeyondCommitted(
+        val requested: Long,
+        val committed: Long,
+    ) : OutputRefusal
+
+    /** A range read whose end precedes its start, or whose size is not positive. */
+    data class InvalidRange(val from: Long, val to: Long) : OutputRefusal
+
+    /** The read was attempted before [OutputRecoveryPort.recover] completed. O3. */
+    data object RecoveryNotCompleted : OutputRefusal
+}
+
+/** A read that either produced a bounded page or was refused. */
+sealed interface OutputReadResult {
+    data class Page(val page: OutputPage) : OutputReadResult
+    data class Refused(val reason: OutputRefusal) : OutputReadResult
+}

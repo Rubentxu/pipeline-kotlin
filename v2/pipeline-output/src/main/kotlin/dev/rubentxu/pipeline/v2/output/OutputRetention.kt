@@ -34,10 +34,28 @@ package dev.rubentxu.pipeline.v2.output
  * The journal is deliberately not given any of this. It may reference output — the console reader
  * resolves a stream from a run and an operation — but it has no method that deletes. A component
  * that can only cite output cannot prune it.
+ *
+ * ## Why no outcome travels with the lifecycle
+ *
+ * An earlier draft carried the run's outcome as a `String` on [RunLifecycle.Terminal] and on
+ * [OutputPruneIntent.RunReachedTerminalState], and that was a second authority in disguise. The
+ * typed outcome already has exactly one owner — `RunOutcome` in `:pipeline-domain`, a module this
+ * one deliberately does not depend on, so no fitness would have caught the drift — and a retention
+ * decision does not need it. `RunTerminalPlus` asks exactly one question, "has the run ended?",
+ * and the answer is the same for `Success`, `Unstable` and `Failure`: the console served its
+ * purpose.
+ *
+ * A caller that wants to know HOW a run ended asks the event plane or the journal, which own that
+ * fact and already expose it typed. Re-spelling it here as an unvalidated `String` would have made
+ * the prune report a second place where "unstable" and "failed" could each be spelled, and the two
+ * would drift. So the lifecycle says what retention needs, and nothing more.
  */
 sealed interface RunLifecycle {
-    /** The run reached a terminal state. [outcome] is the engine's own projection, carried for the report. */
-    data class Terminal(val outcome: String) : RunLifecycle
+    /**
+     * The run reached a terminal state. The particular outcome is deliberately absent: retention
+     * treats every terminal state alike, and the engine is the authority on which one it was.
+     */
+    data object Terminal : RunLifecycle
 
     /** The run is still executing. Nothing about its output may be discarded. */
     data object StillRunning : RunLifecycle
@@ -69,7 +87,7 @@ sealed interface RetainUntil {
      */
     fun authorize(runId: String, lifecycle: RunLifecycle): OutputPruneIntent? = when (this) {
         RunTerminalPlus -> when (lifecycle) {
-            is RunLifecycle.Terminal -> OutputPruneIntent.RunReachedTerminalState(runId, lifecycle.outcome)
+            RunLifecycle.Terminal -> OutputPruneIntent.RunReachedTerminalState(runId)
             RunLifecycle.StillRunning -> null
         }
         // Both remaining policies keep a live run, and differ only once it ends — which is the
@@ -89,8 +107,14 @@ sealed interface OutputPruneIntent {
     /** The run this intent speaks about, so the store never re-reads a sealed case to find it. */
     val runId: String
 
-    /** The run finished; its console output has served its purpose. */
-    data class RunReachedTerminalState(override val runId: String, val outcome: String) : OutputPruneIntent
+    /**
+     * The run finished; its console output has served its purpose.
+     *
+     * It carries no outcome, and the reason is in [RunLifecycle]: a prune authorisation is not a
+     * report on how the run went, so naming the outcome here would only create a second spelling
+     * of a fact the engine already owns.
+     */
+    data class RunReachedTerminalState(override val runId: String) : OutputPruneIntent
 
     /** A named operator asked for this output to go, before or after the run ended. */
     data class OperatorReleased(override val runId: String, val requestedBy: String) : OutputPruneIntent

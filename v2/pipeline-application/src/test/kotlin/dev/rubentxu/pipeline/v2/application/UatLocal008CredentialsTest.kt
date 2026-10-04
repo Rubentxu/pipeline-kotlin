@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
@@ -382,7 +383,8 @@ pipeline {
         assertEquals("success", runFinished?.outcome, "SSH binding pipeline should succeed. stdout: ${stdout.take(300)}")
 
         // Verify key file path appears in output (materialized)
-        assertTrue(stdout.contains("SSH_KEY_FILE=/"), "Materialized SSH key path should appear in output")
+        val transcript = shTranscript(controlRoot, dbPath, stdout)
+        assertTrue(transcript.contains("SSH_KEY_FILE=/"), "Materialized SSH key path should appear in the transcript")
     }
 
     /**
@@ -432,7 +434,8 @@ pipeline {
 
         val runFinished = events.filterIsInstance<RunFinished>().firstOrNull()
         assertEquals("success", runFinished?.outcome, "FILE binding pipeline should succeed")
-        assertTrue(stdout.contains("SECRET_FILE=/"), "Materialized secret file path should appear in output")
+        val transcript = shTranscript(controlRoot, dbPath, stdout)
+        assertTrue(transcript.contains("SECRET_FILE=/"), "Materialized secret file path should appear in the transcript")
     }
 
     /**
@@ -486,7 +489,8 @@ pipeline {
 
         val runFinished = events.filterIsInstance<RunFinished>().firstOrNull()
         assertEquals("success", runFinished?.outcome, "CERTIFICATE binding pipeline should succeed")
-        assertTrue(stdout.contains("KEYSTORE_PATH=/"), "Materialized keystore path should appear in output")
+        val transcript = shTranscript(controlRoot, dbPath, stdout)
+        assertTrue(transcript.contains("KEYSTORE_PATH=/"), "Materialized keystore path should appear in the transcript")
     }
 
     /**
@@ -535,7 +539,8 @@ pipeline {
 
         val runFinished = events.filterIsInstance<RunFinished>().firstOrNull()
         assertEquals("success", runFinished?.outcome, "ZIP binding pipeline should succeed")
-        assertTrue(stdout.contains("ZIP_PATH=/"), "Materialized ZIP path should appear in output")
+        val transcript = shTranscript(controlRoot, dbPath, stdout)
+        assertTrue(transcript.contains("ZIP_PATH=/"), "Materialized ZIP path should appear in the transcript")
     }
 
     /**
@@ -584,7 +589,8 @@ pipeline {
 
         val runFinished = events.filterIsInstance<RunFinished>().firstOrNull()
         assertEquals("success", runFinished?.outcome, "USERNAME_COLON_PASSWORD binding pipeline should succeed")
-        assertTrue(stdout.contains("U_P=admin:secret123"), "Colon-joined credential should appear in output")
+        val transcript = shTranscript(controlRoot, dbPath, stdout)
+        assertTrue(transcript.contains("U_P=admin:secret123"), "Colon-joined credential should appear in the transcript")
     }
 
     // ─── CR-BD-023..025 — wipe-on-close for file-based kinds ─────────────────
@@ -637,7 +643,8 @@ pipeline {
         Files.writeString(scriptPath, scriptContent)
 
         val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
-        assertTrue(stdout.contains("BOUND"), "SSH key env must be injected and file present in-scope; got: $stdout")
+        val transcript = shTranscript(controlRoot, dbPath, stdout)
+        assertTrue(transcript.contains("BOUND"), "SSH key env must be injected and file present in-scope; got: $transcript")
         val recorded = Files.readString(recordPath).trim()
         assertTrue(recorded.isNotEmpty() && Path.of(recorded).isAbsolute, "materialized SSH key path must have been recorded, got '$recorded'")
         assertTrue(Files.notExists(Path.of(recorded)), "SSH key file should be wiped after block exit: $recorded")
@@ -688,7 +695,8 @@ pipeline {
         Files.writeString(scriptPath, scriptContent)
 
         val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
-        assertTrue(stdout.contains("BOUND"), "secret file env must be injected and file present in-scope; got: $stdout")
+        val transcript = shTranscript(controlRoot, dbPath, stdout)
+        assertTrue(transcript.contains("BOUND"), "secret file env must be injected and file present in-scope; got: $transcript")
         val recorded = Files.readString(recordPath).trim()
         assertTrue(recorded.isNotEmpty() && Path.of(recorded).isAbsolute, "materialized secret file path must have been recorded, got '$recorded'")
         assertTrue(Files.notExists(Path.of(recorded)), "secret file should be wiped after block exit: $recorded")
@@ -744,7 +752,8 @@ pipeline {
         Files.writeString(scriptPath, scriptContent)
 
         val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
-        assertTrue(stdout.contains("BOUND"), "keystore env must be injected and file present in-scope; got: $stdout")
+        val transcript = shTranscript(controlRoot, dbPath, stdout)
+        assertTrue(transcript.contains("BOUND"), "keystore env must be injected and file present in-scope; got: $transcript")
         val recorded = Files.readString(recordPath).trim()
         assertTrue(recorded.isNotEmpty() && Path.of(recorded).isAbsolute, "materialized keystore path must have been recorded, got '$recorded'")
         assertTrue(Files.notExists(Path.of(recorded)), "keystore should be wiped after block exit: $recorded")
@@ -1086,9 +1095,10 @@ pipeline {
         Files.writeString(scriptPath, scriptContent)
 
         val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
-        assertTrue(stdout.contains("outer=outer-secret"), "Outer binding should be visible")
-        assertTrue(stdout.contains("inner=inner-secret"), "Inner binding should shadow outer")
-        assertTrue(stdout.contains("restored=outer-secret"), "Outer binding should be restored after inner block")
+        val transcript = shTranscript(controlRoot, dbPath, stdout)
+        assertTrue(transcript.contains("outer=outer-secret"), "Outer binding should be visible")
+        assertTrue(transcript.contains("inner=inner-secret"), "Inner binding should shadow outer")
+        assertTrue(transcript.contains("restored=outer-secret"), "Outer binding should be restored after inner block")
     }
 
     // ─── CR-BD-033 — exception-path unbound ──────────────────────────────────
@@ -1350,6 +1360,50 @@ pipeline {
         System.err.println("DEBUG-UAT008-STDOUT: $debugFile")
         return stdout
     }
+
+    /**
+     * The process transcript of every `sh` step in a run, read from the OUTPUT PLANE.
+     *
+     * ## Why the assertions moved here
+     *
+     * These fixtures assert that a credential reached the body — "the bound secret is visible",
+     * "the key path is in scope", "the inner binding shadows the outer one". The body proved that
+     * by `sh("echo $SECRET")` and the test read the answer out of the run's stdout, via
+     * `EchoOutputCaptured`. ADR-M1 D2 gives those bytes exactly one owner and, on the durable
+     * path, that owner is the Output Plane; the event channel stopped carrying them, so all
+     * nine of these tests went RED with an EMPTY observed string while the pipelines themselves
+     * still exited 0. The observation did not become less true — the reader was pointing at a
+     * channel that no longer carries output.
+     *
+     * The control root is always available here: [runPipelineWithCredentialsStore] already passes
+     * `--control-root`, so the plane is addressable and the migration costs one argument per
+     * assertion rather than a new fixture strategy.
+     *
+     * ## Why it reads the journal rather than the events
+     *
+     * Every `sh` in this class runs inside a `withCredentials` block, so its operation is keyed by
+     * an `OpId` carrying a body path (`run-s0-0-bp1-0:core.sh`), and no event publishes that
+     * string. [ConsolePlaneProbe.transcriptsOfRun] takes the identities from the run's own journal,
+     * which already records every `op_id` verbatim, instead of rebuilding the engine's body-path
+     * convention here. That is why [journalDb] is a parameter: without it there is no honest way to
+     * learn a nested operation's identity.
+     *
+     * ## What this does NOT weaken
+     *
+     * The security claims in the wipe tests (CR-BD-023..025) never rested on this channel. They
+     * record the materialized path to an OUTER file that survives the wipe, then assert on the
+     * filesystem: `Files.readString(recordPath)` proves the path was bound and absolute, and
+     * `Files.notExists(...)` proves the secret was destroyed after the block exited. Both are
+     * independent of where the transcript is read from, so re-pointing the `BOUND` marker does
+     * not trade a weak assertion for a weaker one — it moves the marker to the authority that
+     * owns the bytes and leaves the filesystem proof exactly as strict.
+     */
+    private fun shTranscript(controlRoot: Path, journalDb: Path, stdout: String): String =
+        ConsolePlaneProbe.transcriptsOfRun(
+            controlDirRoot = controlRoot,
+            journalDb = journalDb,
+            events = JsonEventLog.decode(stdout),
+        )
 
     /**
      * Creates a minimal PKCS#12 keystore for testing using keytool.

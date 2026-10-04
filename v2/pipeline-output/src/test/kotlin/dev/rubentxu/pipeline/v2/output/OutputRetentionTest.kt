@@ -46,10 +46,13 @@ class OutputRetentionTest {
             RetainUntil.RunTerminalPlus.authorize("r1", RunLifecycle.StillRunning),
             "a running run's output must never be authorised for deletion",
         )
-        val terminal = RetainUntil.RunTerminalPlus.authorize("r1", RunLifecycle.Terminal("success"))
+        val terminal = RetainUntil.RunTerminalPlus.authorize("r1", RunLifecycle.Terminal)
         assertInstanceOf(OutputPruneIntent.RunReachedTerminalState::class.java, terminal, "got $terminal")
         assertEquals("r1", terminal!!.runId)
-        assertEquals("success", (terminal as OutputPruneIntent.RunReachedTerminalState).outcome)
+
+        // The intent names the run and nothing else. There is deliberately no outcome to assert on
+        // here: retention asks "has the run ended?", the engine owns "how did it end?", and a
+        // second copy of that answer in a prune intent is how the two would drift apart.
     }
 
     @Test
@@ -58,13 +61,13 @@ class OutputRetentionTest {
         // by a check somewhere downstream that a caller may forget. Forever on a terminal run must
         // still be nothing.
         assertNull(RetainUntil.Forever.authorize("r1", RunLifecycle.StillRunning))
-        assertNull(RetainUntil.Forever.authorize("r1", RunLifecycle.Terminal("failure")))
+        assertNull(RetainUntil.Forever.authorize("r1", RunLifecycle.Terminal))
     }
 
     @Test
     fun `ExplicitReleaseOnly never self-authorises and the operator intent is a separate case`() {
         assertNull(RetainUntil.ExplicitReleaseOnly.authorize("r1", RunLifecycle.StillRunning))
-        assertNull(RetainUntil.ExplicitReleaseOnly.authorize("r1", RunLifecycle.Terminal("success")))
+        assertNull(RetainUntil.ExplicitReleaseOnly.authorize("r1", RunLifecycle.Terminal))
         // What the operator has instead is an intent they construct themselves, carrying who asked.
         val released = OutputPruneIntent.OperatorReleased("r1", "oncall@example")
         assertEquals("oncall@example", (released as OutputPruneIntent.OperatorReleased).requestedBy)
@@ -79,7 +82,7 @@ class OutputRetentionTest {
         store.write(OutputStreamId("$run/step-0"), "first transcript\n")
         store.write(OutputStreamId("$run/step-1"), "second transcript, longer\n")
 
-        val report = store.prune(OutputPruneIntent.RunReachedTerminalState(run, "success"))
+        val report = store.prune(OutputPruneIntent.RunReachedTerminalState(run))
 
         assertEquals(2, report.streamsRemoved, "both of the run's streams must go")
         assertEquals(0, report.streamsRetained, "nothing may resist a deletion the filesystem allows")
@@ -99,7 +102,7 @@ class OutputRetentionTest {
         val stream = OutputStreamId("$run/step-0")
         store.write(stream, "bytes that are about to stop existing\n")
 
-        store.prune(OutputPruneIntent.RunReachedTerminalState(run, "success"))
+        store.prune(OutputPruneIntent.RunReachedTerminalState(run))
 
         // UnknownStream, not an empty page. A reader handed zero bytes here could not tell a
         // released transcript from a silent process, and that is the one difference a console has
@@ -118,7 +121,7 @@ class OutputRetentionTest {
         store.write(OutputStreamId("$kept/step-0"), "must survive\n")
         store.write(OutputStreamId("$dropped/step-0"), "must go\n")
 
-        val report = store.prune(OutputPruneIntent.RunReachedTerminalState(dropped, "success"))
+        val report = store.prune(OutputPruneIntent.RunReachedTerminalState(dropped))
 
         assertEquals(1, report.streamsRemoved)
         assertTrue(store.hasOutputFor(kept), "a neighbour run must be untouched")
@@ -148,7 +151,7 @@ class OutputRetentionTest {
         // could delete a run's output while a concurrent recovery was still reconciling it.
         val unrecovered = SegmentOutputStore(root)
         assertThrows(IllegalStateException::class.java) {
-            unrecovered.prune(OutputPruneIntent.RunReachedTerminalState("r", "success"))
+            unrecovered.prune(OutputPruneIntent.RunReachedTerminalState("r"))
         }
     }
 

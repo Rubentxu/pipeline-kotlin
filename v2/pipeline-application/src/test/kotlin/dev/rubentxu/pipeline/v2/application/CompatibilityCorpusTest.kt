@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.credentials.Certificate
@@ -11,10 +12,10 @@ import dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey
 import dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword
 import dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword
 import dev.rubentxu.pipeline.v2.domain.credentials.Zip
+import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.FileExistsChecked
 import dev.rubentxu.pipeline.v2.events.FileRead
 import dev.rubentxu.pipeline.v2.events.JsonEventLog
-import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
@@ -125,6 +126,65 @@ class CompatibilityCorpusTest {
         assertTrue(events.isNotEmpty()) { "Fixture $name produced no events" }
     }
 
+    /** What one fixture run produced, with its Output Plane left addressable on disk. */
+    private data class FixtureRun(
+        val exitCode: Int,
+        val stdout: String,
+        val stderr: String,
+        val events: List<DomainEvent>,
+    )
+
+    /**
+     * Run a fixture with an EXPLICIT, ADDRESSABLE Output Plane, and decode the run.
+     *
+     * ## Why this helper exists and why it takes `controlDir`
+     *
+     * Process transcript used to reach a test through `EchoOutputCaptured`. ADR-M1 D2 gives those
+     * bytes exactly one owner, and on the durable path that owner is the Output Plane — so the
+     * event channel stopped carrying them and these fixtures went RED with an EMPTY observed
+     * string. The bytes were never missing: measured on the installed distribution, all five of
+     * these fixtures exit 0 and their `sh` transcript sits in the plane, byte for byte what the
+     * assertion expected to read from the event.
+     *
+     * The reason they went unnoticed is a process fact, not a test fact: the class is
+     * `@Tag("release-scale")`, and the daily gate passes `-PexcludeSlowTests`, which is read by
+     * PRESENCE and therefore excludes the tag. So these fixtures were the first thing the
+     * release gate ran, and the first thing the release gate found RED. A gate that only
+     * exercises a suite when someone remembers to is not the gate it claims to be.
+     *
+     * `--control-root` is therefore a parameter here rather than an omission to remember: with
+     * no flag the run still writes a plane, but into a private temp directory that no caller can
+     * name afterwards. A helper that made the plane unreachable would have let the next reader
+     * "fix" the assertion by weakening it.
+     *
+     * Both pipes are drained BEFORE `waitFor`. Waiting first can deadlock when a child fills the
+     * 64 KiB pipe buffer, and a helper that can hang is not a helper worth having.
+     */
+    private fun runFixtureIntoOutputPlane(
+        script: Path,
+        workspace: String,
+        controlDir: Path,
+    ): FixtureRun {
+        val appBin = AppBinSupport.discover()
+
+        val pb = ProcessBuilder(
+            appBin.toString(),
+            "run",
+            "--workspace", workspace,
+            "--control-root", controlDir.toString(),
+            script.toString(),
+        )
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+
+        val process = pb.start()
+        val stdout = process.inputStream.bufferedReader().readText().trim()
+        val stderr = process.errorStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        return FixtureRun(exitCode, stdout, stderr, JsonEventLog.decode(stdout))
+    }
+
     /**
      * WU-LPR-104: core.readFile / core.fileExists live fixture. Beyond pass/fail,
      * asserts the typed observability contract:
@@ -195,25 +255,21 @@ class CompatibilityCorpusTest {
      *    `core.sh cat ...` Step echoes the file content as evidence).
      */
     @Test
-    fun fixture24UtilitiesRoundtrip() {
+    fun fixture24UtilitiesRoundtrip(@TempDir controlDir: Path) {
         val name = "24-utilities-roundtrip.pipeline.kts"
-        val path = fixture(name)
-        val appBin = AppBinSupport.discover()
 
         // Use --workspace . so the produced file persists under the
         // fixture directory for post-run inspection.
-        val pb = ProcessBuilder(appBin.toString(), "run", "--workspace", ".", path.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
-        assertEquals(0, exitCode) {
-            "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()}"
+        val run = runFixtureIntoOutputPlane(
+            script = fixture(name),
+            workspace = ".",
+            controlDir = controlDir,
+        )
+        assertEquals(0, run.exitCode) {
+            "Fixture $name exited with code ${run.exitCode}. stderr: ${run.stderr}"
         }
 
-        val events = JsonEventLog.decode(stdout)
+        val events = run.events
         assertTrue(events.isNotEmpty()) { "Fixture $name produced no events" }
 
         val stepStartedCoreUtils = events.filterIsInstance<StepStarted>().filter { it.stepType == "core-utils" }
@@ -225,18 +281,19 @@ class CompatibilityCorpusTest {
             "Fixture $name must emit 3 core-utils StepFinished events"
         }
 
-        // The `core.sh cat build/utils/data.json` echoes the file content as a
-        // durable console event; this is the simplest end-to-end proof that the
-        // JSON file survived the writeJson → readJson → sha256 chain.
-        val captured = events.filterIsInstance<EchoOutputCaptured>().map { it.content }
+        // The `core.sh cat build/utils/data.json` writes the file content to the
+        // Output Plane; this is the simplest end-to-end proof that the JSON file
+        // survived the writeJson → readJson → sha256 chain. The transcript is read
+        // from the authority that owns those bytes (ADR-M1 D2), not from the event
+        // channel, which carries semantic facts only on the durable path.
+        val captured = ConsolePlaneProbe.transcriptsOfWrittenSteps(controlDir, events, stepType = "sh")
         assertTrue(
             captured.isNotEmpty(),
-            "Fixture $name must emit at least one EchoOutputCaptured (the cat command). Got: $captured",
+            "Fixture $name must have written the cat output to the Output Plane. Got: $captured",
         )
-        val firstCaptured = captured.first()
         assertTrue(
-            firstCaptured.contains("alice") && firstCaptured.contains("age") && firstCaptured.contains("30"),
-            "Fixture $name must echo the JSON file content with alice/age/30. Got: $firstCaptured",
+            captured.contains("alice") && captured.contains("age") && captured.contains("30"),
+            "Fixture $name must echo the JSON file content with alice/age/30. Got: $captured",
         )
 
         val outcome = events.filterIsInstance<RunFinished>().singleOrNull()
@@ -247,8 +304,9 @@ class CompatibilityCorpusTest {
 
         // The file content on disk must match the canonical `sha256sum` value;
         // this is the durable evidence that the typed Step produced the same
-        // bytes the fixture asserted.
-        val producedFile = path.parent.resolve("build/utils/data.json")
+        // bytes the fixture asserted. The workspace was `.`, i.e. the corpus
+        // directory, so that is where the produced file lands.
+        val producedFile = fixtureDir().toPath().resolve("build/utils/data.json")
         if (producedFile.toFile().isFile) {
             val bytes = java.nio.file.Files.readAllBytes(producedFile)
             val canonical = java.security.MessageDigest.getInstance("SHA-256")
@@ -429,28 +487,26 @@ class CompatibilityCorpusTest {
      * core-utils StepStarted/StepFinished pair for both Steps.
      */
     @Test
-    fun fixture25YamlRoundtrip(@TempDir workspace: Path) {
+    fun fixture25YamlRoundtrip(@TempDir workspace: Path, @TempDir controlDir: Path) {
         val name = "25-yaml-roundtrip.pipeline.kts"
-        val path = copyFixtureInto(name, workspace)
-        val appBin = AppBinSupport.discover()
-        val pb = ProcessBuilder(appBin.toString(), "run", "--workspace", workspace.toString(), path.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
-        assertEquals(0, exitCode) {
-            "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()}"
+        val run = runFixtureIntoOutputPlane(
+            script = copyFixtureInto(name, workspace),
+            workspace = workspace.toString(),
+            controlDir = controlDir,
+        )
+        assertEquals(0, run.exitCode) {
+            "Fixture $name exited with code ${run.exitCode}. stderr: ${run.stderr}"
         }
-        val events = JsonEventLog.decode(stdout)
+        val events = run.events
         assertTrue(events.isNotEmpty()) { "Fixture $name produced no events" }
         val coreUtilsStarted = events.filterIsInstance<StepStarted>().filter { it.stepType == "core-utils" }
         assertEquals(2, coreUtilsStarted.size) {
             "Fixture $name must emit 2 core-utils StepStarted (writeYaml + readYaml). Got ${coreUtilsStarted.size}"
         }
-        // The script ends with `core.sh cat .../config.yaml`; the echoed YAML
-        // must mention every primitive we wrote.
-        val captured = events.filterIsInstance<EchoOutputCaptured>().joinToString("\n") { it.content }
+        // The script ends with `core.sh cat .../config.yaml`; the transcript must
+        // mention every primitive we wrote. Read from the Output Plane, which
+        // owns those bytes (ADR-M1 D2).
+        val captured = ConsolePlaneProbe.transcriptsOfWrittenSteps(controlDir, events, stepType = "sh")
         assertTrue(captured.contains("name: pipelinek")) { "YAML must contain name=pipelinek. Got: $captured" }
         assertTrue(captured.contains("version: 2.0.0")) { "YAML must contain version=2.0.0" }
         assertTrue(captured.contains("- unzip")) { "YAML must list unzip in features" }
@@ -465,27 +521,25 @@ class CompatibilityCorpusTest {
      * the cross-check `core.sh find` echoes matching files.
      */
     @Test
-    fun fixture26FindFiles() {
+    fun fixture26FindFiles(@TempDir controlDir: Path) {
         val name = "26-find-files.pipeline.kts"
         val path = fixture(name)
-        val appBin = AppBinSupport.discover()
-        val pb = ProcessBuilder(appBin.toString(), "run", "--workspace", path.parent.toString(), path.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
-        assertEquals(0, exitCode) {
-            "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()}"
+        val run = runFixtureIntoOutputPlane(
+            script = path,
+            workspace = path.parent.toString(),
+            controlDir = controlDir,
+        )
+        assertEquals(0, run.exitCode) {
+            "Fixture $name exited with code ${run.exitCode}. stderr: ${run.stderr}"
         }
-        val events = JsonEventLog.decode(stdout)
+        val events = run.events
         assertTrue(events.isNotEmpty())
         // Two findFiles invocations in the script.
         val coreUtilsStarted = events.filterIsInstance<StepStarted>().filter { it.stepType == "core-utils" }
         assertEquals(2, coreUtilsStarted.size) {
             "Fixture $name must emit 2 core-utils StepStarted events (two findFiles calls)"
         }
-        val captured = events.filterIsInstance<EchoOutputCaptured>().joinToString("\n") { it.content }
+        val captured = ConsolePlaneProbe.transcriptsOfWrittenSteps(controlDir, events, stepType = "sh")
         assertTrue(captured.contains("a.txt") && captured.contains("sub/c.txt")) {
             "findFiles + core.sh find must surface both direct and nested .txt files. Got: $captured"
         }
@@ -500,27 +554,24 @@ class CompatibilityCorpusTest {
      * by `core.sh cat` echoing "one\ntwo\nthree").
      */
     @Test
-    fun fixture27ZipUnzip(@TempDir workspace: Path) {
+    fun fixture27ZipUnzip(@TempDir workspace: Path, @TempDir controlDir: Path) {
         val name = "27-zip-unzip.pipeline.kts"
-        val path = copyFixtureInto(name, workspace)
-        val appBin = AppBinSupport.discover()
-        val pb = ProcessBuilder(appBin.toString(), "run", "--workspace", workspace.toString(), path.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
-        assertEquals(0, exitCode) {
-            "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()}"
+        val run = runFixtureIntoOutputPlane(
+            script = copyFixtureInto(name, workspace),
+            workspace = workspace.toString(),
+            controlDir = controlDir,
+        )
+        assertEquals(0, run.exitCode) {
+            "Fixture $name exited with code ${run.exitCode}. stderr: ${run.stderr}"
         }
-        val events = JsonEventLog.decode(stdout)
+        val events = run.events
         assertTrue(events.isNotEmpty())
         // zip + 3 sha256 + unzip = 5 core-utils invocations.
         val coreUtilsStarted = events.filterIsInstance<StepStarted>().filter { it.stepType == "core-utils" }
         assertEquals(5, coreUtilsStarted.size) {
             "Fixture $name must emit 5 core-utils StepStarted (zip + 3*sha256 + unzip). Got ${coreUtilsStarted.size}"
         }
-        val captured = events.filterIsInstance<EchoOutputCaptured>().joinToString("\n") { it.content }
+        val captured = ConsolePlaneProbe.transcriptsOfWrittenSteps(controlDir, events, stepType = "sh")
         assertTrue(captured.contains("one") && captured.contains("two") && captured.contains("three")) {
             "Unzipped content must echo one/two/three. Got: $captured"
         }
@@ -576,20 +627,18 @@ class CompatibilityCorpusTest {
      * extracted content survives.
      */
     @Test
-    fun fixture29MixedUtilities() {
+    fun fixture29MixedUtilities(@TempDir controlDir: Path) {
         val name = "29-mixed-utilities.pipeline.kts"
         val path = fixture(name)
-        val appBin = AppBinSupport.discover()
-        val pb = ProcessBuilder(appBin.toString(), "run", "--workspace", path.parent.toString(), path.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
-        assertEquals(0, exitCode) {
-            "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()}"
+        val run = runFixtureIntoOutputPlane(
+            script = path,
+            workspace = path.parent.toString(),
+            controlDir = controlDir,
+        )
+        assertEquals(0, run.exitCode) {
+            "Fixture $name exited with code ${run.exitCode}. stderr: ${run.stderr}"
         }
-        val events = JsonEventLog.decode(stdout)
+        val events = run.events
         val stages = events.filter { it.kind == "StageStarted" }
         assertEquals(5, stages.size) {
             "Fixture $name must have 5 stages. Got ${stages.size}"
@@ -611,7 +660,7 @@ class CompatibilityCorpusTest {
         assertEquals(5, coreUtilsStarted.size) {
             "Fixture $name must emit 5 core-utils StepStarted. Got ${coreUtilsStarted.size}"
         }
-        val captured = events.filterIsInstance<EchoOutputCaptured>().joinToString("\n") { it.content }
+        val captured = ConsolePlaneProbe.transcriptsOfWrittenSteps(controlDir, events, stepType = "sh")
         assertTrue(captured.contains("alpha") && captured.contains("beta")) {
             "Unzipped content must echo alpha/beta. Got: $captured"
         }

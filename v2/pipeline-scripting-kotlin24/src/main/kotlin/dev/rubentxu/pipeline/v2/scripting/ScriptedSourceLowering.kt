@@ -52,21 +52,28 @@ object ScriptedSourceLowering {
         facadeSchemaVersion: String,
     ): LoweringResult = when (val mapping = mapper.map(ScriptedSource(sourceId, sourceText))) {
         is ScriptedSourceMapping.InvalidSyntax -> LoweringResult.InvalidSyntax(mapping.diagnostics)
-        is ScriptedSourceMapping.Mapped -> {
-            val body = rewrite(sourceText, mapping.calls, mapping.loopScopes)
-            val artifact = ScriptedArtifactIdentity(
-                sourceDigest = sha256(sourceText),
-                dslApiVersion = DSL_API_VERSION,
-                compilerAdapterVersion = COMPILER_ADAPTER_VERSION,
-                runtimeCompatibilityVersion = RUNTIME_COMPATIBILITY_VERSION,
-                pluginLockDigest = PLUGIN_LOCK_DIGEST,
-                facadeSchemaDigest = facadeSchemaVersion,
-            )
-            LoweringResult.Generated(
-                source = generatedSource(sourceId, body),
-                artifact = artifact,
-                mappedCalls = mapping.calls,
-            )
+        is ScriptedSourceMapping.Mapped -> when (val rewritten = rewrite(sourceText, mapping.calls, mapping.loopScopes)) {
+            // S4-SRANGE: an unlocatable call refuses the whole lowering. It used to be skipped,
+            // which reported `Generated` while the call survived as a bare `sh(...)` with no
+            // receiver — the author then met `Unresolved reference 'sh'` in GENERATED code they
+            // never wrote. The information needed to explain it existed and was discarded in
+            // favour of a symptom three layers downstream.
+            is RewriteResult.Unlocatable -> LoweringResult.InvalidSyntax(rewritten.diagnostics)
+            is RewriteResult.Rewritten -> {
+                val artifact = ScriptedArtifactIdentity(
+                    sourceDigest = sha256(sourceText),
+                    dslApiVersion = DSL_API_VERSION,
+                    compilerAdapterVersion = COMPILER_ADAPTER_VERSION,
+                    runtimeCompatibilityVersion = RUNTIME_COMPATIBILITY_VERSION,
+                    pluginLockDigest = PLUGIN_LOCK_DIGEST,
+                    facadeSchemaDigest = facadeSchemaVersion,
+                )
+                LoweringResult.Generated(
+                    source = generatedSource(sourceId, rewritten.text),
+                    artifact = artifact,
+                    mappedCalls = mapping.calls,
+                )
+            }
         }
     }
 
@@ -94,8 +101,9 @@ object ScriptedSourceLowering {
         text: String,
         calls: List<ScriptedMappedCall>,
         loopScopes: List<ScriptedLoopScope>,
-    ): String {
+    ): RewriteResult {
         val edits = mutableListOf<TextEdit>()
+        val unlocatable = mutableListOf<ScriptedSourceDiagnostic>()
 
         for (scope in loopScopes) {
             val scopeId = scope.scopeId.value
@@ -109,9 +117,31 @@ object ScriptedSourceLowering {
 
         for (call in calls) {
             val start = offsetOf(text, call.location)
-            if (start < 0 || start + call.sourceLength > text.length) continue
-            edits += TextEdit(start, call.sourceLength, facadeCall(call))
+            when {
+                start < 0 -> unlocatable += ScriptedSourceDiagnostic(
+                    line = call.location.line,
+                    column = call.location.column,
+                    message = "mapped ${call.kind.describeForDiagnostic()} has no location in this " +
+                        "source: the mapper pointed at a line and column the text does not have, so " +
+                        "the call cannot be rewritten onto the façade. Refusing rather than leaving " +
+                        "a bare call in the generated program.",
+                )
+                // Two distinct operator mistakes, so two distinct explanations. A missing line and
+                // an over-long extent look identical in a `continue`, and they do not have the
+                // same fix.
+                start + call.sourceLength > text.length -> unlocatable += ScriptedSourceDiagnostic(
+                    line = call.location.line,
+                    column = call.location.column,
+                    message = "mapped ${call.kind.describeForDiagnostic()} claims a source extent of " +
+                        "${call.sourceLength} characters from line ${call.location.line}, which runs " +
+                        "past the end of a source of ${text.length} characters. The mapper's extent " +
+                        "and this text disagree, so the call cannot be rewritten onto the façade.",
+                )
+                else -> edits += TextEdit(start, call.sourceLength, facadeCall(call))
+            }
         }
+
+        if (unlocatable.isNotEmpty()) return RewriteResult.Unlocatable(unlocatable)
 
         // Back-to-front. Ties on the same offset resolve by construction order, so
         // a stable sort makes the output deterministic rather than incidental.
@@ -122,7 +152,32 @@ object ScriptedSourceLowering {
                     edit.replacement +
                     result.substring(edit.offset + edit.length)
             }
-        return result
+        return RewriteResult.Rewritten(result)
+    }
+
+    /**
+     * A mapped call was either rewritten, or the lowering refuses.
+     *
+     * Not a `String?` and not a thrown exception: the caller needs to distinguish "here is your
+     * program" from "here is what is wrong with your source", and the only honest way to carry
+     * both is a closed pair. Every diagnostic for every offending call is returned, so one run
+     * tells the operator everything that is wrong rather than the first thing.
+     */
+    private sealed interface RewriteResult {
+        data class Rewritten(val text: String) : RewriteResult
+        data class Unlocatable(val diagnostics: List<ScriptedSourceDiagnostic>) : RewriteResult
+    }
+
+    /**
+     * How to name a mapped call in a diagnostic, in the author's own vocabulary. Without it a
+     * message saying "the call" is a message the author cannot act on.
+     */
+    private fun ScriptedCallKind.describeForDiagnostic(): String = when (this) {
+        is ScriptedCallKind.Shell -> "shell call `sh(...)`"
+        is ScriptedCallKind.IsUnix -> "`isUnix()` call"
+        is ScriptedCallKind.Pwd -> "`pwd()` call"
+        is ScriptedCallKind.ReadFile -> "`readFile(...)` call"
+        is ScriptedCallKind.FileExists -> "`fileExists(...)` call"
     }
 
     /**

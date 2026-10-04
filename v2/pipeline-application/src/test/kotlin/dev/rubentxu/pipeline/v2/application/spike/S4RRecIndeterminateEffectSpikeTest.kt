@@ -426,7 +426,13 @@ class S4RRecIndeterminateEffectSpikeTest {
         val rows = listOf(
             Row(1, "no journal", "Execute", "handler runs", "-"),
             Row(2, "None + RUNNING", "Execute", "handler runs", "recovery genuinely not applicable"),
-            Row(3, "ExternalSubprocess + RUNNING + root null", "RecoveryUnobservable", "no handler", "REQUIRED BUT UNOBSERVABLE — fails closed, row left RUNNING"),
+            Row(
+                3,
+                "ExternalSubprocess + RUNNING + root null",
+                "RecoveryUnobservable",
+                "no handler",
+                "REQUIRED BUT UNOBSERVABLE — fails closed, row left RUNNING",
+            ),
             Row(4, "ExternalSubprocess + RUNNING + op dir absent", "RecoverRunning(LOST)", "no handler", "observed, no evidence"),
             Row(5, "ExternalSubprocess + RUNNING + result.txt", "RecoverRunning(SUCCEEDED)", "no handler", "observed, terminal evidence"),
             Row(6, "ExternalSubprocess + RUNNING + fresh heartbeat", "RecoverRunning via Reattach", "no handler", "observed, still alive"),

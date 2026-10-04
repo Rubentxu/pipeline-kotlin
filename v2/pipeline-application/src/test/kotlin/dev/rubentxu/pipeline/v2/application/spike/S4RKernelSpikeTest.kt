@@ -1045,7 +1045,7 @@ class S4RKernelSpikeTest {
 
         val scenarios = listOf(
             Scenario("s4rkernel-d1", SH_KEY, shPayload("echo s4rkernel-d1"), shInput("echo s4rkernel-d1")),
-            Scenario("s4rkernel-d2", PWD_KEY, pwdPayload(), pwdInput()),
+            Scenario("s4rkernel-d2", PWD_KEY, PWD_PAYLOAD, pwdInput()),
         )
 
         scenarios.forEach { s ->
@@ -1163,7 +1163,7 @@ private fun shPayload(script: String): String =
 
 private fun pwdInput(): EncodedStepValue = EncodedStepValue("""{"kind":"pwd","tmp":false}""")
 
-private fun pwdPayload(): String = """{"kind":"pwd","tmp":false}"""
+private const val PWD_PAYLOAD: String = """{"kind":"pwd","tmp":false}"""
 
 private fun errorInput(): EncodedStepValue =
     EncodedStepValue("""{"kind":"error","message":"s4rkernel","failureKind":"USER"}""")

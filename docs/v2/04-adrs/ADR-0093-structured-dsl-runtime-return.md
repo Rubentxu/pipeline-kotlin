@@ -333,3 +333,57 @@ strict lexical order — eager adds and suspend calls share one ordered sequence
   implementation work under a follow-up slice with G7/UAT exit criteria.
 - No new `StepSpec` subtype: the suspend frontend lowers to the same canonical
   representations (AGENTS.md STEP CONSTITUTION §4-5; closed IR unchanged).
+
+---
+
+## 11. Addendum 2026-10-04 — what SPIKE-016 did and did not establish
+
+This is a **clarification**, not a rewrite. Sections 1-10 above stand as accepted; nothing here
+changes the decision, only the scope of the claim it carries.
+
+### The over-strong sentence
+
+Section 5 closes:
+
+> SPIKE-016's hypothesis … **PASSED**, including loops (S16-E5) and nested blocks (S16-E6).
+> This is **proven infrastructure**, not a bet.
+
+Read as a statement about *feasibility*, it is true. Read as a statement about *production
+authority for loop iteration identity*, it over-claims, and S16-E5 is what makes it read that
+way: "loops replay" is a property of the **harness** that was run, not a property the harness
+could establish about how production must name a loop iteration.
+
+### What SPIKE-016 actually proved
+
+```text
+SPIKE-016 proved feasibility of deterministic scripted replay with loops,
+including loops and nested blocks, IN ITS OWN HARNESS.
+```
+
+It did **not** establish:
+
+- the production authority for loop iteration identity;
+- which quantity identifies an iteration (element value, arrival count, positional ordinal);
+- how that identity is reconstructed at replay;
+- that the harness's identity model is the one production would use.
+
+### The gap was discovered later, and it was real
+
+The S4 identity work found the production scripted path carrying a cursor whose unit was
+*arrivals at the Step*, not *entry into the iteration*. Those diverge on the first loop that
+either skips an effect or calls a Step more than once per iteration — so the identity a
+production run recorded was not the identity SPIKE-016's harness had exercised. Nothing in
+S16-E5 could have caught that, because the harness never claimed to be the production model.
+
+### Resolution
+
+Production loop-iteration identity is governed by the durable replay laws in `AGENTS.md`
+(**DR-5** deterministic replay-local state, **DR-6** positional loop identity, **DR-7** scope
+before effect) together with ADR-0103 (one replay authority) and ADR-0066 (call-site identity
+determinism). Those are the authorities. This ADR remains the authority for the *structured DSL
+runtime-return model* it decided, and its SPIKE-016 reference is to be read under this
+clarification.
+
+Provenance is preserved deliberately: SPIKE-016's result is not retracted, and this ADR is not
+rewritten, because the over-claim is corrected by scope rather than by erasing the sentence that
+made it.

@@ -1179,6 +1179,99 @@ message   == the Step's configured message  (not "Replay aborted")
 (False-green precedent: `UatStep003ErrorAbortTest` passed while
 `core.error` was unexecutable, because both paths emit a StepFailed.)
 
+## DURABLE SCRIPTED REPLAY LAWS (MANDATORY)
+
+These twelve laws govern the durable replay of scripted operations. They exist because the
+three contracts below are coupled, and getting one wrong while the other two look right
+produces an operation identity that is *plausible and wrong*:
+
+```text
+determinism of replay  +  operation identity  +  ReplayPolicy semantics  ->  durable compatibility
+```
+
+Provenance: this section is the normative translation of ADR-0103 (one replay authority),
+ADR-0066 (call-site identity determinism) and the S4-R-REC / R1-E evidence. Where a law
+restates an existing law rather than adding one, that is stated inline.
+
+**DR-1 — One replay authority.** Canonical and scripted execution MUST consume the same
+replay-decision authority. A frontend or adaptor MUST NOT implement its own journal-state
+decision table. The residue of the violation is a class that answers `when (existing.status)`
+with its own table; the reference anti-pattern is the pre-ADR-0103 `ScriptedRegistryInvoker`.
+
+**DR-2 — Step declaration is authoritative.** `ReplayPolicy`, `Effect` and `RecoveryPolicy`
+come from the `StepContract` / `StepDescriptor`. No execution surface may substitute a literal
+policy. Concretely: no `Fingerprint.compute(..., ReplayPolicy.MEMOIZED, ...)` in a frontend,
+regardless of what the descriptor declares.
+
+**DR-3 — Run policy is a different axis.** `ReusePriorRun` / `ResumePriorRun` /
+`StartFreshRun` MUST NOT be inferred from `ReplayPolicy`, and `ReplayPolicy` MUST NOT select
+run identity. `--rerun` does not consult replay history: it creates a new runId. A change that
+conflates the two axes changes what "replay" means without changing any test that only
+exercises one of them.
+
+**DR-4 — Fingerprint and decision must consume the same semantics.** The `ReplayPolicy` used
+in durable fingerprinting MUST be the same declared policy consumed by the replay decision.
+No hardcoded substitute, and no literal in place of a descriptor read. This is the law whose
+violation is invisible: the hash is stable and the operation replays, under the wrong identity.
+
+**DR-5 — Deterministic replay-local state is allowed.** A local counter need not be persisted
+when it is fully reconstructible from the compatible artifact plus durable history. Such state
+MUST NOT observe clock, random, environment, filesystem, network or other ambient state. This is
+the deliberate exception to "persist everything", and it is what makes a positional iteration
+index lawful rather than a second durable store.
+
+**DR-6 — Loop identity is positional.** Iteration identity is based on deterministic iteration
+position within a specific structural loop site. It MUST NOT depend on the element value, and
+MUST NOT depend on how many effects happened inside previous iterations. A counter of
+*arrivals at the Step* and an ordinal of *entry into the iteration* are different quantities;
+only the second describes what occurred.
+
+**DR-7 — Scope before effect.** The complete dynamic scope of an operation MUST be known before
+the effect starts. An operation whose identity is completed by something observed after the
+effect began is not replayable.
+
+**DR-8 — No journal-derived source identity.** Compiler, lowering and scripted-scope code MUST
+NOT scan `OperationJournal` to manufacture source or dynamic identity. The journal records
+what happened; it is not a source of what should happen.
+
+**DR-9 — Nondeterminism enters through durable APIs.** A value capable of changing scripted
+control flow must be pure, or obtained through a recorded Pipeline API. Iterating a live
+filesystem listing is not a durable input, because at replay the filesystem may differ; reading
+a value out of a durable Step and iterating that is.
+
+**DR-10 — Durable compatibility changes fail closed.** Any change to operation-identity
+composition, replay-policy interpretation, or fingerprint material requires
+compatibility/version review. Existing history MUST NOT be silently reinterpreted. The
+existing `ScriptedArtifactIdentity.runtimeCompatibilityVersion` is the dimension that expresses
+this; do not invent a parallel schema-version field when it can express the change.
+
+**DR-11 — Spikes do not certify production.** A spike proves only the properties it executes
+against the implementation it actually uses. A harness-only reimplementation cannot certify
+production runtime behaviour. This restates HARNESS FIDELITY LAW §1 for the replay case, and
+it is the rule that decided the fate of S4-R-KERNEL: its value was a measurement, and the
+production claim came from R1-E's own tests.
+
+**DR-12 — Conflicting normative claims require an ADR.** When accepted ADR or spec contracts
+conflict, production semantics MUST NOT be changed until an ADR resolves the conflict. Recording
+the conflict is the correct output of an investigation; resolving it by choosing a code path is
+not.
+
+### Which laws are load-bearing, and why
+
+DR-1, DR-2 and DR-11 are the ones that actually prevent recurrence. DR-1 and DR-2 are about a
+*second authority existing*; DR-11 is about a *measurement being read as a certification*. The
+remaining laws constrain the shape of a correct solution rather than the existence of a wrong
+one, and a violation of them tends to be caught by DR-1's structural consequence: a decision
+made outside the canonical resolver is a decision the resolver cannot see.
+
+### Fitness status
+
+DR-2 has teeth: `EffectReplayPolicyTableFitnessTest` falsifies the ADR-0103 D1 table against
+the replay authority, and `ScriptedRegistryInvoker` is scanned with comments stripped so it
+cannot re-acquire a policy literal. DR-1/DR-4 have partial teeth via that same table.
+**DR-3, DR-5, DR-6, DR-7, DR-8, DR-9, DR-10 and DR-12 have no mechanical fitness and are
+checklist-only.** That is a known, declared gap, not a claim of coverage.
+
 ## V2 TESTING RULES
 
 ### Execution economics ( Gradle )

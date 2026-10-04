@@ -310,9 +310,26 @@ internal sealed interface CanonicalContinuation {
     data class Abort(val failure: PipelineFailure) : CanonicalContinuation
 }
 
-internal sealed interface RunningCanonicalShellRecovery {
-    data object NotRunningShell : RunningCanonicalShellRecovery
-    data class Recovered(val outcome: StepOutcome, val status: OperationStatus) : RunningCanonicalShellRecovery
+/**
+ * Whether the decision core considers recovery REQUIRED for this operation.
+ *
+ * ADR-0103 RPL-2: `effects`, `replayPolicy` and `recoveryPolicy` come from the Step's descriptor,
+ * and no execution surface substitutes a literal for a declared one. This ADT is where the WHEN is
+ * decided, and it is a closed pair because the alternatives are exactly two — the declared policy
+ * does not ask for a subprocess observation, or it does and the row is in flight.
+ *
+ * It is declared here, beside [InvocationReconciliation], and NOT in the observer, because the
+ * observer cannot see the declared policy. That asymmetry is the whole point: the S4-R-REC spike
+ * measured that an observer asked to decide this question answered it by collapsing three distinct
+ * facts into one sentinel, and the third of them — required but unobservable — fell through to the
+ * replay kernel and re-executed an external effect of unknown prior state.
+ */
+internal sealed interface RecoveryRequirement {
+    /** No recovery is owed. The replay policy applies unchanged. */
+    data object NotApplicable : RecoveryRequirement
+
+    /** A subprocess observation is owed before any other decision may be taken. */
+    data object Required : RecoveryRequirement
 }
 
 /**
@@ -328,6 +345,19 @@ internal sealed interface RunningCanonicalShellRecovery {
 internal sealed interface InvocationReconciliation {
     /** Fingerprint divergence was detected; the invocation must fail closed without executing. */
     data class Diverged(val operationId: String) : InvocationReconciliation
+
+    /**
+     * Recovery was REQUIRED and the substrate could not be inspected at all, so no conclusion is
+     * possible. The invocation fails closed WITHOUT appending a terminal row and WITHOUT advancing
+     * the cursor: the RUNNING row is left exactly as it is, because it is the only evidence a later,
+     * correctly configured run would need to reconcile this operation.
+     *
+     * This is the arm the `NotRunningShell` sentinel could not express. It is deliberately its own
+     * case rather than a `Diverged` with a different message: diverging is a statement about
+     * identity, being unable to look is a statement about observability, and a caller that has to
+     * ask which one it got has not been told anything it can act on.
+     */
+    data class RecoveryUnobservable(val operationId: String) : InvocationReconciliation
 
     /** A RUNNING shell was recovered to a concrete outcome+terminal status without re-invoking it. */
     data class RecoverRunning(val outcome: StepOutcome, val status: OperationStatus) : InvocationReconciliation

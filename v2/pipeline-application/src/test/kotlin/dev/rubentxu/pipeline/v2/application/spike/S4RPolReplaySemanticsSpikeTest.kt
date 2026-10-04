@@ -80,7 +80,10 @@ import java.nio.file.Path
  *  3. **journal terminal state** — the status the run actually left behind.
  *  4. **the replay policy that produced the fingerprint** — recovered by brute force from the
  *     stored hash ([policyOf]), not by reading a source literal. That matters precisely because
- *     one of the two surfaces hardcodes `ReplayPolicy.MEMOIZED`.
+ *     for most of this suite's life one of the two surfaces hardcoded a memoized policy, and a
+ *     reader who only read the source would have been told one thing while the journal recorded
+ *     another. ADR-0103 R1-E removed the literal; the brute-force recovery stays, because a
+ *     measurement that reads its subject's own source is measuring the source, not the behaviour.
  *
  * ## Why prior journal rows are cloned rather than recomputed
  *
@@ -411,15 +414,16 @@ class S4RPolReplaySemanticsSpikeTest {
                 "DECISION it is right",
         )
 
-        // The memo compares decisions. The fingerprint is a second, unmeasured axis, and it is
-        // where the two surfaces already differ for a RERUN step.
+        // The memo compares decisions. The fingerprint is a second axis, and after ADR-0103 R1-E
+        // it is the axis on which the two surfaces converge.
         assertEquals("RERUN", canonicalRow.fingerprintPolicy, "canonical hashes under the DESCRIPTOR policy")
         assertEquals(
-            "MEMOIZED",
+            "RERUN",
             scriptedRow.fingerprintPolicy,
-            "S4-R-POL MEASURED: scripted hashes under the hardcoded `ReplayPolicy.MEMOIZED` literal " +
-                "instead of the descriptor's RERUN. The two surfaces persist DIFFERENT durable " +
-                "identities for the same Step and the same journal state. Not in the memo's matrix.",
+            "S4-R-POL, after ADR-0103 R1-E: scripted now hashes the DECLARED policy too, so both " +
+                "surfaces persist the SAME durable identity for the same Step under the same journal " +
+                "state. This assertion used to read MEMOIZED and MEASURE that the two surfaces " +
+                "diverged; R1-E is what makes it a convergence check instead of a differential.",
         )
     }
 

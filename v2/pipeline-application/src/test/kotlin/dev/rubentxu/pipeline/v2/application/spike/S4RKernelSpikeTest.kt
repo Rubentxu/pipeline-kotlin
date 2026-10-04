@@ -21,6 +21,7 @@ import dev.rubentxu.pipeline.v2.application.durable.PreparedExecution
 import dev.rubentxu.pipeline.v2.application.durable.PreparedRegistryExecution
 import dev.rubentxu.pipeline.v2.application.durable.RecoveryInterpretationEngine
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionPreparation
+import dev.rubentxu.pipeline.v2.application.durable.RunningSubprocessObservation
 import dev.rubentxu.pipeline.v2.application.durable.RunningSubprocessRecovery
 import dev.rubentxu.pipeline.v2.application.durable.StepLifecycleContext
 import dev.rubentxu.pipeline.v2.application.durable.buildDefaultExecutionBoundary
@@ -955,12 +956,18 @@ class S4RKernelSpikeTest {
                     "production RegistryStepMetadataResolver",
             )
             assertEquals(
-                "MEMOIZED",
+                "RERUN",
                 scriptedRow.fingerprintPolicy,
-                "K6 differential: the shipped invoker hashes under a hardcoded MEMOIZED literal " +
-                    "(ScriptedRegistryInvoker.kt:203-205) for a RERUN step — the fingerprint stops " +
-                    "encoding the policy that actually governs reconciliation (RPL-3 violation). The " +
-                    "candidate fixes it WITHOUT touching the address",
+                "K6, after ADR-0103 R1-E: the shipped invoker now hashes the DECLARED policy, so the " +
+                    "fingerprint encodes the policy that actually governs reconciliation (RPL-3) and " +
+                    "all three surfaces agree. This assertion used to read MEMOIZED and MEASURE the " +
+                    "defect; R1-E is what makes it a convergence check rather than a differential",
+            )
+            assertEquals(
+                canonicalRow.fingerprintPolicy,
+                scriptedRow.fingerprintPolicy,
+                "K6: semantics converge across frontends — the two surfaces keep their own ADDRESS " +
+                    "namespace (RPL-5) but must not disagree about what policy governs the operation",
             )
 
             // The address. Canonical uses OpId.format() (OpId.kt:60-67); the scripted frontend owns
@@ -1237,6 +1244,7 @@ private fun StepOutcome.failure(): PipelineFailure = (this as StepOutcome.Failur
 private fun InvocationReconciliation.label(): String = when (this) {
     is InvocationReconciliation.Diverged -> "Diverged"
     is InvocationReconciliation.RecoverRunning -> "RecoverRunning"
+    is InvocationReconciliation.RecoveryUnobservable -> "RecoveryUnobservable"
     InvocationReconciliation.ReuseCompleted -> "ReuseCompleted"
     is InvocationReconciliation.RejectedAbort -> "RejectedAbort"
     InvocationReconciliation.Execute -> "Execute"
@@ -1323,15 +1331,19 @@ private class CountingJournal(
     }
 }
 
-/** Counts probes of the canonical recovery port without replacing its adapter. */
+/**
+ * Counts probes of the canonical recovery port without replacing its adapter.
+ *
+ * ADR-0103 R1-E: the port no longer receives a policy or a journaled row. Those were how the
+ * observer came to answer a decision question, and answering it wrongly — collapsing "required but
+ * unobservable" into "nothing to recover" — is the defect this spike measured. A probe that counts
+ * invocations has no need for either, and its signature change is a second witness that the WHEN
+ * really did move to the decision core.
+ */
 private class CountingRecovery(
     private val onProbe: () -> RunningSubprocessRecovery,
 ) : RunningSubprocessRecovery {
-    override fun recover(
-        recoveryPolicy: RecoveryPolicy,
-        journaled: DurableOperation?,
-        operationId: String,
-    ) = onProbe().recover(recoveryPolicy, journaled, operationId)
+    override fun observe(operationId: String): RunningSubprocessObservation = onProbe().observe(operationId)
 }
 
 /**

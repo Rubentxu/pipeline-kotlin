@@ -100,14 +100,24 @@ data class ScriptedRegistryCall(
  *
  * ```text
  * 1. ADDRESS     operationId + OperationInput + fingerprint
- * 2. OBSERVE     journal.get(operationId)          ← obtaining a fact, not interpreting one
- * 3. DELEGATE    DurableInvocationResolver.reconcileInvocation(...)
+ * 2. RESOLVE     declared metadata (effects / replayPolicy / recoveryPolicy)
+ * 3. FINGERPRINT over the DECLARED policy          ← ADR-0103 RPL-3
+ * 4. OBSERVE     journal.get(operationId)          ← obtaining a fact, not interpreting one
+ * 5. DELEGATE    DurableInvocationResolver.reconcileInvocation(...)
  * ```
  *
  * and then interprets the CLOSED [InvocationReconciliation] ADT — never an
- * [OperationStatus]. The consequences are visible in what disappeared from this file:
- * the `when (existing.status)` table, the `ReplayPolicy` literal in the fingerprint call
- * and the `memoized` import are all gone.
+ * [OperationStatus].
+ *
+ * A note on what was claimed here before ADR-0103 R1-E, because the claim was false and the code
+ * is the authority: the `when (existing.status)` table and the `memoized` import did go, but the
+ * `ReplayPolicy` literal in the fingerprint call did **not**. It was still there, hashing every
+ * scripted operation under `MEMOIZED` while the canonical dispatcher hashed
+ * `metadata.replayPolicy` — so a scripted `core.sh` (declared `RERUN`) and a declarative one were
+ * two durable records of the same declared Step under two different identities. A KDoc asserting a
+ * change that the code did not make is worse than no KDoc: it stops the next reader from looking.
+ * The literal is gone now, and step 3 exists so that its absence is structural — the policy that
+ * enters the hash is read from the descriptor, so there is no longer a value there to hardcode.
  *
  * The two responsibilities that stay are the ones RPL-1 and D4 explicitly reserve for a
  * frontend: ADDRESSING, and turning a durable row into a typed value through the Step's
@@ -121,8 +131,15 @@ data class ScriptedRegistryCall(
  * RejectedAbort   → REPLAY_COMPATIBILITY   the Step's policy forbids reusing this history
  * ReuseCompleted  → materialise the persisted value via the declared outputCodec
  * RecoverRunning  → see below
+ * RecoveryUnobservable → REPLAY_COMPATIBILITY  the substrate could not be observed; see below
  * Execute         → admit, then DurableStepExecutor, then the declared outputCodec
  * ```
+ *
+ * `RecoveryUnobservable` is the ADR-0103 R1-E case and the reason this invoker has a fifth arm at
+ * all. Before it, a required recovery whose substrate could not be inspected was not a resolution
+ * — it was the absence of one, and the invoker fell through to `Execute`. It is now its own
+ * fail-closed case, and the journal row is left `RUNNING` by the interpretation engine: an
+ * operation whose external effect is unknown is neither re-run nor closed.
  *
  * `RecoverRunning` is the one resolution that cannot be satisfied here, and it fails closed
  * for a precise reason rather than by omission. Recovery reattaches to a subprocess that a
@@ -261,14 +278,8 @@ internal class ScriptedRegistryInvoker(
             runId = call.runId,
             attempt = ATTEMPT,
         )
-        val fingerprint = dev.rubentxu.pipeline.v2.domain.durable.Fingerprint.compute(
-            input, stepId, ReplayPolicy.MEMOIZED, ATTEMPT,
-        )
-        val operationId = call.operationId()
-
-        // 2. OBSERVE — obtaining the durable fact. ADR-0103 D4: reading a fact is not
-        //    interpreting a protocol. What the fact MEANS is decided below, by the resolver.
-        val journaled: DurableOperation? = journal.get(operationId)
+        // 2. RESOLVE THE DECLARED METADATA — ADR-0103 RPL-2/RPL-3, before anything hashes against it.
+        //
         // Pre-decode metadata (effects, replay policy, recovery policy) is the Step's own
         // descriptor, resolved by the SAME composite the canonical coordinator uses. This is
         // the concrete form of ADR-0103's "StepDescriptor is the single authority": scripted
@@ -289,6 +300,24 @@ internal class ScriptedRegistryInvoker(
                         "legacy executable key nor present in the registry",
                 ),
             )
+
+        // 3. FINGERPRINT — ADR-0103 RPL-3. The policy that goes INTO the hash is the policy that
+        //    actually governs reconciliation for this operation, which is the declared one.
+        //
+        //    This used to hardcode `ReplayPolicy.MEMOIZED` here while the canonical dispatcher
+        //    hashed `metadata.replayPolicy`, so the two surfaces disagreed about the identity of
+        //    the same declared policy: a scripted `core.sh` (RERUN) and a declarative one were
+        //    durable records of the same Step under different identities. A literal here is not a
+        //    neutral default, it is a second opinion about the Step, and the canonical path does
+        //    not get to have one.
+        val fingerprint = dev.rubentxu.pipeline.v2.domain.durable.Fingerprint.compute(
+            input, stepId, metadata.replayPolicy, ATTEMPT,
+        )
+        val operationId = call.operationId()
+
+        // 4. OBSERVE — obtaining the durable fact. ADR-0103 D4: reading a fact is not
+        //    interpreting a protocol. What the fact MEANS is decided below, by the resolver.
+        val journaled: DurableOperation? = journal.get(operationId)
         val currentOperation = RerunOperation(
             id = operationId,
             fingerprint = fingerprint,
@@ -298,7 +327,7 @@ internal class ScriptedRegistryInvoker(
             attempt = ATTEMPT,
         )
 
-        // 3. DELEGATE — the canonical decision. This invoker never reads a status to choose.
+        // 5. DELEGATE — the canonical decision. This invoker never reads a status to choose.
         return when (val resolution = invocationResolver.reconcileInvocation(
             metadata = metadata,
             journaled = journaled,
@@ -336,6 +365,16 @@ internal class ScriptedRegistryInvoker(
                         "value can be materialised without fabricating one",
                 )
             }
+
+            // ADR-0103 R1-E. The observer could not inspect the substrate, so there is nothing to
+            // interpret and nothing to materialise: no recovery terminal was produced, and
+            // inventing one would be the fabricate-a-runtime-value defect in a new place. The
+            // failure surfaces through the same typed seam every other fail-closed case uses, and
+            // the journal row is left RUNNING by the interpreter.
+            is InvocationReconciliation.RecoveryUnobservable -> notReplayable(
+                "scripted registry step requires recovery of a running subprocess but the substrate " +
+                    "could not be observed; the operation is left RUNNING rather than re-executed",
+            )
 
             InvocationReconciliation.Execute -> execute(call, operationId, fingerprint, input, journaled)
         }

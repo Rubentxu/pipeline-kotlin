@@ -62,10 +62,18 @@ internal class DurableInvocationResolver(
      * The decision has two purity domains, kept separate:
      *  - [deterministicGate] is pure: fingerprint divergence and the effect-aware replay policy decide
      *    from their inputs alone.
-     *  - running-process detection ([recoverRunningShell]) is the sole effectful part: it inspects and
-     *    reattaches to a real external process. It is an explicit a2 compatibility hook, NOT generic
-     *    durable-protocol semantics; it triggers only when the operation declares
-     *    [RecoveryPolicy.ExternalSubprocess] AND the journal is RUNNING AND a control dir exists.
+     *  - running-process detection is the sole effectful part: it inspects and reattaches to a real
+     *    external process. It is an explicit a2 compatibility hook, NOT generic durable-protocol
+     *    semantics.
+     *
+     * ## Where the WHEN lives, after ADR-0103 R1-E
+     *
+     * This function decides **whether** a subprocess observation is owed
+     * ([recoveryRequirement]) and only then asks **what** was found
+     * ([RunningSubprocessRecovery.observe]). The two were conflated until the S4-R-REC spike, where
+     * the observer decided for itself and reported "I could not look" as "there is nothing to
+     * recover" — a distinction the decision core then had no way to recover, because the port's only
+     * non-answer was a single sentinel.
      *
      * The durable decision consumes only the typed [StepMetadata] properties resolved by step key
      * (CDE.2-b2/b4); it never selects behaviour by a concrete Step name.
@@ -81,13 +89,38 @@ internal class DurableInvocationResolver(
         operationId: String,
     ): InvocationReconciliation {
         deterministicGate(currentOperation, journaled, operationId, metadata.effects, metadata.replayPolicy)?.let { return it }
-        when (val recovery = recoverRunningShell(metadata.recoveryPolicy, journaled, operationId)) {
-            RunningCanonicalShellRecovery.NotRunningShell -> Unit
-            is RunningCanonicalShellRecovery.Recovered ->
-                return InvocationReconciliation.RecoverRunning(recovery.outcome, recovery.status)
+        if (recoveryRequirement(metadata.recoveryPolicy, journaled) == RecoveryRequirement.Required) {
+            when (val observation = runningSubprocessRecovery.observe(operationId)) {
+                is RunningSubprocessObservation.Recovered ->
+                    return InvocationReconciliation.RecoverRunning(observation.outcome, observation.status)
+                // Required, and we could not look. This settles here rather than falling through to
+                // the replay kernel: the kernel's RERUN would execute an external effect whose prior
+                // state is unknown, which is the at-least-once window this arm closes.
+                is RunningSubprocessObservation.Unavailable ->
+                    return InvocationReconciliation.RecoveryUnobservable(operationId)
+            }
         }
         return replayResolution(effectReplayPolicy.decide(metadata.replayPolicy, metadata.effects, journaled != null, journaled?.status), operationId)
     }
+
+    /**
+     * Whether a subprocess observation is owed — ADR-0103 RPL-2, enforced from the DECLARED
+     * descriptor properties and never from a literal or a concrete Step key.
+     *
+     * Pure, and the only place in the recovery path allowed to answer this question. [RecoveryPolicy.None]
+     * and a row that is not `RUNNING` are both ordinary "not applicable" and both fall through to
+     * the replay policy unchanged; a row that IS `RUNNING` under a subprocess policy is the third,
+     * separate case, and it is the one that used to be lost.
+     */
+    internal fun recoveryRequirement(
+        recoveryPolicy: RecoveryPolicy,
+        journaled: dev.rubentxu.pipeline.v2.domain.durable.DurableOperation?,
+    ): RecoveryRequirement =
+        if (recoveryPolicy == RecoveryPolicy.ExternalSubprocess && journaled?.status == dev.rubentxu.pipeline.v2.domain.durable.OperationStatus.RUNNING) {
+            RecoveryRequirement.Required
+        } else {
+            RecoveryRequirement.NotApplicable
+        }
 
     /**
      * Pure, deterministic part of the reconciliation: the fingerprint-divergence gate (B1.2c2-a2.3).
@@ -117,11 +150,4 @@ internal class DurableInvocationResolver(
             ReplayDecision.ABORT -> InvocationReconciliation.RejectedAbort(operationId)
             ReplayDecision.RERUN -> InvocationReconciliation.Execute
         }
-
-    internal fun recoverRunningShell(
-        recoveryPolicy: RecoveryPolicy,
-        journaled: dev.rubentxu.pipeline.v2.domain.durable.DurableOperation?,
-        operationId: String,
-    ): RunningCanonicalShellRecovery =
-        runningSubprocessRecovery.recover(recoveryPolicy, journaled, operationId)
 }

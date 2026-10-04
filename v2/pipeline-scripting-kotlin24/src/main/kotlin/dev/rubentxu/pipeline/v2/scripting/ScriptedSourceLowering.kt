@@ -220,7 +220,24 @@ object ScriptedSourceLowering {
 
     private const val DSL_API_VERSION = "r3-dsl-v1"
     private const val COMPILER_ADAPTER_VERSION = "r3-compiler-v1"
-    private const val RUNTIME_COMPATIBILITY_VERSION = "r3-runtime-v1"
+    // ADR-0103 D6. Bumped r3 -> r4 by R1-E, in the SAME cut that stopped hashing scripted
+    // operations under a hardcoded memoized policy and started hashing the declared one. The
+    // fingerprint of every scripted operation whose Step declares anything other than the
+    // memoized default therefore changes: the shell Step and the error Step among them. Those
+    // existing `scripted.*` rows now diverge and the divergence gate answers
+    // REPLAY_COMPATIBILITY, which is the intended outcome — an explicit incompatibility rather
+    // than a silent re-execution of an effect believed to be fresh.
+    //
+    // No row is rewritten, rehashed or migrated. This constant is the dimension that already
+    // exists to declare a durable model change, which is why D6 chose it over a parallel schema
+    // version. Bumping it separately from the behaviour change would let an artifact built
+    // before the change be reused by a runtime that no longer shares its identity law.
+    //
+    // Naming the type in this comment would register a phantom consumer module in
+    // SharedModelCompositionFitnessTest, whose `consumersOf` is a raw text search rather than a
+    // symbol resolution. The dependency this bump does not create must not be recorded as though
+    // it had.
+    private const val RUNTIME_COMPATIBILITY_VERSION = "r4-runtime-v1"
     private const val PLUGIN_LOCK_DIGEST = "r3-plugins-v1"
 
     /**

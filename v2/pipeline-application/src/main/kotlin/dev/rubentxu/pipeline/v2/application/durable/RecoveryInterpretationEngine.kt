@@ -103,6 +103,30 @@ internal class RecoveryInterpretationEngine(
             ),
         )
 
+        // ADR-0103 R1-E: a required recovery whose substrate could not be inspected.
+        //
+        // Deliberately effect-free, and that is the whole design. A failure that appended a terminal
+        // row — SUCCEEDED, FAILED or LOST alike — would not be fail-closed, it would be
+        // fail-destroyed: the RUNNING row is the only evidence that this operation is still in
+        // flight, and a later, correctly configured run needs it in order to reconcile. So the
+        // invocation fails, and the durable state is left exactly as it was found.
+        //
+        // LOST in particular is the wrong terminal here. LOST means "the control root was readable and
+        // the operation directory held nothing recoverable"; this means "there was no control root to
+        // read". The observer keeps those apart in RunningSubprocessObservation, and so does this arm.
+        is InvocationReconciliation.RecoveryUnobservable -> RecoveryInterpretation.Settled(
+            StepOutcome.Failure(
+                PipelineFailure(
+                    FailureKind.INFRASTRUCTURE,
+                    "Recovery of '${resolution.operationId}' is required by the declared recovery " +
+                        "policy but the subprocess substrate could not be observed, so no conclusion " +
+                        "about its external effect is possible. The operation is left RUNNING: it was " +
+                        "neither re-executed nor closed. Configure the runtime control root and re-run " +
+                        "to reconcile it.",
+                ),
+            ),
+        )
+
         is InvocationReconciliation.RecoverRunning -> {
             val executionResult = StepExecutionBoundary(eventSink).execute(request.lifecycleContext) {
                 CommonExecutionResult(outcome = resolution.outcome, encodedOutput = null)

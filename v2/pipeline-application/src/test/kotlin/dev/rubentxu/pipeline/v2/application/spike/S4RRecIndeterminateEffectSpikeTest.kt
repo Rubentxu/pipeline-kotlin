@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.application.SystemClock
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.durable.ExternalSubprocessRecovery
-import dev.rubentxu.pipeline.v2.application.durable.RunningCanonicalShellRecovery
+import dev.rubentxu.pipeline.v2.application.durable.RunningSubprocessObservation
 import dev.rubentxu.pipeline.v2.application.durable.buildDefaultExecutionBoundary
 import dev.rubentxu.pipeline.v2.application.support.CoordinatorFixture
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
@@ -46,6 +46,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicInteger
@@ -130,6 +131,19 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class S4RRecIndeterminateEffectSpikeTest {
 
+    /**
+     * Every control root in this spike is created under here, and JUnit deletes it afterwards.
+     *
+     * `Files.createTempDirectory("...")` with no parent lands in `java.io.tmpdir` and is never
+     * removed, so a spike run repeatedly inside a long-lived checkout leaks one directory per row
+     * per run. That is not a tidiness complaint: on a tmpfs-backed tmp under pressure it starts
+     * failing rows with `IOException` that have nothing to do with the code under test, which is
+     * exactly the false-RED shape a measurement harness must never produce. A harness that can make
+     * its own subject look broken is not measuring its subject.
+     */
+    @TempDir
+    lateinit var tempRoot: Path
+
     // ------------------------------------------------------------------ row 1
 
     /**
@@ -188,8 +202,19 @@ class S4RRecIndeterminateEffectSpikeTest {
      * count drops by zero AND the row stays RUNNING; that is the shape the hypothesis calls for, and
      * this row is where the change will show up.
      */
+    /**
+     * `ExternalSubprocess` + RUNNING + `controlDirRoot == null`.
+     *
+     * This row was MEASURED as the defect: the observer returned a "nothing to recover" sentinel,
+     * the resolver fell through to the replay kernel, and with `RERUN` the handler ran — re-executing
+     * an external effect of unknown prior state — and the row was then terminalised as `SUCCEEDED`.
+     *
+     * After ADR-0103 R1-E both halves of that are inverted, and the inversion is the deliverable:
+     * the handler count does not move, and the row stays `RUNNING` because a later, correctly
+     * configured run still needs it in order to reconcile.
+     */
     @Test
-    fun `row 3 MEASURED ExternalSubprocess plus RUNNING plus a null control root re-executes`() =
+    fun `row 3 ExternalSubprocess plus RUNNING plus a null control root now fails closed and stays RUNNING`() =
         runBlocking {
             val probe = Probe(RecoveryPolicy.ExternalSubprocess, ReplayPolicy.RERUN, Effect.EXECUTES_SUBPROCESS)
             val rig = Rig("s4rrec-r3", probe, controlDirRoot = null)
@@ -200,28 +225,40 @@ class S4RRecIndeterminateEffectSpikeTest {
             rig.execute()
 
             assertEquals(
-                before + 1,
+                before,
                 probe.invocations.get(),
-                "MEASURED, AND THIS IS THE DEFECT: an unobservable recovery falls through to the " +
-                    "replay kernel and re-executes. A subprocess whose prior external effect is " +
-                    "unknown is being run again. Fail-closed would leave this count unchanged, and " +
-                    "would leave the row RUNNING rather than terminalising it.",
+                "M-REC-3 GUARD: the handler must not run. A subprocess whose prior external effect " +
+                    "is UNKNOWN is not re-executed just because the runtime could not look — that " +
+                    "was the at-least-once window this row measured as open.",
             )
             assertEquals(
-                OperationStatus.SUCCEEDED,
+                OperationStatus.RUNNING,
                 rig.row()?.status,
-                "MEASURED: the row is also silently terminalised as SUCCEEDED by the re-execution, " +
-                    "so the original unknown effect becomes indistinguishable from a fresh success.",
+                "M-REC-3 GUARD: and the row stays RUNNING. Terminalising it — as SUCCEEDED when " +
+                    "this was measured, as LOST on a plausible wrong fix — is not fail-closed, it " +
+                    "destroys the evidence a correctly configured run would need to reconcile.",
             )
         }
 
     /**
-     * The same combination isolated at the ADAPTER, to show the collapse is in the adapter and not
-     * in the resolver's mapping. One line of production code collapses three facts; this asserts
-     * that the sentinel cannot express the difference.
+     * THE CARRIER, before and after.
+     *
+     * This row was written as the sharpest statement of the defect: the observer was handed a
+     * declared policy and a journaled row, and it answered "nothing to recover" for all three
+     * facts at once, so no caller could tell them apart. It asserted that two different
+     * circumstances produced literally the same value.
+     *
+     * After ADR-0103 R1-E the observer is asked a different question — *what did you find?* — and
+     * no longer receives a policy or a status, so the question of "is recovery applicable" is not
+     * even one it is in a position to answer. The two circumstances below are therefore no longer
+     * the same call: only one of them is still expressible.
+     *
+     * This is the row M-REC-3 must kill. Collapsing `Unavailable` back into a "nothing to
+     * recover" answer would make the observer silent about its own blindness again, and the
+     * equality below would be asserted as true rather than refuted.
      */
     @Test
-    fun `row 3b the adapter collapses not-applicable and required-but-unobservable into one value`() {
+    fun `row 3b the observer says Unavailable rather than pretending there is nothing to recover`() {
         val input = OperationInput(
             stepId = PROBE_KEY.value,
             params = emptyMap(),
@@ -237,22 +274,33 @@ class S4RRecIndeterminateEffectSpikeTest {
             attempt = 1,
         )
 
+        // Recovery was required of it, and there is no control root to look in.
         val unobservable = ExternalSubprocessRecovery(SystemClock(), controlDirRoot = null)
-            .recover(RecoveryPolicy.ExternalSubprocess, running, running.id)
-        val notApplicable = ExternalSubprocessRecovery(SystemClock(), controlDirRoot = null)
-            .recover(RecoveryPolicy.None, running, running.id)
+            .observe(running.id)
 
-        assertEquals(
-            RunningCanonicalShellRecovery.NotRunningShell,
-            unobservable,
-            "MEASURED: recovery was REQUIRED (ExternalSubprocess + RUNNING) and could not observe " +
-                "anything, and the only thing the port can say is NotRunningShell.",
+        // A real inspection, with a real control root and a real terminal result file.
+        val root = Files.createDirectory(tempRoot.resolve("r3b"))
+        Files.createDirectories(root.resolve(running.id))
+        Files.writeString(root.resolve(running.id).resolve("result.txt"), "0")
+        val observed = ExternalSubprocessRecovery(SystemClock(), controlDirRoot = root)
+            .observe(running.id)
+
+        assertTrue(
+            unobservable is RunningSubprocessObservation.Unavailable,
+            "M-REC-3 GUARD: recovery was REQUIRED of the observer and it could not look, and the " +
+                "thing it says is Unavailable — a fact the decision core can act on. If this " +
+                "assertion ever passes by producing some 'nothing to recover' value, the carrier " +
+                "has regressed to the collapsed form. Got $unobservable",
         )
-        assertEquals(
-            unobservable,
-            notApplicable,
-            "MEASURED: the two facts are literally the same VALUE. No caller — not the resolver, " +
-                "not a test — can tell them apart. That is the whole defect, in one equality.",
+        assertTrue(
+            observed is RunningSubprocessObservation.Recovered,
+            "and a substrate that COULD be inspected yields a different case, never the same value. " +
+                "Got $observed",
+        )
+        assertTrue(
+            unobservable != observed,
+            "M-REC-3 GUARD: 'I could not look' and 'I looked and found this' are different facts " +
+                "and must never be one value again.",
         )
     }
 
@@ -269,7 +317,7 @@ class S4RRecIndeterminateEffectSpikeTest {
     fun `row 4 an absent operation directory under a present root is LOST, an observation not a gap`() =
         runBlocking {
             val probe = Probe(RecoveryPolicy.ExternalSubprocess, ReplayPolicy.RERUN, Effect.EXECUTES_SUBPROCESS)
-            val root = Files.createTempDirectory("s4rrec-r4-")
+            val root = Files.createDirectory(tempRoot.resolve("r4"))
             val rig = Rig("s4rrec-r4", probe, controlDirRoot = root)
             rig.execute()
             rig.flipRowToRunning()
@@ -297,7 +345,7 @@ class S4RRecIndeterminateEffectSpikeTest {
     @Test
     fun `row 5 a terminal result file recovers the outcome without executing`() = runBlocking {
         val probe = Probe(RecoveryPolicy.ExternalSubprocess, ReplayPolicy.RERUN, Effect.EXECUTES_SUBPROCESS)
-        val root = Files.createTempDirectory("s4rrec-r5-")
+        val root = Files.createDirectory(tempRoot.resolve("r5"))
         val rig = Rig("s4rrec-r5", probe, controlDirRoot = root)
         rig.execute()
         val opId = rig.flipRowToRunning()
@@ -328,7 +376,7 @@ class S4RRecIndeterminateEffectSpikeTest {
      */
     @Test
     fun `row 6 a fresh heartbeat classifies as Reattach, which is reattach and never a second launch`() {
-        val root = Files.createTempDirectory("s4rrec-r6-")
+        val root = Files.createDirectory(tempRoot.resolve("r6"))
         val controlDir = root.resolve("s4rrec-r6-op")
         Files.createDirectories(controlDir)
         Files.writeString(DurableShellFiles.resolveConsoleLog(controlDir), "working")
@@ -347,7 +395,7 @@ class S4RRecIndeterminateEffectSpikeTest {
     @Test
     fun `row 7 a timeout flag is FAILED_TIMEOUT and is terminal without executing`() = runBlocking {
         val probe = Probe(RecoveryPolicy.ExternalSubprocess, ReplayPolicy.RERUN, Effect.EXECUTES_SUBPROCESS)
-        val root = Files.createTempDirectory("s4rrec-r7-")
+        val root = Files.createDirectory(tempRoot.resolve("r7"))
         val rig = Rig("s4rrec-r7", probe, controlDirRoot = root)
         rig.execute()
         val opId = rig.flipRowToRunning()
@@ -371,14 +419,14 @@ class S4RRecIndeterminateEffectSpikeTest {
 
     /**
      * The seven rows as one table, so the shape of the gap is visible rather than inferred. Each
-     * cell is the MEASURED resolution, not a restatement of this file's comments.
+     * cell is the resolution the row asserts, not a restatement of this file's comments.
      */
     @Test
     fun `the measured matrix shows exactly one row where a required recovery is unobservable`() {
         val rows = listOf(
             Row(1, "no journal", "Execute", "handler runs", "-"),
             Row(2, "None + RUNNING", "Execute", "handler runs", "recovery genuinely not applicable"),
-            Row(3, "ExternalSubprocess + RUNNING + root null", "Execute", "handler runs", "REQUIRED BUT UNOBSERVABLE — the defect"),
+            Row(3, "ExternalSubprocess + RUNNING + root null", "RecoveryUnobservable", "no handler", "REQUIRED BUT UNOBSERVABLE — fails closed, row left RUNNING"),
             Row(4, "ExternalSubprocess + RUNNING + op dir absent", "RecoverRunning(LOST)", "no handler", "observed, no evidence"),
             Row(5, "ExternalSubprocess + RUNNING + result.txt", "RecoverRunning(SUCCEEDED)", "no handler", "observed, terminal evidence"),
             Row(6, "ExternalSubprocess + RUNNING + fresh heartbeat", "RecoverRunning via Reattach", "no handler", "observed, still alive"),
@@ -389,13 +437,19 @@ class S4RRecIndeterminateEffectSpikeTest {
         assertEquals(
             1,
             unobservable.size,
-            "Exactly one row is the defect, and it is the one where recovery was mandatory and the " +
-                "substrate could not be read. Rows 4-7 all reached the reconciler and produced a " +
-                "legitimate observation, including LOST where we looked and found nothing.",
+            "Exactly one row is the required-but-unobservable case, and it is the one where recovery " +
+                "was mandatory and the substrate could not be read. Rows 4-7 all reached the " +
+                "reconciler and produced a legitimate observation, including LOST where we looked " +
+                "and found nothing.",
         )
         assertTrue(
             rows.filter { it.note.startsWith("observed") }.all { it.effect == "no handler" },
             "Every row where recovery DID observe something must leave the handler alone.",
+        )
+        assertTrue(
+            unobservable.single().effect == "no handler",
+            "and so must the one where it could not: failing closed is not executing less in only " +
+                "the happy cases.",
         )
         println("S4-R-REC measured matrix:")
         rows.forEach {

@@ -66,7 +66,7 @@ import kotlin.concurrent.withLock
  */
 class SegmentOutputStore(
     private val root: Path,
-) : OutputAppendPort, OutputReadPort, OutputRecoveryPort {
+) : OutputAppendPort, OutputReadPort, OutputRecoveryPort, OutputRetentionPort {
 
     private data class Layout(
         val streamDir: Path,
@@ -181,6 +181,81 @@ class SegmentOutputStore(
         OutputRecoveryReport(streams, committedBytes, releasedBytes, releasedReservations, unbackedBytes)
     }
 
+    // -------------------------------------------------------------- retention
+
+    /**
+     * The directory-name prefix that owns [runId]'s streams.
+     *
+     * `OutputPlaneProvider.streamId` builds every id as `"$runId/$opId/transcript"` and
+     * [SegmentOutputStore.safe] maps `/` to `_`, so a run's streams share an exact
+     * `safe(runId) + "_"` prefix. That is why no per-run manifest has to be kept in step with the
+     * directories it describes: the directory name already carries the owner, and a manifest would
+     * be a second place to be wrong about which streams exist.
+     *
+     * The prefix is a *filter*, never a parse. Nothing here turns a directory name back into an
+     * [OutputStreamId], because that transform is not invertible — `safe` folds `/` onto `_`, and
+     * an id that legitimately contains `_` could not be recovered. Undoing the collision would mean
+     * changing the on-disk layout, which is a durable format change and not this block's to make.
+     * A caller that needs stream ids builds them: it already knows the run and the operations.
+     */
+    private fun runPrefix(runId: String): String = Companion.safe(runId) + "_"
+
+    private fun runStreamDirs(runId: String): List<Path> {
+        val streamRoot = root.resolve(STREAMS_DIR)
+        if (!Files.isDirectory(streamRoot)) return emptyList()
+        val prefix = runPrefix(runId)
+        return Files.newDirectoryStream(streamRoot).use { entries ->
+            entries.asSequence()
+                .filter { Files.isDirectory(it) }
+                .filter { it.fileName.toString().startsWith(prefix) }
+                .toList()
+        }
+    }
+
+    override fun hasOutputFor(runId: String): Boolean = runStreamDirs(runId).isNotEmpty()
+
+    /**
+     * Removes a run's streams. See [OutputRetentionPort.prune].
+     *
+     * The byte count comes from the store's own committed offset rather than from `Files.size`:
+     * a segment can be sealed, and a file's size is not what a reader was ever promised. A report
+     * naming the wrong number would be a small lie in the one place a caller uses it to confirm
+     * that data is really gone.
+     */
+    override fun prune(intent: OutputPruneIntent): OutputPruneReport {
+        requireRecovered()
+        val targets = runStreamDirs(intent.runId)
+        if (targets.isEmpty()) return OutputPruneReport(0, 0L, 0)
+
+        var removed = 0
+        var bytes = 0L
+        for (dir in targets) {
+            // Deleting under a per-stream lock, so a concurrent reader is served or refused, never
+            // served from a directory being removed underneath it. Deleting without one is a race
+            // whose outcome is "some bytes, or an IOException", decided by scheduling.
+            val streamLock = synchronized(perStream) {
+                perStream.getOrPut(OutputStreamId(dir.fileName.toString())) { ReentrantLock() }
+            }
+            streamLock.withLock {
+                bytes += committedLocked(layoutFor(dir))
+                if (deleteRecursively(dir)) removed++
+            }
+        }
+        // Whatever survived its deletion attempt is counted, not hidden, so a caller can tell
+        // "nothing was there" from "the filesystem refused".
+        val retained = targets.count { Files.isDirectory(it) }
+        return OutputPruneReport(removed, bytes, retained)
+    }
+
+    /** Post-order delete: children before their parent, so a partially-failed pass is re-runnable. */
+    private fun deleteRecursively(dir: Path): Boolean {
+        if (!Files.exists(dir)) return false
+        Files.walk(dir).use { paths ->
+            paths.sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
+        }
+        return !Files.exists(dir)
+    }
+
     // -------------------------------------------------------------- internals
 
     private fun requireRecovered() {
@@ -190,16 +265,23 @@ class SegmentOutputStore(
         }
     }
 
-    private fun layout(stream: OutputStreamId): Layout {
-        val dir = root.resolve(STREAMS_DIR).resolve(safe(stream.value))
-        return Layout(
-            streamDir = dir,
-            segmentFile = dir.resolve("cur.seg"),
-            commitFile = dir.resolve("cur.cmt"),
-            reservationFile = dir.resolve("cur.res"),
-            sealedDir = dir.resolve(SEALED_DIR),
-        )
-    }
+    private fun layout(stream: OutputStreamId): Layout =
+        layoutFor(root.resolve(STREAMS_DIR).resolve(safe(stream.value)))
+
+    /**
+     * The [Layout] of a stream directory.
+     *
+     * Shared by [layout] and by retention, which reaches the same directory by prefix rather than
+     * by a reconstructed id. One owner for the directory's internal names: a second copy here
+     * would be free to disagree with the first about what a stream is made of.
+     */
+    private fun layoutFor(dir: Path): Layout = Layout(
+        streamDir = dir,
+        segmentFile = dir.resolve("cur.seg"),
+        commitFile = dir.resolve("cur.cmt"),
+        reservationFile = dir.resolve("cur.res"),
+        sealedDir = dir.resolve(SEALED_DIR),
+    )
 
     private fun withStreamLock(stream: OutputStreamId, block: () -> OutputReadResult): OutputReadResult =
         withStreamLockFor(stream) { block() }

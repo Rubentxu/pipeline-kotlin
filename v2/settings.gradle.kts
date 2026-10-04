@@ -41,6 +41,9 @@ include(
     ":pipeline-architecture-tests",
     ":pipeline-events",
     ":pipeline-event-harness",
+    // M1: the Output Plane. Separate from :pipeline-events on purpose — output continuation is
+    // an independent order (ADR-M1 D3), and the module graph is what keeps it independent.
+    ":pipeline-output",
     ":pipeline-step-sdk:api",
     ":pipeline-step-sdk:processor",
     ":pipeline-step-sdk:runtime",

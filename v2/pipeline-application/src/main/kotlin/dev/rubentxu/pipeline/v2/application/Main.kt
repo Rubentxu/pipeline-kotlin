@@ -123,6 +123,19 @@ fun main(args: Array<String>) {
         return
     }
 
+    // Console subcommand (M1-P3): read process output from the Output Plane by OutputCursor.
+    //
+    // Deliberately a SEPARATE verb from `events`. The two planes are different orders and a
+    // different authority: `events` continues on a store-assigned sequence, `console` continues on
+    // a committed byte offset and never reads an event. Folding console into `events` — as a view,
+    // or as a flag — is the conflation ADR-M1 D3 exists to prevent, and it is exactly what the
+    // deprecated EventViewProjection.CONSOLE was.
+    if (args.firstOrNull() == "console") {
+        val exitCode = MainConsoleCli.main(args.drop(1).toTypedArray())
+        System.exit(exitCode)
+        return
+    }
+
     // Credentials subcommand — delegated to MainCredentialsCli
     if (args.firstOrNull() == "credentials") {
         val exitCode = MainCredentialsCli.main(args.drop(1).toTypedArray())

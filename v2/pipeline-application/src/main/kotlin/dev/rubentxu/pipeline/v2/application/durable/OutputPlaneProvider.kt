@@ -1,10 +1,10 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
-import dev.rubentxu.pipeline.v2.output.OutputAppendPort
 import dev.rubentxu.pipeline.v2.output.OutputReadPort
-import dev.rubentxu.pipeline.v2.output.OutputRecoveryPort
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
-import dev.rubentxu.pipeline.v2.output.SegmentOutputStore
+import dev.rubentxu.pipeline.v2.output.store.OutputAppendPort
+import dev.rubentxu.pipeline.v2.output.store.OutputRecoveryPort
+import dev.rubentxu.pipeline.v2.output.store.SegmentOutputStore
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 

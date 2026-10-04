@@ -43,7 +43,12 @@ include(
     ":pipeline-event-harness",
     // M1: the Output Plane. Separate from :pipeline-events on purpose — output continuation is
     // an independent order (ADR-M1 D3), and the module graph is what keeps it independent.
+    // PUBLISHED CONTRACT: the read side an external consumer (Fabric) needs, and nothing else.
     ":pipeline-output",
+    // The Output Plane's segment/filesystem implementation. Split out of :pipeline-output so the
+    // published artifact carries no writer, no recovery entry point and no filesystem authority.
+    // Not published, and deliberately so: see its build script.
+    ":pipeline-output-store",
     ":pipeline-step-sdk:api",
     ":pipeline-step-sdk:processor",
     ":pipeline-step-sdk:runtime",

@@ -7,9 +7,12 @@ import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.output.OutputCursor
 import dev.rubentxu.pipeline.v2.output.OutputReadResult
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
-import dev.rubentxu.pipeline.v2.output.SegmentOutputStore
+import dev.rubentxu.pipeline.v2.output.store.SegmentOutputStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfig
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -19,9 +22,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
-import java.nio.charset.StandardCharsets
-import java.nio.file.Files
-import java.nio.file.Path
 
 /**
  * M1-INTEGRATION — the committed transcript must survive the invocation that produced it.

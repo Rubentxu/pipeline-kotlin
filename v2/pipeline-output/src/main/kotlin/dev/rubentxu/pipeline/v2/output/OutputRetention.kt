@@ -22,9 +22,13 @@ package dev.rubentxu.pipeline.v2.output
  *
  * ## The division that is the whole point
  *
- * [SegmentOutputStore] can delete bytes. It cannot decide that they are deletable: it never learns
+ * `SegmentOutputStore` can delete bytes. It cannot decide that they are deletable: it never learns
  * whether a run is still running, and inventing that knowledge would make the store the authority
  * on run lifecycle, which is a second authority on a fact the runtime already owns.
+ *
+ * The store is not named as a link because it is not in this module. Since BLOCK 2 it lives in
+ * `:pipeline-output-store`, which is not published; this file is the whole vocabulary a consumer
+ * sees, and a resolvable link would mean the store was part of that surface.
  *
  * So a deletion names its reason in its type. [OutputPruneIntent] has no case for a run that is
  * still running, and none for "clean up old output" — "a run reached a terminal state" and "an
@@ -138,8 +142,9 @@ data class OutputPruneReport(
 /**
  * The **retention** side of the Output Plane.
  *
- * Separate from [OutputAppendPort] and [OutputReadPort] because the authority is different in
- * kind: those two are about bytes, and this one is about permission to destroy them.
+ * Separate from the append and read ports because the authority is different in kind: those two
+ * are about bytes, and this one is about permission to destroy them. Only [OutputReadPort] is part
+ * of the published contract; `OutputAppendPort` lives with the store in `:pipeline-output-store`.
  */
 interface OutputRetentionPort {
 

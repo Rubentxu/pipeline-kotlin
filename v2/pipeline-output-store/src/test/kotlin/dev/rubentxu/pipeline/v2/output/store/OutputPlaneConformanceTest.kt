@@ -1,5 +1,19 @@
-package dev.rubentxu.pipeline.v2.output
+package dev.rubentxu.pipeline.v2.output.store
 
+
+import dev.rubentxu.pipeline.v2.output.OutputCursor
+import dev.rubentxu.pipeline.v2.output.OutputNotEstablished
+import dev.rubentxu.pipeline.v2.output.OutputReadResult
+import dev.rubentxu.pipeline.v2.output.OutputRefusal
+import dev.rubentxu.pipeline.v2.output.OutputStreamId
+import java.io.InputStream
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
+import java.security.MessageDigest
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.random.Random
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -9,14 +23,6 @@ import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
-import java.io.InputStream
-import java.nio.charset.StandardCharsets
-import java.nio.file.Files
-import java.nio.file.Path
-import java.security.MessageDigest
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import kotlin.random.Random
 
 /**
  * M1-P4 — conformance of the Output Plane.

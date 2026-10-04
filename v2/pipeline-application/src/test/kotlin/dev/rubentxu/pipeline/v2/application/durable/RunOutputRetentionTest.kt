@@ -25,7 +25,7 @@ import dev.rubentxu.pipeline.v2.output.OutputPruneIntent
 import dev.rubentxu.pipeline.v2.output.OutputPruneReport
 import dev.rubentxu.pipeline.v2.output.OutputRetentionPort
 import dev.rubentxu.pipeline.v2.output.RetainUntil
-import dev.rubentxu.pipeline.v2.output.SegmentOutputStore
+import dev.rubentxu.pipeline.v2.output.store.SegmentOutputStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import java.nio.file.Files
 import java.nio.file.Path

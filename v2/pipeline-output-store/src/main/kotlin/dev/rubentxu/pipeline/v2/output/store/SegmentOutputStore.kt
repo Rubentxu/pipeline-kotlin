@@ -1,5 +1,14 @@
-package dev.rubentxu.pipeline.v2.output
+package dev.rubentxu.pipeline.v2.output.store
 
+import dev.rubentxu.pipeline.v2.output.OutputCursor
+import dev.rubentxu.pipeline.v2.output.OutputPage
+import dev.rubentxu.pipeline.v2.output.OutputPruneIntent
+import dev.rubentxu.pipeline.v2.output.OutputPruneReport
+import dev.rubentxu.pipeline.v2.output.OutputReadPort
+import dev.rubentxu.pipeline.v2.output.OutputReadResult
+import dev.rubentxu.pipeline.v2.output.OutputRefusal
+import dev.rubentxu.pipeline.v2.output.OutputRetentionPort
+import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel

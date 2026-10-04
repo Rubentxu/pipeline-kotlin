@@ -1,5 +1,19 @@
-package dev.rubentxu.pipeline.v2.output
+package dev.rubentxu.pipeline.v2.output.store
 
+
+import dev.rubentxu.pipeline.v2.output.OutputAdoption
+import dev.rubentxu.pipeline.v2.output.OutputAdoptionObligation
+import dev.rubentxu.pipeline.v2.output.OutputCrashInvariant
+import dev.rubentxu.pipeline.v2.output.OutputCursor
+import dev.rubentxu.pipeline.v2.output.OutputPage
+import dev.rubentxu.pipeline.v2.output.OutputPruneIntent
+import dev.rubentxu.pipeline.v2.output.OutputReadResult
+import dev.rubentxu.pipeline.v2.output.OutputRefusal
+import dev.rubentxu.pipeline.v2.output.OutputStreamId
+import java.io.InputStream
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -10,10 +24,6 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
-import java.io.InputStream
-import java.nio.charset.StandardCharsets
-import java.nio.file.Files
-import java.nio.file.Path
 
 /**
  * M1-P1 — the Output Store.

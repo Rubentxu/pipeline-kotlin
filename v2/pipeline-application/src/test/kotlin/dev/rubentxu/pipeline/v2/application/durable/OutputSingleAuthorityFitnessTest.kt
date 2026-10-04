@@ -7,8 +7,11 @@ import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.output.OutputCursor
 import dev.rubentxu.pipeline.v2.output.OutputReadResult
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfig
-import kotlinx.coroutines.runBlocking
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -20,9 +23,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
-import java.nio.charset.StandardCharsets
-import java.nio.file.Files
-import java.nio.file.Path
 
 /**
  * M1-P2 — single byte authority for process output.
@@ -97,7 +97,7 @@ class OutputSingleAuthorityFitnessTest {
         return result to sink
     }
 
-    private fun readAll(stream: dev.rubentxu.pipeline.v2.output.OutputStreamId, store: dev.rubentxu.pipeline.v2.output.SegmentOutputStore): ByteArray {
+    private fun readAll(stream: dev.rubentxu.pipeline.v2.output.OutputStreamId, store: dev.rubentxu.pipeline.v2.output.store.SegmentOutputStore): ByteArray {
         val out = java.io.ByteArrayOutputStream()
         var cursor: OutputCursor? = OutputCursor.start(stream)
         while (cursor != null) {

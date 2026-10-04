@@ -24,8 +24,20 @@ import java.nio.file.Path
  * The source scan strips comments first. Without that, the KDoc on `OutputStreamId` — which names
  * `EventCursor` in order to explain why it is *not* one — would satisfy the very law it documents.
  * The same trap closed `SingleDurableAuthorityFitnessTest` in the other direction.
+ *
+ * ## Why the guard covers TWO modules since BLOCK 2
+ *
+ * The plane is now `:pipeline-output` (the published contract) plus `:pipeline-output-store` (the
+ * segment/filesystem implementation). Both rows below originally read a single hard-coded module
+ * name, which made the new module a hole the exact width of the law: `SegmentOutputStore` could
+ * have reached for `dev.rubentxu.pipeline.v2.events` and this test would have stayed green, having
+ * read only the half of the plane that had nothing to reach for. A guard that measures part of the
+ * subject is worse than none, because it reads as coverage.
  */
 class M1OutputPlaneIndependenceFitnessTest {
+
+    /** Every module that makes up the Output Plane. Adding one means adding it here. */
+    private val outputPlaneModules = listOf("pipeline-output", "pipeline-output-store")
 
     private val v2Root: Path = ScannerSupport.v2Root()
 
@@ -39,40 +51,51 @@ class M1OutputPlaneIndependenceFitnessTest {
     }
 
     @Test
-    fun `the output module declares no dependency on the event plane or the domain`() {
-        val buildFile = moduleBuildFile("pipeline-output")
-        assertTrue(Files.exists(buildFile), "cannot read $buildFile; this guard would be vacuous")
-
-        val declared = stripComments(Files.readString(buildFile))
-            .lineSequence()
-            .map { line -> line.trim() }
-            // Match the project(...) CALL, not a line that begins with it. The first version of
-            // this guard filtered on line.startsWith("project(\""), which no real dependency line
-            // ever satisfies — they read `implementation(project(":..."))`. Adding a forbidden
-            // dependency left the suite GREEN. A guard that cannot match its own subject is worse
-            // than no guard, because it reads as coverage.
-            .filter { line -> line.contains("project(\"") }
-            .toList()
-
+    fun `no output plane module declares a dependency on the event plane or the domain`() {
         val forbidden = listOf(":pipeline-events", ":pipeline-domain", ":pipeline-application")
-        val violations: List<String> = declared.filter { line -> forbidden.any { f -> line.contains("\"$f\"") } }
 
-        if (violations.isNotEmpty()) {
-            throw AssertionError(
-                ":pipeline-output must not depend on ${forbidden.joinToString()}. ADR-M1 D3 makes output " +
-                    "continuation an order of its own; a shared dependency is how the event plane would " +
-                    "re-acquire an authority over output bytes. Found: $violations",
-            )
+        for (module in outputPlaneModules) {
+            val buildFile = moduleBuildFile(module)
+            assertTrue(Files.exists(buildFile), "cannot read $buildFile; this guard would be vacuous")
+
+            val declared = stripComments(Files.readString(buildFile))
+                .lineSequence()
+                .map { line -> line.trim() }
+                // Match the project(...) CALL, not a line that begins with it. The first version of
+                // this guard filtered on line.startsWith("project(\""), which no real dependency line
+                // ever satisfies — they read `implementation(project(":..."))`. Adding a forbidden
+                // dependency left the suite GREEN. A guard that cannot match its own subject is worse
+                // than no guard, because it reads as coverage.
+                .filter { line -> line.contains("project(\"") }
+                .toList()
+
+            val violations: List<String> = declared.filter { line -> forbidden.any { f -> line.contains("\"$f\"") } }
+
+            if (violations.isNotEmpty()) {
+                throw AssertionError(
+                    ":$module must not depend on ${forbidden.joinToString()}. ADR-M1 D3 makes output " +
+                        "continuation an order of its own; a shared dependency is how the event plane " +
+                        "would re-acquire an authority over output bytes. Found: $violations",
+                )
+            }
         }
     }
 
     @Test
-    fun `no production source in the output plane reaches for event or domain vocabulary`() {
-        val sources = productionSources("pipeline-output")
+    fun `no production source in either output plane module reaches for event or domain vocabulary`() {
+        val sources = outputPlaneModules.flatMap { productionSources(it) }
         assertTrue(
             sources.isNotEmpty(),
-            "found no production sources under pipeline-output/src/main; the scan is looking in the wrong place",
+            "found no production sources under ${outputPlaneModules.joinToString()}/src/main; " +
+                "the scan is looking in the wrong place",
         )
+        for (module in outputPlaneModules) {
+            assertTrue(
+                productionSources(module).isNotEmpty(),
+                "found no production sources under $module/src/main; that module would go unscanned " +
+                    "while this test still reported success",
+            )
+        }
 
         // Comments are stripped first: OutputStreamId's KDoc names EventCursor precisely to say it
         // is not one, and a raw text scan would read that as a violation.

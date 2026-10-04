@@ -221,6 +221,16 @@ class RetentionAuthorityFitnessTest {
 
     // ---------------------------------------------- the store cannot know the lifecycle
 
+    /**
+     * Both modules of the Output Plane, as of BLOCK 2.
+     *
+     * The plane is the published contract plus the store that implements it, and a law stated over
+     * "the output plane" has to cover both. Listing only `:pipeline-output` after the split would
+     * have left `SegmentOutputStore` — the one file that can actually delete bytes — outside the
+     * scan that exists precisely to constrain it.
+     */
+    private val outputPlaneModules = listOf("pipeline-output", "pipeline-output-store")
+
     @Test
     fun `the output module cannot know whether a run is alive`() {
         // A store that learned "is this run finished" would be a second authority on that fact, which
@@ -231,7 +241,7 @@ class RetentionAuthorityFitnessTest {
         // whole point of the vocabulary is that a live run has no case to be deleted under. Excluding
         // it is not a loophole — the store itself is pinned by the next row, and the vocabulary is
         // the one file whose job is to speak both languages.
-        val offenders = productionSources("pipeline-output")
+        val offenders = outputPlaneModules.flatMap { productionSources(it) }
             .filterNot { it.relativeToV2() == vocabulary }
             .filter { source ->
                 val text = source.text()
@@ -252,10 +262,22 @@ class RetentionAuthorityFitnessTest {
         // The narrowest form of the law, on the one file that deletes bytes. It also pins the shape of
         // the only thing the store accepts: a closed intent, never a boolean and never a run id — an
         // id would be enough to delete a run nobody authorised deleting.
-        val store = v2Root.resolve(
-            "pipeline-output/src/main/kotlin/dev/rubentxu/pipeline/v2/output/SegmentOutputStore.kt",
+        //
+        // The file is located by NAME across every production source root, not by a fixed path. The
+        // path was a lie waiting to happen: BLOCK 2 moved the store into `:pipeline-output-store`, and
+        // a pinned path would have kept reading a file that no longer existed — or, had the path been
+        // "fixed" by hand at each move, it would have needed a human to notice every future move.
+        // Resolving by name also pins the COUNT, so a second `SegmentOutputStore.kt` — a second set of
+        // bytes under a second authority — fails here instead of compiling.
+        val stores = allProductionSources().filter { it.fileName.toString() == "SegmentOutputStore.kt" }
+
+        assertEquals(
+            1,
+            stores.size,
+            "expected exactly one SegmentOutputStore.kt in production, found " +
+                stores.map { it.relativeToV2() },
         )
-        val text = store.text()
+        val text = stores.single().text()
 
         for (forbidden in listOf("RunLifecycle", "RunOutcome", "StageOutcome", "StepOutcome", "RetainUntil")) {
             assertTrue(
@@ -271,20 +293,53 @@ class RetentionAuthorityFitnessTest {
 
     @Test
     fun `no intent can carry a run outcome because the module cannot see one`() {
-        // Enforced by the graph, not by a scan: if `:pipeline-output` never depends on
+        // Enforced by the graph, not by a scan: if the Output Plane never depends on
         // `:pipeline-domain`, a prune intent is structurally incapable of naming how a run ended.
-        val dependencies = dependenciesOf("pipeline-output")
+        //
+        // Both modules are checked, and neither is exempt. The contract module is the obvious one;
+        // the store module is the one that would matter, because it is the module that can delete
+        // bytes and would gain the most from knowing how a run ended. A row that only checked the
+        // half with nothing to gain would be a row about the wrong half.
+        //
+        // The law is NOT "every module here is a leaf". It was, until BLOCK 2 split the plane, and
+        // the store module now depends on the contract module — which points INWARD and is the
+        // direction the hexagon wants. Stating the old law would have banned the fix. So the row
+        // names the modules that carry run knowledge instead, and the store's single allowed
+        // project dependency is asserted positively so that "still a leaf" is not silently regained.
+        val forbidden = listOf(":pipeline-domain", ":pipeline-events")
+        val allowed = mapOf(
+            "pipeline-output" to emptyList(),
+            "pipeline-output-store" to listOf(":pipeline-output"),
+        )
 
-        assertTrue(
-            dependencies.isNotEmpty(),
-            "expected a dependencies block in pipeline-output/build.gradle.kts; the row would otherwise " +
-                "pass over an unread file",
-        )
-        assertTrue(
-            !dependencies.contains("project("),
-            "pipeline-output must stay a leaf module: it deletes bytes and names no domain type. " +
-                "Found: $dependencies",
-        )
+        for (module in outputPlaneModules) {
+            val dependencies = dependenciesOf(module)
+
+            assertTrue(
+                dependencies.isNotEmpty(),
+                "expected a dependencies block in $module/build.gradle.kts; the row would otherwise " +
+                    "pass over an unread file",
+            )
+
+            val declared = Regex("project\\(\"([^\"]+)\"\\)")
+                .findAll(dependencies)
+                .map { it.groupValues[1] }
+                .toList()
+
+            val violations = declared.filter { it in forbidden }
+            assertTrue(
+                violations.isEmpty(),
+                "$module must not depend on ${forbidden.joinToString()}: it deletes bytes and names no " +
+                    "run fact. Found: $violations",
+            )
+
+            val unexpected = declared.filterNot { it in allowed.getValue(module) }
+            assertTrue(
+                unexpected.isEmpty(),
+                "$module may depend only on ${allowed.getValue(module)}; any other project dependency " +
+                    "is an undeclared route to run knowledge. Found: $unexpected",
+            )
+        }
     }
 
     @Test

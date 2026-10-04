@@ -47,7 +47,12 @@ dependencies {
     // console event carries them. The dependency points ONE WAY - :pipeline-output depends on
     // neither :pipeline-events nor :pipeline-domain, so the event plane cannot reach back into the
     // output plane and re-acquire an authority over the bytes. See ADR-M1 D2/D3.
+    //
+    // BLOCK 2 splits the plane in two: the CONTRACT above, and the store below. Only the runtime
+    // needs the store, so only the runtime names it - which is the point. The published artifact
+    // carries no writer, so no external consumer can become a second one.
     implementation(project(":pipeline-output"))
+    implementation(project(":pipeline-output-store"))
     implementation(project(":pipeline-event-harness"))
     implementation(project(":pipeline-scripting-kotlin24"))
     implementation(project(":pipeline-scripting-api"))

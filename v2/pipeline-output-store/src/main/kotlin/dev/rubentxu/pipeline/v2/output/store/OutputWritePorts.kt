@@ -1,6 +1,18 @@
-package dev.rubentxu.pipeline.v2.output
+package dev.rubentxu.pipeline.v2.output.store
 
+import dev.rubentxu.pipeline.v2.output.OutputAdoption
+import dev.rubentxu.pipeline.v2.output.OutputReadPort
+import dev.rubentxu.pipeline.v2.output.OutputRefusal
+import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import java.io.InputStream
+
+// The write side and the recovery entry point of the Output Plane.
+//
+// The read side lives in `:pipeline-output` ([OutputReadPort]) and is the whole of the published
+// plane. This file is not published: a consumer that can append, commit, recover or prune is a
+// second potential authority over the bytes, which is exactly what ADR-M1 D2 removed. Fabric reads
+// committed bytes; the runtime owns writing them. The split is enforced by the module graph, and
+// the package boundary (`output` published / `output.store` not) is what the fitness checks.
 
 /**
  * The **append** side of the Output Plane: a writer takes a durable reservation, writes bytes into
@@ -140,41 +152,6 @@ class OutputReservationExceeded(
 ) : IllegalStateException(
     "reservation on ${stream.value} would write at $attemptedAt, past its limit $limit",
 )
-
-/**
- * The **read** side of the Output Plane: bounded, cursor-addressed, never event-addressed.
- *
- * Every method is total — it returns an [OutputReadResult], never an exception for a refusal — so a
- * caller cannot accidentally treat "refused" as "no bytes".
- *
- * @see ADR-M1 §D3
- */
-interface OutputReadPort {
-
-    /** Committed extent of [stream] in bytes, or `null` if the stream is unknown. */
-    fun committedExtent(stream: OutputStreamId): Long?
-
-    /**
-     * Reads at most [maxBytes] committed bytes of [stream], starting at [cursor]'s offset.
-     *
-     * The read is addressed to a **stream as well as** a cursor, and that is deliberate: a cursor
-     * from another stream is a real mistake a consumer makes when it holds one output handle and
-     * asks for another. Addressing by cursor alone would make the mistake undetectable, so the
-     * refusal would have nowhere to live and [OutputRefusal.ForeignStream] would be dead code.
-     *
-     * @param maxBytes upper bound on the returned page; a store may return fewer
-     */
-    fun read(stream: OutputStreamId, cursor: OutputCursor, maxBytes: Int): OutputReadResult
-
-    /**
-     * Reads exactly the committed bytes in `[from, to)` of [stream].
-     *
-     * The range is a contractual property, not a convenience: `readRange(s, o, o + n)` must equal
-     * the first `n` bytes of `readRange(s, o, committed)`, for every `n`. That is what makes a
-     * consumer able to address a byte without reading the ones before it.
-     */
-    fun readRange(stream: OutputStreamId, from: Long, to: Long): OutputReadResult
-}
 
 /**
  * The recovery entry point. **Distinct from construction on purpose** (O3).

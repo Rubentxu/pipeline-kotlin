@@ -99,8 +99,10 @@ sealed interface RunOutputDisposition {
  * name for one thing.
  *
  * Public here means "the runtime's retention seam is nameable", NOT "the output store is published".
- * The half that BLOCK 2 does not publish — `SegmentOutputStore`, its layout and its recovery — is
- * reached only through the [OutputRetentionPort] interface, and nothing in this type names it.
+ * The half that BLOCK 2 does not publish — `SegmentOutputStore`, its layout and its recovery — moved
+ * into `:pipeline-output-store` when the plane was split, and is reached only through the
+ * [OutputRetentionPort] interface. Nothing in this type names it, and the published artifact does
+ * not contain it.
  */
 class RunOutputRetention(
     private val retention: () -> OutputRetentionPort,

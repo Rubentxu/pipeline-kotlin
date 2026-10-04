@@ -36,6 +36,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -386,17 +387,29 @@ class ShStepContractSuiteTest {
         assertTrue(result is dev.rubentxu.pipeline.v2.domain.ShellInvocationResult.Stdout)
         val value = (result as dev.rubentxu.pipeline.v2.domain.ShellInvocationResult.Stdout).value
         assertTrue(value.contains("RTONLY"), "stdout value must carry RTONLY; got ${value}")
-        // KNOWN-VACUOUS, recorded rather than dressed up. This row asserts that stderr produced
-        // no console event — but since M1 it asserts that a CHANNEL THAT CARRIES NOTHING is
-        // empty, so it would pass identically if the observation were simply broken. The
-        // discriminating version belongs on the Output Plane, and writing it requires the
-        // measured answer to a question this test does not currently pose: does a capture-mode
-        // run with silent stderr OPEN an empty stream in the plane, or write no stream at all?
-        // The two are different contracts (empty page vs. refusal) and guessing between them is
-        // how a harness ends up certifying its own assumption. Deliberately NOT resolved here.
-        // Carried to B2, where Output Plane retention and empty-stream semantics are certified
-        // with a real crash/restart harness; that measurement becomes this row's evidence.
-        val caps = events.eventsFor("rt-empty-err").filterIsInstance<EchoOutputCaptured>().toList()
-        assertTrue(caps.isEmpty(), "no stderr means no console event; got ${caps.map { it.content }}")
+        // The load-bearing half, and the reason this row exists. `returnStdout` puts the child's
+        // stdout in the TYPED value; the console transcript is a different surface, and the
+        // product law is that the value is never fed into it ("console must NOT feed
+        // returnStdout", and the reverse here). Asserting "no EchoOutputCaptured" could not catch
+        // that — the channel stopped carrying process output in M1, so it was empty whatever the
+        // product did.
+        //
+        // On the Output Plane the claim is falsifiable. Measured on the installed distribution:
+        // a step that writes transcript bytes always has a stream, and a silent one opens none.
+        // So if the transcript were ever built from `capturedStdout`, a stream would appear here
+        // holding RTONLY, and this row would fail. A transcript that does not exist is the
+        // evidence that the typed value did not leak across the channel boundary.
+        val plane = ConsolePlaneProbe.transcriptOrAbsent(
+            controlDirRoot = tempDir.resolve("rt-capture2"),
+            runId = "rt-empty-err",
+            stageIndex = 0,
+            stepIndex = 0,
+        )
+        assertNull(
+            plane,
+            "the console transcript must not be materialised from the typed stdout value. A " +
+                "stream exists here, so something wrote transcript bytes for a step whose only " +
+                "output was the captured value. Its content: [$plane]",
+        )
     }
 }

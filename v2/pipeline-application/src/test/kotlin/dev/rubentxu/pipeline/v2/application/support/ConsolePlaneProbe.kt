@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.output.OutputCursor
 import dev.rubentxu.pipeline.v2.output.OutputPage
+import dev.rubentxu.pipeline.v2.output.OutputRefusal
 import java.nio.file.Path
 
 /**
@@ -35,6 +36,13 @@ import java.nio.file.Path
  * migration exists to fix: a test that cannot tell "the product did nothing" from "I am reading
  * the wrong place" passes when it should fail. So the failure mode here is a thrown error with
  * the refusal reason, not a quiet empty string.
+ *
+ * Measured against the installed distribution, the plane holds a stream **if and only if** the
+ * process wrote transcript bytes — a silent step opens none. That makes refusal a THREE-way
+ * answer (the bytes exist / the step wrote nothing / the reader is mis-aimed), which is why the
+ * two entry points below differ: [transcript] throws on any refusal, and [transcriptOrAbsent]
+ * answers `null` only for a step that legitimately wrote nothing, for the caller that has the
+ * event that tells the two apart. Neither accessor ever returns `""` to mean "I could not tell".
  */
 object ConsolePlaneProbe {
 
@@ -45,8 +53,10 @@ object ConsolePlaneProbe {
      * [ConsoleReadService.DEFAULT_PAGE_BYTES]. A test that reads only the first page and asserts
      * on it would be asserting on an arbitrary cut point.
      *
-     * @throws AssertionError if the plane refuses the read. A refusal is a fact about the
-     *   question, and hiding it is what makes a broken reader look like a quiet process.
+     * @throws AssertionError if the plane refuses the read. Measured contract: the plane holds a
+     *   stream only when the process wrote transcript bytes, so a refusal here means the caller
+     *   expected output and got none. For the legitimate "wrote nothing" case see
+     *   [transcriptOrAbsent], which is the only accessor that may answer `null`.
      */
     fun transcript(
         controlDirRoot: Path,
@@ -56,25 +66,19 @@ object ConsolePlaneProbe {
         branchIndex: Int? = null,
     ): String {
         val opId = OpId(runId, stageIndex, stepIndex, branchIndex).format()
-        val sink = StringBuilder()
-        var cursor: OutputCursor? = null
-        do {
-            val result = ConsoleReadService.read(controlDirRoot, runId, opId, cursor)
-            val page: OutputPage = when (result) {
-                is ConsoleReadService.Result.Page -> result.page
-                is ConsoleReadService.Result.Refused -> throw AssertionError(
-                    "the Output Plane refused to answer for run '$runId' op '$opId' at " +
-                        "stage=$stageIndex step=$stepIndex: " +
-                        ConsoleReadService.renderRefusal(result.reason) +
-                        ". This is NOT 'the process printed nothing' — it means the reader is " +
-                        "pointing at the wrong stream, and a test that read '' here would pass " +
-                        "for the wrong reason.",
-                )
-            }
-            sink.append(String(page.bytes))
-            cursor = page.next
-        } while (cursor != null)
-        return sink.toString()
+        val result = ConsoleReadService.read(controlDirRoot, runId, opId, null)
+        val page: OutputPage = when (result) {
+            is ConsoleReadService.Result.Page -> result.page
+            is ConsoleReadService.Result.Refused -> throw AssertionError(
+                "the Output Plane refused to answer for run '$runId' op '$opId' at " +
+                    "stage=$stageIndex step=$stepIndex: " +
+                    ConsoleReadService.renderRefusal(result.reason) +
+                    ". A step that wrote transcript bytes always has a stream, so this is not " +
+                    "'the process printed nothing' — it means the reader is pointing at the " +
+                    "wrong stream, and a test that read '' here would pass for the wrong reason.",
+            )
+        }
+        return drainAll(controlDirRoot, runId, opId, page)
     }
 
     /**
@@ -95,6 +99,54 @@ object ConsolePlaneProbe {
                     "transcripts for. A probe that invented one would point at a stream that " +
                     "does not exist and report the process as silent.",
             )
+
+    /**
+     * Like [transcript], but `null` when the step opened no stream at all.
+     *
+     * ## The three answers, not two
+     *
+     * Measured on the installed distribution (B2), the Output Plane holds a stream **if and only
+     * if** the process wrote transcript bytes:
+     *
+     * | what the child did | what the plane holds | what [transcript] does |
+     * |---|---|---|
+     * | wrote output | the bytes | returns them |
+     * | wrote nothing (including `sh("true")` and a capture-mode `sh` with silent stderr) | **no stream** | throws |
+     * | reader aimed at the wrong run / wrong op | no stream | throws |
+     *
+     * Rows two and three are the same observation and mean different things, so this accessor
+     * exists for the caller that can tell them apart and [transcript] refuses to guess for the
+     * one that cannot. A stream is opened by `appendFrom`; an empty transcript is never
+     * materialised, because `consoleSource` resolves to `null` when there is nothing to stream
+     * and `ingestTranscriptIntoOutputPlane` returns rather than inventing a stream.
+     *
+     * **Use this only where "the step produced no console output" is the claim.** That claim is
+     * load-bearing on its own — it is what proves the typed value was not smuggled into the
+     * transcript — but the negative must never stand alone: a run with no output at all produces
+     * the same `null`. Pair it with the event that shows the step really ran.
+     */
+    fun transcriptOrAbsent(
+        controlDirRoot: Path,
+        runId: String,
+        stageIndex: Int,
+        stepIndex: Int,
+        branchIndex: Int? = null,
+    ): String? {
+        val opId = OpId(runId, stageIndex, stepIndex, branchIndex).format()
+        val result = ConsoleReadService.read(controlDirRoot, runId, opId, null)
+        return when (result) {
+            is ConsoleReadService.Result.Page -> drainAll(controlDirRoot, runId, opId, result.page)
+            is ConsoleReadService.Result.Refused -> when (val reason = result.reason) {
+                is OutputRefusal.UnknownStream -> null
+                else -> throw AssertionError(
+                    "the Output Plane refused to answer for run '$runId' op '$opId': " +
+                        ConsoleReadService.renderRefusal(reason) +
+                        ". Only an unknown stream is a legitimate 'nothing was written'; anything " +
+                        "else is a fact about the question that the caller asked.",
+                )
+            }
+        }
+    }
 
     /**
      * Every process transcript this run produced for steps of [stepType], joined in event order.
@@ -136,6 +188,30 @@ object ConsolePlaneProbe {
                     ),
                 )
             }
+        return sink.toString()
+    }
+
+    /** Paged continuation, shared by both entry points so neither can drift into a single page. */
+    private fun drainAll(
+        controlDirRoot: Path,
+        runId: String,
+        opId: String,
+        firstPage: OutputPage,
+    ): String {
+        val sink = StringBuilder(String(firstPage.bytes))
+        var cursor: OutputCursor? = firstPage.next
+        while (cursor != null) {
+            val result = ConsoleReadService.read(controlDirRoot, runId, opId, cursor)
+            val page: OutputPage = when (result) {
+                is ConsoleReadService.Result.Page -> result.page
+                is ConsoleReadService.Result.Refused -> throw AssertionError(
+                    "continuation of run '$runId' op '$opId' was refused: " +
+                        ConsoleReadService.renderRefusal(result.reason),
+                )
+            }
+            sink.append(String(page.bytes))
+            cursor = page.next
+        }
         return sink.toString()
     }
 }

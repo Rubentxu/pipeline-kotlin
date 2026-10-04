@@ -352,6 +352,51 @@ outcome, event contract, replay/resume, and installed-distribution behaviour.
 Compilation alone is insufficient, and so is an older receipt — a receipt is
 evidence for its own SHA and inherits nothing.
 
+## HARNESS FIDELITY LAW (MANDATORY)
+
+A test that reimplements the algorithm under test certifies the reimplementation,
+not the product. This is the most expensive recurring defect class in this
+repository, and every clause below exists because it was paid for.
+
+**1. A behavioural harness MUST cross the productive authority, and MUST name it.**
+The class KDoc states the production entry point the harness enters through
+(`StepDispatchEngine`, `DurableInvocationResolver`, `ExternalSubprocessRecovery`,
+`launchBranches()`…). If it cannot cross it, the harness declares itself
+`model` or `spike` in the KDoc **and** in the receipt, and its verdict is
+characterisation, never certification.
+
+**2. A harness MUST NOT re-derive a value the production authority owns.**
+Recomputing a fingerprint, replaying a status table, or rebuilding a decision to
+"check" production's decision is not a weaker test — it is a test of the test's
+own arithmetic. Clone what production wrote; change only the variable under
+study.
+
+**3. Assert on discrete observations, never on duration, size or ordering.**
+Count calls at the execution boundary, or classify a typed result. A millisecond
+threshold is a property of the machine, and it will eventually fail on a loaded
+box and be read as a product defect. When the property is "reattach, not a
+second launch", assert the `Reattach` classification rather than waiting out the
+60 s poll.
+
+**4. A harness MUST NOT be able to make its own subject look broken.**
+No `Files.createTempDirectory` without a parent (it lands in `java.io.tmpdir` and
+leaks one directory per row per run), no ambient `cwd`/env, no wall-clock, no
+network, no shared mutable singleton. Under resource pressure an unhermetic
+harness produces REDs that have nothing to do with the change under test, and the
+next reader will burn an hour on them. Use JUnit `@TempDir`.
+
+**5. A behavioural claim MUST carry a mutation that kills it.**
+A test that only asserts what the code currently does is characterisation, and
+must say so. One mutation per claim, attributed 1:1 to the rows it flips, and
+restored afterwards with a verified hash. Characterisation that measures a defect
+becomes a non-regression test when the defect closes — and that transition MUST
+be explicit in the assertion message, never a silent rewrite of what is expected.
+
+**6. A failing compile is not a RED.**
+If `compileTestKotlin` fails, Gradle runs the previously compiled class and
+reports its result. Always read `^e: ` before believing any outcome, and never
+count a compile error as evidence for or against a hypothesis.
+
 ## STEP SEMANTICS (MANDATORY)
 
 1. Jenkins familiarity: step names, parameters, semantics, and outcomes MUST

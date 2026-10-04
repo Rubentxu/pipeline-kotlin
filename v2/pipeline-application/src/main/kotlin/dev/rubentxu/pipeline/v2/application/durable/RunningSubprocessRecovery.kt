@@ -130,6 +130,22 @@ internal sealed interface UnobservableCause {
 internal class ExternalSubprocessRecovery(
     private val clock: Clock,
     private val controlDirRoot: Path?,
+    /**
+     * S4-R1 §3b — the reattach wait, as an explicit dependency.
+     *
+     * It was `DurableShellExecutor().pollResult(...)` constructed INLINE, which made the
+     * reattach-expiry branch (`poll` returns null) unreachable to any test that did not want to
+     * burn [REATTACH_TIMEOUT_MS] of wall clock per row. That branch is precisely the fact
+     * `ReattachWindowExpired` exists to name, so it is exactly the branch that must be
+     * observable.
+     *
+     * The default is the REAL executor, so production behaviour and timing are unchanged. This
+     * grants the observer no new power — owning a live process and its clock is already its job
+     * under ADR-S4-R1 — it only removes a construction that was hidden inside a method body.
+     */
+    private val pollResult: (Path, Long) -> Int? = { controlDir, timeoutMs ->
+        DurableShellExecutor().pollResult(controlDir, timeoutMs)
+    },
 ) : RunningSubprocessRecovery {
 
     /**
@@ -146,7 +162,7 @@ internal class ExternalSubprocessRecovery(
         return when (classification) {
             is StepReconcilerL1.Classification.Complete -> completedShellOutcome(classification.exitCode)
             is StepReconcilerL1.Classification.Reattach -> {
-                val exitCode = DurableShellExecutor().pollResult(classification.controlDir, REATTACH_TIMEOUT_MS)
+                val exitCode = pollResult(classification.controlDir, REATTACH_TIMEOUT_MS)
                 if (exitCode == null) lostShellOutcome(operationId) else completedShellOutcome(exitCode)
             }
             is StepReconcilerL1.Classification.TimedOut -> RunningSubprocessObservation.Recovered(

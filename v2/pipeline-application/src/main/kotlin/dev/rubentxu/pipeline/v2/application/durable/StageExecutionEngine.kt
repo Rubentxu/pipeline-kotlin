@@ -110,15 +110,10 @@ internal class StageExecutionEngine(
                     // for the exact case it exists for. A finalizer that itself
                     // fails replaces the reason, because the run is being failed
                     // either way and the later failure is the more recent truth.
-                    val postFailure = runPostBlock(
-                        stage = stage,
-                        stageIndex = stageIndex,
-                        stageFinishedOutcome = StageOutcome.FAILED.text,
-                        runId = runId,
-                        stageShOptions = stageShOptions,
-                        ambient = context,
-                    )
-                    val failure = postFailure ?: continuation.failure
+                    val failure = finalizeStage(
+                        stage, stageIndex, StageOutcome.FAILED, runId, stageShOptions, context,
+                        emitStageFinished = false,
+                    ) ?: continuation.failure
                     return StageVerdict.Abort(failure, context)
                 }
             }
@@ -127,16 +122,57 @@ internal class StageExecutionEngine(
         // block finalizes the stage BEFORE its StageFinished, so the
         // terminal record already includes the finalizers' work.
         val outcome = if (stageUnstable) StageOutcome.UNSTABLE else StageOutcome.SUCCESS
+        finalizeStage(stage, stageIndex, outcome, runId, stageShOptions, context)
+            ?.let { failure -> return StageVerdict.Abort(failure, context) }
+        return StageVerdict.Completed(outcome, context)
+    }
+
+    /**
+     * S4-F2 — the ONE place where a stage that has already REACHED AN OUTCOME is finalised.
+     *
+     * ## Why this exists, and why it is here rather than in the coordinator
+     *
+     * Three call sites needed the same three things — run the `post` block for a known outcome,
+     * emit `StageFinished` if the run is not being failed, and report a failure if a finalizer
+     * failed — and they were written out three times: the linear tail, the per-step abort inside
+     * [runLinearStage], and the coordinator's parallel arm. Three copies of a rule is not a
+     * convention, it is three places to forget one, and the copies had already drifted: the
+     * coordinator passed outcome STRINGS while the engine passed [StageOutcome].
+     *
+     * So the rule lives here, and the coordinator's parallel arm becomes three short calls. This
+     * also removes the duplicated call the growth guardrail was measuring, which is why the
+     * coordinator shrinks rather than grows when the scripted body arrives.
+     *
+     * ## Ordering, unchanged
+     *
+     * `StageStarted < body < PostConditionSelected < post steps < StageFinished`, and a finalizer
+     * that fails ABORTS the run instead of finishing the stage — cleanup is exactly the code that
+     * must run after bad news, but it does not get to paper over the news.
+     *
+     * @param emitStageFinished `false` for a stage whose run is being FAILED. That is not an
+     *   optimisation: `RunFinished` carries the failure, and a `StageFinished` before it would
+     *   record a terminal the run never reached.
+     * @return the typed failure to abort the run with, or null when the stage finalised cleanly.
+     */
+    suspend fun finalizeStage(
+        stage: StageNode,
+        stageIndex: Int,
+        outcome: StageOutcome,
+        runId: RunId,
+        stageShOptions: ShOptions,
+        ambient: ExecutionContext,
+        emitStageFinished: Boolean = true,
+    ): PipelineFailure? {
         runPostBlock(
             stage = stage,
             stageIndex = stageIndex,
             stageFinishedOutcome = outcome.text,
             runId = runId,
             stageShOptions = stageShOptions,
-            ambient = context,
-        )?.let { failure -> return StageVerdict.Abort(failure, context) }
-        runLifecycle.stageFinished(runId, stageIndex, stage.name, outcome.text)
-        return StageVerdict.Completed(outcome, context)
+            ambient = ambient,
+        )?.let { return it }
+        if (emitStageFinished) runLifecycle.stageFinished(runId, stageIndex, stage.name, outcome.text)
+        return null
     }
 
     /**

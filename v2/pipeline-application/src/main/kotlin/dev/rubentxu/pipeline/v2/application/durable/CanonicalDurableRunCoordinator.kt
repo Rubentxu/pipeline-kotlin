@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.StepMetadata
 import dev.rubentxu.pipeline.v2.application.CoreLegacyStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
+import dev.rubentxu.pipeline.v2.application.durable.StageExecutionEngine.StageOutcome as StageVerdictOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyRejection
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolution
@@ -448,48 +449,27 @@ class CanonicalDurableRunCoordinator(
                 if (steps == null && stage.body is StageBody.Parallel) {
                     // Workspace creation is required before branch dispatch (D5/C1 reuse).
                     val parallelOutcome = parallelStages.runParallelStage(stage, stageIndex, stageShOptions, runId, ambient)
+                    // S4-F2: post-block + StageFinished are ONE rule, in StageExecutionEngine.
+                    // These three arms used to spell it out and had already drifted — they passed
+                    // outcome strings where the engine passed StageOutcome. A stage being FAILED
+                    // does not emit StageFinished; RunFinished carries that.
                     when (val continuation = runLifecycle.decideStageContinuation(parallelOutcome, stage.name, runId.value, ambient)) {
-                        CanonicalContinuation.Continue -> {
-                            stageExecution.runPostBlock(
-                                stage = stage,
-                                stageIndex = stageIndex,
-                                stageFinishedOutcome = "success",
-                                runId = runId,
-                                stageShOptions = stageShOptions,
-                                ambient = ambient,
-                            )?.let { failure ->
-                                runLifecycle.fold(RunOutcome.Failure(failure))
-                                return@run runLifecycle.outcome()
-                            }
-                            runLifecycle.stageFinished(runId, stageIndex, stage.name, "success")
-                        }
+                        CanonicalContinuation.Continue -> stageExecution.finalizeStage(
+                            stage, stageIndex, StageVerdictOutcome.SUCCESS, runId, stageShOptions, ambient,
+                        )
                         CanonicalContinuation.ContinueUnstable -> {
                             runLifecycle.fold(RunOutcome.Unstable)
-                            stageExecution.runPostBlock(
-                                stage = stage,
-                                stageIndex = stageIndex,
-                                stageFinishedOutcome = "unstable",
-                                runId = runId,
-                                stageShOptions = stageShOptions,
-                                ambient = ambient,
-                            )?.let { failure ->
-                                runLifecycle.fold(RunOutcome.Failure(failure))
-                                return@run runLifecycle.outcome()
-                            }
-                            runLifecycle.stageFinished(runId, stageIndex, stage.name, "unstable")
+                            stageExecution.finalizeStage(
+                                stage, stageIndex, StageVerdictOutcome.UNSTABLE, runId, stageShOptions, ambient,
+                            )
                         }
                         is CanonicalContinuation.Abort -> {
-                            // S2-B: a parallel branch failure is still a stage
-                            // outcome; failure/always/cleanup finalizers MUST run
-                            // before the run aborts. The original abort reason wins
-                            // unless the finalizers themselves failed.
-                            stageExecution.runPostBlock(
-                                stage = stage,
-                                stageIndex = stageIndex,
-                                stageFinishedOutcome = "failed",
-                                runId = runId,
-                                stageShOptions = stageShOptions,
-                                ambient = ambient,
+                            // A parallel branch failure is still a stage outcome; failure/always/
+                            // cleanup finalizers MUST run before the run aborts. The original abort
+                            // reason wins unless the finalizers themselves failed.
+                            stageExecution.finalizeStage(
+                                stage, stageIndex, StageVerdictOutcome.FAILED, runId, stageShOptions, ambient,
+                                emitStageFinished = false,
                             )?.let { postFailure ->
                                 runLifecycle.fold(RunOutcome.Failure(postFailure))
                                 return@run runLifecycle.outcome()
@@ -497,6 +477,9 @@ class CanonicalDurableRunCoordinator(
                             runLifecycle.fold(RunOutcome.Failure(continuation.failure))
                             return@run runLifecycle.outcome()
                         }
+                    }?.let { postFailure ->
+                        runLifecycle.fold(RunOutcome.Failure(postFailure))
+                        return@run runLifecycle.outcome()
                     }
                     continue@stagesLoop
                 }

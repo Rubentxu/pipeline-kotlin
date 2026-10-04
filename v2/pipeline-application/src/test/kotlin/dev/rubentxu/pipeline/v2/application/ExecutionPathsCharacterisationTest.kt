@@ -59,6 +59,14 @@ class ExecutionPathsCharacterisationTest {
                     ((branch.body as? StageBody.Steps)?.steps ?: emptyList()).map { it.pluginStepId.value }
                 }
                 is StageBody.Matrix -> emptyList()
+
+                // S4-F2: a scripted body contributes no STATIC step key, and that is what this
+                // helper asks for. Its calls are produced at run time by the artifact, so there is
+                // no key to read here. Returning empty is the truthful answer, NOT a gap: the same
+                // reason `StageBody.Matrix` returns empty. An implementation that made a scripted
+                // body contribute a synthetic key would be the real defect, and this row is where
+                // it would show up first.
+                is StageBody.Scripted -> emptyList()
             }
         }
 

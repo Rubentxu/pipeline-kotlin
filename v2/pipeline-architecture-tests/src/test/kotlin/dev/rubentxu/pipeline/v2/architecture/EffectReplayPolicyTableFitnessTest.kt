@@ -140,10 +140,22 @@ Arguments.of("D1-1 fresh RERUN ABORTS_PIPELINE executes", ReplayPolicy.RERUN, se
 Arguments.of("D1-1 fresh MEMOIZED ABORTS_PIPELINE executes", ReplayPolicy.MEMOIZED, setOf(Effect.ABORTS_PIPELINE), null, execute),
 
 // 2. Containment applies to journalled history.
-Arguments.of("D1-2 journalled RERUN ABORTS_PIPELINE aborts", ReplayPolicy.RERUN, setOf(Effect.ABORTS_PIPELINE), OperationStatus.SUCCEEDED, ReplayDecision.ABORT),
-Arguments.of("D1-2 journalled RERUN ABORTS_PIPELINE aborts on FAILED too", ReplayPolicy.RERUN, setOf(Effect.ABORTS_PIPELINE), OperationStatus.FAILED, ReplayDecision.ABORT),
-Arguments.of("D1-2 journalled MEMOIZED ABORTS_PIPELINE aborts", ReplayPolicy.MEMOIZED, setOf(Effect.ABORTS_PIPELINE), OperationStatus.SUCCEEDED, ReplayDecision.ABORT),
-Arguments.of("D1-2 journalled NEVER ABORTS_PIPELINE aborts", ReplayPolicy.NEVER, setOf(Effect.ABORTS_PIPELINE), OperationStatus.SUCCEEDED, ReplayDecision.ABORT),
+Arguments.of(
+    "D1-2 journalled RERUN ABORTS_PIPELINE aborts",
+    ReplayPolicy.RERUN, setOf(Effect.ABORTS_PIPELINE), OperationStatus.SUCCEEDED, ReplayDecision.ABORT,
+),
+Arguments.of(
+    "D1-2 journalled RERUN ABORTS_PIPELINE aborts on FAILED too",
+    ReplayPolicy.RERUN, setOf(Effect.ABORTS_PIPELINE), OperationStatus.FAILED, ReplayDecision.ABORT,
+),
+Arguments.of(
+    "D1-2 journalled MEMOIZED ABORTS_PIPELINE aborts",
+    ReplayPolicy.MEMOIZED, setOf(Effect.ABORTS_PIPELINE), OperationStatus.SUCCEEDED, ReplayDecision.ABORT,
+),
+Arguments.of(
+    "D1-2 journalled NEVER ABORTS_PIPELINE aborts",
+    ReplayPolicy.NEVER, setOf(Effect.ABORTS_PIPELINE), OperationStatus.SUCCEEDED, ReplayDecision.ABORT,
+),
 
 // 3. NEVER constrains history, never the first legitimate execution.
 Arguments.of("D1-3 NEVER with a SUCCEEDED row aborts", ReplayPolicy.NEVER, setOf(Effect.READ_ONLY), OperationStatus.SUCCEEDED, ReplayDecision.ABORT),

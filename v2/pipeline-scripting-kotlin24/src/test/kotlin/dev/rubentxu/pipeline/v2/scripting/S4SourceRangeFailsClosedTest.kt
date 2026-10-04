@@ -53,7 +53,7 @@ class S4SourceRangeFailsClosedTest {
 
     private val sourceId = ScriptedSourceId("s4-srange.pipeline.kts")
 
-    private fun text() = "sh(\"echo hi\")\n"
+    private val text = "sh(\"echo hi\")\n"
 
     private fun mapperReturning(calls: List<ScriptedMappedCall>): ScriptedSourceMapper =
         ScriptedSourceMapper { ScriptedSourceMapping.Mapped(calls = calls) }
@@ -71,7 +71,7 @@ class S4SourceRangeFailsClosedTest {
 
         val result = ScriptedSourceLowering.lower(
             sourceId = sourceId,
-            sourceText = text(),
+            sourceText = text,
             mapper = mapperReturning(listOf(ghost)),
             facadeSchemaVersion = "test",
         )
@@ -108,7 +108,7 @@ class S4SourceRangeFailsClosedTest {
 
         val result = ScriptedSourceLowering.lower(
             sourceId = sourceId,
-            sourceText = text(),
+            sourceText = text,
             mapper = mapperReturning(listOf(overreaching)),
             facadeSchemaVersion = "test",
         )
@@ -139,7 +139,7 @@ class S4SourceRangeFailsClosedTest {
 
         val result = ScriptedSourceLowering.lower(
             sourceId = sourceId,
-            sourceText = text(),
+            sourceText = text,
             mapper = mapperReturning(listOf(real)),
             facadeSchemaVersion = "test",
         )

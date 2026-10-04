@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
-import dev.rubentxu.pipeline.v2.events.SqliteEventStore
+import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
 import dev.rubentxu.pipeline.v2.events.identity.EnvelopeCodec
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import dev.rubentxu.pipeline.v2.events.identity.EventHistoryReader

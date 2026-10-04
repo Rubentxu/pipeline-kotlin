@@ -40,6 +40,10 @@ include(
     ":pipeline-testkit",
     ":pipeline-architecture-tests",
     ":pipeline-events",
+    // The event plane's durable implementation: journal, replay cursor, run lease, and the
+    // in-memory / JSON / SQLite stores. Split out of `:pipeline-events` so the published contract
+    // carries no SQLite schema, no filesystem store and no replay protocol. Not published.
+    ":pipeline-events-store",
     ":pipeline-event-harness",
     // M1: the Output Plane. Separate from :pipeline-events on purpose — output continuation is
     // an independent order (ADR-M1 D3), and the module graph is what keeps it independent.

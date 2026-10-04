@@ -26,7 +26,7 @@ import dev.rubentxu.pipeline.v2.domain.directivekey.WHEN_DIRECTIVE_KEY
 import dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate
 import dev.rubentxu.pipeline.v2.domain.directive.WhenPredicateCodec
 import dev.rubentxu.pipeline.v2.domain.directive.WhenPredicateEncoder
-import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.StageSkipped
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore

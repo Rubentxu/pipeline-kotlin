@@ -36,12 +36,24 @@ class Rp030EventCodecsConnascenceFitnessTest {
     private val eventsSrc = FitnessPaths.v2Root()
         .resolve("pipeline-events/src/main/kotlin/dev/rubentxu/pipeline/v2/events")
 
+    /**
+     * The durable half of the event plane, split into its own module by BLOCK 2.
+     *
+     * Three of the six sources this fitness reads are implementations, and all three moved: reading
+     * them from [eventsSrc] would have thrown `NoSuchFileException` rather than failing quietly,
+     * which is the lucky kind of breakage. The reason to name the module explicitly is the other
+     * direction — a reader who adds a fourth implementation file must be told where it goes, and a
+     * path that silently kept working would let the codec checks stop covering anything.
+     */
+    private val durableSrc = FitnessPaths.v2Root()
+        .resolve("pipeline-events-store/src/main/kotlin/dev/rubentxu/pipeline/v2/events/durable")
+
     private val domainEventSource: String by lazy {
         Files.readString(eventsSrc.resolve("DomainEvent.kt"))
     }
 
     private val jsonEventLogSource: String by lazy {
-        Files.readString(eventsSrc.resolve("JsonEventLog.kt"))
+        Files.readString(durableSrc.resolve("JsonEventLog.kt"))
     }
 
     private val sequenceAssignerSource: String by lazy {
@@ -51,11 +63,11 @@ class Rp030EventCodecsConnascenceFitnessTest {
     }
 
     private val sqliteStoreSource: String by lazy {
-        Files.readString(eventsSrc.resolve("SqliteEventStore.kt"))
+        Files.readString(durableSrc.resolve("SqliteEventStore.kt"))
     }
 
     private val inMemoryStoreSource: String by lazy {
-        Files.readString(eventsSrc.resolve("InMemoryEventStore.kt"))
+        Files.readString(durableSrc.resolve("InMemoryEventStore.kt"))
     }
 
     private val envelopeProjectorSource: String by lazy {

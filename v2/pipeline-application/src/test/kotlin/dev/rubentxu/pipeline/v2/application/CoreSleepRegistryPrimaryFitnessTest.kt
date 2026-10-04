@@ -255,5 +255,5 @@ class CoreSleepRegistryPrimaryFitnessTest {
     private fun testContext(label: String) = dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext(
         dev.rubentxu.pipeline.v2.application.durable.OpId("g4-$label", 0, 0), "g4-$label", "g4", 0, 0,
         dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions.EMPTY,
-        java.nio.file.Files.createTempDirectory("g4-$label"), dev.rubentxu.pipeline.v2.events.InMemoryEventStore())
+        java.nio.file.Files.createTempDirectory("g4-$label"), dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore())
 }

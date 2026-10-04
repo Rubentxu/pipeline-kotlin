@@ -67,7 +67,7 @@ class NetworkEgressFailClosedTest {
                 networkEgress = egress,
             ),
             controlDirRoot = controlDir,
-            eventSink = dev.rubentxu.pipeline.v2.events.InMemoryEventStore(),
+            eventSink = dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore(),
         )
     }
 

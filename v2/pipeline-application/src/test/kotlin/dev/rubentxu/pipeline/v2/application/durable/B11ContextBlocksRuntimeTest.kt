@@ -21,7 +21,7 @@ import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeO
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
 import dev.rubentxu.pipeline.v2.events.DirEntered
 import dev.rubentxu.pipeline.v2.events.DirExited
-import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted

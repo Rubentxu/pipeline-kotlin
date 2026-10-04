@@ -9,7 +9,7 @@ import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.AllowAll
 import dev.rubentxu.pipeline.v2.domain.step.DenyAll
 import dev.rubentxu.pipeline.v2.domain.step.NetworkEgressGate
-import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.http.HTTP_TRANSPORT_CAPABILITY
 import dev.rubentxu.pipeline.v2.sdk.http.HttpRequestStep
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions

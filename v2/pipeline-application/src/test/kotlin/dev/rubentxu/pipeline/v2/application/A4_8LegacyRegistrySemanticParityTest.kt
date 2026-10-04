@@ -28,7 +28,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
-import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -408,15 +408,23 @@ class A4_8LegacyRegistrySemanticParityTest {
             cursor = cursor.parentFile ?: break
         }
         val domainRoot = java.io.File(workspaceRoot, "v2/pipeline-domain/src/main/kotlin")
-        val eventsRoot = java.io.File(workspaceRoot, "v2/pipeline-events/src/main/kotlin")
+        // BLOCK 2 split the event plane in two. "The events module" is no longer a single tree, and
+        // a law stated over one of them would have stopped at the boundary the split introduced: the
+        // durable half could have started naming a typed step output while the row stayed green.
+        val eventRoots = listOf(
+            java.io.File(workspaceRoot, "v2/pipeline-events/src/main/kotlin"),
+            java.io.File(workspaceRoot, "v2/pipeline-events-store/src/main/kotlin"),
+        )
         assertTrue(
             domainRoot.isDirectory,
             "domain source tree not found at $domainRoot (user.dir=${System.getProperty("user.dir")})",
         )
-        assertTrue(
-            eventsRoot.isDirectory,
-            "events source tree not found at $eventsRoot (user.dir=${System.getProperty("user.dir")})",
-        )
+        eventRoots.forEach { root ->
+            assertTrue(
+                root.isDirectory,
+                "events source tree not found at $root (user.dir=${System.getProperty("user.dir")})",
+            )
+        }
 
         val typedInDomain: List<String> = domainRoot.walkTopDown()
             .filter { it.isFile && it.name.endsWith(".kt") }
@@ -434,15 +442,17 @@ class A4_8LegacyRegistrySemanticParityTest {
                 "found in: $typedInDomain",
         )
 
-        val typedInEvents: List<String> = eventsRoot.walkTopDown()
-            .filter { it.isFile && it.name.endsWith(".kt") }
-            .filter { it.readText().contains("TypedStepOutput") }
-            .map { it.name }
-            .toList()
+        val typedInEvents: List<String> = eventRoots.flatMap { eventsRoot ->
+            eventsRoot.walkTopDown()
+                .filter { it.isFile && it.name.endsWith(".kt") }
+                .filter { it.readText().contains("TypedStepOutput") }
+                .map { it.name }
+                .toList()
+        }
         assertEquals(
             emptyList<String>(),
             typedInEvents,
-            "TypedStepOutput must NOT appear in the events module (event log substrate)",
+            "TypedStepOutput must NOT appear in either event plane module (event log substrate)",
         )
 
         // Concrete CoreShellOutput coupling outside pipeline-application is forbidden.

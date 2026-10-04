@@ -1,0 +1,801 @@
+package dev.rubentxu.pipeline.v2.events.durable
+
+
+import dev.rubentxu.pipeline.v2.events.AgentResolved
+import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
+import dev.rubentxu.pipeline.v2.events.ArtifactArchived
+import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
+import dev.rubentxu.pipeline.v2.events.CompilationFinished
+import dev.rubentxu.pipeline.v2.events.CompilationStarted
+import dev.rubentxu.pipeline.v2.events.CredentialBound
+import dev.rubentxu.pipeline.v2.events.CredentialUnbound
+import dev.rubentxu.pipeline.v2.events.CredentialUsed
+import dev.rubentxu.pipeline.v2.events.DirDeleted
+import dev.rubentxu.pipeline.v2.events.DirEntered
+import dev.rubentxu.pipeline.v2.events.DirExited
+import dev.rubentxu.pipeline.v2.events.DirectiveAdmitted
+import dev.rubentxu.pipeline.v2.events.DirectiveDenied
+import dev.rubentxu.pipeline.v2.events.DomainEvent
+import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
+import dev.rubentxu.pipeline.v2.events.ExecutionTargetResolved
+import dev.rubentxu.pipeline.v2.events.FileExistsChecked
+import dev.rubentxu.pipeline.v2.events.FileRead
+import dev.rubentxu.pipeline.v2.events.FileWritten
+import dev.rubentxu.pipeline.v2.events.GateEvaluated
+import dev.rubentxu.pipeline.v2.events.GitCheckoutCompleted
+import dev.rubentxu.pipeline.v2.events.GitCheckoutFailed
+import dev.rubentxu.pipeline.v2.events.GitCheckoutStarted
+import dev.rubentxu.pipeline.v2.events.GitPollChanged
+import dev.rubentxu.pipeline.v2.events.HtmlReportEntry
+import dev.rubentxu.pipeline.v2.events.HtmlReportFailed
+import dev.rubentxu.pipeline.v2.events.HtmlReportPublished
+import dev.rubentxu.pipeline.v2.events.HtmlReportSkipped
+import dev.rubentxu.pipeline.v2.events.HttpRequestFailed
+import dev.rubentxu.pipeline.v2.events.HttpRequestStarted
+import dev.rubentxu.pipeline.v2.events.HttpResponseReceived
+import dev.rubentxu.pipeline.v2.events.HttpStatusRejected
+import dev.rubentxu.pipeline.v2.events.InputAborted
+import dev.rubentxu.pipeline.v2.events.InputDenied
+import dev.rubentxu.pipeline.v2.events.InputProceed
+import dev.rubentxu.pipeline.v2.events.InputRequested
+import dev.rubentxu.pipeline.v2.events.LockAcquireFailed
+import dev.rubentxu.pipeline.v2.events.LockAcquired
+import dev.rubentxu.pipeline.v2.events.LockReleased
+import dev.rubentxu.pipeline.v2.events.LockRequested
+import dev.rubentxu.pipeline.v2.events.LockSkipped
+import dev.rubentxu.pipeline.v2.events.MilestoneAborted
+import dev.rubentxu.pipeline.v2.events.MilestoneReached
+import dev.rubentxu.pipeline.v2.events.ParallelBranchFinished
+import dev.rubentxu.pipeline.v2.events.ParallelBranchStarted
+import dev.rubentxu.pipeline.v2.events.PostConditionSelected
+import dev.rubentxu.pipeline.v2.events.PwdResolved
+import dev.rubentxu.pipeline.v2.events.RestoredEntry
+import dev.rubentxu.pipeline.v2.events.RetryAttemptFinished
+import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted
+import dev.rubentxu.pipeline.v2.events.RunFinished
+import dev.rubentxu.pipeline.v2.events.RunStarted
+import dev.rubentxu.pipeline.v2.events.StageFinished
+import dev.rubentxu.pipeline.v2.events.StageMarkedUnstable
+import dev.rubentxu.pipeline.v2.events.StageSkipped
+import dev.rubentxu.pipeline.v2.events.StageStarted
+import dev.rubentxu.pipeline.v2.events.StashCreated
+import dev.rubentxu.pipeline.v2.events.StashFailed
+import dev.rubentxu.pipeline.v2.events.StashRestored
+import dev.rubentxu.pipeline.v2.events.StashedEntry
+import dev.rubentxu.pipeline.v2.events.StepAdmissionObserved
+import dev.rubentxu.pipeline.v2.events.StepFailed
+import dev.rubentxu.pipeline.v2.events.StepFinished
+import dev.rubentxu.pipeline.v2.events.StepStarted
+import dev.rubentxu.pipeline.v2.events.TimeoutScheduled
+import dev.rubentxu.pipeline.v2.events.TimeoutTriggered
+import dev.rubentxu.pipeline.v2.events.TimestampsEntered
+import dev.rubentxu.pipeline.v2.events.TimestampsExited
+import dev.rubentxu.pipeline.v2.events.UnixDetected
+import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
+import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
+import dev.rubentxu.pipeline.v2.events.WorkflowLoaded
+import dev.rubentxu.pipeline.v2.events.WsCleaned
+import dev.rubentxu.pipeline.v2.scripting.CacheKey
+import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
+
+/**
+ * The JSON writers shared by [JsonEventLog]'s encoder and by
+ * [EventJsonDecoder]'s nested serializers.
+ */
+internal object EventJsonWriter {
+
+    fun serializeStashedEntries(entries: List<StashedEntry>): String {
+        val sb = StringBuilder("[")
+        entries.forEachIndexed { idx, e ->
+            if (idx > 0) sb.append(",")
+            sb.append("{")
+            sb.append("\"relPath\":").append(jsonString(e.relPath))
+            sb.append(",\"sha256\":").append(jsonString(e.sha256))
+            sb.append(",\"sizeBytes\":").append(e.sizeBytes)
+            sb.append("}")
+        }
+        sb.append("]")
+        return sb.toString()
+    }
+
+    fun serializeRestoredEntries(entries: List<RestoredEntry>): String {
+        val sb = StringBuilder("[")
+        entries.forEachIndexed { idx, e ->
+            if (idx > 0) sb.append(",")
+            sb.append("{")
+            sb.append("\"relPath\":").append(jsonString(e.relPath))
+            sb.append(",\"sha256\":").append(jsonString(e.sha256))
+            sb.append(",\"sizeBytes\":").append(e.sizeBytes)
+            sb.append("}")
+        }
+        sb.append("]")
+        return sb.toString()
+    }
+
+    // WU-LPR-089 — Stash decoders (inverse of the serializers above).
+    // The `files`/`entries` array is a compact JSON list of objects; we
+    // delegate to the existing stringField/longField helpers plus
+    fun serializeHtmlReportEntries(entries: List<HtmlReportEntry>): String {
+        val sb = StringBuilder("[")
+        entries.forEachIndexed { idx, e ->
+            if (idx > 0) sb.append(",")
+            sb.append("{")
+            sb.append("\"relPath\":").append(jsonString(e.relPath))
+            sb.append(",\"sha256\":").append(jsonString(e.sha256))
+            sb.append(",\"sizeBytes\":").append(e.sizeBytes)
+            sb.append("}")
+        }
+        sb.append("]")
+        return sb.toString()
+    }
+    fun jsonString(s: String): String {
+        val sb = StringBuilder()
+        for (ch in s) {
+            when (ch) {
+                '\\' -> sb.append("\\\\")
+                '"' -> sb.append("\\\"")
+                '\n' -> sb.append("\\n")
+                '\r' -> sb.append("\\r")
+                '\t' -> sb.append("\\t")
+                else -> sb.append(ch)
+            }
+        }
+        return "\"${sb}\""
+    }
+
+    /** A JSON array of strings; deterministic and quote-safe. */
+    fun jsonStringList(values: List<String>): String =
+        values.joinToString(prefix = "[", postfix = "]", separator = ",") { jsonString(it) }
+
+    fun encodeEvent(event: DomainEvent): String {
+        val sb = StringBuilder()
+        sb.append("{")
+        sb.append("\"eventId\":")
+        sb.append(EventJsonWriter.jsonString(event.eventId))
+        sb.append(",\"runId\":")
+        sb.append(EventJsonWriter.jsonString(event.runId))
+        sb.append(",\"sequence\":")
+        sb.append(event.sequence)
+        sb.append(",\"kind\":")
+        sb.append(EventJsonWriter.jsonString(event.kind))
+        sb.append(",\"occurredAt\":")
+        sb.append(EventJsonWriter.jsonString(event.occurredAt.toString()))
+        when (event) {
+            is RunStarted -> {
+                sb.append(",\"scriptPath\":")
+                sb.append(EventJsonWriter.jsonString(event.scriptPath))
+            }
+            is CompilationStarted -> {
+                // no extra fields
+            }
+            is CompilationFinished -> {
+                sb.append(",\"cacheKey\":")
+                sb.append(encodeCacheKey(event.cacheKey))
+                sb.append(",\"diagnostics\":")
+                sb.append(encodeDiagnostics(event.diagnostics))
+            }
+            is RunFinished -> {
+                sb.append(",\"outcome\":")
+                sb.append(EventJsonWriter.jsonString(event.outcome))
+                sb.append(",\"diagnostics\":")
+                sb.append(encodeDiagnostics(event.diagnostics))
+            }
+            is StageStarted -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+            }
+            is StageFinished -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"outcome\":")
+                sb.append(EventJsonWriter.jsonString(event.outcome))
+            }
+            is StageSkipped -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
+            is PostConditionSelected -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"stageOutcome\":")
+                sb.append(EventJsonWriter.jsonString(event.stageOutcome))
+                sb.append(",\"selectedConditions\":")
+                sb.append(EventJsonWriter.jsonStringList(event.selectedConditions))
+                sb.append(",\"skippedConditions\":")
+                sb.append(EventJsonWriter.jsonStringList(event.skippedConditions))
+            }
+            is StepStarted -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stepIndex\":")
+                sb.append(event.stepIndex)
+                sb.append(",\"stepName\":")
+                sb.append(EventJsonWriter.jsonString(event.stepName))
+                sb.append(",\"stepType\":")
+                sb.append(EventJsonWriter.jsonString(event.stepType))
+            }
+            is StepFinished -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stepIndex\":")
+                sb.append(event.stepIndex)
+                sb.append(",\"stepName\":")
+                sb.append(EventJsonWriter.jsonString(event.stepName))
+                sb.append(",\"stepType\":")
+                sb.append(EventJsonWriter.jsonString(event.stepType))
+            }
+            is AgentResolved -> {
+                sb.append(",\"agentLabel\":")
+                sb.append(EventJsonWriter.jsonString(event.agentLabel))
+                sb.append(",\"remoteUri\":")
+                sb.append(EventJsonWriter.jsonString(event.remoteUri ?: ""))
+            }
+            is ExecutionTargetResolved -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"directiveKey\":")
+                sb.append(EventJsonWriter.jsonString(event.directiveKey))
+                sb.append(",\"requirement\":")
+                sb.append(EventJsonWriter.jsonString(event.requirement))
+                sb.append(",\"targetId\":")
+                sb.append(EventJsonWriter.jsonString(event.targetId))
+            }
+            is ParallelBranchStarted -> {
+                sb.append(",\"branchIndex\":")
+                sb.append(event.branchIndex)
+                sb.append(",\"branchName\":")
+                sb.append(EventJsonWriter.jsonString(event.branchName))
+                sb.append(",\"parentStageIndex\":")
+                sb.append(event.parentStageIndex)
+            }
+            is ParallelBranchFinished -> {
+                sb.append(",\"branchIndex\":")
+                sb.append(event.branchIndex)
+                sb.append(",\"branchName\":")
+                sb.append(EventJsonWriter.jsonString(event.branchName))
+                sb.append(",\"parentStageIndex\":")
+                sb.append(event.parentStageIndex)
+                sb.append(",\"outcome\":")
+                sb.append(EventJsonWriter.jsonString(event.outcome))
+            }
+            is RetryAttemptStarted -> {
+                sb.append(",\"attemptNumber\":")
+                sb.append(event.attemptNumber)
+                sb.append(",\"maxAttempts\":")
+                sb.append(event.maxAttempts)
+                sb.append(",\"stepName\":")
+                sb.append(EventJsonWriter.jsonString(event.stepName))
+                sb.append(",\"stepType\":")
+                sb.append(EventJsonWriter.jsonString(event.stepType))
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stepIndex\":")
+                sb.append(event.stepIndex)
+            }
+            is RetryAttemptFinished -> {
+                sb.append(",\"attemptNumber\":")
+                sb.append(event.attemptNumber)
+                sb.append(",\"maxAttempts\":")
+                sb.append(event.maxAttempts)
+                sb.append(",\"stepName\":")
+                sb.append(EventJsonWriter.jsonString(event.stepName))
+                sb.append(",\"stepType\":")
+                sb.append(EventJsonWriter.jsonString(event.stepType))
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stepIndex\":")
+                sb.append(event.stepIndex)
+                sb.append(",\"outcome\":")
+                sb.append(EventJsonWriter.jsonString(event.outcome))
+            }
+            is TimeoutScheduled -> {
+                sb.append(",\"timeoutSeconds\":")
+                sb.append(event.timeoutSeconds)
+                sb.append(",\"timeoutAction\":")
+                sb.append(EventJsonWriter.jsonString(event.timeoutAction))
+                sb.append(",\"stepName\":")
+                sb.append(EventJsonWriter.jsonString(event.stepName ?: ""))
+                sb.append(",\"stepType\":")
+                sb.append(EventJsonWriter.jsonString(event.stepType ?: ""))
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex ?: -1)
+                sb.append(",\"stepIndex\":")
+                sb.append(event.stepIndex ?: -1)
+            }
+            is StepFailed -> {
+                sb.append(",\"stepIndex\":")
+                sb.append(event.stepIndex)
+                sb.append(",\"stepName\":")
+                sb.append(EventJsonWriter.jsonString(event.stepName))
+                sb.append(",\"stepType\":")
+                sb.append(EventJsonWriter.jsonString(event.stepType))
+                sb.append(",\"failureKind\":")
+                sb.append(EventJsonWriter.jsonString(event.failureKind.name))
+                sb.append(",\"message\":")
+                sb.append(EventJsonWriter.jsonString(event.message))
+            }
+            is EchoOutputCaptured -> {
+                sb.append(",\"stepIndex\":")
+                sb.append(event.stepIndex)
+                sb.append(",\"content\":")
+                sb.append(EventJsonWriter.jsonString(event.content))
+            }
+            is CredentialBound -> {
+                sb.append(",\"credentialsId\":")
+                sb.append(EventJsonWriter.jsonString(event.credentialsId.value))
+                sb.append(",\"purpose\":")
+                sb.append(EventJsonWriter.jsonString(event.purpose.name))
+            }
+            is CredentialUsed -> {
+                sb.append(",\"credentialsId\":")
+                sb.append(EventJsonWriter.jsonString(event.credentialsId.value))
+                sb.append(",\"purpose\":")
+                sb.append(EventJsonWriter.jsonString(event.purpose.name))
+                sb.append(",\"stepIndex\":")
+                sb.append(event.stepIndex)
+            }
+            is CredentialUnbound -> {
+                sb.append(",\"credentialsId\":")
+                sb.append(EventJsonWriter.jsonString(event.credentialsId.value))
+            }
+            // L5 SCM Events
+            is GitCheckoutStarted -> {
+                sb.append(",\"url\":")
+                sb.append(EventJsonWriter.jsonString(event.url))
+                sb.append(",\"branch\":")
+                sb.append(EventJsonWriter.jsonString(event.branch))
+                // Captured in a local before the null test. Kotlin will not smart-cast a property
+                // declared in ANOTHER module, because from here it could be a `var` or carry a
+                // custom getter; while this file and these event classes shared a module it could,
+                // and BLOCK 2's split is what exposed the assumption. A local `val` states the
+                // single-read intent, which is what the null test already meant.
+                val credentialsRef = event.credentialsRef
+                if (credentialsRef != null) {
+                    sb.append(",\"credentialsRef\":")
+                    sb.append(EventJsonWriter.jsonString(credentialsRef.id.value))
+                }
+            }
+            is GitCheckoutCompleted -> {
+                sb.append(",\"url\":")
+                sb.append(EventJsonWriter.jsonString(event.url))
+                sb.append(",\"branch\":")
+                sb.append(EventJsonWriter.jsonString(event.branch))
+                sb.append(",\"sha\":")
+                sb.append(EventJsonWriter.jsonString(event.sha))
+                sb.append(",\"changelogPath\":")
+                sb.append(EventJsonWriter.jsonString(event.changelogPath))
+                sb.append(",\"durationMs\":")
+                sb.append(event.durationMs)
+            }
+            is GitCheckoutFailed -> {
+                sb.append(",\"url\":")
+                sb.append(EventJsonWriter.jsonString(event.url))
+                sb.append(",\"branch\":")
+                sb.append(EventJsonWriter.jsonString(event.branch))
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+                sb.append(",\"exitCode\":")
+                sb.append(event.exitCode)
+            }
+            is GitPollChanged -> {
+                sb.append(",\"url\":")
+                sb.append(EventJsonWriter.jsonString(event.url))
+                sb.append(",\"branch\":")
+                sb.append(EventJsonWriter.jsonString(event.branch))
+                val previousSha = event.previousSha
+                if (previousSha != null) {
+                    sb.append(",\"previousSha\":")
+                    sb.append(EventJsonWriter.jsonString(previousSha))
+                }
+                sb.append(",\"newSha\":")
+                sb.append(EventJsonWriter.jsonString(event.newSha))
+            }
+            // L7 Jenkins File + Artefact Events (ML-R7)
+            is FileWritten -> {
+                sb.append(",\"path\":")
+                sb.append(EventJsonWriter.jsonString(event.path.toString()))
+                sb.append(",\"sha256\":")
+                sb.append(EventJsonWriter.jsonString(event.sha256))
+                sb.append(",\"size\":")
+                sb.append(event.size)
+                sb.append(",\"atomicallyMoved\":")
+                sb.append(event.atomicallyMoved.toString())
+            }
+            is FileRead -> {
+                sb.append(",\"path\":")
+                sb.append(EventJsonWriter.jsonString(event.path.toString()))
+                val sha256 = event.sha256
+                if (sha256 != null) {
+                    sb.append(",\"sha256\":")
+                    sb.append(EventJsonWriter.jsonString(sha256))
+                }
+                if (event.size != null) {
+                    sb.append(",\"size\":")
+                    sb.append(event.size)
+                }
+            }
+            is FileExistsChecked -> {
+                sb.append(",\"path\":")
+                sb.append(EventJsonWriter.jsonString(event.path.toString()))
+                sb.append(",\"exists\":")
+                sb.append(event.exists)
+            }
+            is ArtifactArchived -> {
+                sb.append(",\"files\":[")
+                event.files.forEachIndexed { idx, entry ->
+                    if (idx > 0) sb.append(",")
+                    sb.append("{")
+                    sb.append("\"runId\":")
+                    sb.append(EventJsonWriter.jsonString(entry.runId))
+                    sb.append(",\"stageName\":")
+                    sb.append(EventJsonWriter.jsonString(entry.stageName))
+                    sb.append(",\"relPath\":")
+                    sb.append(EventJsonWriter.jsonString(entry.relPath))
+                    sb.append(",\"sha256\":")
+                    sb.append(EventJsonWriter.jsonString(entry.sha256))
+                    sb.append(",\"size\":")
+                    sb.append(entry.size)
+                    sb.append(",\"archivedAt\":")
+                    sb.append(EventJsonWriter.jsonString(entry.archivedAt.toString()))
+                    sb.append("}")
+                }
+                sb.append("]")
+            }
+            is ArtifactArchiveFailed -> {
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
+            // WU-LPR-089 — core.stash/core.unstash durable cross-stage data movement
+            is StashCreated -> {
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"name\":")
+                sb.append(EventJsonWriter.jsonString(event.name))
+                sb.append(",\"files\":")
+                sb.append(EventJsonWriter.serializeStashedEntries(event.files))
+            }
+            is StashRestored -> {
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"name\":")
+                sb.append(EventJsonWriter.jsonString(event.name))
+                sb.append(",\"entries\":")
+                sb.append(EventJsonWriter.serializeRestoredEntries(event.entries))
+            }
+            is StashFailed -> {
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"name\":")
+                sb.append(EventJsonWriter.jsonString(event.name))
+                sb.append(",\"operation\":")
+                sb.append(EventJsonWriter.jsonString(event.operation))
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
+            // WU-LPR-090 — core.publishHTML durable HTML report publishing
+            is HtmlReportPublished -> {
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"reportName\":")
+                sb.append(EventJsonWriter.jsonString(event.reportName))
+                sb.append(",\"reportDir\":")
+                sb.append(EventJsonWriter.jsonString(event.reportDir))
+                sb.append(",\"entries\":")
+                sb.append(EventJsonWriter.serializeHtmlReportEntries(event.entries))
+                sb.append(",\"targetPath\":")
+                sb.append(EventJsonWriter.jsonString(event.targetPath))
+            }
+            is HtmlReportSkipped -> {
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"reportName\":")
+                sb.append(EventJsonWriter.jsonString(event.reportName))
+                sb.append(",\"reportDir\":")
+                sb.append(EventJsonWriter.jsonString(event.reportDir))
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
+            is HtmlReportFailed -> {
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"reportName\":")
+                sb.append(EventJsonWriter.jsonString(event.reportName))
+                sb.append(",\"reportDir\":")
+                sb.append(EventJsonWriter.jsonString(event.reportDir))
+                sb.append(",\"failureKind\":")
+                sb.append(EventJsonWriter.jsonString(event.failureKind.name))
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
+            is DirectiveAdmitted -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"directiveKey\":")
+                sb.append(EventJsonWriter.jsonString(event.directiveKey))
+                sb.append(",\"phase\":")
+                sb.append(EventJsonWriter.jsonString(event.phase))
+                sb.append(",\"policy\":")
+                sb.append(EventJsonWriter.jsonString(event.policy))
+            }
+            is DirectiveDenied -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"directiveKey\":")
+                sb.append(EventJsonWriter.jsonString(event.directiveKey))
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
+            is GateEvaluated -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"directiveKeys\":")
+                sb.append(EventJsonWriter.jsonStringList(event.directiveKeys))
+                sb.append(",\"satisfied\":")
+                sb.append(event.satisfied)
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
+            is DirEntered -> {
+                sb.append(",\"path\":")
+                sb.append(EventJsonWriter.jsonString(event.path))
+                sb.append(",\"previousPath\":")
+                sb.append(EventJsonWriter.jsonString(event.previousPath))
+            }
+            is DirExited -> {
+                sb.append(",\"path\":")
+                sb.append(EventJsonWriter.jsonString(event.path))
+                sb.append(",\"restoredTo\":")
+                sb.append(EventJsonWriter.jsonString(event.restoredTo))
+            }
+            is DirDeleted -> {
+                sb.append(",\"path\":")
+                sb.append(EventJsonWriter.jsonString(event.path))
+                sb.append(",\"deletedCount\":")
+                sb.append(event.deletedCount)
+                sb.append(",\"sha256\":")
+                sb.append(EventJsonWriter.jsonString(event.sha256))
+            }
+            is WsCleaned -> {
+                sb.append(",\"deletedFiles\":")
+                sb.append(event.deletedFiles)
+                sb.append(",\"deletedDirs\":")
+                sb.append(event.deletedDirs)
+                sb.append(",\"patterns\":[")
+                event.patterns.forEachIndexed { idx, pattern ->
+                    if (idx > 0) sb.append(",")
+                    sb.append(EventJsonWriter.jsonString(pattern))
+                }
+                sb.append("]")
+                sb.append(",\"sha256\":")
+                sb.append(EventJsonWriter.jsonString(event.sha256))
+            }
+            is CatchErrorTriggered -> {
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"buildResult\":")
+                sb.append(EventJsonWriter.jsonString(event.buildResult ?: ""))
+                sb.append(",\"stageResult\":")
+                sb.append(EventJsonWriter.jsonString(event.stageResult))
+                sb.append(",\"message\":")
+                sb.append(EventJsonWriter.jsonString(event.message ?: ""))
+            }
+            is StageMarkedUnstable -> {
+                sb.append(",\"stageName\":")
+                sb.append(EventJsonWriter.jsonString(event.stageName))
+                sb.append(",\"message\":")
+                sb.append(EventJsonWriter.jsonString(event.message))
+            }
+            is WorkflowLoaded -> {
+                sb.append(",\"path\":")
+                sb.append(EventJsonWriter.jsonString(event.path))
+                sb.append(",\"stepCount\":")
+                sb.append(event.stepCount)
+                sb.append(",\"sha256\":")
+                sb.append(EventJsonWriter.jsonString(event.sha256))
+            }
+            is WaitUntilPolled -> {
+                sb.append(",\"attempt\":")
+                sb.append(event.attempt)
+                sb.append(",\"durationMs\":")
+                sb.append(event.durationMs)
+                sb.append(",\"conditionResult\":")
+                sb.append(event.conditionResult)
+            }
+            is WaitUntilCompleted -> {
+                sb.append(",\"totalAttempts\":")
+                sb.append(event.totalAttempts)
+                sb.append(",\"totalDurationMs\":")
+                sb.append(event.totalDurationMs)
+                sb.append(",\"outcome\":")
+                sb.append(EventJsonWriter.jsonString(event.outcome))
+            }
+            is PwdResolved -> {
+                sb.append(",\"path\":")
+                sb.append(EventJsonWriter.jsonString(event.path))
+                sb.append(",\"workspaceRoot\":")
+                sb.append(EventJsonWriter.jsonString(event.workspaceRoot))
+                sb.append(",\"sha256\":")
+                sb.append(EventJsonWriter.jsonString(event.sha256))
+            }
+            is UnixDetected -> {
+                sb.append(",\"isUnix\":")
+                sb.append(event.isUnix)
+                sb.append(",\"osName\":")
+                sb.append(EventJsonWriter.jsonString(event.osName))
+                sb.append(",\"sha256\":")
+                sb.append(EventJsonWriter.jsonString(event.sha256))
+            }
+            is MilestoneReached -> {
+                sb.append(",\"ordinal\":")
+                sb.append(event.ordinal)
+                sb.append(",\"label\":")
+                sb.append(EventJsonWriter.jsonString(event.label ?: ""))
+            }
+            is MilestoneAborted -> {
+                sb.append(",\"ordinal\":")
+                sb.append(event.ordinal)
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
+            // RP6-A / WU-091 §6 lock events
+            is LockRequested -> {
+                sb.append(",\"resource\":")
+                sb.append(EventJsonWriter.jsonString(event.resource))
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason ?: ""))
+                sb.append(",\"skipIfLocked\":")
+                sb.append(event.skipIfLocked)
+            }
+            is LockAcquired -> {
+                sb.append(",\"resource\":")
+                sb.append(EventJsonWriter.jsonString(event.resource))
+            }
+            is LockReleased -> {
+                sb.append(",\"resource\":")
+                sb.append(EventJsonWriter.jsonString(event.resource))
+            }
+            is LockSkipped -> {
+                sb.append(",\"resource\":")
+                sb.append(EventJsonWriter.jsonString(event.resource))
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
+            is LockAcquireFailed -> {
+                sb.append(",\"resource\":")
+                sb.append(EventJsonWriter.jsonString(event.resource))
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
+            // RP6-C / WU-093 §5 httpRequest events. Metadata only: no body, no
+            // header values (INV-L6-EVT-001).
+            is HttpRequestStarted -> {
+                sb.append(",\"url\":")
+                sb.append(EventJsonWriter.jsonString(event.url))
+                sb.append(",\"method\":")
+                sb.append(EventJsonWriter.jsonString(event.method))
+                sb.append(",\"headerCount\":")
+                sb.append(event.headerCount.toString())
+            }
+            is HttpResponseReceived -> {
+                sb.append(",\"url\":")
+                sb.append(EventJsonWriter.jsonString(event.url))
+                sb.append(",\"status\":")
+                sb.append(event.status.toString())
+                sb.append(",\"durationMs\":")
+                sb.append(event.durationMs.toString())
+            }
+            is HttpStatusRejected -> {
+                sb.append(",\"url\":")
+                sb.append(EventJsonWriter.jsonString(event.url))
+                sb.append(",\"status\":")
+                sb.append(event.status.toString())
+                sb.append(",\"accepted\":")
+                sb.append(EventJsonWriter.jsonString(event.accepted))
+            }
+            is HttpRequestFailed -> {
+                sb.append(",\"url\":")
+                sb.append(EventJsonWriter.jsonString(event.url))
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
+            // RP6-B / WU-092 §6 input events
+            is InputRequested -> {
+                sb.append(",\"message\":")
+                sb.append(EventJsonWriter.jsonString(event.message))
+                sb.append(",\"submitter\":")
+                sb.append(EventJsonWriter.jsonString(event.submitter ?: ""))
+                sb.append(",\"id\":")
+                sb.append(EventJsonWriter.jsonString(event.id ?: ""))
+            }
+            is InputProceed -> {
+                sb.append(",\"submitter\":")
+                sb.append(EventJsonWriter.jsonString(event.submitter ?: ""))
+                sb.append(",\"message\":")
+                sb.append(EventJsonWriter.jsonString(event.message ?: ""))
+            }
+            is InputAborted -> {
+                sb.append(",\"submitter\":")
+                sb.append(EventJsonWriter.jsonString(event.submitter ?: ""))
+                sb.append(",\"message\":")
+                sb.append(EventJsonWriter.jsonString(event.message ?: ""))
+            }
+            is InputDenied -> {
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.jsonString(event.reason))
+            }
+            is TimeoutTriggered -> {
+                sb.append(",\"stageOrStep\":")
+                sb.append(EventJsonWriter.jsonString(event.stageOrStep))
+                sb.append(",\"action\":")
+                sb.append(EventJsonWriter.jsonString(event.action))
+                sb.append(",\"durationMs\":")
+                sb.append(event.durationMs)
+            }
+            // ML-R9 T-08 timestamps decorator events
+            is TimestampsEntered -> {
+                // no extra fields
+            }
+            is TimestampsExited -> {
+                // no extra fields
+            }
+            // S2.5.7 / B1.2c3 — LB-01 durable-spine admission observation (WU-1)
+            is StepAdmissionObserved -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stepIndex\":")
+                sb.append(event.stepIndex)
+                sb.append(",\"stepKey\":")
+                sb.append(EventJsonWriter.jsonString(event.stepKey))
+                sb.append(",\"law\":")
+                sb.append(EventJsonWriter.jsonString(event.law))
+                sb.append(",\"executorCalls\":")
+                sb.append(event.executorCalls)
+            }
+        }
+        sb.append("}")
+        return sb.toString()
+    }
+
+    fun encodeCacheKey(ck: CacheKey): String {
+        return "{\"value\":\"" + ck.value + "\",\"version\":\"" + ck.version + "\"}"
+    }
+
+    fun encodeDiagnostics(diagnostics: List<ScriptingDiagnostic>): String {
+        val sb = StringBuilder("[")
+        diagnostics.forEachIndexed { index, diag ->
+            if (index > 0) sb.append(",")
+            sb.append("{")
+            sb.append("\"severity\":")
+            sb.append(EventJsonWriter.jsonString(diag.severity.name))
+            sb.append(",\"message\":")
+            sb.append(EventJsonWriter.jsonString(diag.message))
+            sb.append(",\"line\":")
+            sb.append(diag.line)
+            sb.append(",\"column\":")
+            sb.append(diag.column)
+            sb.append(",\"path\":")
+            sb.append(EventJsonWriter.jsonString(diag.path))
+            sb.append("}")
+        }
+        sb.append("]")
+        return sb.toString()
+    }
+}

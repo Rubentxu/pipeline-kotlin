@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.events.SqliteEventStore
+import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
 import dev.rubentxu.pipeline.v2.harness.codec.YamlEventContractCodec
 import dev.rubentxu.pipeline.v2.harness.verify.EventHarness
 

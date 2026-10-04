@@ -15,7 +15,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
-import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.PwdResolved
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
@@ -438,7 +438,7 @@ class CorePwdStepUnitTest {
     private fun stepHandlerContext(
         runId: String,
         workspace: Path,
-        sink: dev.rubentxu.pipeline.v2.events.InMemoryEventStore,
+        sink: dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore,
     ): dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext =
         dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext(
             runId = dev.rubentxu.pipeline.v2.domain.RunId(runId),

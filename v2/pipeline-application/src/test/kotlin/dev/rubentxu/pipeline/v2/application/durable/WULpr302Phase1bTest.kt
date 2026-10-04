@@ -30,7 +30,7 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyContextProjection
 import dev.rubentxu.pipeline.v2.domain.step.BodyDecorator
 import dev.rubentxu.pipeline.v2.domain.step.BodyRefs
 import dev.rubentxu.pipeline.v2.domain.step.deriveChildExecutionContext
-import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore

@@ -35,6 +35,12 @@ dependencies {
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-step-sdk:api"))
     implementation(project(":pipeline-events"))
+    // BLOCK 2: this module's main sources name `events.durable.OperationJournal` directly
+    // (StepReconcilerL1). That is a real coupling and it is registered as an S6 input rather than
+    // papered over here — an SDK runtime module depending on a durable journal is the coupling the
+    // unified plugin SDK dissolves, and pretending otherwise by inventing a port now would create
+    // a second name for one thing.
+    implementation(project(":pipeline-events-store"))
     implementation(project(":pipeline-scripting-api"))
     implementation(libs.kotlinx.coroutines.core)
     ksp(project(":pipeline-step-sdk:processor"))

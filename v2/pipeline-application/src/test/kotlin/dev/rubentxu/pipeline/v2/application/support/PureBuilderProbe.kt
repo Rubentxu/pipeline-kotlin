@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.support
 
 import dev.rubentxu.pipeline.v2.events.DomainEvent
-import dev.rubentxu.pipeline.v2.events.JsonEventLog
+import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import java.nio.file.Files
 import java.nio.file.Path
 

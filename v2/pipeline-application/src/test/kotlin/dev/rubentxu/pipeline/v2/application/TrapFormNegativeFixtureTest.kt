@@ -77,7 +77,7 @@ class TrapFormNegativeFixtureTest {
         //    only ever carried it while `sh` output was duplicated into EchoOutputCaptured;
         //    the bytes now live in the Output Plane and are read from there. The claim is
         //    identical — bash rejected the trap form, and that rejection is observable.
-        val decoded = dev.rubentxu.pipeline.v2.events.JsonEventLog.decode(stdout)
+        val decoded = dev.rubentxu.pipeline.v2.events.durable.JsonEventLog.decode(stdout)
         val processOut = ConsolePlaneProbe.transcriptsOfSteps(
             controlDir,
             decoded,

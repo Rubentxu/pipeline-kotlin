@@ -11,7 +11,7 @@ import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink
-import dev.rubentxu.pipeline.v2.events.JsonEventLog
+import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitChangelogWriter
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutExecutor
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutRequest

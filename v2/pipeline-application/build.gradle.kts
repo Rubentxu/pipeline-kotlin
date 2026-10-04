@@ -43,6 +43,10 @@ tasks.named<Jar>("jar") {
 dependencies {
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-events"))
+    // BLOCK 2 split the event plane: the contract above, the durable implementation below. The
+    // runtime is the only thing that should be able to name OperationJournal, ReplayCursorStore or
+    // SqliteEventStore, and this is the module that does.
+    implementation(project(":pipeline-events-store"))
     // M1-P2: the Output Plane. Process transcript bytes are written here and nowhere else, and no
     // console event carries them. The dependency points ONE WAY - :pipeline-output depends on
     // neither :pipeline-events nor :pipeline-domain, so the event plane cannot reach back into the

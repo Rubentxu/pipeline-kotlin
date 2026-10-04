@@ -20,7 +20,7 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyRef
 import dev.rubentxu.pipeline.v2.domain.step.BodyRefs
 import dev.rubentxu.pipeline.v2.domain.step.CancellationReason
 import dev.rubentxu.pipeline.v2.events.EventSink
-import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
 import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
 import kotlinx.coroutines.runBlocking

@@ -29,11 +29,11 @@ import dev.rubentxu.pipeline.v2.credentials.executor.WithCredentialsExecutor
 import dev.rubentxu.pipeline.v2.credentials.local.MainCredentialsCli
 import dev.rubentxu.pipeline.v2.credentials.local.PassphraseResolver
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
-import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
-import dev.rubentxu.pipeline.v2.events.JsonEventLog
+import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.EventSink
-import dev.rubentxu.pipeline.v2.events.SqliteEventStore
+import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector
 import kotlinx.serialization.json.Json
 import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector

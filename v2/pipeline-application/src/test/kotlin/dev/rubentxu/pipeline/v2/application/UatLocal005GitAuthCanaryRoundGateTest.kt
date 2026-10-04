@@ -12,7 +12,7 @@ import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.GitCheckoutCompleted
 import dev.rubentxu.pipeline.v2.events.GitCheckoutFailed
 import dev.rubentxu.pipeline.v2.events.GitCheckoutStarted
-import dev.rubentxu.pipeline.v2.events.JsonEventLog
+import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitChangelogWriter
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutExecutor
 import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutRequest

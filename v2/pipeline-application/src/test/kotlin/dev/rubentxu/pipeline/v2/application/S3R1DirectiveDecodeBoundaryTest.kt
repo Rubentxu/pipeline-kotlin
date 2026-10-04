@@ -31,7 +31,7 @@ import dev.rubentxu.pipeline.v2.domain.directive.ExecutionTargetRequirement
 import dev.rubentxu.pipeline.v2.domain.directive.TargetLeaseResult
 
 import dev.rubentxu.pipeline.v2.events.DirectiveDenied
-import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.StageStarted
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore

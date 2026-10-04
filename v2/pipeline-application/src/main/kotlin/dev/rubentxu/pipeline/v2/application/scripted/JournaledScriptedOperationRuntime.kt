@@ -166,20 +166,6 @@ class JournaledScriptedOperationRuntime(
         attempt = ATTEMPT,
     )
 
-    private fun ShellInvocationResult.toOperationStatus(): OperationStatus = when (this) {
-        ShellInvocationResult.UnitValue,
-        is ShellInvocationResult.Stdout,
-        is ShellInvocationResult.Status,
-        -> OperationStatus.SUCCEEDED
-
-        is ShellInvocationResult.Failed -> OperationStatus.FAILED
-        is ShellInvocationResult.Interrupted -> if (interruption.kind == InterruptionKind.TIMEOUT) {
-            OperationStatus.FAILED_TIMEOUT
-        } else {
-            OperationStatus.ABORTED
-        }
-    }
-
     private fun ShellInvocationResult.toWire(): JsonObject = when (this) {
         ShellInvocationResult.UnitValue -> wire("UNIT")
         is ShellInvocationResult.Stdout -> wire("STDOUT") { put("value", value) }

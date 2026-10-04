@@ -68,19 +68,6 @@ class DurableScriptedOperationReconciler(
             status = OperationStatus.LOST,
         )
 
-    private fun ShellInvocationResult.toOperationStatus(): OperationStatus = when (this) {
-        ShellInvocationResult.UnitValue,
-        is ShellInvocationResult.Stdout,
-        is ShellInvocationResult.Status,
-        -> OperationStatus.SUCCEEDED
-        is ShellInvocationResult.Failed -> OperationStatus.FAILED
-        is ShellInvocationResult.Interrupted -> if (interruption.kind == dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind.TIMEOUT) {
-            OperationStatus.FAILED_TIMEOUT
-        } else {
-            OperationStatus.ABORTED
-        }
-    }
-
     private companion object {
         const val DEFAULT_REATTACH_TIMEOUT_MS = 60_000L
     }

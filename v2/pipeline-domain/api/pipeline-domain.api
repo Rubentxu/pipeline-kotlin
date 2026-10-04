@@ -4581,6 +4581,10 @@ public abstract interface class dev/rubentxu/pipeline/v2/domain/durable/TypedSte
 	public abstract fun getOutcome ()Ldev/rubentxu/pipeline/v2/domain/StepOutcome;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/durable/TypedStepOutputKt {
+	public static final fun outcomeOf (Ljava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/StepOutcome;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/durable/WaitUntilControlIdentity {
 	public static final field CURRENT_SCHEMA_VERSION I
 	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilControlIdentity$Companion;
@@ -6048,6 +6052,37 @@ public final class dev/rubentxu/pipeline/v2/domain/step/PluginReleaseRef {
 	public final fun getVersion ()Ldev/rubentxu/pipeline/v2/domain/step/SemVer;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/RecoveredProjection {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/RecoveredProjection$InsufficientEvidence : dev/rubentxu/pipeline/v2/domain/step/RecoveredProjection {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/RecoveredProjection$InsufficientEvidence;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/RecoveredProjection$InsufficientEvidence;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/RecoveredProjection$InsufficientEvidence;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/RecoveredProjection$Materialised : dev/rubentxu/pipeline/v2/domain/step/RecoveredProjection {
+	public fun <init> (Ljava/lang/Object;Ldev/rubentxu/pipeline/v2/domain/StepOutcome;)V
+	public final fun component1 ()Ljava/lang/Object;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/StepOutcome;
+	public final fun copy (Ljava/lang/Object;Ldev/rubentxu/pipeline/v2/domain/StepOutcome;)Ldev/rubentxu/pipeline/v2/domain/step/RecoveredProjection$Materialised;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/RecoveredProjection$Materialised;Ljava/lang/Object;Ldev/rubentxu/pipeline/v2/domain/StepOutcome;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/RecoveredProjection$Materialised;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOutcome ()Ldev/rubentxu/pipeline/v2/domain/StepOutcome;
+	public final fun getValue ()Ljava/lang/Object;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/RecoveredStepProjection {
+	public abstract fun project (Ljava/lang/Object;Ldev/rubentxu/pipeline/v2/domain/durable/DurableTaskTerminal;)Ldev/rubentxu/pipeline/v2/domain/step/RecoveredProjection;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/step/RegistryBodyPolicyResolver : dev/rubentxu/pipeline/v2/domain/step/BodyPolicyResolver {

@@ -54,7 +54,11 @@ class OutputPlaneConformanceTest {
         val out = java.io.ByteArrayOutputStream()
         var cursor: OutputCursor? = OutputCursor.start(stream)
         var pages = 0
+        // Capped, and the cap is asserted. A store that never returns a null `next` makes this an
+        // infinite loop, and an infinite loop in a test hangs the gate instead of reporting
+        // anything. The mutation harness found exactly that.
         while (cursor != null) {
+            assertTrue(pages < 100_000, "the reader never reached the end of the stream after $pages pages")
             val page = (store.read(stream, cursor, pageSize) as OutputReadResult.Page).page
             out.write(page.bytes)
             pages++
@@ -246,7 +250,10 @@ class OutputPlaneConformanceTest {
         writerDone.await(120, TimeUnit.SECONDS)
         writer.join()
 
+        var guard = 0
         while (true) {
+            assertTrue(guard < 10_000, "the slow reader never reached the end of the stream")
+            guard++
             val result = store.read(stream, cursor!!, 64)
             assertTrue(
                 result is OutputReadResult.Page,

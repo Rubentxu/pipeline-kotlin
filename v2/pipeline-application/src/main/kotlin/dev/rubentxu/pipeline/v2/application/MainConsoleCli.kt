@@ -219,7 +219,11 @@ object MainConsoleCli {
     ): ByteArray {
         val out = java.io.ByteArrayOutputStream()
         var cursor: OutputCursor? = null
+        var pages = 0
         while (true) {
+            // Capped: a store that never ends the stream would otherwise loop here forever, in
+            // production code, for any consumer that asks for the whole transcript.
+            check(++pages < 1_000_000) { "readWholeStream did not terminate after $pages pages" }
             val result = ConsoleReadService.read(controlDirRoot, runId, opId, cursor, maxBytes)
             when (result) {
                 is ConsoleReadService.Result.Refused -> throw IllegalStateException(

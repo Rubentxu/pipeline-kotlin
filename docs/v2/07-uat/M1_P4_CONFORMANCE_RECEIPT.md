@@ -42,8 +42,19 @@ excluded from the standard gate — the same split `:pipeline-credentials-api` u
 probe. A 1 GiB test inside `check` would make every commit pay for it, and would then get skipped or
 deleted under contention, which is worse than not having it.
 
-**Not run in this session.** The soak has been written and compiles; it has not been executed. Every
-number in this receipt that carries a count was measured on a standard-gate run, which excludes it.
+### The soak, executed
+
+```text
+:performanceTest   1 test, 0 failures, 15.46 s
+1025 MiB written in 64 KiB windows, read back in 1 MiB pages
+SHA-256 of the concatenation == SHA-256 of what the reader saw
+```
+
+Fifteen seconds for a gigabyte in and out is plausible on a warm page cache, and it is the only
+number here that would have been suspicious without the XML: `BUILD SUCCESSFUL` on a
+`:pipeline-output:test` run with zero XML is exactly the failure this project has already hit twice
+(this module's missing `useJUnitPlatform`, and a receipt-guard input that was never tracked). The
+result was read out of `test-results/performanceTest/`, not out of the exit code.
 
 ## 4. Three defects this slice found, all real
 
@@ -72,13 +83,69 @@ compare two things that are supposed to differ. It now carries `committedBytes` 
 `bytesReleased` / `reservationsReleased` (correctly zero on a second pass), and a second recovery is
 asserted to release nothing.
 
+## 4b. A test that could hang is worse than a test that fails
+
+`m4-mutation-prove.py`'s Q7 — make every page hand back a continuation cursor, so `next` is never
+`null` — did not fail a test. It **hung the process**: the read loops were `while (cursor != null)`,
+and a store that never ends a page never sets it to null. The run sat there for ten minutes with no
+XML being written, which is indistinguishable from a slow machine and is not a property a CI gate
+can act on.
+
+Two fixes, both about failing loudly instead of stalling:
+
+- `readAll` and the slow-reader loop now carry a **page cap that is asserted**, so a store that
+  never terminates reports `the reader never reached the end of the stream after N pages`.
+- `MainConsoleCli.readWholeStream` — which is *production* code, not a test — carries a `check`
+  with the same shape. A consumer asking for a whole transcript against a broken store would
+  otherwise hang forever rather than get an error.
+
+The harness itself now runs each mutation under a 300 s timeout rather than 2400 s, so a hang is
+reported as a kill instead of stalling the run.
+
+## 4c. A mutation that cannot fail is a mutation that does not exist
+
+Q2 asked `commit()` to record the **segment size** instead of the reservation **position** — the
+exact substitution that turns strategy D into strategy C, and the one RCE's `ADR-0002` spent a
+spike ruling out. The suite stayed **green**.
+
+That is not a weak test. In this store the two values **coincide by construction**: every
+reservation truncates any stale tail before it writes, so at commit time the segment holds exactly
+the committed bytes. They could only diverge if a reservation failed to truncate — which is Q3's
+subject, and Q3 is killed.
+
+So Q2 is **retired with its reason recorded** rather than left in the harness looking like coverage.
+A mutation that cannot fail is a guard that does not exist, and keeping it in the list would make
+the harness's "6 of 6" read stronger than it is. The property is real; this store satisfies it
+structurally, and that is the honest way to say so.
+
 ## 5. What this slice has NOT done
 
 - **No real process kill.** Every crash here is the *reproduced durable residue* of a crash — an
   outstanding `cur.res` and uncommitted bytes, recovered through a fresh store instance. That
   reproduces what recovery reads, and it is what makes these runnable on every change. A real
   `halt()` matrix is a different artefact and has not been run.
-- **No P4 mutation harness.** The P1 and P2 harnesses are mutation-proven; this file's guards are
-  not yet, and `m4-mutation-prove.py` does not exist. Given the count of defects found here by
-  *writing* the tests rather than by mutating them, that harness is the obvious next thing.
+- **P4's mutation harness: 6 of 8 killed, and the two that are not are named.**
+  `m4-mutation-prove.py` exists and is re-runnable. It caught the hang in §4b on its first run.
+
+  ```text
+  killed  Q1  appendFrom writes but never commits
+  killed  Q3  recovery stops releasing the outstanding reservation
+  killed  Q4  the dangling-commit count is not reported
+  killed  Q6  a page is no longer bounded by maxBytes
+  killed  Q7  the last page always hands back a continuation cursor
+  killed  Q9  the writer buffers more than one window
+  OPEN    Q5  a byte range silently clamps to what is readable
+  OPEN    Q8  recovery is no longer idempotent in the stable field
+  ```
+
+  **Q5 is a real hole and is not papered over.** The mutation applies and the suite stays green.
+  The likely cause is that the range-agreement test only asks for ranges *inside* the committed
+  extent, so it may never reach the clamping branch at all — but that was not established, and an
+  unestablished cause is not a cause. Until it is resolved, that row is a gap in the harness and the
+  harness says so in its own source.
+
+  **Q8 was a harness bug, not a store property**: its pattern and replacement were written swapped,
+  so it silently never applied, and the second attempt did not compile because an `Int` was summed
+  into a `Long` expression. Both are fixed; the corrected mutation has **not** been through a
+  verification pass, so Q8 is listed as open rather than claimed.
 - The **corrupt commit record** case is detected and reported, not repaired (§4).

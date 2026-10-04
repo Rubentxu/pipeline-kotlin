@@ -2,9 +2,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
-import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
-import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1
 import java.nio.file.Path
@@ -76,29 +74,53 @@ internal fun interface RunningSubprocessRecovery {
 }
 
 /**
- * What the observer found. A closed pair, because there are exactly two things that can be true of
- * an inspection: it yielded a conclusive observation, or it could not happen.
+ * What the observer found. Three cases, because an inspection can conclude, fail to happen, or be
+ * cut short by OUR window — and those are three different claims.
  *
- * There is deliberately no third case meaning "recovery was not required". That judgement belongs
- * to [DurableInvocationResolver] before this type is ever reached.
+ * There is deliberately no case meaning "recovery was not required". That judgement belongs to
+ * [DurableInvocationResolver] before this type is ever reached.
+ *
+ * ADR-S4-R1 §2: none of these cases names a `StepOutcome` and none names an `OperationStatus`. The
+ * observer reports facts; a pipeline outcome and a durable status are both projections of those
+ * facts, and a fact layer that carries them is a fact layer that has already decided something.
+ * Both are written as code spans rather than KDoc links on purpose — this layer not naming those
+ * types is the property, so a resolvable link would work against it.
  */
 internal sealed interface RunningSubprocessObservation {
 
-    /** The substrate was inspected and yielded a conclusive outcome. */
-    data class Recovered(
-        val outcome: StepOutcome,
-        val status: OperationStatus,
-    ) : RunningSubprocessObservation
+    /**
+     * The substrate was inspected and yielded a conclusive semantic terminal.
+     *
+     * [RecoveredTerminal], not a `(StepOutcome, OperationStatus)` pair: the durable status is a
+     * storage vocabulary, and the observer does not get to choose how a fact is stored.
+     */
+    data class Recovered(val terminal: RecoveredTerminal) : RunningSubprocessObservation
 
     /**
      * The substrate could not be inspected, so no conclusion is possible.
      *
-     * `Unavailable` is never converted into [OperationStatus.LOST]. `LOST` says "I looked and there
-     * is nothing recoverable"; `Unavailable` says "I was required to look and could not". Turning
-     * the second into the first would terminalise a row that a later, correctly configured run
-     * could still reconcile — destroying the only evidence that the operation is still in flight.
+     * `Unavailable` is never converted into `LOST`. `LOST` says "I looked and there is nothing
+     * recoverable"; `Unavailable` says "I was required to look and could not". Turning the second
+     * into the first would terminalise a row that a later, correctly configured run could still
+     * reconcile — destroying the only evidence that the operation is still in flight.
      */
     data class Unavailable(val cause: UnobservableCause) : RunningSubprocessObservation
+
+    /**
+     * The substrate said the process was still reattachable, and no terminal appeared before our
+     * observation window closed.
+     *
+     * ADR-S4-R1 §2.3. This is a statement about OUR WINDOW, not about the substrate: we are not
+     * claiming the process is gone, only that we stopped looking. Reporting it as `LOST` was the
+     * collapse the S4-R1 §3b characterisation measured — a live process reported as lost — and it
+     * happened because the expiry branch shared [RecoveredTerminal.Lost] with the genuine
+     * no-evidence case.
+     *
+     * The observer may not invent a terminal it does not have, which is why this carries none.
+     * Whether an expired window is terminal at all is a RECONCILIATION decision, and it belongs to
+     * [DurableInvocationResolver], not here.
+     */
+    data object ReattachWindowExpired : RunningSubprocessObservation
 }
 
 /**
@@ -171,43 +193,50 @@ internal class ExternalSubprocessRecovery(
         val reconciler = StepReconcilerL1(clock, root)
         val classification = reconciler.classify(operationId)
         return when (classification) {
-            is StepReconcilerL1.Classification.Complete -> completedShellOutcome(classification.exitCode)
+            is StepReconcilerL1.Classification.Complete -> recoveredShellTerminal(classification.exitCode)
             is StepReconcilerL1.Classification.Reattach -> {
                 val exitCode = reattachPoll(classification.controlDir, REATTACH_TIMEOUT_MS)
-                if (exitCode == null) lostShellOutcome(operationId) else completedShellOutcome(exitCode)
+                // The window closed with nothing. That is a fact about the WINDOW, and it is
+                // reported as such: the substrate said `Reattach`, which means the process may
+                // still be alive, and claiming otherwise from here would be the observer deciding
+                // a reconciliation question it was not asked.
+                if (exitCode == null) {
+                    RunningSubprocessObservation.ReattachWindowExpired
+                } else {
+                    recoveredShellTerminal(exitCode)
+                }
             }
             is StepReconcilerL1.Classification.TimedOut -> RunningSubprocessObservation.Recovered(
-                StepOutcome.Failure(
+                RecoveredTerminal.TimedOut(
                     PipelineFailure(FailureKind.TIMEOUT, "Canonical shell '$operationId' timed out"),
                 ),
-                OperationStatus.FAILED_TIMEOUT,
             )
             // A real observation, not a gap: the control root WAS readable, and the operation
-            // directory held nothing recoverable. LOST stays the honest terminal for this case and
-            // must remain distinguishable from [RunningSubprocessObservation.Unavailable].
-            StepReconcilerL1.Classification.Lost -> lostShellOutcome(operationId)
+            // directory held nothing recoverable. LOST is the honest terminal for this case and
+            // must remain distinct from [RunningSubprocessObservation.Unavailable] — and distinct
+            // from [RunningSubprocessObservation.ReattachWindowExpired], which is the case where we
+            // never reached this check.
+            StepReconcilerL1.Classification.Lost -> RunningSubprocessObservation.Recovered(
+                RecoveredTerminal.Lost(
+                    PipelineFailure(
+                        FailureKind.INFRASTRUCTURE,
+                        "Canonical shell '$operationId' could not be reconciled",
+                    ),
+                ),
+            )
         }
     }
 
-    private fun completedShellOutcome(exitCode: Int): RunningSubprocessObservation.Recovered =
+    private fun recoveredShellTerminal(exitCode: Int): RunningSubprocessObservation =
         if (exitCode == 0) {
-            RunningSubprocessObservation.Recovered(StepOutcome.Success, OperationStatus.SUCCEEDED)
+            RunningSubprocessObservation.Recovered(RecoveredTerminal.Succeeded)
         } else {
             RunningSubprocessObservation.Recovered(
-                StepOutcome.Failure(
+                RecoveredTerminal.Failed(
                     PipelineFailure(FailureKind.SCRIPT, "Canonical shell exited with code $exitCode"),
                 ),
-                OperationStatus.FAILED,
             )
         }
-
-    private fun lostShellOutcome(operationId: String): RunningSubprocessObservation.Recovered =
-        RunningSubprocessObservation.Recovered(
-            StepOutcome.Failure(
-                PipelineFailure(FailureKind.INFRASTRUCTURE, "Canonical shell '$operationId' could not be reconciled"),
-            ),
-            OperationStatus.LOST,
-        )
 
     private companion object {
         // Preserved from CanonicalDurableRunCoordinator companion (behaviour-equivalence law).

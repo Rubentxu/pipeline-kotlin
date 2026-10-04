@@ -92,12 +92,38 @@ internal class DurableInvocationResolver(
         if (recoveryRequirement(metadata.recoveryPolicy, journaled) == RecoveryRequirement.Required) {
             when (val observation = runningSubprocessRecovery.observe(operationId)) {
                 is RunningSubprocessObservation.Recovered ->
-                    return InvocationReconciliation.RecoverRunning(observation.outcome, observation.status)
+                    return InvocationReconciliation.RecoverRunning(observation.terminal)
                 // Required, and we could not look. This settles here rather than falling through to
                 // the replay kernel: the kernel's RERUN would execute an external effect whose prior
                 // state is unknown, which is the at-least-once window this arm closes.
                 is RunningSubprocessObservation.Unavailable ->
                     return InvocationReconciliation.RecoveryUnobservable(operationId)
+                // The substrate said the process was still reattachable and our window closed
+                // without a terminal. The OBSERVER reports that fact; giving it meaning is this
+                // class's job, and ADR-S4-R1 §2.3 fixes the meaning as a compatibility policy:
+                //
+                //     ReattachWindowExpired  ->  Recover(RecoveredTerminal.Lost(...))
+                //
+                // which preserves the certified observable behaviour byte for byte. The
+                // non-terminal alternative — leave the row RUNNING, invent nothing — is DEFERRED
+                // decision D-1, and it is a decision rather than a defect. Until it is taken, this
+                // line is the only place in the codebase allowed to collapse the two facts, and it
+                // collapses them with that reason written next to it.
+                //
+                // The message does NOT quantify the window. How long the observer waited is a fact
+                // it owns, and a pure authority that repeated the number would be carrying a second
+                // copy of it that could drift.
+                RunningSubprocessObservation.ReattachWindowExpired ->
+                    return InvocationReconciliation.RecoverRunning(
+                        RecoveredTerminal.Lost(
+                            PipelineFailure(
+                                FailureKind.INFRASTRUCTURE,
+                                "Canonical shell '$operationId' was still reattachable when the " +
+                                    "observation window closed, so its outcome is unknown rather " +
+                                    "than observed absent",
+                            ),
+                        ),
+                    )
             }
         }
         return replayResolution(effectReplayPolicy.decide(metadata.replayPolicy, metadata.effects, journaled != null, journaled?.status), operationId)

@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
+import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
@@ -128,8 +129,14 @@ internal class RecoveryInterpretationEngine(
         )
 
         is InvocationReconciliation.RecoverRunning -> {
+            // ADR-S4-R1 §2.4. The resolution arrives CLOSED. Both arms below are mechanical
+            // projections of one semantic terminal, and neither re-classifies anything: an engine
+            // that received `Completed` / `TimedOut` / `Lost` and decided a terminal from them
+            // would be a second semantic authority outside the decision core, which is the exact
+            // defect this class was split to remove.
+            val terminal = resolution.terminal
             val executionResult = StepExecutionBoundary(eventSink).execute(request.lifecycleContext) {
-                CommonExecutionResult(outcome = resolution.outcome, encodedOutput = null)
+                CommonExecutionResult(outcome = terminal.asStepOutcome(), encodedOutput = null)
             }
             val outcome = executionResult.outcome
             journal.append(
@@ -138,7 +145,7 @@ internal class RecoveryInterpretationEngine(
                     fingerprint = request.fingerprint,
                     input = request.input,
                     output = null,
-                    status = resolution.status,
+                    status = terminal.asOperationStatus(),
                     attempt = 1,
                 ),
             )
@@ -164,5 +171,35 @@ internal class RecoveryInterpretationEngine(
         )
 
         InvocationReconciliation.Execute -> RecoveryInterpretation.ProceedToExecution
+    }
+
+    /**
+     * The single mechanical projection of a semantic terminal onto a pipeline outcome.
+     *
+     * [RecoveredTerminal.Failed] is NOT re-inspected for `FailureKind.TIMEOUT`. Before
+     * [RecoveredTerminal] existed, the status projection read `failure.kind == TIMEOUT` to decide
+     * between `FAILED` and `FAILED_TIMEOUT`, which meant the durable status was a second guess
+     * about a fact the observer had already resolved — the watchdog flag is on the filesystem, not
+     * in a message. `TimedOut` is its own case now, so the guess is gone.
+     */
+    private fun RecoveredTerminal.asStepOutcome(): StepOutcome = when (this) {
+        RecoveredTerminal.Succeeded -> StepOutcome.Success
+        is RecoveredTerminal.Failed -> StepOutcome.Failure(failure)
+        is RecoveredTerminal.TimedOut -> StepOutcome.Failure(failure)
+        is RecoveredTerminal.Lost -> StepOutcome.Failure(failure)
+    }
+
+    /**
+     * The single mechanical projection of a semantic terminal onto the durable storage vocabulary.
+     *
+     * Kept adjacent to [asStepOutcome] and exhaustive over the same closed ADT on purpose: a fourth
+     * terminal added tomorrow fails to COMPILE in both, rather than silently persisting under the
+     * wrong status in one of them.
+     */
+    private fun RecoveredTerminal.asOperationStatus(): OperationStatus = when (this) {
+        RecoveredTerminal.Succeeded -> OperationStatus.SUCCEEDED
+        is RecoveredTerminal.Failed -> OperationStatus.FAILED
+        is RecoveredTerminal.TimedOut -> OperationStatus.FAILED_TIMEOUT
+        is RecoveredTerminal.Lost -> OperationStatus.LOST
     }
 }

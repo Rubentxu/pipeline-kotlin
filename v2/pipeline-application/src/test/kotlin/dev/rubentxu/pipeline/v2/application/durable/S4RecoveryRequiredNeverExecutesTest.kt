@@ -15,6 +15,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -49,16 +50,24 @@ class S4RecoveryRequiredNeverExecutesTest {
     @Test
     fun `no required recovery ever resolves to Execute, whatever the observer says`() {
         // Every way the substrate can answer, crossed with every replay policy a Step may declare.
+        // ADR-S4-R1 §3b added a fifth answer — ReattachWindowExpired — and it belongs in this
+        // matrix precisely because the at-least-once window it used to open was the reason the
+        // matrix exists: under the §2.3 compatibility policy it RECOVERS, and must never Execute.
         val observations = listOf(
-            "Recovered-SUCCEEDED" to RunningSubprocessObservation.Recovered(StepOutcome.Success, OperationStatus.SUCCEEDED),
+            "Recovered-SUCCEEDED" to RunningSubprocessObservation.Recovered(RecoveredTerminal.Succeeded),
             "Recovered-FAILED" to RunningSubprocessObservation.Recovered(
-                StepOutcome.Failure(PipelineFailure(FailureKind.SCRIPT, "exit 1")),
-                OperationStatus.FAILED,
+                RecoveredTerminal.Failed(PipelineFailure(FailureKind.SCRIPT, "exit 1")),
+            ),
+            "Recovered-TIMEDOUT" to RunningSubprocessObservation.Recovered(
+                RecoveredTerminal.TimedOut(PipelineFailure(FailureKind.TIMEOUT, "watchdog fired")),
             ),
             "Recovered-LOST" to RunningSubprocessObservation.Recovered(
-                StepOutcome.Failure(PipelineFailure(FailureKind.INFRASTRUCTURE, "gone")),
-                OperationStatus.LOST,
+                RecoveredTerminal.Lost(PipelineFailure(FailureKind.INFRASTRUCTURE, "gone")),
             ),
+            // No terminal, and no status: the fact layer reports that OUR window closed while the
+            // process was still reattachable. It is a data object, so it cannot smuggle a terminal
+            // in — which is what keeps the compatibility mapping the authority's job alone.
+            "ReattachWindowExpired" to RunningSubprocessObservation.ReattachWindowExpired,
             "Unavailable" to RunningSubprocessObservation.Unavailable(UnobservableCause.NoControlRootConfigured),
         )
         val policies = listOf(ReplayPolicy.RERUN, ReplayPolicy.MEMOIZED, ReplayPolicy.NEVER)
@@ -129,7 +138,7 @@ class S4RecoveryRequiredNeverExecutesTest {
     @Test
     fun `the unobservable arm is reachable only for a RUNNING row under a subprocess policy`() {
         val unobservable = RunningSubprocessObservation.Unavailable(UnobservableCause.NoControlRootConfigured)
-        val recoverPolicy = RunningSubprocessObservation.Recovered(StepOutcome.Success, OperationStatus.SUCCEEDED)
+        val recoverPolicy = RunningSubprocessObservation.Recovered(RecoveredTerminal.Succeeded)
 
         val byCombination: List<Triple<String, String, Boolean>> = buildList {
             for (policy in listOf(RecoveryPolicy.None, RecoveryPolicy.ExternalSubprocess)) {
@@ -178,6 +187,56 @@ class S4RecoveryRequiredNeverExecutesTest {
      * what the case needs. Rebuilding per case is deliberate: it is the only way to count probes
      * per combination, and a shared resolver would let one case's probe count answer for another.
      */
+    /**
+     * The ADR-S4-R1 §2.3 compatibility mapping, asserted at the layer that OWNS it.
+     *
+     * The matrix above proves the narrow, structural property — a required recovery never reaches
+     * `Execute` — which the right terminal and a wrong one would both satisfy. This one pins WHICH
+     * terminal, so the two stops are told apart: mapping the window fact to `Succeeded` would still
+     * pass the matrix while fabricating a success for a process nobody ever proved finished, and
+     * mapping it to the genuine `Lost` of an empty directory would erase the very distinction
+     * §2.3 exists to preserve.
+     */
+    @Test
+    fun `an expired reattach window is given its terminal by the authority, not the observer`() {
+        val resolution = resolve(
+            recoveryPolicy = RecoveryPolicy.ExternalSubprocess,
+            status = OperationStatus.RUNNING,
+            replayPolicy = ReplayPolicy.RERUN,
+            effect = Effect.EXECUTES_SUBPROCESS,
+            observation = RunningSubprocessObservation.ReattachWindowExpired,
+        )
+
+        assertTrue(
+            resolution is InvocationReconciliation.RecoverRunning,
+            "§2.3 compatibility policy: the window is RECOVERED, so the row is terminalised and the " +
+                "handler does not run. Resolved to $resolution",
+        )
+        val terminal = (resolution as InvocationReconciliation.RecoverRunning).terminal
+        assertTrue(
+            terminal is RecoveredTerminal.Lost,
+            "and its terminal is Lost. The compatibility policy maps ReattachWindowExpired onto " +
+                "RecoveredTerminal.Lost; the non-terminal alternative is DEFERRED decision D-1. " +
+                "Succeeded here would fabricate a terminal for a process nobody proved finished. " +
+                "Got $terminal",
+        )
+        val failure = (terminal as RecoveredTerminal.Lost).failure
+        assertEquals(
+            FailureKind.INFRASTRUCTURE,
+            failure.kind,
+            "the failure is infrastructure, not script: nothing about the SUBSTRATE went wrong, " +
+                "our observation window did. Got ${failure.kind}",
+        )
+        assertTrue(
+            failure.message.contains("window", ignoreCase = true),
+            "and the operator-facing record must say the window is what ran out. This message is " +
+                "the only trace a future reader has of WHY a possibly-still-live process was " +
+                "terminalised, and it is what D-1 will be revisited against. The genuine Lost of " +
+                "an empty operation directory says 'could not be reconciled' instead, and " +
+                "conflating the two is the defect. Got: ${failure.message}",
+        )
+    }
+
     private fun resolve(
         recoveryPolicy: RecoveryPolicy,
         status: OperationStatus,

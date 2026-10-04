@@ -333,6 +333,35 @@ internal sealed interface RecoveryRequirement {
 }
 
 /**
+ * The SEMANTIC terminal of a recovery, decided by the authority and persisted by the interpreter.
+ *
+ * ADR-S4-R1 §2.4. This is deliberately NOT an [OperationStatus]: the durable status is what gets
+ * STORED, and a storage vocabulary is not a fact about what happened. The split matters because the
+ * two used to be carried as one `(StepOutcome, OperationStatus)` pair by the observer, which put a
+ * durable projection inside the fact layer AND left the semantic terminal to be re-derived —
+ * [StepOutcome.toOperationStatus] re-classified a `Failure` by inspecting `failure.kind == TIMEOUT`,
+ * so the terminal was a second guess about a fact already known.
+ *
+ * Each case carries the whole payload its own handling needs. [TimedOut] exists as its own case
+ * precisely so the projection below stops reading a failure kind to decide whether a run was killed
+ * by a deadline: the observer saw `timeout.flag` and knows it, and nothing downstream has to infer it
+ * from a string.
+ */
+internal sealed interface RecoveredTerminal {
+    /** The subprocess exited and the reconciler read its exit code. */
+    data object Succeeded : RecoveredTerminal
+
+    /** The subprocess exited non-zero, or produced a failure the substrate reported. */
+    data class Failed(val failure: PipelineFailure) : RecoveredTerminal
+
+    /** The watchdog fired: `timeout.flag` was written before the kill, so this is KNOWN, not inferred. */
+    data class TimedOut(val failure: PipelineFailure) : RecoveredTerminal
+
+    /** The substrate was inspected and held nothing recoverable. */
+    data class Lost(val failure: PipelineFailure) : RecoveredTerminal
+}
+
+/**
  * Resolution of the durable replay/reconcile decision (B1.2c2-a2.2), derived from the real branches
  * in `dispatch`: divergence detection, running-shell recovery and the effect-aware replay policy.
  *
@@ -359,8 +388,15 @@ internal sealed interface InvocationReconciliation {
      */
     data class RecoveryUnobservable(val operationId: String) : InvocationReconciliation
 
-    /** A RUNNING shell was recovered to a concrete outcome+terminal status without re-invoking it. */
-    data class RecoverRunning(val outcome: StepOutcome, val status: OperationStatus) : InvocationReconciliation
+    /**
+     * A RUNNING shell was recovered to a semantic terminal without re-invoking it.
+     *
+     * Carries a [RecoveredTerminal] and nothing else — no `StepOutcome`, no `OperationStatus`. Both
+     * of those are projections, and the authority produces projections only at the effect boundary.
+     * A caller that needs either one asks [RecoveryInterpretationEngine], which is the single place
+     * that knows how to persist this decision.
+     */
+    data class RecoverRunning(val terminal: RecoveredTerminal) : InvocationReconciliation
 
     /** The journaled result is reusable; return the cached success without executing. */
     data object ReuseCompleted : InvocationReconciliation

@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.application.SystemClock
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.durable.ExternalSubprocessRecovery
+import dev.rubentxu.pipeline.v2.application.durable.RecoveredTerminal
 import dev.rubentxu.pipeline.v2.application.durable.RunningSubprocessObservation
 import dev.rubentxu.pipeline.v2.application.durable.buildDefaultExecutionBoundary
 import dev.rubentxu.pipeline.v2.application.support.CoordinatorFixture
@@ -16,7 +17,6 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.SourceDescriptor
 import dev.rubentxu.pipeline.v2.domain.StageBody
-import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.StageId
 import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
@@ -143,10 +143,12 @@ import java.util.concurrent.atomic.AtomicInteger
  * [OperationStatus.LOST] — the terminal reserved for a substrate that was inspected and held
  * nothing, now also reached by a process that was still alive and merely unobserved for too long.
  *
- * These rows are MEASURED CURRENT BEHAVIOUR. ADR-S4-R1 §2.3 preserves that terminal on purpose as
- * the compatibility policy and leaves the non-terminal alternative as DEFERRED decision D-1, so
- * nothing here is a law the product is being asked to hold. The measurement exists so that moving
- * across D-1 later is a visible, declared transition rather than a silent improvement.
+ * These rows were MEASURED CURRENT BEHAVIOUR when they were written, and the measurement is what
+ * made §3c possible. **§3c closed the collapse they were measuring**, so rows 8 and 9 are now
+ * NON-REGRESSION tests for the fix and say so in their assertion messages. What did NOT change is
+ * the end-to-end consequence: ADR-S4-R1 §2.3 keeps `LOST` as the compatibility policy, and the
+ * non-terminal alternative remains the DEFERRED decision D-1. Row 10 therefore still asserts
+ * `LOST`, and it is the row that would detect a move across D-1.
  */
 class S4RRecIndeterminateEffectSpikeTest {
 
@@ -437,8 +439,12 @@ class S4RRecIndeterminateEffectSpikeTest {
     // ------------------------------------------------------------------ rows 8-10 — ReattachWindowExpired
 
     /**
-     * The reattach window closes with no terminal. **MEASURED CURRENT BEHAVIOUR — NOT PROMOTED AS
-     * DESIRED SEMANTICS.**
+     * The reattach window closes with no terminal. **NON-REGRESSION — this row was a characterisation
+     * of a collapse that §3c closed.**
+     *
+     * Before §3c this row asserted `Recovered(LOST)` and was labelled MEASURED. It exists to record
+     * the transition honestly rather than to be silently rewritten: a reader comparing SHAs can see
+     * that the claim was MEASURED at one and is a LAW at the next, and why.
      *
      * Production entry point crossed: [ExternalSubprocessRecovery.observe] — the real adapter, over
      * the real [StepReconcilerL1] and a real control directory on disk. Row 6 already measured the
@@ -459,16 +465,21 @@ class S4RRecIndeterminateEffectSpikeTest {
      * re-implementing `pollResult`'s body inside the test, which certifies the reimplementation
      * rather than the product. It is recorded as a residual limit in the receipt instead.
      *
-     * ## What is measured
+     * ## What this row asserts now
      *
-     * The answer is [OperationStatus.LOST]. That is a claim about the SUBSTRATE — "I looked and
-     * there is nothing recoverable" — asserted in a situation whose truth is a claim about OUR
-     * WINDOW: the substrate said the process may still be alive, and we simply stopped looking.
-     * ADR-S4-R1 §2.3 names that situation `ReattachWindowExpired` and requires it to be its own
-     * fact, because conflating the two is what makes a live process get reported as lost.
+     * Before §3c the answer was [OperationStatus.LOST]. That was a claim about the SUBSTRATE —
+     * "I looked and there is nothing recoverable" — asserted in a situation whose truth is a claim
+     * about OUR WINDOW: the substrate had said the process may still be alive, and we simply
+     * stopped looking. ADR-S4-R1 §2.3 names that situation `ReattachWindowExpired` precisely
+     * because conflating the two is what makes a live process get reported as lost.
+     *
+     * The answer now is [RunningSubprocessObservation.ReattachWindowExpired]: a data object with
+     * no terminal in it. The observer reports the fact, and the reconciliation question — is an
+     * expired window terminal at all? — belongs to the authority, which answers it under the §2.3
+     * compatibility policy and defers the non-terminal alternative as D-1.
      */
     @Test
-    fun `row 8 an expired reattach window is reported as LOST, the collapse ADR-S4-R1 2_3 names`() {
+    fun `row 8 an expired reattach window is its own fact, not a recovered LOST`() {
         val root = Files.createDirectory(tempRoot.resolve("r8"))
         val opId = "s4rrec-r8-op"
         Files.createDirectories(root.resolve(opId))
@@ -491,24 +502,26 @@ class S4RRecIndeterminateEffectSpikeTest {
         ).observe(opId)
 
         assertTrue(
-            observed is RunningSubprocessObservation.Recovered,
-            "MEASURED: an expired window yields a CONCLUSION, not an Unavailable. We did look, and " +
-                "the look is what ran out — that is categorically different from never being able " +
-                "to look (row 3). Got $observed",
-        )
-        val recovered = observed as RunningSubprocessObservation.Recovered
-        assertEquals(
-            OperationStatus.LOST,
-            recovered.status,
-            "MEASURED CURRENT BEHAVIOUR, and the thing ADR-S4-R1 §2.3 is written about: a process " +
-                "that was still reattachable, and which may STILL BE ALIVE, is terminalised as " +
-                "LOST — the terminal reserved for a substrate that was inspected and held nothing. " +
-                "This row is the measurement, not a law; if a future change separates the two, this " +
-                "assertion is expected to fail and becomes the non-regression test for the fix.",
+            observed is RunningSubprocessObservation.ReattachWindowExpired,
+            "NON-REGRESSION, and the explicit transition from a characterisation. This row used to " +
+                "assert `Recovered(LOST)` and was labelled MEASURED CURRENT BEHAVIOUR; ADR-S4-R1 §3c " +
+                "closed the collapse it was measuring, so the row now asserts the fix. An expired " +
+                "window is a fact about OUR window, and it is reported as its own case — NOT as " +
+                "`Recovered(RecoveredTerminal.Lost)`, which is the claim that a process we stopped " +
+                "watching was one we watched and did not find. Got $observed",
         )
         assertTrue(
-            recovered.outcome is StepOutcome.Failure,
-            "MEASURED: the outcome is a typed Failure, not a synthesised success. Got ${recovered.outcome}",
+            observed !is RunningSubprocessObservation.Unavailable,
+            "and NOT Unavailable either: we DID look, and the look is what ran out. Conflating this " +
+                "with row 3 — never being able to look — would terminalise a row that a later, " +
+                "correctly configured run could still reconcile. Got $observed",
+        )
+        assertTrue(
+            observed !is RunningSubprocessObservation.Recovered,
+            "and the observer must NOT invent a terminal it does not have. `ReattachWindowExpired` " +
+                "is a data object for exactly this reason: it is structurally unable to carry a " +
+                "RecoveredTerminal, so the fact layer cannot decide the reconciliation question " +
+                "ADR-S4-R1 §2.3 reserves to the authority. Got $observed",
         )
     }
 
@@ -541,33 +554,41 @@ class S4RRecIndeterminateEffectSpikeTest {
         ).observe(opId)
 
         assertEquals(
-            OperationStatus.LOST,
-            (expired as RunningSubprocessObservation.Recovered).status,
-            "MEASURED: the expired half is LOST, identical to row 8.",
+            RunningSubprocessObservation.ReattachWindowExpired,
+            expired,
+            "NON-REGRESSION: the expired half is its own case. After §3c it is no longer a Recovered " +
+                "carrying LOST — the point of the row is that the observer does not choose a terminal.",
         )
         assertEquals(
-            OperationStatus.SUCCEEDED,
-            (terminal as RunningSubprocessObservation.Recovered).status,
-            "MEASURED: the same substrate with a terminal inside the window is SUCCEEDED. If THIS " +
-                "assertion ever equals LOST, the reattach branch stopped consulting its poll and the " +
-                "substituted variable is no longer the one under study.",
+            RunningSubprocessObservation.Recovered(RecoveredTerminal.Succeeded),
+            terminal,
+            "NON-REGRESSION: the same substrate with a terminal inside the window recovers as a " +
+                "semantic terminal. Compared on `RecoveredTerminal`, not on OperationStatus, because " +
+                "the fact layer no longer knows the storage vocabulary — asserting a status here " +
+                "would require the observation to carry one, which is the thing §3c removed.",
         )
         assertTrue(
             expired != terminal,
-            "MEASURED: two poll answers, two observations. Identical values here would mean the " +
-                "window's expiry is not what decides the answer, and row 8's LOST would be coming " +
-                "from somewhere other than the expiry it claims to measure.",
+            "NON-REGRESSION: two poll answers, two observations. Identical values here would mean the " +
+                "window's expiry is not what decides the answer, and the substituted variable would " +
+                "no longer be the one under study — which is what makes this pair a calibration " +
+                "rather than a decoration.",
         )
     }
 
     /**
-     * End to end, through the real coordinator. **MEASURED CURRENT BEHAVIOUR — NOT PROMOTED AS
-     * DESIRED SEMANTICS.**
+     * End to end, through the real coordinator. **MEASURED CURRENT BEHAVIOUR — NOT PROMOVED AS
+     * DESIRED SEMANTICS.** This is the row that holds the D-1 boundary in place.
      *
-     * Rows 8 and 9 measure the observer. This row measures what the rest of the system DOES with its
-     * answer, which is the part that actually reaches the journal: coordinator → resolver →
-     * observer → interpreter → journal. Absolute values are asserted, not merely "the handler did
-     * not run", so this row cannot pass by both paths degrading the same way.
+     * Rows 8 and 9 assert the observer, and §3c changed what the observer says. This row did NOT
+     * change: the observable end-to-end behaviour is identical before and after, because the
+     * authority maps `ReattachWindowExpired` to `RecoveredTerminal.Lost` under the ADR-S4-R1 §2.3
+     * compatibility policy. That is the point — the reshape moved a decision between layers without
+     * moving any observable outcome, and this row is what proves it.
+     *
+     * The seam in 3c is therefore invisible from the outside, and the only place it could show up is
+     * the seam's own tests. When D-1 is decided, THIS row is the one that has to change, and its
+     * message says which side of the decision the code is on so the change cannot be silent.
      */
     @Test
     fun `row 10 an expired reattach window journals LOST end to end without re-launching`() = runBlocking {
@@ -595,10 +616,11 @@ class S4RRecIndeterminateEffectSpikeTest {
         assertEquals(
             OperationStatus.LOST,
             rig.row()?.status,
-            "MEASURED: and the row is terminalised LOST, not left RUNNING. That is today's certified " +
-                "behaviour and ADR-S4-R1 §2.3 preserves it byte for byte as the compatibility policy; " +
-                "the non-terminal alternative is the DEFERRED decision D-1. This assertion states " +
-                "which side of D-1 the code is on, so a future move across it cannot happen silently.",
+            "MEASURED, and unchanged by §3c: the row is terminalised LOST, not left RUNNING. " +
+                "§3c moved WHERE that decision is taken — the authority now, not the observer — " +
+                "and the observable outcome is byte-identical, which is what the ADR-S4-R1 §2.3 " +
+                "compatibility policy requires. This terminal stays LOST until D-1 is decided; when " +
+                "it is, THIS assertion is the one that has to change, and it must change loudly.",
         )
     }
 
@@ -609,9 +631,9 @@ class S4RRecIndeterminateEffectSpikeTest {
      * cell is the resolution the row asserts, not a restatement of this file's comments.
      *
      * Rows 8-10 arrived with ADR-S4-R1 §3b and are NOT a fourth unobservable case: they add the
-     * window that opened and then closed, which the first seven rows could not reach. Row 8 is
-     * deliberately kept OUT of the "observed" prefix, because that is the finding — the substrate
-     * did not yield evidence, our window ran out, and today both reach the same LOST terminal.
+     * window that opened and then closed, which the first seven rows could not reach. §3c then
+     * changed rows 8 and 9 — the observer stopped choosing a terminal — and deliberately left row 10
+     * alone, because the compatibility policy keeps the observable outcome identical.
      */
     @Test
     fun `the measured matrix shows exactly one row where a required recovery is unobservable`() {
@@ -629,9 +651,9 @@ class S4RRecIndeterminateEffectSpikeTest {
             Row(5, "ExternalSubprocess + RUNNING + result.txt", "RecoverRunning(SUCCEEDED)", "no handler", "observed, terminal evidence"),
             Row(6, "ExternalSubprocess + RUNNING + fresh heartbeat", "Reattach (classification only)", "no handler", "observed, still alive"),
             Row(7, "ExternalSubprocess + RUNNING + timeout.flag", "RecoverRunning(FAILED_TIMEOUT)", "no handler", "observed, watchdog killed it"),
-            Row(8, "Reattach + window closed, no terminal", "Recovered(LOST)", "no handler", "WINDOW CLOSED — reported with row 4's terminal"),
-            Row(9, "Reattach + terminal inside window", "Recovered(SUCCEEDED)", "no handler", "observed, terminal arrived in time"),
-            Row(10, "Reattach + window closed, end to end", "RecoverRunning(LOST), row journalled", "no handler", "WINDOW CLOSED — the collapse, journalled"),
+            Row(8, "Reattach + window closed, no terminal", "ReattachWindowExpired (no terminal)", "no handler", "WINDOW CLOSED — own fact since 3c"),
+            Row(9, "Reattach + terminal inside window", "RecoverRunning(Succeeded)", "no handler", "observed, terminal arrived in time"),
+            Row(10, "Reattach + window closed, end to end", "RecoverRunning(LOST), row journalled", "no handler", "WINDOW CLOSED — D-1 boundary holds"),
         )
 
         val unobservable = rows.filter { it.note.startsWith("REQUIRED BUT UNOBSERVABLE") }
@@ -653,21 +675,31 @@ class S4RRecIndeterminateEffectSpikeTest {
             "and so must the one where it could not: failing closed is not executing less in only " +
                 "the happy cases.",
         )
-        // The finding, stated once in a place that cannot be read as a passing detail: two rows
-        // reach LOST without the substrate having said anything about loss.
+        // §3c closed the collapse this assertion used to record. It is kept, inverted, because the
+        // place that must not regress is the SEAM: the observer names no terminal, and only the
+        // authority's compatibility mapping produces LOST downstream of it.
         val windowClosed = rows.filter { it.note.startsWith("WINDOW CLOSED") }
         assertEquals(
             2,
             windowClosed.size,
-            "Rows 8 and 10 are the ReattachWindowExpired measurements: the observer-level value and " +
-                "the journalled consequence. Both are measured, neither is promoted to desired " +
-                "semantics — ADR-S4-R1 §2.3 keeps this terminal as the compatibility policy and " +
-                "leaves the non-terminal alternative as DEFERRED decision D-1.",
+            "Rows 8 and 10 are the ReattachWindowExpired pair: the observer-level fact and the " +
+                "journalled consequence. Row 10's LOST is the ADR-S4-R1 §2.3 compatibility policy " +
+                "and stays until DEFERRED decision D-1 is taken.",
+        )
+        val observerLevel = windowClosed.single { it.n == 8 }
+        val endToEnd = windowClosed.single { it.n == 10 }
+        assertTrue(
+            !observerLevel.resolution.contains("LOST"),
+            "NON-REGRESSION: row 8 names no terminal. Before §3c this cell read `Recovered(LOST)` " +
+                "and the equality with row 10 WAS the defect; the observer reported a substrate " +
+                "verdict for a fact about our own observation window. Got: ${observerLevel.resolution}",
         )
         assertTrue(
-            windowClosed.all { it.resolution.contains("LOST") },
-            "and today both of them land on LOST, the same terminal row 4 reaches for an empty " +
-                "directory. That equality IS the defect; it is recorded rather than wished away.",
+            endToEnd.resolution.contains("LOST"),
+            "and row 10 still does, because §3c moved WHERE the decision is taken without moving it: " +
+                "the authority maps the window fact to Lost, so the journalled terminal is " +
+                "unchanged. If this one ever stops being LOST, D-1 was crossed and it must have " +
+                "been a declared decision. Got: ${endToEnd.resolution}",
         )
         println("S4-R-REC measured matrix:")
         rows.forEach {

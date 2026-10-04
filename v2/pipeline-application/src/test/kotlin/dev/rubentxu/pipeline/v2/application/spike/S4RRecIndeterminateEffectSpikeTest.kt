@@ -4,7 +4,6 @@ import dev.rubentxu.pipeline.v2.application.SystemClock
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.durable.ExternalSubprocessRecovery
-import dev.rubentxu.pipeline.v2.application.durable.RecoveredTerminal
 import dev.rubentxu.pipeline.v2.application.durable.RunningSubprocessObservation
 import dev.rubentxu.pipeline.v2.application.durable.buildDefaultExecutionBoundary
 import dev.rubentxu.pipeline.v2.application.support.CoordinatorFixture
@@ -23,6 +22,8 @@ import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepId
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskOutput
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
@@ -314,7 +315,7 @@ class S4RRecIndeterminateEffectSpikeTest {
                 "has regressed to the collapsed form. Got $unobservable",
         )
         assertTrue(
-            observed is RunningSubprocessObservation.Recovered,
+            observed is RunningSubprocessObservation.Observed,
             "and a substrate that COULD be inspected yields a different case, never the same value. " +
                 "Got $observed",
         )
@@ -378,10 +379,18 @@ class S4RRecIndeterminateEffectSpikeTest {
         rig.execute()
 
         assertEquals(before, probe.invocations.get(), "MEASURED: a recovered shell never re-launches")
+        // S4-F1-C2 TRANSITION DECLARED: this row used to assert SUCCEEDED for a `Probe` that declares
+        // NO recovered projection. After F1-C that is the fail-closed case by design — a Step that has
+        // not said how its value would be rebuilt from observed facts cannot have one invented for
+        // it — so the row now asserts FAILED. The OBSERVATION half of the row is untouched and is
+        // the part this spike was written for: the effect still never re-launches.
         assertEquals(
-            OperationStatus.SUCCEEDED,
+            OperationStatus.FAILED,
             rig.row()?.status,
-            "MEASURED: the recovered terminal is journalled.",
+            "MEASURED: a Step that declares no recovered projection fails closed rather than having a " +
+                "value fabricated for it. The spike's own Probe is exactly such a Step, so it is the " +
+                "right place to pin this law. `core.sh`, which DOES declare one, is covered by " +
+                "S4R1F1CRecoveryTruthMatrixTest row A4.",
         )
     }
 
@@ -517,7 +526,7 @@ class S4RRecIndeterminateEffectSpikeTest {
                 "correctly configured run could still reconcile. Got $observed",
         )
         assertTrue(
-            observed !is RunningSubprocessObservation.Recovered,
+            observed !is RunningSubprocessObservation.Observed,
             "and the observer must NOT invent a terminal it does not have. `ReattachWindowExpired` " +
                 "is a data object for exactly this reason: it is structurally unable to carry a " +
                 "RecoveredTerminal, so the fact layer cannot decide the reconciliation question " +
@@ -556,11 +565,19 @@ class S4RRecIndeterminateEffectSpikeTest {
         assertEquals(
             RunningSubprocessObservation.ReattachWindowExpired,
             expired,
-            "NON-REGRESSION: the expired half is its own case. After §3c it is no longer a Recovered " +
+            "NON-REGRESSION: the expired half is its own case. After §3c it is no longer an Observed " +
                 "carrying LOST — the point of the row is that the observer does not choose a terminal.",
         )
         assertEquals(
-            RunningSubprocessObservation.Recovered(RecoveredTerminal.Succeeded),
+            // S4-F1-C1: the payload is the substrate's own fact vocabulary now, not a semantic
+            // terminal the observer had already classified. The row still compares what the observer
+            // SAW, which is the property it was written for.
+            RunningSubprocessObservation.Observed(
+                DurableTaskTerminal.Exited(
+                    exitCode = 0,
+                    output = DurableTaskOutput(controlDir = root.resolve(opId).toString()),
+                ),
+            ),
             terminal,
             "NON-REGRESSION: the same substrate with a terminal inside the window recovers as a " +
                 "semantic terminal. Compared on `RecoveredTerminal`, not on OperationStatus, because " +

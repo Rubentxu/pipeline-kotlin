@@ -101,6 +101,12 @@ internal object ScriptedInvokerFixture {
             executionBoundary = boundaryRoutingThrough(capabilityAccessFactory),
             journal = journal,
         ),
+        // S4-F1-C2: the fixture wires the REAL materialiser, exactly as the two production
+        // composition roots do. A fixture that omitted it would report a capability the product
+        // does not have, which is the one thing this fixture exists to prevent.
+        // S4-F1-C2: the fixture wires the REAL materialiser, by the engine's own default, exactly
+        // as both production composition roots do. A fixture that omitted it would report a
+        // capability the product does not have, which is the one thing this fixture exists to prevent.
         recoveryInterpretation = RecoveryInterpretationEngine(eventSink, journal),
         capabilityAccessFactory = capabilityAccessFactory,
         runtimeContextFactory = { call -> contextFor(call, shOptions, controlDirRoot, eventSink) },

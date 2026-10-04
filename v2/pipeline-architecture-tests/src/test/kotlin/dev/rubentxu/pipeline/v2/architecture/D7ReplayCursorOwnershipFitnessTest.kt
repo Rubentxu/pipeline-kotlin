@@ -172,12 +172,27 @@ class D7ReplayCursorOwnershipFitnessTest {
             "The Execute advancement must go through the named predicate, so its rule is stated in " +
                 "one place instead of being re-derived at the call site.",
         )
+        // S4-F1-C3 / R14 updated this PATH, not this RULE. The interpretation now hands back the
+        // atomic `CommonExecutionResult` instead of a bare `StepOutcome`, so the same predicate is
+        // reached as `interpretation.result.outcome`. The asymmetry this fitness exists to protect is
+        // untouched: RecoverRunning still advances only on Success, and never on Unstable.
         assertTrue(
-            text.contains("interpretation.outcome is StepOutcome.Success"),
+            text.contains("interpretation.result.outcome is StepOutcome.Success"),
             "The RecoverRunning advancement keeps its stricter historical rule. Recovery has " +
                 "always been stricter than execution about Unstable; whether the two should agree is " +
                 "a separate question with its own work item, and quietly unifying them here would " +
-                "bury a behaviour change inside a refactor.",
+                "bury a behaviour change inside a refactor.\n\n" +
+                "PATH NOTE: S4-F1-C3 changed the carrier this predicate reads (R14 keeps " +
+                "encodedOutput alive through dispatch), so the text is now " +
+                "`interpretation.result.outcome`. The RULE is unchanged, and this string is the " +
+                "evidence: if a future slice unifies the two rules, this assertion is where it has " +
+                "to be made visible.",
+        )
+        assertTrue(
+            !text.contains("interpretation.result.outcome.advancesCanonicalCursor()"),
+            "and the RecoverRunning arm must NOT be switched to the shared predicate. Doing so " +
+                "would make recovery as permissive about Unstable as execution is, which is the " +
+                "behaviour change this fitness exists to keep visible rather than absorb.",
         )
     }
 

@@ -116,8 +116,20 @@ internal class StepDispatchEngine(
         dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor { emptyMap() },
 ) {
 
-    /** A dispatched Step's outcome together with the context it left behind. */
-    data class Dispatched(val outcome: StepOutcome, val context: ExecutionContext)
+    /**
+     * S4-F1-C3 / R14 — a dispatched Step's ATOMIC RESULT together with the context it left behind.
+     *
+     * This composes the carrier rather than replicating its fields. It used to hold a bare
+     * `StepOutcome`, which meant the `encodedOutput` a recovered invocation had just recovered was
+     * discarded here — the R14 narrowing, at the last boundary before the consumer. Holding
+     * `CommonExecutionResult` keeps both channels available to every consumer, and the ones that
+     * only need the outcome now say so explicitly with `.result.outcome`.
+     *
+     * A convenience `outcome` accessor is deliberately NOT added: while the projections are being
+     * made visible, every consumer naming the field it reads is the evidence that no projection is
+     * happening by accident.
+     */
+    data class Dispatched(val result: CommonExecutionResult, val context: ExecutionContext)
 
     /**
      * Everything a dispatch needs BEFORE any effect, decided as one value.
@@ -343,7 +355,9 @@ internal class StepDispatchEngine(
                         bodyPath,
                         executionContext,
                     )
-                    return Dispatched(body, executionContext)
+                    // R14: a body-only dispatch has no typed value of its own, so the carrier is
+                    // built explicitly with a null encoded output rather than narrowed from one.
+                    return Dispatched(CommonExecutionResult(outcome = body), executionContext)
                 }
                 null
             }
@@ -370,7 +384,9 @@ internal class StepDispatchEngine(
         val ready = when (preparation) {
             // Terminal SCHEMA rejection (C3/C5): the effective executor is never invoked.
             is DispatchPreparation.Rejected -> return Dispatched(
-                rejectSchema(preparation.operationId, preparation.input, preparation.reason),
+                CommonExecutionResult(
+                    outcome = rejectSchema(preparation.operationId, preparation.input, preparation.reason),
+                ),
                 executionContext,
             )
             is DispatchPreparation.Ready -> preparation
@@ -409,6 +425,16 @@ internal class StepDispatchEngine(
                 fingerprint = fingerprint,
                 input = input,
                 lifecycleContext = lifecycleContext,
+                // Resolved from the ALREADY-DECODED plugin Step id this node carries, never from a
+                // literal: the engine asked the registry a question, and the registry owns the answer.
+                // A miss is not fatal here — the interpretation then fails closed with a stated
+                // reason, which is the correct answer for a Step that cannot be found.
+                definition = stepRegistry?.definition(step.pluginStepId),
+                // S4-F1-C2: the durable input is an IDENTITY envelope — `params["payload"]` carries
+                // the Step's own encoding, next to the sandbox profile and the body digest that also
+                // belong in the fingerprint. Materialisation needs the payload, not the envelope,
+                // and the node still holds the exact bytes the compiler produced.
+                stepPayload = step.payload.encoded,
             ),
         )
         when (interpretation) {
@@ -417,13 +443,20 @@ internal class StepDispatchEngine(
                 // success does. The predicate is `is Success`, NOT `advancesCanonicalCursor()`:
                 // recovery has always been stricter than execution about Unstable, and D7
                 // relocated the cursor without being licensed to change what advances.
+                //
+                // S4-F1-C3 / R14: the projection is now WRITTEN OUT rather than pre-applied by
+                // the engine. The interpretation hands back the whole `CommonExecutionResult`, and
+                // this consumer asks for the one field it actually needs. That visibility is the
+                // point — a consumer that needs `encodedOutput` downstream must be able to see that
+                // the carrier carried it, instead of trusting that a bare outcome could not have
+                // dropped it on the way out.
                 if (
                     resolution is InvocationReconciliation.RecoverRunning &&
-                    interpretation.outcome is StepOutcome.Success
+                    interpretation.result.outcome is StepOutcome.Success
                 ) {
                     cursorStore.advance(runId.value, operationId, stageIndex)
                 }
-                return Dispatched(interpretation.outcome, contextAfterOverlay)
+                return Dispatched(interpretation.result, contextAfterOverlay)
             }
             RecoveryInterpretationEngine.RecoveryInterpretation.ProceedToExecution -> Unit
         }
@@ -450,11 +483,17 @@ internal class StepDispatchEngine(
         // terminal SCHEMA rejection (journal FAILED, common executor never runs).
         // WU-RP-031 E3: extracted to DurableTypedInputPreparation.
         val prepared = when (val typed = typedInputPreparation.prepare(step, runtime)) {
-            is DurableTypedInputPreparation.TypedPreparation.Rejected -> return Dispatched(rejectSchema(
-                operationId,
-                input,
-                "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${typed.reason}",
-            ), contextAfterOverlay)
+            is DurableTypedInputPreparation.TypedPreparation.Rejected -> return Dispatched(
+                CommonExecutionResult(
+                    outcome = rejectSchema(
+                        operationId,
+                        input,
+                        "schema mismatch for step '${step.pluginStepId.value}' on " +
+                            "'${step.id.value}': ${typed.reason}",
+                    ),
+                ),
+                contextAfterOverlay,
+            )
             is DurableTypedInputPreparation.TypedPreparation.Ready -> typed.prepared
         }
 
@@ -478,7 +517,10 @@ internal class StepDispatchEngine(
         if (execution.outcome.advancesCanonicalCursor()) {
             cursorStore.advance(runId.value, operationId, stageIndex)
         }
-        return Dispatched(execution.outcome, contextAfterOverlay)
+        // R14: `executeAndJournal` already returns the atomic carrier, so this is a COMPOSITION.
+        // It used to be `Dispatched(execution.outcome, ...)`, which is the narrowing this whole
+        // slice exists to remove: a recovered or a fresh encoded value died at this line.
+        return Dispatched(execution, contextAfterOverlay)
     }
 
     /**
@@ -706,7 +748,7 @@ internal class StepDispatchEngine(
                 shOpts,
                 bodyPath,
                 ctx,
-            ).outcome
+            ).result.outcome
         },
     )
 
@@ -733,7 +775,7 @@ internal class StepDispatchEngine(
         childShOptions,
         bodyPath,
         executionContext,
-    ).outcome
+    ).result.outcome
 
     /**
      * EM-7/LFC-5.3 (INC-022), reworked by W1d — a credential lease as a body PREAMBLE.

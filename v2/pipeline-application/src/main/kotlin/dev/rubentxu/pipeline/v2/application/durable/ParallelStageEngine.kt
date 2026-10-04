@@ -444,7 +444,7 @@ internal class ParallelStageEngine(
                 BlockSegment("b$branchIndex:branch"),
                 BlockSegment(stepIndex, step.pluginStepId),
             )
-            val stepOutcome = stepDispatch.dispatch(
+            val dispatchedBranch = stepDispatch.dispatch(
                 step,
                 runId,
                 branch.name,
@@ -453,7 +453,11 @@ internal class ParallelStageEngine(
                 branchShOptions,
                 bodyPath,
                 branchContext,
-            ).outcome
+            )
+            // R14: a parallel branch only needs to KNOW the outcome, so it projects it here. The
+            // carrier is not destroyed to make that possible — `Dispatched` still holds the encoded
+            // value, and the branch aggregate is free to read it if it ever needs to.
+            val stepOutcome = dispatchedBranch.result.outcome
             when (stepOutcome) {
                 is StepOutcome.Failure, is StepOutcome.Unstable -> return stepOutcome
                 else -> { /* continue */ }

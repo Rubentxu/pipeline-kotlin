@@ -26,6 +26,10 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig
 import dev.rubentxu.pipeline.v2.domain.durable.FailureOrigin
 import dev.rubentxu.pipeline.v2.domain.durable.FailureRecord
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskOutput
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
+import java.nio.file.Path
+import org.junit.jupiter.api.io.TempDir
 import dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint
 import dev.rubentxu.pipeline.v2.scripting.CacheKey
 import dev.rubentxu.pipeline.v2.scripting.ReturnStatus
@@ -355,9 +359,16 @@ class ScriptedScopeTest {
             journal = journal,
             capabilityAccessFactory = capabilityAccessFactory,
             runningSubprocessRecovery = {
-                dev.rubentxu.pipeline.v2.application.durable.RunningSubprocessObservation.Recovered(
-                    dev.rubentxu.pipeline.v2.application.durable.RecoveredTerminal.Lost(
-                        PipelineFailure(FailureKind.INFRASTRUCTURE, "reattach window closed"),
+                dev.rubentxu.pipeline.v2.application.durable.RunningSubprocessObservation.Observed(
+                    dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal.Lost(
+                        dev.rubentxu.pipeline.v2.domain.durable.FailureRecord(
+                            code = "REATTACH_WINDOW_EXPIRED",
+                            kind = FailureKind.INFRASTRUCTURE,
+                            message = "reattach window closed",
+                            origin = dev.rubentxu.pipeline.v2.domain.durable.FailureOrigin.RECONCILIATION,
+                            retryable = false,
+                            operationId = "scripted-test/recovered-terminal",
+                        ),
                     ),
                 )
             },
@@ -383,6 +394,142 @@ class ScriptedScopeTest {
                 "an `Exited(42)` terminal DOES carry that fact, and the current spine narrowing it " +
                 "before the Step-owned projection is the canonical gap F1-C owns (ADR-S4-R1 §2.7). " +
                 "Got $failure",
+        )
+    }
+
+    /**
+     * S4-F1-C2/C3 — the row that CERTIFIES the gap the row above only DECLARES.
+     *
+     * That row injects a LOST terminal, so failing closed is the correct answer, and its KDoc says
+     * so explicitly: it does not certify what a recovered `returnStatus` yields. This row injects
+     * the other kind of terminal — `Exited(42)`, which carries an OBSERVED exit code — and asserts
+     * the claim R14 exists for: that the typed value survives the whole spine and reaches user
+     * Kotlin, in a run where the process is never relaunched.
+     *
+     * ## Why this row exists at the CONSUMER boundary, and not at the journal
+     *
+     * Not by preference — because the mutation proved it. M-F1-C3 narrows the carrier that
+     * `RecoveryInterpretationEngine` hands back to a bare `StepOutcome`, dropping `encodedOutput`
+     * while leaving the journalled bytes untouched. Measured, not assumed:
+     *
+     * ```text
+     * S4R1F1CRecoveryTruthMatrixTest   17/17 GREEN under the mutation   (it reads the journal row)
+     * S4RKernelSpikeTest               8/8  GREEN under the mutation
+     * S4RRecIndeterminateEffectSpikeTest 12/12 GREEN under the mutation
+     * ScriptedScopeTest                13/13 GREEN under the mutation   (before this row)
+     * ```
+     *
+     * The value is journalled correctly and simply never reaches the program. This row crosses the
+     * boundary where that is observable — `ScriptedRegistryInvoker.invoke` reads
+     * `settled.result.encodedOutput` — and under the mutation it fails closed with
+     * `FailureKind.ENGINE`, which is why it kills it.
+     *
+     * ## Harness
+     *
+     * `behavioural`. Production entry points: `ScriptedRegistryInvoker.invoke` and the real
+     * `RecoveryInterpretationEngine`. The ONE substituted thing is the substrate observation, as in
+     * the row above; launches are counted at the handler capability.
+     */
+    @Test
+    fun `a recovered exit code reaches user Kotlin as the exit code it observed`(
+        @TempDir recoveredControlDir: Path,
+    ) = runBlocking {
+        var launches = 0
+        val journal = InMemoryOperationJournal(SystemClock())
+        val registry = InMemoryStepRegistry().also { CoreShellStep.registerInto(it) }
+        val capabilityAccessFactory = { context: CanonicalRuntimeContext ->
+            object : CanonicalRuntimeCapabilityAccess(context) {
+                override fun available(): Set<StepCapability> = setOf(SHELL_OPERATIONS_CAPABILITY)
+
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : Any> get(key: StepCapability): T {
+                    if (key == SHELL_OPERATIONS_CAPABILITY) {
+                        return object : ShellOperations {
+                            override suspend fun invoke(
+                                command: dev.rubentxu.pipeline.v2.domain.ShellCommand,
+                                runId: dev.rubentxu.pipeline.v2.domain.RunId,
+                                stepIndex: Int,
+                            ): ShellInvocationResult {
+                                launches += 1
+                                return ShellInvocationResult.Status(42)
+                            }
+                        } as T
+                    }
+                    return super.get(key)
+                }
+            }
+        }
+        val callSites = ScriptedCallSiteProvider.fixed("scripted-test/recovered-value")
+
+        // 1. A real durable row, produced by a real execution.
+        val executing = dev.rubentxu.pipeline.v2.application.support.ScriptedInvokerFixture.build(
+            registry = registry,
+            journal = journal,
+            capabilityAccessFactory = capabilityAccessFactory,
+        )
+        ScriptedRuntime(RegistryScriptedShellRuntime(executing), callSites)
+            .run(definitionDigest = "test-v1", entryPointId = "main") {
+                sh(script = "exit 42", returnStatus = ReturnStatus)
+            }
+        assertEquals(1, launches, "PRECONDITION: the first run executes exactly once")
+
+        // 2. Leave the row RUNNING — the state a worker that died mid-effect leaves behind.
+        val source = journal.listForRun("test-v1").single()
+        journal.append(
+            dev.rubentxu.pipeline.v2.domain.durable.RerunOperation(
+                id = source.id,
+                fingerprint = source.fingerprint,
+                input = source.input,
+                output = null,
+                status = dev.rubentxu.pipeline.v2.domain.durable.OperationStatus.RUNNING,
+                attempt = source.attempt,
+            ),
+        )
+
+        // 3. Recover from a terminal that CARRIES facts. This is the whole difference from the row
+        //    above: the exit code was observed, it is on disk, and nobody has to invent it.
+        val recovering = dev.rubentxu.pipeline.v2.application.support.ScriptedInvokerFixture.build(
+            registry = registry,
+            journal = journal,
+            capabilityAccessFactory = capabilityAccessFactory,
+            runningSubprocessRecovery = {
+                dev.rubentxu.pipeline.v2.application.durable.RunningSubprocessObservation.Observed(
+                    DurableTaskTerminal.Exited(
+                        exitCode = 42,
+                        output = DurableTaskOutput(controlDir = recoveredControlDir.toString()),
+                    ),
+                )
+            },
+        )
+        val recovered = runCatching {
+            ScriptedRuntime(RegistryScriptedShellRuntime(recovering), callSites)
+                .run(definitionDigest = "test-v1", entryPointId = "main") {
+                    sh(script = "exit 42", returnStatus = ReturnStatus)
+                }
+        }
+
+        assertEquals(
+            1,
+            launches,
+            "the effect is NEVER relaunched on a recovered terminal — recovery, not a second launch",
+        )
+        val failure = recovered.exceptionOrNull()
+        assertTrue(
+            failure == null,
+            "a recovered terminal that CARRIES an exit code must not fail closed. The 42 was " +
+                "observed in the control directory, `returnStatus` was declared, and the Step's own " +
+                "contract says a non-zero exit under STATUS is a VALUE, not an error — so this " +
+                "invocation owes the program that 42. Failing here is the R14 loss in its " +
+                "consumer-facing form: the carrier arrived without the value, and the invoker " +
+                "reported ENGINE rather than delivering 42. Got $failure",
+        )
+        assertEquals(
+            42,
+            recovered.getOrNull(),
+            "THE ACTUAL CLAIM: user Kotlin receives the exit code that was observed, in a run " +
+                "where the process was never relaunched. A 0 here would mean the value was " +
+                "defaulted rather than transported, and it is the single assertion that R14 " +
+                "cannot be quietly undone without turning this row red.",
         )
     }
 

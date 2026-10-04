@@ -1,10 +1,16 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.domain.FailureKind
-import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskOutput
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
+import dev.rubentxu.pipeline.v2.domain.durable.FailureOrigin
+import dev.rubentxu.pipeline.v2.domain.durable.FailureRecord
+import dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind
+import dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1
+import java.nio.file.Files
 import java.nio.file.Path
 
 /**
@@ -85,16 +91,53 @@ internal fun interface RunningSubprocessRecovery {
  * facts, and a fact layer that carries them is a fact layer that has already decided something.
  * Both are written as code spans rather than KDoc links on purpose — this layer not naming those
  * types is the property, so a resolvable link would work against it.
+ *
+ * ## S4-F1-C1 — the terminal case carries a FACT, not a semantic terminal
+ *
+ * This used to carry `RecoveredTerminal` (retired with the type itself), whose `Failed(failure)`
+ * case the observer populated with
+ * `FailureKind.SCRIPT` the moment an exit code was non-zero. That was the second manifestation of
+ * ADR-S4-R1's `implementation conformance: PARTIAL`, and F1-C0 measured it: for
+ * `sh(returnStatus = true)` with exit 42, the spine journalled FAILED while the contract says
+ * `Status(42) · Success`. The exit code was OBSERVED — it is in `result.txt`, written by the process
+ * itself. Failing closed there was not fail-closed; it was losing `returnMode` before the authority
+ * that can read it.
+ *
+ * The payload is now [DurableTaskTerminal], which is the substrate's own vocabulary and which the
+ * Step-owned projection already consumes through [classifyShellTerminal]. No parallel ADT is
+ * introduced: the four cases this observer can produce map one-to-one onto the four that type
+ * already has, and `classifyShellTerminal` was already exhaustive over it.
+ *
+ * What the observer may therefore report, and nothing more:
+ *
+ * ```text
+ * exitCode              yes   ← result.txt
+ * capturedStdout        yes   ← output.txt, and null when that file is ABSENT
+ * timeout               yes   ← timeout.flag was written before the kill, so it is KNOWN
+ * lost                  yes   ← the root was readable and held nothing recoverable
+ * unavailable           yes   ← there was no root to read
+ * window expired        yes   ← a fact about OUR window, and terminal-free by construction
+ * ```
+ *
+ * What it may not report, at any return mode:
+ *
+ * ```text
+ * StepOutcome · OperationStatus · FailureKind.SCRIPT · Success/Failure of any Step
+ * ```
+ *
+ * The discriminator that decides which of those is right is the Step's own `returnMode`, recovered
+ * from the durable input by the Step's own codec. It is not the observer's to know.
  */
 internal sealed interface RunningSubprocessObservation {
 
     /**
-     * The substrate was inspected and yielded a conclusive semantic terminal.
+     * The substrate was inspected and yielded a conclusive durable terminal.
      *
-     * [RecoveredTerminal], not a `(StepOutcome, OperationStatus)` pair: the durable status is a
-     * storage vocabulary, and the observer does not get to choose how a fact is stored.
+     * [DurableTaskTerminal], not a `(StepOutcome, OperationStatus)` pair and not a semantic
+     * terminal: both the durable status and the pipeline outcome are projections, and the observer
+     * gets to choose neither.
      */
-    data class Recovered(val terminal: RecoveredTerminal) : RunningSubprocessObservation
+    data class Observed(val terminal: DurableTaskTerminal) : RunningSubprocessObservation
 
     /**
      * The substrate could not be inspected, so no conclusion is possible.
@@ -113,8 +156,7 @@ internal sealed interface RunningSubprocessObservation {
      * ADR-S4-R1 §2.3. This is a statement about OUR WINDOW, not about the substrate: we are not
      * claiming the process is gone, only that we stopped looking. Reporting it as `LOST` was the
      * collapse the S4-R1 §3b characterisation measured — a live process reported as lost — and it
-     * happened because the expiry branch shared [RecoveredTerminal.Lost] with the genuine
-     * no-evidence case.
+     * happened because the expiry branch shared the genuine no-evidence terminal with the real one.
      *
      * The observer may not invent a terminal it does not have, which is why this carries none.
      * Whether an expired window is terminal at all is a RECONCILIATION decision, and it belongs to
@@ -193,7 +235,8 @@ internal class ExternalSubprocessRecovery(
         val reconciler = StepReconcilerL1(clock, root)
         val classification = reconciler.classify(operationId)
         return when (classification) {
-            is StepReconcilerL1.Classification.Complete -> recoveredShellTerminal(classification.exitCode)
+            is StepReconcilerL1.Classification.Complete ->
+                observedTerminal(root.resolve(operationId), classification.exitCode)
             is StepReconcilerL1.Classification.Reattach -> {
                 val exitCode = reattachPoll(classification.controlDir, REATTACH_TIMEOUT_MS)
                 // The window closed with nothing. That is a fact about the WINDOW, and it is
@@ -203,12 +246,16 @@ internal class ExternalSubprocessRecovery(
                 if (exitCode == null) {
                     RunningSubprocessObservation.ReattachWindowExpired
                 } else {
-                    recoveredShellTerminal(exitCode)
+                    observedTerminal(classification.controlDir, exitCode)
                 }
             }
-            is StepReconcilerL1.Classification.TimedOut -> RunningSubprocessObservation.Recovered(
-                RecoveredTerminal.TimedOut(
-                    PipelineFailure(FailureKind.TIMEOUT, "Canonical shell '$operationId' timed out"),
+            is StepReconcilerL1.Classification.TimedOut -> RunningSubprocessObservation.Observed(
+                DurableTaskTerminal.Cancelled(
+                    InterruptionRecord(
+                        kind = InterruptionKind.TIMEOUT,
+                        message = "Canonical shell '$operationId' timed out",
+                        operationId = operationId,
+                    ),
                 ),
             )
             // A real observation, not a gap: the control root WAS readable, and the operation
@@ -216,30 +263,69 @@ internal class ExternalSubprocessRecovery(
             // must remain distinct from [RunningSubprocessObservation.Unavailable] — and distinct
             // from [RunningSubprocessObservation.ReattachWindowExpired], which is the case where we
             // never reached this check.
-            StepReconcilerL1.Classification.Lost -> RunningSubprocessObservation.Recovered(
-                RecoveredTerminal.Lost(
-                    PipelineFailure(
-                        FailureKind.INFRASTRUCTURE,
-                        "Canonical shell '$operationId' could not be reconciled",
+            StepReconcilerL1.Classification.Lost -> RunningSubprocessObservation.Observed(
+                DurableTaskTerminal.Lost(
+                    FailureRecord(
+                        code = "DURABLE_TASK_LOST",
+                        kind = FailureKind.INFRASTRUCTURE,
+                        message = "Canonical shell '$operationId' could not be reconciled",
+                        origin = FailureOrigin.RECONCILIATION,
+                        retryable = false,
+                        operationId = operationId,
                     ),
                 ),
             )
         }
     }
 
-    private fun recoveredShellTerminal(exitCode: Int): RunningSubprocessObservation =
-        if (exitCode == 0) {
-            RunningSubprocessObservation.Recovered(RecoveredTerminal.Succeeded)
+    /**
+     * S4-F1-C1 — the facts a terminated process left behind, and the whole of what this observer
+     * knows about its VALUE.
+     *
+     * Two reads, no interpretation:
+     *
+     * ```text
+     * result.txt   → exitCode      the number the process itself wrote
+     * output.txt   → capturedStdout   ONLY when that file exists
+     * ```
+     *
+     * The `output.txt` read is the subtle one, and `null` is load-bearing. `DurableTaskOutput`
+     * carries `capturedStdout: String?` precisely so this can be said without inventing a value:
+     *
+     * ```text
+     * file present, holds "abc"   →  "abc"    the program printed this
+     * file present, holds ""      →  ""       the program printed NOTHING — a fact
+     * file ABSENT                 →  null     nobody recorded anything — an ABSENCE
+     * ```
+     *
+     * The console log is deliberately NOT read as a substitute. `consoleTranscript` and
+     * `capturedStdout` are different channels by construction (see [DurableTaskOutput]), and
+     * substituting one for the other would make a `returnStdout` value out of text the contract
+     * never promised as the value. So this observer leaves it `null`: it has not observed it, and
+     * saying otherwise is the fabrication this whole slice exists to prevent.
+     */
+    private fun observedTerminal(controlDir: Path, exitCode: Int): RunningSubprocessObservation {
+        val captured = if (Files.exists(OUTPUT_FILE(controlDir))) {
+            Files.readString(OUTPUT_FILE(controlDir))
         } else {
-            RunningSubprocessObservation.Recovered(
-                RecoveredTerminal.Failed(
-                    PipelineFailure(FailureKind.SCRIPT, "Canonical shell exited with code $exitCode"),
-                ),
-            )
+            null
         }
+        return RunningSubprocessObservation.Observed(
+            DurableTaskTerminal.Exited(
+                exitCode = exitCode,
+                output = DurableTaskOutput(
+                    controlDir = controlDir.toString(),
+                    capturedStdout = captured,
+                ),
+            ),
+        )
+    }
 
     private companion object {
         // Preserved from CanonicalDurableRunCoordinator companion (behaviour-equivalence law).
         private const val REATTACH_TIMEOUT_MS = 60_000L
+
+        /** The captured-stdout channel. Read only to learn whether it EXISTS, and what it holds. */
+        private fun OUTPUT_FILE(controlDir: Path): Path = controlDir.resolve("output.txt")
     }
 }

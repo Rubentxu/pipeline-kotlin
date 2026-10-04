@@ -207,37 +207,39 @@ data class ScriptedRegistryCall(
  * fail-closed case, and the journal row is left `RUNNING` by the interpretation engine: an
  * operation whose external effect is unknown is neither re-run nor closed.
  *
- * `RecoverRunning` is the one resolution this frontend cannot satisfy, and it fails closed rather
- * than by omission. **But the reason depends on WHICH terminal was recovered, and collapsing the
- * two cases is a conservation-of-information defect, not a simplification.**
+ * ## `RecoverRunning` — a recovered value, or an honest refusal
+ *
+ * This arm used to be `notReplayable(...)` unconditionally, and the KDoc here used to justify that
+ * by claiming the value could not be reconstructed. That claim was the second manifestation of
+ * ADR-S4-R1's `implementation conformance: PARTIAL`, and it was wrong in a way worth stating
+ * precisely, because the error was not "over-claiming a capability" but "mis-labelling an absence of
+ * evidence as an absence of capability".
+ *
+ * The substrate OBSERVED the facts. An exit code sits in `result.txt`; captured stdout sits in
+ * `output.txt`. What was missing was not the evidence but the route from that evidence to the one
+ * component that knows what it means — because the answer depends on the invocation's `returnMode`,
+ * which lives in the Step's own input behind the Step's own codec. So the observer was guessing, and
+ * F1-C0 measured the cost: `sh(returnStatus = true)` with exit 42 journalled FAILED, while the
+ * contract says `Status(42) · Success`.
+ *
+ * The route now exists (ADR-S4-R1 §2.7). This arm asks the interpretation engine, which asks the
+ * Step's own `RecoveredStepProjection`, and receives back the encoded value — or an outcome that
+ * says why not. The distinction that remains is the one that was always real:
  *
  * ```text
- * terminal carried no value facts          → failing closed is CORRECT
- *   LOST / no exit code ever observed
- *   TIMEOUT with no captured output
- *   → the substrate never told us what the program computed.
- *     There is nothing to hand user Kotlin, and `Status(0)` / `""` / `Unit` would be fabrication.
+ * terminal carried the facts this contract needs   →  the value is returned
+ *   Exited(42) under STATUS                        →  Status(42) · Success
+ *   Exited(0, "abc") under STDOUT                  →  Stdout("abc") · Success
+ *   Exited(0, "") under STDOUT                     →  Stdout("") · Success
  *
- * terminal DID carry value facts           → failing closed is a CURRENT CANONICAL GAP
- *   Exited(exitCode = 42)                   → the exit code is on the control dir. Observed.
- *   Exited(0, capturedStdout = "abc")      → the output file is on the control dir. Observed.
- *   → `sh(returnStatus = true)` with exit 42 is `Status(42) · Success`, and the authority that
- *     knows that already exists: `classifyShellTerminal(terminal, returnMode)`.
- *     Failing closed here loses `returnMode` BEFORE the authority that can interpret it.
+ * terminal did not, or the contract cannot use it  →  fails closed, with the reason
+ *   Exited(0) under STDOUT, no output file         →  no value was ever observed
+ *   LOST / no control root / expired window        →  no exit code was ever observed
  * ```
  *
- * So the honest statement of this arm's limit is: **this frontend does not yet project a recovered
- * terminal through the Step's own declared contract.** It is not that a recovered value can never be
- * reconstructed — an observed `exitCode` is not a fabricated value. The capability is missing
- * because the projection does not exist yet, and that is tracked as manifestation 2 of
- * `implementation conformance: PARTIAL` in ADR-S4-R1, closed by S4-F1-C under §2.7. The failing-closed
- * behaviour is correct for the no-facts terminals and is a stand-in for the not-yet-built projection
- * on the rest.
- *
- * Meanwhile: the terminal row IS written — the interpretation engine owns that — and the call fails
- * with `REPLAY_COMPATIBILITY`, which is the kind that means "this runtime cannot replay this
- * operation safely". This is not a regression: the previous status table failed the same way on a
- * RUNNING row, and it fails the same way now.
+ * The second group is not a defect and never was. `Status(0)` where the substrate recorded nothing
+ * would be a fabricated value, and the arm below still refuses to invent one — it just refuses for
+ * the right reason, and returns real values everywhere else.
  *
  * ## Fresh/reuse law
  *
@@ -442,26 +444,49 @@ internal class ScriptedRegistryInvoker(
             // mixing the decision with the materialisation is exactly what RPL-5 forbids.
             InvocationReconciliation.ReuseCompleted -> restoredOutput(journaled?.output)
 
-            // The interpretation engine journals the recovered terminal row and emits the
-            // lifecycle events, because it is the owner of interpreting a resolution. The
-            // typed value still cannot be produced HERE — see the class KDoc, and note that
-            // "here" is load-bearing: a terminal that carries observed facts is a different
-            // case from one that does not, and only the former is this arm's real limit.
+            // S4-F1-C2 — a recovered terminal now DOES yield a typed value, and this is where a
+            // scripted call finally receives one. The interpretation engine owns the projection and
+            // the journal write; this arm only reads the carrier it hands back.
+            //
+            // It used to be `notReplayable(...)` unconditionally, with the class KDoc claiming the
+            // value could not be reconstructed. That was true of the SPINE then and false of the
+            // FACTS: an observed exit code is not a fabricated value, and `sh(returnStatus = true)`
+            // with exit 42 was being failed rather than returned as `42`.
+            //
+            // The shape below is deliberately the same as [execute]'s, so a recovered value and a
+            // fresh value reach user Kotlin by one path and one set of rules.
             is InvocationReconciliation.RecoverRunning -> {
-                recoveryInterpretation.interpret(
+                val settled = recoveryInterpretation.interpret(
                     resolution,
                     RecoveryInterpretationEngine.Request(
                         operationId = operationId,
                         fingerprint = fingerprint,
                         input = input,
                         lifecycleContext = lifecycleFor(call),
+                        definition = registry.definition(call.stepKey),
+                        // S4-F1-C2: this surface's durable input is the IDENTITY WRAPPER, so the
+                        // Step's own payload is the nested `encodedInput` the call already carries.
+                        // Passing it verbatim is what lets a recovered value be materialised here
+                        // exactly as it is on the canonical surface.
+                        stepPayload = call.encodedInput.value,
                     ),
-                )
-                notReplayable(
-                    "scripted registry step was recovered from a running subprocess; the recovered " +
-                        "terminal is journaled, but this frontend does not yet materialise a typed " +
-                        "runtime value from it (ADR-S4-R1 §2.7, closed by F1-C)",
-                )
+                ) as RecoveryInterpretationEngine.RecoveryInterpretation.Settled
+
+                when (val outcome = settled.result.outcome) {
+                    is dev.rubentxu.pipeline.v2.domain.StepOutcome.Failure ->
+                        ScriptedRegistryResult.Failed(outcome.failure)
+                    // A recovered success still owes the program a value, and a null here would be
+                    // the materialiser having failed to encode one it had just built.
+                    else -> when (val encoded = settled.result.encodedOutput) {
+                        null -> ScriptedRegistryResult.Failed(
+                            PipelineFailure(
+                                FailureKind.ENGINE,
+                                "recovered scripted registry step succeeded without a typed runtime output",
+                            ),
+                        )
+                        else -> ScriptedRegistryResult.Success(encoded)
+                    }
+                }
             }
 
             // ADR-0103 R1-E. The observer could not inspect the substrate, so there is nothing to

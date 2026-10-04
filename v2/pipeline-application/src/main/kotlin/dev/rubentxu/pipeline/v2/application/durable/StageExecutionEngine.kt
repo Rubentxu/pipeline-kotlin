@@ -93,7 +93,11 @@ internal class StageExecutionEngine(
                 steps[stepIndex], runId, stage.name, stageIndex, stepIndex, stageShOptions, emptyList(), context,
             )
             context = dispatched.context
-            when (val continuation = runLifecycle.decideStageContinuation(dispatched.outcome, stage.name, runId.value, context)) {
+            // R14: the stage fold needs the OUTCOME, so it projects it explicitly and leaves the
+            // carrier alone. See StepDispatchEngine.Dispatched for why no `outcome` shortcut exists.
+            when (val continuation = runLifecycle.decideStageContinuation(
+                dispatched.result.outcome, stage.name, runId.value, context,
+            )) {
                 CanonicalContinuation.Continue -> Unit
                 CanonicalContinuation.ContinueUnstable -> {
                     runLifecycle.fold(dev.rubentxu.pipeline.v2.domain.RunOutcome.Unstable)
@@ -222,7 +226,7 @@ internal class StageExecutionEngine(
                     executionContext = ambient,
                 )
                 dispatched++
-                if (dispatchedStep.outcome !is StepOutcome.Success) {
+                if (dispatchedStep.result.outcome !is StepOutcome.Success) {
                     val reason = "post ${condition.name} finalizer of stage '${stage.name}' failed"
                     return PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.USER, reason)
                 }

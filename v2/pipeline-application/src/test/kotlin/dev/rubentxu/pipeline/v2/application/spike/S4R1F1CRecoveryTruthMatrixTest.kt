@@ -6,6 +6,8 @@ import dev.rubentxu.pipeline.v2.application.ShellOperations
 import dev.rubentxu.pipeline.v2.application.SystemClock
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
+import dev.rubentxu.pipeline.v2.application.durable.RecoveredExecutionMaterializer
+import dev.rubentxu.pipeline.v2.application.durable.RecoveryMaterialisation
 import dev.rubentxu.pipeline.v2.application.durable.toStepOutcome
 import dev.rubentxu.pipeline.v2.application.scripted.RegistryScriptedShellRuntime
 import dev.rubentxu.pipeline.v2.application.scripted.ScriptedCallSiteProvider
@@ -21,6 +23,9 @@ import dev.rubentxu.pipeline.v2.domain.classifyShellTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskOutput
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
+import dev.rubentxu.pipeline.v2.domain.durable.FailureOrigin
+import dev.rubentxu.pipeline.v2.domain.durable.FailureRecord
+import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
@@ -30,6 +35,13 @@ import dev.rubentxu.pipeline.v2.scripting.ReturnStatus
 import dev.rubentxu.pipeline.v2.scripting.ReturnStdout
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellFiles
 import kotlinx.coroutines.runBlocking
+import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
@@ -167,6 +179,19 @@ class S4R1F1CRecoveryTruthMatrixTest {
         val carriesEncodedOutput: Boolean,
         val launches: Int,
         val scriptedFailure: Throwable?,
+        /**
+         * S4-F1-C2 — the typed value discriminants, read out of the journal row with the PRODUCTION
+         * output codec.
+         *
+         * These exist because a status flip is not a value. A row can go from FAILED to SUCCEEDED by
+         * changing a single projection while still transporting nothing, and the whole claim of this
+         * slice is that a value now travels. So the rows that close a gap assert the VALUE, decoded
+         * from the bytes production actually journaled, and not the summary of it.
+         */
+        val encodedKind: String? = null,
+        val encodedOutcome: String? = null,
+        val encodedExitCode: Int? = null,
+        val encodedStdout: String? = null,
     )
 
     /**
@@ -202,16 +227,59 @@ class S4R1F1CRecoveryTruthMatrixTest {
                 .run(definitionDigest = runId, entryPointId = "main", block = block)
         }.exceptionOrNull()
 
+        val row = rig.row()
+        val decoded = decodeRow(row)
+
         return Spine(
-            status = rig.row()?.status,
-            carriesEncodedOutput = rig.row()?.output != null,
+            status = row?.status,
+            carriesEncodedOutput = row?.output != null,
             launches = rig.launches.get() - before,
             scriptedFailure = failure,
+            encodedKind = decoded?.kind,
+            encodedOutcome = decoded?.outcome,
+            encodedExitCode = decoded?.exitCode,
+            encodedStdout = decoded?.stdout,
         )
     }
 
     private fun writeExit(dir: Path, code: Int) {
         Files.writeString(dir.resolve("result.txt"), code.toString())
+    }
+
+    /** The typed value discriminants carried by a journal row. */
+    private data class DecodedValue(
+        val kind: String?,
+        val outcome: String?,
+        val exitCode: Int?,
+        val stdout: String?,
+    )
+
+    /**
+     * Reads a journal row's encoded output with the PRODUCTION `core.sh` output codec.
+     *
+     * The codec is taken from the registry rather than from `CoreShellStep`'s private member, so the
+     * bytes are read by the same reader a real consumer would use and this file cannot drift from
+     * the codec that wrote them. The decode is also an assertion in itself: a row whose bytes the
+     * Step's own codec rejects is a durable-record defect, and it surfaces here instead of being
+     * pattern-matched around.
+     */
+    private fun decodeRow(row: DurableOperation?): DecodedValue? {
+        // The durable wire shape is a JSON STRING that CONTAINS the Step's encoded payload, not the
+        // payload itself: `OperationOutput.result` is a `JsonPrimitive` whose content is the encoded
+        // text. This is the shape `ScriptedRegistryInvoker.restoredOutput` reads, and the shape F1
+        // deliberately does not change, so a reader has to unwrap it exactly as production does.
+        val wire = (row?.output?.result as? JsonPrimitive)?.takeIf { it !is JsonNull } ?: return null
+        val encoded = runCatching { Json.parseToJsonElement(wire.content).jsonObject }.getOrNull()
+            ?: return null
+        val registry = InMemoryStepRegistry().also { CoreShellStep.registerInto(it) }
+        val definition = requireNotNull(registry.definition(CoreShellStep.KEY))
+        definition.contract.outputCodec.decode(EncodedStepValue(wire.content))
+        return DecodedValue(
+            kind = encoded["kind"]?.jsonPrimitive?.content,
+            outcome = encoded["outcome"]?.jsonPrimitive?.content,
+            exitCode = encoded["exitCode"]?.jsonPrimitive?.content?.toIntOrNull(),
+            stdout = encoded["value"]?.jsonPrimitive?.content,
+        )
     }
 
     // ================================================================== HALF A — the shipped spine
@@ -225,9 +293,11 @@ class S4R1F1CRecoveryTruthMatrixTest {
         assertEquals(0, s.launches, "MEASURED: a recovered shell never re-launches")
         assertEquals(OperationStatus.SUCCEEDED, s.status)
         assertTrue(
-            !s.carriesEncodedOutput,
-            "MEASURED: the recovered row carries NO encoded output. For NONE there is no typed " +
-                "value to materialise, so this is correct rather than a gap.",
+            s.carriesEncodedOutput,
+            "TRANSITION (was: no encoded output). A recovered NONE now carries an encoded " +
+                "UnitValue. The characterisation claimed there was nothing to materialise, and the " +
+                "gap was that the projection was never asked. `UnitValue` is the value the contract " +
+                "promises for returnMode NONE — it is a typed value, not a stand-in for one.",
         )
     }
 
@@ -266,20 +336,41 @@ class S4R1F1CRecoveryTruthMatrixTest {
      * `returnMode`.
      */
     @Test
-    fun `A4 STATUS recovered with exit 42 journals FAILED today and that is the measured defect`() = runBlocking {
+    fun `A4 STATUS recovered with exit 42 is Status(42) and Success, which closes the measured defect`() = runBlocking {
         val root = Files.createDirectory(tempRoot.resolve("a4"))
         val s = drive("a4", root, { sh(script = "exit 42", returnStatus = ReturnStatus) }, { writeExit(it, 42) })
         assertEquals(0, s.launches, "MEASURED: a recovered shell never re-launches")
+
         assertEquals(
-            OperationStatus.FAILED,
+            OperationStatus.SUCCEEDED,
             s.status,
-            "MEASURED DEFECT — F1-C2 owns the closure. The contract says " +
-                "sh(returnStatus=true) with exit 42 is Status(42) · Success (see row B2, same " +
-                "observed fact, real authorities) and the exit code WAS observed in result.txt. " +
-                "The spine journals FAILED because the observer classifies exitCode != 0 as SCRIPT " +
-                "before the Step-owned projection can read returnMode. When F1-C2 lands this " +
-                "assertion INVERTS to SUCCEEDED with an encoded Status(42); the transition must be " +
-                "declared in this message, never a silent rewrite of what is expected.",
+            "NON-REGRESSION (was: FAILED, the measured defect). TRANSITION DECLARED: this row was " +
+                "a characterisation of a defect, and it is now a non-regression test. The exit code " +
+                "42 was observed in result.txt; the contract says it is Status(42) · Success (row " +
+                "B2 proves that with the real authorities); and the spine now journals SUCCEEDED " +
+                "because the terminal is routed through the Step's own projection instead of being " +
+                "classified as SCRIPT in the observer. Same fact, same contract, opposite outcome — " +
+                "and the difference is entirely the loss ADR-S4-R1 §2.7 forbids.",
+        )
+
+        // The status alone would be a weak proof: a flip is not a value. These three are the claim.
+        assertEquals(
+            "STATUS",
+            s.encodedKind,
+            "THE ACTUAL PROOF: the recovered record carries a STATUS value, decoded by the Step's " +
+                "own outputCodec from the bytes production journaled.",
+        )
+        assertEquals(
+            42,
+            s.encodedExitCode,
+            "and the exit code that was observed is the one the program receives. A `0` here would " +
+                "mean the projection defaulted rather than transported.",
+        )
+        assertEquals(
+            "SUCCESS",
+            s.encodedOutcome,
+            "and the semantic outcome travelled with it, which is R14: the carrier carried both " +
+                "channels out of recovery instead of the outcome alone.",
         )
     }
 
@@ -316,7 +407,7 @@ class S4R1F1CRecoveryTruthMatrixTest {
      * is exactly the operator that would do it.
      */
     @Test
-    fun `A7 STDOUT recovered with an ABSENT output file journals SUCCEEDED and transports no value`() = runBlocking {
+    fun `A7 STDOUT recovered with an ABSENT output file fails closed and fabricates nothing`() = runBlocking {
         val root = Files.createDirectory(tempRoot.resolve("a7"))
         val s = drive("a7", root, { sh(script = "true", returnStdout = ReturnStdout) }) { dir ->
             writeExitZero(dir)
@@ -327,18 +418,20 @@ class S4R1F1CRecoveryTruthMatrixTest {
         }
         assertEquals(0, s.launches, "MEASURED: a recovered shell never re-launches")
         assertEquals(
-            OperationStatus.SUCCEEDED,
+            OperationStatus.FAILED,
             s.status,
-            "MEASURED GAP — F1-C2 owns the closure. The exit code was 0 and the shell did not fail, " +
-                "so SUCCEEDED is defensible as an OUTCOME. What is not defensible is that the typed " +
-                "value question is never asked: absent output.txt must fail closed rather than " +
-                "become Stdout(\"\") via orEmpty().",
+            "NON-REGRESSION (was: SUCCEEDED with no value, the measured gap). TRANSITION " +
+                "DECLARED: the process finished, and this Step promised a stdout value it can no " +
+                "longer produce, so the INVOCATION fails — journaled FAILED with a reason naming the " +
+                "absent file. The two facts that are easy to confuse are now separated on both " +
+                "sides: a present-and-empty output file yields Stdout(\"\") · Success (row A6), and " +
+                "an absent one yields this. Neither invents a value, and the difference is visible " +
+                "in the status rather than hidden inside a defaulted string.",
         )
         assertTrue(
             !s.carriesEncodedOutput,
-            "MEASURED: no value is transported, so the spine does not fabricate \"\" today. The " +
-                "fabrication risk is LATENT in classifyShellTerminal, not yet realised — which is " +
-                "exactly why it needs a probe (M-F1-C2) rather than a test that blesses it.",
+            "and no value is transported: failing closed means there is nothing to encode, which " +
+                "is the whole content of the rule.",
         )
     }
 
@@ -526,6 +619,79 @@ class S4R1F1CRecoveryTruthMatrixTest {
         )
     }
 
+    // ================================================================== the seam itself
+
+    /**
+     * HF1 on the materialiser ALONE, with the real `core.sh` definition and a real durable input.
+     *
+     * This exists because half A can only observe the journal, and the journal does not say WHICH
+     * of the materialiser's four cases fired. A seam whose failure modes are indistinguishable from
+     * outside is a seam nobody can debug, and a fail-closed default that silently swallows every
+     * recovery is exactly the shape of that defect. So the case is asserted here, by name.
+     */
+    @Test
+    fun `the materialiser materialises a real core shell terminal and names its own failure cases`() {
+        val registry = InMemoryStepRegistry().also { CoreShellStep.registerInto(it) }
+        val definition = requireNotNull(registry.definition(CoreShellStep.KEY)) {
+            "PRECONDITION: core.sh must be resolvable from the registry"
+        }
+
+        fun inputOf(payload: String): OperationInput = OperationInput(
+            stepId = "core.sh",
+            params = Json.parseToJsonElement(payload).jsonObject,
+            runId = "f1c0-seam",
+            attempt = 1,
+        )
+
+        // 1. The happy path: a real projection, through the real codecs.
+        val materialised = RecoveredExecutionMaterializer.materialize(
+            definition = definition,
+            encodedInput = inputOf("""{"kind":"sh","command":"exit 42","returnStatus":true}"""),
+            terminal = exited(42, null),
+        )
+        assertTrue(
+            materialised is RecoveryMaterialisation.Materialised,
+            "PRECONDITION: a STATUS invocation with an observed exit code MUST materialise. Got " +
+                "$materialised",
+        )
+        val result = (materialised as RecoveryMaterialisation.Materialised).result
+        assertEquals(
+            StepOutcome.Success,
+            result.outcome,
+            "and the outcome comes from the Step's own classifier, not from the observer.",
+        )
+        assertNotNull(result.encodedOutput, "and the value is ENCODED — R14 means it survives.")
+
+        // 2. The absence case, named.
+        val absent = RecoveredExecutionMaterializer.materialize(
+            definition = definition,
+            encodedInput = inputOf("""{"kind":"sh","command":"echo abc","returnStdout":true}"""),
+            terminal = exited(0, null),
+        )
+        assertTrue(
+            absent is RecoveryMaterialisation.InsufficientEvidence,
+            "a STDOUT invocation whose output file is ABSENT must report insufficient evidence, " +
+                "never Stdout(\"\"). Got $absent",
+        )
+
+        // 3. A terminal no projection can type, and a Step that declares none, fail closed too.
+        val lost = RecoveredExecutionMaterializer.materialize(
+            definition = definition,
+            encodedInput = inputOf("""{"kind":"sh","command":"true"}"""),
+            terminal = DurableTaskTerminal.Lost(
+                FailureRecord(
+                    code = "DURABLE_TASK_LOST",
+                    kind = dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
+                    message = "gone",
+                    origin = FailureOrigin.RECONCILIATION,
+                    retryable = false,
+                    operationId = "f1c0-seam",
+                ),
+            ),
+        )
+        assertTrue(lost is RecoveryMaterialisation.Materialised, "a LOST terminal is projectable: $lost")
+    }
+
     // ================================================================== the two halves, compared
 
     /**
@@ -539,34 +705,37 @@ class S4R1F1CRecoveryTruthMatrixTest {
     @Test
     fun `the two halves differ on exactly one row and the authority cannot express one more`() {
         val halfA = listOf(
-            Cell("NONE", "exit 0", OperationStatus.SUCCEEDED, "no value", "correct"),
-            Cell("NONE", "exit 42", OperationStatus.FAILED, "no value", "correct"),
-            Cell("STATUS", "exit 0", OperationStatus.SUCCEEDED, "no value", "gap"),
-            Cell("STATUS", "exit 42", OperationStatus.FAILED, "no value", "DEFECT"),
-            Cell("STDOUT", "exit 0 + output.txt=abc", OperationStatus.SUCCEEDED, "no value", "gap"),
-            Cell("STDOUT", "exit 0 + output.txt=''", OperationStatus.SUCCEEDED, "no value", "gap"),
-            Cell("STDOUT", "exit 0 + output.txt absent", OperationStatus.SUCCEEDED, "no value", "gap"),
-            Cell("STDOUT", "exit 42", OperationStatus.FAILED, "no value", "correct"),
+            Cell("NONE", "exit 0", OperationStatus.SUCCEEDED, "UnitValue", "correct"),
+            Cell("NONE", "exit 42", OperationStatus.FAILED, "Failed", "correct"),
+            Cell("STATUS", "exit 0", OperationStatus.SUCCEEDED, "Status(0)", "correct"),
+            Cell("STATUS", "exit 42", OperationStatus.SUCCEEDED, "Status(42)", "closed"),
+            Cell("STDOUT", "exit 0 + output file=abc", OperationStatus.SUCCEEDED, "Stdout(abc)", "correct"),
+            Cell("STDOUT", "exit 0 + output file empty", OperationStatus.SUCCEEDED, "Stdout empty", "correct"),
+            Cell("STDOUT", "exit 0 + output file absent", OperationStatus.FAILED, "none, fail closed", "correct"),
+            Cell("STDOUT", "exit 42", OperationStatus.FAILED, "Failed", "correct"),
         )
 
         val defects = halfA.filter { it.verdict == "DEFECT" }
         assertEquals(
-            1,
+            0,
             defects.size,
-            "MEASURED: exactly ONE row is misclassified, and it is STATUS + exit 42. If this count " +
-                "changes, the observer's rule changed and every half-A row must be RE-MEASURED, not " +
-                "assumed. Defects: $defects",
+            "MEASURED: after F1-C there are ZERO misclassified rows. F1-C0 measured exactly one " +
+                "(STATUS + exit 42), and this count is what proves it was closed rather than " +
+                "relabelled. If it ever becomes non-zero again, the observer has started deciding " +
+                "Step semantics again. Defects: $defects",
         )
-        assertEquals("STATUS", defects.single().returnMode)
-
         assertEquals(
-            4,
-            halfA.count { it.verdict == "gap" },
-            "MEASURED: four rows have the right OUTCOME but transport no typed VALUE — STATUS " +
-                "exit 0, and the three STDOUT exit-0 variants. F1-C2 closes those, and only the " +
-                "defect also changes an outcome. (This count was asserted as 3 in the first cut and " +
-                "the test caught it: the table carries four gap rows, and the assertion, not the " +
-                "table, was wrong.)",
+            1,
+            halfA.count { it.verdict == "closed" },
+            "and exactly one row is marked closed: the row whose outcome INVERTED. The other seven " +
+                "rows kept their outcome, which is the difference between fixing a misclassification " +
+                "and changing what a correct classification means.",
+        )
+        assertEquals(
+            7,
+            halfA.count { it.transported != "none, fail closed" },
+            "SEVEN of the eight terminal rows now transport a typed value, and the eighth fails " +
+                "closed rather than fabricating one. Before F1-C, NONE of them transported anything.",
         )
 
         // The authority half cannot express the absence distinction yet, so even after the DEFECT

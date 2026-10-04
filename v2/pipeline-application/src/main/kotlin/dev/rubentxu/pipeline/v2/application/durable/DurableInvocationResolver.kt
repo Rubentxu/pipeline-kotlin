@@ -5,6 +5,9 @@ import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
+import dev.rubentxu.pipeline.v2.domain.durable.FailureOrigin
+import dev.rubentxu.pipeline.v2.domain.durable.FailureRecord
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
@@ -91,7 +94,7 @@ internal class DurableInvocationResolver(
         deterministicGate(currentOperation, journaled, operationId, metadata.effects, metadata.replayPolicy)?.let { return it }
         if (recoveryRequirement(metadata.recoveryPolicy, journaled) == RecoveryRequirement.Required) {
             when (val observation = runningSubprocessRecovery.observe(operationId)) {
-                is RunningSubprocessObservation.Recovered ->
+                is RunningSubprocessObservation.Observed ->
                     return InvocationReconciliation.RecoverRunning(observation.terminal)
                 // Required, and we could not look. This settles here rather than falling through to
                 // the replay kernel: the kernel's RERUN would execute an external effect whose prior
@@ -115,12 +118,16 @@ internal class DurableInvocationResolver(
                 // copy of it that could drift.
                 RunningSubprocessObservation.ReattachWindowExpired ->
                     return InvocationReconciliation.RecoverRunning(
-                        RecoveredTerminal.Lost(
-                            PipelineFailure(
-                                FailureKind.INFRASTRUCTURE,
-                                "Canonical shell '$operationId' was still reattachable when the " +
-                                    "observation window closed, so its outcome is unknown rather " +
-                                    "than observed absent",
+                        DurableTaskTerminal.Lost(
+                            FailureRecord(
+                                code = "REATTACH_WINDOW_EXPIRED",
+                                kind = FailureKind.INFRASTRUCTURE,
+                                message = "Canonical shell '$operationId' was still reattachable " +
+                                    "when the observation window closed, so its outcome is unknown " +
+                                    "rather than observed absent",
+                                origin = FailureOrigin.RECONCILIATION,
+                                retryable = false,
+                                operationId = operationId,
                             ),
                         ),
                     )

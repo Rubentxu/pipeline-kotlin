@@ -9,11 +9,15 @@ import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
 import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.classifyShellTerminal
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.FailureRecord
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
+import dev.rubentxu.pipeline.v2.domain.step.RecoveredProjection
+import dev.rubentxu.pipeline.v2.domain.step.RecoveredStepProjection
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
@@ -500,7 +504,54 @@ object CoreShellStep {
             )
         }
 
-    val definition: StepDefinition<CoreShellInput, CoreShellOutput> = object : StepDefinition<CoreShellInput, CoreShellOutput> {
+    /**
+     * S4-F1-C2 — the Step-owned projection for a RECOVERED terminal.
+     *
+     * This is where «what does exit code 42 mean?» is answered, and the answer is: whatever this
+     * invocation's `returnMode` says, which is why the method takes the decoded [CoreShellInput]
+     * rather than being handed a pre-decided terminal. The mapping itself is NOT restated here — it
+     * is the existing single authority [classifyShellTerminal], the same function the fresh path
+     * calls, so a recovered `42` and a fresh `42` cannot disagree.
+     *
+     * ## The insufficient-evidence guard, and why it is HERE
+     *
+     * [classifyShellTerminal] maps `STDOUT` to `Stdout(capturedStdout.orEmpty())`. For the FRESH
+     * path that is right: the runtime just ran the process in this JVM, so a null capture means the
+     * program printed nothing, and `""` is the correct answer rather than a fabrication.
+     *
+     * For a RECOVERED terminal it is wrong, and silently so. There, `null` means nobody ever wrote
+     * `output.txt` — there is no evidence of what the program printed — while `""` means the file
+     * exists and is empty, which IS the fact "it printed nothing". `orEmpty()` collapses those two
+     * into one value, so a recovered `returnStdout` would answer a question nobody observed.
+     *
+     * Putting the guard in [classifyShellTerminal] instead would mean teaching a shared authority
+     * about the difference between "just ran it" and "found it later", which is exactly the kind of
+     * context it must not carry: it is called from the fresh path, where the guard would be dead
+     * code, and a rule that is inert on one path and decisive on another is a rule nobody can reason
+     * about. So the check lives with the Step that knows which return mode needs which evidence.
+     */
+    private val recoveredProjection = RecoveredStepProjection<CoreShellInput, CoreShellOutput> { input, terminal ->
+        val needsCapturedStdout = input.command.returnMode == ShellReturnMode.STDOUT &&
+            terminal is DurableTaskTerminal.Exited && terminal.exitCode == 0
+        if (needsCapturedStdout && terminal.output.capturedStdout == null) {
+            RecoveredProjection.InsufficientEvidence(
+                "returnStdout requires the captured stdout, and the control directory holds no " +
+                    "output file. Present-and-empty and absent are different facts, and only the " +
+                    "first one means the program printed nothing",
+            )
+        } else {
+            val result = classifyShellTerminal(terminal, input.command.returnMode)
+            RecoveredProjection.Materialised(
+                value = CoreShellOutput(result, result.toStepOutcome()),
+                outcome = result.toStepOutcome(),
+            )
+        }
+    }
+
+    val definition: StepDefinition<CoreShellInput, CoreShellOutput> = object :
+        StepDefinition<CoreShellInput, CoreShellOutput>,
+        RecoveredStepProjection<CoreShellInput, CoreShellOutput> {
+
         override val contract: StepContract<CoreShellInput, CoreShellOutput> = StepContract(
             key = KEY,
             descriptor = descriptor,
@@ -513,6 +564,13 @@ object CoreShellStep {
         )
 
         override val handler: StepHandler<CoreShellInput, CoreShellOutput> = capabilityRoutedHandler
+
+        // S4-F1-C2: materialising a recovered terminal is NOT executing, so it needs no capability
+        // and never reaches the handler above. The engine finds it by asking for the INTERFACE.
+        override fun project(
+            input: CoreShellInput,
+            terminal: DurableTaskTerminal,
+        ): RecoveredProjection<CoreShellOutput> = recoveredProjection.project(input, terminal)
     }
 
     fun registerInto(registry: StepRegistry) {

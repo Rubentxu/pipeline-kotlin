@@ -581,10 +581,29 @@ class S4RPolReplaySemanticsSpikeTest {
                 "that scripted refuses, but that both recover identically.",
         )
         assertEquals(
-            "Failed(REPLAY_COMPATIBILITY)",
+            "Failed(INFRASTRUCTURE)",
             scriptedRow.returned,
-            "MEASURED CONFIRMS MEMO ROW 4 (scripted half): Failed(REPLAY_COMPATIBILITY) — " +
-                "'no durable task can be reattached'.",
+            "S4-F1-C2 TRANSITION: the KIND changed, and the cause is the law, not a regression. " +
+                "This arm used to be an unconditional notReplayable(...) — a SENTINEL meaning " +
+                "'this surface declines to handle a recovery', which is why it said " +
+                "REPLAY_COMPATIBILITY. It now asks the interpreter for the carrier, and the " +
+                "Step's OWN projection materialises the observed terminal: a control directory " +
+                "that never held a process is Observed(Lost(DURABLE_TASK_LOST, INFRASTRUCTURE)), " +
+                "and classifyShellTerminal carries that kind through untouched. So the answer " +
+                "now names the SUBSTRATE FACT instead of the SURFACE'S REFUSAL, which is what " +
+                "makes the two halves converge rather than merely agree on being closed. What is " +
+                "UNCHANGED and asserted above: the recovery branch is still taken and the handler " +
+                "still does not run.",
+        )
+        assertEquals(
+            "LOST",
+            scriptedRow.journalTerminal,
+            "and the durable STATUS is LOST, not FAILED. A Lost terminal materialises into a plain " +
+                "ShellInvocationResult.Failed, and letting THAT outcome choose the status would " +
+                "collapse LOST into FAILED — destroying the storage vocabulary that says 'the " +
+                "outcome could not be determined', which is what D-1 and ADR-S4-R1 §2.3 are built " +
+                "on. For Lost and Cancelled the terminal owns the status; only for Exited does the " +
+                "contract-derived outcome own it.",
         )
         assertEquals(
             canonicalRow.journalTerminal,

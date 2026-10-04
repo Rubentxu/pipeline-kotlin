@@ -102,6 +102,9 @@ object ScriptedFrontendRunner {
             executionBoundary = RegistryExecutionBoundary.adapt(milestoneStateStore = null),
             journal = journal,
         )
+        // S4-F1-C2: the scripted surface runs the SAME authorities as the canonical coordinator,
+        // with the materialiser supplied by the engine's own default — so a recovered `core.sh`
+        // returns the same value on both surfaces, and neither composition site can forget it.
         val interpretation = RecoveryInterpretationEngine(eventSink, journal)
 
         val invoker = ScriptedRegistryInvoker(

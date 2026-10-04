@@ -3,10 +3,16 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
+import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
+import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
+import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
+import kotlinx.serialization.json.JsonPrimitive
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 
@@ -59,6 +65,27 @@ import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 internal class RecoveryInterpretationEngine(
     private val eventSink: EventSink,
     private val journal: OperationJournal,
+    /**
+     * S4-F1-C2 — how a recovered terminal becomes a Step's typed value. NOT nullable, and that is
+     * a correction rather than a style choice.
+     *
+     * It started nullable, with a fail-closed default, on the reasoning that an engine without a
+     * materialiser should still persist an accurate terminal and refuse to invent a value. That
+     * reasoning was sound and the implementation was still wrong: five composition sites construct
+     * this engine, a nullable seam is an invitation to omit it at one of them, and the one that was
+     * omitted made EVERY recovered `core.sh` report «cannot yield a value» while looking perfectly
+     * healthy — a green build, a fail-closed status, and no signal that a capability was missing.
+     *
+     * So the seam is closed. A missing materialiser is no longer expressible; the remaining way to
+     * fail closed is [RecoveryMaterialisation.NoProjection], which NAMES the Step that did not
+     * declare a projection and is therefore diagnosable by whoever reads the journal.
+     */
+    private val materializer: (
+        StepDefinition<*, *>,
+        OperationInput,
+        DurableTaskTerminal,
+        String?,
+    ) -> RecoveryMaterialisation = RecoveredExecutionMaterializer::materialize,
 ) {
 
     /**
@@ -68,18 +95,64 @@ internal class RecoveryInterpretationEngine(
      * `runIdValue` and `stageIndex` were removed under ADR-0103 D7. They existed only to
      * advance the replay cursor, and an unused field is exactly how a responsibility
      * reappears in the wrong class later.
+     *
+     * S4-F1-C3: [definition] joins it because materialising a recovered value needs the Step's own
+     * codecs, and reaching the registry from here would invert the dependency. The caller that owns
+     * the registry hands it over, so this engine still never resolves a Step by name.
      */
     data class Request(
         val operationId: String,
         val fingerprint: Fingerprint,
         val input: OperationInput,
         val lifecycleContext: StepLifecycleContext,
+        val definition: dev.rubentxu.pipeline.v2.domain.step.StepDefinition<*, *>? = null,
+
+        /**
+         * S4-F1-C2 — the Step's OWN encoded payload, when the durable [input] is not itself that
+         * payload.
+         *
+         * NEITHER surface stores the Step payload as the durable input. F1-C found this by making the
+         * difference observable rather than by reading for it, and the first cut of this seam assumed
+         * otherwise and failed on BOTH surfaces:
+         *
+         * ```text
+         * canonical   input.params = { payload: <the Step's JSON, as a string>,
+         *                              sandboxProfile?, bodyStructure? }
+         * scripted    input.params = { callSiteId, dynamicScopePath, invocationOrdinal,
+         *                              encodedInput: <the Step's JSON, as a string>,
+         *                              definitionDigest }
+         * ```
+         *
+         * Both envelopes exist for the same reason, and it is a good one: the fingerprint is computed
+         * over IDENTITY, so the durable input must carry everything that distinguishes this invocation
+         * from another — the payload plus the sandbox profile, the body digest, the call site. The
+         * consequence for materialisation is that the envelope is not the Step's payload and a Step
+         * codec must never be handed it: `kind` is simply not a key of the envelope, so the decode
+         * fails and the failure reads as a corrupt record rather than as a shape mismatch.
+         *
+         * [input] stays exactly as it is, because the journal append MUST keep the envelope:
+         * changing it would change the fingerprint and silently fork the identity of every operation
+         * already on disk. This field carries only the MATERIALISATION view, and it is supplied by
+         * the surface that wrote the payload — `step.payload.encoded` canonically,
+         * `call.encodedInput` in the scripted surface. Neither is reconstructed, so a codec can never
+         * receive bytes that differ from the ones the compiler produced.
+         */
+        val stepPayload: String? = null,
     )
 
-    /** The two shapes every resolution can take. Closed: a new resolution will not compile. */
+    /**
+     * The two shapes every resolution can take. Closed: a new resolution will not compile.
+     *
+     * S4-F1-C3 — [Settled] now carries the WHOLE [CommonExecutionResult], not a bare
+     * [StepOutcome]. The narrowing it used to perform was R14: a recovered invocation could produce
+     * an encoded value and the carrier dropped it on the floor before leaving this class, so a
+     * recovered `core.sh` could never hand user Kotlin the `42` it had just recovered. Consumers
+     * that only need the outcome now project it explicitly with `.result.outcome`, which is the
+     * projection being made visible and auditable rather than pre-applied.
+     */
     sealed interface RecoveryInterpretation {
-        /** The invocation is settled; the caller returns this outcome without executing. */
-        data class Settled(val outcome: StepOutcome) : RecoveryInterpretation
+        /** The invocation is settled; the caller returns this carrier without executing. */
+        data class Settled(val result: CommonExecutionResult) : RecoveryInterpretation
 
         /** Not a recovery case: the caller proceeds to the effective executor. */
         data object ProceedToExecution : RecoveryInterpretation
@@ -96,10 +169,12 @@ internal class RecoveryInterpretationEngine(
         request: Request,
     ): RecoveryInterpretation = when (resolution) {
         is InvocationReconciliation.Diverged -> RecoveryInterpretation.Settled(
-            StepOutcome.Failure(
-                PipelineFailure(
-                    FailureKind.INFRASTRUCTURE,
-                    "Canonical run diverged at '${resolution.operationId}'",
+            CommonExecutionResult(
+                outcome = StepOutcome.Failure(
+                    PipelineFailure(
+                        FailureKind.INFRASTRUCTURE,
+                        "Canonical run diverged at '${resolution.operationId}'",
+                    ),
                 ),
             ),
         )
@@ -116,7 +191,7 @@ internal class RecoveryInterpretationEngine(
         // the operation directory held nothing recoverable"; this means "there was no control root to
         // read". The observer keeps those apart in RunningSubprocessObservation, and so does this arm.
         is InvocationReconciliation.RecoveryUnobservable -> RecoveryInterpretation.Settled(
-            StepOutcome.Failure(
+            CommonExecutionResult(outcome = StepOutcome.Failure(
                 PipelineFailure(
                     FailureKind.INFRASTRUCTURE,
                     "Recovery of '${resolution.operationId}' is required by the declared recovery " +
@@ -125,36 +200,49 @@ internal class RecoveryInterpretationEngine(
                         "neither re-executed nor closed. Configure the runtime control root and re-run " +
                         "to reconcile it.",
                 ),
-            ),
+            )),
         )
 
         is InvocationReconciliation.RecoverRunning -> {
-            // ADR-S4-R1 §2.4. The resolution arrives CLOSED. Both arms below are mechanical
-            // projections of one semantic terminal, and neither re-classifies anything: an engine
-            // that received `Completed` / `TimedOut` / `Lost` and decided a terminal from them
-            // would be a second semantic authority outside the decision core, which is the exact
-            // defect this class was split to remove.
+            // ADR-S4-R1 §2.4 + §2.7. The resolution arrives carrying OBSERVED FACTS. Turning
+            // them into a Step's value is neither this class's job nor the resolver's: it is the
+            // Step's own projection, reached through the generic materialiser. This engine persists
+            // what comes back and emits the lifecycle — it re-classifies nothing.
             val terminal = resolution.terminal
-            val executionResult = StepExecutionBoundary(eventSink).execute(request.lifecycleContext) {
-                CommonExecutionResult(outcome = terminal.asStepOutcome(), encodedOutput = null)
+            val materialised = materialize(request, terminal, System.currentTimeMillis())
+            val result = StepExecutionBoundary(eventSink).execute(request.lifecycleContext) {
+                materialised.result
             }
-            val outcome = executionResult.outcome
             journal.append(
                 RerunOperation(
                     id = request.operationId,
                     fingerprint = request.fingerprint,
                     input = request.input,
-                    output = null,
-                    status = terminal.asOperationStatus(),
+                    output = materialised.encoded?.let { encoded ->
+                        // The SAME bridge DurableStepExecutor uses, deliberately: a recovered row and
+                        // a fresh row are written by one shape, so nothing downstream has to know which
+                        // direction produced the value. Timing here is the RECOVERY's own duration,
+                        // not the original process's, which is the truth: we are recording how long
+                        // reconciling took, because the original duration was never observed.
+                        val finishedAt = System.currentTimeMillis()
+                        OperationOutput(
+                            result = JsonPrimitive(encoded.value),
+                            durationMs = (finishedAt - materialised.startedAtMs).coerceAtLeast(0),
+                            finishedAt = finishedAt,
+                        )
+                    },
+                    status = materialised.status,
                     attempt = 1,
                 ),
             )
-            RecoveryInterpretation.Settled(outcome)
+            RecoveryInterpretation.Settled(result)
         }
 
         // Reuse is the one arm that emits nothing: the journal row is already terminal, so
         // re-emitting StepStarted/StepFinished or re-appending it would duplicate the record.
-        InvocationReconciliation.ReuseCompleted -> RecoveryInterpretation.Settled(StepOutcome.Success)
+        InvocationReconciliation.ReuseCompleted -> RecoveryInterpretation.Settled(
+            CommonExecutionResult(outcome = StepOutcome.Success),
+        )
 
         is InvocationReconciliation.RejectedAbort -> RecoveryInterpretation.Settled(
             StepExecutionBoundary(eventSink).execute(request.lifecycleContext) {
@@ -167,39 +255,115 @@ internal class RecoveryInterpretationEngine(
                     ),
                     encodedOutput = null,
                 )
-            }.outcome,
+            },
         )
 
         InvocationReconciliation.Execute -> RecoveryInterpretation.ProceedToExecution
     }
 
     /**
-     * The single mechanical projection of a semantic terminal onto a pipeline outcome.
+     * S4-F1-C2 — resolve the terminal through the Step-owned projection, and fail closed otherwise.
      *
-     * [RecoveredTerminal.Failed] is NOT re-inspected for `FailureKind.TIMEOUT`. Before
-     * [RecoveredTerminal] existed, the status projection read `failure.kind == TIMEOUT` to decide
-     * between `FAILED` and `FAILED_TIMEOUT`, which meant the durable status was a second guess
-     * about a fact the observer had already resolved — the watchdog flag is on the filesystem, not
-     * in a message. `TimedOut` is its own case now, so the guess is gone.
+     * Every non-materialised case still produces a REAL [CommonExecutionResult] whose outcome states
+     * why, rather than a sentinel or a `null` the caller has to interpret. The durable status is
+     * tracked beside it because «could not deliver a value» and «what the process did» are
+     * different questions with different owners: the first is the Step contract's, the second is the
+     * substrate fact's.
      */
-    private fun RecoveredTerminal.asStepOutcome(): StepOutcome = when (this) {
-        RecoveredTerminal.Succeeded -> StepOutcome.Success
-        is RecoveredTerminal.Failed -> StepOutcome.Failure(failure)
-        is RecoveredTerminal.TimedOut -> StepOutcome.Failure(failure)
-        is RecoveredTerminal.Lost -> StepOutcome.Failure(failure)
+    private fun materialize(
+        request: Request,
+        terminal: DurableTaskTerminal,
+        startedAtMs: Long,
+    ): RecoveryMaterialisationOutcome {
+        val project = materializer
+        val definition = request.definition
+        if (definition == null) {
+            return failedClosed(
+                key = PluginStepId(request.input.stepId),
+                reason = "the Step definition could not be resolved, so its contract is unknown and " +
+                    "nothing can be said about the value it was going to produce",
+                terminal = terminal,
+                startedAtMs = startedAtMs,
+            )
+        }
+        return when (val m = project(definition, request.input, terminal, request.stepPayload)) {
+            is RecoveryMaterialisation.Materialised -> RecoveryMaterialisationOutcome(
+                result = m.result,
+                // A materialised EXITED value carries the Step's OWN outcome, and the durable status
+                // follows from it through the same projection the FRESH path uses — so a recovered
+                // `Status(42)` journals SUCCEEDED exactly as a fresh `Status(42)` does, which is the
+                // whole point of routing the terminal through the contract.
+                //
+                // It is NOT that way for every terminal. A `Lost` or a `Cancelled` materialises into a
+                // `ShellInvocationResult.Failed` whose `toStepOutcome()` is a plain Failure, and
+                // letting THAT choose the status collapsed LOST into FAILED — which destroys the
+                // storage vocabulary that says "the outcome could not be determined", and with it the
+                // distinction D-1 and §2.3 are built on. So the terminal owns the status for the
+                // cases where the terminal IS the fact, and the outcome owns it only where the
+                // contract supplied the fact.
+                status = if (terminal is DurableTaskTerminal.Exited) {
+                    m.result.outcome.toOperationStatus()
+                } else {
+                    terminalStorageStatus(terminal)
+                },
+                encoded = m.result.encodedOutput,
+                startedAtMs = startedAtMs,
+            )
+
+            is RecoveryMaterialisation.InsufficientEvidence -> failedClosed(
+                key = definition.contract.key,
+                reason = m.reason,
+                terminal = terminal,
+                startedAtMs = startedAtMs,
+            )
+
+            is RecoveryMaterialisation.NoProjection -> failedClosed(
+                key = m.key,
+                reason = "the Step declares no recovered projection, so it has not said how its " +
+                    "value would be rebuilt from observed facts",
+                terminal = terminal,
+                startedAtMs = startedAtMs,
+            )
+
+            is RecoveryMaterialisation.MalformedInput -> failedClosed(
+                key = m.key,
+                reason = "the durable input could not be decoded by the Step's own codec",
+                terminal = terminal,
+                startedAtMs = startedAtMs,
+            )
+        }
     }
 
-    /**
-     * The single mechanical projection of a semantic terminal onto the durable storage vocabulary.
-     *
-     * Kept adjacent to [asStepOutcome] and exhaustive over the same closed ADT on purpose: a fourth
-     * terminal added tomorrow fails to COMPILE in both, rather than silently persisting under the
-     * wrong status in one of them.
-     */
-    private fun RecoveredTerminal.asOperationStatus(): OperationStatus = when (this) {
-        RecoveredTerminal.Succeeded -> OperationStatus.SUCCEEDED
-        is RecoveredTerminal.Failed -> OperationStatus.FAILED
-        is RecoveredTerminal.TimedOut -> OperationStatus.FAILED_TIMEOUT
-        is RecoveredTerminal.Lost -> OperationStatus.LOST
-    }
+    private fun failedClosed(
+        key: PluginStepId,
+        reason: String,
+        terminal: DurableTaskTerminal,
+        startedAtMs: Long,
+    ): RecoveryMaterialisationOutcome = RecoveryMaterialisationOutcome(
+        result = CommonExecutionResult(outcome = insufficientEvidenceOutcome(key, reason, terminal)),
+        status = terminalStorageStatus(terminal),
+        encoded = null,
+        startedAtMs = startedAtMs,
+    )
 }
+
+/**
+ * What an interpretation persists and returns, kept as three fields rather than folded into the
+ * carrier because they answer three different questions:
+ *
+ * ```text
+ * result   what the invocation produced  → the caller, intact
+ * status   what to STORE                 → the journal
+ * encoded  the wire form of the value    → the journal, null when there is no value
+ * ```
+ *
+ * `status` is deliberately NOT a projection of `result.outcome` in the failing cases: the process may
+ * have finished successfully while the Step still could not deliver its value, and those are two
+ * statements. In the materialised case it IS a projection, because there the contract said which.
+ */
+private data class RecoveryMaterialisationOutcome(
+    val result: CommonExecutionResult,
+    val status: OperationStatus,
+    val encoded: EncodedStepValue?,
+    val startedAtMs: Long,
+)

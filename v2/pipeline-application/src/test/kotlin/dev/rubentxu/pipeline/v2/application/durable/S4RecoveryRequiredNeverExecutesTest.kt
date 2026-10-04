@@ -9,6 +9,12 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskOutput
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
+import dev.rubentxu.pipeline.v2.domain.durable.FailureOrigin
+import dev.rubentxu.pipeline.v2.domain.durable.FailureRecord
+import dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind
+import dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
@@ -53,16 +59,35 @@ class S4RecoveryRequiredNeverExecutesTest {
         // ADR-S4-R1 §3b added a fifth answer — ReattachWindowExpired — and it belongs in this
         // matrix precisely because the at-least-once window it used to open was the reason the
         // matrix exists: under the §2.3 compatibility policy it RECOVERS, and must never Execute.
+        // S4-F1-C1: these are now OBSERVED FACTS rather than semantic terminals. The names keep the
+        // four substrate outcomes distinguishable, and the payloads are the substrate's own
+        // vocabulary — which is the point: the observer may report an exit code and an output file,
+        // and may NOT report what either one means.
         val observations = listOf(
-            "Recovered-SUCCEEDED" to RunningSubprocessObservation.Recovered(RecoveredTerminal.Succeeded),
-            "Recovered-FAILED" to RunningSubprocessObservation.Recovered(
-                RecoveredTerminal.Failed(PipelineFailure(FailureKind.SCRIPT, "exit 1")),
+            "Observed-exit-0" to RunningSubprocessObservation.Observed(exitedTerminal(0, null)),
+            "Observed-exit-1" to RunningSubprocessObservation.Observed(exitedTerminal(1, null)),
+            "Observed-exit-1-with-stdout" to
+                RunningSubprocessObservation.Observed(exitedTerminal(1, "partial")),
+            "Observed-TIMEDOUT" to RunningSubprocessObservation.Observed(
+                DurableTaskTerminal.Cancelled(
+                    InterruptionRecord(
+                        kind = InterruptionKind.TIMEOUT,
+                        message = "watchdog fired",
+                        operationId = "op",
+                    ),
+                ),
             ),
-            "Recovered-TIMEDOUT" to RunningSubprocessObservation.Recovered(
-                RecoveredTerminal.TimedOut(PipelineFailure(FailureKind.TIMEOUT, "watchdog fired")),
-            ),
-            "Recovered-LOST" to RunningSubprocessObservation.Recovered(
-                RecoveredTerminal.Lost(PipelineFailure(FailureKind.INFRASTRUCTURE, "gone")),
+            "Observed-LOST" to RunningSubprocessObservation.Observed(
+                DurableTaskTerminal.Lost(
+                    FailureRecord(
+                        code = "DURABLE_TASK_LOST",
+                        kind = FailureKind.INFRASTRUCTURE,
+                        message = "gone",
+                        origin = FailureOrigin.RECONCILIATION,
+                        retryable = false,
+                        operationId = "op",
+                    ),
+                ),
             ),
             // No terminal, and no status: the fact layer reports that OUR window closed while the
             // process was still reattachable. It is a data object, so it cannot smuggle a terminal
@@ -138,7 +163,7 @@ class S4RecoveryRequiredNeverExecutesTest {
     @Test
     fun `the unobservable arm is reachable only for a RUNNING row under a subprocess policy`() {
         val unobservable = RunningSubprocessObservation.Unavailable(UnobservableCause.NoControlRootConfigured)
-        val recoverPolicy = RunningSubprocessObservation.Recovered(RecoveredTerminal.Succeeded)
+        val recoverPolicy = RunningSubprocessObservation.Observed(exitedTerminal(0, null))
 
         val byCombination: List<Triple<String, String, Boolean>> = buildList {
             for (policy in listOf(RecoveryPolicy.None, RecoveryPolicy.ExternalSubprocess)) {
@@ -212,28 +237,39 @@ class S4RecoveryRequiredNeverExecutesTest {
             "§2.3 compatibility policy: the window is RECOVERED, so the row is terminalised and the " +
                 "handler does not run. Resolved to $resolution",
         )
+        // S4-F1-C1 TRANSITION: the carrier is the substrate's own `DurableTaskTerminal.Lost`, not the
+        // semantic `RecoveredTerminal.Lost`. The POLICY is unchanged — an expired window still
+        // becomes Lost, and D-1 is still DEFERRED — but the fact layer now speaks the substrate's
+        // vocabulary and leaves the meaning to the Step-owned projection. Asserting on the old type
+        // would have passed for the wrong reason and failed for a cosmetic one.
         val terminal = (resolution as InvocationReconciliation.RecoverRunning).terminal
         assertTrue(
-            terminal is RecoveredTerminal.Lost,
-            "and its terminal is Lost. The compatibility policy maps ReattachWindowExpired onto " +
-                "RecoveredTerminal.Lost; the non-terminal alternative is DEFERRED decision D-1. " +
-                "Succeeded here would fabricate a terminal for a process nobody proved finished. " +
-                "Got $terminal",
+            terminal is DurableTaskTerminal.Lost,
+            "and its terminal is a LOST fact. The compatibility policy maps ReattachWindowExpired " +
+                "onto DurableTaskTerminal.Lost; the non-terminal alternative is DEFERRED decision " +
+                "D-1. Succeeded here would fabricate a terminal for a process nobody proved " +
+                "finished. Got $terminal",
         )
-        val failure = (terminal as RecoveredTerminal.Lost).failure
+        val record = (terminal as DurableTaskTerminal.Lost).failure
         assertEquals(
             FailureKind.INFRASTRUCTURE,
-            failure.kind,
-            "the failure is infrastructure, not script: nothing about the SUBSTRATE went wrong, " +
-                "our observation window did. Got ${failure.kind}",
+            record.kind,
+            "the record is infrastructure, not script: nothing about the SUBSTRATE went wrong, " +
+                "our observation window did. Got ${record.kind}",
+        )
+        assertEquals(
+            "REATTACH_WINDOW_EXPIRED",
+            record.code,
+            "and it is self-identifying, so a reader of the journal can tell an expired window from a " +
+                "genuinely vanished substrate without inferring it from a message. Got ${record.code}",
         )
         assertTrue(
-            failure.message.contains("window", ignoreCase = true),
+            record.message.contains("window", ignoreCase = true),
             "and the operator-facing record must say the window is what ran out. This message is " +
                 "the only trace a future reader has of WHY a possibly-still-live process was " +
                 "terminalised, and it is what D-1 will be revisited against. The genuine Lost of " +
                 "an empty operation directory says 'could not be reconciled' instead, and " +
-                "conflating the two is the defect. Got: ${failure.message}",
+                "conflating the two is the defect. Got: ${record.message}",
         )
     }
 
@@ -299,4 +335,17 @@ class S4RecoveryRequiredNeverExecutesTest {
             return answer
         }
     }
+
+    /**
+     * S4-F1-C1 — the observed-facts form of a terminated shell.
+     *
+     * `capturedStdout = null` is the ABSENT case, which is deliberately reachable from this matrix:
+     * whether the absence of an output file matters is a question for the Step's contract, and the
+     * resolver is not allowed to have an opinion about it either way.
+     */
+    private fun exitedTerminal(exitCode: Int, capturedStdout: String?): DurableTaskTerminal =
+        DurableTaskTerminal.Exited(
+            exitCode = exitCode,
+            output = DurableTaskOutput(controlDir = "/ctrl", capturedStdout = capturedStdout),
+        )
 }

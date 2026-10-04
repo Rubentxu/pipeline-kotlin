@@ -310,7 +310,9 @@ class S4RKernelSpikeTest {
                         // decision is ReuseCompleted. Nothing is returned by the resolver, no status
                         // is interpreted here, and the typed value is still recoverable.
                         InvocationReconciliation.ReuseCompleted -> materialise(journaled)
-                        else -> ScriptedRegistryResult.Failed(effect.outcome.failure())
+                        // R14: the interpretation hands back the atomic carrier, so the outcome
+                        // is projected explicitly here — this spike only ever needed the outcome.
+                        else -> ScriptedRegistryResult.Failed(effect.result.outcome.failure())
                     }
                 RecoveryInterpretationEngine.RecoveryInterpretation.ProceedToExecution -> Unit
             }

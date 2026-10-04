@@ -320,12 +320,12 @@ class SegmentOutputStore(
      * write and commit cannot make an unacknowledged byte observable (I2), and a committed offset
      * can never point past what is on disk (I4).
      *
-     * Note the second truncation, in [Reserve]'s initialiser. It is **redundant**: this one has
-     * already run, and reads are bounded by the committed offset regardless. It is kept as a second
-     * line of defence, not because anything depends on it — the mutation harness says so
-     * explicitly, and a guard that only exists because nobody checked is the thing this project
-     * keeps finding. Which of the two is load-bearing was settled by instrumenting the store: the
-     * one here, not the other.
+     * Note that this is the ONLY place a crashed writer's uncommitted bytes are dropped. There used
+     * to be a second truncation in [Reserve]'s initialiser, disabled with `if (false)` and carrying a
+     * dead local. It was redundant — this has already run, and O3 makes a reservation unreachable
+     * before recovery — so restoring it would have given one fact two authorities. The mutation
+     * harness had already measured it as non-load-bearing; the line was a guard that guarded nothing.
+     * Deleting it is the honest form of that measurement.
      */
     private fun reconcile(layout: Layout): Long {
         val committed = committedLocked(layout)
@@ -579,12 +579,20 @@ class SegmentOutputStore(
 
             val base = committedLocked(layout)
             segmentBaseInternal = currentBaseLocked(layout)
-            // The segment holds only the bytes from its own base onwards, so dropping anything a
-            // previous crashed writer left behind means truncating to the committed extent *relative
-            // to the segment*, not to the global offset.
-            val committedInSegment = (base - segmentBaseInternal).coerceAtLeast(0L)
-            val onDisk = if (Files.exists(layout.segmentFile)) Files.size(layout.segmentFile) else 0L
-            if (false) truncateTo(layout.segmentFile, committedInSegment)
+            // No truncation happens here, and that is a decision rather than an omission.
+            //
+            // A segment longer than the committed extent means a writer crashed between write and
+            // commit, and [reconcile] is the single authority that resolves it: it runs on
+            // [recover], which O3 requires before any reservation can be taken at all — this very
+            // initialiser refuses a stream that still carries an outstanding reservation precisely
+            // because "recovery owns that decision". Enabling a second truncation here would give
+            // that one fact two authorities, and the two would disagree about which is right.
+            //
+            // There used to be one here, disabled with `if (false)`, carrying a dead `onDisk` local
+            // and a comment that described the property it no longer enforced. The mutation harness
+            // had already measured it as non-load-bearing, so the line was a guard that guarded
+            // nothing: it read like a defence and enforced none. It is deleted rather than switched
+            // off, because a disabled guard is a claim the code is not making.
 
             baseInternal = base
             position = base

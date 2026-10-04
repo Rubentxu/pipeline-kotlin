@@ -414,6 +414,20 @@ val bcvModules = setOf(
     "pipeline-events",
     "pipeline-step-sdk:api".removePrefix(":"), // resolved below by project.path
     "pipeline-credentials-api",
+    // BLOCK 2: the published output read contract. Added because `:pipeline-output` became a
+    // PUBLISHED artifact, and the dump is what freezes exactly which types a consumer resolves.
+    // Without it, adding a public type to the output plane would change the published surface with
+    // nothing failing: no diff to review, and no `apiCheck` to refuse it.
+    //
+    // `:pipeline-output-store` and `:pipeline-events-store` are deliberately NOT here. BCV protects
+    // a published ABI; those modules are not published, and a baseline over an internal
+    // implementation is maintenance with no consumer behind it.
+    "pipeline-output",
+    // BLOCK 2: already PUBLISHED since Lane R (the external plugin compiles against it) and
+    // therefore already had no ABI guard. Found while running `apiCheck` across the published set:
+    // the task did not exist. Guarding three published contracts and leaving the fourth free would
+    // have been the inconsistency, not the fix.
+    "pipeline-scripting-api",
 )
 
 subprojects {

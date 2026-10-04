@@ -1,0 +1,303 @@
+public final class dev/rubentxu/pipeline/v2/output/OutputAdoption {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/output/OutputAdoption;
+	public static final field POWER_LOSS_NOT_CLAIMED Ljava/lang/String;
+	public final fun getInvariants ()Ljava/util/List;
+	public final fun getNotEstablished ()Ljava/util/List;
+	public final fun getObligations ()Ljava/util/List;
+	public final fun invariantsBlockedBy (Ljava/util/Set;)Ljava/util/List;
+	public final fun mayClaimCrashConsistency (Ljava/util/Set;)Z
+}
+
+public final class dev/rubentxu/pipeline/v2/output/OutputAdoptionObligation : java/lang/Enum {
+	public static final field READER_RESUMES_FROM_COMMITTED Ldev/rubentxu/pipeline/v2/output/OutputAdoptionObligation;
+	public static final field RECOVERY_IS_AN_ENTRY_POINT Ldev/rubentxu/pipeline/v2/output/OutputAdoptionObligation;
+	public static final field WRITER_RESERVES_BEFORE_APPEND Ldev/rubentxu/pipeline/v2/output/OutputAdoptionObligation;
+	public final fun getDone ()Ljava/lang/String;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getId ()Ljava/lang/String;
+	public final fun getObligation ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/output/OutputAdoptionObligation;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/output/OutputAdoptionObligation;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/OutputCrashInvariant : java/lang/Enum {
+	public static final field I1_ACKNOWLEDGED_SURVIVES Ldev/rubentxu/pipeline/v2/output/OutputCrashInvariant;
+	public static final field I2_NO_UNACKNOWLEDGED_APPEARS Ldev/rubentxu/pipeline/v2/output/OutputCrashInvariant;
+	public static final field I3_ORDER_IS_DENSE Ldev/rubentxu/pipeline/v2/output/OutputCrashInvariant;
+	public static final field I4_NO_DANGLING_COMMIT Ldev/rubentxu/pipeline/v2/output/OutputCrashInvariant;
+	public static final field I5_NO_DUPLICATE_ON_RECOVERY Ldev/rubentxu/pipeline/v2/output/OutputCrashInvariant;
+	public static final field I6_NO_AMBIGUOUS_SLOT Ldev/rubentxu/pipeline/v2/output/OutputCrashInvariant;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getId ()Ljava/lang/String;
+	public final fun getStatement ()Ljava/lang/String;
+	public final fun getWitness ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/output/OutputCrashInvariant;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/output/OutputCrashInvariant;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/OutputCursor {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/output/OutputCursor$Companion;
+	public static final field TOKEN_PREFIX Ljava/lang/String;
+	public synthetic fun <init> (Ljava/lang/String;JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-_Q_Q91I ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun copy-6kf5MAA (Ljava/lang/String;J)Ldev/rubentxu/pipeline/v2/output/OutputCursor;
+	public static synthetic fun copy-6kf5MAA$default (Ldev/rubentxu/pipeline/v2/output/OutputCursor;Ljava/lang/String;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/output/OutputCursor;
+	public final fun encode ()Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCommittedOffset ()J
+	public final fun getStream-_Q_Q91I ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/OutputCursor$Companion {
+	public final fun decode (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/output/OutputCursor;
+	public final fun start-PRFo6Q8 (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/output/OutputCursor;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/OutputNotEstablished : java/lang/Enum {
+	public static final field CROSS_STREAM_GLOBAL_ORDER Ldev/rubentxu/pipeline/v2/output/OutputNotEstablished;
+	public static final field POWER_LOSS_DURABILITY Ldev/rubentxu/pipeline/v2/output/OutputNotEstablished;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getNotEstablished ()Ljava/lang/String;
+	public final fun getWhatItWouldTake ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/output/OutputNotEstablished;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/output/OutputNotEstablished;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/OutputPage {
+	public synthetic fun <init> ([BLjava/lang/String;JLdev/rubentxu/pipeline/v2/output/OutputCursor;JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()[B
+	public final fun component2-_Q_Q91I ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()Ldev/rubentxu/pipeline/v2/output/OutputCursor;
+	public final fun component5 ()J
+	public final fun copy-_cUFOvM ([BLjava/lang/String;JLdev/rubentxu/pipeline/v2/output/OutputCursor;J)Ldev/rubentxu/pipeline/v2/output/OutputPage;
+	public static synthetic fun copy-_cUFOvM$default (Ldev/rubentxu/pipeline/v2/output/OutputPage;[BLjava/lang/String;JLdev/rubentxu/pipeline/v2/output/OutputCursor;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/output/OutputPage;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()[B
+	public final fun getCommittedEnd ()J
+	public final fun getEnd ()J
+	public final fun getFrom ()J
+	public final fun getNext ()Ldev/rubentxu/pipeline/v2/output/OutputCursor;
+	public final fun getStream-_Q_Q91I ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/output/OutputPruneIntent {
+	public abstract fun getRunId ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/OutputPruneIntent$OperatorReleased : dev/rubentxu/pipeline/v2/output/OutputPruneIntent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/output/OutputPruneIntent$OperatorReleased;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/output/OutputPruneIntent$OperatorReleased;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/output/OutputPruneIntent$OperatorReleased;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRequestedBy ()Ljava/lang/String;
+	public fun getRunId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/OutputPruneIntent$RunReachedTerminalState : dev/rubentxu/pipeline/v2/output/OutputPruneIntent {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/output/OutputPruneIntent$RunReachedTerminalState;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/output/OutputPruneIntent$RunReachedTerminalState;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/output/OutputPruneIntent$RunReachedTerminalState;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getRunId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/OutputPruneReport {
+	public fun <init> (IJI)V
+	public final fun component1 ()I
+	public final fun component2 ()J
+	public final fun component3 ()I
+	public final fun copy (IJI)Ldev/rubentxu/pipeline/v2/output/OutputPruneReport;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/output/OutputPruneReport;IJIILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/output/OutputPruneReport;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytesReleased ()J
+	public final fun getStreamsRemoved ()I
+	public final fun getStreamsRetained ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/output/OutputReadPort {
+	public abstract fun committedExtent-PRFo6Q8 (Ljava/lang/String;)Ljava/lang/Long;
+	public abstract fun read-6Ce8pk8 (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/output/OutputCursor;I)Ldev/rubentxu/pipeline/v2/output/OutputReadResult;
+	public abstract fun readRange-6Ce8pk8 (Ljava/lang/String;JJ)Ldev/rubentxu/pipeline/v2/output/OutputReadResult;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/output/OutputReadResult {
+}
+
+public final class dev/rubentxu/pipeline/v2/output/OutputReadResult$Page : dev/rubentxu/pipeline/v2/output/OutputReadResult {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/output/OutputPage;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/output/OutputPage;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/output/OutputPage;)Ldev/rubentxu/pipeline/v2/output/OutputReadResult$Page;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/output/OutputReadResult$Page;Ldev/rubentxu/pipeline/v2/output/OutputPage;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/output/OutputReadResult$Page;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPage ()Ldev/rubentxu/pipeline/v2/output/OutputPage;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/OutputReadResult$Refused : dev/rubentxu/pipeline/v2/output/OutputReadResult {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/output/OutputRefusal;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/output/OutputRefusal;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/output/OutputRefusal;)Ldev/rubentxu/pipeline/v2/output/OutputReadResult$Refused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/output/OutputReadResult$Refused;Ldev/rubentxu/pipeline/v2/output/OutputRefusal;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/output/OutputReadResult$Refused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/output/OutputRefusal;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/output/OutputRefusal {
+}
+
+public final class dev/rubentxu/pipeline/v2/output/OutputRefusal$DanglingCommit : dev/rubentxu/pipeline/v2/output/OutputRefusal {
+	public fun <init> (JJ)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun copy (JJ)Ldev/rubentxu/pipeline/v2/output/OutputRefusal$DanglingCommit;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/output/OutputRefusal$DanglingCommit;JJILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/output/OutputRefusal$DanglingCommit;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReadableBytes ()J
+	public final fun getRequestedEnd ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/OutputRefusal$ForeignStream : dev/rubentxu/pipeline/v2/output/OutputRefusal {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-_Q_Q91I ()Ljava/lang/String;
+	public final fun component2-_Q_Q91I ()Ljava/lang/String;
+	public final fun copy-cJmnrJ4 (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/output/OutputRefusal$ForeignStream;
+	public static synthetic fun copy-cJmnrJ4$default (Ldev/rubentxu/pipeline/v2/output/OutputRefusal$ForeignStream;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/output/OutputRefusal$ForeignStream;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getActual-_Q_Q91I ()Ljava/lang/String;
+	public final fun getExpected-_Q_Q91I ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/OutputRefusal$InvalidRange : dev/rubentxu/pipeline/v2/output/OutputRefusal {
+	public fun <init> (JJ)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun copy (JJ)Ldev/rubentxu/pipeline/v2/output/OutputRefusal$InvalidRange;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/output/OutputRefusal$InvalidRange;JJILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/output/OutputRefusal$InvalidRange;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFrom ()J
+	public final fun getTo ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/OutputRefusal$OffsetBeyondCommitted : dev/rubentxu/pipeline/v2/output/OutputRefusal {
+	public fun <init> (JJ)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun copy (JJ)Ldev/rubentxu/pipeline/v2/output/OutputRefusal$OffsetBeyondCommitted;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/output/OutputRefusal$OffsetBeyondCommitted;JJILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/output/OutputRefusal$OffsetBeyondCommitted;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCommitted ()J
+	public final fun getRequested ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/OutputRefusal$RecoveryNotCompleted : dev/rubentxu/pipeline/v2/output/OutputRefusal {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/output/OutputRefusal$RecoveryNotCompleted;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/OutputRefusal$UnknownStream : dev/rubentxu/pipeline/v2/output/OutputRefusal {
+	public synthetic fun <init> (Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-_Q_Q91I ()Ljava/lang/String;
+	public final fun copy-PRFo6Q8 (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/output/OutputRefusal$UnknownStream;
+	public static synthetic fun copy-PRFo6Q8$default (Ldev/rubentxu/pipeline/v2/output/OutputRefusal$UnknownStream;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/output/OutputRefusal$UnknownStream;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getStream-_Q_Q91I ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/output/OutputRetentionPort {
+	public abstract fun hasOutputFor (Ljava/lang/String;)Z
+	public abstract fun prune (Ldev/rubentxu/pipeline/v2/output/OutputPruneIntent;)Ldev/rubentxu/pipeline/v2/output/OutputPruneReport;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/OutputStreamId {
+	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/output/OutputStreamId;
+	public static fun constructor-impl (Ljava/lang/String;)Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/output/RetainUntil {
+	public abstract fun authorize (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/output/RunLifecycle;)Ldev/rubentxu/pipeline/v2/output/OutputPruneIntent;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/RetainUntil$DefaultImpls {
+	public static fun authorize (Ldev/rubentxu/pipeline/v2/output/RetainUntil;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/output/RunLifecycle;)Ldev/rubentxu/pipeline/v2/output/OutputPruneIntent;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/RetainUntil$ExplicitReleaseOnly : dev/rubentxu/pipeline/v2/output/RetainUntil {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/output/RetainUntil$ExplicitReleaseOnly;
+	public fun authorize (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/output/RunLifecycle;)Ldev/rubentxu/pipeline/v2/output/OutputPruneIntent;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/RetainUntil$Forever : dev/rubentxu/pipeline/v2/output/RetainUntil {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/output/RetainUntil$Forever;
+	public fun authorize (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/output/RunLifecycle;)Ldev/rubentxu/pipeline/v2/output/OutputPruneIntent;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/RetainUntil$RunTerminalPlus : dev/rubentxu/pipeline/v2/output/RetainUntil {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/output/RetainUntil$RunTerminalPlus;
+	public fun authorize (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/output/RunLifecycle;)Ldev/rubentxu/pipeline/v2/output/OutputPruneIntent;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/output/RunLifecycle {
+}
+
+public final class dev/rubentxu/pipeline/v2/output/RunLifecycle$StillRunning : dev/rubentxu/pipeline/v2/output/RunLifecycle {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/output/RunLifecycle$StillRunning;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/output/RunLifecycle$Terminal : dev/rubentxu/pipeline/v2/output/RunLifecycle {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/output/RunLifecycle$Terminal;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+

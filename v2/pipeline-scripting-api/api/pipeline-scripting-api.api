@@ -1,0 +1,1462 @@
+public final class dev/rubentxu/pipeline/v2/dsl/BranchScope {
+	public fun <init> ()V
+	public final fun dir (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public final fun echo (Ljava/lang/String;)V
+	public final fun error (Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun error$default (Ldev/rubentxu/pipeline/v2/dsl/BranchScope;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun getSteps ()Ljava/util/List;
+	public final fun lock (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;)V
+	public static synthetic fun lock$default (Ldev/rubentxu/pipeline/v2/dsl/BranchScope;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public final fun sh (Ljava/lang/String;)V
+	public final fun sleep (J)V
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/DirectivesScope {
+	public fun <init> ()V
+	public final fun build ()Ljava/util/List;
+	public final fun directive (Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun directive$default (Ldev/rubentxu/pipeline/v2/dsl/DirectivesScope;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun whenEnvIs (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun whenEnvPresent (Ljava/lang/String;)V
+	public final fun whenGate (Ldev/rubentxu/pipeline/v2/domain/directive/WhenPredicate;)V
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/DslRuntimeConfigScope {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/dsl/DslRuntimeConfigScope;
+	public static final fun clear ()V
+	public static final fun current ()Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;
+	public static final fun set (Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;)V
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/EnvironmentScope {
+	public fun <init> ()V
+	public final fun build ()Ljava/util/Map;
+	public final fun env (Ljava/lang/String;Ljava/lang/String;)V
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/EnvironmentSpec {
+	public fun <init> (Ljava/util/Map;)V
+	public final fun component1 ()Ljava/util/Map;
+	public final fun copy (Ljava/util/Map;)Ldev/rubentxu/pipeline/v2/dsl/EnvironmentSpec;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/EnvironmentSpec;Ljava/util/Map;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/EnvironmentSpec;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getValues ()Ljava/util/Map;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/OptionsScope {
+	public fun <init> ()V
+	public final fun build ()Ldev/rubentxu/pipeline/v2/dsl/OptionsSpec;
+	public final fun getTimeout ()Ljava/lang/Long;
+	public final fun setTimeout (Ljava/lang/Long;)V
+	public final fun timeout (J)V
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/OptionsSpec {
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/Long;)V
+	public synthetic fun <init> (Ljava/lang/Long;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/Long;
+	public final fun copy (Ljava/lang/Long;)Ldev/rubentxu/pipeline/v2/dsl/OptionsSpec;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/OptionsSpec;Ljava/lang/Long;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/OptionsSpec;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getTimeout ()Ljava/lang/Long;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/ParallelScope {
+	public fun <init> ()V
+	public final fun branch (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public final fun build ()Ljava/util/List;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/PipelineDslKt {
+	public static final fun pipeline (Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;Lkotlin/jvm/functions/Function1;)Ldev/rubentxu/pipeline/v2/dsl/PipelineSpec;
+	public static final fun pipeline (Lkotlin/jvm/functions/Function1;)Ldev/rubentxu/pipeline/v2/dsl/PipelineSpec;
+	public static final fun toSpec (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding;)Ldev/rubentxu/pipeline/v2/domain/credentials/CredentialBindingSpec;
+}
+
+public abstract interface annotation class dev/rubentxu/pipeline/v2/dsl/PipelineDslMarker : java/lang/annotation/Annotation {
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/PipelineScope {
+	public fun <init> ()V
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;)V
+	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun buildStages ()Ljava/util/List;
+	public final fun stages (Lkotlin/jvm/functions/Function1;)V
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/PipelineSpec {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/PipelineSpec;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/PipelineSpec;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/PipelineSpec;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getStages ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/PostConditionSpec {
+	public fun <init> ()V
+	public fun <init> (Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/Map;
+	public final fun copy (Ljava/util/Map;)Ldev/rubentxu/pipeline/v2/dsl/PostConditionSpec;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/PostConditionSpec;Ljava/util/Map;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/PostConditionSpec;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getConditions ()Ljava/util/Map;
+	public fun hashCode ()I
+	public final fun isEmpty ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface annotation class dev/rubentxu/pipeline/v2/dsl/PostDslMarker : java/lang/annotation/Annotation {
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/PostScope {
+	public fun <init> ()V
+	public final fun aborted (Lkotlin/jvm/functions/Function1;)V
+	public final fun always (Lkotlin/jvm/functions/Function1;)V
+	public final fun build ()Ldev/rubentxu/pipeline/v2/dsl/PostConditionSpec;
+	public final fun cleanup (Lkotlin/jvm/functions/Function1;)V
+	public final fun failure (Lkotlin/jvm/functions/Function1;)V
+	public final fun success (Lkotlin/jvm/functions/Function1;)V
+	public final fun unstable (Lkotlin/jvm/functions/Function1;)V
+	public final fun unsuccessful (Lkotlin/jvm/functions/Function1;)V
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/PostStepsScope {
+	public fun <init> ()V
+	public final fun echo (Ljava/lang/String;)V
+	public final fun error (Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun error$default (Ldev/rubentxu/pipeline/v2/dsl/PostStepsScope;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun getSteps ()Ljava/util/List;
+	public final fun sh (Ljava/lang/String;)V
+	public final fun sleep (J)V
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/ScriptScope {
+	public fun <init> ()V
+	public final fun echo (Ljava/lang/String;)V
+	public final fun error (Ljava/lang/String;)V
+	public final fun getCommands ()Ljava/util/List;
+	public final fun line (Ljava/lang/String;)V
+	public final fun sh (Ljava/lang/String;)V
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StageBuilder {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;Ldev/rubentxu/pipeline/v2/dsl/OptionsSpec;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/dsl/PostConditionSpec;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Ldev/rubentxu/pipeline/v2/dsl/OptionsSpec;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/dsl/PostConditionSpec;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun build ()Ldev/rubentxu/pipeline/v2/dsl/StageSpec;
+}
+
+public abstract interface annotation class dev/rubentxu/pipeline/v2/dsl/StageDslMarker : java/lang/annotation/Annotation {
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StageScope : dev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps {
+	public static final field ISUNIX_PLACEHOLDER Z
+	public static final field RUNTIME_VALUE_PLACEHOLDER Ljava/lang/String;
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;)V
+	public synthetic fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun agent (Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun agent$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun agentAny ()V
+	public final fun agentWithCapabilities ([Ljava/lang/String;)V
+	public final fun ansiColor (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun ansiColor$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public final fun catchError (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun catchError$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public final fun cleanWs (ZLjava/util/List;)V
+	public final fun cleanWs (Z[Ljava/lang/String;)V
+	public static synthetic fun cleanWs$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;ZLjava/util/List;ILjava/lang/Object;)V
+	public static synthetic fun cleanWs$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;Z[Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun deleteDir (Ljava/lang/String;)V
+	public static synthetic fun deleteDir$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun directives (Lkotlin/jvm/functions/Function1;)V
+	public final fun isUnix ()Z
+	public final fun load (Ljava/lang/String;)V
+	public final fun milestone (ILjava/lang/String;)V
+	public static synthetic fun milestone$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;ILjava/lang/String;ILjava/lang/Object;)V
+	public final fun node (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun node$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public final fun publishHTML (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun publishHTML (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun publishHTML (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V
+	public final fun publishHTML (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZ)V
+	public final fun publishHTML (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZZ)V
+	public static synthetic fun publishHTML$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZZILjava/lang/Object;)V
+	public final fun pwd (Z)Ljava/lang/String;
+	public static synthetic fun pwd$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;ZILjava/lang/Object;)Ljava/lang/String;
+	public final fun retry (ILkotlin/jvm/functions/Function1;)V
+	public final fun stash (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun stash$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun timeout (JLjava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public final fun timestamps (Lkotlin/jvm/functions/Function1;)V
+	public final fun toStageBuilder ()Ldev/rubentxu/pipeline/v2/dsl/StageBuilder;
+	public final fun unstable (Ljava/lang/String;)V
+	public final fun unstash (Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun unstash$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun waitUntil (JZLkotlin/jvm/functions/Function1;)V
+	public static synthetic fun waitUntil$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;JZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public final fun warnError (Ljava/lang/String;ZLkotlin/jvm/functions/Function1;)V
+	public static synthetic fun warnError$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public final fun whenEnvIs (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun whenEnvPresent (Ljava/lang/String;)V
+	public final fun whenGate (Ldev/rubentxu/pipeline/v2/domain/directive/WhenPredicate;)V
+}
+
+public class dev/rubentxu/pipeline/v2/dsl/StageScopeCore {
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;)V
+	public final fun checkout (Ldev/rubentxu/pipeline/v2/domain/scm/CheckoutSpec;)V
+	public final fun checkout (Ldev/rubentxu/pipeline/v2/domain/scm/Scm;)V
+	public final fun echo (Ljava/lang/String;)V
+	public final fun environment (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public final fun environment (Lkotlin/jvm/functions/Function1;)V
+	public final fun error (Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun error$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeCore;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	protected final fun getRuntimeConfig ()Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;
+	protected final fun getStageEnvironment ()Ldev/rubentxu/pipeline/v2/dsl/EnvironmentSpec;
+	protected final fun getStageName ()Ljava/lang/String;
+	protected final fun getStageOptions ()Ldev/rubentxu/pipeline/v2/dsl/OptionsSpec;
+	protected final fun getStagePost ()Ldev/rubentxu/pipeline/v2/dsl/PostConditionSpec;
+	protected final fun getSteps ()Ljava/util/List;
+	public final fun git--CS5l-g (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZ)V
+	public static synthetic fun git--CS5l-g$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeCore;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZILjava/lang/Object;)V
+	protected final fun markCarrierConsumed (Ljava/lang/Object;)V
+	protected final fun nestedScope ()Ldev/rubentxu/pipeline/v2/dsl/StageScope;
+	public final fun options (Lkotlin/jvm/functions/Function1;)V
+	public final fun parallel (Lkotlin/jvm/functions/Function1;)V
+	public final fun post (Lkotlin/jvm/functions/Function1;)V
+	protected final fun registerMustConsume (Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/Object;
+	public final fun scmGit-SFgL4JM (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZLjava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/scm/CheckoutSpec;
+	public static synthetic fun scmGit-SFgL4JM$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeCore;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZLjava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/scm/CheckoutSpec;
+	public final fun script (Lkotlin/jvm/functions/Function1;)V
+	protected final fun setStageEnvironment (Ldev/rubentxu/pipeline/v2/dsl/EnvironmentSpec;)V
+	protected final fun setStageOptions (Ldev/rubentxu/pipeline/v2/dsl/OptionsSpec;)V
+	protected final fun setStagePost (Ldev/rubentxu/pipeline/v2/dsl/PostConditionSpec;)V
+	public final fun sh (Ljava/lang/String;)V
+	public final fun sh (Ljava/lang/String;ZZ)V
+	public static synthetic fun sh$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeCore;Ljava/lang/String;ZZILjava/lang/Object;)V
+	public final fun sleep (J)V
+	public final fun steps ()Ljava/util/List;
+	public final fun withCredentials (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding;Lkotlin/jvm/functions/Function1;)V
+	public final fun withCredentials (Ljava/util/List;Lkotlin/jvm/functions/Function1;)V
+	public final fun withCredentials ([Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding;Lkotlin/jvm/functions/Function1;)V
+}
+
+public class dev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps : dev/rubentxu/pipeline/v2/dsl/StageScopeCore {
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;)V
+	public final fun archiveArtifacts (Ljava/lang/String;ZLjava/lang/String;ZLjava/lang/String;)V
+	public static synthetic fun archiveArtifacts$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps;Ljava/lang/String;ZLjava/lang/String;ZLjava/lang/String;ILjava/lang/Object;)V
+	public final fun artifactQuery (Ljava/lang/String;)V
+	public final fun dir (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	protected final fun escapeJsonString (Ljava/lang/String;)Ljava/lang/String;
+	public final fun fileExists (Ljava/lang/String;)V
+	public final fun input (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun input$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public final fun lock (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;)V
+	public static synthetic fun lock$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public final fun readFile (Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun readFile$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun registryBlock-8FtRcd8 (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun registryBlock-8FtRcd8$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public final fun registryStep-TmLEHys (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun registryStep-TmLEHys$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun retry (ILjava/lang/Long;)Ljava/lang/Void;
+	public static synthetic fun retry$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps;ILjava/lang/Long;ILjava/lang/Object;)Ljava/lang/Void;
+	public final fun withEnv (Ljava/util/List;Lkotlin/jvm/functions/Function1;)V
+	public final fun withEnv (Ljava/util/Map;Lkotlin/jvm/functions/Function1;)V
+	public final fun withEnv ([Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public final fun writeFile (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun writeFile$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeTopSteps;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StageSpec {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;Ldev/rubentxu/pipeline/v2/dsl/OptionsSpec;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/dsl/PostConditionSpec;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Ldev/rubentxu/pipeline/v2/dsl/OptionsSpec;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/dsl/PostConditionSpec;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/dsl/OptionsSpec;
+	public final fun component4 ()Ljava/util/Map;
+	public final fun component5 ()Ljava/util/List;
+	public final fun component6 ()Ldev/rubentxu/pipeline/v2/dsl/PostConditionSpec;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;Ldev/rubentxu/pipeline/v2/dsl/OptionsSpec;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/dsl/PostConditionSpec;)Ldev/rubentxu/pipeline/v2/dsl/StageSpec;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StageSpec;Ljava/lang/String;Ljava/util/List;Ldev/rubentxu/pipeline/v2/dsl/OptionsSpec;Ljava/util/Map;Ljava/util/List;Ldev/rubentxu/pipeline/v2/dsl/PostConditionSpec;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StageSpec;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDirectives ()Ljava/util/List;
+	public final fun getEnvironment ()Ljava/util/Map;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getOptions ()Ldev/rubentxu/pipeline/v2/dsl/OptionsSpec;
+	public final fun getPost ()Ldev/rubentxu/pipeline/v2/dsl/PostConditionSpec;
+	public final fun getSteps ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StagesScope {
+	public fun <init> ()V
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;)V
+	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun buildStageBuilders ()Ljava/util/List;
+	public final fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+}
+
+public abstract interface annotation class dev/rubentxu/pipeline/v2/dsl/StepDslMarker : java/lang/annotation/Annotation {
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/dsl/StepSpec : dev/rubentxu/pipeline/v2/domain/durable/StepSpec {
+	public abstract fun getName ()Ljava/lang/String;
+	public abstract fun getType ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$AnsiColor : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$AnsiColor;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$AnsiColor;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$AnsiColor;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getColorMapName ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public final fun getSteps ()Ljava/util/List;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$ArchiveArtifacts : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/Boolean;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/Boolean;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$ArchiveArtifacts;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$ArchiveArtifacts;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$ArchiveArtifacts;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAllowEmptyArchive ()Ljava/lang/Boolean;
+	public final fun getArtifactName ()Ljava/lang/String;
+	public final fun getArtifacts ()Ljava/lang/String;
+	public final fun getExcludes ()Ljava/lang/String;
+	public final fun getFingerprint ()Ljava/lang/Boolean;
+	public fun getName ()Ljava/lang/String;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$ArtifactQuery : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$ArtifactQuery;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$ArtifactQuery;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$ArtifactQuery;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArtifactName ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$BranchSpec {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$BranchSpec;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$BranchSpec;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$BranchSpec;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getName ()Ljava/lang/String;
+	public final fun getSteps ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$CatchError : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CatchError;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CatchError;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CatchError;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBuildResult ()Ljava/lang/String;
+	public final fun getMessage ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public final fun getStageResult ()Ljava/lang/String;
+	public final fun getSteps ()Ljava/util/List;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Checkout : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/scm/Scm;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/scm/Scm;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/scm/Scm;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Checkout;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Checkout;Ldev/rubentxu/pipeline/v2/domain/scm/Scm;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Checkout;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public final fun getScm ()Ldev/rubentxu/pipeline/v2/domain/scm/Scm;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$CleanWs : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> ()V
+	public fun <init> (ZLjava/util/List;)V
+	public synthetic fun <init> (ZLjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Z
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (ZLjava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CleanWs;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CleanWs;ZLjava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CleanWs;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDeleteDirs ()Z
+	public fun getName ()Ljava/lang/String;
+	public final fun getPatterns ()Ljava/util/List;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Companion;
+	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Kind;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Kind;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Kind;
+	public final fun component2-znhjOio ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Ljava/lang/String;
+	public final fun component7 ()Ljava/lang/String;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun component9 ()Ljava/lang/String;
+	public final fun copy-pYtxqZ0 (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Kind;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding;
+	public static synthetic fun copy-pYtxqZ0$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding;Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Kind;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAliasVariable ()Ljava/lang/String;
+	public final fun getCredentialsId-znhjOio ()Ljava/lang/String;
+	public final fun getKeyFileVariable ()Ljava/lang/String;
+	public final fun getKeystoreVariable ()Ljava/lang/String;
+	public final fun getKind ()Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Kind;
+	public final fun getPassphraseVariable ()Ljava/lang/String;
+	public final fun getPasswordVariable ()Ljava/lang/String;
+	public final fun getUsernameVariable ()Ljava/lang/String;
+	public final fun getVariable ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Companion {
+	public final fun certificate (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding;
+	public static synthetic fun certificate$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Companion;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding;
+	public final fun file (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding;
+	public final fun sshUserPrivateKey (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding;
+	public static synthetic fun sshUserPrivateKey$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Companion;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding;
+	public final fun string (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding;
+	public final fun usernameColonPassword (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding;
+	public final fun usernamePassword (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding;
+	public final fun zip (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding;
+	public final fun zip (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Kind : java/lang/Enum {
+	public static final field CERTIFICATE Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Kind;
+	public static final field FILE Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Kind;
+	public static final field SSH_USER_PRIVATE_KEY Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Kind;
+	public static final field STRING Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Kind;
+	public static final field USERNAME_COLON_PASSWORD Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Kind;
+	public static final field USERNAME_PASSWORD Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Kind;
+	public static final field ZIP Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Kind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Kind;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/dsl/StepSpec$CredentialsBinding$Kind;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$DeleteDir : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$DeleteDir;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$DeleteDir;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$DeleteDir;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Dir : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Dir;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Dir;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Dir;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getSteps ()Ljava/util/List;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Echo : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Echo;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Echo;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Echo;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public final fun getText ()Ljava/lang/String;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Error : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Error;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Error;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Error;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFailureKind ()Ljava/lang/String;
+	public final fun getMessage ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$FileExists : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$FileExists;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$FileExists;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$FileExists;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFile ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Input : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/Integer;
+	public final fun component6 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Input;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Input;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Input;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()Ljava/lang/String;
+	public final fun getMessage ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public final fun getOk ()Ljava/lang/String;
+	public final fun getSteps ()Ljava/util/List;
+	public final fun getSubmitter ()Ljava/lang/String;
+	public final fun getTimeoutSeconds ()Ljava/lang/Integer;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$IsUnix : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> ()V
+	public fun getName ()Ljava/lang/String;
+	public fun getType ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Load : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Load;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Load;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Load;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Lock : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;ZLjava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;ZLjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/Integer;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Z
+	public final fun component5 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;ZLjava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Lock;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Lock;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;ZLjava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Lock;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public final fun getReason ()Ljava/lang/String;
+	public final fun getResource ()Ljava/lang/String;
+	public final fun getSkipIfLocked ()Z
+	public final fun getSteps ()Ljava/util/List;
+	public final fun getTimeoutSeconds ()Ljava/lang/Integer;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Milestone : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (ILjava/lang/String;)V
+	public synthetic fun <init> (ILjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (ILjava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Milestone;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Milestone;ILjava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Milestone;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLabel ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public final fun getOrdinal ()I
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$NodeNoOp : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$NodeNoOp;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$NodeNoOp;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$NodeNoOp;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLabel ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public final fun getSteps ()Ljava/util/List;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Parallel : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Parallel;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Parallel;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Parallel;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBranches ()Ljava/util/List;
+	public fun getName ()Ljava/lang/String;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Pwd : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> ()V
+	public fun <init> (Z)V
+	public synthetic fun <init> (ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Z
+	public final fun copy (Z)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Pwd;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Pwd;ZILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Pwd;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public final fun getTmp ()Z
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$ReadFile : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$ReadFile;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$ReadFile;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$ReadFile;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEncoding ()Ljava/lang/String;
+	public final fun getFile ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$RegistryBlockSpec : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-GfyuE-w ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3-WbkZQBY ()Ljava/lang/String;
+	public final fun component4 ()Ljava/util/List;
+	public final fun copy-sjM4VpU (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$RegistryBlockSpec;
+	public static synthetic fun copy-sjM4VpU$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$RegistryBlockSpec;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$RegistryBlockSpec;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBody ()Ljava/util/List;
+	public final fun getEncodedInput-WbkZQBY ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public final fun getSchemaVersion ()Ljava/lang/String;
+	public final fun getStepKey-GfyuE-w ()Ljava/lang/String;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$RegistryStepSpec : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-GfyuE-w ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3-WbkZQBY ()Ljava/lang/String;
+	public final fun copy-cQ_fvL8 (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$RegistryStepSpec;
+	public static synthetic fun copy-cQ_fvL8$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$RegistryStepSpec;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$RegistryStepSpec;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEncodedInput-WbkZQBY ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public final fun getSchemaVersion ()Ljava/lang/String;
+	public final fun getStepKey-GfyuE-w ()Ljava/lang/String;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$RetryBlock : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (ILjava/util/List;Ljava/util/List;)V
+	public synthetic fun <init> (ILjava/util/List;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (ILjava/util/List;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$RetryBlock;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$RetryBlock;ILjava/util/List;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$RetryBlock;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getConditions ()Ljava/util/List;
+	public final fun getCount ()I
+	public fun getName ()Ljava/lang/String;
+	public final fun getSteps ()Ljava/util/List;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Shell : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/lang/String;ZZ)V
+	public synthetic fun <init> (Ljava/lang/String;ZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Z
+	public final fun component3 ()Z
+	public final fun copy (Ljava/lang/String;ZZ)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Shell;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Shell;Ljava/lang/String;ZZILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Shell;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCommand ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public final fun getReturnStdout ()Z
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public final fun isScriptBlock ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Sleep : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (J)V
+	public final fun component1 ()J
+	public final fun copy (J)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Sleep;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Sleep;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Sleep;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public final fun getSeconds ()J
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$TimeoutBlock : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (JLjava/lang/String;Ljava/util/List;)V
+	public final fun component1 ()J
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (JLjava/lang/String;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$TimeoutBlock;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$TimeoutBlock;JLjava/lang/String;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$TimeoutBlock;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public final fun getSteps ()Ljava/util/List;
+	public final fun getTime ()J
+	public fun getType ()Ljava/lang/String;
+	public final fun getUnit ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Timestamps : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Timestamps;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Timestamps;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Timestamps;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public final fun getSteps ()Ljava/util/List;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Unstable : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Unstable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Unstable;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Unstable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMessage ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$WaitUntilBlock : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> ()V
+	public fun <init> (JZLjava/util/List;)V
+	public synthetic fun <init> (JZLjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()J
+	public final fun component2 ()Z
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (JZLjava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WaitUntilBlock;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WaitUntilBlock;JZLjava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WaitUntilBlock;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBody ()Ljava/util/List;
+	public final fun getInitialRecurrencePeriod ()J
+	public fun getName ()Ljava/lang/String;
+	public final fun getQuiet ()Z
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$WarnError : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/lang/String;ZLjava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;ZLjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Z
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;ZLjava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WarnError;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WarnError;Ljava/lang/String;ZLjava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WarnError;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCatchInterruptions ()Z
+	public final fun getMessage ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public final fun getSteps ()Ljava/util/List;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$WithCredentialsBlock : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-znhjOio ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()Ljava/util/List;
+	public final fun copy-FaYMo5M (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WithCredentialsBlock;
+	public static synthetic fun copy-FaYMo5M$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WithCredentialsBlock;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WithCredentialsBlock;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBindings ()Ljava/util/List;
+	public final fun getCredentialsId-znhjOio ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public final fun getPurpose ()Ljava/lang/String;
+	public final fun getSteps ()Ljava/util/List;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$WithEnv : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/util/List;Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WithEnv;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WithEnv;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WithEnv;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public final fun getOverrides ()Ljava/util/List;
+	public final fun getSteps ()Ljava/util/List;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$WriteFile : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WriteFile;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WriteFile;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WriteFile;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEncoding ()Ljava/lang/String;
+	public final fun getFile ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public final fun getText ()Ljava/lang/String;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/TimeoutAction : java/lang/Enum {
+	public static final field CONTINUE Ldev/rubentxu/pipeline/v2/dsl/TimeoutAction;
+	public static final field FAIL Ldev/rubentxu/pipeline/v2/dsl/TimeoutAction;
+	public static final field MARK_UNSTABLE Ldev/rubentxu/pipeline/v2/dsl/TimeoutAction;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/TimeoutAction;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/dsl/TimeoutAction;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/TimeoutSpec {
+	public fun <init> (JLdev/rubentxu/pipeline/v2/dsl/TimeoutAction;)V
+	public synthetic fun <init> (JLdev/rubentxu/pipeline/v2/dsl/TimeoutAction;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()J
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/dsl/TimeoutAction;
+	public final fun copy (JLdev/rubentxu/pipeline/v2/dsl/TimeoutAction;)Ldev/rubentxu/pipeline/v2/dsl/TimeoutSpec;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/TimeoutSpec;JLdev/rubentxu/pipeline/v2/dsl/TimeoutAction;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/TimeoutSpec;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAction ()Ldev/rubentxu/pipeline/v2/dsl/TimeoutAction;
+	public final fun getSeconds ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/WhenGateDslKt {
+	public static final fun whenAll (Ldev/rubentxu/pipeline/v2/dsl/StageScope;[Ldev/rubentxu/pipeline/v2/domain/directive/WhenPredicate;)V
+	public static final fun whenAny (Ldev/rubentxu/pipeline/v2/dsl/StageScope;[Ldev/rubentxu/pipeline/v2/domain/directive/WhenPredicate;)V
+	public static final fun whenNot (Ldev/rubentxu/pipeline/v2/dsl/StageScope;Ldev/rubentxu/pipeline/v2/domain/directive/WhenPredicate;)V
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/CacheKey {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/scripting/CacheKey$Companion;
+	public static final field V1 Ljava/lang/String;
+	public static final field V2 Ljava/lang/String;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/CacheKey;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public final fun getVersion ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/CacheKey$Companion {
+	public final fun sha256Hex ([Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/CacheKey$Companion$v1 {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/scripting/CacheKey$Companion$v1;
+	public final fun compute (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/CacheKey$Companion$v2 {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/scripting/CacheKey$Companion$v2;
+	public final fun compute (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/scripting/CompiledScriptedEntryPoint {
+	public abstract fun execute (Ldev/rubentxu/pipeline/v2/scripting/ScriptedStepFacade;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun getArtifact ()Ldev/rubentxu/pipeline/v2/scripting/ScriptedArtifactIdentity;
+	public abstract fun getEntryPointId ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ReturnStatus {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/scripting/ReturnStatus;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ReturnStdout {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/scripting/ReturnStdout;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/scripting/ScriptCompilationResult {
+	public abstract fun getCacheKey ()Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
+	public abstract fun getDiagnostics ()Ljava/util/List;
+	public fun getScriptInstance ()Ljava/lang/Object;
+	public fun getValue ()Ljava/lang/Object;
+	public fun isSuccess ()Z
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptCompilationResult$DefaultImpls {
+	public static fun getScriptInstance (Ldev/rubentxu/pipeline/v2/scripting/ScriptCompilationResult;)Ljava/lang/Object;
+	public static fun getValue (Ldev/rubentxu/pipeline/v2/scripting/ScriptCompilationResult;)Ljava/lang/Object;
+	public static fun isSuccess (Ldev/rubentxu/pipeline/v2/scripting/ScriptCompilationResult;)Z
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptCompilationResult$Failure : dev/rubentxu/pipeline/v2/scripting/ScriptCompilationResult {
+	public fun <init> (Ljava/util/List;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
+	public final fun copy (Ljava/util/List;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;)Ldev/rubentxu/pipeline/v2/scripting/ScriptCompilationResult$Failure;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptCompilationResult$Failure;Ljava/util/List;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptCompilationResult$Failure;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCacheKey ()Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
+	public fun getDiagnostics ()Ljava/util/List;
+	public fun getScriptInstance ()Ljava/lang/Object;
+	public fun getValue ()Ljava/lang/Object;
+	public fun hashCode ()I
+	public fun isSuccess ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptCompilationResult$Success : dev/rubentxu/pipeline/v2/scripting/ScriptCompilationResult {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput;Ljava/lang/Object;Ljava/util/List;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput;
+	public final fun component2 ()Ljava/lang/Object;
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput;Ljava/lang/Object;Ljava/util/List;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;)Ldev/rubentxu/pipeline/v2/scripting/ScriptCompilationResult$Success;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptCompilationResult$Success;Ldev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput;Ljava/lang/Object;Ljava/util/List;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptCompilationResult$Success;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCacheKey ()Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
+	public fun getDiagnostics ()Ljava/util/List;
+	public final fun getOutput ()Ldev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput;
+	public fun getScriptInstance ()Ljava/lang/Object;
+	public fun getValue ()Ljava/lang/Object;
+	public fun hashCode ()I
+	public fun isSuccess ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptDefinition {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/scripting/ScriptDefinition$Companion;
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;Ljava/nio/file/Path;Ljava/util/List;Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/nio/file/Path;Ljava/util/List;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public static final fun classpathJar (Ljava/lang/String;)Ljava/lang/String;
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/nio/file/Path;
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()Ljava/util/Map;
+	public final fun copy (Ljava/lang/String;Ljava/nio/file/Path;Ljava/util/List;Ljava/util/Map;)Ldev/rubentxu/pipeline/v2/scripting/ScriptDefinition;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptDefinition;Ljava/lang/String;Ljava/nio/file/Path;Ljava/util/List;Ljava/util/Map;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptDefinition;
+	public static final fun domainJar ()Ljava/lang/String;
+	public static final fun dslApiJar ()Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public static final fun file (Ljava/nio/file/Path;Ljava/util/List;Ljava/util/Map;)Ldev/rubentxu/pipeline/v2/scripting/ScriptDefinition;
+	public final fun getClasspath ()Ljava/util/List;
+	public final fun getProperties ()Ljava/util/Map;
+	public final fun getSourcePath ()Ljava/nio/file/Path;
+	public final fun getSourceText ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static final fun inline (Ljava/lang/String;Ljava/util/List;Ljava/util/Map;)Ldev/rubentxu/pipeline/v2/scripting/ScriptDefinition;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptDefinition$Companion {
+	public final fun classpathJar (Ljava/lang/String;)Ljava/lang/String;
+	public final fun domainJar ()Ljava/lang/String;
+	public final fun dslApiJar ()Ljava/lang/String;
+	public final fun file (Ljava/nio/file/Path;Ljava/util/List;Ljava/util/Map;)Ldev/rubentxu/pipeline/v2/scripting/ScriptDefinition;
+	public static synthetic fun file$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptDefinition$Companion;Ljava/nio/file/Path;Ljava/util/List;Ljava/util/Map;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptDefinition;
+	public final fun inline (Ljava/lang/String;Ljava/util/List;Ljava/util/Map;)Ldev/rubentxu/pipeline/v2/scripting/ScriptDefinition;
+	public static synthetic fun inline$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptDefinition$Companion;Ljava/lang/String;Ljava/util/List;Ljava/util/Map;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptDefinition;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity : java/lang/Enum {
+	public static final field DEBUG Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;
+	public static final field ERROR Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;
+	public static final field FATAL Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;
+	public static final field INFO Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;
+	public static final field WARNING Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/scripting/ScriptEvaluationContext {
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput {
+	public abstract fun getValue ()Ljava/lang/Object;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput$CompiledEntryPoint : dev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/scripting/CompiledScriptedEntryPoint;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/scripting/CompiledScriptedEntryPoint;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/scripting/CompiledScriptedEntryPoint;)Ldev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput$CompiledEntryPoint;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput$CompiledEntryPoint;Ldev/rubentxu/pipeline/v2/scripting/CompiledScriptedEntryPoint;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput$CompiledEntryPoint;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEntryPoint ()Ldev/rubentxu/pipeline/v2/scripting/CompiledScriptedEntryPoint;
+	public fun getValue ()Ljava/lang/Object;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput$NoValue : dev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput$NoValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public synthetic fun getValue ()Ljava/lang/Object;
+	public fun getValue ()Ljava/lang/Void;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput$ReturnedNull : dev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput$ReturnedNull;
+	public fun equals (Ljava/lang/Object;)Z
+	public synthetic fun getValue ()Ljava/lang/Object;
+	public fun getValue ()Ljava/lang/Void;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput$ReturnedValue : dev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput {
+	public fun <init> (Ljava/lang/Object;)V
+	public final fun component1 ()Ljava/lang/Object;
+	public final fun copy (Ljava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput$ReturnedValue;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput$ReturnedValue;Ljava/lang/Object;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput$ReturnedValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getValue ()Ljava/lang/Object;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput$Unit : dev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/scripting/ScriptEvaluationOutput$Unit;
+	public fun equals (Ljava/lang/Object;)Z
+	public synthetic fun getValue ()Ljava/lang/Object;
+	public fun getValue ()Ljava/lang/Void;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedArtifactIdentity {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedArtifactIdentity;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedArtifactIdentity;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedArtifactIdentity;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun fingerprintMaterial ()Ljava/lang/String;
+	public final fun getCompilerAdapterVersion ()Ljava/lang/String;
+	public final fun getDslApiVersion ()Ljava/lang/String;
+	public final fun getFacadeSchemaDigest ()Ljava/lang/String;
+	public final fun getPluginLockDigest ()Ljava/lang/String;
+	public final fun getRuntimeCompatibilityVersion ()Ljava/lang/String;
+	public final fun getSourceDigest ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedBlockName {
+	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedBlockName;
+	public static fun constructor-impl (Ljava/lang/String;)Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/scripting/ScriptedCallKind {
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedCallKind$FileExists : dev/rubentxu/pipeline/v2/scripting/ScriptedCallKind {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind$FileExists;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind$FileExists;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind$FileExists;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPathExpression ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedCallKind$IsUnix : dev/rubentxu/pipeline/v2/scripting/ScriptedCallKind {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind$IsUnix;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedCallKind$Pwd : dev/rubentxu/pipeline/v2/scripting/ScriptedCallKind {
+	public fun <init> ()V
+	public fun <init> (Z)V
+	public synthetic fun <init> (ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Z
+	public final fun copy (Z)Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind$Pwd;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind$Pwd;ZILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind$Pwd;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getTmp ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedCallKind$ReadFile : dev/rubentxu/pipeline/v2/scripting/ScriptedCallKind {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind$ReadFile;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind$ReadFile;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind$ReadFile;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPathExpression ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedCallKind$Shell : dev/rubentxu/pipeline/v2/scripting/ScriptedCallKind {
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/scripting/ScriptedShellReturnMode;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/scripting/ScriptedShellReturnMode;
+	public final fun copy (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/scripting/ScriptedShellReturnMode;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind$Shell;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind$Shell;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/scripting/ScriptedShellReturnMode;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind$Shell;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReturnMode ()Ldev/rubentxu/pipeline/v2/scripting/ScriptedShellReturnMode;
+	public final fun getScript ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedCallSiteId {
+	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallSiteId;
+	public static fun constructor-impl (Ljava/lang/String;)Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedDynamicScopeId {
+	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedDynamicScopeId;
+	public static fun constructor-impl (Ljava/lang/String;)Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedExecutionApiKt {
+	public static final fun isRuntimeReturning (Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind;)Z
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedLoopScope {
+	public fun <init> (IILjava/lang/String;Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceLocation;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceLocation;
+	public final fun copy (IILjava/lang/String;Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceLocation;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedLoopScope;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedLoopScope;IILjava/lang/String;Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceLocation;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedLoopScope;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBodyEndOffset ()I
+	public final fun getBodyStartOffset ()I
+	public final fun getLocation ()Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceLocation;
+	public final fun getLoopParameter ()Ljava/lang/String;
+	public final fun getScopeId-Nk0WX6M ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedMappedCall {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind;Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceLocation;I)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceLocation;
+	public final fun component3 ()I
+	public final fun copy (Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind;Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceLocation;I)Ldev/rubentxu/pipeline/v2/scripting/ScriptedMappedCall;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedMappedCall;Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind;Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceLocation;IILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedMappedCall;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKind ()Ldev/rubentxu/pipeline/v2/scripting/ScriptedCallKind;
+	public final fun getLocation ()Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceLocation;
+	public final fun getSourceLength ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedShellReturnMode : java/lang/Enum {
+	public static final field NONE Ldev/rubentxu/pipeline/v2/scripting/ScriptedShellReturnMode;
+	public static final field STATUS Ldev/rubentxu/pipeline/v2/scripting/ScriptedShellReturnMode;
+	public static final field STDOUT Ldev/rubentxu/pipeline/v2/scripting/ScriptedShellReturnMode;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedShellReturnMode;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/scripting/ScriptedShellReturnMode;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedSource {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-54YMW2Q ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy-3LmT9GM (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedSource;
+	public static synthetic fun copy-3LmT9GM$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedSource;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedSource;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSourceId-54YMW2Q ()Ljava/lang/String;
+	public final fun getText ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedSourceDiagnostic {
+	public fun <init> (IILjava/lang/String;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (IILjava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceDiagnostic;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceDiagnostic;IILjava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceDiagnostic;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getColumn ()I
+	public final fun getLine ()I
+	public final fun getMessage ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedSourceId {
+	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceId;
+	public static fun constructor-impl (Ljava/lang/String;)Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedSourceLocation {
+	public synthetic fun <init> (Ljava/lang/String;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun blockScope-tz8Yttc (Ljava/lang/String;)Ljava/lang/String;
+	public final fun component1-54YMW2Q ()Ljava/lang/String;
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun copy-jDHosY8 (Ljava/lang/String;II)Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceLocation;
+	public static synthetic fun copy-jDHosY8$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceLocation;Ljava/lang/String;IIILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceLocation;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun fileExistsCallSite-j8j0UfU ()Ljava/lang/String;
+	public final fun getColumn ()I
+	public final fun getLine ()I
+	public final fun getSourceId-54YMW2Q ()Ljava/lang/String;
+	public fun hashCode ()I
+	public final fun loopScope-och_OEs (I)Ljava/lang/String;
+	public final fun pwdCallSite-2CQ7Y44 (Z)Ljava/lang/String;
+	public static synthetic fun pwdCallSite-2CQ7Y44$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceLocation;ZILjava/lang/Object;)Ljava/lang/String;
+	public final fun readFileCallSite-j8j0UfU ()Ljava/lang/String;
+	public final fun shellCallSite-2CQ7Y44 (Ldev/rubentxu/pipeline/v2/scripting/ScriptedShellReturnMode;)Ljava/lang/String;
+	public static synthetic fun shellCallSite-2CQ7Y44$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceLocation;Ldev/rubentxu/pipeline/v2/scripting/ScriptedShellReturnMode;ILjava/lang/Object;)Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+	public final fun unixCallSite-j8j0UfU ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/scripting/ScriptedSourceMapper {
+	public abstract fun map (Ldev/rubentxu/pipeline/v2/scripting/ScriptedSource;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceMapping;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/scripting/ScriptedSourceMapping {
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedSourceMapping$InvalidSyntax : dev/rubentxu/pipeline/v2/scripting/ScriptedSourceMapping {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceMapping$InvalidSyntax;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceMapping$InvalidSyntax;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceMapping$InvalidSyntax;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDiagnostics ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedSourceMapping$Mapped : dev/rubentxu/pipeline/v2/scripting/ScriptedSourceMapping {
+	public fun <init> (Ljava/util/List;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/util/List;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceMapping$Mapped;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceMapping$Mapped;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptedSourceMapping$Mapped;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCalls ()Ljava/util/List;
+	public final fun getLoopScopes ()Ljava/util/List;
+	public final fun getShellCalls ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/scripting/ScriptedStepFacade {
+	public abstract fun fileExists-q0o8rTc (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun isUnix-3pSeeSQ (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun pwd-q0o8rTc (Ljava/lang/String;ZLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun pwd-q0o8rTc$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedStepFacade;Ljava/lang/String;ZLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public abstract fun readFile-q0o8rTc (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun scoped-ypt496M (Ljava/lang/String;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sh-Kv733Pw (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/scripting/ReturnStatus;Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sh-Kv733Pw (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/scripting/ReturnStdout;Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun sh-Kv733Pw$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedStepFacade;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/scripting/ReturnStatus;Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun sh-Kv733Pw$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedStepFacade;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/scripting/ReturnStdout;Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public abstract fun sh-jAsxgcE (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun sh-jAsxgcE$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedStepFacade;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptedStepFacade$DefaultImpls {
+	public static synthetic fun pwd-q0o8rTc$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedStepFacade;Ljava/lang/String;ZLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun sh-Kv733Pw$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedStepFacade;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/scripting/ReturnStatus;Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun sh-Kv733Pw$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedStepFacade;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/scripting/ReturnStdout;Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun sh-jAsxgcE$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptedStepFacade;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ScriptingDiagnostic {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;Ljava/lang/String;IILjava/lang/String;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;Ljava/lang/String;IILjava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/ScriptingDiagnostic;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/ScriptingDiagnostic;Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;Ljava/lang/String;IILjava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ScriptingDiagnostic;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getColumn ()I
+	public final fun getLine ()I
+	public final fun getMessage ()Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getSeverity ()Ldev/rubentxu/pipeline/v2/scripting/ScriptDiagnosticSeverity;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/scripting/ScriptingHost {
+	public abstract fun compile (Ldev/rubentxu/pipeline/v2/scripting/ScriptDefinition;)Ldev/rubentxu/pipeline/v2/scripting/ScriptCompilationResult;
+}
+

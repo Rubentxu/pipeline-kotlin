@@ -198,8 +198,25 @@ cmd     cd v2 && ./gradlew :pipeline-step-sdk:runtime:test :pipeline-domain:test
 log     s4r1e-focal2.log
 sha256  3cd9fe6f2fe9f2c7c964b6975187c7c157ecfa309041f69549995cadf9c97331
 EXIT=0  BUILD SUCCESSFUL in 27m 28s
-        197 tareas · 0 líneas "^e: "
+        89 actionable tasks · 0 líneas "^e: " · 0 detekt
 ```
+
+> **Corrección (2026-10-04).** Esta sección declaraba «197 tareas». **El log dice 89**
+> (`89 actionable tasks: 89 executed`), y sumando las tres invocaciones triviales que lo preceden
+> (`3 actionable tasks` cada una) el total es 98. Los 197 no aparecen en el log ni como total ni
+> como cadena; la única aparición de «197» es un falso positivo dentro de un blob JSON de eventos.
+> La cifra de la tabla de abajo **sí** es correcta y reproducible: sale de los XML de JUnit, no del
+> log. Se verificó módulo a módulo contra un gate fresco y el resultado fue idéntico, clases y
+> skips incluidos — `20/201`, `133/687`, `300/2244/121`, `87/432/10`, total `3564` con `131` skips.
+>
+> Procedencia, declarada porque antes no lo estaba: el `sha256` es del fichero; el `EXIT` es el
+> `$?` del shell en el momento de la corrida y **no** se imprimió al log; los conteos agregados
+> vienen de `build/test-results/test/*.xml`, que Gradle no imprime cuando la tarea pasa y que
+> corridas posteriores sobrescriben. Sólo el `sha256` es verificable desde el artefacto citado.
+>
+> **Alcance:** es un gate de **tests**, no de `check`, y por tanto **no incluye detekt (SAST)**.
+> Con todo, el log **tampoco** contiene el comando que lo produjo, de modo que la línea `cmd` no es
+> verificable contra el artefacto citado: se corrige por comparación con el log, no con él.
 
 | módulo | clases | tests | fallos | errores | skips |
 |---|---|---|---|---|---|

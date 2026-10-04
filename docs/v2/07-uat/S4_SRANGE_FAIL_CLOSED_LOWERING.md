@@ -175,10 +175,86 @@ EXIT=0 0 "^e: " · 1883 tests · 0 failures · 0 errors
 El módulo completo de `pipeline-scripting-kotlin24` más los cinco tests que ejercitan el lowering
 y los UAT de compilación de script.
 
-> **Lo que este slice NO hace:** no es un gate de bloque completo. `d0077253` está certificado con
-> su propio gate de 3564 tests, y este commit añade un fichero de test y cambia una rama de un
-> `when` en el lowering. El gate focal completo de este árbol queda `NOT_RUN` y hay que decirlo
-> como tal en lugar de presentar los 1883 como sustituto.
+> **Corrección posterior (2026-10-04):** el gate focal completo que esta sección declaraba
+> `NOT_RUN` **se ha ejecutado**. Cierra la deuda, no la sustituye.
+
+### 4.1 Gate focal completo del árbol — `NOT_RUN` → `RUN`
+
+El `NOT_RUN` de arriba era real y estaba bien dicho: los 1883 tests de §4 son una comprobación
+de regresión con filtros `--tests`, no un gate de bloque. Este es el que faltaba.
+
+```text
+SHA     5944ba8e9d244636aac01a8121149110e5ce499e
+Árbol   f70cdd9c3015f635c452762abcda5ddfbfeec6c2
+```
+
+**Gate A** — el comando exacto del recibo de R1-E §5.2, cuatro módulos:
+
+```text
+cmd   cd v2 && ./gradlew :pipeline-step-sdk:runtime:test :pipeline-domain:test \
+                   :pipeline-application:test :pipeline-architecture-tests:test --rerun-tasks
+log   s4focal-test-gate.log
+sha256 9ed784288fdbc4c06e388ee791c6855bf997a27a4d804d4958cfd173c9c6e3fa
+EXIT=0  BUILD SUCCESSFUL in 27m 22s · 0 "^e: " · 0 detekt
+```
+
+| módulo | clases | tests | fallos | errores | skips |
+|---|---|---|---|---|---|
+| `pipeline-step-sdk/runtime` | 20 | 201 | 0 | 0 | 0 |
+| `pipeline-domain` | 133 | 687 | 0 | 0 | 0 |
+| `pipeline-application` | 300 | 2244 | 0 | 0 | 121 |
+| `pipeline-architecture-tests` | 87 | 432 | 0 | 0 | 10 |
+| **subtotal** | **540** | **3564** | **0** | **0** | **131** |
+
+**Gate B** — el módulo que el comando de arriba **no cubre**, donde vive este slice:
+
+```text
+cmd   cd v2 && ./gradlew :pipeline-scripting-kotlin24:test --rerun-tasks
+log   s4srange-module-gate.log
+sha256 99fc8a2ff6766489b0c65f45cc9792e25ab06fabcb4bdabb14a3e49f852efd84
+EXIT=0  BUILD SUCCESSFUL in 33s · 0 "^e: "
+pipeline-scripting-kotlin24: 15 clases · 60 tests · 0 fallos · 0 errores · 0 skips
+```
+
+Y los cuatro tests de este slice confirmados por nombre en el XML de JUnit:
+
+```text
+TEST-dev.rubentxu.pipeline.v2.scripting.S4SourceRangeFailsClosedTest.xml
+  tests="4" failures="0" errors="0"
+```
+
+**Combinado: 555 clases · 3624 tests · 0 fallos · 0 errores · 131 skips**, sobre el árbol
+`f70cdd9c`. Los 4 tests nuevos están ejecutados y verdes en el árbol exacto.
+
+### 4.2 Lo que este gate NO cubre
+
+Es un gate **de tests**, no de `check`: no incluye **detekt (SAST)**. El gate de `check` sobre este
+árbol sigue **ROJO** por un único issue que no es de este slice —
+`StepDispatchEngine.kt:279` `LongMethod` (`s4focal-gate3.log` sha256 `fbdcd38f`, EXIT=1) — con
+análisis y recomendación en
+[S4_SAST_DISPATCH_LONGMETHOD_PROPOSAL.md](../06-design/S4_SAST_DISPATCH_LONGMETHOD_PROPOSAL.md).
+PRODUCT-GATE sigue `BLOCKED_EXTERNAL`.
+
+> **Nota de alcance, y es la lección de este gate:** el comando del recibo de R1-E §5.2 **no
+> incluye `pipeline-scripting-kotlin24`**. Sus conteos (3564) son reproduciblemente correctos, pero
+> no cubren este slice. Un gate heredado de otro no cubre lo que aquel no miró: por eso van dos
+> gates aquí y no uno.
+
+### 4.3 Procedencia de las cifras de este recibo
+
+Honestidad sobre de dónde sale cada número, porque antes no estaba declarado:
+
+| cifra | fuente | ¿está en el log hasheado? |
+|---|---|---|
+| `sha256` de cada log | el propio fichero | **sí** |
+| `EXIT=0/1` | `$?` del shell en el momento de la corrida | **no** — se leyó directo, nunca se imprimió al log |
+| `tests` / `fallos` / `errores` agregados | XML de JUnit (`build/test-results/test/*.xml`) | **no** — Gradle no imprime ese resumen cuando la tarea pasa |
+| `4 tests completed, 2 failed` (fases RED) | **el log** | **sí** — Gradle lo imprime al fallar |
+
+Las fases RED y la mutación son, por tanto, **verificables desde el artefacto citado**: los dos
+métodos fallidos están nombrados, y la atribución 1:1 a las dos negaciones se puede comprobar
+leyendo el log. Las cifras agregadas de la fase GREEN no se pueden comprobar desde el log, y su
+árbol de XML queda sobrescrito por corridas posteriores.
 
 ---
 

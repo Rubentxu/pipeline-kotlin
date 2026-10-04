@@ -54,7 +54,8 @@ tasks.test {
     // obvious way out — an `exclude("**/build/**")` on the file tree — is itself forbidden:
     // `FArch011V2NoCompileExcludesTest` rejects the token `exclude(` in any build file, and it is
     // right to. Naming each module's own directories avoids the overlap without the token.
-    val crossModuleDirs = rootProject.subprojects.map { it.projectDir }
+    val crossModules = rootProject.subprojects
+    val crossModuleDirs = crossModules.map { it.projectDir }
 
     // Every module's build file: the fitnesses that read declared dependencies, plugins and
     // publication configuration all read from here.
@@ -69,7 +70,8 @@ tasks.test {
 
     // Every committed ABI dump. A dump is a reviewable statement of a published surface, and a
     // fitness that reads one must re-run when it changes.
-    inputs.files(crossModuleDirs.mapNotNull { it.resolve("api").takeIf { dir -> dir.isDirectory } })
+    val abiDumpModules = crossModules.filter { it.projectDir.resolve("api").isDirectory }
+    inputs.files(abiDumpModules.map { it.projectDir.resolve("api") })
         .withPropertyName("publishedAbiDumps")
         .withPathSensitivity(PathSensitivity.RELATIVE)
 
@@ -84,6 +86,24 @@ tasks.test {
         ":pipeline-output:classes",
         ":pipeline-output-store:classes",
     )
+
+    // …and the dumps are TASK OUTPUTS, not just committed files. This dependency is not
+    // belt-and-braces: without it Gradle refuses the whole task with
+    // `uses this output of task ':…:apiBuild' without declaring an explicit or implicit
+    // dependency`, because an `api/` directory that belongs to a module IS that module's `apiBuild`
+    // output directory. The module directory then appears as a declared input (via
+    // `allModuleBuildFiles` and `crossModuleProductionSources`) and overlaps a task output this
+    // task does not depend on.
+    //
+    // Declaring it is also the honest version of the property: the fitness reads the dump that
+    // `apiBuild` produces, so the dump must be produced by THIS revision before the rows judge it.
+    //
+    // Task references rather than path strings: a path string inside this block resolves against
+    // THIS project, not the root, and `:pipeline-step-sdk:apiBuild` is not a task of
+    // `pipeline-architecture-tests`. `findByName` also tolerates a module that carries an `api/`
+    // directory without applying the BCV plugin, which would otherwise fail the whole task with
+    // "Task with path not found" instead of simply not needing it.
+    dependsOn(abiDumpModules.mapNotNull { it.tasks.findByName("apiBuild") })
 }
 
 // Cross-project runtime-classpath capture wiring (configure-time hook, zero M0-R2 build-file edits)

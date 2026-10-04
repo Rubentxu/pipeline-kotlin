@@ -83,10 +83,8 @@ object PipelineEventEnvelopeSerializer : KSerializer<PipelineEventEnvelope> {
         val occurredAt: String,
         val sequence: Long,
         @Serializable(with = ResourceRefSerializer::class) val subject: ResourceRef,
-        val causationSource: String? = null,
-        val causationId: String? = null,
-        val correlationSource: String? = null,
-        val correlationId: String? = null,
+        @Serializable(with = EventRefSerializer::class) val causation: EventRef? = null,
+        @Serializable(with = EventRefSerializer::class) val correlation: EventRef? = null,
         val provenance: ProviderProvenance? = null,
     )
 
@@ -101,6 +99,15 @@ object PipelineEventEnvelopeSerializer : KSerializer<PipelineEventEnvelope> {
             occurredAt = value.occurredAt.toString(),
             sequence = value.sequence,
             subject = value.subject,
+            // BLOCK 2: these two were declared on the wire and never written. The consumer build
+            // in `examples/fabric-contract-consumer` found it by round-tripping an envelope through
+            // this serializer and getting `causation = null, correlation = null` back, while this
+            // file's own KDoc advertised both in the wire form. A field that is accepted, declared
+            // and documented, and then silently dropped on encode, is the "dead semantic parameter"
+            // the semantic constitution forbids: the envelope looked like it carried causal context
+            // and carried none.
+            causation = value.causation,
+            correlation = value.correlation,
             provenance = value.provenance,
         )
         encoder.encodeSerializableValue(Wire.serializer(), w)
@@ -118,6 +125,10 @@ object PipelineEventEnvelopeSerializer : KSerializer<PipelineEventEnvelope> {
             occurredAt = Instant.parse(w.occurredAt),
             sequence = w.sequence,
             subject = w.subject,
+            // Read back for the same reason they are written: a field that survives neither
+            // direction is not a field, it is a comment in a constructor.
+            causation = w.causation,
+            correlation = w.correlation,
             provenance = w.provenance,
         )
     }
@@ -148,6 +159,32 @@ object ResourceRefSerializer : KSerializer<ResourceRef> {
             throw InvalidResourceRefException("Unknown ResourceKind '${w.kind}'")
         }
         return ResourceRef(kind, w.segments)
+    }
+}
+
+/**
+ * Closed serializer for [EventRef]: `{source:{kind, segments}, id}`.
+ *
+ * Added with BLOCK 2, when the envelope's `causation` and `correlation` were found to be declared on
+ * the wire and dropped on encode. The shape is the one [PipelineEventEnvelope] already uses for its
+ * own `eventRef`, so a consumer reading an envelope sees one ref encoding rather than two.
+ */
+object EventRefSerializer : KSerializer<EventRef> {
+    @Serializable
+    private data class Wire(
+        @Serializable(with = ResourceRefSerializer::class) val source: ResourceRef,
+        val id: String,
+    )
+
+    override val descriptor: SerialDescriptor = Wire.serializer().descriptor
+
+    override fun serialize(encoder: Encoder, value: EventRef) {
+        encoder.encodeSerializableValue(Wire.serializer(), Wire(source = value.source, id = value.id.value))
+    }
+
+    override fun deserialize(decoder: Decoder): EventRef {
+        val w = decoder.decodeSerializableValue(Wire.serializer())
+        return EventRef(source = w.source, id = EventId(w.id))
     }
 }
 

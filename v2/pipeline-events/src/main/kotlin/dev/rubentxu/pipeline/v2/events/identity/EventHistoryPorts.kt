@@ -19,15 +19,34 @@ import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
  * replay cursors are different authorities and MUST NOT be unified.
  */
 data class EventCursor(val runId: String, val lastSequence: Long) {
-    /** Opaque wire form: `evt-cursor-v1:<runId>:<lastSequence>`. */
-    fun encode(): String = "evt-cursor-v1:$runId:$lastSequence"
+    /**
+     * Opaque wire form: `evt-cursor-v1:<percent-escaped runId>:<lastSequence>`.
+     *
+     * The run id is percent-escaped, and that is a fix rather than a detail. `encode()` used to
+     * interpolate the run id raw while `decode()` split on `:` and demanded exactly three parts — so
+     * any run whose id contained a colon produced a token its own decoder rejected. A run id built
+     * the normal way does contain colons: `ResourceRef.canonicalText()` is
+     * `v<version>:<kind>:<segments>`. The first version of this pair therefore round-tripped only
+     * for hand-written run ids that no producer emits.
+     *
+     * It was found by the independent consumer build in `examples/fabric-contract-consumer`, which
+     * could not decode the token it had just encoded. The escaping deliberately matches
+     * `OutputCursor`'s: two planes, two prefixes, and a token that decodes or fails loudly rather
+     * than decoding to a different run.
+     */
+    fun encode(): String =
+        "evt-cursor-v1:" + java.net.URLEncoder.encode(runId, Charsets.UTF_8) + ":" + lastSequence
 
     companion object {
         fun decode(token: String): EventCursor? {
             val parts = token.split(":")
             if (parts.size != 3 || parts[0] != "evt-cursor-v1") return null
             val seq = parts[2].toLongOrNull() ?: return null
-            return EventCursor(parts[1], seq)
+            val runId = runCatching {
+                java.net.URLDecoder.decode(parts[1], Charsets.UTF_8)
+            }.getOrNull() ?: return null
+            if (runId.isBlank()) return null
+            return EventCursor(runId, seq)
         }
     }
 }

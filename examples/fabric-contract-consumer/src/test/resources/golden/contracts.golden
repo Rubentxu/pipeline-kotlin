@@ -1,0 +1,21 @@
+cursor.event.token = evt-cursor-v1:v1%3Apipeline%3Arun-42:7
+cursor.output.token = out-cursor-v1:run-42%2Fstep-0%2Ftranscript:128
+envelope.causation = evt-2
+envelope.correlation = evt-1
+envelope.json = {"version":1,"eventRefSource":{"kind":"RUN","segments":["pipeline","run-42"]},"eventRefId":"evt-3","kind":"StepFinished","occurredAt":"2026-10-04T00:00:00Z","sequence":3,"subject":{"kind":"RUN","segments":["pipeline","run-42"]},"causation":{"source":{"kind":"RUN","segments":["pipeline","run-42"]},"id":"evt-2"},"correlation":{"source":{"kind":"RUN","segments":["pipeline","run-42"]},"id":"evt-1"},"provenance":null}
+envelope.version = 1
+outcome.RunOutcome.Aborted = ABORTED
+outcome.RunOutcome.Failure = FAILURE
+outcome.RunOutcome.Success = SUCCESS
+outcome.RunOutcome.Unstable = UNSTABLE
+query.All = all
+query.ByKind = kind=StepFinished
+query.BySequenceRange = sequence in [1, 9]
+query.BySource = source=v1:run:pipeline/run-42
+query.BySubject = subject=v1:run:pipeline/run-42
+refusal.DanglingCommit = 2 readable bytes back a commit claiming 9
+refusal.ForeignStream = cursor belongs to run-99/step-7/transcript, not run-42/step-0/transcript
+refusal.InvalidRange = range [5, 5) is not a forward range
+refusal.OffsetBeyondCommitted = offset 9 is past the committed end 2
+refusal.RecoveryNotCompleted = the store has not finished recovery
+refusal.UnknownStream = no stream run-99/step-7/transcript

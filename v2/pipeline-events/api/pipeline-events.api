@@ -2005,6 +2005,15 @@ public final class dev/rubentxu/pipeline/v2/events/identity/EventRef {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/events/identity/EventRefSerializer : kotlinx/serialization/KSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/identity/EventRefSerializer;
+	public fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/events/identity/EventRef;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/events/identity/EventRef;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/events/identity/EventTail {
 	public abstract fun readAfter (Ldev/rubentxu/pipeline/v2/domain/identity/ResourceRef;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;I)Ldev/rubentxu/pipeline/v2/events/identity/EventPage;
 }

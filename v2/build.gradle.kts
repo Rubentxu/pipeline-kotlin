@@ -567,3 +567,50 @@ val buildExampleBlockPlugin by tasks.registering(Exec::class) {
         "jar",
     )
 }
+
+/**
+ * BLOCK 2: the independent consumer, run as a gate step.
+ *
+ * `apiCheck` and `PublishedContractBoundaryFitnessTest` both look at the published surface from
+ * INSIDE this build, and all three of them can be satisfied by an artifact a real consumer still
+ * cannot compile against. `examples/fabric-contract-consumer` is the outside: its own settings
+ * file, no `project(...)` anywhere, resolving only the four published coordinates. It builds the
+ * `RunOutcome` / `OutputRefusal` / `EventQuery` mappings Fabric will need and pins their wire
+ * forms against a golden committed OUTSIDE `v2`, so a contract change fails a build that never
+ * saw the change.
+ *
+ * It runs `check` rather than `jar` deliberately: the point is the twelve tests and the negative
+ * control that fails if an implementation module becomes resolvable, not that some classes were
+ * produced.
+ *
+ * NOT a dependency of `check`, and that is a decision rather than an omission. Wiring it in would
+ * make every `check` publish to `sdk-repo` and fork a second Gradle against the working tree; the
+ * three external plugin builds above stand outside `check` for the same reason, and this one
+ * follows them. The cost is that it is only as reliable as whoever runs it, which is why the
+ * BLOCK 2 receipt names this task as a required gate step rather than leaving it to habit.
+ */
+val verifyFabricContractConsumer by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Compiles and tests the independent consumer against this revision's published contracts."
+    dependsOn(publishSdkForExternalPlugin)
+
+    val consumerDir = file("../examples/fabric-contract-consumer")
+    inputs.dir(consumerDir.resolve("src"))
+    inputs.files(consumerDir.resolve("build.gradle.kts"), consumerDir.resolve("settings.gradle.kts"))
+    // The consumer reads the four CONTRACT modules, so those are the jars whose bytes it compiles
+    // against. Listing the store modules would be wrong: they are not published, and adding them
+    // here would let a future publication slip past the consumer's own negative control by making
+    // the outer build quietly expect it.
+    inputs.files(publishedContractModules.map { module -> project(":$module").tasks.named("jar") })
+    outputs.file(consumerDir.resolve("build/libs/fabric-contract-consumer-0.1.0.jar"))
+
+    workingDir = rootDir
+    commandLine(
+        rootDir.resolve("gradlew").absolutePath,
+        "-p", consumerDir.absolutePath,
+        "--console=plain",
+        "-PsdkRepo=" + sdkRepoDir.get().asFile.absolutePath,
+        "-PsdkVersion=" + rootProject.version.toString(),
+        "check",
+    )
+}

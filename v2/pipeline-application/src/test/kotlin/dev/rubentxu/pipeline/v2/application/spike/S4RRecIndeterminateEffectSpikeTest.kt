@@ -16,6 +16,7 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.SourceDescriptor
 import dev.rubentxu.pipeline.v2.domain.StageBody
+import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.StageId
 import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
@@ -128,6 +129,24 @@ import java.util.concurrent.atomic.AtomicInteger
  * reconciler returned. Row 6 is measured at the CLASSIFICATION (`Reattach`) rather than by waiting
  * out the 60 s reattach poll, which is the only honest way to assert "reattach, never a second
  * launch" without spending a minute proving it.
+ *
+ * ## Rows 8-10, added with ADR-S4-R1 §3b: the window that opened and then closed
+ *
+ * Rows 1-7 left one branch untouched. Row 6 stopped at the classification because the only way past
+ * it was to wait out the reattach poll, so the outcome of a `Reattach` was never observed by
+ * anything. That branch is the whole of ADR-S4-R1's `ReattachWindowExpired`, and an unobserved
+ * branch is the one whose semantics nobody has checked.
+ *
+ * The seam that made it reachable is the poll itself, forwarded from the composition root
+ * (`CanonicalDurableRunCoordinator`'s `reattachPoll`, defaulting to the real executor so production
+ * is untouched). Rows 8-10 measure what the system reports when that window closes with no terminal:
+ * [OperationStatus.LOST] — the terminal reserved for a substrate that was inspected and held
+ * nothing, now also reached by a process that was still alive and merely unobserved for too long.
+ *
+ * These rows are MEASURED CURRENT BEHAVIOUR. ADR-S4-R1 §2.3 preserves that terminal on purpose as
+ * the compatibility policy and leaves the non-terminal alternative as DEFERRED decision D-1, so
+ * nothing here is a law the product is being asked to hold. The measurement exists so that moving
+ * across D-1 later is a visible, declared transition rather than a silent improvement.
  */
 class S4RRecIndeterminateEffectSpikeTest {
 
@@ -415,11 +434,184 @@ class S4RRecIndeterminateEffectSpikeTest {
         )
     }
 
+    // ------------------------------------------------------------------ rows 8-10 — ReattachWindowExpired
+
+    /**
+     * The reattach window closes with no terminal. **MEASURED CURRENT BEHAVIOUR — NOT PROMOTED AS
+     * DESIRED SEMANTICS.**
+     *
+     * Production entry point crossed: [ExternalSubprocessRecovery.observe] — the real adapter, over
+     * the real [StepReconcilerL1] and a real control directory on disk. Row 6 already measured the
+     * `Reattach` classification; this row drives it to a RESULT, which is the branch the whole
+     * `ReattachWindowExpired` concept is about and the one that was previously unobservable at all.
+     *
+     * ## Why substituting the poll is not re-implementing the thing under test
+     *
+     * The only substituted variable is the poll, and it is substituted with a value production
+     * itself produces. [dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor.pollResult]
+     * returns `null` on exactly two paths: the deadline elapsing, and a `result.txt` that exists but
+     * does not parse. In THIS fixture the operation directory holds no `result.txt` at all, so the
+     * second path is unreachable and the deadline is the only thing that can produce the `null`.
+     * The substituted value is therefore not a stand-in for production's answer — it IS
+     * production's answer, reached without 60 s of wall clock per row.
+     *
+     * The malformed-`result.txt` path is deliberately NOT tested here. Exercising it would mean
+     * re-implementing `pollResult`'s body inside the test, which certifies the reimplementation
+     * rather than the product. It is recorded as a residual limit in the receipt instead.
+     *
+     * ## What is measured
+     *
+     * The answer is [OperationStatus.LOST]. That is a claim about the SUBSTRATE — "I looked and
+     * there is nothing recoverable" — asserted in a situation whose truth is a claim about OUR
+     * WINDOW: the substrate said the process may still be alive, and we simply stopped looking.
+     * ADR-S4-R1 §2.3 names that situation `ReattachWindowExpired` and requires it to be its own
+     * fact, because conflating the two is what makes a live process get reported as lost.
+     */
+    @Test
+    fun `row 8 an expired reattach window is reported as LOST, the collapse ADR-S4-R1 2_3 names`() {
+        val root = Files.createDirectory(tempRoot.resolve("r8"))
+        val opId = "s4rrec-r8-op"
+        Files.createDirectories(root.resolve(opId))
+        Files.writeString(DurableShellFiles.resolveConsoleLog(root.resolve(opId)), "still working")
+
+        // PRECONDITION, asserted rather than assumed: the substrate must be saying "may still be
+        // alive" for a reattach window to exist at all. Without this, a LOST here could equally
+        // have come from a stale heartbeat and the row would be measuring row 4 again.
+        val classification = StepReconcilerL1(SystemClock(), root).classify(opId)
+        assertTrue(
+            classification is StepReconcilerL1.Classification.Reattach,
+            "PRECONDITION: the substrate has to classify as Reattach before there is a window to " +
+                "expire. Got $classification",
+        )
+
+        val observed = ExternalSubprocessRecovery(
+            clock = SystemClock(),
+            controlDirRoot = root,
+            pollResult = { _, _ -> null },
+        ).observe(opId)
+
+        assertTrue(
+            observed is RunningSubprocessObservation.Recovered,
+            "MEASURED: an expired window yields a CONCLUSION, not an Unavailable. We did look, and " +
+                "the look is what ran out — that is categorically different from never being able " +
+                "to look (row 3). Got $observed",
+        )
+        val recovered = observed as RunningSubprocessObservation.Recovered
+        assertEquals(
+            OperationStatus.LOST,
+            recovered.status,
+            "MEASURED CURRENT BEHAVIOUR, and the thing ADR-S4-R1 §2.3 is written about: a process " +
+                "that was still reattachable, and which may STILL BE ALIVE, is terminalised as " +
+                "LOST — the terminal reserved for a substrate that was inspected and held nothing. " +
+                "This row is the measurement, not a law; if a future change separates the two, this " +
+                "assertion is expected to fail and becomes the non-regression test for the fix.",
+        )
+        assertTrue(
+            recovered.outcome is StepOutcome.Failure,
+            "MEASURED: the outcome is a typed Failure, not a synthesised success. Got ${recovered.outcome}",
+        )
+    }
+
+    /**
+     * THE CARRIER, for the second collapse. Same control directory as row 8 — fresh heartbeat, no
+     * `result.txt` — but now the poll's window closes with a terminal in hand.
+     *
+     * Asserted as a pair with row 8 so the two are not read as one claim. Together they establish
+     * that the substituted poll is genuinely the variable under study: same substrate, same
+     * observer, same branch, two different poll answers, two different observations. A harness whose
+     * substituted variable could not change the outcome would be certifying nothing, and this is
+     * what rules that out without spending 60 s to find out.
+     */
+    @Test
+    fun `row 9 the same expired window with a terminal in hand is not LOST, so the poll is the variable`() {
+        val root = Files.createDirectory(tempRoot.resolve("r9"))
+        val opId = "s4rrec-r9-op"
+        Files.createDirectories(root.resolve(opId))
+        Files.writeString(DurableShellFiles.resolveConsoleLog(root.resolve(opId)), "still working")
+
+        val expired = ExternalSubprocessRecovery(
+            clock = SystemClock(),
+            controlDirRoot = root,
+            pollResult = { _, _ -> null },
+        ).observe(opId)
+        val terminal = ExternalSubprocessRecovery(
+            clock = SystemClock(),
+            controlDirRoot = root,
+            pollResult = { _, _ -> 0 },
+        ).observe(opId)
+
+        assertEquals(
+            OperationStatus.LOST,
+            (expired as RunningSubprocessObservation.Recovered).status,
+            "MEASURED: the expired half is LOST, identical to row 8.",
+        )
+        assertEquals(
+            OperationStatus.SUCCEEDED,
+            (terminal as RunningSubprocessObservation.Recovered).status,
+            "MEASURED: the same substrate with a terminal inside the window is SUCCEEDED. If THIS " +
+                "assertion ever equals LOST, the reattach branch stopped consulting its poll and the " +
+                "substituted variable is no longer the one under study.",
+        )
+        assertTrue(
+            expired != terminal,
+            "MEASURED: two poll answers, two observations. Identical values here would mean the " +
+                "window's expiry is not what decides the answer, and row 8's LOST would be coming " +
+                "from somewhere other than the expiry it claims to measure.",
+        )
+    }
+
+    /**
+     * End to end, through the real coordinator. **MEASURED CURRENT BEHAVIOUR — NOT PROMOTED AS
+     * DESIRED SEMANTICS.**
+     *
+     * Rows 8 and 9 measure the observer. This row measures what the rest of the system DOES with its
+     * answer, which is the part that actually reaches the journal: coordinator → resolver →
+     * observer → interpreter → journal. Absolute values are asserted, not merely "the handler did
+     * not run", so this row cannot pass by both paths degrading the same way.
+     */
+    @Test
+    fun `row 10 an expired reattach window journals LOST end to end without re-launching`() = runBlocking {
+        val probe = Probe(RecoveryPolicy.ExternalSubprocess, ReplayPolicy.RERUN, Effect.EXECUTES_SUBPROCESS)
+        val root = Files.createDirectory(tempRoot.resolve("r10"))
+        val rig = Rig("s4rrec-r10", probe, controlDirRoot = root, reattachPoll = { _, _ -> null })
+        rig.execute()
+        val opId = rig.flipRowToRunning()
+        val before = probe.invocations.get()
+
+        // A substrate that says "may still be alive": control dir present, no result.txt, no
+        // timeout.flag, fresh heartbeat. Deliberately NOT row 4's empty directory and NOT row 5's
+        // terminal result file — the branch under study is the one in between.
+        Files.createDirectories(root.resolve(opId))
+        Files.writeString(DurableShellFiles.resolveConsoleLog(root.resolve(opId)), "still working")
+
+        rig.execute()
+
+        assertEquals(
+            before,
+            probe.invocations.get(),
+            "MEASURED: the handler does not run. A live process whose window closed is reattached, " +
+                "not relaunched — the at-least-once window stays shut on this path.",
+        )
+        assertEquals(
+            OperationStatus.LOST,
+            rig.row()?.status,
+            "MEASURED: and the row is terminalised LOST, not left RUNNING. That is today's certified " +
+                "behaviour and ADR-S4-R1 §2.3 preserves it byte for byte as the compatibility policy; " +
+                "the non-terminal alternative is the DEFERRED decision D-1. This assertion states " +
+                "which side of D-1 the code is on, so a future move across it cannot happen silently.",
+        )
+    }
+
     // ------------------------------------------------------------------ the matrix, side by side
 
     /**
-     * The seven rows as one table, so the shape of the gap is visible rather than inferred. Each
+     * The ten rows as one table, so the shape of the gap is visible rather than inferred. Each
      * cell is the resolution the row asserts, not a restatement of this file's comments.
+     *
+     * Rows 8-10 arrived with ADR-S4-R1 §3b and are NOT a fourth unobservable case: they add the
+     * window that opened and then closed, which the first seven rows could not reach. Row 8 is
+     * deliberately kept OUT of the "observed" prefix, because that is the finding — the substrate
+     * did not yield evidence, our window ran out, and today both reach the same LOST terminal.
      */
     @Test
     fun `the measured matrix shows exactly one row where a required recovery is unobservable`() {
@@ -435,8 +627,11 @@ class S4RRecIndeterminateEffectSpikeTest {
             ),
             Row(4, "ExternalSubprocess + RUNNING + op dir absent", "RecoverRunning(LOST)", "no handler", "observed, no evidence"),
             Row(5, "ExternalSubprocess + RUNNING + result.txt", "RecoverRunning(SUCCEEDED)", "no handler", "observed, terminal evidence"),
-            Row(6, "ExternalSubprocess + RUNNING + fresh heartbeat", "RecoverRunning via Reattach", "no handler", "observed, still alive"),
+            Row(6, "ExternalSubprocess + RUNNING + fresh heartbeat", "Reattach (classification only)", "no handler", "observed, still alive"),
             Row(7, "ExternalSubprocess + RUNNING + timeout.flag", "RecoverRunning(FAILED_TIMEOUT)", "no handler", "observed, watchdog killed it"),
+            Row(8, "Reattach + window closed, no terminal", "Recovered(LOST)", "no handler", "WINDOW CLOSED — reported with row 4's terminal"),
+            Row(9, "Reattach + terminal inside window", "Recovered(SUCCEEDED)", "no handler", "observed, terminal arrived in time"),
+            Row(10, "Reattach + window closed, end to end", "RecoverRunning(LOST), row journalled", "no handler", "WINDOW CLOSED — the collapse, journalled"),
         )
 
         val unobservable = rows.filter { it.note.startsWith("REQUIRED BUT UNOBSERVABLE") }
@@ -444,9 +639,10 @@ class S4RRecIndeterminateEffectSpikeTest {
             1,
             unobservable.size,
             "Exactly one row is the required-but-unobservable case, and it is the one where recovery " +
-                "was mandatory and the substrate could not be read. Rows 4-7 all reached the " +
-                "reconciler and produced a legitimate observation, including LOST where we looked " +
-                "and found nothing.",
+                "was mandatory and the substrate could not be read. Rows 4-7, 9 and 10 all reached " +
+                "the reconciler and produced a legitimate observation, including LOST where we " +
+                "looked and found nothing. Rows 8 and 10 are NOT a second unobservable case: the " +
+                "substrate was read fine and our window simply ended.",
         )
         assertTrue(
             rows.filter { it.note.startsWith("observed") }.all { it.effect == "no handler" },
@@ -456,6 +652,22 @@ class S4RRecIndeterminateEffectSpikeTest {
             unobservable.single().effect == "no handler",
             "and so must the one where it could not: failing closed is not executing less in only " +
                 "the happy cases.",
+        )
+        // The finding, stated once in a place that cannot be read as a passing detail: two rows
+        // reach LOST without the substrate having said anything about loss.
+        val windowClosed = rows.filter { it.note.startsWith("WINDOW CLOSED") }
+        assertEquals(
+            2,
+            windowClosed.size,
+            "Rows 8 and 10 are the ReattachWindowExpired measurements: the observer-level value and " +
+                "the journalled consequence. Both are measured, neither is promoted to desired " +
+                "semantics — ADR-S4-R1 §2.3 keeps this terminal as the compatibility policy and " +
+                "leaves the non-terminal alternative as DEFERRED decision D-1.",
+        )
+        assertTrue(
+            windowClosed.all { it.resolution.contains("LOST") },
+            "and today both of them land on LOST, the same terminal row 4 reaches for an empty " +
+                "directory. That equality IS the defect; it is recorded rather than wished away.",
         )
         println("S4-R-REC measured matrix:")
         rows.forEach {
@@ -480,11 +692,16 @@ class S4RRecIndeterminateEffectSpikeTest {
      * `run()` is invoked twice against the SAME coordinator and the SAME journal, which is how a
      * restart-resume is modelled: the durable journal is the state that survives, everything else is
      * rebuilt by the caller exactly as a resumed process would rebuild it.
+     *
+     * [reattachPoll] is forwarded to the coordinator's `reattachPoll` seam (S4-R1 §3b). `null` — used
+     * by every pre-existing row — composes the real `DurableShellExecutor` poll exactly as
+     * production does, so those rows are untouched by the seam's existence.
      */
     private class Rig(
         private val runId: String,
         probe: Probe,
         controlDirRoot: Path?,
+        reattachPoll: ((Path, Long) -> Int?)? = null,
     ) {
         private val journal = InMemoryOperationJournal(SystemClock())
         private val registry = InMemoryStepRegistry().also { it.register(probe) }
@@ -504,6 +721,7 @@ class S4RRecIndeterminateEffectSpikeTest {
                 stepRegistry = registry,
             ),
             stepRegistry = registry,
+            reattachPoll = reattachPoll,
         )
 
         suspend fun execute() {

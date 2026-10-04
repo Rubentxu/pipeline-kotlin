@@ -17,11 +17,18 @@ import org.junit.jupiter.api.Test
  * this ceiling IN THE SAME COMMIT, with the commit message justifying why an
  * extraction could not absorb it.
  *
- * The ceiling is pinned at the exact current size (552 lines). It is
+ * The ceiling is pinned at the exact current size (572 lines). It is
  * deliberately a ratchet, not a final target: PR-020's real property is
  * "the coordinator only coordinates and no Step/body/replay semantics live
  * there", enforced by the concrete-routing fitness tests; this file stops
  * the tape measure from running backwards while those slices land.
+ *
+ * This sentence said 552 while the value had already reached 562: the 552 -> 561
+ * and 561 -> 562 steps updated the value and the history below, and left this
+ * paragraph behind. It is corrected here because a guardrail whose prose
+ * disagrees with its own number is a guardrail nobody can trust at review time,
+ * and the fix was one sentence rather than a reason to leave a known falsehood in
+ * place.
  */
 class CoordinatorGrowthGuardrailTest {
 
@@ -70,8 +77,25 @@ class CoordinatorGrowthGuardrailTest {
      * contributor inside the engine would mean two contributors and two opinions
      * about one run's capabilities. A ratchet satisfied by moving the coupling
      * somewhere else is Goodharting; this one is paid in the open.
+     *
+     * The 562 -> 572 step is S4-R1 §3b: the reattach wait became a dependency the
+     * composition root can forward, so the reattach-expiry branch became observable
+     * without 60 s of wall clock per row. Ten lines, and the same verdict as the two
+     * above — a composition parameter between two objects this file owns, which no
+     * named engine can absorb.
+     *
+     * What makes this step different is that it first FAILED at 588 and the
+     * correction, not the exception, is what is being paid for. The 588 came from
+     * branching in the coordinator on whether a caller had supplied a poll, which
+     * duplicated a decision the observer already had a default for. Moving the
+     * `null` -> real-executor fallback INTO [ExternalSubprocessRecovery] deleted the
+     * branch, dropped 16 lines, and put the knowledge of "what is my poll, by
+     * default" back in the one component that owns the process and its clock. The
+     * ceiling is raised over the corrected 572, not over the 588, and the diff is
+     * what makes the ratchet worth having: it forced the question of whether the
+     * growth was real, and the answer was "sixteen lines of it was not".
      */
-    private val maxCoordinatorLines = 562L
+    private val maxCoordinatorLines = 572L
 
     @Test
     fun `the durable coordinator never grows again`() {

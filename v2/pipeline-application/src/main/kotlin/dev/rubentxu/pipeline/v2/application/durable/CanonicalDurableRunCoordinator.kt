@@ -165,6 +165,15 @@ class CanonicalDurableRunCoordinator(
         { predicate, context ->
             dev.rubentxu.pipeline.v2.domain.directive.WhenPredicateEvaluator.evaluate(predicate, context)
         },
+
+    /**
+     * S4-R1 §3b — the reattach wait, forwarded to the composed [ExternalSubprocessRecovery].
+     *
+     * `null`, which is every production call site, leaves the observer on its own real-executor
+     * default, so no production behaviour or timing changes. The dependency and its rationale live
+     * on the observer's constructor; the composition-root view is [CoordinatorCaps.reattachPoll].
+     */
+    private val reattachPoll: ((Path, Long) -> Int?)? = null,
 ) {
     /**
      * Compatibility constructor for the consolidated capability bundle.
@@ -200,6 +209,7 @@ class CanonicalDurableRunCoordinator(
         bodyInvokerAdapter = caps.bodyInvokerAdapter,
         directiveRegistry = caps.directiveRegistry,
         gateContext = caps.gateContext,
+        reattachPoll = caps.reattachPoll,
     )
     // B10/W1c + WU-RP-033: the body execution policy authority. The production default
     // composes TWO declared-policy authorities, both fail-closed and neither key-specific:
@@ -231,7 +241,7 @@ class CanonicalDurableRunCoordinator(
         // TRAIN H3 / PR-019: the a2 external-subprocess compatibility hook is COMPOSED here and
         // reaches the resolver only as a port. The resolver decides when recovery applies; this
         // adapter owns the only place that knows a control directory and a live process exist.
-        runningSubprocessRecovery = ExternalSubprocessRecovery(clock, controlDirRoot),
+        runningSubprocessRecovery = ExternalSubprocessRecovery(clock, controlDirRoot, reattachPoll),
     )
 
     // WU-RP-031 E3: typed input preparation behind a narrow collaborator.

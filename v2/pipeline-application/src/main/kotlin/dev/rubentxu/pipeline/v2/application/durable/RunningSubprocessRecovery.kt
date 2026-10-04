@@ -133,20 +133,31 @@ internal class ExternalSubprocessRecovery(
     /**
      * S4-R1 §3b — the reattach wait, as an explicit dependency.
      *
-     * It was `DurableShellExecutor().pollResult(...)` constructed INLINE, which made the
+     * It used to be `DurableShellExecutor().pollResult(...)` constructed INLINE, which made the
      * reattach-expiry branch (`poll` returns null) unreachable to any test that did not want to
      * burn [REATTACH_TIMEOUT_MS] of wall clock per row. That branch is precisely the fact
      * `ReattachWindowExpired` exists to name, so it is exactly the branch that must be
      * observable.
      *
-     * The default is the REAL executor, so production behaviour and timing are unchanged. This
-     * grants the observer no new power — owning a live process and its clock is already its job
-     * under ADR-S4-R1 — it only removes a construction that was hidden inside a method body.
+     * `null` — the production default, and what every composition root passes today — resolves
+     * below to the REAL executor, so production behaviour and timing are unchanged.
+     *
+     * The caller passes `null` rather than an executor because a composition root that had to
+     * build a `DurableShellExecutor` to configure the observer would be a second place that knows
+     * a process exists. The observer keeps that knowledge: it is the component that owns the
+     * process and its clock under ADR-S4-R1 §1, and it is also where the fallback lives.
      */
-    private val pollResult: (Path, Long) -> Int? = { controlDir, timeoutMs ->
-        DurableShellExecutor().pollResult(controlDir, timeoutMs)
-    },
+    pollResult: ((Path, Long) -> Int?)? = null,
 ) : RunningSubprocessRecovery {
+
+    /**
+     * The real wait, unless a caller substituted one. Owning the fallback HERE is what lets the
+     * composition root forward a nullable dependency without branching on it.
+     */
+    private val reattachPoll: (Path, Long) -> Int? =
+        pollResult ?: { controlDir, timeoutMs ->
+            DurableShellExecutor().pollResult(controlDir, timeoutMs)
+        }
 
     /**
      * No policy check and no status check. Both belong to the decision core, and their absence
@@ -162,7 +173,7 @@ internal class ExternalSubprocessRecovery(
         return when (classification) {
             is StepReconcilerL1.Classification.Complete -> completedShellOutcome(classification.exitCode)
             is StepReconcilerL1.Classification.Reattach -> {
-                val exitCode = pollResult(classification.controlDir, REATTACH_TIMEOUT_MS)
+                val exitCode = reattachPoll(classification.controlDir, REATTACH_TIMEOUT_MS)
                 if (exitCode == null) lostShellOutcome(operationId) else completedShellOutcome(exitCode)
             }
             is StepReconcilerL1.Classification.TimedOut -> RunningSubprocessObservation.Recovered(

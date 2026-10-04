@@ -82,4 +82,17 @@ data class CoordinatorCaps(
         stageEnvironment: dev.rubentxu.pipeline.v2.domain.EnvironmentSpec,
     ) -> dev.rubentxu.pipeline.v2.domain.directive.GateContext =
         { dev.rubentxu.pipeline.v2.domain.directive.GateContext.EMPTY },
+
+    /**
+     * S4-R1 §3b — the reattach wait, forwarded to the composed [ExternalSubprocessRecovery].
+     *
+     * A function type rather than the `RunningSubprocessRecovery` port itself, for one reason: this
+     * bundle is public and the port is `internal`, so naming the port here would make a public API
+     * expose an internal type. The shape `(Path, Long) -> Int?` is the observer's own dependency and
+     * is made entirely of public types.
+     *
+     * `null` — the default, and every production call site — composes the real observer with the
+     * real `DurableShellExecutor` poll and is behaviourally identical to the pre-S4-R1 composition.
+     */
+    val reattachPoll: ((Path, Long) -> Int?)? = null,
 )

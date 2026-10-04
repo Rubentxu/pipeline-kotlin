@@ -21,8 +21,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.durable.TaskStream
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
-import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EnvModel
@@ -59,83 +59,42 @@ import java.util.UUID
 object ShExecution {
 
     /**
-     * WU-RP-022 (finding P2): SQLite rejects payloads above SQLITE_MAX_LENGTH
-     * (default 1e9) with SQLITE_TOOBIG, which killed the durable event writer
-     * mid-run. Large transcripts are therefore chunked so no single
-     * [EchoOutputCaptured] event exceeds this bound. Chunks are contiguous,
-     * in order, and lossless: concatenating the chunk contents reproduces the
-     * transcript exactly (the rule forbids silent data loss or duplication).
+     * Stream a process transcript into the Output Plane, redacting on the way in.
+     *
+     * M1-P2. This replaces the pair of emitters that used to exist here, and the replacement is not
+     * a refactor: those emitters were the **second** rendering of the same bytes. The wrapper
+     * writes `console.log`, and then the JVM re-rendered its content into an
+     * `EchoOutputCaptured` event built from in-memory buffers. Two sources, one redactor in two
+     * overloads, and no property saying they agreed — so a parity test built on this path would
+     * have compared two implementations rather than one writer against what it wrote. The event is
+     * gone; the store is the authority. See ADR-M1 D2.
+     *
+     * Redaction happens **here**, on the way to persistence, not on the way out. A store that
+     * redacted at read time would already have written the secret to disk, and the byte count a
+     * reader sees would depend on how many secrets happened to be in the stream.
+     *
+     * Streaming, never materialised: the producer is consumed in bounded windows by
+     * [dev.rubentxu.pipeline.v2.output.OutputStreamHandle.appendFrom], so the resident set is one
+     * window plus redactor lookahead regardless of transcript size.
      */
-    const val MAX_TRANSCRIPT_CHUNK_CHARS: Int = 64 * 1024 * 1024
-
-    /**
-     * Emits the console transcript as one or more [EchoOutputCaptured] events,
-     * splitting at [MAX_TRANSCRIPT_CHUNK_CHARS] when needed. Single-chunk
-     * transcripts (the overwhelmingly common case) are emitted exactly as
-     * before this mechanism existed.
-     */
-    internal fun emitTranscriptChunked(eventSink: EventSink, runId: String, stepIndex: Int, content: String) {
-        var offset = 0
-        do {
-            val end = minOf(offset + MAX_TRANSCRIPT_CHUNK_CHARS, content.length)
-            eventSink.append(EchoOutputCaptured(
-                eventId = UUID.randomUUID().toString(),
-                runId = runId,
-                sequence = 0L,
-                occurredAt = Instant.now(),
-                stepIndex = stepIndex,
-                content = content.substring(offset, end),
-            ))
-            offset = end
-        } while (offset < content.length)
-    }
-
-    /**
-     * WU-RP-044 (M5 RSS debt): streaming twin of [emitTranscriptChunked]. Reads
-     * the source incrementally so the full transcript is NEVER materialised as
-     * one in-memory copy: at most one chunk window plus redactor lookahead is
-     * resident at any time. Observable contract identical to the in-memory
-     * emitter: chunks are contiguous, ordered, lossless (concatenating chunk
-     * contents reproduces the transcript exactly) and bounded by
-     * [MAX_TRANSCRIPT_CHUNK_CHARS]. Redaction is chunk-boundary-safe via
-     * [dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor]; when the
-     * registry is null the raw bytes are emitted (same fallback as the
-     * in-memory path).
-     */
-    internal fun emitTranscriptStreaming(
-        eventSink: EventSink,
+    internal fun ingestTranscriptIntoOutputPlane(
+        controlDirRoot: Path,
         runId: String,
-        stepIndex: Int,
+        opId: String,
         source: () -> InputStream?,
         secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry?,
     ) {
         val input = source() ?: return
         val redacted = if (secretPatternRegistry != null) {
+            // Each StreamingRedactor carries independent boundary state, so a secret split across
+            // window edges is still scrubbed.
             dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor(secretPatternRegistry).wrap(input)
         } else {
             input
         }
-        redacted.use { stream ->
-            while (true) {
-                val buffer = ByteArray(MAX_TRANSCRIPT_CHUNK_CHARS)
-                var offset = 0
-                while (offset < buffer.size) {
-                    val read = stream.read(buffer, offset, buffer.size - offset)
-                    if (read < 0) break
-                    offset += read
-                }
-                if (offset == 0) break
-                eventSink.append(EchoOutputCaptured(
-                    eventId = UUID.randomUUID().toString(),
-                    runId = runId,
-                    sequence = 0L,
-                    occurredAt = Instant.now(),
-                    stepIndex = stepIndex,
-                    content = String(buffer, 0, offset, Charsets.UTF_8),
-                ))
-                if (offset < buffer.size) break // EOF reached inside this window
-            }
-        }
+        val store = OutputPlaneProvider.storeFor(controlDirRoot)
+        store.open(OutputPlaneProvider.streamId(runId, opId))
+            .appendFrom(redacted)
     }
 
     /**
@@ -312,13 +271,16 @@ object ShExecution {
             //     read as terminal.capturedStdout); console.log holds only stderr and is the
             //     observable transcript. The stdout value must NOT be re-emitted as a console event.
             val terminalExited = terminal as? DurableTaskTerminal.Exited
-            // WU-RP-044 (M5 RSS debt): stream the transcript from console.log
-            // instead of materialising it in memory. Plain mode: console.log
-            // holds stdout+stderr merged (the whole observable transcript).
-            // Capture mode: stdout went to output.txt as the typed VALUE, so
-            // console.log holds only stderr; the captured value is NOT emitted
-            // as a console event (channel separation law). Fallbacks preserve
-            // the previous preference order exactly.
+            // M1-P2: the transcript enters the Output Plane exactly once, and NO console event is
+            // emitted for it. Before this, the product rendered these bytes twice and
+            // independently — whole-file via redactFile, and a separate EchoOutputCaptured built
+            // from in-memory buffers via redactStream. Same redactor, two overloads, two sources,
+            // and no property asserting they agree, so there was no oracle to compare against.
+            // See ADR-M1 D2.
+            //
+            // WU-RP-044 (M5 RSS debt) still holds: the transcript is streamed, never materialised
+            // as one in-memory copy. Plain mode: console.log holds stdout+stderr merged. Capture
+            // mode: stdout went to output.txt as the typed VALUE, so console.log holds only stderr.
             val consoleSource: () -> InputStream? = {
                 dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellFiles.resolveConsoleLog(controlDir).takeIf { Files.exists(it) }
                     ?.let { java.io.BufferedInputStream(java.io.FileInputStream(it.toFile())) }
@@ -332,8 +294,15 @@ object ShExecution {
             // successful exit: LPR-011r2 retention requires the transcript to
             // survive failed and timeout-killed operations for post-mortem.
             val deleteRetainedLog = (terminal as? DurableTaskTerminal.Exited)?.exitCode == 0
+            val controlDirRootNonNull = controlDirRoot
             try {
-                emitTranscriptStreaming(eventSink, runId, stepIndex, consoleSource, secretPatternRegistry)
+                ingestTranscriptIntoOutputPlane(
+                    controlDirRoot = controlDirRootNonNull,
+                    runId = runId,
+                    opId = opId.format(),
+                    source = consoleSource,
+                    secretPatternRegistry = secretPatternRegistry,
+                )
             } finally {
                 if (deleteRetainedLog) {
                     kotlin.runCatching {
@@ -543,10 +512,20 @@ object ShExecution {
             )
         }
 
-        // stdout + stderr merged into the single EchoOutputCaptured (matches
-        // the legacy readText() which read merged process output). Tests assert
-        // a single event per step. WU-LPR-011: the observable content is
-        // redacted with the chunk-boundary-safe redactor before emission.
+        // The NON-DURABLE fallback, and the one place where a console event is still correct.
+        //
+        // This path runs when there is no controlDirRoot at all — no filesystem privileges, or a
+        // non-Linux host — so there is no Output Plane to write into. ADR-M1 D2 forbids a SECOND
+        // authority over the same bytes; it does not require one to exist where none can. Here the
+        // event is the only rendering, so it is not a second anything.
+        //
+        // The law the fitness test enforces is therefore per-execution, not per-type: "for any
+        // one execution, the transcript bytes exist in exactly one place." A guard written as
+        // "EchoOutputCaptured is never emitted" would have been wrong here and would have pushed
+        // someone into deleting the only observable console this path has.
+        //
+        // WU-LPR-011: the observable content is redacted with the chunk-boundary-safe redactor
+        // before emission, exactly as on the durable path.
         val output = stdoutBuilder.toString() + stderrBuilder.toString()
         val observableContent = redactTranscript(output, secretPatternRegistry)
         eventSink.append(

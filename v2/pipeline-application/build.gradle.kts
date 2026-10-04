@@ -43,6 +43,11 @@ tasks.named<Jar>("jar") {
 dependencies {
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-events"))
+    // M1-P2: the Output Plane. Process transcript bytes are written here and nowhere else, and no
+    // console event carries them. The dependency points ONE WAY - :pipeline-output depends on
+    // neither :pipeline-events nor :pipeline-domain, so the event plane cannot reach back into the
+    // output plane and re-acquire an authority over the bytes. See ADR-M1 D2/D3.
+    implementation(project(":pipeline-output"))
     implementation(project(":pipeline-event-harness"))
     implementation(project(":pipeline-scripting-kotlin24"))
     implementation(project(":pipeline-scripting-api"))

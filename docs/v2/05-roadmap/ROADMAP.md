@@ -265,11 +265,99 @@ y no basta para implementar. Abrirlo es decisión abierta, registrada como tal.
 
 ## 10. RP-8 — Control plane, ejecución remota y protocolo
 
-**Dependencias:** RP-5 producto local estable, RP-7 contratos/persistencia/identidad, ADR de threat model y versionado. Recuperar M4 E5-02..10 como INPUT histórico, NO como código listo para integrar sin revalidar. Vertical: worker aislado → handshake/protobuf versionado → leases/fencing → ACK/replay/event ordering → reconexión → cancelación → multi-worker → resiliencia. Requerir mTLS/autorización, compatibilidad N/N-1, backpressure, límites, pruebas kill/network partition/duplicate y observabilidad. Seleccionar backend de transporte por spike, no por preferencia heredada. Remote storage/protocol/API incompatibles requieren autorización explícita.
+### 10.1 Disposición vigente (BLOCK 2, 2026-10-04): el control plane NO es de `pipeline-kotlin`
+
+**RP-8 deja de reclamar el control plane, los workers, el transporte remoto y el
+protocolo distribuido.** Esas responsabilidades están delegadas en `pipelinek-fabric`, y
+mantenerlas aquí sería una segunda autoridad sobre las mismas leyes, no una posición
+de trabajo.
+
+Lo que `pipeline-kotlin` conserva de RP-8 es exactamente lo que ya existe y ya tiene
+dueño dentro del core: el spine durable de una ejecución, la identidad de run y step, el
+journal, el replay, el recovery y el Output Plane. Eso no es "parte del control plane";
+es el runtime que el control plane ejecuta. La frontera no es el features, es quién
+posee la autoridad.
+
+**Por qué el reparto y no una separación por capas.** Un control plane vive de
+observar y dirigir: decide qué run arranca, qué run se cancela, cómo se presenta un
+stage y qué hace un operador cuando algo se cuelga. Eso requiere autoridad sobre
+ciclos de vida, sobre observadores y sobre identidades de run que son de Fabric. Si
+`pipeline-kotlin` lo reclamara, habría dos autoridades decidiendo si un run está
+terminal, y la ley de "una condición, una representación" deja de cumplirse por
+separación de paquetes en lugar de por diseño.
+
+**Lo que este repo debe entregar para que Fabric pueda cumplir RP-8**, y es la
+secuencia que BLOCK 2, BLOCK 5 y BLOCK 6 ejecutan:
+
+1. Un contrato publicado que un consumidor pueda resolver sin dependencia de fuente
+   (BLOCK 2: `pipeline-domain`, `pipeline-events`, `pipeline-output`,
+   `pipeline-scripting-api`).
+2. Un spine de eventos con semántica, causation/correlation y contrato de
+   replay/lectura estables (BLOCK 5 / S5).
+3. Un SDK de plugins que aporte Step, Directive, Event y capability sin exigir
+   cambios en el core (BLOCK 6 / S6).
+
+**Lo que este repo NO debe construir**, aunque el texto histórico de §10.2 lo
+pidiera leerse como suyo: handshake/protobuf versionado, leases/fencing de workers,
+backpressure de transporte, mTLS, multi-worker, orquestación de contenedores,
+provisionamiento de infraestructura, y cualquier backend de transporte distribuido.
+Si alguno de esos hace falta dentro de `pipeline-kotlin`, es un defecto de diseño y
+no una tarea pendiente.
+
+### 10.2 Texto histórico (conservado, sin autoridad operativa)
+
+Se conserva literal por trazabilidad. Fue la disposición vigente hasta el cierre de
+BLOCK 2 y describía un control plane dentro de `pipeline-kotlin` que ya no se va a
+construir aquí.
+
+> **Dependencias:** RP-5 producto local estable, RP-7 contratos/persistencia/identidad,
+> ADR de threat model y versionado. Recuperar M4 E5-02..10 como INPUT histórico, NO
+> como código listo para integrar sin revalidar. Vertical: worker aislado →
+> handshake/protobuf versionado → leases/fencing → ACK/replay/event ordering →
+> reconexión → cancelación → multi-worker → resiliencia. Requerir mTLS/autorización,
+> compatibilidad N/N-1, backpressure, límites, pruebas kill/network
+> partition/duplicate y observabilidad. Seleccionar backend de transporte por spike,
+> no por preferencia heredada. Remote storage/protocol/API incompatibles requieren
+> autorización explícita.
 
 ## 11. RP-9 — Adaptadores Jenkins/Kubernetes y plataforma distribuida
 
-**Dependencias:** RP-8. Adaptador Jenkins como consumidor de eventos LIVE y proyección de FlowNodes/stages; identidad de run, causalidad, reconexión, replay sin efectos duplicados, autorización de credenciales. Kubernetes/OpenShift workers aislados y provisionamiento reproducible; pruebas en clusters reales y compatibilidad de versiones. Mantener núcleo Kotlin local independiente de Jenkins, Kubernetes y almacenamiento remoto. No confundir la UAT de un adaptador con certificación de todo el control plane.
+### 11.1 Disposición vigente (BLOCK 2, 2026-10-04): Jenkins y Kubernetes son de `pipelinek-fabric`
+
+**RP-9 deja de reclamar el adaptador Jenkins, los workers Kubernetes/OpenShift y la
+plataforma distribuida.** Viven en `pipelinek-fabric`, junto con el control plane de
+§10.1, y comparten con él la misma frontera de autoridad.
+
+`pipeline-kotlin` no tendrá código de Jenkins, ni step/plugin de Jenkins, ni
+operaciones de clúster. No es una omisión pendiente: es la posición correcta, porque un
+núcleo de ejecución que conoce a su orquestador deja de poder ejecutar donde ese
+orquestador no está, y la executabilidad local es una propiedad que RP-9 histórico ya
+exigía y que la disposición vigente conserva ("mantener núcleo Kotlin local
+independiente de Jenkins, Kubernetes y almacenamiento remoto").
+
+**El contrato que RP-9 necesita de este repo** es de lectura y de eventos, no de
+integración: `RunOutcome` para el estado del build, `PipelineEventEnvelope` con
+causation/correlation para la proyección de FlowNodes y stages, y `OutputReadPort` con
+su cursor para la consola. Eso es exactamente lo que BLOCK 2 publica y lo que
+`examples/fabric-contract-consumer` ejercita desde fuera. Las leyes de RP-9 que sí
+pertenecen a Fabric y se implementarán en BLOCK 3 y BLOCK 4: identidad de run,
+causalidad, reconexión, replay sin efectos duplicados, autorización de credenciales,
+at-least-once con identidad de reacción idempotente, y la distinción entre UAT de un
+adaptador y certificación de todo el control plane.
+
+**Consecuencia de gobernanza:** ninguna WU de `pipeline-kotlin` abre trabajo de
+Jenkins, Kubernetes o control plane. Si aparece una, se clasifica como trabajo de
+`pipelinek-fabric` o se rechaza.
+
+### 11.2 Texto histórico (conservado, sin autoridad operativa)
+
+> **Dependencias:** RP-8. Adaptador Jenkins como consumidor de eventos LIVE y
+> proyección de FlowNodes/stages; identidad de run, causalidad, reconexión, replay
+> sin efectos duplicados, autorización de credenciales. Kubernetes/OpenShift workers
+> aislados y provisionamiento reproducible; pruebas en clusters reales y
+> compatibilidad de versiones. Mantener núcleo Kotlin local independiente de Jenkins,
+> Kubernetes y almacenamiento remoto. No confundir la UAT de un adaptador con
+> certificación de todo el control plane.
 
 ## 12. Mecánica de ejecución y actualización
 

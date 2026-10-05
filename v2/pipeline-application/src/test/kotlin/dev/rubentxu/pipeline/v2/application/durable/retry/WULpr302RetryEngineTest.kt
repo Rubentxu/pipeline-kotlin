@@ -428,6 +428,45 @@ class WULpr302RetryEngineTest {
         }
 
         @Test
+        fun `P2 restart - a journalled UNSTABLE control row reuses the unstable fact with zero attempts`(
+            @TempDir tempDir: Path,
+        ) = runBlocking {
+            // The fresh==restart law for retry (P2): the durable loop answers a restart the
+            // SAME way fresh execution did — StepOutcome.Unstable, no new attempt, no budget
+            // consumed. The control row is seeded exactly the way the engine writes it after
+            // the fresh execution of the previous test, then the process "restarts".
+            val parentPath = listOf(BlockSegment(0, PluginStepId("build/retry")))
+            val bodyRef = BodyRefs.childBody(parentPath)
+            val adapter = RecordingAdapter()
+            val te = makeEngine(
+                adapter = adapter,
+                bodyRef = bodyRef,
+                parentBodyPath = parentPath,
+                maxAttempts = 3,
+                events = InMemoryEventStore(),
+                tempDir = tempDir,
+            )
+            // Seed: attempt 1 began and completed UNSTABLE — what the fresh run of the
+            // previous test persisted before the "restart".
+            te.journal.beginAttempt(te.controlOpId, 1, te.fingerprint, OperationStatus.RUNNING)
+            te.journal.updateStatus(te.controlOpId, 1, OperationStatus.UNSTABLE, te.fingerprint)
+
+            val outcome = te.engine.execute(bodyRef)
+            assertEquals(
+                StepOutcome.Unstable,
+                outcome,
+                "P2: the restart reports the SAME unstable fact the fresh run produced — " +
+                    "not a failure, not a re-run",
+            )
+            assertEquals(
+                emptyList<Int>(),
+                adapter.attemptIndices(),
+                "a completed-unstable aggregate MUST short-circuit with zero further attempts; " +
+                    "re-running finished work is the exact defect this closes",
+            )
+        }
+
+        @Test
         fun `cancelled body becomes StepOutcome Failure SCRIPT and persists FAILED`(
             @TempDir tempDir: Path,
         ) = runBlocking {

@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.Rejec
 import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.ResumeAttempt
 import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.ReuseFailure
 import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.ReuseSuccess
+import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.ReuseUnstable
 import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.ScheduleAttempt
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -180,6 +181,15 @@ class WULpr022DurableControlEnginePolicyTest {
         fun `ReuseFailure(3) yields CloseTerminal(success=false, 3)`() {
             val directive = policy.directiveFor(ReuseFailure(attempt = 3), maxAttempts)
             assertEquals(EngineDirective.CloseTerminal(success = false, attempt = 3), directive)
+        }
+
+        @Test
+        fun `ReuseUnstable(2) yields CloseUnstableTerminal(2), never a boolean collapse`() {
+            // P2: an unstable completion is neither success nor failure. Forcing it through
+            // CloseTerminal(success = ...) would re-collapse the distinction
+            // OperationStatus.UNSTABLE exists to carry.
+            val directive = policy.directiveFor(ReuseUnstable(attempt = 2), maxAttempts)
+            assertEquals(EngineDirective.CloseUnstableTerminal(attempt = 2), directive)
         }
 
         @Test

@@ -203,6 +203,46 @@ class RetryReconcilerTest {
             )
             assertEquals(RetryReconciliationDecision.ReuseSuccess(1), decision)
         }
+
+        @Test
+        fun `P2 - aggregate unstable reuses the unstable fact without scheduling`() {
+            val decision = RetryReconciler.reconcile(
+                input(
+                    maxAttempts = 3,
+                    controls = listOf(control(2, OperationStatus.UNSTABLE)),
+                ),
+            )
+            assertEquals(RetryReconciliationDecision.ReuseUnstable(2), decision)
+        }
+
+        @Test
+        fun `P2 - an unstable completion at the budget edge never exhausts the aggregate`() {
+            // The money row: fresh retry semantics return an unstable outcome IMMEDIATELY —
+            // it does not consume the attempt and cannot exhaust the budget. Before P2 this
+            // input classified as ReuseFailure(1) via the terminal-failure filter.
+            val decision = RetryReconciler.reconcile(
+                input(
+                    maxAttempts = 1,
+                    controls = listOf(control(1, OperationStatus.UNSTABLE)),
+                ),
+            )
+            assertEquals(RetryReconciliationDecision.ReuseUnstable(1), decision)
+        }
+
+        @Test
+        fun `P2 - a child UNSTABLE row is trusted over a stale RUNNING control row`() {
+            // Crash window: the body completed unstable and the process died before the
+            // control row was written. The child journal is the deeper evidence, same window
+            // the child-success case (W4) already covers.
+            val decision = RetryReconciler.reconcile(
+                input(
+                    maxAttempts = 3,
+                    controls = listOf(control(2, OperationStatus.RUNNING)),
+                    children = listOf(child(2, 0, OperationStatus.UNSTABLE)),
+                ),
+            )
+            assertEquals(RetryReconciliationDecision.ReuseUnstable(2), decision)
+        }
     }
 
     @Nested

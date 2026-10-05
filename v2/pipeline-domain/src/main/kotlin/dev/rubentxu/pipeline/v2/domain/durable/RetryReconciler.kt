@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.Rejec
 import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.ResumeAttempt
 import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.ReuseFailure
 import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.ReuseSuccess
+import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.ReuseUnstable
 import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.ScheduleAttempt
 
 /**
@@ -80,8 +81,20 @@ object RetryReconciler {
         if (latest != null && latest.status == OperationStatus.SUCCEEDED) {
             return ReuseSuccess(latest.attempt)
         }
+        if (latest != null && latest.status == OperationStatus.UNSTABLE) {
+            // P2: an unstable attempt is a COMPLETED attempt that fresh retry semantics
+            // surface immediately — it never advances and never consumes the budget, so the
+            // restart answers the same fact instead of exhausting or re-running.
+            return ReuseUnstable(latest.attempt)
+        }
+        // Terminal-failure exhaustion. UNSTABLE is deliberately excluded: it is a completion
+        // (P1/P2), not a poll failure, and counting it here would let a completed-unstable
+        // attempt push the aggregate to ReuseFailure by ordinal arithmetic alone.
         val maxTerminalOrdinal = input.controlRows
-            .filter { it.status.isPollFailure || it.status.isTerminal }
+            .filter {
+                it.status.isPollFailure ||
+                    (it.status.isTerminal && it.status != OperationStatus.UNSTABLE)
+            }
             .maxOfOrNull { it.attempt }
         if (maxTerminalOrdinal != null && maxTerminalOrdinal >= input.maxAttempts) {
             return ReuseFailure(maxTerminalOrdinal)
@@ -126,6 +139,13 @@ object RetryReconciler {
             if (control.status == OperationStatus.SUCCEEDED) {
                 // W4 / Window C — control row says success; trust it.
                 return CloseSuccessFromChild(attempt)
+            }
+
+            if (control.status == OperationStatus.UNSTABLE) {
+                // P2 — the control row says the attempt COMPLETED unstable; trust it exactly
+                // like the SUCCEEDED row above, for the same reason the writer is the
+                // authority: the restart reports the fact, it does not re-run or advance.
+                return ReuseUnstable(attempt)
             }
 
             if (control.status.isPollFailure || control.status.isTerminal) {
@@ -173,6 +193,14 @@ object RetryReconciler {
             if (success != null) {
                 // W4 / Window C — child journal proves success.
                 return CloseSuccessFromChild(attempt)
+            }
+
+            // P2 — a child journal that says UNSTABLE is deeper evidence than the stale
+            // RUNNING control row (same window as the child-success case above): the body
+            // completed unstable and the crash happened before the control row was written.
+            val unstableChild = realChildren.firstOrNull { it.status == OperationStatus.UNSTABLE }
+            if (unstableChild != null) {
+                return ReuseUnstable(attempt)
             }
 
             // Every real child is terminal non-success under a non-terminal

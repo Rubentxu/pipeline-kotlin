@@ -3705,6 +3705,17 @@ public final class dev/rubentxu/pipeline/v2/domain/durable/EngineDirective$Close
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/durable/EngineDirective$CloseUnstableTerminal : dev/rubentxu/pipeline/v2/domain/durable/EngineDirective {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Ldev/rubentxu/pipeline/v2/domain/durable/EngineDirective$CloseUnstableTerminal;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/durable/EngineDirective$CloseUnstableTerminal;IILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/durable/EngineDirective$CloseUnstableTerminal;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAttempt ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/durable/EngineDirective$FailClosed : dev/rubentxu/pipeline/v2/domain/durable/EngineDirective {
 	public fun <init> (Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -4505,6 +4516,17 @@ public final class dev/rubentxu/pipeline/v2/domain/durable/RetryReconciliationDe
 	public final fun component1 ()I
 	public final fun copy (I)Ldev/rubentxu/pipeline/v2/domain/durable/RetryReconciliationDecision$ReuseSuccess;
 	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/durable/RetryReconciliationDecision$ReuseSuccess;IILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/durable/RetryReconciliationDecision$ReuseSuccess;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAttempt ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/durable/RetryReconciliationDecision$ReuseUnstable : dev/rubentxu/pipeline/v2/domain/durable/RetryReconciliationDecision {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Ldev/rubentxu/pipeline/v2/domain/durable/RetryReconciliationDecision$ReuseUnstable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/durable/RetryReconciliationDecision$ReuseUnstable;IILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/durable/RetryReconciliationDecision$ReuseUnstable;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getAttempt ()I
 	public fun hashCode ()I

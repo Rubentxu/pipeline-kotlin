@@ -22,6 +22,45 @@ class EffectReplayPolicyTest {
     }
 
     @Test
+    fun `UNSTABLE is a reusable completion under RERUN`() {
+        // P2 of the Runtime Observation Contract Closure: an unstable run COMPLETED. Re-running
+        // the handler would re-execute finished work purely because the durable status is not
+        // green. The reuse path derives the semantic outcome from the decoded typed carrier, so
+        // the reuse still reports unstable — this row pins the DECISION only.
+        val decision = policy.decide(
+            replayPolicy = ReplayPolicy.RERUN,
+            effects = setOf(Effect.EXECUTES_SUBPROCESS),
+            hasJournalEntry = true,
+            journaledOutcome = OperationStatus.UNSTABLE,
+        )
+        assertEquals(ReplayDecision.SKIP, decision)
+    }
+
+    @Test
+    fun `UNSTABLE is a reusable completion under MEMOIZED with purely read-only effects`() {
+        val decision = policy.decide(
+            replayPolicy = ReplayPolicy.MEMOIZED,
+            effects = setOf(Effect.READ_ONLY),
+            hasJournalEntry = true,
+            journaledOutcome = OperationStatus.UNSTABLE,
+        )
+        assertEquals(ReplayDecision.SKIP, decision)
+    }
+
+    @Test
+    fun `ABORTED stays non-reusable`() {
+        // Not promoted by analogy with UNSTABLE: an aborted run is not a completion. This row
+        // exists so a future widening of isReusableCompletion is a deliberate edit here.
+        val decision = policy.decide(
+            replayPolicy = ReplayPolicy.RERUN,
+            effects = setOf(Effect.EXECUTES_SUBPROCESS),
+            hasJournalEntry = true,
+            journaledOutcome = OperationStatus.ABORTED,
+        )
+        assertEquals(ReplayDecision.RERUN, decision)
+    }
+
+    @Test
     fun `RERUN policy always returns RERUN`() {
         val decision = policy.decide(
             replayPolicy = ReplayPolicy.RERUN,

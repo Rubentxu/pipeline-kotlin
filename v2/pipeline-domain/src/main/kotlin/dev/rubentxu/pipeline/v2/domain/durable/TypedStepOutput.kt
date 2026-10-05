@@ -49,10 +49,16 @@ interface TypedStepOutput {
  * ```
  *
  * Reuse recovers `O` through the Step's own declared `outputCodec`, so the carrier is
- * reconstructed rather than remembered. The durable status cannot be the source: a Step that
- * completed as `Unstable` is journalled `SUCCEEDED`, and `Success` is too, so the two are
- * indistinguishable there. Reading the outcome out of the typed payload is the only place the
- * distinction still exists — and it is a place the durable format already stores.
+ * reconstructed rather than remembered. Before P1 of the Runtime Observation Contract Closure
+ * this was also a NECESSITY: the durable status could not tell an `Unstable` step from a
+ * `Success` one (both were journalled `SUCCEEDED`), so the typed payload was the only place
+ * the distinction existed. P1 gave the durable layer its own `UNSTABLE` case, and P2 made
+ * such rows reusable — but the DESIGN RULE is unchanged, now for an authority reason instead
+ * of an impossibility one: the semantic outcome is DERIVED from the typed carrier
+ * (`outcomeOf`), never re-read from the status column. One fact, one authority: the status
+ * records that the operation finished unstable; the carrier says what the step produced and
+ * carries the marker. Two independent renderings of the same fact would be a second authority
+ * able to disagree with the first.
  *
  * @param value any value a Step handler produced, including `Unit`.
  * @return the carrier's outcome, or [StepOutcome.Success] when the output is not a

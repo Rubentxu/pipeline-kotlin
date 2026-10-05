@@ -215,6 +215,12 @@ class RetryEngine(
             val decision = plan()
             when (decision) {
                 is RetryReconciliationDecision.ReuseSuccess -> return StepOutcome.Success
+                is RetryReconciliationDecision.ReuseUnstable -> {
+                    // P2: the control row already carries UNSTABLE; a reuse arm replays the
+                    // durable truth and writes NOTHING. The restart answers the same unstable
+                    // fact fresh execution produced, with zero further attempts.
+                    return StepOutcome.Unstable
+                }
                 is RetryReconciliationDecision.ReuseFailure -> return StepOutcome.Failure(
                     PipelineFailure(
                         FailureKind.SCRIPT,

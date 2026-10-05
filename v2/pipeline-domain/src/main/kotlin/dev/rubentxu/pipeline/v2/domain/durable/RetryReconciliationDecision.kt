@@ -22,6 +22,9 @@ package dev.rubentxu.pipeline.v2.domain.durable
  *   The writer persists this transition BEFORE launching any new child.
  * - [ReuseSuccess] — aggregate succeeded at [attempt]. No child
  *   execution. The journal row is the source of truth.
+ * - [ReuseUnstable] — aggregate completed UNSTABLE at [attempt]. No child
+ *   execution and no advance; the restart reports the same unstable
+ *   outcome fresh execution produced.
  * - [ReuseFailure] — aggregate failed at [attempt] (terminal exhaustion).
  *   No child execution.
  * - [RejectDivergence] — durable state is ambiguous or contract-divergent.
@@ -52,6 +55,16 @@ sealed interface RetryReconciliationDecision {
 
     /** Aggregate succeeded at [attempt]. No new child execution. */
     data class ReuseSuccess(val attempt: Int) : RetryReconciliationDecision
+
+    /**
+     * Aggregate completed UNSTABLE at [attempt] (P2 of the Runtime Observation Contract
+     * Closure). No new child execution, and no advance: fresh retry semantics return an
+     * unstable outcome immediately without consuming another attempt, so the restart must
+     * answer the same fact the control row already carries — `UNSTABLE` — instead of
+     * re-running finished work or counting the attempt as a failure. The caller surfaces
+     * `StepOutcome.Unstable`.
+     */
+    data class ReuseUnstable(val attempt: Int) : RetryReconciliationDecision
 
     /** Aggregate failed at [attempt] (terminal exhaustion). No new child execution. */
     data class ReuseFailure(val attempt: Int) : RetryReconciliationDecision

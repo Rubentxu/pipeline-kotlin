@@ -122,7 +122,11 @@ class S4D2ScriptedUnstablePreservationTest {
         override fun decode(encoded: EncodedStepValue): String = encoded.value
     }
 
-    private class CarrierStep(private val marker: String) :
+    private class CarrierStep(
+        private val marker: String,
+        private val replayPolicy: ReplayPolicy = ReplayPolicy.MEMOIZED,
+        private val effects: List<Effect> = listOf(Effect.READ_ONLY),
+    ) :
         StepDefinition<String, CarrierOutput> {
         val handlerInvocations = AtomicInteger(0)
 
@@ -133,8 +137,8 @@ class S4D2ScriptedUnstablePreservationTest {
                 name = "carrier",
                 configRef = "",
                 executionLocation = ExecutionLocation.AGENT,
-                effects = listOf(Effect.READ_ONLY),
-                replayPolicy = ReplayPolicy.MEMOIZED,
+                effects = effects,
+                replayPolicy = replayPolicy,
             ),
             inputCodec = PayloadCodec(),
             outputCodec = CarrierCodec,
@@ -157,6 +161,23 @@ class S4D2ScriptedUnstablePreservationTest {
         dynamicScopePath = emptyList(),
         definitionDigest = "digest-d2",
     )
+
+    /**
+     * The durable operation id the fixture derives for the FIRST invocation at [callSite] —
+     * computed through the real derivation (`ScriptedRegistryCall.operationId()`), never a
+     * local copy of the tuple discipline.
+     */
+    private fun callOperationId(id: ScriptedScopeIdentity, callSite: ScriptedCallSiteId): String =
+        ScriptedRegistryCall(
+            runId = id.runId,
+            entryPointId = id.entryPointId,
+            callSiteId = callSite,
+            dynamicScopePath = id.dynamicScopePath,
+            invocationOrdinal = 0,
+            stepKey = CarrierStep.KEY,
+            encodedInput = EncodedStepValue("payload-d2"),
+            definitionDigest = id.definitionDigest,
+        ).operationId()
 
     private fun invokerOver(registry: InMemoryStepRegistry) = ScriptedInvokerFixture.build(
         registry = registry,
@@ -244,65 +265,95 @@ class S4D2ScriptedUnstablePreservationTest {
         }
 
     @Test
-    fun `DURABLE FRONTIER - a second invocation re-executes (MEASURED CURRENT BEHAVIOUR, NOT PROMOTED AS DESIRED SEMANTICS)`() =
+    fun `DURABLE FRONTIER - a second invocation reuses a completed-unstable step (debt RESOLVED by P2)`() =
         runBlocking {
-            // This test is CHARACTERIZATION, and it is deliberately not a law.
+            // This test WAS the recorded S4-D2 frontier, and P2 of the Runtime Observation
+            // Contract Closure CLOSED it. The full history, because this row changed meaning
+            // twice and both changes were deliberate:
             //
-            //   MEASURED CURRENT BEHAVIOUR — NOT PROMOTED AS DESIRED SEMANTICS
+            //   AS CHARACTERIZED (pre-P1)
+            //     The durable projection collapsed StepOutcome.Unstable onto FAILED, no rule
+            //     reused a non-SUCCEEDED row, and a second invocation re-executed. Recorded as
+            //     design debt, not endorsed.
             //
-            // TRANSITION RECORD (P1 of the Runtime Observation Contract Closure) — the first
-            // assertion changed on purpose, and this is what changed and why:
+            //   P1 (representation half closed)
+            //     The projection persisted OperationStatus.UNSTABLE. The row carried the fact;
+            //     the re-execution debt remained, because replay reused a SUCCEEDED row only.
+            //     This test then asserted 2 handler invocations and said so.
             //
-            //   BEFORE P1
-            //     CanonicalStructuralDecisions mapped StepOutcome.Unstable ->
-            //     OperationStatus.FAILED, so the row carried FAILED, and this test asserted that
-            //     collapse as measured design debt.
+            //   P2 (replay half closed — THIS state)
+            //     `EffectReplayPolicy.isReusableCompletion` admits UNSTABLE, so the recorded
+            //     debt is RESOLVED, not re-recorded: the second invocation reuses the decoded
+            //     typed carrier, derives the outcome from it, and the handler does not run.
             //
-            //   RESOLVED BY P1
-            //     The durable projection persists OperationStatus.UNSTABLE (terminal, not a poll
-            //     failure). The REPRESENTATION half of the recorded frontier is closed. What is
-            //     still measured is the REPLAY half: EffectReplayPolicy reuses a SUCCEEDED row
-            //     and nothing else, so a completed-unstable step still re-executes on a second
-            //     invocation. That half remains recorded debt for its own decision point, exactly
-            //     as before — it is no longer dressed in a status name that lied about what had
-            //     happened.
-            //
-            // What is still deliberately NOT done here: no replay rule is widened to reuse an
-            // UNSTABLE row, and scripted is NOT made to persist `Unstable -> SUCCEEDED` to win a
-            // REUSE. Doing the latter would restore a split-brain where the scripted frontend and
-            // the canonical durable projection disagree about the same declared Step.
+            // Still deliberately NOT done: no rule is widened beyond reusable completions
+            // (FAILED/ABORTED/... stay non-reusable — pinned in
+            // `EffectReplayPolicyTableFitnessTest`), and scripted never fabricates
+            // `Unstable -> SUCCEEDED` to win a reuse. The reuse path is ONE authority:
+            // `DurableInvocationResolver` decides, `ScriptedTypedResult.from` derives the
+            // outcome from the decoded carrier.
             val step = CarrierStep(marker = "unstable")
             val registry = InMemoryStepRegistry().also { it.register(step) }
             val journal = InMemoryOperationJournal(SystemClock())
             val invoker = ScriptedInvokerFixture.build(registry = registry, journal = journal)
             val id = identity("run-unstable")
             val callSite = ScriptedCallSiteId("cs-d2")
-            val call = ScriptedRegistryCall(
-                runId = id.runId,
-                entryPointId = id.entryPointId,
-                callSiteId = callSite,
-                dynamicScopePath = id.dynamicScopePath,
-                invocationOrdinal = 0,
-                stepKey = CarrierStep.KEY,
-                encodedInput = EncodedStepValue("payload-d2"),
-                definitionDigest = id.definitionDigest,
-            )
 
-            invoker.invoke(call)
+            val fresh = invoker.invokeTyped(id, callSite, 0, step, "payload-d2")
+            val reused = invoker.invokeTyped(id, callSite, 0, step, "payload-d2")
+
             assertEquals(
                 OperationStatus.UNSTABLE,
-                journal.get(call.operationId())!!.status,
-                "NON-REGRESSION (was the FAILED collapse): the durable projection must persist " +
-                    "UNSTABLE; expecting FAILED again would re-pin the divergence P1 closed",
+                journal.get(callOperationId(id, callSite))!!.status,
+                "the durable row carries the fact: an unstable run is persisted UNSTABLE (P1)",
             )
-
-            invoker.invoke(call)
+            // THE LAW (fresh == reuse == restart), MEMOIZED + purely READ_ONLY half:
+            assertEquals(fresh.value, reused.value, "reuse delivers the SAME decoded value")
             assertEquals(
-                2,
+                StepOutcome.Unstable,
+                reused.outcome,
+                "reuse reports the SAME semantic outcome, derived from the typed carrier — " +
+                    "not from the durable status column",
+            )
+            assertEquals(
+                1,
                 step.handlerInvocations.get(),
-                "MEASURED CURRENT BEHAVIOUR: the second invocation re-executes because the row is " +
-                    "UNSTABLE and the replay rules reuse a SUCCEEDED row only. Recorded, not " +
-                    "endorsed, and no scripted-only status is introduced to change it.",
+                "RESOLVED BY P2 (was the measured debt): a completed-unstable step is REUSED on " +
+                    "the second invocation — zero further handler executions — because UNSTABLE " +
+                    "is a reusable completion. If this goes back to 2, the replay debt reopened",
+            )
+        }
+
+    /**
+     * The same law under RERUN + EXECUTES_SUBPROCESS: a completed-unstable step is reusable
+     * whatever the policy branch admits the reuse, and the reuse never re-runs the handler.
+     * RERUN (misnamed) is the reuse branch for non-read-only steps; MEMOIZED with a purely
+     * read-only set is the other. Both read the SAME `isReusableCompletion` classification —
+     * this row fails if anyone ever forks a second table.
+     */
+    @Test
+    fun `P2 - fresh == restart under RERUN too - unstable reuses with zero handler executions`() =
+        runBlocking {
+            val step = CarrierStep(
+                marker = "unstable",
+                replayPolicy = ReplayPolicy.RERUN,
+                effects = listOf(Effect.EXECUTES_SUBPROCESS),
+            )
+            val registry = InMemoryStepRegistry().also { it.register(step) }
+            val journal = InMemoryOperationJournal(SystemClock())
+            val invoker = ScriptedInvokerFixture.build(registry = registry, journal = journal)
+            val id = identity("run-unstable-rerun")
+            val callSite = ScriptedCallSiteId("cs-d2-rerun")
+
+            val fresh = invoker.invokeTyped(id, callSite, 0, step, "payload-d2")
+            val reused = invoker.invokeTyped(id, callSite, 0, step, "payload-d2")
+
+            assertEquals(fresh.value, reused.value, "reuse delivers the SAME decoded value")
+            assertEquals(StepOutcome.Unstable, reused.outcome)
+            assertEquals(
+                1,
+                step.handlerInvocations.get(),
+                "RERUN + UNSTABLE is a reusable completion: the restart reuses, zero executions",
             )
         }
 

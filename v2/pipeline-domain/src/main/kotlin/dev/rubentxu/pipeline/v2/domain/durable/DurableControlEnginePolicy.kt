@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.Rejec
 import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.ResumeAttempt
 import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.ReuseFailure
 import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.ReuseSuccess
+import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.ReuseUnstable
 import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.ScheduleAttempt
 
 /**
@@ -88,6 +89,14 @@ sealed interface EngineDirective {
     data class CloseTerminal(val success: Boolean, val attempt: Int) : EngineDirective
 
     /**
+     * Aggregate completed UNSTABLE at [attempt] (P2 of the Runtime Observation Contract
+     * Closure). Its own case, NOT `CloseTerminal(success = false)`: an unstable completion is
+     * neither success nor failure, and forcing it through the boolean would re-collapse the
+     * exact distinction P1 introduced `OperationStatus.UNSTABLE` to carry.
+     */
+    data class CloseUnstableTerminal(val attempt: Int) : EngineDirective
+
+    /**
      * Decision/budget pair is incoherent. The runner MUST NOT launch any
      * child. Surface as typed ENGINE failure with [reason].
      */
@@ -109,6 +118,7 @@ sealed interface EngineDirective {
  * | `AdvanceAfterFailure(from, to)`   | `to ∈ [1..max]`        | `LaunchChild(to, fresh = true)`             |
  * | `AdvanceAfterFailure(from, to)`   | `to > max`             | `FailClosed("advance beyond maxAttempts")`  |
  * | `ReuseSuccess(attempt)`           | always                 | `CloseTerminal(success = true, attempt)`    |
+ * | `ReuseUnstable(attempt)`          | always                 | `CloseUnstableTerminal(attempt)`            |
  * | `ReuseFailure(attempt)`           | always                 | `CloseTerminal(success = false, attempt)`   |
  * | `RejectDivergence(_, reason)`     | always                 | `FailClosed(reason)`                        |
  *
@@ -133,6 +143,7 @@ object DefaultDurableControlEnginePolicy : DurableControlEnginePolicy {
             }
         }
         is ReuseSuccess -> EngineDirective.CloseTerminal(success = true, attempt = decision.attempt)
+        is ReuseUnstable -> EngineDirective.CloseUnstableTerminal(attempt = decision.attempt)
         is ReuseFailure -> EngineDirective.CloseTerminal(success = false, attempt = decision.attempt)
         is RejectDivergence -> EngineDirective.FailClosed(reason = decision.reason)
     }

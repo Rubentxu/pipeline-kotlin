@@ -36,6 +36,21 @@ package dev.rubentxu.pipeline.v2.domain.durable
  * The distinction from LOST is important: LOST means worker crash (unknown outcome),
  * FAILED_TIMEOUT means deadline enforcement (known killed, unknown if it would have succeeded).
  *
+ * ## Durable format and the downgrade boundary (P2 decision)
+ *
+ * Statuses are persisted BY NAME (`status.name`) and decoded with `OperationStatus.valueOf`.
+ * That makes the format self-describing and forward-extensible: a newer binary reads every
+ * journal an older binary wrote, because old names never disappear. The reverse is NOT
+ * supported, deliberately: a binary older than the case that wrote a name — `UNSTABLE` since
+ * P1 of the Runtime Observation Contract Closure, exactly like `FAILED_TIMEOUT` before it —
+ * throws `IllegalArgumentException` from `valueOf` and fails closed, loudly, instead of
+ * silently misreading a status it cannot represent. **Downgrade is outside the contract.**
+ *
+ * This is position A of the P2-G decision: no schema version bump and no migration path are
+ * provided for downgrade, because every added name so far has been an additive widening of
+ * the same epoch. If a future change ever REMOVES or renames a case, that is a new durable
+ * epoch and requires versioning at the journal layer before it lands — not this enum.
+ *
  * @see <a href="design.md §E4-01">Design §E4-01</a>
  * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
  * @see <a href="ADR-0047">ADR-0047 — FAILED_TIMEOUT Terminal State</a>

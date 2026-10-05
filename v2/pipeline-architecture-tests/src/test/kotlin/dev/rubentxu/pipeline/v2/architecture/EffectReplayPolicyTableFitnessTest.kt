@@ -145,6 +145,10 @@ Arguments.of(
     ReplayPolicy.RERUN, setOf(Effect.ABORTS_PIPELINE), OperationStatus.SUCCEEDED, ReplayDecision.ABORT,
 ),
 Arguments.of(
+    "D1-2 journalled RERUN ABORTS_PIPELINE aborts on UNSTABLE too (precedence over P2 reuse)",
+    ReplayPolicy.RERUN, setOf(Effect.ABORTS_PIPELINE), OperationStatus.UNSTABLE, ReplayDecision.ABORT,
+),
+Arguments.of(
     "D1-2 journalled RERUN ABORTS_PIPELINE aborts on FAILED too",
     ReplayPolicy.RERUN, setOf(Effect.ABORTS_PIPELINE), OperationStatus.FAILED, ReplayDecision.ABORT,
 ),
@@ -160,14 +164,24 @@ Arguments.of(
 // 3. NEVER constrains history, never the first legitimate execution.
 Arguments.of("D1-3 NEVER with a SUCCEEDED row aborts", ReplayPolicy.NEVER, setOf(Effect.READ_ONLY), OperationStatus.SUCCEEDED, ReplayDecision.ABORT),
 Arguments.of("D1-3 NEVER with a FAILED row aborts", ReplayPolicy.NEVER, setOf(Effect.READ_ONLY), OperationStatus.FAILED, ReplayDecision.ABORT),
+Arguments.of("D1-3 NEVER with an UNSTABLE row aborts", ReplayPolicy.NEVER, setOf(Effect.READ_ONLY), OperationStatus.UNSTABLE, ReplayDecision.ABORT),
 
-// 4-5. RERUN reuses a journalled SUCCEEDED result; the name that lied.
+// 4-5. RERUN reuses a journalled reusable completion; the name that lied.
+//      P2 of the Runtime Observation Contract Closure widened "reusable" from SUCCEEDED-only
+//      to {SUCCEEDED, UNSTABLE}: an unstable run COMPLETED, and re-executing it replayed
+//      finished work purely because the status was not green. The typed carrier carries the
+//      Unstable marker, so the reuse still REPORTS unstable.
 Arguments.of("D1-4 RERUN reuses SUCCEEDED", ReplayPolicy.RERUN, setOf(Effect.EXECUTES_SUBPROCESS), OperationStatus.SUCCEEDED, ReplayDecision.SKIP),
+Arguments.of("D1-4 RERUN reuses UNSTABLE (P2)", ReplayPolicy.RERUN, setOf(Effect.EXECUTES_SUBPROCESS), OperationStatus.UNSTABLE, ReplayDecision.SKIP),
 Arguments.of("D1-5 RERUN re-executes FAILED", ReplayPolicy.RERUN, setOf(Effect.EXECUTES_SUBPROCESS), OperationStatus.FAILED, execute),
+Arguments.of("D1-5 RERUN re-executes ABORTED (not promoted by analogy)", ReplayPolicy.RERUN, setOf(Effect.EXECUTES_SUBPROCESS), OperationStatus.ABORTED, execute),
 Arguments.of("D1-5 RERUN re-executes RUNNING", ReplayPolicy.RERUN, setOf(Effect.EXECUTES_SUBPROCESS), OperationStatus.RUNNING, execute),
+Arguments.of("D1-5 RERUN re-executes FAILED_TIMEOUT", ReplayPolicy.RERUN, setOf(Effect.EXECUTES_SUBPROCESS), OperationStatus.FAILED_TIMEOUT, execute),
+Arguments.of("D1-5 RERUN re-executes DIVERGENT", ReplayPolicy.RERUN, setOf(Effect.EXECUTES_SUBPROCESS), OperationStatus.DIVERGENT, execute),
 
 // 6-7. MEMOIZED only memoises a purely read-only effect set.
 Arguments.of("D1-6 MEMOIZED READ_ONLY reuses SUCCEEDED", ReplayPolicy.MEMOIZED, setOf(Effect.READ_ONLY), OperationStatus.SUCCEEDED, ReplayDecision.SKIP),
+Arguments.of("D1-6 MEMOIZED READ_ONLY reuses UNSTABLE (P2)", ReplayPolicy.MEMOIZED, setOf(Effect.READ_ONLY), OperationStatus.UNSTABLE, ReplayDecision.SKIP),
 Arguments.of("D1-7 MEMOIZED READ_ONLY re-executes FAILED", ReplayPolicy.MEMOIZED, setOf(Effect.READ_ONLY), OperationStatus.FAILED, execute),
 
 // 8. A mixed or effectful set is never memoised, whatever the policy.

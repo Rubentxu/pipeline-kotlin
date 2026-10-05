@@ -305,6 +305,67 @@ class WULpr302WaitUntilEngineTest {
         }
 
         @Test
+        fun `P2 negative control - an unstable poll is predicate-unsatisfied, never an UNSTABLE row`(
+            @TempDir tempDir: Path,
+        ) = runBlocking {
+            // CONTROL NEGATIVO (P2). OperationStatus.UNSTABLE exists now, and this test pins
+            // that its existence must NOT leak into waitUntil's own machine: a body that ends
+            // StepOutcome.Unstable means the PREDICATE was not satisfied — a fact about the
+            // waitUntil control plane, not a terminal state of the operation. The engine
+            // resolves it to WaitUntilPredicateOutcome.Failed and continues per policy, like
+            // any other unsatisfied poll. A future search-and-replace that maps
+            // StepOutcome.Unstable -> OperationStatus.UNSTABLE inside this engine must fail
+            // here: no waitUntil control row may ever read UNSTABLE.
+            val parentPath = listOf(BlockSegment(0, PluginStepId("build/waituntil")))
+            val bodyRef = BodyRefs.childBody(parentPath)
+            val adapter = RecordingAdapter().also {
+                it.open(bodyRef) { ctx ->
+                    if ((ctx.attempt?.index ?: 0) < 2) {
+                        StepOutcome.Unstable
+                    } else {
+                        StepOutcome.Success
+                    }
+                }
+            }
+            val events = InMemoryEventStore()
+            val te = makeEngine(
+                adapter = adapter,
+                bodyRef = bodyRef,
+                parentBodyPath = parentPath,
+                initialRecurrencePeriodMs = 1L,
+                maxBackoffMs = 4L,
+                events = events,
+                tempDir = tempDir,
+            )
+
+            val outcome = te.engine.execute(bodyRef)
+            assertEquals(StepOutcome.Success, outcome)
+            assertEquals(listOf(1, 2), adapter.attemptIndices()) {
+                "an unstable poll must be retried by the waitUntil policy, exactly like an " +
+                    "unsatisfied predicate — the unstable attempt must not terminate the loop"
+            }
+            val rows = te.journal.readState(
+                controlOpId = te.controlOpId,
+                initialRecurrencePeriodMs = 1L,
+                maxBackoffMs = 4L,
+                currentFingerprint = te.fingerprint,
+            ).controlRows.sortedBy { it.attempt }
+            assertEquals(2, rows.size)
+            assertTrue(
+                rows.none { it.status == OperationStatus.UNSTABLE },
+                "NO waitUntil control row may ever be UNSTABLE: unstable means " +
+                    "predicate-unsatisfied here, and the poll slot stays a non-terminal row " +
+                    "until completion or deadline terminalises it",
+            )
+            assertEquals(OperationStatus.SUCCEEDED, rows[1].status)
+            assertTrue(
+                events.eventsFor(te.runId.value).any {
+                    it is WaitUntilCompleted && it.outcome == "completed" && it.totalAttempts == 2
+                },
+            ) { "WaitUntilCompleted(completed, totalAttempts=2) MUST be emitted after an unstable first poll" }
+        }
+
+        @Test
         fun `deadline exceeded returns Failure TIMEOUT and persists FAILED_TIMEOUT`(
             @TempDir tempDir: Path,
         ) = runBlocking {

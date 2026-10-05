@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
+import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 
 /**
@@ -28,22 +29,31 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
  * 1  no journal entry (first execution)            EXECUTE
  * 2  journalled + ABORTS_PIPELINE in effects       ABORT
  * 3  journalled + NEVER                            ABORT
- * 4  journalled + RERUN + SUCCEEDED                 SKIP
- * 5  journalled + RERUN + not SUCCEEDED             EXECUTE
+ * 4  journalled + RERUN + reusable completion      SKIP
+ * 5  journalled + RERUN + not reusable             EXECUTE
  * 6  journalled + MEMOIZED + purely READ_ONLY
- *     + SUCCEEDED                                   SKIP
+ *     + reusable completion                        SKIP
  * 7  journalled + MEMOIZED + purely READ_ONLY
- *     + not SUCCEEDED                               EXECUTE
+ *     + not reusable                               EXECUTE
  * 8  journalled + MEMOIZED + EXECUTES_SUBPROCESS
- *     or WRITES_WORKSPACE (incl. mixed sets)        EXECUTE
+ *     or WRITES_WORKSPACE (incl. mixed sets)       EXECUTE
  * ```
+ *
+ * **Reusable completion** is `[isReusableCompletion]`: `SUCCEEDED` and — since P2 of the
+ * Runtime Observation Contract Closure — `UNSTABLE`. An unstable run COMPLETED: its work is
+ * done, its typed output is journalled, and replaying it would re-execute finished work only
+ * because its durable status is not green. `FAILED`, `FAILED_TIMEOUT`, `ABORTED`, `DIVERGENT`
+ * and `LOST` are not completions and stay non-reusable; `ABORTED` in particular keeps the
+ * pre-existing non-reuse rule rather than gaining reuse by analogy. A reusable row is served
+ * by decoding the persisted typed output — the semantic outcome is then derived from the
+ * carrier (`outcomeOf`), never from the durable status, so an unstable reuse reports unstable.
  *
  * A **mixed** effect set is never memoisable: only a set that is purely
  * `READ_ONLY` may `SKIP`. An **empty** set is not memoisable either — an
  * executor that declared no effect has said nothing about purity.
  *
- * Note on names: `ReplayPolicy.RERUN` means "reuse a journalled `SUCCEEDED`
- * result", the opposite of what the name suggests. ADR-0103 D2a fixes the
+ * Note on names: `ReplayPolicy.RERUN` means "reuse a journalled reusable completion",
+ * the opposite of what the name suggests. ADR-0103 D2a fixes the
  * documented contract; D2b defers the rename, because the enum name is inside
  * the fingerprint hash and renaming it would migrate every operation that
  * declares it on both the canonical and the scripted history.
@@ -70,6 +80,21 @@ interface EffectReplayPolicy {
 }
 
 /**
+ * The single classification of durable completions whose work is done and whose journalled
+ * result may be served again instead of re-executing the handler.
+ *
+ * This is the ONE authority for "reusable": rules 4 and 5 of the decision matrix and the
+ * memoisation rule all read it, and nothing else re-derives the set. `UNSTABLE` joined
+ * `SUCCEEDED` when P2 closed the recorded replay debt (S4-D2 frontier): an unstable run is a
+ * finished run, and refusing to reuse it re-executed completed work purely because the durable
+ * status was not green. Every other status — failed, timed out, aborted, divergent, lost, or
+ * still in flight — is not a completion and stays non-reusable. `ABORTED` keeps the existing
+ * non-reuse behaviour; it is not promoted by analogy.
+ */
+fun OperationStatus.isReusableCompletion(): Boolean =
+    this == OperationStatus.SUCCEEDED || this == OperationStatus.UNSTABLE
+
+/**
  * Default effect-aware replay policy implementation.
  *
  * @see <a href="design.md §E4-06">Design §E4-06</a>
@@ -92,7 +117,7 @@ class DefaultEffectReplayPolicy : EffectReplayPolicy {
         hasJournalEntry: Boolean,
         journaledOutcome: dev.rubentxu.pipeline.v2.domain.durable.OperationStatus?,
     ): ReplayDecision {
-        val succeeded = journaledOutcome == dev.rubentxu.pipeline.v2.domain.durable.OperationStatus.SUCCEEDED
+        val reusable = journaledOutcome != null && journaledOutcome.isReusableCompletion()
 
         // ADR-0103 D1 — the table is normative and its ORDER is the contract.
         // This was a cascade of `if`s whose order had grown accidental semantics
@@ -120,12 +145,14 @@ class DefaultEffectReplayPolicy : EffectReplayPolicy {
             //    constrains re-execution of durable history and nothing else.
             replayPolicy == ReplayPolicy.NEVER -> ReplayDecision.ABORT
 
-            // 4. REUSE OF A SUCCEEDED ROW. The name `RERUN` means the opposite of
+            // 4. REUSE OF A REUSABLE COMPLETION. The name `RERUN` means the opposite of
             //    what it says: this is reuse, not re-execution. ADR-0103 D2a fixes
             //    the documented contract and pins it with a test; D2b defers the
             //    rename to a durable compatibility epoch, because the enum name is
-            //    inside the fingerprint hash.
-            replayPolicy == ReplayPolicy.RERUN && succeeded -> ReplayDecision.SKIP
+            //    inside the fingerprint hash. `UNSTABLE` is reusable since P2: the
+            //    decoded typed carrier carries the Unstable marker, so the reuse
+            //    reports unstable without re-running the handler.
+            replayPolicy == ReplayPolicy.RERUN && reusable -> ReplayDecision.SKIP
 
             // 5. EFFECT-AWARE MEMOISATION. The effect set must be PURELY read-only
             //    (WU-RP-040 R8 category C): a mixed set containing
@@ -134,10 +161,10 @@ class DefaultEffectReplayPolicy : EffectReplayPolicy {
             //    re-writing workspace state. The descriptor's `effects:
             //    List<Effect>` makes mixed sets representable, which is why this
             //    cannot be a `contains(READ_ONLY)` test.
-            replayPolicy == ReplayPolicy.MEMOIZED && memoisable(effects) && succeeded -> ReplayDecision.SKIP
+            replayPolicy == ReplayPolicy.MEMOIZED && memoisable(effects) && reusable -> ReplayDecision.SKIP
 
             // 6. DEFAULT — anything not explicitly reusable is re-executed. Covers
-            //    the effectful MEMOIZED rows, every non-SUCCEEDED outcome, and the
+            //    the effectful MEMOIZED rows, every non-completion outcome, and the
             //    empty effect set, which is deliberately NOT memoisable: an
             //    executor that declared no effect has said nothing about purity.
             else -> ReplayDecision.RERUN

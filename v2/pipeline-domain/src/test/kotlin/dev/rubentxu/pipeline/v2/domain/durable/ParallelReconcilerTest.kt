@@ -88,6 +88,19 @@ class ParallelReconcilerTest {
         assertEquals(ParallelDecision.ReuseFailure, d)
     }
 
+    // P2 — W6 terminal UNSTABLE aggregate: the lossless carrier is reused, zero executions.
+    @Test
+    @DisplayName("P2: aggregate UNSTABLE with exact outcome -> ReuseUnstable, zero executions")
+    fun p2_reuseUnstable() {
+        // Before P1 this aggregate row could not exist (the engine collapsed Unstable onto
+        // ABORTED); before P2 a row that said UNSTABLE fell through the whitelist to the
+        // stale-aggregate path and could relaunch branches.
+        val d = ParallelReconciler.reconcile(
+            input(aggregateRow = aggregate(OperationStatus.UNSTABLE, outcome = BranchTerminal.Unstable)),
+        )
+        assertEquals(ParallelDecision.ReuseUnstable, d)
+    }
+
     // P6-5 — W3 partial recovery: A terminal, B incomplete
     @Test
     @DisplayName("P6-5: A terminal SUCCEEDED, B absent -> ResumeBranches([B]); A executions = 0")
@@ -115,6 +128,42 @@ class ParallelReconcilerTest {
             ),
         )
         assertEquals(ParallelDecision.CloseFromChildren(BranchTerminal.Succeeded), d)
+    }
+
+    // P2 — W5 stale aggregate, UNSTABLE children: the fold is provable losslessly now.
+    @Test
+    @DisplayName("P2: all children UNSTABLE, aggregate stale -> CloseFromChildren(Unstable), children = 0")
+    fun p2_closeFromChildrenUnstable() {
+        // Pre-P1 this was RejectAmbiguousOutcome ("no lossless carrier"); P1 gave unstable
+        // rows their own carrier, so the stale-aggregate window closes deterministically.
+        val d = ParallelReconciler.reconcile(
+            input(
+                branches = 2,
+                children = mapOf(
+                    0 to listOf(child(0, 0, OperationStatus.UNSTABLE)),
+                    1 to listOf(child(1, 0, OperationStatus.UNSTABLE)),
+                ),
+            ),
+        )
+        assertEquals(ParallelDecision.CloseFromChildren(BranchTerminal.Unstable), d)
+    }
+
+    // P2 — the legacy FAILED ambiguity survives: it must NOT be read as Unstable.
+    @Test
+    @DisplayName("P2: FAILED children under a stale aggregate stay ambiguous, not unstable")
+    fun p2_failedStaysAmbiguous() {
+        val d = ParallelReconciler.reconcile(
+            input(
+                branches = 1,
+                children = mapOf(
+                    0 to listOf(child(0, 0, OperationStatus.FAILED)),
+                ),
+            ),
+        )
+        assertTrue(d is ParallelDecision.RejectAmbiguousOutcome) {
+            "a pre-P1 FAILED row cannot distinguish Failure from Unstable; widening it would " +
+                "re-introduce the loss this whole chain exists to close"
+        }
     }
 
     // P6-7 — W7 divergence before effects

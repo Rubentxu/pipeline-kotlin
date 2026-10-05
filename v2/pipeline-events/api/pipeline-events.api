@@ -370,16 +370,34 @@ public abstract interface class dev/rubentxu/pipeline/v2/events/EventSink : dev/
 
 public final class dev/rubentxu/pipeline/v2/events/EventSink$DefaultImpls {
 	public static fun appendAssigned (Ldev/rubentxu/pipeline/v2/events/EventSink;Ldev/rubentxu/pipeline/v2/events/DomainEvent;)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public static fun readSlice (Ldev/rubentxu/pipeline/v2/events/EventSink;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;I)Ldev/rubentxu/pipeline/v2/events/EventSlice;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/EventSlice {
+	public fun <init> (Ljava/util/List;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;Z)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;
+	public final fun component3 ()Z
+	public final fun copy (Ljava/util/List;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;Z)Ldev/rubentxu/pipeline/v2/events/EventSlice;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/EventSlice;Ljava/util/List;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;ZILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/EventSlice;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEvents ()Ljava/util/List;
+	public final fun getHasMore ()Z
+	public final fun getNextCursor ()Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/events/EventStore {
 	public abstract fun append (Ldev/rubentxu/pipeline/v2/events/DomainEvent;)V
 	public abstract fun appendAssigned (Ldev/rubentxu/pipeline/v2/events/DomainEvent;)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
 	public abstract fun eventsFor (Ljava/lang/String;)Lkotlin/sequences/Sequence;
+	public abstract fun readSlice (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;I)Ldev/rubentxu/pipeline/v2/events/EventSlice;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/EventStore$DefaultImpls {
 	public static fun appendAssigned (Ldev/rubentxu/pipeline/v2/events/EventStore;Ldev/rubentxu/pipeline/v2/events/DomainEvent;)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public static fun readSlice (Ldev/rubentxu/pipeline/v2/events/EventStore;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;I)Ldev/rubentxu/pipeline/v2/events/EventSlice;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/ExecutionTargetResolved : dev/rubentxu/pipeline/v2/events/DomainEvent {
@@ -1050,6 +1068,7 @@ public final class dev/rubentxu/pipeline/v2/events/NullEventSink : dev/rubentxu/
 	public fun append (Ldev/rubentxu/pipeline/v2/events/DomainEvent;)V
 	public fun appendAssigned (Ldev/rubentxu/pipeline/v2/events/DomainEvent;)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
 	public fun eventsFor (Ljava/lang/String;)Lkotlin/sequences/Sequence;
+	public fun readSlice (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;I)Ldev/rubentxu/pipeline/v2/events/EventSlice;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/ParallelBranchFinished : dev/rubentxu/pipeline/v2/events/DomainEvent {
@@ -1805,6 +1824,7 @@ public final class dev/rubentxu/pipeline/v2/events/identity/EnvelopeProjectingEv
 	public fun append (Ldev/rubentxu/pipeline/v2/events/DomainEvent;)V
 	public fun appendAssigned (Ldev/rubentxu/pipeline/v2/events/DomainEvent;)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
 	public fun eventsFor (Ljava/lang/String;)Lkotlin/sequences/Sequence;
+	public fun readSlice (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;I)Ldev/rubentxu/pipeline/v2/events/EventSlice;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/identity/EnvelopeProjector {

@@ -80,7 +80,16 @@ sealed class EventQuery {
  */
 data class EventPage(
     val envelopes: List<PipelineEventEnvelope>,
-    /** Cursor to resume from; null only when the page reached the end of history. */
+    /**
+     * Cursor to resume from.
+     *
+     * The KDoc used to say "null only when the page reached the end of history", and the code has
+     * never done that: the reader always answers with a position, so the null was a promise nothing
+     * kept. It is not a good promise either. A `null` cursor already means "start at the beginning"
+     * — that is what `readAfter(run, null, limit)` does — so a null continuation could not tell the
+     * end of a run apart from its start, and a consumer would have to treat the two identically
+     * and guess. [hasMore] is the field that says whether more is coming.
+     */
     val nextCursor: EventCursor?,
     val hasMore: Boolean,
 )

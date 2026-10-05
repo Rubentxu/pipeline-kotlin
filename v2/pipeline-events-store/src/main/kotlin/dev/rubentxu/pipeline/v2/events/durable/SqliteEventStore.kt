@@ -652,6 +652,59 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     /**
+     * Cuts the page in SQL, which is the only place where that is possible: the cut and the limit
+     * are the index's job, and asking SQLite for a run's whole history to keep `limit` of it meant
+     * decoding every event of a long run to hand back a page of three.
+     *
+     * `LIMIT limit + 1` is how [EventSlice.hasMore] is proved rather than guessed: the extra row
+     * is looked at and dropped, which is the same single peek the inherited default performs, only
+     * here it costs one row instead of the rest of the run.
+     *
+     * The `ORDER BY sequence` is the same one `eventsFor` uses, and for the same reason — the
+     * cursor cuts on sequence, so the read has to be in sequence. `ux_events_run_sequence` covers
+     * it, so the database serves the ordering from the index.
+     *
+     * `EventSliceParityLawsTest` is what holds this to the inherited meaning.
+     */
+    override fun readSlice(
+        runId: String,
+        after: dev.rubentxu.pipeline.v2.events.identity.EventCursor?,
+        limit: Int,
+    ): dev.rubentxu.pipeline.v2.events.EventSlice {
+        require(limit > 0) { "limit must be positive, got $limit" }
+        val afterSequence = after?.lastSequence ?: 0L
+        val page = ArrayList<dev.rubentxu.pipeline.v2.events.DomainEvent>(minOf(limit, 64))
+        var hasMore = false
+        freshConnection().use { conn ->
+            conn.prepareStatement(
+                "SELECT payload FROM events WHERE run_id = ? AND sequence > ? " +
+                    "ORDER BY sequence ASC LIMIT ?"
+            ).use { ps ->
+                ps.setString(1, runId)
+                ps.setLong(2, afterSequence)
+                ps.setInt(3, limit + 1)
+                ps.executeQuery().use { rs ->
+                    while (rs.next()) {
+                        if (page.size == limit) {
+                            hasMore = true
+                            break
+                        }
+                        JsonEventLog.decode(rs.getString(1)).firstOrNull()?.let { page.add(it) }
+                    }
+                }
+            }
+        }
+        return dev.rubentxu.pipeline.v2.events.EventSlice(
+            events = page,
+            nextCursor = dev.rubentxu.pipeline.v2.events.identity.EventCursor(
+                runId,
+                page.lastOrNull()?.sequence ?: afterSequence,
+            ),
+            hasMore = hasMore,
+        )
+    }
+
+    /**
      * Closes the store: flush barrier, then stops the writer and releases
      * the persistent connection. Close is idempotent.
      */

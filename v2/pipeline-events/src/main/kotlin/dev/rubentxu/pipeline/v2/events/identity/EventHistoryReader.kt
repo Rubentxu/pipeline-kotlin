@@ -44,33 +44,22 @@ class EventHistoryReader(
     }
 
     override fun readAfter(run: ResourceRef, cursor: EventCursor?, limit: Int): EventPage {
-        require(limit > 0) { "limit must be positive, got $limit" }
+        // The store cuts the page; this reader only projects it. Cursor, `sequence > after`,
+        // ordering, limit, the continuation and `hasMore` are the sequence authority's answer and
+        // are decided once, in [EventStore.readSlice].
+        //
+        // This method used to re-decide all six on a full `eventsFor` scan — and a second
+        // implementation of the store's own rules, living in a component that cannot itself be
+        // asked what the order is. It also projected every event of the run to an envelope before
+        // discarding the ones past the limit, so reading the first page of a long run built
+        // envelopes for the whole run. Neither is a memory or a correctness matter today; both are
+        // the same defect, which is a second place deciding what the store already decided.
         val runId = run.segments.last()
-        val after = cursor?.lastSequence ?: 0L
-        // Ordered by store-assigned sequence; cursor continuation is
-        // sequence > lastSequence — NEVER occurredAt-based (INC-021d).
-        // WU-RP-044: eventsFor is now single-iteration (lazy SQL stream).
-        // Single pass: take limit+1 filtered events — the extra element proves
-        // hasMore (same semantics as the previous full-history maxKnown scan)
-        // without materialising the whole history.
-        val filtered = sink.eventsFor(runId)
-            .map { EnvelopeProjector.project(it, providerLookup) }
-            .filter { it.sequence > after }
-        val pageIterator = filtered.iterator()
-        val page = ArrayList<PipelineEventEnvelope>(limit)
-        var hasMore = false
-        while (pageIterator.hasNext()) {
-            if (page.size == limit) {
-                hasMore = true // an element beyond the page exists (peeked)
-                break
-            }
-            page.add(pageIterator.next())
-        }
-        val last = page.lastOrNull()?.sequence ?: after
+        val slice = sink.readSlice(runId, cursor, limit)
         return EventPage(
-            envelopes = page,
-            nextCursor = EventCursor(runId, last),
-            hasMore = hasMore,
+            envelopes = slice.events.map { EnvelopeProjector.project(it, providerLookup) },
+            nextCursor = slice.nextCursor,
+            hasMore = slice.hasMore,
         )
     }
 

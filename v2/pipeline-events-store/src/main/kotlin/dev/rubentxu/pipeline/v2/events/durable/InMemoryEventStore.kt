@@ -197,4 +197,46 @@ class InMemoryEventStore : EventSink {
     override fun eventsFor(runId: String): Sequence<DomainEvent> {
         return store[runId]?.asSequence() ?: emptySequence()
     }
+
+    /**
+     * Cuts the page inside the list instead of filtering a full [eventsFor] scan.
+     *
+     * The read holds the same monitor the write does. `eventsFor` hands out `asSequence()` over
+     * the live list without taking it, so a caller iterating while the producer appends is reading
+     * a `MutableList` that is being mutated — the sequence is lazy, so the hazard is at iteration
+     * time, not at the call. The inherited default is safe to override precisely because it reads
+     * through the same `eventsFor`; this one does not, so it takes the lock itself.
+     *
+     * `EventSliceParityLawsTest` is what holds this to the inherited meaning.
+     */
+    override fun readSlice(
+        runId: String,
+        after: dev.rubentxu.pipeline.v2.events.identity.EventCursor?,
+        limit: Int,
+    ): dev.rubentxu.pipeline.v2.events.EventSlice {
+        require(limit > 0) { "limit must be positive, got $limit" }
+        val afterSequence = after?.lastSequence ?: 0L
+        val page = ArrayList<DomainEvent>(minOf(limit, 64))
+        var hasMore = false
+        store[runId]?.let { list ->
+            synchronized(list) {
+                for (event in list) {
+                    if (event.sequence <= afterSequence) continue
+                    if (page.size == limit) {
+                        hasMore = true
+                        break
+                    }
+                    page.add(event)
+                }
+            }
+        }
+        return dev.rubentxu.pipeline.v2.events.EventSlice(
+            events = page,
+            nextCursor = dev.rubentxu.pipeline.v2.events.identity.EventCursor(
+                runId,
+                page.lastOrNull()?.sequence ?: afterSequence,
+            ),
+            hasMore = hasMore,
+        )
+    }
 }

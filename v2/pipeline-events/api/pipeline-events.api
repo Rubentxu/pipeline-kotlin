@@ -2245,6 +2245,11 @@ public final class dev/rubentxu/pipeline/v2/events/registry/EventDefinition$Comp
 	public final fun create (Ljava/lang/String;ILjava/lang/Class;Ldev/rubentxu/pipeline/v2/events/registry/EventPayloadCodec;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/registry/EventDefinitionCreation;
 }
 
+public abstract interface class dev/rubentxu/pipeline/v2/events/registry/EventDefinitionContributor {
+	public abstract fun definitions ()Ljava/lang/Iterable;
+	public abstract fun getId ()Ljava/lang/String;
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/events/registry/EventDefinitionCreation {
 }
 
@@ -2327,6 +2332,14 @@ public final class dev/rubentxu/pipeline/v2/events/registry/PayloadDecode$Unknow
 	public final fun getSchemaVersion ()I
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/registry/PluginEventEmission {
+	public abstract fun emit (Ljava/lang/String;Ljava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/registry/EmissionOutcome;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/registry/PluginEventEmissionKt {
+	public static final fun getPLUGIN_EVENT_EMISSION_CAPABILITY ()Ljava/lang/String;
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/events/registry/RegistrationOutcome {

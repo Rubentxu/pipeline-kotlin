@@ -27,14 +27,11 @@ dependencies {
 }
 
 /**
- * Bounded on purpose. The rule the fitness needs is "never judge a module's sources before that
- * module's build has had its say", and the tasks that can contradict a source tree are these. A
- * blanket `mustRunAfter` on every task of every module would express the same intent and cost a
- * scheduling graph nobody can review.
+ * Every task of every OTHER module that writes anywhere inside that module's own directory.
  *
- * **This list was removed, and the failure that removed it is the reason it cannot come back.**
- * It named eleven task types; `koverCachedVerify` and `koverVerify` were not among them, so on
- * 2026-10-05 the full gate stopped with
+ * **The hand-written version of this list was removed, and the two failures that removed it are the
+ * reason it cannot come back.** It named eleven task types. `koverCachedVerify` was not among them,
+ * so the full gate stopped on 2026-10-05 with
  *
  * ```text
  * Task ':pipeline-architecture-tests:test' uses this output of task
@@ -42,38 +39,37 @@ dependencies {
  * Gradle detected a problem with the following location: 'v2/pipeline-step-sdk/api'
  * ```
  *
- * A hand-written list of "tasks that write inside a module directory" cannot stay correct: it is
- * wrong the first time a plugin contributes a task nobody named, and the failure it produces reads
- * as a broken build rather than as an out-of-date list. The property being wanted is not a list of
- * names — it is "every task whose output overlaps an input this test declares", and that is
- * computable, so it is computed below instead of written down.
+ * The first replacement was narrower than the problem: it computed "every task whose output
+ * overlaps a DECLARED input of this test", comparing `task.outputs.files` against `build.gradle.kts`,
+ * `src/main/kotlin` and `api/`. That is the property one would expect to be the right one, and it
+ * still failed — naming `compileTestJava`, `compileTestKotlin`, `koverGenerateArtifact`,
+ * `koverGenerateArtifactJvm`, `detekt` and `test`.
+ *
+ * The reason is visible in the error text and was missed the first time: the location Gradle
+ * reports is `v2/pipeline-step-sdk/api`, the module's **project directory**, not one of its declared
+ * outputs. `compileTestKotlin` writes under `build/classes/`, which overlaps no declared input at
+ * all, and is flagged anyway. So the overlap Gradle is validating is not input-to-output; it is
+ * *this test uses a location that sits inside a directory another task claims as its output*. The
+ * only condition that matches it is "some output falls anywhere inside the other module's own
+ * project directory", which is what is computed below.
+ *
+ * `mustRunAfter`, not `dependsOn`: this fitness reads build files, sources and ABI dumps, and it
+ * reads nothing these tasks produce. Declaring a dependency would make it wait on another module's
+ * entire test suite and its coverage instrumentation before judging anything. `mustRunAfter` says
+ * exactly what is true — if they run, they run first — and it does not force them to run.
  *
  * `@Suppress("UnstableApiUsage")` covers `TaskCollection.filter`: iterating `module.tasks`
  * REALIZES the lazily-registered tasks, which is the price of asking the model rather than a
- * list. It is paid once, at configuration time, over 25 modules. The suppression sits on
- * `overlappingTaskOutputs` and not on the input list, because that is the declaration that does
- * the iterating.
+ * list. It is paid once, at configuration time, across every module.
  */
-val fitnessDeclaredInputs: List<java.io.File> =
-    rootProject.subprojects
-        .filter { it.path != project.path }
-        .flatMap { module ->
-            listOf(module.projectDir.resolve("build.gradle.kts"), module.projectDir.resolve("src/main/kotlin")) +
-                module.projectDir.resolve("api").takeIf { it.isDirectory }?.let { listOf(it) }.orEmpty()
-        }
-
 @Suppress("UnstableApiUsage")
-val overlappingTaskOutputs: List<org.gradle.api.Task> =
+val moduleLocalTaskOutputs: List<org.gradle.api.Task> =
     rootProject.subprojects
         .filter { it.path != project.path }
         .flatMap { module ->
+            val moduleDir = module.projectDir.toPath()
             module.tasks.filter { task ->
-                task.outputs.files.files.any { produced ->
-                    val out = produced.toPath()
-                    fitnessDeclaredInputs.any { declared ->
-                        out.startsWith(declared.toPath()) || declared.toPath().startsWith(out)
-                    }
-                }
+                task.outputs.files.files.any { produced -> produced.toPath().startsWith(moduleDir) }
             }
         }
 
@@ -163,16 +159,16 @@ tasks.test {
 
     // The remaining overlap is ORDINAL, not a dependency, and that distinction matters.
     //
-    // `overlappingTaskOutputs` holds every task of another module whose declared output covers one
-    // of THIS test's declared inputs. This fitness does not read those outputs: it reads build
-    // files, `src/main/kotlin` and `api/` dumps. Declaring `dependsOn` on them would be a lie that
-    // costs a lot — it would make this task wait for another module's whole test suite and its
-    // coverage instrumentation before judging anything.
+    // `moduleLocalTaskOutputs` holds every task of another module that writes anywhere inside that
+    // module's own directory. This fitness does not read those outputs: it reads build files,
+    // `src/main/kotlin` and `api/` dumps. Declaring `dependsOn` on them would be a lie that costs a
+    // lot — it would make this task wait for another module's whole test suite and its coverage
+    // instrumentation before judging anything.
     //
     // `mustRunAfter` states exactly what is true: if those tasks happen to run, they run first.
     // That satisfies the ordering half of the validation without inventing an artifact
     // dependency, and it is the distinction Gradle itself offers as a separate solution.
-    mustRunAfter(overlappingTaskOutputs)
+    mustRunAfter(moduleLocalTaskOutputs)
 }
 
 

@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
@@ -112,6 +113,11 @@ internal class RunLifecycleEngine(private val eventSink: EventSink) {
         // CTX-P2: identical EM-5/6 walk over the pure trailing chain (outermost-first fold order).
         val chain = executionContext.trailingCatchErrorChain()
         for (overlay in chain) {
+            // P3-E E4: parse ONCE at the decision, over the closed vocabulary, and never
+            // with a default. The previous `else -> ContinueUnstable` read UNSTABLE for
+            // every token that was not FAILURE or SUCCESS, so a typo in the pipeline's own
+            // error handling suppressed the failure it was installed to catch.
+            val declared = CatchErrorBuildResult.parse(overlay.buildResult)
             eventSink.append(
                 dev.rubentxu.pipeline.v2.events.CatchErrorTriggered(
                     eventId = UUID.randomUUID().toString(),
@@ -119,15 +125,27 @@ internal class RunLifecycleEngine(private val eventSink: EventSink) {
                     sequence = 0L,
                     occurredAt = Instant.now(),
                     stageName = stageName,
-                    buildResult = overlay.buildResult,
+                    // An unreadable result is published as ABSENT rather than echoed back:
+                    // the field is nullable precisely so this case has a truthful encoding,
+                    // and echoing an unrecognised token would put a value in the durable
+                    // stream that no consumer can classify.
+                    buildResult = declared?.let { overlay.buildResult },
                     stageResult = overlay.stageResult,
                     message = overlay.message,
                 ),
             )
-            when (overlay.buildResult) {
-                "FAILURE" -> Unit // re-throw outward to the next enclosing catch scope
-                "SUCCESS" -> return CanonicalContinuation.Continue
-                else -> return CanonicalContinuation.ContinueUnstable
+            when (declared) {
+                CatchErrorBuildResult.Failure -> Unit // re-throw outward to the next enclosing catch scope
+                CatchErrorBuildResult.Success -> return CanonicalContinuation.Continue
+                CatchErrorBuildResult.Unstable -> return CanonicalContinuation.ContinueUnstable
+                null -> return CanonicalContinuation.Abort(
+                    PipelineFailure(
+                        dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
+                        "catchError declared buildResult '${overlay.buildResult}', which is not one of " +
+                            "${CatchErrorBuildResult.supportedTokens.joinToString(", ")}; " +
+                            "the caught failure is not suppressed and cannot be classified, so the run fails closed",
+                    ),
+                )
             }
         }
         // Exhausted enclosing catch scopes (or no catch overlay) without a suppressor: abort.

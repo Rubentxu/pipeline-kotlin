@@ -53,6 +53,15 @@ dependencies {
  * only condition that matches it is "some output falls anywhere inside the other module's own
  * project directory", which is what is computed below.
  *
+ * **And the second correction was WHEN, not WHAT.** The second version computed the right property
+ * and the gate still named the same six tasks, which is the part worth writing down: asking
+ * `module.tasks` does not configure that module. It realizes the tasks the module has registered so
+ * far, and this build script is evaluated before `:pipeline-step-sdk:api` has been configured at
+ * all, so the collection came back with whatever the project declares by default and the computed
+ * list was silently short. A `diagOverlap` task run at execution time shows `insideProjectDir=true`
+ * for all six — they were there the whole time, just not yet. So the walk is deferred to
+ * `projectsEvaluated`, the one moment when every build script has run and every task exists.
+ *
  * `mustRunAfter`, not `dependsOn`: this fitness reads build files, sources and ABI dumps, and it
  * reads nothing these tasks produce. Declaring a dependency would make it wait on another module's
  * entire test suite and its coverage instrumentation before judging anything. `mustRunAfter` says
@@ -60,10 +69,19 @@ dependencies {
  *
  * `@Suppress("UnstableApiUsage")` covers `TaskCollection.filter`: iterating `module.tasks`
  * REALIZES the lazily-registered tasks, which is the price of asking the model rather than a
- * list. It is paid once, at configuration time, across every module.
+ * list.
+ *
+ * **It is `by lazy` because the second version computed the right property and the gate still
+ * named the same six tasks.** Asking `module.tasks` does not CONFIGURE that module: it realizes
+ * what the module has registered so far, and this script is evaluated before
+ * `:pipeline-step-sdk:api` has been configured at all, so the walk came back with whatever a
+ * project declares by default and the list was silently short. A `diagOverlap` task run at
+ * EXECUTION time prints `insideProjectDir=true` for all six — they were there the whole time, just
+ * not yet. Deferring the walk to `projectsEvaluated` below is the one moment when every build
+ * script has run and every task exists.
  */
 @Suppress("UnstableApiUsage")
-val moduleLocalTaskOutputs: List<org.gradle.api.Task> =
+val moduleLocalTaskOutputs: List<org.gradle.api.Task> by lazy(LazyThreadSafetyMode.NONE) {
     rootProject.subprojects
         .filter { it.path != project.path }
         .flatMap { module ->
@@ -72,6 +90,7 @@ val moduleLocalTaskOutputs: List<org.gradle.api.Task> =
                 task.outputs.files.files.any { produced -> produced.toPath().startsWith(moduleDir) }
             }
         }
+}
 
 tasks.test {
     useJUnitPlatform()
@@ -168,7 +187,18 @@ tasks.test {
     // `mustRunAfter` states exactly what is true: if those tasks happen to run, they run first.
     // That satisfies the ordering half of the validation without inventing an artifact
     // dependency, and it is the distinction Gradle itself offers as a separate solution.
-    mustRunAfter(moduleLocalTaskOutputs)
+}
+
+// …and it is applied once every OTHER module is configured, not here.
+//
+// `tasks.test { }` above evaluates this project's build script, which Gradle can do before
+// `:pipeline-step-sdk:api` has been evaluated at all. Asking that project for its tasks at this
+// point returns the handful every project has by default, so the restriction would be registered
+// against a list missing every kover, detekt and compile task it exists to cover. The computed
+// list is deferred with `by lazy` for the same reason, and forced here — after configuration is
+// complete — so the ordering covers what the build actually contains.
+gradle.projectsEvaluated {
+    tasks.test { mustRunAfter(moduleLocalTaskOutputs) }
 }
 
 

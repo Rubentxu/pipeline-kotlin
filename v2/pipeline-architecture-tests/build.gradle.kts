@@ -26,6 +26,28 @@ dependencies {
     testRuntimeOnly(project(":pipeline-binding-factory"))
 }
 
+/**
+ * Tasks that write INSIDE a module directory.
+ *
+ * Bounded on purpose. The rule the fitness needs is "never judge a module's sources before that
+ * module's build has had its say", and the tasks that can contradict a source tree are these. A
+ * blanket `mustRunAfter` on every task of every module would express the same intent and cost a
+ * scheduling graph nobody can review.
+ */
+private val WRITING_TASK_NAMES = listOf(
+    "classes",
+    "testClasses",
+    "compileTestKotlin",
+    "compileTestJava",
+    "test",
+    "apiBuild",
+    "apiDump",
+    "koverGenerateArtifact",
+    "koverGenerateArtifactJvm",
+    "koverFindJar",
+    "detekt",
+)
+
 tasks.test {
     useJUnitPlatform()
     // Honour system property override (Gradle forwards -Pfitness.v2.root=...).
@@ -54,7 +76,12 @@ tasks.test {
     // obvious way out — an `exclude("**/build/**")` on the file tree — is itself forbidden:
     // `FArch011V2NoCompileExcludesTest` rejects the token `exclude(` in any build file, and it is
     // right to. Naming each module's own directories avoids the overlap without the token.
-    val crossModules = rootProject.subprojects
+    // `crossModules` excludes THIS project. It did not at first, and the result was a circular
+    // dependency — a task cannot `mustRunAfter` itself — which Gradle reports as a configuration
+    // failure before a single test runs. Ordering a module against its own directory states
+    // nothing; the fitness reads its own `build.gradle.kts` because that file is right here, not
+    // because something else has to produce it first.
+    val crossModules = rootProject.subprojects.filter { it.path != project.path }
     val crossModuleDirs = crossModules.map { it.projectDir }
 
     // Every module's build file: the fitnesses that read declared dependencies, plugins and
@@ -104,7 +131,27 @@ tasks.test {
     // directory without applying the BCV plugin, which would otherwise fail the whole task with
     // "Task with path not found" instead of simply not needing it.
     dependsOn(abiDumpModules.mapNotNull { it.tasks.findByName("apiBuild") })
+
+    // The remaining overlap is ORDINAL, not a dependency, and that distinction matters.
+    //
+    // Gradle flagged five more locations — `compileTestJava`, `compileTestKotlin`,
+    // `koverGenerateArtifact`, `koverGenerateArtifactJvm` and `test` — all of them inside the
+    // NESTED module `:pipeline-step-sdk:api`, whose project directory is itself a subdirectory of
+    // `:pipeline-step-sdk`. This fitness does not read a single one of those outputs: it reads
+    // build files, `src/main/kotlin` and `api/` dumps. Declaring `dependsOn` on them would be a
+    // lie that costs a lot — it would make this task wait for another module's whole test suite
+    // and its coverage instrumentation before judging anything.
+    //
+    // `mustRunAfter` states exactly what is true: if those tasks happen to run, they run first.
+    // That satisfies the ordering half of the validation without inventing an artifact
+    // dependency, and it is the distinction Gradle itself offers as a separate solution.
+    mustRunAfter(
+        crossModules.flatMap { module ->
+            WRITING_TASK_NAMES.mapNotNull { name -> module.tasks.findByName(name) }
+        },
+    )
 }
+
 
 // Cross-project runtime-classpath capture wiring (configure-time hook, zero M0-R2 build-file edits)
 val v2Modules = listOf(

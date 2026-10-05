@@ -54,6 +54,15 @@ class EventHistoryReader(
         // discarding the ones past the limit, so reading the first page of a long run built
         // envelopes for the whole run. Neither is a memory or a correctness matter today; both are
         // the same defect, which is a second place deciding what the store already decided.
+        //
+        // P3-E E4c: `readSlice` refuses rather than shortening when a durable row will not decode
+        // (its default is `readRecords(...).requireFullyDecoded()`), so an unreadable row stops a
+        // paged envelope read here instead of being projected away into a page with a silent hole.
+        // That is the right default for this port: `EventPage` carries envelopes, which are
+        // IDENTITY, and projecting an unreadable row into an envelope would be inventing a record
+        // that the store could not interpret — the `UnknownDomainEvent`-as-valid shape the read-side
+        // law forbids. A consumer that must page past refusals reads `EventStore.readRecords`
+        // directly and chooses its own policy.
         val runId = run.segments.last()
         val slice = sink.readSlice(runId, cursor, limit)
         return EventPage(

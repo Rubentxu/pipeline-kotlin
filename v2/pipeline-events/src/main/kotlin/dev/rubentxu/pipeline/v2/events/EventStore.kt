@@ -63,6 +63,19 @@ interface EventStore {
 
     /**
      * Returns all events for the given run, in sequence order.
+     *
+     * ## This CANNOT report a row it could not read (P3-E E4c)
+     *
+     * `Sequence<DomainEvent>` has no case for "a durable record existed and did not decode". A
+     * store whose rows can fail to decode — SQLite, where the payload is text and the `kind` may
+     * come from a newer runtime — MUST NOT answer this by skipping those rows, because a skip here
+     * is invisible: the caller sees a shorter stream with no hole marked, and cannot distinguish
+     * absence from unreadability.
+     *
+     * So a store that has an [EventRecordRead.Undecodable] to report answers this **fail-closed**:
+     * it throws [UndecodableEventRecordException] naming the sequence, rather than returning a
+     * stream that pretends the row never existed. A caller that must tolerate a gap uses
+     * [readRecords] and states its own policy; a caller that cannot is stopped at the row.
      */
     fun eventsFor(runId: String): Sequence<DomainEvent>
 
@@ -81,33 +94,70 @@ interface EventStore {
      * that this class already knows. A rule that lives only in a KDoc is a rule every consumer
      * writes again, and writes again slightly wrong.
      *
-     * The default implementation is the semantics, written once, over [eventsFor]. A store that
-     * can cut inside its own storage — an indexed table, a bounded scan — SHOULD override it with
-     * an equivalent query, and `EventSliceParityLawsTest` is what makes "equivalent" mean
-     * something: same run, same cursor and same limit must produce the same sequences, the same
-     * continuation and the same `hasMore`, whichever implementation answered. Overriding is an
-     * optimisation, never a change of meaning.
+     * ## It REFUSES rather than shorten (P3-E E4c)
+     *
+     * The default is [readRecords] projected through [EventRecordSlice.requireFullyDecoded], which
+     * throws [UndecodableEventRecordException] on a refusal. It used to be a cut over [eventsFor]
+     * written out longhand, and that is the shape the defect took: the page bound counted DECODED
+     * events, so a row that refused to decode let the next row into the page, moved
+     * `nextCursor` by an amount unrelated to progress, and could report `hasMore = false` with rows
+     * still unread. The short page was the tell — and it looked like the end of history.
+     *
+     * A store that can cut inside its own storage — an indexed table, a bounded scan — SHOULD
+     * override [readRecords] with an equivalent query, and `EventSliceParityLawsTest` is what makes
+     * "equivalent" mean something: same run, same cursor and same limit must produce the same
+     * sequences, the same continuation and the same `hasMore`, whichever implementation answered.
+     * Overriding is an optimisation, never a change of meaning.
      *
      * @param after resume strictly after this cursor's sequence; `null` starts at the beginning.
      * @param limit must be positive. It is a page bound, not a promise: a page may come back
      *   shorter than `limit` and still report [EventSlice.hasMore].
+     * @throws UndecodableEventRecordException if any row in the page could not be decoded.
      */
-    fun readSlice(runId: String, after: EventCursor?, limit: Int): EventSlice {
+    fun readSlice(runId: String, after: EventCursor?, limit: Int): EventSlice =
+        readRecords(runId, after, limit).requireFullyDecoded()
+
+    /**
+     * The HONEST paged read: one page of durable rows, each decoded or explicitly refused.
+     * P3-E E4c — Durable Read Truth.
+     *
+     * [readSlice] answers a narrower question — "give me the events that decoded" — and to answer
+     * it honestly its page bound has to count ROWS. A store that decoded first and then counted
+     * would let an unreadable row shrink the page below `limit`, corrupt `hasMore`, and move the
+     * continuation cursor by an amount that has nothing to do with how far the reader got. That is
+     * not a hypothetical: it is exactly what `SqliteEventStore.readSlice` did before E4c, where a
+     * single malformed row in the middle of a page made the next page start early and made
+     * `hasMore` lie.
+     *
+     * So this method is the authority for pagination, and [readSlice] is defined in terms of it
+     * rather than beside it. One cut, one cursor, one `hasMore` — the enriched result travels on
+     * the SAME authority, which is what keeps a refusal from becoming a second, parallel history.
+     *
+     * The default reads [eventsFor], which cannot produce a refusal (it yields only decoded
+     * events), so for a store that has no undecodable representation this is exactly
+     * [readSlice]'s rule. A store whose rows can fail to decode — SQLite, where the payload is
+     * text and the kind can come from a newer runtime — MUST override this to report the refusal.
+     * Not overriding it is then a lie about the store's own storage, and
+     * `DurableReadTruthFitnessTest` is what makes that visible.
+     *
+     * @param after resume strictly after this cursor's sequence; `null` starts at the beginning.
+     * @param limit bounds ROWS, not decodable events.
+     */
+    fun readRecords(runId: String, after: EventCursor?, limit: Int): EventRecordSlice {
         require(limit > 0) { "limit must be positive, got $limit" }
         val afterSequence = after?.lastSequence ?: 0L
         val remaining = eventsFor(runId).filter { it.sequence > afterSequence }.iterator()
-        val page = ArrayList<DomainEvent>(minOf(limit, DEFAULT_PAGE_HINT))
+        val page = ArrayList<EventRecordRead>(minOf(limit, DEFAULT_PAGE_HINT))
         var hasMore = false
         while (remaining.hasNext()) {
             if (page.size == limit) {
-                // One element beyond the page exists, which is the only honest way to know it.
                 hasMore = true
                 break
             }
-            page.add(remaining.next())
+            page.add(EventRecordRead.Decoded(remaining.next()))
         }
-        return EventSlice(
-            events = page,
+        return EventRecordSlice(
+            records = page,
             nextCursor = EventCursor(runId, page.lastOrNull()?.sequence ?: afterSequence),
             hasMore = hasMore,
         )

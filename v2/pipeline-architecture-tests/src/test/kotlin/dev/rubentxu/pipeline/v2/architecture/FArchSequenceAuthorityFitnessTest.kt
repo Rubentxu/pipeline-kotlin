@@ -96,6 +96,54 @@ class FArchSequenceAuthorityFitnessTest {
         }
 
         @Test
+        fun `scanner allows a row read that reports the stored sequence in a refusal`() {
+            // Real shape from SqliteEventStore.readRecord (P3-E E4c). The row's sequence is what
+            // makes an Undecodable reportable, so the read has to carry it — and carrying it is
+            // reading the store's own authority, not inventing a second one.
+            write(
+                "GoodRowRead.kt",
+                """
+                class Store {
+                    private fun readRecord(rs: java.sql.ResultSet): Any {
+                        val sequence = rs.getLong("sequence")
+                        val kind = rs.getString("kind")
+                        return Refusal(sequence = sequence, kind = kind)
+                    }
+                }
+                """.trimIndent(),
+            )
+            val findings = ScannerSupport.findExplicitSequenceAssignment(tempDir)
+            assertTrue(
+                findings.isEmpty(),
+                "leer la secuencia de una fila durable no es asignarla: $findings",
+            )
+        }
+
+        @Test
+        fun `scanner still flags an explicit sequence next to a row read`() {
+            // The exemption is for `getLong("sequence")`, not for anything near it. An emitter that
+            // adds `sequence = stepIndex` in the same class as a legitimate row read is still a
+            // violation, and pinning that here stops the exemption from becoming a neighbourhood.
+            write(
+                "MixedReadAndEmit.kt",
+                """
+                class Store {
+                    private fun readRecord(rs: java.sql.ResultSet): Any {
+                        val sequence = rs.getLong("sequence")
+                        emit(sequence = req.stepIndex.toLong())
+                        return sequence
+                    }
+                }
+                """.trimIndent(),
+            )
+            val findings = ScannerSupport.findExplicitSequenceAssignment(tempDir)
+            assertTrue(
+                findings.isNotEmpty(),
+                "una lectura legitima no absuelve a un emit explicito en la misma clase",
+            )
+        }
+
+        @Test
         fun `scanner allows the correct forms`() {
             write(
                 "Good.kt",

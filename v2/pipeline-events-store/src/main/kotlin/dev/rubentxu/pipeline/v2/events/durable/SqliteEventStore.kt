@@ -16,7 +16,10 @@ import dev.rubentxu.pipeline.v2.events.DirExited
 import dev.rubentxu.pipeline.v2.events.DirectiveAdmitted
 import dev.rubentxu.pipeline.v2.events.DirectiveDenied
 import dev.rubentxu.pipeline.v2.events.DomainEvent
+import dev.rubentxu.pipeline.v2.events.EventRecordRead
 import dev.rubentxu.pipeline.v2.events.PluginEventEmitted
+import dev.rubentxu.pipeline.v2.events.UndecodableEventRecordException
+import dev.rubentxu.pipeline.v2.events.UndecodableReason
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.ExecutionTargetResolved
@@ -613,6 +616,11 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     override fun eventsFor(runId: String): Sequence<DomainEvent> {
+        // P3-E E4c: this CANNOT report a refusal — `Sequence<DomainEvent>` has no case for one —
+        // so it FAILS CLOSED at the unreadable row instead of skipping it. See the KDoc on
+        // EventStore.eventsFor for why a skip here is worse than a crash: a skip is invisible, and
+        // the caller reads a shorter stream as complete history.
+        //
         // WU-RP-044 (M5 RSS debt): lazy row-by-row read. Materialising the full
         // list held every decoded event (including GiB-scale transcripts) in
         // memory before the caller could stream them out. The sequence owns its
@@ -637,13 +645,35 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
             val conn = freshConnection()
             try {
                 conn.prepareStatement(
-                    "SELECT payload FROM events WHERE run_id = ? ORDER BY sequence ASC"
+                    "SELECT event_id, sequence, kind, payload FROM events " +
+                        "WHERE run_id = ? ORDER BY sequence ASC"
                 ).use { ps ->
                     ps.setString(1, runId)
                     ps.executeQuery().use { rs ->
                         while (rs.next()) {
-                            val payload = rs.getString(1)
-                            JsonEventLog.decode(payload).firstOrNull()?.let { yield(it) }
+                            val record = readRecord(rs)
+                            // The row's event, or a NAMED refusal. Never a silent skip.
+                            //
+                            // Unwrap rather than cast: `Decoded` is a wrapper carrying the event, not
+                            // a DomainEvent itself. Writing `record as? DomainEvent` here compiled
+                            // and always yielded null, so every well-formed row reported itself
+                            // unreadable — a refusal that was true of nothing. It surfaced as eight
+                            // unrelated test failures, which is exactly how a cast error looks when
+                            // the exception message is honest about what it believes.
+                            val event = when (record) {
+                                is dev.rubentxu.pipeline.v2.events.EventRecordRead.Decoded -> record.event
+                                is dev.rubentxu.pipeline.v2.events.EventRecordRead.Undecodable ->
+                                    throw UndecodableEventRecordException(
+                                        runId = runId,
+                                        sequence = record.sequence,
+                                        kind = record.kind,
+                                        reason = record.reason,
+                                        message = "durable event row ${record.sequence} exists and could " +
+                                            "not be decoded; eventsFor cannot report a refusal, so the read " +
+                                            "stops here rather than returning history with a hole in it",
+                                    )
+                            }
+                            yield(event)
                         }
                     }
                 }
@@ -658,28 +688,44 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
      * are the index's job, and asking SQLite for a run's whole history to keep `limit` of it meant
      * decoding every event of a long run to hand back a page of three.
      *
-     * `LIMIT limit + 1` is how [EventSlice.hasMore] is proved rather than guessed: the extra row
-     * is looked at and dropped, which is the same single peek the inherited default performs, only
-     * here it costs one row instead of the rest of the run.
+     * `LIMIT limit + 1` is how [dev.rubentxu.pipeline.v2.events.EventSlice.hasMore] is proved
+     * rather than guessed: the extra row is looked at and dropped, which is the same single peek
+     * the inherited default performs, only here it costs one row instead of the rest of the run.
      *
      * The `ORDER BY sequence` is the same one `eventsFor` uses, and for the same reason — the
      * cursor cuts on sequence, so the read has to be in sequence. `ux_events_run_sequence` covers
      * it, so the database serves the ordering from the index.
      *
+     * ## The page bound counts ROWS, not decodable events (P3-E E4c)
+     *
+     * This used to `page.add(decode(payload))` under a `page.size == limit` check, which meant the
+     * bound counted rows that had DECODED. One unreadable row then let its successor into the
+     * page, so the returned page was neither the requested size nor a prefix of the history, and
+     * `nextCursor` advanced by an amount unrelated to how far the reader had got. It also inverted
+     * `hasMore`: a row that failed to decode consumed its slot without filling it, so a page could
+     * report "no more" with rows still unread. A consumer resuming from that cursor would skip the
+     * unreadable row entirely — the silent hole, arrived at from the pagination side as well as
+     * the decode side.
+     *
+     * The fix is not a guard but an order change: count rows, decode inside the page, and let the
+     * refusal travel on the same cursor. `EventRecordSlice.nextCursor` is the last ROW's sequence
+     * whether or not that row decoded, which is what lets a resuming reader page past a refusal on
+     * purpose instead of re-reading it forever or stepping over it blind.
+     *
      * `EventSliceParityLawsTest` is what holds this to the inherited meaning.
      */
-    override fun readSlice(
+    override fun readRecords(
         runId: String,
         after: dev.rubentxu.pipeline.v2.events.identity.EventCursor?,
         limit: Int,
-    ): dev.rubentxu.pipeline.v2.events.EventSlice {
+    ): dev.rubentxu.pipeline.v2.events.EventRecordSlice {
         require(limit > 0) { "limit must be positive, got $limit" }
         val afterSequence = after?.lastSequence ?: 0L
-        val page = ArrayList<dev.rubentxu.pipeline.v2.events.DomainEvent>(minOf(limit, 64))
+        val page = ArrayList<dev.rubentxu.pipeline.v2.events.EventRecordRead>(minOf(limit, 64))
         var hasMore = false
         freshConnection().use { conn ->
             conn.prepareStatement(
-                "SELECT payload FROM events WHERE run_id = ? AND sequence > ? " +
+                "SELECT event_id, sequence, kind, payload FROM events WHERE run_id = ? AND sequence > ? " +
                     "ORDER BY sequence ASC LIMIT ?"
             ).use { ps ->
                 ps.setString(1, runId)
@@ -688,22 +734,71 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 ps.executeQuery().use { rs ->
                     while (rs.next()) {
                         if (page.size == limit) {
+                            // One ROW beyond the page exists. Decoded or not, it is a row, and it
+                            // is the only honest way to know the run continues.
                             hasMore = true
                             break
                         }
-                        JsonEventLog.decode(rs.getString(1)).firstOrNull()?.let { page.add(it) }
+                        page.add(readRecord(rs))
                     }
                 }
             }
         }
-        return dev.rubentxu.pipeline.v2.events.EventSlice(
-            events = page,
+        return dev.rubentxu.pipeline.v2.events.EventRecordSlice(
+            records = page,
             nextCursor = dev.rubentxu.pipeline.v2.events.identity.EventCursor(
                 runId,
                 page.lastOrNull()?.sequence ?: afterSequence,
             ),
             hasMore = hasMore,
         )
+    }
+
+    /**
+     * Turns ONE durable row into either its typed event or a refusal that names it.
+     *
+     * The identity comes from the row's own COLUMNS, not from the payload, and that is what makes
+     * the refusal honest: `event_id`, `sequence` and `kind` are `NOT NULL` in the schema and are
+     * written by [bindInsert] from the event, so a refusal can repeat what storage actually holds
+     * even when the payload is unparseable text. Reading identity out of the payload instead would
+     * make the refusal disappear in exactly the case it exists to describe.
+     *
+     * ## Read by COLUMN NAME, never by index (paid for on the day this was written)
+     *
+     * The first version of this read `rs.getString(1)`, `rs.getLong(2)`, … against
+     * `SELECT event_id, sequence, kind, payload`. That is wrong the moment the SELECT list and the
+     * schema disagree: the schema is `(event_id, run_id, sequence, kind, occurred_at, payload)`, so
+     * position 2 in the SELECT is `sequence` while position 2 in the TABLE is `run_id`, and
+     * `getLong(2)` returned a run id silently coerced to 0. Every row came back as
+     * `Undecodable(sequence = 0)`.
+     *
+     * What makes it worth recording is how it presented. The old code was
+     * `firstOrNull()?.let { yield(it) }`, so a mis-indexed read looked exactly like an empty table:
+     * `eventsFor` returned an empty list and the row-tuple test failed on `assertEquals(4, …)` with a
+     * message about order and payload. Nothing said "you read the wrong column". Under E4c the same
+     * bug surfaces as a refusal naming sequence 0, which is strictly more diagnosable — but only
+     * because the refusal exists. Positional reads and silent skips were the same accident twice.
+     *
+     * Returning a sealed result rather than throwing is deliberate: the caller here is a PAGE, and
+     * a page has to be able to carry the refusal. Throwing at this level would lose the rows after
+     * it. The fail-closed decision belongs to whoever asked for typed events —
+     * [eventsFor] and [readSlice] make it, and [readRecords] hands the caller the choice.
+     */
+    private fun readRecord(rs: java.sql.ResultSet): dev.rubentxu.pipeline.v2.events.EventRecordRead {
+        val eventId = rs.getString("event_id")
+        val sequence = rs.getLong("sequence")
+        val kind = rs.getString("kind")
+        return when (val outcome = JsonEventLog.decodeStoredRow(rs.getString("payload"), kind)) {
+            is StoredRowDecode.Accepted ->
+                dev.rubentxu.pipeline.v2.events.EventRecordRead.Decoded(outcome.event)
+            is StoredRowDecode.Refused ->
+                dev.rubentxu.pipeline.v2.events.EventRecordRead.Undecodable(
+                    sequence = sequence,
+                    kind = kind,
+                    eventId = eventId,
+                    reason = outcome.reason,
+                )
+        }
     }
 
     /**
@@ -746,4 +841,18 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
      * to enable cross-instance [DbLock] synchronization.
      */
     fun databasePath(): String = file
+
+    private companion object {
+        /**
+         * How much of an unreadable payload a refusal quotes back.
+         *
+         * Enough to recognise the row by eye — the head of a truncated transcript or a stray byte
+         * is diagnostic, the whole thing is not — and deliberately bounded, because the payloads
+         * this store holds are the GiB-scale transcripts it reads row by row specifically to avoid
+         * materialising. A refusal that copied the failing payload in full would reintroduce the
+         * memory profile the row-at-a-time read exists to avoid, at exactly the moment something
+         * has already gone wrong.
+         */
+        const val REFUSAL_DETAIL_CHARS = 200
+    }
 }

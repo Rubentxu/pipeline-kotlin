@@ -171,6 +171,12 @@ object SourceScanner {
         val findings = mutableListOf<Finding>()
         // `sequence = <expr>` where expr is NOT 0L, a projection of an already
         // assigned value, or a bare decode pass-through.
+        //
+        // The value class deliberately stops at the FIRST `)` so it can read a call without
+        // balancing parens: `emit(sequence = 0L)` captures `0L`. That is also why the exemption
+        // below cannot match on an argument: `rs.getLong("sequence")` captures only `rs.getLong(`,
+        // with the column name never reaching the comparison. The captured prefix is enough to
+        // recognise the READ (`getLong(`, `stringField(`, …), so that is what it keys off.
         val pattern = Pattern.compile("""\bsequence\s*=\s*([A-Za-z0-9_.()+\-]+)""")
         val allowed = setOf("0L", "0")
         for (file in FitnessPaths.walkKotlinFiles(root).filter { it.toString().contains("/src/main/") }) {
@@ -192,6 +198,20 @@ object SourceScanner {
                 // field name is not inside the captured token, so key off the
                 // field-reading call itself.
                 if (value.contains("longField(") || value.contains("stringField(") || value.contains("intField(")) continue
+                // Same rule, JDBC spelling: `rs.getLong("sequence")` reads the sequence back OUT
+                // of a durable row, which is a decode and never an emit. P3-E E4c introduced this
+                // shape in `SqliteEventStore.readRecord`, where the row's sequence is what makes an
+                // `Undecodable` reportable — and the store remains the authority precisely because it
+                // READS the value it assigned rather than inventing one.
+                //
+                // The exemption keys off the getter, NOT off the column name: the value
+                // class above stops at the first `)`, so `rs.getLong("sequence")` captures only
+                // `rs.getLong(` and the quoted column never reaches the comparison. The first
+                // attempt keyed off `"sequence"`, looked right, matched nothing, and was caught by
+                // the `row read` fixture rather than by review.
+                if (value.contains("getLong(") || value.contains("getString(") || value.contains("getInt(")) {
+                    continue
+                }
                 findings.add(Finding(file, lineIdx + 1, "sequence=$value", line))
             }
         }

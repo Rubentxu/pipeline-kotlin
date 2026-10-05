@@ -488,6 +488,86 @@ tres para probar que el test la detecta.
 El parámetro sigue siendo `String`: `pipeline-scripting-api` es ABI publicada y tiparlo
 contra `FailureKind` es la migración de E6, gobernada por la madurez de E5.
 
+### 5.8 El read-side perdía evidencia durable, no sólo semántica (E4c)
+
+Este no estaba en el encargo original de E4 y apareció al verificar la afirmación de que
+E4b.3 había cerrado el problema. E4b.3 cerró la **fabricación**; no cerró la **pérdida**.
+
+Baseline medido sobre `c0fa1d69`:
+
+```kotlin
+SqliteEventStore.eventsFor:  JsonEventLog.decode(payload).firstOrNull()?.let { yield(it) }
+SqliteEventStore.readSlice:  JsonEventLog.decode(rs.getString(1)).firstOrNull()?.let { page.add(it) }
+```
+
+Con filas `40 válida, 41 malformada, 42 válida` ambos consumidores producen `40, 42`. No
+hay ninguna marca en la salida, así que un consumidor no puede distinguir *"no hubo evento
+41"* de *"hay un registro 41 y no supe interpretarlo"*. Un observador externo que lee ese
+stream como historia está siendo engañado por resta, que es peor que un valor erróneo: un
+valor erróneo se comprueba, un hueco no se nota.
+
+**Por qué E4b.3 lo hizo alcanzable.** `JsonEventLog.decodeEvent` termina en `else -> null`,
+de modo que un `kind` desconocido —un evento de plugin de una versión de schema posterior—
+no decodificaba a nada. Y desde E4b.3 los decoders se niegan a inventar un campo semántico,
+así que una fila sin `stageResult` o sin `outcome` es malformada **por diseño**. E4b.3
+convirtió la decodificación honesta en filas que legítimamente no decodifican; sin E4c esas
+filas desaparecían igual, pero por una causa distinta.
+
+**Por qué el cursor era la mitad del defecto, y no un efecto secundario.** `readSlice`
+contaba el límite sobre eventos *decodificados*, no sobre filas. Una fila ilegible:
+
+- dejaba entrar a su sucesora en la página, así que la página devuelta no era ni del tamaño
+  pedido ni un prefijo de la historia;
+- movía `nextCursor` por una cantidad ajena al progreso de la lectura;
+- podía informar `hasMore = false` con filas todavía sin leer.
+
+Un consumidor que reanuda desde ese cursor salta la fila ilegible sin enterarse. El hueco
+llegaba por los dos lados —decode y paginación— y por eso `readRecords` cuenta **filas**.
+
+**La forma elegida y lo que se descartó.** Un `EventRecordRead` sellado
+(`Decoded`/`Undecodable`), con la identidad tomada de las **columnas** de la fila
+(`event_id`, `sequence`, `kind` son `NOT NULL` y los escribe `bindInsert`), no del payload: un
+refusal construida desde el payload desaparecería justo en el caso que describe. Descartado
+por el mismo motivo: `MalformedDomainEvent`, sequence sintética, segundo cursor, segundo event
+log, y `mapNotNull` en la salida.
+
+**Mutaciones (todas restauradas y verificadas por hash).**
+
+| # | Mutación | Resultado |
+|---|---|---|
+| 1 | `?: continue` en `readRecords` | RED — 10 de 13 aserciones; las 3 verdes son la historia limpia |
+| 2 | `continue` en `eventsFor` | RED — **exactamente 1** aserción, la de `eventsFor` |
+| 3 | `firstOrNull()` reintroducido en `readRecords` | RED — el fitness endurecido lo detecta |
+
+**Dos fitness débiles, detectados por mutación y no por revisión.** Merecen registro porque
+es la clase de defecto que la ley de fidelidad prohíbe:
+
+1. El primer fitness concedía la excepción a *cualquier fichero* que mencionara
+   `Undecodable` en algún sitio. Mutación 3 lo dejó **verde**: un `readRecord` correcto
+   excusaba un `readRecords` perdido en el mismo fichero. La excepción era más ancha que lo
+   que excusaba.
+2. Corregido a distancia (N líneas), falló por 42 líneas de distancia. Un permiso por
+   proximidad no es un permiso por estructura.
+
+La solución no fue ajustar el umbral sino **eliminar la necesidad de excepción**: el store
+pregunta a `JsonEventLog.decodeStoredRow`, que devuelve un resultado cerrado con su motivo, y
+no hay nada que excusar. El scan quedó sin excepciones por fichero.
+
+**Un tercer fallo, del propio scan.** El patrón `decode\([^)]*\)` no puede encontrar el
+defecto que dice encontrar: `[^)]*` se corta en el primer `)`, así que
+`decode(rs.getString("payload")).firstOrNull()` nunca casa porque la llamada anidada cierra
+antes. Con la mutación 3 el scan siguió verde. El scan mira ahora el **discriminador** —una línea que nombra
+el codec y estrecha con `firstOrNull`/`mapNotNull`— en vez de intentar balancear paréntesis
+en una regex. El mismo bug de captura existía además en
+`FArchSequenceAuthorityFitnessTest`, donde la exención recién añadida para `rs.getLong("sequence")`
+no casaba por idéntica razón; se detectó porque el fixture bueno falló, y se corrigió
+keyando off el getter.
+
+**Lo que E4c deja a S5.4.** El canal honesto ya existe: `readRecords` transporta el refusal
+sobre la **misma** autoridad de cursor y página, sin duplicar paginación. Un observador
+externo que necesite saltar un refusal lo hace por secuencia y a propósito, en vez de
+heredar un hueco del store.
+
 ---
 
 ## 6. Qué NO autoriza este inventario

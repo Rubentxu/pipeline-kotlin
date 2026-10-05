@@ -114,6 +114,25 @@ object JsonEventLog {
         out.append(']')
     }
 
+    /**
+     * Decodes a JSON ARRAY of events, skipping any element that will not decode.
+     *
+     * ## This is a DOCUMENT codec, and it is NOT the durable read path (P3-E E4c)
+     *
+     * The `?: continue` below is deliberate and it is why this method must not be used to read
+     * stored rows. Its unit is a DOCUMENT, and a document has no per-element identity to report: a
+     * caller cannot say "the record at sequence 41 exists and I could not read it" from an empty
+     * list, because the sequence was never in this method's hands. Inventing one would create a
+     * second authority for position, which is precisely what the store's sequence law forbids.
+     *
+     * What this codec CAN do — and what the store must not do for it — is be told the answer it
+     * actually has. The row carries its identity in its own COLUMNS, so the refusal belongs to the
+     * store, at [decodeStoredRow] / `SqliteEventStore.readRecord`. That is where an `Undecodable`
+     * gets a real sequence instead of a guess.
+     *
+     * `DurableReadTruthFitnessTest` enforces the split mechanically: a `firstOrNull`/`mapNotNull`
+     * over this method in the read side fails the build.
+     */
     fun decode(payload: String): List<DomainEvent> {
         if (payload.isBlank() || payload == "[]") return emptyList()
         val events = mutableListOf<DomainEvent>()
@@ -126,6 +145,110 @@ object JsonEventLog {
         }
         return events
     }
+
+    /**
+     * Decodes ONE stored payload into a closed outcome, rather than a list that may be shorter than
+     * one. P3-E E4c.
+     *
+     * [decode] answers "which events are in this document", and for a document assembled from
+     * stdout that is the whole question. It is the WRONG shape for a durable row, where the caller's
+     * unit is one row that the store has already identified and must answer for: an empty list there
+     * has to become a refusal carrying that row's sequence, and expressing it as `List<DomainEvent>`
+     * forces every caller to write `firstOrNull()` and decide — which is precisely the discarding the
+     * read-side law forbids.
+     *
+     * So this is the codec's own statement of "the row did not decode", and it carries a REASON so
+     * the store does not have to guess one by re-parsing. An unknown `kind` and a known kind with an
+     * unsatisfiable payload are different facts and they stay different here.
+     *
+     * [rowKind] is the row's `kind` COLUMN, passed in rather than parsed from [payload], because
+     * classification must not depend on the thing being classified.
+     *
+     * The null payload case is a refusal too, not an absence: the row exists, the column is the
+     * only thing that could have held it, and it held nothing.
+     */
+    fun decodeStoredRow(payload: String?, rowKind: String?): StoredRowDecode = when {
+        payload == null -> StoredRowDecode.Refused(
+            dev.rubentxu.pipeline.v2.events.UndecodableReason.MalformedPayload("payload column is null")
+        )
+        // The kind comes from the ROW COLUMN, and that ordering is the whole point of the parameter.
+        //
+        // The first version of this read the kind out of the payload, which makes the classification
+        // wrong exactly when it matters: a row can be unreadable *because* of its payload, and then
+        // the payload is the one thing that cannot be trusted to name the row. The column is written
+        // by `bindInsert` from the event and is NOT NULL, so it is the authority that survives.
+        rowKind == null || rowKind.isEmpty() -> StoredRowDecode.Refused(
+            dev.rubentxu.pipeline.v2.events.UndecodableReason.MalformedPayload("row carries no kind")
+        )
+        !knowsKind(rowKind) -> StoredRowDecode.Refused(
+            dev.rubentxu.pipeline.v2.events.UndecodableReason.UnknownKind(rowKind)
+        )
+        else -> {
+            val decoded = decode(payload).firstOrNull()
+            if (decoded != null) StoredRowDecode.Accepted(decoded)
+            else StoredRowDecode.Refused(
+                dev.rubentxu.pipeline.v2.events.UndecodableReason.MalformedPayload(
+                    "payload does not satisfy the $rowKind schema: " +
+                        payload.take(STORED_ROW_DETAIL_CHARS).let { "\"$it\"" }
+                )
+            )
+        }
+    }
+
+    /** How much of a failing payload a refusal quotes. Bounded: these payloads can be GiB-scale. */
+    private const val STORED_ROW_DETAIL_CHARS = 200
+
+    /**
+     * Does this binary have a decoder for [kind]? P3-E E4c.
+     *
+     * [decode] answers with events and cannot say WHY one is missing: an unknown `kind` and a known
+     * `kind` with a bad payload both come back as "no event". A durable read that has to report a
+     * refusal needs that distinction — "this runtime is older than the row" is version skew worth
+     * surfacing upward, and "this runtime knows the row and cannot read it" is corruption — so it
+     * cannot infer one from the other.
+     *
+     * It is also the answer to the question the `else -> null` arm of [decodeEvent] raises. That arm
+     * is correct as a REJECTION: an unknown kind must not become a fabricated event. What it cannot
+     * be, on its own, is silent, because the caller has no way to report it.
+     *
+     * The set is the closed vocabulary [decodeEvent] switches on, restated. Duplication rather than
+     * reflection is deliberate: it is already the practice in this file, it is checked against the
+     * `when` by `Rp030EventCodecsConnascenceFitnessTest`, and a reflective scan of a `when` over
+     * string literals would be a compiler-plugin job wearing a fitness's clothes.
+     */
+    fun knowsKind(kind: String): Boolean = kind in KNOWN_KINDS
+
+    /**
+     * The wire discriminators this binary can decode. The single list both [knowsKind] and the
+     * architecture fitness read, so "what can be read" has one answer rather than two that can
+     * drift.
+     */
+    private val KNOWN_KINDS: Set<String> = setOf(
+        "RunStarted", "CompilationStarted", "CompilationFinished", "RunFinished",
+        "StageStarted", "StageFinished", "StepStarted", "StepFinished",
+        "AgentResolved", "ExecutionTargetResolved",
+        "ParallelBranchStarted", "ParallelBranchFinished",
+        "RetryAttemptStarted", "RetryAttemptFinished",
+        "TimeoutScheduled", "StepFailed", "EchoOutputCaptured",
+        "CredentialBound", "CredentialUsed", "CredentialUnbound",
+        "GitCheckoutStarted", "GitCheckoutCompleted", "GitCheckoutFailed", "GitPollChanged",
+        "FileWritten", "FileRead", "FileExistsChecked",
+        "ArtifactArchived", "ArtifactArchiveFailed",
+        "StashCreated", "StashRestored", "StashFailed",
+        "HtmlReportPublished", "HtmlReportSkipped", "HtmlReportFailed",
+        "DirEntered", "DirExited", "DirDeleted", "WsCleaned",
+        "CatchErrorTriggered", "DirectiveAdmitted", "DirectiveDenied",
+        "GateEvaluated", "StageMarkedUnstable", "WorkflowLoaded",
+        "WaitUntilPolled", "WaitUntilCompleted",
+        "PwdResolved", "UnixDetected",
+        "MilestoneReached", "MilestoneAborted",
+        "LockRequested", "LockAcquired", "LockReleased", "LockSkipped", "LockAcquireFailed",
+        "InputRequested", "InputProceed", "InputAborted", "InputDenied",
+        "HttpRequestStarted", "HttpResponseReceived", "HttpStatusRejected", "HttpRequestFailed",
+        "TimeoutTriggered", "TimestampsEntered", "TimestampsExited",
+        "StepAdmissionObserved", "PostConditionSelected", "StageSkipped",
+        "PluginEventEmitted",
+    )
 
     /**
      * Splits a JSON array content into individual event strings.

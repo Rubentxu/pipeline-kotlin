@@ -209,16 +209,28 @@ class InMemoryEventStore : EventSink {
      * time, not at the call. The inherited default is safe to override precisely because it reads
      * through the same `eventsFor`; this one does not, so it takes the lock itself.
      *
+     * ## Every row here decodes, and that is a property of the TYPE, not an assumption (P3-E E4c)
+     *
+     * The store holds `DomainEvent` objects, so there is no wire payload to misread and no `kind`
+     * this binary might not know: an undecodable row is not a case that can occur here, and every
+     * record is therefore [EventRecordRead.Decoded]. That is why this override does not need a
+     * refusal branch — not because it forgot one.
+     *
+     * It is also why [EventSliceParityLawsTest] can hold the two stores to the same answer for a
+     * well-formed run: the in-memory one has no refusal path to disagree about. The divergence only
+     * becomes observable on a malformed row, and that is a property of SQLite's storage, which is
+     * exactly what `DurableReadTruthTest` covers.
+     *
      * `EventSliceParityLawsTest` is what holds this to the inherited meaning.
      */
-    override fun readSlice(
+    override fun readRecords(
         runId: String,
         after: dev.rubentxu.pipeline.v2.events.identity.EventCursor?,
         limit: Int,
-    ): dev.rubentxu.pipeline.v2.events.EventSlice {
+    ): dev.rubentxu.pipeline.v2.events.EventRecordSlice {
         require(limit > 0) { "limit must be positive, got $limit" }
         val afterSequence = after?.lastSequence ?: 0L
-        val page = ArrayList<DomainEvent>(minOf(limit, 64))
+        val page = ArrayList<dev.rubentxu.pipeline.v2.events.EventRecordRead>(minOf(limit, 64))
         var hasMore = false
         store[runId]?.let { list ->
             synchronized(list) {
@@ -228,12 +240,12 @@ class InMemoryEventStore : EventSink {
                         hasMore = true
                         break
                     }
-                    page.add(event)
+                    page.add(dev.rubentxu.pipeline.v2.events.EventRecordRead.Decoded(event))
                 }
             }
         }
-        return dev.rubentxu.pipeline.v2.events.EventSlice(
-            events = page,
+        return dev.rubentxu.pipeline.v2.events.EventRecordSlice(
+            records = page,
             nextCursor = dev.rubentxu.pipeline.v2.events.identity.EventCursor(
                 runId,
                 page.lastOrNull()?.sequence ?: afterSequence,

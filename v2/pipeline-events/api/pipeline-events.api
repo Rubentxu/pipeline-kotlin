@@ -365,11 +365,88 @@ public final class dev/rubentxu/pipeline/v2/events/EchoOutputCaptured : dev/rube
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/events/EventRecordIdentity {
+	public fun <init> (JLjava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()J
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (JLjava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/EventRecordIdentity;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/EventRecordIdentity;JLjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/EventRecordIdentity;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEventId ()Ljava/lang/String;
+	public final fun getKind ()Ljava/lang/String;
+	public final fun getSequence ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/EventRecordRead {
+	public abstract fun getIdentityOrNull ()Ldev/rubentxu/pipeline/v2/events/EventRecordIdentity;
+	public abstract fun getSequence ()J
+}
+
+public final class dev/rubentxu/pipeline/v2/events/EventRecordRead$Decoded : dev/rubentxu/pipeline/v2/events/EventRecordRead {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/events/DomainEvent;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/events/DomainEvent;)Ldev/rubentxu/pipeline/v2/events/EventRecordRead$Decoded;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/EventRecordRead$Decoded;Ldev/rubentxu/pipeline/v2/events/DomainEvent;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/EventRecordRead$Decoded;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEvent ()Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public fun getIdentityOrNull ()Ldev/rubentxu/pipeline/v2/events/EventRecordIdentity;
+	public fun getSequence ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/EventRecordRead$DefaultImpls {
+	public static fun getIdentityOrNull (Ldev/rubentxu/pipeline/v2/events/EventRecordRead;)Ldev/rubentxu/pipeline/v2/events/EventRecordIdentity;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/EventRecordRead$Undecodable : dev/rubentxu/pipeline/v2/events/EventRecordRead {
+	public fun <init> (JLjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/UndecodableReason;Z)V
+	public synthetic fun <init> (JLjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/UndecodableReason;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()J
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ldev/rubentxu/pipeline/v2/events/UndecodableReason;
+	public final fun component5 ()Z
+	public final fun copy (JLjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/UndecodableReason;Z)Ldev/rubentxu/pipeline/v2/events/EventRecordRead$Undecodable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/EventRecordRead$Undecodable;JLjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/UndecodableReason;ZILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/EventRecordRead$Undecodable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEventId ()Ljava/lang/String;
+	public fun getIdentityOrNull ()Ldev/rubentxu/pipeline/v2/events/EventRecordIdentity;
+	public final fun getKind ()Ljava/lang/String;
+	public final fun getRawRowPresent ()Z
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/events/UndecodableReason;
+	public fun getSequence ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/EventRecordSlice {
+	public fun <init> (Ljava/util/List;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;Z)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;
+	public final fun component3 ()Z
+	public final fun copy (Ljava/util/List;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;Z)Ldev/rubentxu/pipeline/v2/events/EventRecordSlice;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/EventRecordSlice;Ljava/util/List;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;ZILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/EventRecordSlice;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDecoded ()Ljava/util/List;
+	public final fun getHasMore ()Z
+	public final fun getNextCursor ()Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;
+	public final fun getRecords ()Ljava/util/List;
+	public final fun getRefusals ()Ljava/util/List;
+	public fun hashCode ()I
+	public final fun requireFullyDecoded ()Ldev/rubentxu/pipeline/v2/events/EventSlice;
+	public fun toString ()Ljava/lang/String;
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/events/EventSink : dev/rubentxu/pipeline/v2/events/EventStore {
 }
 
 public final class dev/rubentxu/pipeline/v2/events/EventSink$DefaultImpls {
 	public static fun appendAssigned (Ldev/rubentxu/pipeline/v2/events/EventSink;Ldev/rubentxu/pipeline/v2/events/DomainEvent;)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public static fun readRecords (Ldev/rubentxu/pipeline/v2/events/EventSink;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;I)Ldev/rubentxu/pipeline/v2/events/EventRecordSlice;
 	public static fun readSlice (Ldev/rubentxu/pipeline/v2/events/EventSink;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;I)Ldev/rubentxu/pipeline/v2/events/EventSlice;
 }
 
@@ -392,11 +469,13 @@ public abstract interface class dev/rubentxu/pipeline/v2/events/EventStore {
 	public abstract fun append (Ldev/rubentxu/pipeline/v2/events/DomainEvent;)V
 	public abstract fun appendAssigned (Ldev/rubentxu/pipeline/v2/events/DomainEvent;)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
 	public abstract fun eventsFor (Ljava/lang/String;)Lkotlin/sequences/Sequence;
+	public abstract fun readRecords (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;I)Ldev/rubentxu/pipeline/v2/events/EventRecordSlice;
 	public abstract fun readSlice (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;I)Ldev/rubentxu/pipeline/v2/events/EventSlice;
 }
 
 public final class dev/rubentxu/pipeline/v2/events/EventStore$DefaultImpls {
 	public static fun appendAssigned (Ldev/rubentxu/pipeline/v2/events/EventStore;Ldev/rubentxu/pipeline/v2/events/DomainEvent;)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
+	public static fun readRecords (Ldev/rubentxu/pipeline/v2/events/EventStore;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;I)Ldev/rubentxu/pipeline/v2/events/EventRecordSlice;
 	public static fun readSlice (Ldev/rubentxu/pipeline/v2/events/EventStore;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;I)Ldev/rubentxu/pipeline/v2/events/EventSlice;
 }
 
@@ -1068,6 +1147,7 @@ public final class dev/rubentxu/pipeline/v2/events/NullEventSink : dev/rubentxu/
 	public fun append (Ldev/rubentxu/pipeline/v2/events/DomainEvent;)V
 	public fun appendAssigned (Ldev/rubentxu/pipeline/v2/events/DomainEvent;)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
 	public fun eventsFor (Ljava/lang/String;)Lkotlin/sequences/Sequence;
+	public fun readRecords (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;I)Ldev/rubentxu/pipeline/v2/events/EventRecordSlice;
 	public fun readSlice (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;I)Ldev/rubentxu/pipeline/v2/events/EventSlice;
 }
 
@@ -1697,6 +1777,40 @@ public final class dev/rubentxu/pipeline/v2/events/TimestampsExited : dev/rubent
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/events/UndecodableEventRecordException : java/lang/IllegalStateException {
+	public fun <init> (Ljava/lang/String;JLjava/lang/String;Ldev/rubentxu/pipeline/v2/events/UndecodableReason;Ljava/lang/String;)V
+	public final fun getKind ()Ljava/lang/String;
+	public fun getMessage ()Ljava/lang/String;
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/events/UndecodableReason;
+	public final fun getRunId ()Ljava/lang/String;
+	public final fun getSequence ()J
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/UndecodableReason {
+}
+
+public final class dev/rubentxu/pipeline/v2/events/UndecodableReason$MalformedPayload : dev/rubentxu/pipeline/v2/events/UndecodableReason {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/UndecodableReason$MalformedPayload;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/UndecodableReason$MalformedPayload;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/UndecodableReason$MalformedPayload;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDetail ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/UndecodableReason$UnknownKind : dev/rubentxu/pipeline/v2/events/UndecodableReason {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/UndecodableReason$UnknownKind;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/UndecodableReason$UnknownKind;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/UndecodableReason$UnknownKind;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKind ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/events/UnixDetected : dev/rubentxu/pipeline/v2/events/DomainEvent {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ZLjava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -1850,6 +1964,7 @@ public final class dev/rubentxu/pipeline/v2/events/identity/EnvelopeProjectingEv
 	public fun append (Ldev/rubentxu/pipeline/v2/events/DomainEvent;)V
 	public fun appendAssigned (Ldev/rubentxu/pipeline/v2/events/DomainEvent;)Ldev/rubentxu/pipeline/v2/events/DomainEvent;
 	public fun eventsFor (Ljava/lang/String;)Lkotlin/sequences/Sequence;
+	public fun readRecords (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;I)Ldev/rubentxu/pipeline/v2/events/EventRecordSlice;
 	public fun readSlice (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;I)Ldev/rubentxu/pipeline/v2/events/EventSlice;
 }
 

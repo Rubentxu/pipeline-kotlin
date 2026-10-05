@@ -1,0 +1,44 @@
+{
+  "_comment": [
+    "P3-E E5 — the ledger of DELIBERATE breaking changes to published contracts.",
+    "",
+    "A maturity classification answers whether a change is allowed. This file answers whether",
+    "a change that has ALREADY happened was allowed, and records the evidence for it. Without",
+    "it, maturity is an opinion: the only way to find out whether a breaking change was",
+    "sanctioned is to read the git history and guess.",
+    "",
+    "Every entry needs: the module, the SHA, what changed, and why the declared maturity",
+    "permits it. P3EPublishedContractMaturityFitnessTest fails the build when an entry is",
+    "incomplete or names a module that is not published.",
+    "",
+    "An entry is NOT permission to break anything silently. It is the receipt for a decision",
+    "that was taken deliberately. The test cannot judge whether the decision was wise; it can",
+    "only guarantee that it was made, written down, and attached to a SHA."
+  ],
+  "entries": [
+    {
+      "module": "pipeline-domain",
+      "sha": "1d892a4bc051e0cbd34dc0428521880397f38424",
+      "surface": "WaitUntilReconciliationDecision.Aborted",
+      "change": "added a third field `attempt: Int`, with NO default value",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "This is a genuine binary break, not an additive one: the two-argument constructor,",
+        "component2, copy and copy$default all disappear from the ABI dump.",
+        "",
+        "A default value of 0 would have made BCV accept it while leaving the defect in place,",
+        "because 0 names no control row and would be published as totalAttempts=0. The",
+        "alternative considered and rejected: keep the field out and let the engine derive the",
+        "attempt from a hash — which is exactly the fabrication this change removes, and",
+        "which crashed the engine with IllegalStateException before the fix.",
+        "",
+        "The producer already had the real value: WaitUntilReconciler was iterating the attempt",
+        "and discarding it into a reason string. So this change does not invent a value, it",
+        "stops discarding one. The cost is paid by consumers constructing the class; there are",
+        "none outside this repository, which is the practical content of EXPERIMENTAL here."
+      ],
+      "removal_boundary": "n/a — additive field, no member removed",
+      "supersedes": null
+    }
+  ]
+}

@@ -154,6 +154,36 @@ public final class dev/rubentxu/pipeline/v2/domain/BoundPurpose : java/lang/Enum
 	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/BoundPurpose;
 }
 
+public abstract interface class dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Companion;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Companion {
+	public final fun getSupportedTokens ()Ljava/util/Set;
+	public final fun parse (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Failure : dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Failure;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Success : dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Success;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Unstable : dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Unstable;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/domain/CompileResult {
 }
 
@@ -4721,12 +4751,14 @@ public abstract interface class dev/rubentxu/pipeline/v2/domain/durable/WaitUnti
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/durable/WaitUntilReconciliationDecision$Aborted : dev/rubentxu/pipeline/v2/domain/durable/WaitUntilReconciliationDecision {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;ILjava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
-	public final fun component2 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilReconciliationDecision$Aborted;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilReconciliationDecision$Aborted;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilReconciliationDecision$Aborted;
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;ILjava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilReconciliationDecision$Aborted;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilReconciliationDecision$Aborted;Ljava/lang/String;ILjava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilReconciliationDecision$Aborted;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAttempt ()I
 	public final fun getOperationId ()Ljava/lang/String;
 	public final fun getReason ()Ljava/lang/String;
 	public fun hashCode ()I

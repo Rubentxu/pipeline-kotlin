@@ -1,0 +1,60 @@
+{
+  "_comment": [
+    "P3-E E5 — the ONE authority of published-contract maturity.",
+    "",
+    "This is contractual policy, not roadmap state and not an operational status. It answers",
+    "exactly one question per published module: may its public ABI change, and under what",
+    "conditions. It is deliberately NOT DSL_SURFACE_MANIFEST: that manifest classifies",
+    "constructors in the pipeline authoring surface, and this classifies the artifacts an",
+    "external CONSUMER compiles against. Reusing it would conflate a DSL function with a",
+    "library ABI and quietly make the stricter policy apply to the wrong surface.",
+    "",
+    "Taxonomy (the canonical one; nothing outside it is accepted):",
+    "  STABLE                 breaking is forbidden except across an explicit major boundary",
+    "  PARTIAL                additive changes allowed; breaking needs a recorded exception",
+    "  EXPERIMENTAL           breaking allowed under a recorded decision with a stated boundary",
+    "  DEPRECATED             members may be removed only after the declared removal boundary",
+    "  UNSUPPORTED_FAIL_CLOSED the construct refuses itself; there is no compatibility surface",
+    "",
+    "Consumed by P3EPublishedContractMaturityFitnessTest, which fails the build when a module",
+    "published from build.gradle.kts has no entry here. See publishedContractExceptions() in",
+    "the same test for how a deliberate breaking change is recorded rather than discussed."
+  ],
+  "contracts": {
+    "pipeline-domain": "EXPERIMENTAL",
+    "pipeline-scripting-api": "EXPERIMENTAL",
+    "pipeline-events": "EXPERIMENTAL",
+    "pipeline-output": "EXPERIMENTAL"
+  },
+  "rationale": {
+    "pipeline-domain": [
+      "EXPERIMENTAL, and the reason is specific rather than convenient: this module is the",
+      "innermost seam and its types are re-exported through pipeline-events and",
+      "pipeline-scripting-api, so almost every change to it is additive-by-necessity rather",
+      "than by choice. The one class of change this repository made repeatedly in P3-E is",
+      "enriching an internal decision ADT with evidence the producer already had",
+      "(WaitUntilReconciliationDecision.Aborted gained the attempt it had been discarding into",
+      "a string). That is a real breaking change to a published data class, and pretending",
+      "otherwise would make the classification a description of what we wish were true.",
+      "",
+      "Promoting it to STABLE requires that the decision ADTs stop being part of the external",
+      "surface — i.e. that consumers resolve outcomes through event projections rather than",
+      "reaching for domain ADTs directly. That is S5.4's work, and until it lands the honest",
+      "classification is EXPERIMENTAL."
+    ],
+    "pipeline-scripting-api": [
+      "EXPERIMENTAL: the DSL is the authored authoring surface and several of its constructs",
+      "are already deprecated with a declared replacement (catchError, LFC1-007), which is the",
+      "signature of a surface still converging."
+    ],
+    "pipeline-events": [
+      "EXPERIMENTAL: the wire vocabulary is published and load-bearing, and this block is",
+      "actively changing it (typed projections, fail-closed decoders). It is not a frozen",
+      "contract yet, and calling it one would only defer the work."
+    ],
+    "pipeline-output": [
+      "EXPERIMENTAL: the smallest of the four and the least consumed; nothing in the P3-E",
+      "block touched it."
+    ]
+  }
+}

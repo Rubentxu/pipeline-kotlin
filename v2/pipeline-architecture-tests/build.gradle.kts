@@ -27,26 +27,55 @@ dependencies {
 }
 
 /**
- * Tasks that write INSIDE a module directory.
- *
  * Bounded on purpose. The rule the fitness needs is "never judge a module's sources before that
  * module's build has had its say", and the tasks that can contradict a source tree are these. A
  * blanket `mustRunAfter` on every task of every module would express the same intent and cost a
  * scheduling graph nobody can review.
+ *
+ * **This list was removed, and the failure that removed it is the reason it cannot come back.**
+ * It named eleven task types; `koverCachedVerify` and `koverVerify` were not among them, so on
+ * 2026-10-05 the full gate stopped with
+ *
+ * ```text
+ * Task ':pipeline-architecture-tests:test' uses this output of task
+ * ':pipeline-step-sdk:api:koverCachedVerify' without declaring an explicit or implicit dependency.
+ * Gradle detected a problem with the following location: 'v2/pipeline-step-sdk/api'
+ * ```
+ *
+ * A hand-written list of "tasks that write inside a module directory" cannot stay correct: it is
+ * wrong the first time a plugin contributes a task nobody named, and the failure it produces reads
+ * as a broken build rather than as an out-of-date list. The property being wanted is not a list of
+ * names — it is "every task whose output overlaps an input this test declares", and that is
+ * computable, so it is computed below instead of written down.
+ *
+ * `@Suppress("UnstableApiUsage")` covers `TaskCollection.filter`: iterating `module.tasks`
+ * REALIZES the lazily-registered tasks, which is the price of asking the model rather than a
+ * list. It is paid once, at configuration time, over 25 modules. The suppression sits on
+ * `overlappingTaskOutputs` and not on the input list, because that is the declaration that does
+ * the iterating.
  */
-private val WRITING_TASK_NAMES = listOf(
-    "classes",
-    "testClasses",
-    "compileTestKotlin",
-    "compileTestJava",
-    "test",
-    "apiBuild",
-    "apiDump",
-    "koverGenerateArtifact",
-    "koverGenerateArtifactJvm",
-    "koverFindJar",
-    "detekt",
-)
+val fitnessDeclaredInputs: List<java.io.File> =
+    rootProject.subprojects
+        .filter { it.path != project.path }
+        .flatMap { module ->
+            listOf(module.projectDir.resolve("build.gradle.kts"), module.projectDir.resolve("src/main/kotlin")) +
+                module.projectDir.resolve("api").takeIf { it.isDirectory }?.let { listOf(it) }.orEmpty()
+        }
+
+@Suppress("UnstableApiUsage")
+val overlappingTaskOutputs: List<org.gradle.api.Task> =
+    rootProject.subprojects
+        .filter { it.path != project.path }
+        .flatMap { module ->
+            module.tasks.filter { task ->
+                task.outputs.files.files.any { produced ->
+                    val out = produced.toPath()
+                    fitnessDeclaredInputs.any { declared ->
+                        out.startsWith(declared.toPath()) || declared.toPath().startsWith(out)
+                    }
+                }
+            }
+        }
 
 tasks.test {
     useJUnitPlatform()
@@ -134,22 +163,16 @@ tasks.test {
 
     // The remaining overlap is ORDINAL, not a dependency, and that distinction matters.
     //
-    // Gradle flagged five more locations — `compileTestJava`, `compileTestKotlin`,
-    // `koverGenerateArtifact`, `koverGenerateArtifactJvm` and `test` — all of them inside the
-    // NESTED module `:pipeline-step-sdk:api`, whose project directory is itself a subdirectory of
-    // `:pipeline-step-sdk`. This fitness does not read a single one of those outputs: it reads
-    // build files, `src/main/kotlin` and `api/` dumps. Declaring `dependsOn` on them would be a
-    // lie that costs a lot — it would make this task wait for another module's whole test suite
-    // and its coverage instrumentation before judging anything.
+    // `overlappingTaskOutputs` holds every task of another module whose declared output covers one
+    // of THIS test's declared inputs. This fitness does not read those outputs: it reads build
+    // files, `src/main/kotlin` and `api/` dumps. Declaring `dependsOn` on them would be a lie that
+    // costs a lot — it would make this task wait for another module's whole test suite and its
+    // coverage instrumentation before judging anything.
     //
     // `mustRunAfter` states exactly what is true: if those tasks happen to run, they run first.
     // That satisfies the ordering half of the validation without inventing an artifact
     // dependency, and it is the distinction Gradle itself offers as a separate solution.
-    mustRunAfter(
-        crossModules.flatMap { module ->
-            WRITING_TASK_NAMES.mapNotNull { name -> module.tasks.findByName(name) }
-        },
-    )
+    mustRunAfter(overlappingTaskOutputs)
 }
 
 

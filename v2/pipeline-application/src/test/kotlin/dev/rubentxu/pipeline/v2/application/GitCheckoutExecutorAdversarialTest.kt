@@ -21,6 +21,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.TimeUnit
 
 /**
  * UAT-LOCAL-005: GitCheckoutExecutor Adversarial Tests.
@@ -242,11 +243,28 @@ class GitCheckoutExecutorAdversarialTest {
 
     /**
      * ADV-007: Very large changelog must not cause OOM or hang.
-     * Creates a repo with many commits and verifies the changelog writer
-     * handles it within the timeout.
+     *
+     * The claim is DISCRETE — the checkout succeeds and the changelog carries the entries — and
+     * the bound below is a LIVENESS GUARD sized for the fixture, not a performance budget. The
+     * distinction is not cosmetic.
+     *
+     * This test was previously bounded by the CLASS-level `@Timeout(60)` and additionally asserted
+     * `elapsedMs < 60_000`. Both measured the machine. The fixture alone is 500 sequential `git`
+     * spawns, which costs 53.3s on an idle box (measured, sha256 of that run's XML
+     * 13555c7163a95cf90d54502777cd03087da0c6a838245c07ed249ca316a59dc4) — 89% of the budget spent
+     * before the product is called at all. Under the full gate's parallel load the fixture crossed
+     * 60s and the run died as `TimeoutException` with the product never having been exercised
+     * (sha256 5c579e5b942c0e98092ea6fc10abeb7191c278b3b5b3e9caa7626e6834d5cfa9). A correct product
+     * produced a RED that read as a product defect, which is exactly what HF3 forbids: a duration
+     * is a property of the machine.
+     *
+     * So the duration claim is DELETED, not relaxed. "Does not hang" survives as a generous guard
+     * that a real deadlock or an OOM still trips, and "handles 500 commits" is proved by the
+     * assertions that were already there.
      */
     @Test
-    fun `ADV-007 large changelog completes within timeout`(@TempDir tempDir: Path) {
+    @Timeout(value = 10, unit = TimeUnit.MINUTES)
+    fun `ADV-007 large changelog completes without hanging`(@TempDir tempDir: Path) {
         // Create a bare repo with 500 commits
         val bareRepo = tempDir.resolve("large.git")
         val work = tempDir.resolve("work")
@@ -280,13 +298,14 @@ class GitCheckoutExecutorAdversarialTest {
         val request = createRequest(spec, workspace)
         val executor = createExecutor(tempDir)
 
-        val startMs = System.currentTimeMillis()
         executor.use { exec ->
+            // Discrete observation, not a stopwatch: the outcome is what the product owes.
+            // The elapsed-time assertion that used to live here asserted a performance figure the
+            // executor never promised, and duplicated the two claims below.
             val result = exec.execute(request)
-            val elapsedMs = System.currentTimeMillis() - startMs
-            assertTrue(result.isSuccess, "Large changelog checkout must succeed")
-            // Must complete within reasonable time (60s for 500 commits)
-            assertTrue(elapsedMs < 60_000, "Large changelog must complete within 60s, was ${elapsedMs}ms")
+            assertTrue(result.isSuccess) {
+                "Large changelog checkout must succeed, was: $result"
+            }
         }
 
         val changelogFile = workspace.resolve("changelog.txt")

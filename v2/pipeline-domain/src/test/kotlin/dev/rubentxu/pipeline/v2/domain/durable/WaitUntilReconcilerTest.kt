@@ -383,14 +383,18 @@ class WaitUntilReconcilerTest {
     @DisplayName("terminal failure statuses")
     inner class TerminalFailures {
         @Test
-        fun `ABORTED — returns Aborted decision`() {
+        fun `ABORTED — returns Aborted decision carrying the row's own attempt`() {
+            // P3-E E4: the decision must carry the attempt the reconciler READ, because
+            // that is the only number that identifies a real control row. The engine used
+            // to invent one instead, and every consumer downstream was misled by it.
             val decision = decide(
-                input(controls = listOf(control(1, OperationStatus.ABORTED))),
+                input(controls = listOf(control(7, OperationStatus.ABORTED))),
             )
             assertEquals(
                 WaitUntilReconciliationDecision.Aborted(
                     operationId = CONTROL_OP_ID,
-                    reason = "waitUntil aborted at attempt 1",
+                    attempt = 7,
+                    reason = "waitUntil aborted",
                 ),
                 decision,
             )

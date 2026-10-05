@@ -310,13 +310,15 @@ class WaitUntilEngine(
                 }
 
                 is WaitUntilReconciliationDecision.Aborted -> {
-                    journal.updateStatus(
-                        controlOpId = controlOpId,
-                        attempt = decision.operationId.hashCode(),
-                        status = OperationStatus.ABORTED,
-                        fingerprint = fingerprint,
-                    )
-                    emitCompleted(overallStartMs, decision.operationId.hashCode(), "aborted")
+                    // P3-E E4 — READ-ONLY. The reconciler returns `Aborted` precisely
+                    // BECAUSE it read a durable row whose status already is ABORTED, so
+                    // there is no transition left to persist. Writing it back could only
+                    // ever be a no-op, and it was: `updateStatus` requires an existing
+                    // control row for the attempt it is given and throws otherwise, so the
+                    // write below used to throw `IllegalStateException` on an attempt that
+                    // existed nowhere — the branch never emitted its event and never
+                    // returned its typed failure, and the abort escaped as an untyped crash.
+                    emitCompleted(overallStartMs, decision.attempt, "aborted")
                     return StepOutcome.Failure(
                         PipelineFailure(
                             FailureKind.ENGINE,

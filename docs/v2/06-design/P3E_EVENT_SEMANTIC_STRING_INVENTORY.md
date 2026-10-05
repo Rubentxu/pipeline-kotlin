@@ -351,21 +351,53 @@ comentario `"completed" or "deadline-exceeded"`, y un getter que hace
 `if (resultOutcome == "completed") Success else Failure(TIMEOUT)` — **cualquier** otra
 cadena se convierte en fallo por timeout.
 
-### 5.4 `totalAttempts` fabricado en la rama `Aborted`
+### 5.4 `totalAttempts` fabricado en la rama `Aborted` — y un crash que no es un no-op
 
 `WaitUntilEngine.kt:312-319`. `WaitUntilReconciliationDecision.Aborted` **no tiene
 `attempt`** (sólo `operationId` y `reason`), así que el motor escribe:
 
 ```kotlin
-attempt = decision.operationId.hashCode()     // journal.updateStatus(…)
+journal.updateStatus(controlOpId, attempt = decision.operationId.hashCode(), ABORTED, …)
 emitCompleted(overallStartMs, decision.operationId.hashCode(), "aborted")
 ```
 
-El `journal.updateStatus` **escribe en el estado durable un número de intento que nunca
-existió**. Esto no es sólo un campo de evento mal proyectado: es integridad del journal.
-Un replay posterior lee un `ABORTED` en un intento inexistente. `totalAttempts` publicado
-recibe el mismo hash, así que un observador que calcule "cuántos intentos llevó este
-waitUntil" lee basura.
+> **Correccion de una lectura anterior.** Una primera pasada de esta auditoria
+> hallazgo como un *no-op inofensivo*, suponiendo que `updateStatus` filtraba por intento y
+> no encontraba nada. **Es falso**, y esa suposición era la razón de no haberlo priorizado.
+> `FileBasedWaitUntilControlJournal.updateStatus:97-100` lanza:
+>
+> ```text
+> java.lang.IllegalStateException: updateStatus: no control row for
+> lpr302-phase3-s0-0-bp1-0:build/waituntil@-847192586; call beginAttempt first
+> ```
+>
+> El `-847192586` es literalmente el `operationId.hashCode()`.
+
+La consecuencia es bastante más grave que un campo mal proyectado:
+
+- la rama `Aborted` **lanza** antes de emitir nada;
+- `WaitUntilCompleted(outcome = "aborted")` **nunca llega al stream**;
+- `StepOutcome.Failure(ENGINE)` **nunca se devuelve**: el abort escapa como excepción no
+  tipada en lugar de ser un fallo del Step.
+
+Eso explica un dato que estaba a la vista desde el principio y que no se leia: el
+KDoc de `WaitUntilCompleted` declara `@param outcome "completed" or "deadline-exceeded"`, dos
+tokens, cuando el productor emite tres. **El tercero no aparecía nunca**, porque la rama que
+lo emitía moría antes de emitirlo. La documentación estaba incompleta porque el
+comportamiento estaba incompleto.
+
+**Por qué nadie lo vio.** El replay durable estaba probado para `SUCCEEDED`
+(`already-satisfied journal state replays to Success`) y **no** para `ABORTED`. El test de
+`cancelled body` sí cubre `ABORTED`, pero en la **primera pasada**, donde es el motor quien
+escribe la fila; ahí el `updateStatus` recibe un attempt real y funciona. El hueco es
+exactamente la **reentrada** sobre una fila `ABORTED` ya persistida, que es donde el número
+fabricado se usa.
+
+Corrección aplicada en E4b.1: `Aborted` transporta el `attempt` real que el reconciler ya
+tenía en la mano, y la rama es **read-only** —que es lo que corresponde, porque la decisión
+`Aborted` existe precisamente porque la fila ya decía `ABORTED`. El test añadido es el del
+replay que faltaba, y la mutación que reintroduce la escritura fabricada reproduce el crash
+como RED.
 
 ### 5.5 `StageOutcome` duplicado, con una decisión de emisión separada
 

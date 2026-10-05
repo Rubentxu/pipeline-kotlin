@@ -455,6 +455,96 @@ class WULpr302WaitUntilEngineTest {
             assertTrue(outcome is StepOutcome.Failure)
             assertEquals(FailureKind.ENGINE, (outcome as StepOutcome.Failure).failure.kind)
         }
+
+        @Test
+        fun `re-entry over a durable ABORTED returns typed failure, emits aborted, and writes nothing`(
+            @TempDir tempDir: Path,
+        ) = runBlocking {
+            // P3-E E4. The `cancelled body` test above covers ABORTED on the FIRST pass,
+            // where the engine is the one writing the row. This covers the other direction:
+            // the row is ALREADY ABORTED and the reconciler is re-entering on it.
+            //
+            // That path had no test while the SUCCEEDED replay did, and it is the path that
+            // used to crash: the engine re-wrote the row with an attempt derived from
+            // operationId.hashCode(), updateStatus found no control row for it and threw,
+            // so the branch never emitted its event and never returned its typed failure —
+            // the abort escaped as an untyped exception instead of a StepOutcome.
+            val parentPath = listOf(BlockSegment(0, PluginStepId("build/waituntil")))
+            val bodyRef = BodyRefs.childBody(parentPath)
+            val adapter = RecordingAdapter()
+            adapter.open(bodyRef) { _ ->
+                StepOutcome.Failure(PipelineFailure(FailureKind.SCRIPT, "must-not-fire"))
+            }
+            val store = InMemoryEventStore()
+            val te = makeEngine(
+                adapter = adapter,
+                bodyRef = bodyRef,
+                parentBodyPath = parentPath,
+                initialRecurrencePeriodMs = 1L,
+                maxBackoffMs = 4L,
+                events = store,
+                tempDir = tempDir,
+            )
+            // Durable evidence from an earlier pass. A cancelled body leaves exactly ONE
+            // control row — the poll it was cancelled on — already ABORTED, because that
+            // is where the first pass wrote it. Seeding extra rows here would describe a
+            // state the engine never produces.
+            te.journal.beginAttempt(
+                te.controlOpId,
+                attempt = 1,
+                currentBackoffMs = 1L,
+                fingerprint = te.fingerprint,
+                status = OperationStatus.RUNNING,
+            )
+            te.journal.updateStatus(
+                te.controlOpId,
+                attempt = 1,
+                status = OperationStatus.ABORTED,
+                fingerprint = te.fingerprint,
+            )
+            val rowsBefore = te.journal.readState(
+                te.controlOpId,
+                initialRecurrencePeriodMs = 1L,
+                maxBackoffMs = 4L,
+                currentFingerprint = te.fingerprint,
+            )
+
+            val outcome = te.engine.execute(bodyRef)
+
+            // Typed outcome, not an exception escaping the engine.
+            assertTrue(outcome is StepOutcome.Failure, "expected a typed failure, got $outcome")
+            assertEquals(FailureKind.ENGINE, (outcome as StepOutcome.Failure).failure.kind)
+            assertEquals(
+                emptyList<Int>(),
+                adapter.attemptIndices(),
+                "a durable ABORTED is terminal: re-entry must NOT re-invoke the body",
+            )
+
+            // The observation is the point of the whole aggregate.
+            val completed = store.readSlice(te.runId.value, after = null, limit = 100)
+                .events.filterIsInstance<WaitUntilCompleted>()
+            assertEquals(1, completed.size, "expected exactly one WaitUntilCompleted")
+            assertEquals("aborted", completed.single().outcome)
+            assertEquals(
+                1,
+                completed.single().totalAttempts,
+                "totalAttempts must be the attempt the durable row was actually read at, " +
+                    "not a number derived from anything else",
+            )
+
+            // Read-only: the row already said ABORTED, so there was nothing to persist.
+            val rowsAfter = te.journal.readState(
+                te.controlOpId,
+                initialRecurrencePeriodMs = 1L,
+                maxBackoffMs = 4L,
+                currentFingerprint = te.fingerprint,
+            )
+            assertEquals(
+                rowsBefore.controlRows.map { it.attempt to it.status },
+                rowsAfter.controlRows.map { it.attempt to it.status },
+                "re-entry over a terminal ABORTED must not mutate durable control rows",
+            )
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────

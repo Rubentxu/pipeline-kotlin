@@ -57,9 +57,22 @@ sealed interface WaitUntilReconciliationDecision {
 
     /**
      * WaitUntil was explicitly aborted by the caller.
+     *
+     * P3-E E4 — [attempt] is the control row the reconciler actually READ as ABORTED.
+     *
+     * It is deliberately NOT defaulted. The reconciler has the value in hand — it is the
+     * loop variable it is iterating over — and carrying it here is what lets the engine
+     * report a real `totalAttempts` and treat the row as read-only. A default would have
+     * been the same defect wearing a different hat: a fabricated attempt that reads as a
+     * real one. The engine previously derived one from `operationId.hashCode()`, which
+     * produced a number that matched no control row at all.
+     *
+     * No [reason] needs to carry the attempt any more, and must not: a number embedded in
+     * prose is a value no caller can pattern-match and none of the code below can trust.
      */
     data class Aborted(
         val operationId: String,
+        val attempt: Int,
         val reason: String,
     ) : WaitUntilReconciliationDecision
 

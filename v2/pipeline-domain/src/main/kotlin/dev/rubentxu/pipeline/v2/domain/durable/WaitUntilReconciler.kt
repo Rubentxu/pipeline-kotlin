@@ -68,9 +68,12 @@ object WaitUntilReconciler {
                 }
 
                 OperationStatus.ABORTED -> {
+                    // The row at [attempt] is the evidence. Carrying the number the
+                    // decision was made at is what lets the engine stay read-only.
                     return Aborted(
                         operationId = input.controlIdentity.operationId,
-                        reason = "waitUntil aborted at attempt $attempt",
+                        attempt = attempt,
+                        reason = "waitUntil aborted",
                     )
                 }
 

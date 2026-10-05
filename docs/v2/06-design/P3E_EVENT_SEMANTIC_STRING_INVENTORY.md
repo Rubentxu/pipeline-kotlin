@@ -194,6 +194,53 @@ independientemente de qué se decida sobre el tipo.
 | `BodyExecutionEngine` (legacy) | `…/durable/BodyExecutionEngine.kt:305,323` | loop legacy; 2 tokens, `else` sobre `StepOutcome` |
 | `CoreWaitUntilStep` | `…/application/CoreWaitUntilStep.kt:193` | **candidato no enrutado; ver §5.3** |
 
+### 3.4 Fresh / restart / reconcil: ¿convergen las tres terminales? (E4b.4)
+
+§3.2 dice que el vocabulario mezcla dos ejes, y eso es un argumento para **no** tipar. Pero
+"mezcla dos ejes" y "son tres terminales que no convergen" son afirmaciones distintas, y la
+segunda es la que decide si un ADT upstream es honesto o una estructura vacía. Se midió.
+
+Las tres terminales, en el motor real (`WaitUntilEngine`), por ruta de llegada:
+
+| Terminal | Fresh (predicado en vivo) | Reconciler (restart) | `StepOutcome` | Wire |
+|---|---|---|---|---|
+| **Satisfecha** | `Satisfied` → `updateStatus(SUCCEEDED)` | `AdvanceAfterPredicateSatisfied` → `updateStatus(SUCCEEDED)` | `Success` | `completed` |
+| **Deadline** | (no hay fresh: el fresh loop también pasa por el reconciler) | `DeadlineExceeded` → `updateStatus(FAILED_TIMEOUT)` | `Failure(TIMEOUT)` | `deadline-exceeded` |
+| **Abortada** | `Cancelled` → `updateStatus(ABORTED)` | `Aborted` → **read-only** (E4b.1) | `Failure(ENGINE)` | `aborted` |
+
+**Sí convergen, y convergen de una manera concreta.** Las tres hacen exactamente tres cosas y
+siempre las mismas:
+
+1. nombran un `OperationStatus` durable distinto (`SUCCEEDED` / `FAILED_TIMEOUT` / `ABORTED`);
+2. devuelven el mismo *tipo* de `StepOutcome` para dos de ellas y `Success` para la tercera;
+3. emiten `WaitUntilCompleted` con un token distinto, y el token se deriva de (1), no se decide aparte.
+
+Fresh y restart **no divergen en ningún caso**: la fila fresh pasa por el mismo reconciler antes de
+emitir, así que no hay dos calendarios distintos. E4b.1 lo dejó explícito al volver `Aborted` read-only: la
+terminal de abort ya estaba persistida, y reescribirla sólo podía ser un no-op que además lanzaba.
+
+**Por qué el ADT upstream es honesto entonces.** Un `WaitUntilCompletion` con
+`Satisfied` / `DeadlineExceeded` / `Aborted` no estaría ocultando un `String` de nivel superior: cada
+caso **encapsula** las tres cosas que hoy se deciden por separado en tres sitios distintos
+(`updateStatus`, el `StepOutcome`, y el `outcome` del evento). El caso es la unidad de decisión, y
+las tres proyecciones se derivan de él:
+
+```text
+WaitUntilCompletion
+├── Satisfied          → SUCCEEDED      → StepOutcome.Success → "completed"
+├── DeadlineExceeded   → FAILED_TIMEOUT → StepOutcome.Failure(TIMEOUT) → "deadline-exceeded"
+└── Aborted            → ABORTED        → StepOutcome.Failure(ENGINE)  → "aborted"
+```
+
+**Lo que NO se hace aquí, y por qué.** El `String` compartido queda *proyectado desde* el ADT, nunca
+leído por él. El wire histórico (`completed` / `deadline-exceeded` / `aborted`) se preserva
+byte a byte porque S8 congelará contra él; y `RejectDivergence` **no entra** en el ADT, porque no
+emite `WaitUntilCompleted` (§3.2) — meterla haría que el evento afirmara un final que no ocurrió,
+que es el defecto de §5.3 en otra forma.
+
+Pendiente de ejecución en E4b.4: el ADT, sus tres proyecciones, y el test que prova que el
+proyectado no reintroduce un `String` como autoridad.
+
 ---
 
 ## 4. `CatchErrorTriggered.buildResult` / `stageResult` — la cadena completa

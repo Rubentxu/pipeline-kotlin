@@ -31,3 +31,29 @@ fun StageScope.uppercase(text: String) {
         encodedInput = UppercaseCodec.encode(UppercaseInput(text)),
     )
 }
+
+/**
+ * The observing sibling of [uppercase] (P3-D): same work, plus an event this plugin owns.
+ *
+ * Separate rather than a flag on `uppercase` because the reference `uppercase` is deliberately
+ * capability-free, and a `boolean observe` on it would quietly make every caller depend on a seam
+ * the plain form never needed. Two entry points, two contracts, one plugin.
+ *
+ * ```kotlin
+ * import example.uppercase.uppercaseObserved
+ *
+ * pipeline {
+ *     stages {
+ *         stage("External") {
+ *             uppercaseObserved("hello")
+ *         }
+ *     }
+ * }
+ * ```
+ */
+fun StageScope.uppercaseObserved(text: String) {
+    registryStep(
+        stepKey = UppercaseObservedStepDefinition.KEY,
+        encodedInput = UppercaseCodec.encode(UppercaseInput(text)),
+    )
+}

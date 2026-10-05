@@ -30,7 +30,8 @@ import java.util.concurrent.TimeUnit
  * external plugin JAR (own Gradle build, published contracts only)
  *   -> ServiceLoader discovery of EventDefinitionContributor
  *   -> one EventRegistry composed at the composition root
- *   -> a real `uppercase` Step declaring PLUGIN_EVENT_EMISSION_CAPABILITY
+ *   -> a real `uppercaseObserved` Step declaring PLUGIN_EVENT_EMISSION_CAPABILITY (its zero-capability
+ *      sibling `uppercase` stays untouched as the reference proof that a plugin can demand nothing)
  *   -> a real handler emitting example.uppercase.applied during a REAL run
  *   -> store-assigned sequence, interleaved with the core events
  *   -> process EXIT (the writer is gone)
@@ -82,12 +83,12 @@ class P3DPluginEventInstalledDistributionUatTest {
         Files.writeString(
             script,
             """
-            import example.uppercase.uppercase
+            import example.uppercase.uppercaseObserved
 
             pipeline {
                 stages {
                     stage("External") {
-                        uppercase("hello")
+                        uppercaseObserved("hello")
                     }
                 }
             }
@@ -118,7 +119,7 @@ class P3DPluginEventInstalledDistributionUatTest {
         assertEquals(
             1,
             replayKinds.count { it == "PluginEventEmitted" },
-            "one uppercase Step means exactly one contributed event, not zero and not two",
+            "one observed Step means exactly one contributed event, not zero and not two",
         )
 
         // 3. The SEMANTIC payload, through the Event Plane's own read-side. The identity envelope
@@ -178,12 +179,12 @@ class P3DPluginEventInstalledDistributionUatTest {
         Files.writeString(
             script,
             """
-            import example.uppercase.uppercase
+            import example.uppercase.uppercaseObserved
 
             pipeline {
                 stages {
                     stage("External") {
-                        uppercase("hello")
+                        uppercaseObserved("hello")
                     }
                 }
             }

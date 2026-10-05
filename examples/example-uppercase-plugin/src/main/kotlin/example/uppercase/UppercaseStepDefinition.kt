@@ -11,8 +11,6 @@ import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
-import dev.rubentxu.pipeline.v2.events.registry.PLUGIN_EVENT_EMISSION_CAPABILITY
-import dev.rubentxu.pipeline.v2.events.registry.PluginEventEmission
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -68,28 +66,20 @@ object UppercaseStepDefinition : StepDefinition<UppercaseInput, UppercaseOutput>
         ),
         inputCodec = UppercaseCodec,
         outputCodec = UppercaseOutputCodec,
-        // P3-D / S6.4: the plugin asks for the emission seam by DECLARING it. Admission is
-        // fail-closed — a run that composed no registry never exposes it and this Step is refused
-        // before the handler runs — so there is no "declared but silently inert" mode.
-        requiredCapabilities = setOf(PLUGIN_EVENT_EMISSION_CAPABILITY),
+        // ZERO capabilities, on purpose, and that is the reference value this Step carries.
+        // It is the strongest statement a plugin can make about not needing core changes: this
+        // Step asks the host for nothing at all and still runs. P3-D first added the emission here
+        // and the certification suite caught it — `contract completeness - no privileged
+        // capabilities` is a standing assertion that the reference plugin demands nothing.
+        //
+        // So the observation lives in a SECOND Step, `example.uppercase.observed`, which declares
+        // exactly one capability and asks the host for it. One plugin, both shapes, and the
+        // zero-capability proof survives untouched.
+        requiredCapabilities = emptySet(),
     )
 
-    override val handler = StepHandler<UppercaseInput, UppercaseOutput> { input, context ->
-        val output = UppercaseOutput(value = input.text.uppercase())
-
-        // P3-D: the plugin emits its own event through the capability. It cannot reach the
-        // EventStore, the JSON log, SQLite, the sequence assigner, the clock, or the runId —
-        // `get` hands back exactly the seam, and the store assigns the sequence. The outcome is
-        // NOT inspected: an unregistered kind or a codec refusal is a named result the runtime
-        // surfaces, not an exception this handler should turn into a Step failure, because the
-        // uppercase work itself already succeeded.
-        val emission = context.capabilities.get<PluginEventEmission>(PLUGIN_EVENT_EMISSION_CAPABILITY)
-        emission.emit(
-            "example.uppercase.applied",
-            UppercaseApplied(inputLength = input.text.length, outputLength = output.value.length),
-        )
-
-        output
+    override val handler = StepHandler<UppercaseInput, UppercaseOutput> { input, _ ->
+        UppercaseOutput(value = input.text.uppercase())
     }
 }
 
@@ -100,5 +90,10 @@ object UppercaseStepDefinition : StepDefinition<UppercaseInput, UppercaseOutput>
 class UppercaseContributor : StepDefinitionContributor {
     override val id: String = "example.uppercase"
 
-    override fun definitions(): Iterable<StepDefinition<*, *>> = listOf(UppercaseStepDefinition)
+    /**
+     * Two Steps, one of which asks for nothing and one of which asks for exactly one seam.
+     * See [UppercaseObservedStepDefinition] for why the observing one is separate.
+     */
+    override fun definitions(): Iterable<StepDefinition<*, *>> =
+        listOf(UppercaseStepDefinition, UppercaseObservedStepDefinition)
 }

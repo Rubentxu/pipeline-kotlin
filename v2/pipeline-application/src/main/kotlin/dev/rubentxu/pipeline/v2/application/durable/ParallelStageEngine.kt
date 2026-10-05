@@ -210,10 +210,16 @@ internal class ParallelStageEngine(
                     val branchOutcome = executeBranchSteps(
                         branch, runId, stageIndex, branchIndex, stageShOptions, executionContext,
                     )
+                    // P3-E E2: exhaustive WITHOUT `else`, on purpose. This used to end
+                    // in `else -> "success"`, which meant a `StepOutcome` case nobody had
+                    // written yet would be reported to every external observer as a
+                    // SUCCESS. The type system is the only thing standing between a new
+                    // outcome and a lie in the durable stream, so the projection keeps it
+                    // in the loop: adding a case breaks the build instead.
                     val outcomeText = when (branchOutcome) {
                         is StepOutcome.Failure -> "failure"
                         is StepOutcome.Unstable -> "unstable"
-                        else -> "success"
+                        is StepOutcome.Success -> "success"
                     }
                     eventSink.append(
                         dev.rubentxu.pipeline.v2.events.ParallelBranchFinished(

@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.post.PostCondition
 import dev.rubentxu.pipeline.v2.domain.post.PostPlanner
+import dev.rubentxu.pipeline.v2.domain.post.StageOutcome
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.time.Instant
@@ -60,13 +61,92 @@ internal class StageExecutionEngine(
         ) : StageVerdict
     }
 
-    /** The declared result of a stage that reached its end. A stage outcome, not a Step outcome. */
-    enum class StageOutcome(val text: String) {
-        SUCCESS("success"),
+    /**
+     * P3-E E2 — the projection of a stage outcome onto the wire spellings that have always
+     * been published, carried UNCHANGED.
+     *
+     * `success` / `unstable` / `failed` are not interchangeable with the `failure` of
+     * `RunFinished` or the `succeeded` of `RetryAttemptFinished`; they are three different
+     * vocabularies that have always coexisted, and "normalising" them would rewrite history
+     * for no gain. The mismatch is recorded, not fixed.
+     *
+     * Five cases, not three: a skipped stage reports `PostConditionSelected` without ever
+     * producing a `StageFinished`, so the projection has to name states the stage terminal
+     * does not have. Collapsing this into the three emittable cases would force the skip path
+     * to invent a `StageFinished` value, which is the exact defect [StageFinishedDecision]
+     * exists to prevent.
+     */
+    internal enum class StageOutcomeWire(val wire: String) {
+        SUCCEEDED("success"),
         UNSTABLE("unstable"),
         FAILED("failed"),
         SKIPPED("skipped"),
+        ABORTED("aborted"),
     }
+
+    /**
+     * P3-E E2 — why a stage that reached an outcome records no `StageFinished`.
+     *
+     * This is a closed set because each case is a distinct FACT about the run, and a fact
+     * that has to be re-derived from a boolean at a call site is a fact nobody can check.
+     */
+    internal enum class StageFinishSuppression {
+        /** The run is being failed and carries the failure itself; a stage terminal here would record a run end that never happened. */
+        RUN_ABORTS_WITH_THIS_FAILURE,
+
+        /** A skipped stage is reported by its own `StageSkipped(reason)`. Two events for one fact would let a consumer disagree about it. */
+        SKIPPED_ALREADY_HAS_ITS_OWN_EVENT,
+
+        /** An aborted stage did not finish: the run ended, not the stage. */
+        ABORTED_IS_NOT_A_STAGE_TERMINAL,
+    }
+
+    /**
+     * P3-E E2 — the CLOSED decision, replacing `outcome` plus an `emitStageFinished` flag
+     * that had to be kept in step by hand at every call site.
+     *
+     * The flag was the defect. Two coordinated values make four representable states and
+     * only two of them legal, so `FAILED + emit=true` — a stage that reports a clean
+     * terminal while the run is aborting — was one careless argument away. Here the two
+     * legal readings are two constructors, and the illegal ones are not nameable.
+     */
+    internal sealed interface StageFinishedDecision {
+
+        /** Record the stage terminal with this projection. */
+        data class Emit(val outcome: StageOutcomeWire) : StageFinishedDecision
+
+        /** Record nothing, for a stated reason. */
+        data class DoNotEmit(val reason: StageFinishSuppression) : StageFinishedDecision
+    }
+
+    /** P3-E E2 — the whole projection, total over [StageOutcome] with no `else`. */
+    internal fun StageOutcome.wire(): StageOutcomeWire = when (this) {
+        StageOutcome.Succeeded -> StageOutcomeWire.SUCCEEDED
+        StageOutcome.Unstable -> StageOutcomeWire.UNSTABLE
+        StageOutcome.Failed -> StageOutcomeWire.FAILED
+        StageOutcome.Skipped -> StageOutcomeWire.SKIPPED
+        StageOutcome.Aborted -> StageOutcomeWire.ABORTED
+    }
+
+    /**
+     * P3-E E2 — whether the stage terminal is recorded, as one pure function.
+     *
+     * Exhaustive over the wire, so a new outcome is a compile error here rather than a
+     * silent `else` that reports success — the defect class this exists to prevent.
+     */
+    internal fun StageOutcome.finishedDecision(): StageFinishedDecision = when (wire()) {
+        StageOutcomeWire.SUCCEEDED -> StageFinishedDecision.Emit(StageOutcomeWire.SUCCEEDED)
+        StageOutcomeWire.UNSTABLE -> StageFinishedDecision.Emit(StageOutcomeWire.UNSTABLE)
+        StageOutcomeWire.FAILED -> StageFinishedDecision.Emit(StageOutcomeWire.FAILED)
+        StageOutcomeWire.SKIPPED ->
+            StageFinishedDecision.DoNotEmit(StageFinishSuppression.SKIPPED_ALREADY_HAS_ITS_OWN_EVENT)
+        StageOutcomeWire.ABORTED ->
+            StageFinishedDecision.DoNotEmit(StageFinishSuppression.ABORTED_IS_NOT_A_STAGE_TERMINAL)
+    }
+
+    /** The same decision for a stage whose run is being failed: never a stage terminal. */
+    private fun StageOutcome.finishedDecisionWhileRunAborts(): StageFinishedDecision =
+        StageFinishedDecision.DoNotEmit(StageFinishSuppression.RUN_ABORTS_WITH_THIS_FAILURE)
 
     /**
      * Runs one stage body: the stage bookend, the declared steps, the continuation
@@ -110,9 +190,8 @@ internal class StageExecutionEngine(
                     // for the exact case it exists for. A finalizer that itself
                     // fails replaces the reason, because the run is being failed
                     // either way and the later failure is the more recent truth.
-                    val failure = finalizeStage(
-                        stage, stageIndex, StageOutcome.FAILED, runId, stageShOptions, context,
-                        emitStageFinished = false,
+                    val failure = finalizeStageWhileRunAborts(
+                        stage, stageIndex, StageOutcome.Failed, runId, stageShOptions, context,
                     ) ?: continuation.failure
                     return StageVerdict.Abort(failure, context)
                 }
@@ -121,7 +200,7 @@ internal class StageExecutionEngine(
         // S2-B: the stage's own steps decided the outcome; the `post`
         // block finalizes the stage BEFORE its StageFinished, so the
         // terminal record already includes the finalizers' work.
-        val outcome = if (stageUnstable) StageOutcome.UNSTABLE else StageOutcome.SUCCESS
+        val outcome = if (stageUnstable) StageOutcome.Unstable else StageOutcome.Succeeded
         finalizeStage(stage, stageIndex, outcome, runId, stageShOptions, context)
             ?.let { failure -> return StageVerdict.Abort(failure, context) }
         return StageVerdict.Completed(outcome, context)
@@ -197,24 +276,23 @@ internal class StageExecutionEngine(
         val continuation = runLifecycle.decideStageContinuation(bodyOutcome, stage.name, runId.value, ambient)
     ) {
         CanonicalContinuation.Continue -> {
-            finalizeStage(stage, stageIndex, StageOutcome.SUCCESS, runId, stageShOptions, ambient)
+            finalizeStage(stage, stageIndex, StageOutcome.Succeeded, runId, stageShOptions, ambient)
                 ?.let { failure -> return StageVerdict.Abort(failure, ambient) }
-            StageVerdict.Completed(StageOutcome.SUCCESS, ambient)
+            StageVerdict.Completed(StageOutcome.Succeeded, ambient)
         }
         CanonicalContinuation.ContinueUnstable -> {
             runLifecycle.fold(dev.rubentxu.pipeline.v2.domain.RunOutcome.Unstable)
-            finalizeStage(stage, stageIndex, StageOutcome.UNSTABLE, runId, stageShOptions, ambient)
+            finalizeStage(stage, stageIndex, StageOutcome.Unstable, runId, stageShOptions, ambient)
                 ?.let { failure -> return StageVerdict.Abort(failure, ambient) }
-            StageVerdict.Completed(StageOutcome.UNSTABLE, ambient)
+            StageVerdict.Completed(StageOutcome.Unstable, ambient)
         }
         is CanonicalContinuation.Abort -> {
             // A body that did not reach its end is still a stage outcome: the failure/always/
             // cleanup finalizers MUST run before the run aborts. A finalizer that itself fails
             // replaces the reason, because the run is being failed either way and the later
             // failure is the more recent truth.
-            val failure = finalizeStage(
-                stage, stageIndex, StageOutcome.FAILED, runId, stageShOptions, ambient,
-                emitStageFinished = false,
+            val failure = finalizeStageWhileRunAborts(
+                stage, stageIndex, StageOutcome.Failed, runId, stageShOptions, ambient,
             ) ?: continuation.failure
             StageVerdict.Abort(failure, ambient)
         }
@@ -242,9 +320,6 @@ internal class StageExecutionEngine(
      * that fails ABORTS the run instead of finishing the stage — cleanup is exactly the code that
      * must run after bad news, but it does not get to paper over the news.
      *
-     * @param emitStageFinished `false` for a stage whose run is being FAILED. That is not an
-     *   optimisation: `RunFinished` carries the failure, and a `StageFinished` before it would
-     *   record a terminal the run never reached.
      * @return the typed failure to abort the run with, or null when the stage finalised cleanly.
      */
     suspend fun finalizeStage(
@@ -254,17 +329,55 @@ internal class StageExecutionEngine(
         runId: RunId,
         stageShOptions: ShOptions,
         ambient: ExecutionContext,
-        emitStageFinished: Boolean = true,
+    ): PipelineFailure? =
+        finalize(stage, stageIndex, outcome, runId, stageShOptions, ambient, outcome.finishedDecision())
+
+    /**
+     * P3-E E2 — the finalisation of a stage whose RUN is being failed.
+     *
+     * This is a separate entry point rather than a flag on [finalizeStage] on purpose. The
+     * difference between the two is not an optimisation: `RunFinished` carries the failure, so a
+     * `StageFinished` before it would record a terminal the run never reached. Expressing that as
+     * `emitStageFinished = false` made the illegal combination reachable from any call site by
+     * passing the wrong boolean; as a second function, the choice is in the name and there is no
+     * boolean to get wrong.
+     */
+    suspend fun finalizeStageWhileRunAborts(
+        stage: StageNode,
+        stageIndex: Int,
+        outcome: StageOutcome,
+        runId: RunId,
+        stageShOptions: ShOptions,
+        ambient: ExecutionContext,
+    ): PipelineFailure? =
+        finalize(
+            stage, stageIndex, outcome, runId, stageShOptions, ambient,
+            outcome.finishedDecisionWhileRunAborts(),
+        )
+
+    /** The shared body: run the finalizers, then apply the already-made terminal decision. */
+    private suspend fun finalize(
+        stage: StageNode,
+        stageIndex: Int,
+        outcome: StageOutcome,
+        runId: RunId,
+        stageShOptions: ShOptions,
+        ambient: ExecutionContext,
+        decision: StageFinishedDecision,
     ): PipelineFailure? {
         runPostBlock(
             stage = stage,
             stageIndex = stageIndex,
-            stageFinishedOutcome = outcome.text,
+            stageOutcome = outcome,
             runId = runId,
             stageShOptions = stageShOptions,
             ambient = ambient,
         )?.let { return it }
-        if (emitStageFinished) runLifecycle.stageFinished(runId, stageIndex, stage.name, outcome.text)
+        when (decision) {
+            is StageFinishedDecision.Emit ->
+                runLifecycle.stageFinished(runId, stageIndex, stage.name, decision.outcome.wire)
+            is StageFinishedDecision.DoNotEmit -> Unit
+        }
         return null
     }
 
@@ -274,8 +387,8 @@ internal class StageExecutionEngine(
      * coordinator.
      *
      * Decision/interpretation split (Step Constitution rule 7):
-     *  - the PURE decision is `PostCondition.outcomeOf` + `PostPlanner.plan`:
-     *    which blocks fire, in which order, for which outcome. No I/O;
+     *  - the PURE decision is `PostPlanner.plan`: which blocks fire, in which order,
+     *    for which outcome. No I/O;
      *  - the INTERPRETATION is this method: dispatching the selected nodes
      *    through the SAME canonical `dispatch` spine as stage-body steps, each
      *    with a deterministic `post:<CONDITION>` [BlockSegment] so journal
@@ -292,6 +405,13 @@ internal class StageExecutionEngine(
      * failing finalizer's message; StageFinished is not emitted for a run the
      * coordinator is failing.
      *
+     * @param stageOutcome the canonical stage outcome. P3-E E3: this was a `String`
+     *   re-parsed here by `PostCondition.outcomeOf`, which made the runtime round-trip
+     *   `typed -> String -> typed` across a function boundary where the type system could
+     *   not see it. It also failed OPEN in the other direction: the parser accepted five
+     *   tokens while `StageFinished` produced three, so the seam could read states the
+     *   producer never emitted. Taking the ADT makes the whole conversion unnecessary,
+     *   and with it the last place where the event vocabulary and the planner vocabulary met.
      * @return the typed failure to abort the run with, or null when every
      *         selected finalizer succeeded (including the empty-plan no-op).
      */
@@ -304,19 +424,13 @@ internal class StageExecutionEngine(
     suspend fun runPostBlock(
         stage: StageNode,
         stageIndex: Int,
-        stageFinishedOutcome: String,
+        stageOutcome: StageOutcome,
         runId: RunId,
         stageShOptions: ShOptions,
         ambient: ExecutionContext,
     ): PipelineFailure? {
         val postSpec = stage.post ?: return null
         if (postSpec.isEmpty) return null
-        val stageOutcome = PostCondition.outcomeOf(stageFinishedOutcome)
-            ?: return PipelineFailure(
-                dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
-                "post block for stage '${stage.name}' received unknown stage outcome '$stageFinishedOutcome'; " +
-                    "refusing to select finalizers on an unreadable outcome",
-            )
         val plan = postSpec.toPostPlan()
         // The pure decision, made ONCE: if the planner selects nothing for this
         // outcome, the block is inert for this stage and emits nothing.
@@ -330,7 +444,7 @@ internal class StageExecutionEngine(
                 occurredAt = Instant.now(),
                 stageIndex = stageIndex,
                 stageName = stage.name,
-                stageOutcome = stageFinishedOutcome,
+                stageOutcome = stageOutcome.wire().wire,
                 selectedConditions = PostPlanner.selectedConditions(plan, stageOutcome).map { it.name },
                 skippedConditions = PostPlanner.skippedConditions(plan, stageOutcome).map { it.name },
             ),

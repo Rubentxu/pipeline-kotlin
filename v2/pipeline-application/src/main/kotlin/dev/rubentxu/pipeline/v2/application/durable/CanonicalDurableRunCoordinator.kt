@@ -6,13 +6,13 @@ import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.StepMetadata
 import dev.rubentxu.pipeline.v2.application.CoreLegacyStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
-import dev.rubentxu.pipeline.v2.application.durable.StageExecutionEngine.StageOutcome as StageVerdictOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyRejection
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolution
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolver
 import dev.rubentxu.pipeline.v2.domain.step.RegistryBodyPolicyResolver
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.post.StageOutcome
 import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
 // WU-G5R.5: durable waitUntil reconciliation driver and identity factory.
@@ -423,7 +423,7 @@ class CanonicalDurableRunCoordinator(
                         stageExecution.runPostBlock(
                             stage = stage,
                             stageIndex = stageIndex,
-                            stageFinishedOutcome = "skipped",
+                            stageOutcome = StageOutcome.Skipped,
                             runId = runId,
                             // The stage never ran, so its workspace was never created;
                             // finalizers run on the base options with the stage's

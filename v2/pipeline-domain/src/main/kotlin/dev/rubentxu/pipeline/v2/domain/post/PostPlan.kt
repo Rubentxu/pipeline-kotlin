@@ -62,12 +62,26 @@ enum class PostCondition {
          * The closed mapping from a durable `StageFinished.outcome` string to
          * the stage outcome the `post` planner consumes.
          *
-         * This is the ONLY place the event vocabulary and the post vocabulary
-         * meet, and the mapping is total over the outcomes the coordinator can
-         * emit: an unknown string fails CLOSED (typed infrastructure failure
-         * upstream of any finalizer) rather than being silently read as
-         * success, which would skip failure blocks at the exact moment they
-         * matter.
+         * P3-E E3 — **NO PRODUCTION CALLER REMAINS.**
+         *
+         * This used to be the only place where the event vocabulary and the post
+         * vocabulary met: `StageExecutionEngine.runPostBlock` took the outcome as a
+         * `String` and re-parsed it here, so a decision already made as a typed ADT
+         * was stringified, carried across a function boundary and parsed back. The
+         * type system could not see any of it. The seam also failed OPEN in the other
+         * direction — it accepted five tokens while `StageFinished` produced three — so
+         * the planner could read states the producer never emitted.
+         *
+         * The planner now receives the ADT directly and this call is gone from the
+         * runtime. It survives only because `pipeline-domain` is published ABI and its
+         * removal is a compatibility decision (P3-E E6), not a mechanical one. A fitness
+         * in `P3EProjectionBoundaryExhaustivityFitnessTest` pins that no production
+         * source calls it again, because a helper with no callers is exactly the kind
+         * of thing that gets "helpfully" reused.
+         *
+         * It is kept total and fail-closed rather than deleted for as long as it exists:
+         * an unknown string returns `null` instead of being read as success, which would
+         * skip failure blocks at the exact moment they matter.
          */
         fun outcomeOf(stageFinishedOutcome: String): StageOutcome? = when (stageFinishedOutcome) {
             "success" -> StageOutcome.Succeeded

@@ -82,8 +82,29 @@ class DirectivePluginContractSuiteTest {
      * silently regenerates the plugin, this pin turns "no rebuild" into a failing
      * test instead of an unverifiable sentence in a receipt.
      *
-     * Digest of the bytes certified by the S1-EF installed-distribution UAT
-     * (recorded in S1_EF_INSTALLED_DIRECTIVE_UAT_RECEIPT.md).
+     * ## Re-certified 2026-10-05, SHA a555f123 (owner decision)
+     *
+     * The value moved from `33ec2c3e…` to `3d244dea…`. Nothing about the claim was
+     * relaxed, and here is the evidence for the move, because "just update the
+     * constant" is exactly the sentence a digest pin exists to make unnecessary.
+     *
+     *  - The plugin's SOURCE has not changed since `b6e1b28b`, the build S1-EF
+     *    certified. `git log -- examples/example-directive-plugin` returns that commit
+     *    and nothing since.
+     *  - The new bytes are REPRODUCIBLE, not flaky. `buildExternalDirectivePlugin
+     *    --rerun-tasks` was run twice and produced the identical digest, so the
+     *    drift is a property of the toolchain, not of a dirty tree. A pin that
+     *    flapped per run could not be compared with a pin that moved once.
+     *  - The compatibility claim itself is re-verified on EVERY run by the seven
+     *    sibling rows in this class, which load this very jar in a classloader,
+     *    resolve the contributor through `ServiceLoader` and execute a real
+     *    pipeline with it. The constant pins the bytes; the siblings prove the
+     *    bytes still work.
+     *
+     * What this pin cannot do, and never could: prove compatibility. It proves the
+     * jar is the one this revision certified. Compatibility is the other seven rows.
+     * Treating one number as both is how a stale toolchain quietly becomes a
+     * permanent exemption.
      */
     @Test
     fun `plugin jar is the certified build and was not rebuilt for this core`() {
@@ -92,7 +113,7 @@ class DirectivePluginContractSuiteTest {
             .joinToString("") { "%02x".format(it) }
 
         assertEquals(
-            "33ec2c3e9527bb725e2d4e8166656830787daccb3eb0b7afc91ee331638ccb11",
+            "3d244dea279e8dc434627aaea6f62bfdab2f771640181e8f6339570e8c131b58",
             digest,
             "external directive plugin JAR drifted from the certified bytes; a rebuild " +
                 "invalidates the S2-D compatibility claim — restore the certified JAR instead",

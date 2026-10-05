@@ -14,6 +14,7 @@
 - Plugin JAR: examples/example-directive-plugin-0.1.0.jar,
   sha256 33ec2c3e9527bb725e2d4e8166656830787daccb3eb0b7afc91ee331638ccb11
   (build de b6e1b28b, bytes sin cambios; S1-D ya lo certificó).
+  **CADUCADO — re-certificado el 2026-10-05, ver §Re-certificación más abajo.**
 - Binario reporta: `pipeline 0.43.0-rc1` (manifest Implementation-Version).
 
 ## Entorno
@@ -84,3 +85,42 @@
   HEAD actual queda lista para el operador; NO se generó porque el bump de
   versión con S1 dentro es decisión de release (semver MINOR 0.44.0-rc1
   propuesto por los 2 feats S1-C/S1-D según historial).
+
+## Re-certificación del plugin JAR — 2026-10-05, SHA `a555f123`
+
+**Decisión del owner: re-pinear al digest reproducible actual.** No se relajó la
+afirmación: se re-certificó con evidencia que la anterior no tenía.
+
+### Qué cambió
+
+| | Valor | Estado |
+| --- | --- | --- |
+| Anterior (S1-EF, `b6e1b28b`, 2026-09-29) | `33ec2c3e9527bb725e2d4e8166656830787daccb3eb0b7afc91ee331638ccb11` | **caducado** |
+| Nuevo (`a555f123`, toolchain actual) | `3d244dea279e8dc434627aaea6f62bfdab2f771640181e8f6339570e8c131b58` | **certificado** |
+
+### Evidencia del cambio
+
+1. **La fuente no cambió.** `git log -- examples/example-directive-plugin` devuelve
+   `b6e1b28b` y nada posterior. El artefacto se construyó desde el mismo código que
+   S1-EF certificó.
+2. **Los bytes nuevos son reproducibles, no intermitentes.** `buildExternalDirectivePlugin
+   --rerun-tasks` ejecutado dos veces dio el mismo digest. Un pin que parpadea por
+   ejecución no se puede comparar con un pin que se movió una vez.
+3. **La compatibilidad se re-verifica en cada ejecución.** Los otros siete tests de
+   `DirectivePluginContractSuiteTest` cargan este mismo jar en un classloader,
+   resuelven el contribuidor por `ServiceLoader` y ejecutan un pipeline real con él.
+   El pin prueba QUÉ BYTES; los hermanos prueban que esos bytes SIGUEN FUNCIONANDO.
+4. **El hallazgo vino de un consumer independiente, no de una sospecha.** El gate
+   completo de BLOCK 2 es lo que lo destapó, y fue el único rojo de 4307 tests.
+
+### Lo que este recibo sigue sin probar
+
+Lo mismo que antes, y conviene decirlo otra vez porque es la confusión que el
+número invitaba: **el digest no prueba compatibilidad**. `33ec2c3e` tampoco la
+probaba. Prueba que el jar es el que esta revisión certificó. Tratar un número
+como si fuera ambas cosas es cómo un toolchain viejo se convierte en una exención
+permanente.
+
+Las demás cifras de este recibo (ZIP de distribución, app-jar de `0.43.0-rc1`,
+smokes E1/EZ1/E2) **no se re-certifican aquí**: siguen probando su propio SHA y
+no han cambiado.

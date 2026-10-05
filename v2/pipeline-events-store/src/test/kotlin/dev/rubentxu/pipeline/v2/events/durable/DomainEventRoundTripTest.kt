@@ -352,13 +352,13 @@ class DomainEventRoundTripTest {
     }
 
     @Test
-    fun `sealed hierarchy contains 70 variants`() {
+    fun `sealed hierarchy contains 71 variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
         val count = sealedSubclasses.size
         assertEquals(
-            70,
+            71,
             count,
-            "DomainEvent sealed hierarchy must have exactly 70 variants " +
+            "DomainEvent sealed hierarchy must have exactly 71 variants " +
                 "(51 + DirectiveAdmitted/DirectiveDenied added in S1-C directive seam, " +
                 "+ StageSkipped added in S2-A so a gated-off stage is observable, " +
                 "+ PostConditionSelected added in S2-B so the post decision is observable, " +
@@ -372,7 +372,12 @@ class DomainEventRoundTripTest {
                 "observable with the requirement that produced it. It is a new variant rather " +
                 "than a use of AgentResolved because that event's label-shaped payload cannot " +
                 "express LocalAny or a CapabilitySet, which is why it never had a producer. " +
-                "AgentResolved is retained and deprecated, not deleted, because it is part of a " +
+                "PluginEventEmitted added in P3 slice 2 as the ONE closed carrier for " +
+                "registry-contributed plugin events, so the hierarchy stays sealed while " +
+                "foreign payloads gain full identity (sequence, envelope, pagination). " +
+                "the ONE closed carrier for registry-contributed plugin events, so the hierarchy " +
+                "stays sealed while foreign payloads gain full identity (sequence, envelope, " +
+                "pagination). AgentResolved is retained and deprecated, not deleted, because it is part of a " +
                 "published SDK surface. " +
                 "Found: ${sealedSubclasses.map { it.simpleName }}",
         )

@@ -16,6 +16,7 @@ import dev.rubentxu.pipeline.v2.events.DirExited
 import dev.rubentxu.pipeline.v2.events.DirectiveAdmitted
 import dev.rubentxu.pipeline.v2.events.DirectiveDenied
 import dev.rubentxu.pipeline.v2.events.DomainEvent
+import dev.rubentxu.pipeline.v2.events.PluginEventEmitted
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.ExecutionTargetResolved
@@ -102,6 +103,7 @@ class InMemoryEventStore : EventSink {
         }
         val eventWithSequence = when (event) {
             is RunStarted -> event.copy(sequence = assignedSequence)
+            is PluginEventEmitted -> event.copy(sequence = assignedSequence)
             is CompilationStarted -> event.copy(sequence = assignedSequence)
             is CompilationFinished -> event.copy(sequence = assignedSequence)
             is RunFinished -> event.copy(sequence = assignedSequence)

@@ -16,6 +16,7 @@ import dev.rubentxu.pipeline.v2.events.DirExited
 import dev.rubentxu.pipeline.v2.events.DirectiveAdmitted
 import dev.rubentxu.pipeline.v2.events.DirectiveDenied
 import dev.rubentxu.pipeline.v2.events.DomainEvent
+import dev.rubentxu.pipeline.v2.events.PluginEventEmitted
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.ExecutionTargetResolved
 import dev.rubentxu.pipeline.v2.events.FileExistsChecked
@@ -164,6 +165,16 @@ internal object EventJsonWriter {
             is RunStarted -> {
                 sb.append(",\"scriptPath\":")
                 sb.append(EventJsonWriter.jsonString(event.scriptPath))
+            }
+            is PluginEventEmitted -> {
+                sb.append(",\"registryKind\":")
+                sb.append(EventJsonWriter.jsonString(event.registryKind))
+                sb.append(",\"schemaVersion\":")
+                sb.append(event.schemaVersion)
+                sb.append(",\"payload\":")
+                sb.append(EventJsonWriter.jsonString(event.payload))
+                sb.append(",\"emittedBy\":")
+                sb.append(EventJsonWriter.jsonString(event.emittedBy))
             }
             is CompilationStarted -> {
                 // no extra fields

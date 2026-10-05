@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.PLATFORM_IDENTITY_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.PLUGIN_EVENT_EMISSION_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.PlatformIdentity
 import dev.rubentxu.pipeline.v2.application.EVENT_SINK_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.EXECUTION_BUDGET_CAPABILITY
@@ -579,6 +580,15 @@ open class CanonicalRuntimeCapabilityAccess(
         // binding never runs at all.
         context.bodyContinuation?.let { continuation ->
             builder[BODY_CONTINUATION_CAPABILITY] = continuation
+        }
+
+        // P3-C / S6.4: the plugin event seam, bound ONLY when the composition actually produced a
+        // registry. Null is the honest signal that this run has no plugin-contributed event kinds
+        // at all, and a Step declaring the capability is then refused at admission by the ordinary
+        // fail-closed path — never handed a seam that silently drops its observations.
+        context.pluginEventEmitter?.let { emitter ->
+            builder[PLUGIN_EVENT_EMISSION_CAPABILITY] =
+                PluginEventEmissionAdapter(emitter, context.runId)
         }
     }
 

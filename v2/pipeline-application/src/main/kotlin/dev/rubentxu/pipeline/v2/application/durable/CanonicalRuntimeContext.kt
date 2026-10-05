@@ -57,4 +57,18 @@ data class CanonicalRuntimeContext(
     // stage workspaces resolve under <dir> instead of <controlRoot>/workspace, so real
     // project fixtures (Gradle/Maven/Node) execute against the actual project files.
     val workspaceBase: java.nio.file.Path? = null,
+    // P3-C / S6.4: the open event registry composed from plugin contributors, already bound to
+    // THIS run's sink and clock as a [dev.rubentxu.pipeline.v2.events.registry.RegistryEventEmitter].
+    //
+    // It rides here rather than as a constructor parameter of
+    // [CanonicalRuntimeCapabilityAccess] on purpose. That class is constructed at FOUR sites —
+    // two of them prepare-time — and admission has to see exactly the keys the handler will get,
+    // so a per-call parameter would have to be threaded through all four or the Step would be
+    // admitted for a capability it never receives. The context is already the per-run carrier that
+    // all four share, and it already carries the [eventSink] half of this pair.
+    //
+    // Null when no contributor declared anything (and for every pre-existing construction site),
+    // so the capability stays unexposed and a Step that declares it is refused at admission
+    // instead of reaching a handler with a null seam.
+    val pluginEventEmitter: dev.rubentxu.pipeline.v2.events.registry.RegistryEventEmitter? = null,
 )

@@ -46,11 +46,46 @@ import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
+import dev.rubentxu.pipeline.v2.events.registry.EventRegistry
+import dev.rubentxu.pipeline.v2.events.registry.RegistryEventEmitter
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.nio.file.Path
 import java.time.Instant
 import java.util.UUID
+
+/**
+ * Binds the open event registry to this run's sink and to THIS RUN'S clock (P3-C / S6.4).
+ *
+ * The adapter is the whole reason this is a function and not a call to `Clock.systemUTC()`. The
+ * run's clock is a port ([dev.rubentxu.pipeline.v2.domain.durable.Clock]) so that a replay can be
+ * given a fixed one, and the published event seam takes a `java.time.Clock`. Reading the wall clock
+ * here would stamp every plugin event with the moment it was OBSERVED rather than the moment the
+ * run says it happened, which is precisely the value a replay has to reproduce. So the port is
+ * adapted, never replaced.
+ *
+ * The zone is UTC because the seam produces an `Instant`, which has no zone of its own; a fixed
+ * UTC zone keeps `withZone` from quietly changing what the port is asked for.
+ */
+private fun pluginEventEmitter(
+    registry: EventRegistry,
+    sink: EventSink,
+    clock: Clock,
+): RegistryEventEmitter = RegistryEventEmitter(
+    registry = registry,
+    sink = sink,
+    clock = object : java.time.Clock() {
+        override fun instant(): Instant = clock.now()
+
+        override fun getZone(): java.time.ZoneId = java.time.ZoneOffset.UTC
+
+        override fun withZone(zone: java.time.ZoneId): java.time.Clock =
+            throw UnsupportedOperationException(
+                "the run clock is a port over Instant and carries no zone; a plugin event's " +
+                    "timestamp comes from the run, not from a time zone",
+            )
+    },
+)
 
 /** Executes the linear canonical core subset with the durable journal and replay cursor. */
 class CanonicalDurableRunCoordinator(
@@ -60,6 +95,14 @@ class CanonicalDurableRunCoordinator(
     private val clock: Clock,
     private val effectReplayPolicy: EffectReplayPolicy,
     private val eventSink: EventSink,
+    // P3-B/P3-C / S6.4: the open event registry composed from OFFICIAL_PLUGIN event
+    // contributors, owned by this run. Defaults to an EMPTY registry rather than null so that
+    // "a plugin declared nothing" and "nothing is registered" are the same typed refusal —
+    // an empty registry answers every kind with `UnregisteredKind`, so a Step that reaches for
+    // the emission seam without a contributor is refused at admission instead of reaching a
+    // handler that cannot work. The composition root supplies the real one.
+    private val eventRegistry: dev.rubentxu.pipeline.v2.events.registry.EventRegistry =
+        dev.rubentxu.pipeline.v2.events.registry.EventRegistry.create(),
     private val credentialScopePort: CredentialScopePort,
     private val controlDirRoot: Path? = null,
     /** WU-LPR-062: optional project-workspace override (--workspace <dir>). */
@@ -339,8 +382,7 @@ class CanonicalDurableRunCoordinator(
     // re-entry reference, and a parallel branch walks its steps through `dispatch` again. That
     // recursion is the unit of cohesion, so the whole closed cycle moves together and the
     // coordinator keeps only the run's own control flow.
-    private val stepDispatch = StepDispatchEngine(
-        journal = journal,
+    private val stepDispatch = StepDispatchEngine(        journal = journal,
         eventSink = eventSink,
         clock = clock,
         credentialScopePort = credentialScopePort,
@@ -352,6 +394,12 @@ class CanonicalDurableRunCoordinator(
         bodyExecutionEngine = bodyExecutionEngine,
         bodyPolicyResolver = bodyPolicyResolver,
         runLifecycle = runLifecycle,
+        // P3-C / S6.4: composed ONCE here, per run, and shared by every invocation. Two registries
+        // inside one run would let two Steps disagree about what a kind means, and the read-back
+        // would resolve against a different one than the write. Null-safe by construction: an empty
+        // registry still refuses every kind, so "a plugin declared nothing" and "nothing is
+        // registered" are the same typed refusal rather than a special case.
+        pluginEventEmitter = pluginEventEmitter(eventRegistry, eventSink, clock),
         cursorStore = cursorStore,
         stepRegistry = stepRegistry,
         bodyInvokerAdapter = bodyInvokerAdapter,

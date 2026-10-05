@@ -116,8 +116,46 @@ internal fun runCanonicalPipeline(
     // registry handed to the coordinator. Absent/null => no directive registry
     // (legacy behaviour: a stage with directives denies; no directives runs as before).
     pluginClassLoader: ClassLoader? = null,
+    // P3-B / S6.4: the composed open event registry. Null means "discover it under
+    // [pluginClassLoader]", which is the ordinary production path; an explicit value exists so a
+    // caller that already composed one (or a test that wants an empty one) is not made to re-run
+    // discovery. Composition happens in the BODY, under the same classloader swap the directive
+    // discovery below already performs, so the contributor and the Step that emits come from the
+    // same loader — a registry naming codecs the executing side cannot load would otherwise fail
+    // as a ClassCastException at emission rather than a refusal at composition.
+    eventRegistry: dev.rubentxu.pipeline.v2.events.registry.EventRegistry? = null,
 ): RunOutcome = runBlocking {
+    // P3-B / S6.4: ONE composition of the open event registry for this run, done here and nowhere
+    // else. Under the plugin classloader when there is one, so a contributor and the Step that
+    // emits come from the same loader.
+    //
+    // A broken contributor or a colliding kind aborts the run by throwing out of `compose`. That
+    // is the intended outcome: a registry that admitted three of a plugin's four event kinds would
+    // look like a working feature that quietly drops one of its own observations.
+    val composedEventRegistry: dev.rubentxu.pipeline.v2.events.registry.EventRegistry =
+        eventRegistry ?: if (pluginClassLoader != null) {
+            val previousTccl = Thread.currentThread().contextClassLoader
+            Thread.currentThread().contextClassLoader = pluginClassLoader
+            try {
+                ExternalEventDefinitionDiscovery.compose().also { composed ->
+                    if (composed.size() > 0) {
+                        System.err.println(
+                            "Discovered external event definitions: " +
+                                composed.registeredKinds().joinToString(", ")
+                        )
+                    }
+                }
+            } finally {
+                Thread.currentThread().contextClassLoader = previousTccl
+            }
+        } else {
+            dev.rubentxu.pipeline.v2.events.registry.EventRegistry.create()
+        }
+
     CanonicalDurableRunCoordinator(
+        // P3-B/P3-C: the ONE registry this run resolves plugin event kinds against, on the write
+        // side and on the read-back side.
+        eventRegistry = composedEventRegistry,
         // H2b: ONE composite, consulted by both admission and execution. The
         // contributors are composed here and nowhere else; a plugin that needs a
         // seam adds one element to this list and changes nothing in the engine,

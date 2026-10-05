@@ -112,9 +112,43 @@ class EventRegistryTest {
             assertEquals(1, registry.size(), "the duplicate must not have changed the registry")
         }
 
+        /**
+         * The version is not a negotiation axis, and this pins that.
+         *
+         * It is tempting to read "a different schemaVersion" as an upgrade of an existing kind —
+         * the registry already owns that kind, so replacing its codec looks like version management
+         * rather than a collision. It is not. The payloads already on disk were written under the
+         * FIRST version, and swapping the codec re-types every one of them with a shape they do
+         * not have. So the second registration is refused exactly as any duplicate is, and the
+         * registry keeps serving the version it admitted first.
+         *
+         * Evolving an existing kind is a real need and it is NOT this: it is a new kind, or a
+         * deliberate migration. Both are core decisions, and neither may arrive as a side effect
+         * of one plugin shipping a new jar on a shared classpath.
+         */
         @Test
-        fun `an invalid definition cannot be registered at all - no acceptance with warnings`() {
-            val registry = EventRegistry.create()
+        fun `a known kind re-declared under a different schema version is refused, not upgraded`() {
+            val registry = registryWithValidated()
+            val outcome = registry.register(
+                validatedDefinition(schemaVersion = 2, emittedBy = "a-different-plugin"),
+            )
+            assertEquals(
+                RegistrationOutcome.DuplicateKind("acme.validated", "acme-plugin"),
+                outcome,
+                "a new schemaVersion on an owned kind is a collision, not an upgrade: the payloads " +
+                    "already on disk were written under version 1 and a swapped codec would re-type " +
+                    "every one of them with a shape they do not have",
+            )
+            assertEquals(1, registry.size(), "the refused redefinition must not have changed anything")
+            assertEquals(
+                1,
+                registry.definition("acme.validated")?.schemaVersion,
+                "the registry must still serve the version it admitted first, not the one that lost",
+            )
+        }
+
+        @Test
+        fun `an invalid definition cannot be registered at all - no acceptance with warnings`() {            val registry = EventRegistry.create()
             val outcome = registry.register(validatedDefinition(schemaVersion = 0))
             assertEquals(
                 RegistrationOutcome.RejectedDefinition::class,

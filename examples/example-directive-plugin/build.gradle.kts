@@ -52,4 +52,11 @@ kotlin {
 tasks.jar {
     manifest {}
     // Only the plugin's own classes + the ServiceLoader descriptor resource.
+    // Reproducible by construction. Without these two, the archive carries
+    // the source files' mtimes and orders entries by filesystem iteration,
+    // so the same commit produces a different digest in every checkout --
+    // which makes the S2-D byte pin impossible to hold anywhere but the
+    // machine that set it.
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
 }

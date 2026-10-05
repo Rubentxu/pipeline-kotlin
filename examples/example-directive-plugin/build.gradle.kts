@@ -15,7 +15,18 @@ version = "0.1.0"
 //   -PsdkRepo=<dir>     repository holding the SDK artifacts
 //   -PsdkVersion=<ver>  SDK version to resolve
 val sdkRepo: String = providers.gradleProperty("sdkRepo").getOrElse("../../v2/build/sdk-repo")
-val sdkVersion: String = providers.gradleProperty("sdkVersion").getOrElse("0.1.0-SNAPSHOT")
+
+// No default version, on purpose. `0.1.0-SNAPSHOT` was here for a long time and it cannot resolve
+// anything: the build then failed in a dependency-resolution message naming a version nobody asked
+// for, hundreds of lines below the line that matters. The v2 build already omitted `-PsdkVersion`
+// once, on 2026-09-19, and paid exactly that. Failing here names the real cause.
+val sdkVersion: String = requireNotNull(providers.gradleProperty("sdkVersion").orNull) {
+    """
+    -PsdkVersion is required: this plugin resolves the published SDK contracts and has no default
+    version, because a default could only be one that fails to resolve. Pass the candidate's
+    version explicitly, e.g. -PsdkVersion=0.47.0
+    """.trimIndent()
+}
 
 repositories {
     mavenCentral()

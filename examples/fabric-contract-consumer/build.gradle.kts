@@ -27,7 +27,19 @@ version = "0.1.0"
 //   -PsdkRepo=<dir>      repository holding the published artifacts
 //   -PsdkVersion=<ver>   version to resolve
 val sdkRepo: String = providers.gradleProperty("sdkRepo").getOrElse("../../v2/build/sdk-repo")
-val sdkVersion: String = providers.gradleProperty("sdkVersion").getOrElse("0.1.0-SNAPSHOT")
+
+// `sdkVersion` has NO default on purpose. An earlier version defaulted to `0.1.0-SNAPSHOT`, which
+// cannot resolve anything: the build would fail in a dependency-resolution message that names a
+// version nobody asked for, hundreds of lines below the line that actually matters. Failing here
+// makes the cause the missing property rather than a phantom coordinate, and it removes the
+// possibility of a build that "passes" against a version that was never published.
+val sdkVersion: String = requireNotNull(providers.gradleProperty("sdkVersion").orNull) {
+    """
+    -PsdkVersion is required: this build resolves the four published PipelineK contracts and has
+    no default version, because a default could only be a version that fails to resolve. Pass the
+    candidate's version explicitly, e.g. -PsdkVersion=0.47.0
+    """.trimIndent()
+}
 
 /** The one group this build is allowed to resolve product code from. */
 val PIPELINEK_GROUP = "dev.rubentxu.pipeline.v2"

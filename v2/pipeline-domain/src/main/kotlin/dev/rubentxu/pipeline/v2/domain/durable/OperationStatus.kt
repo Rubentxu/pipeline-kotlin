@@ -5,8 +5,12 @@ package dev.rubentxu.pipeline.v2.domain.durable
  *
  * Valid transitions:
  * - PENDING → RUNNING
- * - RUNNING → SUCCEEDED | FAILED | ABORTED | DIVERGENT | LOST | FAILED_TIMEOUT
- * - Any terminal state (SUCCEEDED, FAILED, ABORTED, DIVERGENT, LOST, FAILED_TIMEOUT) is final.
+ * - RUNNING → SUCCEEDED | FAILED | UNSTABLE | ABORTED | DIVERGENT | LOST | FAILED_TIMEOUT
+ * - Any terminal state (SUCCEEDED, FAILED, UNSTABLE, ABORTED, DIVERGENT, LOST, FAILED_TIMEOUT) is final.
+ *
+ * A transition to the state the operation is already in is accepted for every state, terminal or
+ * not: re-asserting a status is idempotent, not a move. Finality means "cannot reach a *different*
+ * state", which is what `OperationStatusTest` pins.
  *
  * ## LOST State (ML-R1 / ADR-0046)
  *
@@ -48,6 +52,29 @@ enum class OperationStatus {
 
     /** Operation executed but failed with a non-zero exit code. */
     FAILED,
+
+    /**
+     * Operation ran to completion and declared itself UNSTABLE.
+     *
+     * This is NOT a failure and the distinction is the whole point of the case. Jenkins — the
+     * baseline in `AGENTS.md` STEP SEMANTICS — has `unstable` as a build result of its own, distinct
+     * from `failure`, and that is what `warnError` and `unstable` exist to produce: the work ran,
+     * and something in it deserves attention without aborting the run.
+     *
+     * The case was absent here, and the two semantic layers above the durable one already had it:
+     * `StepOutcome.Unstable` and `BranchTerminal.Unstable` are both their own cases. So the durable
+     * layer was the only one still collapsing the fact, and it was collapsing it three different
+     * ways for the same condition — `FAILED` through `StepOutcome`, `ABORTED` through
+     * `BranchTerminal`, and a persisted `FAILED` through the retry engine. A child row and the
+     * aggregate row of the same branch disagreed about what had happened, and neither matched the
+     * run-level terminal the CLI already reported as `unstable`.
+     *
+     * It is terminal (see [isTerminal]) and it is NOT a poll failure (see [isPollFailure]): the
+     * operation finished, so it never advances an iteration and never re-runs. Collapsing it into
+     * `FAILED` on the way in would have turned a declared-unstable run into a declared-failed one,
+     * which is a behaviour change disguised as a representation change.
+     */
+    UNSTABLE,
 
     /** Operation was deliberately aborted by policy. */
     ABORTED,
@@ -101,6 +128,7 @@ enum class OperationStatus {
      * - PENDING (not yet started)
      * - RUNNING (in flight)
      * - SUCCEEDED (predicate satisfied)
+     * - UNSTABLE (ran to completion and declared itself unstable — finished, not a failed poll)
      *
      * Returns true for:
      * - FAILED (body script failed)
@@ -116,7 +144,7 @@ enum class OperationStatus {
         get() = this == FAILED || this == FAILED_TIMEOUT || this == ABORTED || this == DIVERGENT || this == LOST
 
     companion object {
-        private val terminalStates = setOf(SUCCEEDED, FAILED, ABORTED, DIVERGENT, LOST, FAILED_TIMEOUT)
+        private val terminalStates = setOf(SUCCEEDED, FAILED, UNSTABLE, ABORTED, DIVERGENT, LOST, FAILED_TIMEOUT)
 
         /**
          * Enforces the closed state machine transition rules.

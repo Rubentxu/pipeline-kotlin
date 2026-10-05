@@ -128,6 +128,11 @@ class RetryEngine(
         val outcomeText = when (status) {
             OperationStatus.SUCCEEDED -> "succeeded"
             OperationStatus.FAILED -> "failed"
+            // An attempt can also finish UNSTABLE, which is terminal and never retried. The
+            // `else -> error(...)` below used to be unreachable for it only because the arm that
+            // persists UNSTABLE did not exist; once it did, leaving this table alone would have
+            // thrown on the very status the change introduced.
+            OperationStatus.UNSTABLE -> "unstable"
             else -> error("persistTerminalTransition requires a terminal status, got $status")
         }
         eventSink.append(
@@ -292,7 +297,13 @@ class RetryEngine(
                             return StepOutcome.Success
                         }
                         is StepOutcome.Unstable -> {
-                            persistTerminalTransition(attempt, OperationStatus.FAILED)
+                            // The attempt finished, so there is nothing to retry — which is why this
+                            // arm returns instead of falling into the failure arm's `attempt <
+                            // maxAttempts` loop. It persisted FAILED, which contradicted both
+                            // `toOperationStatus` and the parallel aggregate; all three now persist
+                            // the same UNSTABLE, so a reattached run reads back the fact the fresh
+                            // run reported.
+                            persistTerminalTransition(attempt, OperationStatus.UNSTABLE)
                             return attemptOutcome
                         }
                         is StepOutcome.Failure -> {

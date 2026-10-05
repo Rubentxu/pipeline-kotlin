@@ -344,10 +344,15 @@ internal class ParallelStageEngine(
     }
 
     /** The durable status that carries a branch terminal, in one place so the row and the
-     *  reported outcome can never disagree about it. */
+     *  reported outcome can never disagree about it.
+     *
+     *  `Unstable` was `ABORTED` here while the same fact arriving through `StepOutcome` became
+     *  `FAILED` elsewhere, so a child row and the aggregate row of one branch described the same
+     *  condition two different ways. Both now name [OperationStatus.UNSTABLE], which is what makes
+     *  the KDoc's claim enforceable rather than aspirational. */
     private fun aggregateStatusOf(outcome: BranchTerminal): OperationStatus = when (outcome) {
         is BranchTerminal.Succeeded -> OperationStatus.SUCCEEDED
-        is BranchTerminal.Unstable -> OperationStatus.ABORTED
+        is BranchTerminal.Unstable -> OperationStatus.UNSTABLE
         is BranchTerminal.Failed -> OperationStatus.FAILED
     }
 

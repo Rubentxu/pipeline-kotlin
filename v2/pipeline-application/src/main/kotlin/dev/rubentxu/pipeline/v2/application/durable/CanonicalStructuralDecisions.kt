@@ -297,7 +297,7 @@ internal fun StageNode.timeoutProjection(): StageTimeoutProjection {
 
 internal fun StepOutcome.toOperationStatus(): OperationStatus = when (this) {
     StepOutcome.Success -> OperationStatus.SUCCEEDED
-    StepOutcome.Unstable -> OperationStatus.FAILED
+    StepOutcome.Unstable -> OperationStatus.UNSTABLE
     is StepOutcome.Failure -> if (failure.kind == FailureKind.TIMEOUT) {
         OperationStatus.FAILED_TIMEOUT
     } else {

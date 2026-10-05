@@ -4004,6 +4004,7 @@ public final class dev/rubentxu/pipeline/v2/domain/durable/OperationStatus : jav
 	public static final field PENDING Ldev/rubentxu/pipeline/v2/domain/durable/OperationStatus;
 	public static final field RUNNING Ldev/rubentxu/pipeline/v2/domain/durable/OperationStatus;
 	public static final field SUCCEEDED Ldev/rubentxu/pipeline/v2/domain/durable/OperationStatus;
+	public static final field UNSTABLE Ldev/rubentxu/pipeline/v2/domain/durable/OperationStatus;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun isPollFailure ()Z
 	public final fun isTerminal ()Z

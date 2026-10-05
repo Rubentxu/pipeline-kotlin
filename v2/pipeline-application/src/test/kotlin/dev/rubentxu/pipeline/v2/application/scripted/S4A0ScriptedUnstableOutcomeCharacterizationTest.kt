@@ -58,19 +58,64 @@ import org.junit.jupiter.api.Test
  * The test that characterised the ADT's narrowness still passes — for a different reason, now
  * stated in its assertion message. The end-to-end non-regression lives in
  * `S4D2ScriptedUnstablePreservationTest`.
+ *
+ * ## P1 — this file's first row also changed meaning, and says so
+ *
+ * The first row characterised a gap that was REAL and has now been closed by P1 of the Runtime
+ * Observation Contract Closure: `OperationStatus` could not represent an unstable outcome, so the
+ * durable layer collapsed that fact three different ways for the same condition. P1 widened the
+ * vocabulary with `UNSTABLE` and unified the three sites.
+ *
+ * Per the Harness Fidelity Law, characterisation that measures a closed defect becomes a
+ * non-regression test, and that transition is stated in the assertion message rather than made by
+ * quietly rewriting what is expected. The row is now named
+ * `NON-REGRESSION (was CHARACTERIZED) - the durable status vocabulary CAN represent unstable` and
+ * asserts the opposite, for the same reason: if it goes red, the fact is being lost again.
+ *
+ * The second and third rows are untouched. The narrowness they describe is `ScriptedRegistryResult`
+ * (Success/Failed) and the reality of `StepOutcome.Unstable` as a produced value — neither is
+ * affected by the durable vocabulary, and widening that ADT would have duplicated a fact the typed
+ * carrier already owns.
  */
 class S4A0ScriptedUnstableOutcomeCharacterizationTest {
 
     @Test
-    fun `CHARACTERIZED - the durable status vocabulary cannot represent an unstable outcome`() {
+    fun `NON-REGRESSION (was CHARACTERIZED) - the durable status vocabulary CAN represent unstable`() {
+        // TRANSITION RECORD — this row changed meaning on purpose when P1 of the Runtime
+        // Observation Contract Closure landed, and the change is stated here rather than made
+        // silently in the expectation.
+        //
+        //   BEFORE P1
+        //     CHARACTERIZED: `OperationStatus` had no member that could represent an unstable
+        //     outcome, so any step producing `StepOutcome.Unstable` had to either lose the marker
+        //     or widen the durable vocabulary. It compiled, and the durable layer collapsed the
+        //     fact three different ways for the same condition — `FAILED` through `StepOutcome`,
+        //     `ABORTED` through `BranchTerminal`, and a persisted `FAILED` through the retry
+        //     engine — so a child row and the aggregate row of one branch disagreed about what
+        //     had happened.
+        //
+        //   RESOLVED BY P1
+        //     The vocabulary was WIDENED, which is the option the item's own rule requires: a
+        //     property that needs a new carrier extends the algebra that owns it. `UNSTABLE` is
+        //     terminal and is not a poll failure, and all three sites now persist it, so a
+        //     declared-unstable run reads back the same fact it reported on the way in.
+        //
+        // The `ScriptedRegistryInvoker` arm this row used to name — `is StepOutcome.Unstable ->
+        // OperationStatus.SUCCEEDED` — is NOT a fourth site and is not what P1 changed: ADR-0103
+        // R1-E already removed the invoker's `when (existing.status)` table, and the invoker now
+        // interprets the closed `InvocationReconciliation` ADT instead of a durable status. The
+        // prose was simply left describing a state the code had already left.
         val statuses = OperationStatus.entries.map { it.name }.toSet()
         assertTrue(
-            "UNSTABLE" !in statuses,
-            "CHARACTERIZED: OperationStatus has no member that can represent an unstable " +
-                "outcome, so any step producing StepOutcome.Unstable must either lose the " +
-                "marker or widen the durable vocabulary. ScriptedRegistryInvoker chooses to " +
-                "lose it: `is StepOutcome.Unstable -> OperationStatus.SUCCEEDED`. The " +
-                "available set is $statuses.",
+            "UNSTABLE" in statuses,
+            "RESOLVED BY P1: OperationStatus can now represent an unstable outcome, so a step " +
+                "producing StepOutcome.Unstable persists the fact instead of losing it. This row " +
+                "characterised the ABSENCE of the member and asserted it; the defect is closed, so " +
+                "it is now a non-regression that pins the presence. If it goes RED again, an " +
+                "unstable run is being collapsed into a different terminal somewhere, and the " +
+                "three sites that do it are in P1UnstableSingleDurableStatusTest " +
+                "(behavioural, reachable authority) and UnstableSingleDurableStatusFitnessTest " +
+                "(the two private ones). The available set is $statuses.",
         )
     }
 

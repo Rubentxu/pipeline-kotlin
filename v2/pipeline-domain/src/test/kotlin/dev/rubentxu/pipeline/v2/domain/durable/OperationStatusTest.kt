@@ -64,6 +64,7 @@ class OperationStatusTest {
         val terminalStates = listOf(
             OperationStatus.SUCCEEDED,
             OperationStatus.FAILED,
+            OperationStatus.UNSTABLE,
             OperationStatus.ABORTED,
             OperationStatus.DIVERGENT,
             OperationStatus.LOST,
@@ -77,6 +78,27 @@ class OperationStatusTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun `RUNNING to UNSTABLE is valid`() {
+        val result = OperationStatus.transition(OperationStatus.RUNNING, OperationStatus.UNSTABLE)
+        assertTrue(result.isSuccess)
+    }
+
+    @Test
+    fun `UNSTABLE isTerminal returns true`() {
+        // The durable journal stamps `endedAt` exactly when `isTerminal` holds. An unstable run
+        // has finished, so a status that is terminal-but-not-stamped would record an operation
+        // that completed and never say when.
+        assertTrue(OperationStatus.UNSTABLE.isTerminal)
+    }
+
+    @Test
+    fun `UNSTABLE is not a poll failure`() {
+        // isPollFailure drives retry/waitUntil to advance to another attempt. An unstable run is
+        // finished, not a failed poll, so it must not be re-run.
+        assertTrue(!OperationStatus.UNSTABLE.isPollFailure)
     }
 
     @Test

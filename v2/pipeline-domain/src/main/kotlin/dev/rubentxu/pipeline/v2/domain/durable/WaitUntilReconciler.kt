@@ -114,6 +114,19 @@ object WaitUntilReconciler {
                     return ResumeAttempt(attempt)
                 }
 
+                OperationStatus.UNSTABLE -> {
+                    // The waitUntil engine resolves an unstable body to
+                    // `WaitUntilPredicateOutcome.Failed`, so a waitUntil control row is not a state
+                    // this engine produces. Fail closed rather than treat a known status as
+                    // unknown: if it ever IS persisted, rejecting it as a divergence is the safe
+                    // reading, and saying "unstable" beats the `else` arm's "unknown status".
+                    return RejectDivergence(
+                        operationId = input.controlIdentity.operationId,
+                        reason = "waitUntil control row is UNSTABLE at attempt $attempt, " +
+                            "which this engine does not produce",
+                    )
+                }
+
                 else -> {
                     return RejectDivergence(
                         operationId = input.controlIdentity.operationId,

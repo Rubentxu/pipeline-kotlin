@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.events
 
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
+import dev.rubentxu.pipeline.v2.events.PluginEventEmitted
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.CredentialsRef
 import dev.rubentxu.pipeline.v2.domain.FailureKind
@@ -72,7 +73,12 @@ internal fun entradaHtml(n: Int, k: Int): HtmlReportEntry = HtmlReportEntry(v(n,
  * dejar de coincidir, y la que dejara de coincidir seria la que nadie mira.
  */
 internal fun vocabulario(): List<DomainEvent> =
-    cicloDeEjecucion() + credencialesYScm() + ficherosYStash() + controlDeFlujo() + cerrojoEntradaYHttp()
+    cicloDeEjecucion() + credencialesYScm() + ficherosYStash() + controlDeFlujo() + cerrojoEntradaYHttp() + eventosDePlugin()
+
+/** P3 slice 2 — el carrier cerrado de eventos de plugin, una instancia como las demas. */
+internal fun eventosDePlugin(): List<DomainEvent> = listOf(
+    PluginEventEmitted(id(71), RUN_ID, l(71, 0), AT, v(71, 1), 1, v(71, 2), v(71, 3)),
+)
 
 @Suppress("DEPRECATION")
 internal fun cicloDeEjecucion(): List<DomainEvent> = listOf(

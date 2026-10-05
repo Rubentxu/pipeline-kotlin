@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
+import dev.rubentxu.pipeline.v2.events.PluginEventEmitted
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.CredentialBound
@@ -184,6 +185,9 @@ object EnvelopeProjector {
         is StepFailed -> runRef
         is EchoOutputCaptured -> runRef
         is CredentialUsed -> runRef
+        // RUN subject: a plugin event's only stable identity is the run itself; the kind
+        // lives in the envelope's `kind` mirror, not in the subject hierarchy (P3 slice 2).
+        is PluginEventEmitted -> runRef
         // RUN subject: run lifecycle / no finer stable identity in the event
         is RunStarted,
         is CompilationStarted,

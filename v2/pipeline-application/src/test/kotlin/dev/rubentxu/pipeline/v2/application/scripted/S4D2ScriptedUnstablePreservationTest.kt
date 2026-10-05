@@ -250,20 +250,27 @@ class S4D2ScriptedUnstablePreservationTest {
             //
             //   MEASURED CURRENT BEHAVIOUR — NOT PROMOTED AS DESIRED SEMANTICS
             //
-            // The chain, cited by file and rule:
-            //   CanonicalStructuralDecisions.kt:299  StepOutcome.Unstable -> OperationStatus.FAILED
-            //   EffectReplayPolicy.kt rule 4           "REUSE OF A SUCCEEDED ROW" — SUCCEEDED only
-            //   EffectReplayPolicy.kt rule 7           MEMOIZED + READ_ONLY + not SUCCEEDED -> EXECUTE
+            // TRANSITION RECORD (P1 of the Runtime Observation Contract Closure) — the first
+            // assertion changed on purpose, and this is what changed and why:
             //
-            // So an Unstable Step persists a FAILED row, no declared ReplayPolicy reuses a
-            // non-SUCCEEDED row, and the second attempt re-executes. `aggregate(FRESH) ==
-            // aggregate(REUSE)` was RETIRED as a D2 requirement because that path is unreachable
-            // under the current durable semantics — not because the invariant was disproved.
+            //   BEFORE P1
+            //     CanonicalStructuralDecisions mapped StepOutcome.Unstable ->
+            //     OperationStatus.FAILED, so the row carried FAILED, and this test asserted that
+            //     collapse as measured design debt.
             //
-            // What is deliberately NOT done here: scripted is NOT made to persist
-            // `Unstable -> SUCCEEDED` to win a REUSE. Doing so would restore a split-brain where
-            // the scripted frontend and the canonical durable projection disagree about the same
-            // declared Step. The frontier is recorded as design debt for its own decision point.
+            //   RESOLVED BY P1
+            //     The durable projection persists OperationStatus.UNSTABLE (terminal, not a poll
+            //     failure). The REPRESENTATION half of the recorded frontier is closed. What is
+            //     still measured is the REPLAY half: EffectReplayPolicy reuses a SUCCEEDED row
+            //     and nothing else, so a completed-unstable step still re-executes on a second
+            //     invocation. That half remains recorded debt for its own decision point, exactly
+            //     as before — it is no longer dressed in a status name that lied about what had
+            //     happened.
+            //
+            // What is still deliberately NOT done here: no replay rule is widened to reuse an
+            // UNSTABLE row, and scripted is NOT made to persist `Unstable -> SUCCEEDED` to win a
+            // REUSE. Doing the latter would restore a split-brain where the scripted frontend and
+            // the canonical durable projection disagree about the same declared Step.
             val step = CarrierStep(marker = "unstable")
             val registry = InMemoryStepRegistry().also { it.register(step) }
             val journal = InMemoryOperationJournal(SystemClock())
@@ -283,9 +290,10 @@ class S4D2ScriptedUnstablePreservationTest {
 
             invoker.invoke(call)
             assertEquals(
-                OperationStatus.FAILED,
+                OperationStatus.UNSTABLE,
                 journal.get(call.operationId())!!.status,
-                "the durable projection collapses Unstable onto FAILED; this is the whole frontier",
+                "NON-REGRESSION (was the FAILED collapse): the durable projection must persist " +
+                    "UNSTABLE; expecting FAILED again would re-pin the divergence P1 closed",
             )
 
             invoker.invoke(call)
@@ -293,7 +301,7 @@ class S4D2ScriptedUnstablePreservationTest {
                 2,
                 step.handlerInvocations.get(),
                 "MEASURED CURRENT BEHAVIOUR: the second invocation re-executes because the row is " +
-                    "FAILED and rule 7 re-executes a non-SUCCEEDED row. This is recorded, not " +
+                    "UNSTABLE and the replay rules reuse a SUCCEEDED row only. Recorded, not " +
                     "endorsed, and no scripted-only status is introduced to change it.",
             )
         }
@@ -323,9 +331,10 @@ class S4D2ScriptedUnstablePreservationTest {
         assertEquals(
             OperationStatus.FAILED,
             journal.get(call.operationId())!!.status,
-            "MEASURED: a genuine Failure and an Unstable Step persist the SAME durable status. " +
-                "The durable format cannot tell them apart; that is the asymmetry this slice " +
-                "documents rather than resolves.",
+            "MEASURED: a genuine Failure persists FAILED. BEFORE P1 an Unstable Step persisted " +
+                "the SAME status, so the durable format could not tell them apart; P1 gave " +
+                "Unstable its own terminal case, so that asymmetry is resolved and this row now " +
+                "measures only the genuine-failure side.",
         )
 
         invoker.invoke(call)

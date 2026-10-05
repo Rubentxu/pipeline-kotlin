@@ -384,7 +384,7 @@ class WULpr302RetryEngineTest {
         }
 
         @Test
-        fun `unstable body returns StepOutcome Unstable and persists FAILED on that attempt`(
+        fun `unstable body returns StepOutcome Unstable and persists UNSTABLE on that attempt`(
             @TempDir tempDir: Path,
         ) = runBlocking {
             val parentPath = listOf(BlockSegment(0, PluginStepId("build/retry")))
@@ -402,7 +402,9 @@ class WULpr302RetryEngineTest {
             )
             val outcome = te.engine.execute(bodyRef)
             assertTrue(outcome is StepOutcome.Unstable)
-            // First attempt is FAILED; engine returned without advancing.
+            // First attempt finished UNSTABLE; the engine returned without advancing, because an
+            // unstable attempt is terminal and is not a poll failure — it must not consume
+            // another retry.
             val rows = te.journal.readState(
                 controlOpId = te.controlOpId,
                 runId = te.runId.value,
@@ -413,7 +415,16 @@ class WULpr302RetryEngineTest {
                 currentFingerprint = te.fingerprint,
             ).controlRows
             assertEquals(1, rows.size)
-            assertEquals(OperationStatus.FAILED, rows.single().status)
+            // TRANSITION RECORD (P1 of the Runtime Observation Contract Closure): this assertion
+            // used to expect FAILED and the test carried that collapse in its own name, which was
+            // the retry arm's share of the three-way divergence P1 closed. P1 widened
+            // OperationStatus with UNSTABLE and made this arm persist it; the rename and the new
+            // expectation are the same honest transition, not a silent rewrite.
+            assertEquals(
+                OperationStatus.UNSTABLE,
+                rows.single().status,
+                "NON-REGRESSION (was the FAILED collapse): the attempt row must read UNSTABLE",
+            )
         }
 
         @Test

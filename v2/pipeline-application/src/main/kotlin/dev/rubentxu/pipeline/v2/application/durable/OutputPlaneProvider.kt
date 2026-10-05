@@ -71,6 +71,3 @@ object OutputPlaneProvider {
         stores.clear()
     }
 }
-
-/** The three read/write capabilities the product consumes, for a type that offers all of them. */
-typealias OutputPlane = OutputAppendPort

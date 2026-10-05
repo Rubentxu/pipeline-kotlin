@@ -1121,6 +1121,32 @@ public final class dev/rubentxu/pipeline/v2/events/ParallelBranchStarted : dev/r
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/events/PluginEventEmitted : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()Ljava/time/Instant;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()I
+	public final fun component7 ()Ljava/lang/String;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/PluginEventEmitted;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/PluginEventEmitted;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/PluginEventEmitted;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEmittedBy ()Ljava/lang/String;
+	public fun getEventId ()Ljava/lang/String;
+	public fun getKind ()Ljava/lang/String;
+	public fun getOccurredAt ()Ljava/time/Instant;
+	public final fun getPayload ()Ljava/lang/String;
+	public final fun getRegistryKind ()Ljava/lang/String;
+	public fun getRunId ()Ljava/lang/String;
+	public final fun getSchemaVersion ()I
+	public fun getSequence ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/events/PostConditionSelected : dev/rubentxu/pipeline/v2/events/DomainEvent {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -2164,5 +2190,186 @@ public final class dev/rubentxu/pipeline/v2/events/identity/ViewMode : java/lang
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/identity/ViewMode;
 	public static fun values ()[Ldev/rubentxu/pipeline/v2/events/identity/ViewMode;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/registry/EmissionOutcome {
+}
+
+public final class dev/rubentxu/pipeline/v2/events/registry/EmissionOutcome$Emitted : dev/rubentxu/pipeline/v2/events/registry/EmissionOutcome {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/events/PluginEventEmitted;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/events/PluginEventEmitted;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/events/PluginEventEmitted;)Ldev/rubentxu/pipeline/v2/events/registry/EmissionOutcome$Emitted;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/registry/EmissionOutcome$Emitted;Ldev/rubentxu/pipeline/v2/events/PluginEventEmitted;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/registry/EmissionOutcome$Emitted;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEvent ()Ldev/rubentxu/pipeline/v2/events/PluginEventEmitted;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/registry/EmissionOutcome$EncodingFailed : dev/rubentxu/pipeline/v2/events/registry/EmissionOutcome {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/registry/EmissionOutcome$EncodingFailed;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/registry/EmissionOutcome$EncodingFailed;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/registry/EmissionOutcome$EncodingFailed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKind ()Ljava/lang/String;
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/registry/EmissionOutcome$UnregisteredKind : dev/rubentxu/pipeline/v2/events/registry/EmissionOutcome {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/registry/EmissionOutcome$UnregisteredKind;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/registry/EmissionOutcome$UnregisteredKind;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/registry/EmissionOutcome$UnregisteredKind;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKind ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/registry/EventDefinition {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/registry/EventDefinition$Companion;
+	public static final field MIN_SCHEMA_VERSION I
+	public synthetic fun <init> (Ljava/lang/String;ILjava/lang/Class;Ldev/rubentxu/pipeline/v2/events/registry/EventPayloadCodec;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getCodec ()Ldev/rubentxu/pipeline/v2/events/registry/EventPayloadCodec;
+	public final fun getEmittedBy ()Ljava/lang/String;
+	public final fun getKind ()Ljava/lang/String;
+	public final fun getPayloadClass ()Ljava/lang/Class;
+	public final fun getSchemaVersion ()I
+}
+
+public final class dev/rubentxu/pipeline/v2/events/registry/EventDefinition$Companion {
+	public final fun create (Ljava/lang/String;ILjava/lang/Class;Ldev/rubentxu/pipeline/v2/events/registry/EventPayloadCodec;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/registry/EventDefinitionCreation;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/registry/EventDefinitionCreation {
+}
+
+public final class dev/rubentxu/pipeline/v2/events/registry/EventDefinitionCreation$Invalid : dev/rubentxu/pipeline/v2/events/registry/EventDefinitionCreation {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/events/registry/EventDefinitionCreation$Invalid;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/registry/EventDefinitionCreation$Invalid;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/registry/EventDefinitionCreation$Invalid;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getProblems ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/registry/EventDefinitionCreation$Valid : dev/rubentxu/pipeline/v2/events/registry/EventDefinitionCreation {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/events/registry/EventDefinition;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/events/registry/EventDefinition;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/events/registry/EventDefinition;)Ldev/rubentxu/pipeline/v2/events/registry/EventDefinitionCreation$Valid;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/registry/EventDefinitionCreation$Valid;Ldev/rubentxu/pipeline/v2/events/registry/EventDefinition;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/registry/EventDefinitionCreation$Valid;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDefinition ()Ldev/rubentxu/pipeline/v2/events/registry/EventDefinition;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/registry/EventPayloadCodec {
+	public abstract fun decode (Ljava/lang/String;I)Ldev/rubentxu/pipeline/v2/events/registry/PayloadDecode;
+	public abstract fun encode (Ljava/lang/Object;)Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/registry/EventRegistry {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/registry/EventRegistry$Companion;
+	public final fun definition (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/registry/EventDefinition;
+	public final fun isRegistered (Ljava/lang/String;)Z
+	public final fun register (Ldev/rubentxu/pipeline/v2/events/registry/EventDefinitionCreation;)Ldev/rubentxu/pipeline/v2/events/registry/RegistrationOutcome;
+	public final fun registeredKinds ()Ljava/util/List;
+	public final fun size ()I
+}
+
+public final class dev/rubentxu/pipeline/v2/events/registry/EventRegistry$Companion {
+	public final fun create ()Ldev/rubentxu/pipeline/v2/events/registry/EventRegistry;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/registry/EventRegistry$RegisteredEvent {
+	public final fun getDefinition ()Ldev/rubentxu/pipeline/v2/events/registry/EventDefinition;
+	public final fun getRegisteredOrder ()I
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/registry/PayloadDecode {
+}
+
+public final class dev/rubentxu/pipeline/v2/events/registry/PayloadDecode$Decoded : dev/rubentxu/pipeline/v2/events/registry/PayloadDecode {
+	public fun <init> (Ljava/lang/Object;)V
+	public final fun component1 ()Ljava/lang/Object;
+	public final fun copy (Ljava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/registry/PayloadDecode$Decoded;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/registry/PayloadDecode$Decoded;Ljava/lang/Object;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/registry/PayloadDecode$Decoded;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPayload ()Ljava/lang/Object;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/registry/PayloadDecode$Malformed : dev/rubentxu/pipeline/v2/events/registry/PayloadDecode {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/registry/PayloadDecode$Malformed;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/registry/PayloadDecode$Malformed;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/registry/PayloadDecode$Malformed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/registry/PayloadDecode$UnknownSchemaVersion : dev/rubentxu/pipeline/v2/events/registry/PayloadDecode {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Ldev/rubentxu/pipeline/v2/events/registry/PayloadDecode$UnknownSchemaVersion;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/registry/PayloadDecode$UnknownSchemaVersion;IILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/registry/PayloadDecode$UnknownSchemaVersion;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSchemaVersion ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/registry/RegistrationOutcome {
+}
+
+public final class dev/rubentxu/pipeline/v2/events/registry/RegistrationOutcome$DuplicateKind : dev/rubentxu/pipeline/v2/events/registry/RegistrationOutcome {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/registry/RegistrationOutcome$DuplicateKind;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/registry/RegistrationOutcome$DuplicateKind;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/registry/RegistrationOutcome$DuplicateKind;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKind ()Ljava/lang/String;
+	public final fun getRegisteredBy ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/registry/RegistrationOutcome$Registered : dev/rubentxu/pipeline/v2/events/registry/RegistrationOutcome {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/registry/RegistrationOutcome$Registered;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/registry/RegistrationOutcome$Registered;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/registry/RegistrationOutcome$Registered;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKind ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/registry/RegistrationOutcome$RejectedDefinition : dev/rubentxu/pipeline/v2/events/registry/RegistrationOutcome {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/events/registry/RegistrationOutcome$RejectedDefinition;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/registry/RegistrationOutcome$RejectedDefinition;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/registry/RegistrationOutcome$RejectedDefinition;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getProblems ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/registry/RegistryEventEmitter {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/events/registry/EventRegistry;Ldev/rubentxu/pipeline/v2/events/EventSink;Ljava/time/Clock;)V
+	public final fun decode (Ldev/rubentxu/pipeline/v2/events/PluginEventEmitted;)Ldev/rubentxu/pipeline/v2/events/registry/PayloadDecode;
+	public final fun emit (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/registry/EmissionOutcome;
 }
 

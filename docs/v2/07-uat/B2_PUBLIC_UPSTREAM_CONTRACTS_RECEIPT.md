@@ -1,5 +1,9 @@
 # BLOCK 2 — Public Upstream Contracts for Fabric
 
+**Work item:** `f24f3ac0-b889-407c-9e46-f5e524120818` (RP7-SEM S4)
+**Base:** `532e272a2ac3161522a4ae7c27b482c4ce3c9385`
+**Gate SHA:** `5a5a56e9210b1a21adad10ecde57b9a6d1e52b1f`
+
 > Recibo de cierre de BLOCK 2. Cubre B2-1..B2-8 y el estado del gate de B2-9 en el momento de
 > escribir estas líneas. La autoridad de lo que aquí se afirma es el árbol de código y la
 > evidencia ejecutada; los recibos anteriores prueban únicamente sus propios SHA.
@@ -243,8 +247,19 @@ argv             cd v2 && ./gradlew check --rerun-tasks --continue
 BUILD            SUCCESSFUL in 28m 50s
 tareas           329 actionable, 329 executed
 tests            4873   fallos 0   errores 0   skipped 140   clases 732
-módulos con XML  25
+módulos con XML  27
+LOG              /var/home/rubentxu/.local/state/pipelinek-gates/b2-9-gate6.log
+META             /var/home/rubentxu/.local/state/pipelinek-gates/b2-9-gate6-meta.txt
 ```
+
+El recuento de módulos necesita el glob **recursivo**: `v2/pipeline-step-sdk/*` son nueve
+módulos anidados, y un `*/build/test-results/test/*.xml` desde `v2/` no baja a ellos. Con el
+glob plano salen 18 módulos y 4318 tests — un subrecuento de 555 tests y 8 skips que sigue
+pareciendo plausible. Los 27 se confirman por dos vías independientes: 27 directorios con XML
+y 27 tareas `:test` distintas en el log. Los 732 XML son **todos posteriores** al arranque del
+gate (09:27:29): el más viejo es de las 09:27 y el más nuevo de las 09:56, que es
+`:pipeline-architecture-tests:test`, la última tarea. Cero XML rancios, que es lo que
+convierte el agregado en evidencia y no en decoración.
 
 Módulos con más peso: `pipeline-application` 2340 (121 skipped),
 `pipeline-domain` 687, `pipeline-architecture-tests` 456 (10 skipped),
@@ -256,8 +271,68 @@ Cero ocurrencias de `uses this output of task` en el log. `apiCheck` pasó en lo
 cinco módulos con dump, incluidos `pipeline-credentials-api`, cuyo ABI recoge el
 `readSlice` heredado que D2 añadió a `EventStore`.
 
-El gate corrió con este documento sin commitear; el único cambio entre el árbol
-probado y el de este commit es el fichero que estás leyendo, que no toca código.
+El gate corrió con este documento sin commitear, y con una corrección a la frase que
+decía que era el único cambio: no lo era. Dos minutos después de arrancar el gate,
+`HEAD` se movió de `5a5a56e9` a `4b11e0c7`, que añade `EVENT_SLICE_READ_AUTHORITY_RECEIPT.md`.
+Entre el árbol realmente compilado y el de este commit hay, por tanto, **dos** ficheros
+markdown sin trackear y ningún otro cambio. La diferencia son documentos, no bytes de build,
+pero se escribe en voz alta porque "el único cambio es un documento" es exactamente la
+afirmación que se cita después como garantía y que deja de ser cierta en cuanto alguien
+commitea a mitad de un gate.
+
+### El consumidor externo, ejecutado de verdad
+
+```text
+argv     v2/gradlew -p examples/fabric-contract-consumer --console=plain \
+           -PsdkRepo=v2/build/sdk-repo -PsdkVersion=0.47.0 check --rerun-tasks
+tests    FabricGoldenContractTest  12 F=0 E=0 S=0  ts=2026-10-05T07:57:41.846Z
+         PublishedReadSurfaceTest   2 F=0 E=0 S=0  ts=2026-10-05T07:57:42.012Z
+         14 F=0 E=0 S=0
+exit     0  ("6 actionable tasks: 6 executed")
+```
+
+### La distribución instalada (T3)
+
+```text
+argv     ./examples/run.sh
+bin      v2/pipeline-application/build/install/pipelinek/bin/pipelinek
+         sha256 225a61dbdf61a20a58292803688a1444f85337eae8147f2938db118b7dc97976  (09:28, dentro del gate)
+distZip  pipelinek-0.47.0.zip  91850423 bytes  oct 5 10:01
+         sha256 d19458894c4f183f0befd0f297b9b7f794dd463eab426662d068f44c3c1754fb
+log      /var/home/rubentxu/.local/state/pipelinek-gates/t3-installed-uat.log
+```
+
+Diez de diez fixtures contra el binario instalado: `01`–`04` success · `05` exit=1
+outcome=failure · `06` success · `07` outcome=unstable con dos `CatchErrorTriggered` en
+orden innermost-first · `08` reuse del agregado terminal (0 eventos de rama, 0 de step) ·
+`09` `RetryAttemptFinished` failed→succeeded · `10` exit=1 outcome=failure con
+`TimeoutScheduled`. `06`, `08` y `09` corrieron dos veces contra la **misma** `--db` y el mismo
+`--control-root`. Los cuatro contratos tipados de `examples/contracts/` pasaron la paridad
+diferencial. `T3_EXIT=0`.
+
+### Las tres trampas de `UP-TO-DATE`: un verde que no ejecutó nada
+
+Las tres salieron al cerrar este gate, y las tres habrían producido un recibo afirmativo sin
+que un solo test corriera. Se registran porque son la misma clase de fallo y porque las tres
+eran silenciosas:
+
+1. **`:verifyFabricContractConsumer` salió `UP-TO-DATE`** en su primera invocación. Gradle
+   comprobó que sus entradas no habían cambiado, y no compiló ni ejecutó el consumer. La tarea
+   es `Exec` y su salida es un jar que ya existía: el chequeo de entradas no dice nada sobre
+   si los 14 tests corrieron ahora.
+2. **`--rerun-tasks` no propaga al build anidado.** Forzado sobre la tarea externa, republicó
+   los cuatro artefactos y ejecutó `verifyPublishedSurface`, pero dentro del build del consumer
+   `:test` salió `UP-TO-DATE`, porque el `commandLine` de la tarea no lleva `--rerun-tasks`. Los
+   XML del consumer seguían fechados a las 08:42, de la sesión anterior. Hubo que invocar el
+   build del consumer directamente para que ejecutara.
+3. **`pipelinek-0.47.0.zip` era rancio**: del 4 de octubre a las 22:24, nueve días y siete
+   commits por detrás. `installDist` sí era `UP-TO-DATE` legítimo —su jar se había construido
+   a las 09:28, dentro del gate—, pero el `distZip` no, porque su up-to-date se afirmaba sobre
+   un artefacto viejo. Tuvo que reconstruirse con `--rerun-tasks`.
+
+Un `UP-TO-DATE` en la evidencia significa "no lo he comprobado", nunca "está bien". Es la
+misma forma que el gate falló tres veces —verde en el informe, rojo en la ley— y por eso se
+anota aquí en lugar de descubrirse otra vez.
 
 ## 12. Lo que NO se hizo, y por qué
 
@@ -271,3 +346,12 @@ probado y el de este commit es el fichero que estás leyendo, que no toca códig
   tres builds de plugins externos que ya existían. Es coherente con ellos y evita que `check`
   publique, pero significa que es tan fiable como quien lo lanza: por eso este recibo lo nombra
   como paso obligatorio del gate en vez de dejarlo a la costumbre.
+- **No se arregló `examples/run.sh` sin decir que estaba roto.** Al ejecutar T3 resultó que su
+  `BIN` apuntaba a `install/pipeline-application/bin/pipeline-application`, que no existe desde
+  que la distribución se renombró a `pipelinek`. El harness comprobaba la existencia del
+  binario, lanzaba `installDist` —que salía `UP-TO-DATE` y no reconstruía nada— y después
+  invocaba una ruta inexistente. Es decir: T3 llevaba tiempo sin poder ejecutarse, y un harness
+  que no puede ejecutarse se lee igual que un harness que nadie ha ejecutado. La corrección
+  lee `applicationName` del build script en vez de repetir el nombre, porque un hardcode de
+  ese nombre es exactamente lo que se rompió. El defecto y su corrección son un commit
+  aparte, no una línea de este recibo.

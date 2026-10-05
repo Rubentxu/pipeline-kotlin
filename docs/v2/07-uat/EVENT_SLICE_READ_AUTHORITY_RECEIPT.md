@@ -1,5 +1,9 @@
 # E1 — La página de eventos la decide la autoridad de secuencia
 
+**Work item:** `f24f3ac0-b889-407c-9e46-f5e524120818` (RP7-SEM S4)
+**ADR:** `ADR-0100`
+**Base:** `5a5a56e9210b1a21adad10ecde57b9a6d1e52b1f`
+
 > Recibo de `532e272a`, que introduce `EventStore.readSlice` / `EventSlice` (ADR-0100). Cubre un
 > defecto de **cohesión del read-side** del Event Plane y el defecto de **orden de lectura** que
 > se encontró al auditarlo y que no era el mismo. La autoridad de lo afirmado aquí es el árbol y

@@ -174,7 +174,10 @@ Arguments.of("D1-3 NEVER with an UNSTABLE row aborts", ReplayPolicy.NEVER, setOf
 Arguments.of("D1-4 RERUN reuses SUCCEEDED", ReplayPolicy.RERUN, setOf(Effect.EXECUTES_SUBPROCESS), OperationStatus.SUCCEEDED, ReplayDecision.SKIP),
 Arguments.of("D1-4 RERUN reuses UNSTABLE (P2)", ReplayPolicy.RERUN, setOf(Effect.EXECUTES_SUBPROCESS), OperationStatus.UNSTABLE, ReplayDecision.SKIP),
 Arguments.of("D1-5 RERUN re-executes FAILED", ReplayPolicy.RERUN, setOf(Effect.EXECUTES_SUBPROCESS), OperationStatus.FAILED, execute),
-Arguments.of("D1-5 RERUN re-executes ABORTED (not promoted by analogy)", ReplayPolicy.RERUN, setOf(Effect.EXECUTES_SUBPROCESS), OperationStatus.ABORTED, execute),
+Arguments.of(
+    "D1-5 RERUN re-executes ABORTED (not promoted by analogy)",
+    ReplayPolicy.RERUN, setOf(Effect.EXECUTES_SUBPROCESS), OperationStatus.ABORTED, execute,
+),
 Arguments.of("D1-5 RERUN re-executes RUNNING", ReplayPolicy.RERUN, setOf(Effect.EXECUTES_SUBPROCESS), OperationStatus.RUNNING, execute),
 Arguments.of("D1-5 RERUN re-executes FAILED_TIMEOUT", ReplayPolicy.RERUN, setOf(Effect.EXECUTES_SUBPROCESS), OperationStatus.FAILED_TIMEOUT, execute),
 Arguments.of("D1-5 RERUN re-executes DIVERGENT", ReplayPolicy.RERUN, setOf(Effect.EXECUTES_SUBPROCESS), OperationStatus.DIVERGENT, execute),

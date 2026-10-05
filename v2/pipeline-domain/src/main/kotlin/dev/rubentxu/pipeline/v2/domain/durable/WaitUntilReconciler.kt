@@ -119,7 +119,7 @@ object WaitUntilReconciler {
                     // `WaitUntilPredicateOutcome.Failed`, so a waitUntil control row is not a state
                     // this engine produces. Fail closed rather than treat a known status as
                     // unknown: if it ever IS persisted, rejecting it as a divergence is the safe
-                    // reading, and saying "unstable" beats the `else` arm's "unknown status".
+                    // reading, and saying "unstable" beats a generic "unknown status".
                     return RejectDivergence(
                         operationId = input.controlIdentity.operationId,
                         reason = "waitUntil control row is UNSTABLE at attempt $attempt, " +
@@ -127,7 +127,11 @@ object WaitUntilReconciler {
                     )
                 }
 
-                else -> {
+                OperationStatus.ABORTED,
+                OperationStatus.DIVERGENT,
+                OperationStatus.LOST,
+                OperationStatus.FAILED_TIMEOUT,
+                -> {
                     return RejectDivergence(
                         operationId = input.controlIdentity.operationId,
                         reason = "unknown control status ${control.status} at attempt $attempt",

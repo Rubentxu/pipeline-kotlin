@@ -261,7 +261,15 @@ val stageResult = EventJsonFields.stringField(s, "stageResult") ?: "UNSTABLE"
 
 Un campo ausente se convierte en `UNSTABLE`, que es un hecho semánticamente distinto de
 `FAILURE` (la pipeline continúa vs. aborta). Es peor que el default de §3.2 porque el
-valor inventado **cambia el significado del run**.
+valor inventado **cambia el significado del run**: no es una versión más vaga de la misma
+afirmación, es la afirmación contraria.
+
+> **Corrección de nulabilidad.** Una versión anterior de esta tabla clasificó
+> `stageResult` como nullable. **No lo es**: `CatchErrorTriggered.stageResult` es `String`
+> no-null, mientras que `buildResult` sí es `String?`. La consecuencia práctica es que un
+> JSON `null` en `stageResult` también es corrupción, no una codificación de "no declarado",
+> y por eso un solo lector cubre los dos casos de fallo sin necesidad de sondar si la clave
+> existe.
 
 ### 4.5 Decisión implicada
 

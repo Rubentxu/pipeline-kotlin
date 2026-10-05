@@ -762,7 +762,20 @@ object JsonEventLog {
             "CatchErrorTriggered" -> {
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
                 val buildResult = EventJsonFields.stringField(s, "buildResult")?.takeIf { it.isNotEmpty() }
-                val stageResult = EventJsonFields.stringField(s, "stageResult") ?: "UNSTABLE"
+                // P3-E E4 — was `?: "UNSTABLE"`. That default turned a MISSING field into a
+                // semantic claim, and the claim was not neutral: UNSTABLE means the run
+                // continues while FAILURE aborts it. A record whose stageResult could not be
+                // read therefore came back describing a different run than the one that
+                // happened. The writer ALWAYS emits this key (EventJsonWriter writes
+                // `stageResult` unconditionally, and the compatibility corpus carries it in
+                // 4/4 historical occurrences), so absence is corruption rather than a
+                // version this runtime predates — and the key being present with a JSON null
+                // is a real encoding, because the field is nullable.
+                // `stageResult` is a NON-NULL String in the event, so a JSON null is not a
+                // legitimate encoding of "not declared" — it is corruption, exactly like the
+                // key being absent. One reader covers both, which is why no hasField probe
+                // is needed here even though `buildResult` right above it IS nullable.
+                val stageResult = EventJsonFields.stringField(s, "stageResult") ?: return null
                 val message = EventJsonFields.stringField(s, "message")?.takeIf { it.isNotEmpty() }
                 CatchErrorTriggered(
                     eventId = eventId,
@@ -818,7 +831,16 @@ object JsonEventLog {
             "WaitUntilCompleted" -> {
                 val totalAttempts = EventJsonFields.intField(s, "totalAttempts") ?: 0
                 val totalDurationMs = EventJsonFields.longField(s, "totalDurationMs") ?: 0L
-                val outcome = EventJsonFields.stringField(s, "outcome") ?: "completed"
+                // P3-E E4 — was `?: "completed"`. Same defect, opposite direction: a missing
+                // outcome decoded as SATISFACTION. `completed` is the one value that means
+                // the wait condition held, so the default reported success for a record that
+                // said nothing at all. The field is non-null in the event and the writer
+                // always emits it, so absence is malformed and the line stays unclassified.
+                //
+                // Vocabulary validation is deliberately NOT here: whether these three tokens
+                // are one concept is the open E4b.4 question, and validating against an
+                // undecided vocabulary would freeze it by accident.
+                val outcome = EventJsonFields.stringField(s, "outcome") ?: return null
                 WaitUntilCompleted(
                     eventId = eventId,
                     runId = runId,

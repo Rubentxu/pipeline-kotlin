@@ -94,15 +94,16 @@ internal class StepDispatchEngine(
     private val bodyExecutionEngine: BodyExecutionEngine,
     private val bodyPolicyResolver: BodyPolicyResolver,
     private val runLifecycle: RunLifecycleEngine,
-    // P3-C / S6.4: the open plugin event registry, already bound to THIS engine's [eventSink] and
-    // [clock]. Carried rather than built here so the emitter is composed ONCE per run by the
-    // coordinator and every invocation of a run shares one registry — two registries inside one
-    // run would let two Steps disagree about what a kind means.
+    // P3-C / S6.4: the open plugin event registry for THIS run. The engine composes the emitter
+    // itself from this registry plus the sink and clock it already holds, so one run has one
+    // registry shared by every invocation — two registries would let two Steps disagree about what
+    // a kind means, and the read-back would resolve against a different one than the write.
     //
-    // Null when no plugin contributed an event kind. That is the fail-closed signal, not a
-    // degraded mode: the capability is not exposed, so a Step declaring it is refused at
-    // admission rather than handed a seam that cannot work.
-    private val pluginEventEmitter: dev.rubentxu.pipeline.v2.events.registry.RegistryEventEmitter? = null,
+    // Empty rather than null by construction: an empty registry refuses every kind, so "a plugin
+    // declared nothing" and "nothing is registered" are the same typed refusal, and a Step that
+    // reaches for the emission seam is refused at admission instead of reaching a dead handler.
+    private val eventRegistry: dev.rubentxu.pipeline.v2.events.registry.EventRegistry =
+        dev.rubentxu.pipeline.v2.events.registry.EventRegistry.create(),
     /**
      * ADR-0103 D7 — the replay cursor is traversal state, so it lives here and nowhere
      * else. `ReplayCursor(runId, lastOpId, stageIndex, savedAt)` models where the canonical
@@ -204,7 +205,7 @@ internal class StepDispatchEngine(
         bodyContinuation = bodyContinuation,
         secretPatternRegistry = secretPatternRegistry,
         workspaceBase = workspaceBase,
-        pluginEventEmitter = pluginEventEmitter,
+        pluginEventEmitter = pluginEventEmitter(eventRegistry, eventSink, clock),
     )
 
     /**

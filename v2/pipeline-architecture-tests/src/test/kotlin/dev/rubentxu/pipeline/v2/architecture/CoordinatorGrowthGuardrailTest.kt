@@ -94,8 +94,28 @@ class CoordinatorGrowthGuardrailTest {
      * ceiling is raised over the corrected 572, not over the 588, and the diff is
      * what makes the ratchet worth having: it forced the question of whether the
      * growth was real, and the answer was "sixteen lines of it was not".
+     * The 572 -> 579 step is P3-C/S6.4, and it is the SECOND time this file has caught the same
+     * author putting something here that did not belong. The plugin-event emission seam first
+     * landed as a 33-line `pluginEventEmitter` factory sitting in this file as a top-level
+     * function — beside the class rather than inside it, which is why it did not look like a
+     * coordinator responsibility at all. It was not one: composing the seam belongs to the dispatch
+     * engine, which already holds this run's sink and clock. Moving it there deleted 33 of the 48
+     * lines the change had added, and the engine now builds the emitter itself from the forwarded
+     * registry.
+     *
+     * What is left is 7 lines, and they are the 562 -> 572 shape exactly: a composition parameter
+     * between two objects this file owns, which no named engine can absorb. The coordinator holds
+     * the registry and forwards it to the engine it builds; the engine holds the sink and the clock.
+     * Parking the registry anywhere else is the rejected alternatives above again — on `ShOptions`
+     * it becomes a service locator, and inside the engine the coordinator would have nothing to
+     * forward.
+     *
+     * The half worth keeping is the reasoning about why the default is an EMPTY registry rather than
+     * null, in as few lines as carry it: an empty registry refuses every kind, which makes "a
+     * plugin declared nothing" and "nothing is registered" the same typed refusal instead of two
+     * states the rest of the engine would have to tell apart.
      */
-    private val maxCoordinatorLines = 572L
+    private val maxCoordinatorLines = 579L
 
     @Test
     fun `the durable coordinator never grows again`() {

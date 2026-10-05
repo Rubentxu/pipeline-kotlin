@@ -104,9 +104,10 @@ class FArchL7DomainEventExhaustivityTest {
      * 68. HttpStatusRejected (RP6-C / WU-093 §5 — status outside what the author listed)
      * 69. HttpRequestFailed (RP6-C / WU-093 §5 — no response at all)
      * 70. ExecutionTargetResolved (RP7-SEM S3.1 — a target was granted or refused)
+     * 71. PluginEventEmitted (P3 slice 2 — a plugin contributed an event through the registry)
      */
     @Test
-    fun `domain_event_sealed_hierarchy_has_70_variants`() {
+    fun `domain_event_sealed_hierarchy_has_71_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
@@ -134,7 +135,15 @@ class FArchL7DomainEventExhaustivityTest {
         // rather than "fixed" in a semantic-change commit — collapsing the copies
         // is a governance WU of its own, and quietly deleting a pin here would
         // trade a loud, dated failure for a silent one.
-        val expectedCount = 70
+        // +1 through P3 slice 2: PluginEventEmitted, the single closed carrier for events a
+        // plugin contributes through the open registry. FIFTH copy of this count missed, and the
+        // first one caught by a gate rather than by the surgical run that shipped the variant —
+        // because the surgical rung ran only :pipeline-events-store:test and this fitness lives
+        // in pipeline-architecture-tests. So the rule gains its operational half: the ladder is
+        // not "run the module you touched", it is "run the module you touched AND the fitness
+        // module", and the fitness module is a separate Gradle project that no per-module filter
+        // reaches.
+        val expectedCount = 71
 
         assertEquals(
             expectedCount,

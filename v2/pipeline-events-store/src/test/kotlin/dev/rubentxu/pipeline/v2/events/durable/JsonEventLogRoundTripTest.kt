@@ -44,6 +44,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import dev.rubentxu.pipeline.v2.events.PluginEventEmitted
 
 /**
  * JSON encode/decode round-trip: encode 4 events → decode → structural equality ignoring eventId/occurredAt.
@@ -809,5 +810,60 @@ class JsonEventLogRoundTripTest {
         assertEquals(3, restored.ordinal)
         assertEquals("ordinal-already-reached", restored.reason)
         assertEquals(runId, restored.runId)
+    }
+
+    /**
+     * P3 slice 2 — the plugin carrier survives the durable round trip.
+     *
+     * F2 in `Rp030EventCodecsConnascenceFitnessTest` only proves a branch EXISTS in the source. It
+     * cannot prove the branch is right: a branch that decoded every field to a default would also
+     * satisfy the scan while turning every plugin event into the same indistinguishable event. So
+     * this is the behavioural half, and it asserts the four fields that carry the whole meaning of
+     * a contributed event.
+     *
+     * The second test is the negative half. `decodeEvent` does not default `registryKind` and
+     * `schemaVersion` the way it defaults a `reason` or a `path`, and that asymmetry is the point:
+     * a substituted kind would re-type this payload as ANOTHER plugin's event. A wrong observation
+     * is worse than a dropped one, so a carrier without its identity decodes to nothing.
+     */
+    @Test
+    fun `plugin event carrier round-trips with its identity intact`() {
+        val runId = "plugin-run"
+        val carrier = PluginEventEmitted(
+            eventId = "id-pe-1",
+            runId = runId,
+            sequence = 4L,
+            occurredAt = Instant.parse("2026-10-05T10:00:04Z"),
+            registryKind = "acme.validated",
+            schemaVersion = 2,
+            payload = "v2#{\"ref\":\"abc\"}",
+            emittedBy = "acme-plugin",
+        )
+
+        val decoded = JsonEventLog.decode(JsonEventLog.encode(listOf(carrier)))
+
+        assertEquals(1, decoded.size, "the carrier must survive write then read, not decode to null")
+        val back = decoded[0] as PluginEventEmitted
+        assertEquals("PluginEventEmitted", back.kind)
+        assertEquals("acme.validated", back.registryKind, "the kind is what the registry re-types by")
+        assertEquals(2, back.schemaVersion, "a version that drifted would fail closed on decode")
+        assertEquals("v2#{\"ref\":\"abc\"}", back.payload, "the payload is the contributor's own bytes")
+        assertEquals("acme-plugin", back.emittedBy)
+        assertEquals(4L, back.sequence, "the sequence is identity, and must not be reassigned on read")
+    }
+
+    @Test
+    fun `a carrier without its registry kind is dropped rather than re-typed`() {
+        val line = """
+            {"eventId":"id-pe-2","runId":"plugin-run","sequence":5,"kind":"PluginEventEmitted",
+             "occurredAt":"2026-10-05T10:00:05Z","schemaVersion":1,"payload":"v1#x","emittedBy":"acme"}
+        """.trimIndent().replace("\n", "")
+
+        val decoded = JsonEventLog.decode(line)
+
+        assertTrue(decoded.isEmpty()) {
+            "a carrier with no registryKind must not decode: substituting a kind would re-type " +
+                "this payload as another plugin's event. Decoded: $decoded"
+        }
     }
 }

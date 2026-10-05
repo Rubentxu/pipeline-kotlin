@@ -54,8 +54,26 @@ class Rp030EventCodecsConnascenceFitnessTest {
     private val durableSrc = FitnessPaths.v2Root()
         .resolve("pipeline-events-store/src/main/kotlin/dev/rubentxu/pipeline/v2/events/durable")
 
-    private val domainEventSource: String by lazy {
-        Files.readString(eventsSrc.resolve("DomainEvent.kt"))
+    /**
+     * Every `.kt` under the event model, concatenated.
+     *
+     * F1 used to read `DomainEvent.kt` alone, which encoded an assumption that had stopped being
+     * true: that every sealed variant is declared inside that one file. `PluginEventEmitted`
+     * (P3 slice 2) is declared in its own file, which is the better shape — `DomainEvent.kt` is
+     * already a concentration point at ~46 KB — so the check silently stopped covering one
+     * variant. That is the same failure mode F2 exists to catch, one layer up: a guard whose scope
+     * is narrower than the thing it guards reports green while a variant goes unexamined.
+     *
+     * Scanning the whole source root restores the intent and is strictly stronger: a duplicate
+     * kind literal in a second file is now caught too, which the single-file read could not see.
+     */
+    private val eventModelSources: String by lazy {
+        Files.walk(eventsSrc).use { stream ->
+            stream.filter { it.extension == "kt" }
+                .sorted()
+                .map { Files.readString(it) }
+                .collect(java.util.stream.Collectors.joining("\n"))
+        }
     }
 
     private val jsonEventLogSource: String by lazy {
@@ -88,7 +106,7 @@ class Rp030EventCodecsConnascenceFitnessTest {
     @Test
     fun `every variant declares a unique kind literal equal to its class name`() {
         val literals = Regex("override val kind: String get\\(\\) = \"([A-Za-z]+)\"")
-            .findAll(domainEventSource)
+            .findAll(eventModelSources)
             .map { it.groupValues[1] }
             .toList()
         assertEquals(

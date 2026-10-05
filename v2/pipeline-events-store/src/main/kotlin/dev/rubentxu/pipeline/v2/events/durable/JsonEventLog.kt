@@ -51,6 +51,7 @@ import dev.rubentxu.pipeline.v2.events.MilestoneReached
 import dev.rubentxu.pipeline.v2.events.ParallelBranchFinished
 import dev.rubentxu.pipeline.v2.events.ParallelBranchStarted
 import dev.rubentxu.pipeline.v2.events.PostConditionSelected
+import dev.rubentxu.pipeline.v2.events.PluginEventEmitted
 import dev.rubentxu.pipeline.v2.events.PwdResolved
 import dev.rubentxu.pipeline.v2.events.RetryAttemptFinished
 import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted
@@ -1070,6 +1071,35 @@ object JsonEventLog {
                     law = law,
                     executorCalls = executorCalls,
                 )
+            }
+            // P3 slice 2 — the plugin carrier. Written by EventJsonWriter as
+            // registryKind/schemaVersion/payload/emittedBy.
+            //
+            // The two identity fields are NOT defaulted the way the fields above are, and the
+            // difference is deliberate. A StageSkipped with no `reason` is still the StageSkipped
+            // that happened. A PluginEventEmitted with no `registryKind` or no `schemaVersion` is
+            // not a degraded carrier — it is an unidentifiable one: any substituted value would
+            // re-type the payload as SOME OTHER plugin's event, which is a wrong observation
+            // rather than a missing one. So a malformed carrier line decodes to null here, the
+            // same as a line this function cannot classify at all, and the registry refuses it
+            // again on the read-back side. Two fail-closed hops beat one confident fabrication.
+            "PluginEventEmitted" -> {
+                val registryKind = EventJsonFields.stringField(s, "registryKind")
+                val schemaVersion = EventJsonFields.intField(s, "schemaVersion")
+                if (registryKind.isNullOrBlank() || schemaVersion == null) {
+                    null
+                } else {
+                    PluginEventEmitted(
+                        eventId = eventId,
+                        runId = runId,
+                        sequence = sequence,
+                        occurredAt = occurredAt,
+                        registryKind = registryKind,
+                        schemaVersion = schemaVersion,
+                        payload = EventJsonFields.stringField(s, "payload") ?: "",
+                        emittedBy = EventJsonFields.stringField(s, "emittedBy") ?: "",
+                    )
+                }
             }
             else -> null
         }

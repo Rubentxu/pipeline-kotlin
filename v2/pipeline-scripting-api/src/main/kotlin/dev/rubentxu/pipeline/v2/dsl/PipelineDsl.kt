@@ -322,7 +322,7 @@ class PostStepsScope {
         steps.add(StepSpec.Shell(command))
     }
 
-    fun error(message: String, failureKind: String = "UNKNOWN") {
+    fun error(message: String, failureKind: String = "USER") {
         steps.add(StepSpec.Error(message, failureKind))
     }
 
@@ -362,7 +362,7 @@ class BranchScope {
         steps.add(StepSpec.Shell(command))
     }
 
-    fun error(message: String, failureKind: String = "UNKNOWN") {
+    fun error(message: String, failureKind: String = "USER") {
         steps.add(StepSpec.Error(message, failureKind))
     }
 

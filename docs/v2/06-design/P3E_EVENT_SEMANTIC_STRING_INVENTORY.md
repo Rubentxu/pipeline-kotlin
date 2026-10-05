@@ -405,6 +405,49 @@ nombres homónimos producen siempre: el alias documenta el síntoma, no lo previ
 decidir si esto es un caso de colisión nominal que la autoridad de madurez tiene que
 registrar.
 
+### 5.7 `StepSpec.Error.failureKind`: vocabulario cerrado con default fail-open
+
+Encontrado verificando el backlog de SDDK (item `bl-bl-01M3HT3MYY`, P2, capturado el
+2026-09-27). Los criterios **siguen vigentes hoy**: es deuda real, no una alerta caducada.
+
+`error()` declara su kind en tres receptores distintos, y el `StepSpec.Error` que lo
+transporta lo declara una cuarta vez:
+
+```kotlin
+data class Error(val message: String, val failureKind: String = "UNKNOWN")
+fun error(message: String, failureKind: String = "UNKNOWN")   // ×3
+```
+
+La autoridad cerrada existe y es fuerte: `FailureKind`, diez casos, y el codec de
+`CoreErrorStep` **falla cerrado** ante un token desconocido. El defecto no está en la
+existencia del vocabulario sino en su default:
+
+- `error("msg")` es una intención **autorada**: alguien la escribió, con un mensaje, para
+  parar el run. Eso es `USER` por definición.
+- `UNKNOWN` significa "este runtime no pudo clasificar el fallo", que es lo que devuelve un
+  decoder que no reconoce un token — un estado epistémico distinto.
+
+El efecto en producción es que **todo `error()` sin anotación salía al stream durable con
+`failureKind = UNKNOWN`**, indistinguible de una avería no diagnosticada. Para el Observer
+que S5.4 quiere construir, esa es exactamente la diferencia entre "el pipeline falló por
+diseño" y "no se sabe qué pasó".
+
+DosProperties que lo hacen notable:
+
+1. **Ningún test lo cubría.** Los tests existentes verifican lo correcto —que un
+   `failureKind` desconocido falle cerrado— pero nadie miraba el default. Misma clase de
+   defecto que el `decodeEvent` sin rama de §4.1: un comportamiento que existía sin nada
+   vigilándolo.
+2. **El patrón es aislado.** Un barrido de defaults `String` en el DSL devuelve exactamente
+   estos cuatro sitios, todos `failureKind`. No es sistémico.
+
+Corrección aplicada en E4a: default `USER` en los cuatro sitios, test que fija el valor y
+que los tres receptores no divergan, y mutación que devuelve `UNKNOWN` a uno solo de los
+tres para probar que el test la detecta.
+
+El parámetro sigue siendo `String`: `pipeline-scripting-api` es ABI publicada y tiparlo
+contra `FailureKind` es la migración de E6, gobernada por la madurez de E5.
+
 ---
 
 ## 6. Qué NO autoriza este inventario

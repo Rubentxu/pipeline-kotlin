@@ -51,9 +51,26 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val type: String get() = "sh"
     }
 
+    /**
+     * P3-E E4 — [failureKind] defaults to `USER`, not `UNKNOWN`.
+     *
+     * `error("msg")` is a deliberate, human-authored abort: somebody wrote it, on purpose,
+     * with a message. `USER` is what that is. `UNKNOWN` means "this runtime could not
+     * classify the failure" — which is what a decoder returns for a token it does not
+     * recognise, a materially different epistemic state.
+     *
+     * The old default made every un-annotated `error()` indistinguishable in the durable
+     * stream from a fault nobody understood, which is precisely the distinction an
+     * external observer needs (P3-E E1, §5.7). Narrowing it also removes a fail-open edge:
+     * the default used to be the one value that could only ever have come from nobody
+     * choosing.
+     *
+     * Still a [String] because `pipeline-scripting-api` is published ABI; typing it against
+     * `FailureKind` is the P3-E E6 migration, governed by E5's maturity.
+     */
     data class Error(
         val message: String,
-        val failureKind: String = "UNKNOWN",
+        val failureKind: String = "USER",
     ) : StepSpec {
         override val name: String get() = "error"
         override val type: String get() = "error"

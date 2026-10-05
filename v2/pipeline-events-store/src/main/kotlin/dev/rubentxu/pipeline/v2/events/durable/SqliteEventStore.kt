@@ -617,11 +617,25 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
         // connection and closes it at exhaustion; a partial iteration leaks the
         // connection to GC finalisation (same as the previous eager form's
         // error path), which no production caller does — all iterate fully.
+        //
+        // The ORDER BY is `sequence`, and it used to be `rowid`. That is the
+        // difference between the row's physical position and the number this
+        // store assigned, and it is not a stylistic one: `appendAssigned` stamps
+        // the sequence on the PRODUCT thread and enqueues a few instructions
+        // later, so two concurrent writers can enqueue in the opposite order to
+        // the one they were assigned and the two orders part company. A cursor
+        // cuts on `sequence > lastSequence`, so a read that walks the physical
+        // order can step over an event whose sequence is below the cursor and
+        // lose it for good — the next cursor starts even higher.
+        //
+        // `sequence` is also the column the `ux_events_run_sequence` index covers,
+        // so this ordering is the one the database can serve from the index
+        // instead of sorting a temporary b-tree over every matching row.
         sequence {
             val conn = freshConnection()
             try {
                 conn.prepareStatement(
-                    "SELECT payload FROM events WHERE run_id = ? ORDER BY rowid ASC"
+                    "SELECT payload FROM events WHERE run_id = ? ORDER BY sequence ASC"
                 ).use { ps ->
                     ps.setString(1, runId)
                     ps.executeQuery().use { rs ->

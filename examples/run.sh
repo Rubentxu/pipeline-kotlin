@@ -7,11 +7,24 @@
 #   examples/run.sh 01-hello.pipeline.kts    # run a single example
 #   examples/run.sh 06-durable.pipeline.kts --db /tmp/my-journal.db
 #
-# The binary is produced by: ./gradlew -p v2 :pipeline-application:installDist
+# The binary is produced by: cd v2 && ./gradlew :pipeline-application:installDist
+#
+# The path is `install/pipelinek/bin/pipelinek` and both halves of it are named
+# by `applicationName` in v2/pipeline-application/build.gradle.kts. It used to
+# say `install/pipeline-application/bin/pipeline-application`, which no longer
+# exists: the distribution was renamed to `pipelinek` and the stale path made
+# this harness rebuild installDist, find nothing at the path it asked for, and
+# then invoke a missing binary — so T3 stopped being able to run at all while
+# still looking like a harness that simply nobody had executed. Renaming the
+# distribution is enough to break a harness that hardcodes the path, which is
+# why the name is read from the build file rather than repeated here.
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BIN="$ROOT/v2/pipeline-application/build/install/pipeline-application/bin/pipeline-application"
+APP_NAME="$(sed -nE 's/^[[:space:]]*applicationName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' \
+  "$ROOT/v2/pipeline-application/build.gradle.kts" | head -1)"
+[[ -n "$APP_NAME" ]] || { echo "cannot read applicationName from pipeline-application/build.gradle.kts" >&2; exit 1; }
+BIN="$ROOT/v2/pipeline-application/build/install/$APP_NAME/bin/$APP_NAME"
 SCRATCH="${TMPDIR:-/tmp}/pipeline-examples"
 mkdir -p "$SCRATCH"
 

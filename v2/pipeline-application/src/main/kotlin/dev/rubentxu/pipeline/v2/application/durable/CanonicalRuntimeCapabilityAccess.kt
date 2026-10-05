@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.PLATFORM_IDENTITY_CAPABILITY
-import dev.rubentxu.pipeline.v2.application.PLUGIN_EVENT_EMISSION_CAPABILITY
+import dev.rubentxu.pipeline.v2.events.registry.PLUGIN_EVENT_EMISSION_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.PlatformIdentity
 import dev.rubentxu.pipeline.v2.application.EVENT_SINK_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.EXECUTION_BUDGET_CAPABILITY

@@ -33,6 +33,10 @@ import kotlin.io.path.extension
  *     returning a generic subject without a compiler-exhaustive match).
  * F5. The store-assigned sequence is stamped in exactly two places, the two
  *     store adapters. A third copy is a second authority over run ordering.
+ * F6. The plugin carrier is covered BEHAVIOURALLY, not only structurally. F2
+ *     proves a decode branch exists; it cannot prove the branch is right, since
+ *     a branch decoding every field to a default satisfies the scan and turns
+ *     every contributed event into the same indistinguishable one.
  *
  * Test-side only: no production code changes. If a legit new event is added,
  * these checks FORCE the codec branch to be added in the same change.
@@ -135,6 +139,48 @@ class Rp030EventCodecsConnascenceFitnessTest {
             "JsonEventLog.decodeEvent is missing branches for: $failures. " +
                 "Every DomainEvent variant MUST be decodable or replay loses events silently."
         }
+    }
+
+    /**
+     * F6. The carrier needs a BEHAVIOURAL round-trip, and it needs a malformed negative.
+     *
+     * This is the fitness that would have caught the P3 slice 2 loss one slice earlier. F2 proved
+     * the branch existed and was satisfied; the branch then decoded every identity field to a
+     * default, so every contributed event re-typed as the same indistinguishable one. The scan had
+     * nothing to say about that, and neither would a test that only asserted `isNotEmpty()`.
+     *
+     * So this pins the three things a structural check cannot: that a round-trip assertion exists,
+     * that it names the field whose loss is unrecoverable (`registryKind`), and that the malformed
+     * path is asserted too. Scan-only coverage of a variant that can be re-typed wrongly is exactly
+     * the false green this fitness module exists to prevent.
+     */
+    @Test
+    fun `the plugin carrier has a behavioural round-trip and a malformed negative`() {
+        val testSource = Files.readString(
+            FitnessPaths.v2Root()
+                .resolve(
+                    "pipeline-events-store/src/test/kotlin/dev/rubentxu/pipeline/v2/events/durable/" +
+                        "JsonEventLogRoundTripTest.kt",
+                ),
+        )
+        val carrierCases = Regex("fun `([^`]*(?:carrier|registry kind|schema version)[^`]*)`")
+            .findAll(testSource)
+            .map { it.groupValues[1] }
+            .toList()
+        assertTrue(carrierCases.any { it.contains("identity intact") }) {
+            "no behavioural round-trip pins the carrier's identity; F2 only proves the branch exists, " +
+                "and a branch that decodes every field to a default satisfies F2 while making every " +
+                "contributed event indistinguishable"
+        }
+        assertTrue(
+            carrierCases.count { it.contains("dropped") } >= 2,
+            "the carrier needs BOTH malformed negatives (absent registryKind and absent schemaVersion); " +
+                "found: $carrierCases",
+        )
+        assertTrue(
+            "registryKind" in testSource && "schemaVersion" in testSource,
+            "the round-trip must assert the identity fields by name, not merely that something decoded",
+        )
     }
 
     /**

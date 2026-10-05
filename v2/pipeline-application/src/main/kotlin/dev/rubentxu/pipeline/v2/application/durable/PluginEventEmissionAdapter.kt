@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
-import dev.rubentxu.pipeline.v2.application.PluginEventEmission
+import dev.rubentxu.pipeline.v2.events.registry.PluginEventEmission
 import dev.rubentxu.pipeline.v2.events.registry.EmissionOutcome
 import dev.rubentxu.pipeline.v2.events.registry.RegistryEventEmitter
 

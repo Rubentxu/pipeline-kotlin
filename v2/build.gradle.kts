@@ -497,7 +497,12 @@ val buildExamplePlugin by tasks.registering(Exec::class) {
     inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
     // The plugin's output depends on the SDK jars of THIS revision, not on the
     // repository's timestamped snapshot filenames.
-    inputs.files(":pipeline-domain:jar", ":pipeline-scripting-api:jar")
+    //
+    // `pipeline-events` joins the list in P3-D: the plugin now contributes an event definition and
+    // emits it through the published emission seam, so it compiles against that contract too.
+    // Omitting it from these inputs would let the task consider its output UP-TO-DATE after a
+    // change to the Event Plane — and the plugin would then be shipping against a stale seam.
+    inputs.files(":pipeline-domain:jar", ":pipeline-scripting-api:jar", ":pipeline-events:jar")
     outputs.file(pluginDir.resolve("build/libs/example-uppercase-plugin-0.1.0.jar"))
 
     workingDir = rootDir

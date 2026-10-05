@@ -50,6 +50,12 @@ configurations.all {
 dependencies {
     compileOnly("dev.rubentxu.pipeline.v2:pipeline-domain:$sdkVersion")
     compileOnly("dev.rubentxu.pipeline.v2:pipeline-scripting-api:$sdkVersion")
+    // P3-D / S6.4: the Event Plane's published contract. Carrying the plugin's own event
+    // definition and the emission seam as `compileOnly` is the point: the JAR ships only its
+    // classes, and the host supplies the registry, the codec types and the capability at runtime.
+    // A plugin that had to bundle the Event Plane would be able to run a SECOND registry beside
+    // the host's, which is exactly the two-authorities split this seam exists to prevent.
+    compileOnly("dev.rubentxu.pipeline.v2:pipeline-events:$sdkVersion")
     compileOnly("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 }
 

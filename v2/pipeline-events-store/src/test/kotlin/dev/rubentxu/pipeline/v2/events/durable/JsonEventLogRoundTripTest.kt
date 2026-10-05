@@ -853,6 +853,21 @@ class JsonEventLogRoundTripTest {
     }
 
     @Test
+    fun `a carrier without its schema version is dropped rather than defaulted`() {
+        val line = """
+            {"eventId":"id-pe-3","runId":"plugin-run","sequence":6,"kind":"PluginEventEmitted",
+             "occurredAt":"2026-10-05T10:00:06Z","registryKind":"acme.validated","payload":"v2#x","emittedBy":"acme"}
+        """.trimIndent().replace("\n", "")
+
+        val decoded = JsonEventLog.decode(line)
+
+        assertTrue(decoded.isEmpty()) {
+            "a carrier with no schemaVersion must not decode: a substituted version would re-type " +
+                "this payload under a shape its writer never promised. Decoded: $decoded"
+        }
+    }
+
+    @Test
     fun `a carrier without its registry kind is dropped rather than re-typed`() {
         val line = """
             {"eventId":"id-pe-2","runId":"plugin-run","sequence":5,"kind":"PluginEventEmitted",

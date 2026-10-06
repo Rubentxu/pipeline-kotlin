@@ -222,8 +222,7 @@ long debugging session.
 
 ## Authority note
 
-This repository has had **no remote CI since 2026-09-30** — the commit `754ddda0` removed
-`lpr0-ci.yml`, `release.yml`, `v2-baseline.yml` and `sdkman-publish.yml`. Do not expect a green CI
+This repository has had **no remote CI since 2026-09-30** — the commit `754ddda0` removed the CI workflows Do not expect a green CI
 badge to stand behind these pages. Everything here is a static reading of the source at `b08fa948`.
 
 ---

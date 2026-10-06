@@ -219,8 +219,7 @@ flag se acepta y se descarta.
 ## Nota de autoridad
 
 Este repositorio **no tiene CI remota desde 2026-09-30** (`.github/workflows/`
-no existe; el commit `754ddda0` eliminó `lpr0-ci.yml`, `release.yml`,
-`v2-baseline.yml` y `sdkman-publish.yml`). Por eso esta página nunca afirma
+no existe; el commit `754ddda0` eliminó los workflows de CI). Por eso esta página nunca afirma
 «CI verde» ni «listo para producción»: el PRODUCT-GATE está
 `BLOCKED_EXTERNAL`. Cada afirmación de arriba es una cita al código, no un
 recibo de una build publicada.

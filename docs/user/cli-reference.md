@@ -218,8 +218,7 @@ flag is accepted and discarded.
 ## Authority note
 
 This repository has **no remote CI since 2026-09-30** (`.github/workflows/`
-does not exist; commit `754ddda0` removed `lpr0-ci.yml`, `release.yml`,
-`v2-baseline.yml` and `sdkman-publish.yml`). So this page never claims "CI
+does not exist; commit `754ddda0` removed the CI workflows). So this page never claims "CI
 green" and never claims "production ready": the PRODUCT-GATE is
 `BLOCKED_EXTERNAL`. Every claim above is a source citation, not a published
 build receipt.

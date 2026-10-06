@@ -173,8 +173,7 @@ borrando el almacén y reañadiendo todo sin entender antes por qué falló la c
 
 ## Nota de autoridad
 
-Este repositorio **no tiene CI remota desde 2026-09-30** — el commit `754ddda0` eliminó
-`lpr0-ci.yml`, `release.yml`, `v2-baseline.yml` y `sdkman-publish.yml`. No esperes un badge de CI en
+Este repositorio **no tiene CI remota desde 2026-09-30** — el commit `754ddda0` eliminó los workflows de CI No esperes un badge de CI en
 verde respaldando estas páginas. Todo lo de aquí es una lectura estática del código en `b08fa948`.
 
 ---

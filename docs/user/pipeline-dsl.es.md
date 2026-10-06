@@ -316,8 +316,7 @@ Leer esta tabla te da algo útil: `catchError`, `timeout` y `retry` son
 ## Nota de autoridad
 
 Este repositorio **no tiene CI remota desde 2026-09-30** (`.github/workflows/`
-no existe; el commit `754ddda0` eliminó `lpr0-ci.yml`, `release.yml`,
-`v2-baseline.yml` y `sdkman-publish.yml`). Por eso esta página nunca promete
+no existe; el commit `754ddda0` eliminó los workflows de CI). Por eso esta página nunca promete
 «CI verde» ni dice «listo para producción»: el PRODUCT-GATE está
 `BLOCKED_EXTERNAL`. Lo que sí te da son citas al código y la evidencia de
 comportamiento que `examples/run.sh` comprueba.

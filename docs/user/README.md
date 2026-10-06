@@ -109,8 +109,7 @@ and carry this note. The old header was removed rather than silently repurposed.
 
 ### D2 — No remote CI, so no "green build" claim · recorded 2026-10-06
 
-`.github/workflows/` does not exist: commit `754ddda0` (2026-09-30) removed `lpr0-ci.yml`,
-`release.yml`, `v2-baseline.yml` and `sdkman-publish.yml`. The PRODUCT-GATE is `BLOCKED_EXTERNAL`.
+`.github/workflows/` does not exist: commit `754ddda0` (2026-09-30) removed the CI workflows. The PRODUCT-GATE is `BLOCKED_EXTERNAL`.
 
 No page in this directory may claim a passing build or production readiness. Verification is local,
 manual and bound to one commit.
@@ -127,14 +126,17 @@ separates proven behaviour from declared behaviour.
 
 | Claim | Status |
 |---|---|
-| Version | `0.47.0`, the **development branch** (`v2/build.gradle.kts:75`) |
-| Verified against a published binary | **No.** Only the installation facts (digests, `0.39.0`) are |
+| Version documented | `0.47.0`, the **development branch** (`v2/build.gradle.kts:75`) |
+| Latest published release | `0.47.0`, confirmed 2026-10-06 (`releases/latest` → `releases/tag/v0.47.0`) |
+| Verified against a published binary | **No.** The `0.47.0` ZIP digest comes from the release `SHA256SUMS`, but that ZIP was never run |
+| Latest release with an executed receipt | `0.39.0` (commit `951b3cb5…`) — both its ZIP and binary digests are recorded here |
 | How this was checked | Reading the source. Every behavioural claim cites `path:line` |
 | What was not done | Gradle was never run, and the binary was never executed while writing these pages |
 | Last updated | 2026-10-06, commit `b08fa948` |
 
-If you need a claim bound to a released artifact, use the [installation page](installation.md): the
-`0.39.0` ZIP digests are the only executable-and-verified facts in this directory.
+If you need a claim bound to a released artifact, use the [installation page](installation.md). Read
+its two-box distinction carefully: the `0.47.0` digest has good *provenance* but no *execution*, and
+the `0.39.0` digests have both.
 
 ---
 

@@ -1,16 +1,24 @@
 # PipelineK — Installation
 
 **Documented against**: development branch, `pipelinek 0.47.0` (v2/build.gradle.kts:75), commit `b08fa948`
-**Not verified against a published binary.** The current published release is `0.47.0` (its ZIP digest is listed in the release `SHA256SUMS`); see the divergence note below.
+**Latest published release**: `0.47.0`. Confirmed 2026-10-06: `releases/latest` redirects to
+`releases/tag/v0.47.0`, and the release ships `pipelinek-0.47.0.zip` plus a `SHA256SUMS` file.
+**The commands below were read from the source, not from running a downloaded binary.**
 
 > **Documentation divergence.** This page previously carried the header *"Release verified against:
 > pipelinek 0.39.0"*. That header is withdrawn: the commands below were read from the development
-> branch, not from a published binary. The published release is still 0.39.0, with the digests
-> listed below. Recorded 2026-10-06. See `docs/user/README.md` → "Known divergences".
+> branch, not from a published binary. Two different things used to be called "the published
+> release", and the page mixed them. They are now separated:
+>
+> - **`0.47.0`** is the **latest published release**. Its ZIP digest comes from the release's own
+>   `SHA256SUMS` — trustworthy provenance, but nobody in this repository ran that ZIP.
+> - **`0.39.0`** is the **latest release with an executed receipt** (commit `951b3cb5…`). Its ZIP
+>   *and* binary digests are recorded in this repository.
+>
+> Recorded 2026-10-06. See `docs/user/README.md` → "Known divergences".
 
 > **Authority.** This repository has **no remote CI since 2026-09-30**: `.github/workflows/` does not
-> exist. Commit `754ddda0` removed `lpr0-ci.yml`, `release.yml`, `v2-baseline.yml` and
-> `sdkman-publish.yml`. Nothing on this page is backed by a green pipeline, and nothing here claims
+> exist. Commit `754ddda0` removed the CI workflows. Nothing on this page is backed by a green pipeline, and nothing here claims
 > the product is production ready. What you do get is a digest you can check yourself.
 
 ## By the end of this page you can
@@ -52,25 +60,46 @@ Check these before you download anything.
 
 | Item | Value |
 |---|---|
+| Release to install | `0.47.0` |
+| ZIP SHA-256 | `2fa2d272e3b0ad385ef780e165028efaa83f92804a123f1836e17e0690d3301c` |
+| Where that digest comes from | The release's own `SHA256SUMS` file |
+| Binary SHA-256 | **NO VERIFICADO** — no receipt in this repository records the digest of the binary inside the `0.47.0` ZIP |
+| ZIP URL | `https://github.com/Rubentxu/pipeline-kotlin/releases/download/v0.47.0/pipelinek-0.47.0.zip` |
+
+> **Where the digest is *not*.** The release also shows `v0.47.0.zip` and `v0.47.0.tar.gz` in its
+> asset list. Those are GitHub's **source archives**, generated from the tag. `SHA256SUMS` does not
+> cover them, and they are not the distribution. Downloading `v0.47.0.zip` instead of
+> `pipelinek-0.47.0.zip` gets you a tarball of the repository, and the digest above will not match.
+
+<details>
+<summary>Previous release with a fully executed receipt: <code>0.39.0</code></summary>
+
+| Item | Value |
+|---|---|
 | Release | `0.39.0` |
 | ZIP SHA-256 | `385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8` |
 | Binary SHA-256 | `92d0f67d16f7ee12888724cfe9da56f19cc2facd51ebee319770a43f40eedeee` |
 | Certified commit | `951b3cb5695ecc46c877776e330266e4bd44aa9e` |
 | ZIP URL | `https://github.com/Rubentxu/pipeline-kotlin/releases/download/v0.39.0/pipelinek-0.39.0.zip` |
 
+These are the digests of a release that was actually downloaded, checked and run. If you want the
+strongest evidence available rather than the newest code, install this one.
+
+</details>
+
 ### 2. Download and verify
 
 ```bash
-VERSION=0.39.0
+VERSION=0.47.0
 URL="https://github.com/Rubentxu/pipeline-kotlin/releases/download/v${VERSION}/pipelinek-${VERSION}.zip"
 curl -fsSL -o "pipelinek-${VERSION}.zip" "${URL}"
 
 # Verify the ZIP digest BEFORE unpacking anything.
-echo "385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8  pipelinek-0.39.0.zip" | sha256sum -c -
-# macOS equivalent:  shasum -a 256 pipelinek-0.39.0.zip
+echo "2fa2d272e3b0ad385ef780e165028efaa83f92804a123f1836e17e0690d3301c  pipelinek-0.47.0.zip" | sha256sum -c -
+# macOS equivalent:  shasum -a 256 pipelinek-0.47.0.zip
 ```
 
-Continue only if it printed `pipelinek-0.39.0.zip: OK`. A mismatch means stop.
+Continue only if it printed `pipelinek-0.47.0.zip: OK`. A mismatch means stop.
 
 ### 3. Unpack and put it on `PATH`
 
@@ -90,7 +119,7 @@ export PATH="${ROOT}/versions/pipelinek-${VERSION}/bin:${PATH}"
 Add the same line to `~/.bashrc` or `~/.zshrc`:
 
 ```bash
-export PATH="$HOME/.local/share/pipelinek/versions/pipelinek-0.39.0/bin:$PATH"
+export PATH="$HOME/.local/share/pipelinek/versions/pipelinek-0.47.0/bin:$PATH"
 ```
 
 ### 5. Verify
@@ -102,7 +131,7 @@ pipelinek doctor
 
 | Command | Expected | Source |
 |---|---|---|
-| `pipelinek version` | `pipeline 0.39.0` — note the output starts with `pipeline `, **not** `pipelinek` | `Main.kt:83` |
+| `pipelinek version` | `pipeline 0.47.0` — note the output starts with `pipeline `, **not** `pipelinek` | `Main.kt:83` |
 | `pipelinek doctor` | Three lines: `jdk:`, `os:`, `workdir:` | `Main.kt:91-108` |
 
 `doctor` exits `0` when healthy and `2` if the working directory is not writable (`Main.kt:110`).
@@ -132,8 +161,8 @@ Dispatch table: `scripts/install-pipelinek.sh:532-536`.
 
 ```bash
 # Run from a checkout of the repository
-scripts/install-pipelinek.sh install 0.39.0
-scripts/install-pipelinek.sh use 0.39.0
+scripts/install-pipelinek.sh install 0.47.0
+scripts/install-pipelinek.sh use 0.47.0
 export PATH="$HOME/.local/share/pipelinek/current/bin:${PATH}"
 pipelinek version
 ```
@@ -168,7 +197,7 @@ support at all:
 
 | Method | Status | Detail |
 |---|---|---|
-| `mise` (`mise use -g pipelinek@0.39.0`) | **Specified, not built** | Planned as **DIST-4** in [`DISTRIBUTION_ROADMAP.md`](../v2/05-roadmap/DISTRIBUTION_ROADMAP.md): register `pipelinek` on the Aqua or GitHub-release backend. The plugin registry is external to this repository, so the commands do not work yet |
+| `mise` (`mise use -g pipelinek@0.47.0`) | **Specified, not built** | Planned as **DIST-4** in [`DISTRIBUTION_ROADMAP.md`](../v2/05-roadmap/DISTRIBUTION_ROADMAP.md): register `pipelinek` on the Aqua or GitHub-release backend. The plugin registry is external to this repository, so the commands do not work yet |
 | `asdf` (the `asdf-pipeline` plugin) | **Specified, not built** | Planned as **DIST-7**, an external plugin exposing `bin/install`, `bin/download`, `bin/list-bin`. Also lives in the external harness. `asdf` already reads this repo's `.tool-versions` for `java`, `gradle` and `maven`, but `pipelinek` is not in it, and adding it today would break every `asdf` user with an unresolved plugin |
 | `curl \| sh` one-liner | **Does not exist** | `scripts/install-pipelinek.sh:46` sets `set -Eeuo pipefail` and the script requires **bash 4+** (associative arrays, `[[ ]]`). Line 56 reads `BASH_SOURCE[0]`, which is an empty array when the script arrives on stdin, so `set -u` aborts. `curl … \| sh` always fails; `curl … \| bash` works only on bash ≥ 4.4 |
 
@@ -185,7 +214,6 @@ for: [`README.md` → Installation methods](../../README.md#installation-methods
 |---|---|---|
 | GitHub Releases ZIP | **Available** | Option A above |
 | `scripts/install-pipelinek.sh` | **Available** | Option B above |
-| SDKMAN (`sdk install pipelinek`) | **Not available** | `SDKMAN_CANDIDATE` is `WAITING_EXTERNAL`; `SDKMAN_VERSION` and `SDKMAN_DEFAULT` are `BLOCKED`. Do not use `sdk install`, and do not rely on a `.sdkmanrc`. See [`docs/v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md`](../v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md) |
 | Homebrew (`brew install`) | **Not available** | There is no Homebrew tap for PipelineK. `brew install pipelinek` does not work |
 
 ## Traps and edges
@@ -198,7 +226,7 @@ Read these after a successful install.
 | `pipelinek` not found after install | `${ROOT}/.../bin` is not on `PATH` | Add it to `~/.bashrc`, then open a new shell |
 | An older `pipelinek` shadows yours | `version` prints the wrong number | `scripts/install-pipelinek.sh doctor` warns about exactly this (`scripts/install-pipelinek.sh:474-478`) |
 | `pipelinek version` exits `3` | The artifact has no `Implementation-Version` in its manifest. The CLI refuses to invent one | Rebuild, or re-download: this is a broken artifact, not a broken machine (`Main.kt:80`) |
-| Mixing Option A and Option B | The installer names directories `versions/0.39.0`; the manual path unpacks to `versions/pipelinek-0.39.0` | Pick one method per machine |
+| Mixing Option A and Option B | The installer names directories `versions/0.47.0`; the manual path unpacks to `versions/pipelinek-0.47.0` | Pick one method per machine |
 | You passed a pre-release to the installer | `0.47.0-rc1` is rejected: the version must be `MAJOR.MINOR.PATCH` | Use only published releases (`scripts/install-pipelinek.sh:55`) |
 
 ## Next

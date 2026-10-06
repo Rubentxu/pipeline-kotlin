@@ -109,8 +109,7 @@ canónica y llevan esta nota. La cabecera antigua se eliminó en lugar de reutil
 
 ### D2 — Sin CI remota, sin afirmaciones de "build en verde" · registrado 2026-10-06
 
-`.github/workflows/` no existe: el commit `754ddda0` (2026-09-30) eliminó `lpr0-ci.yml`,
-`release.yml`, `v2-baseline.yml` y `sdkman-publish.yml`. El PRODUCT-GATE está `BLOCKED_EXTERNAL`.
+`.github/workflows/` no existe: el commit `754ddda0` (2026-09-30) eliminó los workflows de CI El PRODUCT-GATE está `BLOCKED_EXTERNAL`.
 
 Ninguna página de este directorio puede afirmar un build en verde ni preparación para producción. La
 verificación es local, manual y atada a un commit.
@@ -127,14 +126,17 @@ comportamiento probado del declarado.
 
 | Afirmación | Estado |
 |---|---|
-| Versión | `0.47.0`, la **rama de desarrollo** (`v2/build.gradle.kts:75`) |
-| Verificado contra un binario publicado | **No.** Sólo los hechos de instalación (digests, `0.39.0`) lo están |
+| Versión documentada | `0.47.0`, la **rama de desarrollo** (`v2/build.gradle.kts:75`) |
+| Última release publicada | `0.47.0`, confirmado el 2026-10-06 (`releases/latest` → `releases/tag/v0.47.0`) |
+| Verificado contra un binario publicado | **No.** El digest del ZIP `0.47.0` viene del `SHA256SUMS` de la release, pero ese ZIP nunca se ejecutó |
+| Última release con un recibo ejecutado | `0.39.0` (commit `951b3cb5…`) — sus digests de ZIP *y* de binario están registrados aquí |
 | Cómo se comprobó | Leyendo el código. Cada afirmación de comportamiento cita `ruta:línea` |
 | Qué no se hizo | Nunca se ejecutó Gradle ni el binario al escribir estas páginas |
 | Última actualización | 2026-10-06, commit `b08fa948` |
 
-Si necesitas una afirmación atada a un artefacto publicado, usa la [página de instalación](installation.es.md):
-los digests del ZIP `0.39.0` son los únicos hechos de este directorio que están ejecutados y verificados.
+Si necesitas una afirmación atada a un artefacto publicado, usa la [página de instalación](installation.es.md).
+Lee con atención su distinción en dos cajas: el digest de `0.47.0` tiene buena *procedencia* pero
+ninguna *ejecución*, y los digests de `0.39.0` tienen ambas.
 
 ---
 

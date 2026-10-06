@@ -1,16 +1,16 @@
 # PipelineK — Upgrading and rollback
 
 **Documented against**: development branch, `pipelinek 0.47.0` (v2/build.gradle.kts:75), commit `b08fa948`
-**Not verified against a published binary.** The current published release is `0.47.0` (its ZIP digest is listed in the release `SHA256SUMS`); see the divergence note below.
+**Latest published release**: `0.47.0`, confirmed 2026-10-06 (`releases/latest` → `releases/tag/v0.47.0`).
 
 > **Documentation divergence.** This page previously carried the header *"Release verified against:
 > pipelinek 0.39.0"*. That header is withdrawn: the upgrade path described here was read from the
-> development branch, not from a published binary. The published release is still 0.39.0.
+> development branch, not from a published binary. `0.47.0` is the newest release, but the newest
+> release *with an executed receipt* is still `0.39.0`.
 > Recorded 2026-10-06. See `docs/user/README.md` → "Known divergences".
 
 > **Authority.** This repository has **no remote CI since 2026-09-30**: `.github/workflows/` does not
-> exist. Commit `754ddda0` removed `lpr0-ci.yml`, `release.yml`, `v2-baseline.yml` and
-> `sdkman-publish.yml`. **No claim on this page rests on a green pipeline, and nothing here says the
+> exist. Commit `754ddda0` removed the CI workflows. **No claim on this page rests on a green pipeline, and nothing here says the
 > product is production ready.** Upgrade verification is local and manual — that is the whole point of
 > this page.
 
@@ -45,7 +45,6 @@
 |---|---|---|
 | `scripts/install-pipelinek.sh` | **Available** | Yes. This is the recommended path |
 | GitHub Releases ZIP | **Available** | Yes, but you manage the layout yourself |
-| SDKMAN (`sdk install`, `sdk default`, `.sdkmanrc`) | **Not available** | No. `SDKMAN_CANDIDATE` is `WAITING_EXTERNAL`, `SDKMAN_VERSION` and `SDKMAN_DEFAULT` are `BLOCKED`. See [`docs/v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md`](../v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md) |
 | Homebrew (`brew install`) | **Not available** | No tap exists for PipelineK |
 
 ## Upgrade with the multi-version installer
@@ -112,8 +111,8 @@ VERSION=<new-version>
 URL="https://github.com/Rubentxu/pipeline-kotlin/releases/download/v${VERSION}/pipelinek-${VERSION}.zip"
 curl -fsSL -o "pipelinek-${VERSION}.zip" "${URL}"
 
-# Verify the digest from the release notes BEFORE unpacking.
-# NO VERIFICADO: digests for versions other than 0.39.0 are not recorded in this repository.
+# Verify the digest from the release's SHA256SUMS BEFORE unpacking.
+# For 0.47.0 it is 2fa2d272e3b0ad385ef780e165028efaa83f92804a123f1836e17e0690d3301c
 shasum -a 256 "pipelinek-${VERSION}.zip"    # macOS
 sha256sum "pipelinek-${VERSION}.zip"        # Linux
 
@@ -125,9 +124,10 @@ pipelinek version
 
 Roll back by exporting the `PATH` line of the previous version directory.
 
-| Release | ZIP SHA-256 | Binary SHA-256 | Certified commit |
-|---|---|---|---|
-| `0.39.0` | `385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8` | `92d0f67d16f7ee12888724cfe9da56f19cc2facd51ebee319770a43f40eedeee` | `951b3cb5695ecc46c877776e330266e4bd44aa9e` |
+| Release | ZIP SHA-256 | Binary SHA-256 | Certified commit | Digest provenance |
+|---|---|---|---|---|
+| `0.47.0` | `2fa2d272e3b0ad385ef780e165028efaa83f92804a123f1836e17e0690d3301c` | **NO VERIFICADO** | **NO VERIFICADO** | Release `SHA256SUMS` |
+| `0.39.0` | `385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8` | `92d0f67d16f7ee12888724cfe9da56f19cc2facd51ebee319770a43f40eedeee` | `951b3cb5695ecc46c877776e330266e4bd44aa9e` | Executed receipt |
 
 ## Why an old receipt does not certify your new version
 
@@ -136,7 +136,7 @@ conditions. It is not a property that travels forward.
 
 | Commit | What exists | What a receipt for it says |
 |---|---|---|
-| `951b3cb5695ecc46c877776e330266e4bd44aa9e` | The published `0.39.0` release | Evidence about the `0.39.0` bytes only |
+| `951b3cb5695ecc46c877776e330266e4bd44aa9e` | The `0.39.0` release — published, and the newest one with an executed receipt | Evidence about the `0.39.0` bytes only |
 | `b08fa948` | The development branch documented here | A different, later state — no inherited evidence |
 
 **What this means when you upgrade:**

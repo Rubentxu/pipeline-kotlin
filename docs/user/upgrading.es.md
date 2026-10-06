@@ -1,16 +1,16 @@
 # PipelineK — Actualización y rollback
 
 **Documented against**: development branch, `pipelinek 0.47.0` (v2/build.gradle.kts:75), commit `b08fa948`
-**No verificado contra un binario publicado.** La release publicada actual es la `0.47.0` (el digest de su ZIP está en el `SHA256SUMS` de la release); ver la nota de divergencia abajo.
+**Última release publicada**: `0.47.0`, confirmado el 2026-10-06 (`releases/latest` → `releases/tag/v0.47.0`).
 
 > **Divergencia de documentación.** Esta página antes llevaba la cabecera *"Release verified against:
 > pipelinek 0.39.0"*. Esa cabecera queda retirada: la ruta de actualización descrita aquí se leyó de
-> la rama de desarrollo, no de un binario publicado. La release publicada sigue siendo 0.39.0.
-> Registrado el 2026-10-06. Ver `docs/user/README.md` → "Known divergences".
+> la rama de desarrollo, no de un binario publicado. `0.47.0` es la release más reciente, pero la más
+> reciente *con un recibo ejecutado* sigue siendo `0.39.0`.
+> Registrado el 2026-10-06. Ver `docs/user/README.es.md` → "Divergencias conocidas".
 
 > **Autoridad.** Este repositorio **no tiene CI remota desde 2026-09-30**: `.github/workflows/` no
-> existe. El commit `754ddda0` eliminó `lpr0-ci.yml`, `release.yml`, `v2-baseline.yml` y
-> `sdkman-publish.yml`. **Ninguna afirmación de esta página se apoya en un pipeline en verde, y nada
+> existe. El commit `754ddda0` eliminó los workflows de CI **Ninguna afirmación de esta página se apoya en un pipeline en verde, y nada
 > aquí dice que el producto esté listo para producción.** La verificación de una actualización es
 > local y manual — ese es justamente el objeto de esta página.
 
@@ -45,7 +45,6 @@
 |---|---|---|
 | `scripts/install-pipelinek.sh` | **Disponible** | Sí. Es la ruta recomendada |
 | ZIP de GitHub Releases | **Disponible** | Sí, pero gestionas tú el layout |
-| SDKMAN (`sdk install`, `sdk default`, `.sdkmanrc`) | **No disponible** | No. `SDKMAN_CANDIDATE` está en `WAITING_EXTERNAL`, `SDKMAN_VERSION` y `SDKMAN_DEFAULT` están `BLOCKED`. Ver [`docs/v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md`](../v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md) |
 | Homebrew (`brew install`) | **No disponible** | No existe ningún tap para PipelineK |
 
 ## Actualizar con el instalador multiversión
@@ -113,8 +112,8 @@ VERSION=<new-version>
 URL="https://github.com/Rubentxu/pipeline-kotlin/releases/download/v${VERSION}/pipelinek-${VERSION}.zip"
 curl -fsSL -o "pipelinek-${VERSION}.zip" "${URL}"
 
-# Verifica el digest de las notas de la release ANTES de descomprimir.
-# NO VERIFICADO: los digests de versiones distintas de 0.39.0 no están registrados en este repositorio.
+# Verifica el digest del SHA256SUMS de la release ANTES de descomprimir.
+# Para 0.47.0 es 2fa2d272e3b0ad385ef780e165028efaa83f92804a123f1836e17e0690d3301c
 shasum -a 256 "pipelinek-${VERSION}.zip"    # macOS
 sha256sum "pipelinek-${VERSION}.zip"        # Linux
 
@@ -126,9 +125,10 @@ pipelinek version
 
 Para revertir, exporta la línea de `PATH` del directorio de la versión anterior.
 
-| Release | SHA-256 del ZIP | SHA-256 del binario | Commit certificado |
-|---|---|---|---|
-| `0.39.0` | `385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8` | `92d0f67d16f7ee12888724cfe9da56f19cc2facd51ebee319770a43f40eedeee` | `951b3cb5695ecc46c877776e330266e4bd44aa9e` |
+| Release | SHA-256 del ZIP | SHA-256 del binario | Commit certificado | Procedencia del digest |
+|---|---|---|---|---|
+| `0.47.0` | `2fa2d272e3b0ad385ef780e165028efaa83f92804a123f1836e17e0690d3301c` | **NO VERIFICADO** | **NO VERIFICADO** | `SHA256SUMS` de la release |
+| `0.39.0` | `385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8` | `92d0f67d16f7ee12888724cfe9da56f19cc2facd51ebee319770a43f40eedeee` | `951b3cb5695ecc46c877776e330266e4bd44aa9e` | Recibo ejecutado |
 
 ## Por qué un recibo antiguo no certifica tu versión nueva
 
@@ -137,7 +137,7 @@ condiciones. No es una propiedad que viaje hacia adelante.
 
 | Commit | Qué existe | Qué dice un recibo suyo |
 |---|---|---|
-| `951b3cb5695ecc46c877776e330266e4bd44aa9e` | La release publicada `0.39.0` | Evidencia sólo sobre los bytes de `0.39.0` |
+| `951b3cb5695ecc46c877776e330266e4bd44aa9e` | La release `0.39.0` — publicada, y la más reciente con un recibo ejecutado | Evidencia sólo sobre los bytes de `0.39.0` |
 | `b08fa948` | La rama de desarrollo documentada aquí | Un estado distinto y posterior — sin evidencia heredada |
 
 **Qué significa esto cuando actualizas:**

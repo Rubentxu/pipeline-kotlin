@@ -240,8 +240,7 @@ La lista completa está en la página de eventos y diagnóstico.
 
 ## Nota de autoridad
 
-Este repositorio **no tiene CI remota desde 2026-09-30** — el commit `754ddda0` eliminó
-`lpr0-ci.yml`, `release.yml`, `v2-baseline.yml` y `sdkman-publish.yml`. No esperes un badge de CI en
+Este repositorio **no tiene CI remota desde 2026-09-30** — el commit `754ddda0` eliminó los workflows de CI No esperes un badge de CI en
 verde respaldando estas páginas, ni trates el product gate como superado. Todo lo de aquí es una
 lectura estática del código en `b08fa948`.
 

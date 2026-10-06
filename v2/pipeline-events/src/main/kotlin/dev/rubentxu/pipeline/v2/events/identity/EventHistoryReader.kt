@@ -46,7 +46,7 @@ class EventHistoryReader(
     override fun readAfter(run: ResourceRef, cursor: EventCursor?, limit: Int): EventPage {
         // The store cuts the page; this reader only projects it. Cursor, `sequence > after`,
         // ordering, limit, the continuation and `hasMore` are the sequence authority's answer and
-        // are decided once, in [EventStore.readSlice].
+        // are decided once, in [EventStore.readRecords].
         //
         // This method used to re-decide all six on a full `eventsFor` scan — and a second
         // implementation of the store's own rules, living in a component that cannot itself be
@@ -55,20 +55,28 @@ class EventHistoryReader(
         // envelopes for the whole run. Neither is a memory or a correctness matter today; both are
         // the same defect, which is a second place deciding what the store already decided.
         //
-        // P3-E E4c: `readSlice` refuses rather than shortening when a durable row will not decode
-        // (its default is `readRecords(...).requireFullyDecoded()`), so an unreadable row stops a
-        // paged envelope read here instead of being projected away into a page with a silent hole.
-        // That is the right default for this port: `EventPage` carries envelopes, which are
-        // IDENTITY, and projecting an unreadable row into an envelope would be inventing a record
-        // that the store could not interpret — the `UnknownDomainEvent`-as-valid shape the read-side
-        // law forbids. A consumer that must page past refusals reads `EventStore.readRecords`
-        // directly and chooses its own policy.
+        // P3-E E4c made this call `readSlice`, which is `readRecords(...).requireFullyDecoded()`:
+        // an unreadable row stopped the read by refusing the whole page. That was the right default
+        // for a port whose result could only carry envelopes, and projecting an unreadable row into
+        // an envelope would have been inventing a record the store could not interpret.
+        //
+        // S5.4 removes the reason that default was necessary, without reintroducing the defect it
+        // guarded. [EventPage] now carries the refusals themselves, so this reads the SAME authority
+        // the old call wrapped and splits the result instead of collapsing it: the decoded rows are
+        // projected to envelopes, the unreadable ones travel on [EventPage.refusals], and the cursor
+        // and `hasMore` are copied because they were decided per ROW — a refusal is a row, and
+        // dropping it from the count would restart the page at the same place forever.
+        //
+        // Nothing here re-decides anything. `EventStore.readSlice` remains the strict all-or-nothing
+        // variant for a consumer that wants typed events or an exception; this is the variant that
+        // can tell a consumer that a row exists and cannot be read.
         val runId = run.segments.last()
-        val slice = sink.readSlice(runId, cursor, limit)
+        val slice = sink.readRecords(runId, cursor, limit)
         return EventPage(
-            envelopes = slice.events.map { EnvelopeProjector.project(it, providerLookup) },
+            envelopes = slice.decoded.map { EnvelopeProjector.project(it, providerLookup) },
             nextCursor = slice.nextCursor,
             hasMore = slice.hasMore,
+            refusals = slice.refusals,
         )
     }
 

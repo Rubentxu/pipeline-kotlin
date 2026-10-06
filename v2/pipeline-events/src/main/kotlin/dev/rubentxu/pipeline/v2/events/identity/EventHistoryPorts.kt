@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.events.identity
 
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
+import dev.rubentxu.pipeline.v2.events.EventRecordRead
 
 /**
  * EVT-2 local event-history ports. Transport-agnostic and storage-agnostic:
@@ -92,6 +93,27 @@ data class EventPage(
      */
     val nextCursor: EventCursor?,
     val hasMore: Boolean,
+    /**
+     * S5.4 — the durable rows in this page that exist and could NOT be read.
+     *
+     * These are not envelopes and must never become envelopes. A row whose `kind` this runtime
+     * does not know, or whose payload is unparseable text, is still a row: it occupies its place in
+     * the sequence, it is counted by [hasMore], and [nextCursor] moves past it. Before this field
+     * it could only be represented by throwing the page away, and a consumer paging history could
+     * not tell "there was nothing more" from "there was one more thing I could not read".
+     *
+     * The type is the store's own, deliberately. `EventRecordSlice.refusals` already produces
+     * `EventRecordRead.Undecodable` with the identity read from the row's COLUMNS and the reason
+     * already classified as [dev.rubentxu.pipeline.v2.events.UndecodableReason.MalformedPayload] or
+     * `UnknownKind`. Declaring a page-side type of the same shape would be a second authority of
+     * refusal: the store would name one thing and the page another, and nothing could prove they
+     * correspond.
+     *
+     * A refusal names its `sequence`, so the consumer can say WHICH row exists without being able
+     * to interpret it. That is the honest answer: the row is accounted for and its contents are
+     * unknown.
+     */
+    val refusals: List<EventRecordRead.Undecodable> = emptyList(),
 )
 
 /**

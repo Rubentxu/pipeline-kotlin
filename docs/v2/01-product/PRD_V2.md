@@ -87,7 +87,7 @@ Quiere entender por qué un run está bloqueado, qué worker lo ejecuta, qué pa
 ### FR-PLUGIN
 - FR-PLG-001: descriptor tipado y versionado.
 - FR-PLG-002: Step API no depende de Jenkins.
-- FR-PLG-003: codegen genera DSL façade, schema, docs y LSP metadata.
+- FR-PLG-003: codegen genera DSL façade, schema y docs. La cláusula de LSP metadata se retiró en S6 (A2): el productor emitía un JSON que ningún consumidor leía, y `LspMetadataLoader` no tenía consumidores. Vuelve cuando exista una integración LSP con consumidor real.
 - FR-PLG-004: plugin declara effects, capabilities y replay policy.
 
 ### FR-GRAPH

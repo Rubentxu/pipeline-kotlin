@@ -107,7 +107,7 @@ class RecoveredValueSpineFitnessTest {
      * ```text
      * BodyExecutionEngine   PluginStepId("wait-until-poll") / PluginStepId("retry-attempt")
      *                       durable IDENTITY segments, not dispatch keys
-     * LspMetadata / YamlEventContractCodec   when (key) over unrelated enums
+     * YamlEventContractCodec                  when (key) over unrelated enums
      * ```
      *
      * A law that fails on correct code is a law that gets "fixed" by deleting the law, so the

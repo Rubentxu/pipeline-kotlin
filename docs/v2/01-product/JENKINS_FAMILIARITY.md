@@ -66,7 +66,7 @@ suspend fun sh(...): ShellResult
 | Kubernetes `inheritFrom` | igual concepto | F2 | M3 BACKLOG |
 | Kubernetes `yaml/yamlFile` | igual concepto | F2 | M3 BACKLOG |
 
-> **Nota:** Las filas marcadas como `IMPLEMENTED in M2-R3` tienen `@JenkinsSurface` annotation en `StepExecutors.kt` y metadata JSON en `META-INF/pipeline/step-metadata/`. Las filas marcadas como `M3 BACKLOG` son candidates para M3+ cuando la infraestructura de durable replay, manifest de plugins, y credential resolver estén disponibles. `checkout` y `archiveArtifacts` están ancladas al milestone ML (L5/L6) según `05-roadmap/ROADMAP.md`.
+> **Nota:** Las filas marcadas como `IMPLEMENTED in M2-R3` tienen `@JenkinsSurface` annotation en `StepExecutors.kt`, y el processor KSP lo transporta al `jenkinsSurface` del descriptor generado. Ya **no** se emite metadata JSON en `META-INF/pipeline/step-metadata/`: ese productor se eliminó en S6 (A2) porque su único lector, `LspMetadataLoader`, no tenía consumidores y el fichero se emitía con doble extensión (`core.echo.json.json`), de modo que ni el lector habría podido encontrarlo. Las filas marcadas como `M3 BACKLOG` son candidates para M3+ cuando la infraestructura de durable replay, manifest de plugins, y credential resolver estén disponibles. `checkout` y `archiveArtifacts` están ancladas al milestone ML (L5/L6) según `05-roadmap/ROADMAP.md`.
 
 ## Desviaciones documentadas
 

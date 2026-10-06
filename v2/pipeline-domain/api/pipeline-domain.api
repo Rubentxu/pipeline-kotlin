@@ -4694,6 +4694,77 @@ public final class dev/rubentxu/pipeline/v2/domain/durable/TypedStepOutputKt {
 	public static final fun outcomeOf (Ljava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/StepOutcome;
 }
 
+public abstract interface class dev/rubentxu/pipeline/v2/domain/durable/WaitUntilAbortCause {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/durable/WaitUntilAbortCause$BodyCancelled : dev/rubentxu/pipeline/v2/domain/durable/WaitUntilAbortCause {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/CancellationReason;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/CancellationReason;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/CancellationReason;)Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilAbortCause$BodyCancelled;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilAbortCause$BodyCancelled;Ldev/rubentxu/pipeline/v2/domain/step/CancellationReason;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilAbortCause$BodyCancelled;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/domain/step/CancellationReason;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/durable/WaitUntilAbortCause$DurableRowAlreadyAborted : dev/rubentxu/pipeline/v2/domain/durable/WaitUntilAbortCause {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilAbortCause$DurableRowAlreadyAborted;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/durable/WaitUntilCompletion {
+	public abstract fun getDurableStatus ()Ldev/rubentxu/pipeline/v2/domain/durable/OperationStatus;
+	public abstract fun getWireOutcome ()Ljava/lang/String;
+	public abstract fun toStepOutcome ()Ldev/rubentxu/pipeline/v2/domain/StepOutcome;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/durable/WaitUntilCompletion$Aborted : dev/rubentxu/pipeline/v2/domain/durable/WaitUntilCompletion {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilAbortCause;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilAbortCause;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilAbortCause;)Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilCompletion$Aborted;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilCompletion$Aborted;Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilAbortCause;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilCompletion$Aborted;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCause ()Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilAbortCause;
+	public fun getDurableStatus ()Ldev/rubentxu/pipeline/v2/domain/durable/OperationStatus;
+	public fun getWireOutcome ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toStepOutcome ()Ldev/rubentxu/pipeline/v2/domain/StepOutcome;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/durable/WaitUntilCompletion$DeadlineExceeded : dev/rubentxu/pipeline/v2/domain/durable/WaitUntilCompletion {
+	public fun <init> (IJ)V
+	public final fun component1 ()I
+	public final fun component2 ()J
+	public final fun copy (IJ)Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilCompletion$DeadlineExceeded;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilCompletion$DeadlineExceeded;IJILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilCompletion$DeadlineExceeded;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAttempt ()I
+	public final fun getCeilingMs ()J
+	public fun getDurableStatus ()Ldev/rubentxu/pipeline/v2/domain/durable/OperationStatus;
+	public fun getWireOutcome ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toStepOutcome ()Ldev/rubentxu/pipeline/v2/domain/StepOutcome;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/durable/WaitUntilCompletion$Satisfied : dev/rubentxu/pipeline/v2/domain/durable/WaitUntilCompletion {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilCompletion$Satisfied;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getDurableStatus ()Ldev/rubentxu/pipeline/v2/domain/durable/OperationStatus;
+	public fun getWireOutcome ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toStepOutcome ()Ldev/rubentxu/pipeline/v2/domain/StepOutcome;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/durable/WaitUntilCompletionKt {
+	public static final fun getWaitUntilCompletionWireOutcomes ()Ljava/util/Set;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/durable/WaitUntilControlIdentity {
 	public static final field CURRENT_SCHEMA_VERSION I
 	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/durable/WaitUntilControlIdentity$Companion;

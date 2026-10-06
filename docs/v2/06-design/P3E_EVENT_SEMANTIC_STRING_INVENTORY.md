@@ -238,8 +238,42 @@ byte a byte porque S8 congelará contra él; y `RejectDivergence` **no entra** e
 emite `WaitUntilCompleted` (§3.2) — meterla haría que el evento afirmara un final que no ocurrió,
 que es el defecto de §5.3 en otra forma.
 
-Pendiente de ejecución en E4b.4: el ADT, sus tres proyecciones, y el test que prova que el
-proyectado no reintroduce un `String` como autoridad.
+**Ejecutado en E4b.4.** `WaitUntilCompletion` en `pipeline-domain/…/durable/` decide la terminal
+una vez; `durableStatus`, `wireOutcome` y `toStepOutcome()` son sus tres proyecciones. Los **cinco**
+sitios terminales de `WaitUntilEngine` (dos del lazo fresco, tres del reconciler) construyen el caso
+y proyectan; ninguno escribe un token a mano.
+
+**La ley que lo sostiene falló en su primera ejecución, y eso es lo que la hace valiosa.**
+`FArchE4b4WaitUntilTerminalAuthorityTest` escanea `src/main` y encontró
+`CoreWaitUntilStep.kt:69`:
+
+```kotlin
+override val outcome: StepOutcome
+    get() = if (resultOutcome == "completed") StepOutcome.Success else …
+```
+
+Es el defecto literal: un `StepOutcome` reconstruido comparando el token. **No se arregló en
+E4b.4, y esa es la decisión.** `WaitUntilOutput.resultOutcome` es superficie de scripting
+publicada — tres tests de contrato la construyen por argumento nombrado y su `StepCodec` la hace
+round-trip por un campo JSON `outcome` — así que sustituirla por un `WaitUntilCompletion` es un
+cambio de contrato de Step con su propio gate, y derivar el outcome de un token parseado de vuelta
+re-crearía exactamente el parse que este ADT existe para eliminar. Queda **allowlisted por fichero
+y línea**, con el motivo escrito en la lista, de modo que una *segunda* lectura en ese fichero
+tumba la ley. Es un hallazgo de §5.3, no de E4b.4.
+
+**Las tres emisiones fuera del motor están fijadas como línea base, no excusadas.**
+`CoreWaitUntilStep.kt` y `BodyExecutionEngine.kt` siguen construyendo `WaitUntilCompleted` con
+literal. El recuento se afirma explícitamente: la afirmación "el proyectado no reintrodujo un
+`String`" es cierta para el motor durable y **falsa** para el árbol, y un test que sólo afirmase la
+mitad cierta sería el defecto que comprueba.
+
+**Dos cambios de texto, deliberados y documentados.** El `reason` del abort del reconciler era la
+constante literal `"waitUntil aborted"`, así que el mensaje decía literalmente
+`waitUntil aborted: waitUntil aborted`. La causa pasa a ser un valor
+(`WaitUntilAbortCause.DurableRowAlreadyAborted` | `BodyCancelled(reason)`) y el mensaje duplicado
+desaparece. El camino fresco conserva su texto byte a byte: interpolaba el mismo enum
+`CancellationReason`, y ahora interpola `reason.name`. Ningún test afirmaba sobre ninguna de las dos
+cadenas.
 
 ---
 

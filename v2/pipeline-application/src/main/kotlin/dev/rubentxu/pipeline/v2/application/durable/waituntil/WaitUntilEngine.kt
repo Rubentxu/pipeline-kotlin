@@ -11,6 +11,8 @@ import dev.rubentxu.pipeline.v2.domain.StepId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
+import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilAbortCause
+import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilCompletion
 import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilControlIdentity
 import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilReconciliationDecision
 import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilReconciler
@@ -214,14 +216,19 @@ class WaitUntilEngine(
 
                     when (predicateOutcome) {
                         is WaitUntilPredicateOutcome.Satisfied -> {
+                            // P3-E E4b.4 — the terminal is decided ONCE, as a
+                            // `WaitUntilCompletion`, and the durable status, the
+                            // typed result and the wire token are all projections
+                            // of it. This site used to write all three by hand.
+                            val completion = WaitUntilCompletion.Satisfied
                             journal.updateStatus(
                                 controlOpId = controlOpId,
                                 attempt = attempt,
-                                status = OperationStatus.SUCCEEDED,
+                                status = completion.durableStatus,
                                 fingerprint = fingerprint,
                             )
-                            emitCompleted(overallStartMs, attempt, "completed")
-                            return StepOutcome.Success
+                            emitCompleted(overallStartMs, attempt, completion.wireOutcome)
+                            return completion.toStepOutcome()
                         }
                         is WaitUntilPredicateOutcome.Failed -> {
                             // Predicate failed: persist FAILED on this poll so
@@ -254,32 +261,39 @@ class WaitUntilEngine(
                             // ABORTED on this poll so the planner emits
                             // Aborted (or the durable journal shows a
                             // terminal state), not ResumeAttempt.
+                            //
+                            // P3-E E4b.4 — same terminal as the reconciler's
+                            // `Aborted`, and here it DOES persist, because the
+                            // fresh path owns a row that is still RUNNING. The
+                            // terminal does not decide that; the branch does.
+                            val completion = WaitUntilCompletion.Aborted(
+                                WaitUntilAbortCause.BodyCancelled(predicateOutcome.reason),
+                            )
                             journal.updateStatus(
                                 controlOpId = controlOpId,
                                 attempt = attempt,
-                                status = OperationStatus.ABORTED,
+                                status = completion.durableStatus,
                                 fingerprint = fingerprint,
                             )
-                            emitCompleted(overallStartMs, attempt, "aborted")
-                            return StepOutcome.Failure(
-                                PipelineFailure(
-                                    FailureKind.ENGINE,
-                                    "waitUntil cancelled: ${predicateOutcome.reason}",
-                                ),
-                            )
+                            emitCompleted(overallStartMs, attempt, completion.wireOutcome)
+                            return completion.toStepOutcome()
                         }
                     }
                 }
 
                 is WaitUntilReconciliationDecision.AdvanceAfterPredicateSatisfied -> {
+                    // P3-E E4b.4 — the same `Satisfied` terminal the fresh loop
+                    // reaches at line ~216. One case, two arrival paths, which is
+                    // the point: fresh and restart are not two vocabularies.
+                    val completion = WaitUntilCompletion.Satisfied
                     journal.updateStatus(
                         controlOpId = controlOpId,
                         attempt = decision.attempt,
-                        status = OperationStatus.SUCCEEDED,
+                        status = completion.durableStatus,
                         fingerprint = fingerprint,
                     )
-                    emitCompleted(overallStartMs, decision.attempt, "completed")
-                    return StepOutcome.Success
+                    emitCompleted(overallStartMs, decision.attempt, completion.wireOutcome)
+                    return completion.toStepOutcome()
                 }
 
                 is WaitUntilReconciliationDecision.AdvanceAfterPredicateUnsatisfied -> {
@@ -294,19 +308,18 @@ class WaitUntilEngine(
                 }
 
                 is WaitUntilReconciliationDecision.DeadlineExceeded -> {
+                    val completion = WaitUntilCompletion.DeadlineExceeded(
+                        attempt = decision.attempt,
+                        ceilingMs = maxBackoffMs,
+                    )
                     journal.updateStatus(
                         controlOpId = controlOpId,
                         attempt = decision.attempt,
-                        status = OperationStatus.FAILED_TIMEOUT,
+                        status = completion.durableStatus,
                         fingerprint = fingerprint,
                     )
-                    emitCompleted(overallStartMs, decision.attempt, "deadline-exceeded")
-                    return StepOutcome.Failure(
-                        PipelineFailure(
-                            FailureKind.TIMEOUT,
-                            "waitUntil deadline exceeded at poll ${decision.attempt} (${maxBackoffMs}ms backoff ceiling)",
-                        ),
-                    )
+                    emitCompleted(overallStartMs, decision.attempt, completion.wireOutcome)
+                    return completion.toStepOutcome()
                 }
 
                 is WaitUntilReconciliationDecision.Aborted -> {
@@ -318,13 +331,15 @@ class WaitUntilEngine(
                     // write below used to throw `IllegalStateException` on an attempt that
                     // existed nowhere — the branch never emitted its event and never
                     // returned its typed failure, and the abort escaped as an untyped crash.
-                    emitCompleted(overallStartMs, decision.attempt, "aborted")
-                    return StepOutcome.Failure(
-                        PipelineFailure(
-                            FailureKind.ENGINE,
-                            "waitUntil aborted: ${decision.reason}",
-                        ),
+                    //
+                    // P3-E E4b.4 — the terminal is still the same `Aborted` the fresh
+                    // cancellation produces. What differs is the persistence, and that
+                    // stays here: this branch has nothing to write.
+                    val completion = WaitUntilCompletion.Aborted(
+                        WaitUntilAbortCause.DurableRowAlreadyAborted,
                     )
+                    emitCompleted(overallStartMs, decision.attempt, completion.wireOutcome)
+                    return completion.toStepOutcome()
                 }
 
                 is WaitUntilReconciliationDecision.RejectDivergence -> {

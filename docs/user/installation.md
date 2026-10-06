@@ -1,95 +1,208 @@
 # PipelineK — Installation
 
-**Release verified against**: `pipelinek 0.39.0` (GitHub Release ZIP SHA-256
-`385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8`).
+**Documented against**: development branch, `pipelinek 0.47.0` (v2/build.gradle.kts:75), commit `b08fa948`
+**Not verified against a published binary.** The current published release is `0.47.0` (its ZIP digest is listed in the release `SHA256SUMS`); see the divergence note below.
+
+> **Documentation divergence.** This page previously carried the header *"Release verified against:
+> pipelinek 0.39.0"*. That header is withdrawn: the commands below were read from the development
+> branch, not from a published binary. The published release is still 0.39.0, with the digests
+> listed below. Recorded 2026-10-06. See `docs/user/README.md` → "Known divergences".
+
+> **Authority.** This repository has **no remote CI since 2026-09-30**: `.github/workflows/` does not
+> exist. Commit `754ddda0` removed `lpr0-ci.yml`, `release.yml`, `v2-baseline.yml` and
+> `sdkman-publish.yml`. Nothing on this page is backed by a green pipeline, and nothing here claims
+> the product is production ready. What you do get is a digest you can check yourself.
+
+## By the end of this page you can
+
+- [ ] Install the release ZIP and prove the bytes are the canonical ones.
+- [ ] Confirm the binary runs on your machine with `pipelinek version` and `pipelinek doctor`.
+- [ ] Use the multi-version installer to keep more than one version side by side.
+- [ ] Know which install channels **do not exist yet**, so you do not lose time on them.
+
+## Words you will meet
+
+| Word | Everyday meaning | Here |
+|---|---|---|
+| Binary | The compiled program | `bin/pipelinek` inside the ZIP |
+| ZIP | A box of files | The canonical release artifact (`docs/v2/03-specifications/DISTRIBUTION_RELEASE_SPEC.md`) |
+| SHA-256 digest | A fingerprint, 64 hex characters | Two different files never share one |
+| `PATH` | The list of folders your shell searches for commands | If `pipelinek` is not on it, it is "not installed" |
+| Install root | The one folder everything lives under | `~/.local/share/pipelinek` |
 
 ## Requirements
 
-- **Java 21 or newer** (the certified binary is built and tested with
-  Temurin 21.0.8 / 24.0.2). The ZIP does **not** include a JDK.
-- **Bash or any POSIX shell**.
-- **~200 MB free disk** for the distribution plus workspace data.
-- **Operating system**: Linux, macOS, or Windows via WSL. The distribution
-  ships both `bin/pipelinek` (UNIX) and `bin/pipelinek.bat` (Windows).
+| Requirement | Value | Notes |
+|---|---|---|
+| Java | **21 or newer** | Certified on Temurin 21.0.8 and 24.0.2. The ZIP does **not** ship a JDK |
+| Operating system | Linux, macOS, or Windows via WSL | WSL is the only supported Windows path |
+| Shell | Bash 4+ | Only for the multi-version installer (`scripts/install-pipelinek.sh:23`) |
+| Tools for the installer | `curl`, `sha256sum`, `unzip` on `PATH` | `scripts/install-pipelinek.sh:25` |
+| Disk | ~200 MB free | Distribution plus workspace data |
 
-## Install from GitHub Releases
+> **macOS note.** The installer calls `sha256sum` (`scripts/install-pipelinek.sh:276`), which macOS
+> does not ship by default. Install GNU coreutils first (`brew install coreutils`) or use the manual
+> ZIP path below. **NO VERIFICADO**: no macOS-specific installer run is recorded in this repository.
 
-This is the only officially supported install path today.
+## Option A — install the canonical ZIP (works today)
+
+### 1. The digests
+
+Check these before you download anything.
+
+| Item | Value |
+|---|---|
+| Release | `0.39.0` |
+| ZIP SHA-256 | `385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8` |
+| Binary SHA-256 | `92d0f67d16f7ee12888724cfe9da56f19cc2facd51ebee319770a43f40eedeee` |
+| Certified commit | `951b3cb5695ecc46c877776e330266e4bd44aa9e` |
+| ZIP URL | `https://github.com/Rubentxu/pipeline-kotlin/releases/download/v0.39.0/pipelinek-0.39.0.zip` |
+
+### 2. Download and verify
 
 ```bash
-# Download the canonical ZIP for the version you want
 VERSION=0.39.0
 URL="https://github.com/Rubentxu/pipeline-kotlin/releases/download/v${VERSION}/pipelinek-${VERSION}.zip"
 curl -fsSL -o "pipelinek-${VERSION}.zip" "${URL}"
 
-# Verify SHA-256 (compare with the value in the GitHub Release notes
-# and in the .sha256 sidecar)
-curl -fsSL "${URL}.sha256" | sha256sum -c -
-
-# Unpack into a stable location, e.g. /opt/pipelinek
-sudo unzip -q "pipelinek-${VERSION}.zip" -d /opt/pipelinek
-sudo ln -sf /opt/pipelinek/pipelinek-${VERSION}/bin/pipelinek /usr/local/bin/pipelinek
-
-# Verify
-pipelinek version
-pipelinek doctor     # jdk / os / workdir / writable
+# Verify the ZIP digest BEFORE unpacking anything.
+echo "385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8  pipelinek-0.39.0.zip" | sha256sum -c -
+# macOS equivalent:  shasum -a 256 pipelinek-0.39.0.zip
 ```
 
-> The ZIP does not install itself; you decide where it lives. If you don't
-> want to use `/usr/local/bin`, just add `<unpack>/pipelinek-${VERSION}/bin`
-> to your `PATH`.
+Continue only if it printed `pipelinek-0.39.0.zip: OK`. A mismatch means stop.
 
-## Install via SDKMAN (waiting external)
-
-> SDKMAN registration of the `pipelinek` candidate is currently
-> **WAITING_EXTERNAL** — vendor onboarding in progress. See
-> [`docs/v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md`](../v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md).
-> Until SDKMAN confirms the candidate, install via GitHub Releases above.
-
-If and when the SDKMAN candidate becomes available, the install will be:
+### 3. Unpack and put it on `PATH`
 
 ```bash
-# 1. Install SDKMAN if you don't have it (one-time)
-curl -s "https://get.sdkman.io" | bash
-source "$HOME/.sdkman/bin/sdkman-init.sh"
+ROOT="$HOME/.local/share/pipelinek"
+mkdir -p "${ROOT}/versions"
+unzip -q "pipelinek-${VERSION}.zip" -d "${ROOT}/versions"
+export PATH="${ROOT}/versions/pipelinek-${VERSION}/bin:${PATH}"
+```
 
-# 2. Install PipelineK
-sdk install pipelinek 0.39.0
+> The ZIP contains exactly one top-level directory, `pipelinek-<version>/`, and the binary must be at
+> `bin/pipelinek` inside it. The installer refuses anything else
+> (`scripts/install-pipelinek.sh:294-311`). If your archive looks different, you have the wrong file.
 
-# 3. Verify
+### 4. Make `PATH` permanent
+
+Add the same line to `~/.bashrc` or `~/.zshrc`:
+
+```bash
+export PATH="$HOME/.local/share/pipelinek/versions/pipelinek-0.39.0/bin:$PATH"
+```
+
+### 5. Verify
+
+```bash
 pipelinek version
 pipelinek doctor
 ```
 
-## Windows (WSL)
+| Command | Expected | Source |
+|---|---|---|
+| `pipelinek version` | `pipeline 0.39.0` — note the output starts with `pipeline `, **not** `pipelinek` | `Main.kt:83` |
+| `pipelinek doctor` | Three lines: `jdk:`, `os:`, `workdir:` | `Main.kt:91-108` |
 
-Use WSL (Ubuntu recommended). Once inside WSL, follow the GitHub Releases
-install above. SDKMAN does not run natively on Windows.
+`doctor` exits `0` when healthy and `2` if the working directory is not writable (`Main.kt:110`).
 
-```powershell
-wsl --install          # one-time
-# Then inside WSL (Ubuntu): follow the GitHub Releases block.
+## Option B — the multi-version installer
+
+`scripts/install-pipelinek.sh` keeps several versions side by side and switches between them with one
+symlink. It is the right choice if you upgrade often or work on projects pinned to different versions.
+
+**Analogy**: instead of replacing the only wrench in the toolbox, you keep a labelled drawer per
+version and point one handle at the drawer you want today.
+
+### Subcommands
+
+| Command | What it does |
+|---|---|
+| `install <version>` | Download, verify the digest, extract, verify identity, then publish |
+| `use <version>` | Point the `current` symlink at an installed version |
+| `list` | Table of installed versions; the active one is marked `*` |
+| `uninstall <version>` | Remove a version that is **not** active |
+| `doctor` | Report the resolved binary and PATH, then run `pipelinek doctor` |
+| `help` | Usage |
+
+Dispatch table: `scripts/install-pipelinek.sh:532-536`.
+
+### Install and activate
+
+```bash
+# Run from a checkout of the repository
+scripts/install-pipelinek.sh install 0.39.0
+scripts/install-pipelinek.sh use 0.39.0
+export PATH="$HOME/.local/share/pipelinek/current/bin:${PATH}"
+pipelinek version
 ```
 
-## Pinning a version per project (`.sdkmanrc`)
+### What it guarantees
 
-When SDKMAN becomes available, you can pin a per-directory version via
-`.sdkmanrc`:
+| Guarantee | Detail | Source |
+|---|---|---|
+| URL allowlist | Only `github.com` and `objects.githubusercontent.com`; anything else is refused before any file is written | `scripts/install-pipelinek.sh:54`, `:121` |
+| Digest authority | `SHA256SUMS` next to the ZIP. It refuses to install without a valid entry | `scripts/install-pipelinek.sh:225`, `:254-270` |
+| Transactional | Download, digest, extract and identity checks all happen in a temp dir; the version directory appears only after every check passed | `scripts/install-pipelinek.sh:40-43` |
+| Exact identity | The extracted binary must report exactly the requested version | `scripts/install-pipelinek.sh:310-335` |
+| No `sudo` | Never writes to `/usr` or `/opt`, never spawns a daemon | `scripts/install-pipelinek.sh:38` |
+| Idempotent | `install` on an existing version is a no-op; `uninstall` on a missing one is a no-op | `scripts/install-pipelinek.sh:37-38` |
 
-```ini
-# .sdkmanrc
-sdkman_auto_use=true
-sdkman_auto_install=true
-pipelinek=0.39.0
-```
+### Environment overrides
 
-Then `cd` into the project and run `sdk env` to activate the pinned
-version in the current shell. Until SDKMAN is confirmed available, pin
-versions via your shell manager (mise, asdf) or by shipping the ZIP
-URL + SHA-256 in your repo.
+| Variable | Default | Purpose |
+|---|---|---|
+| `PIPELINEK_HOME` | `~/.local/share/pipelinek` | Install root |
+| `PIPELINEK_RELEASE_BASE_URL` | GitHub Releases | Must satisfy the allowlist |
+| `PIPELINEK_MIRROR_BASE_URL` | *(empty)* | Install from a mirror or an air-gapped copy; loopback hosts are always allowed |
+| `PIPELINEK_SHA256_<VERSION>` | *(unset)* | Expected digest, e.g. `PIPELINEK_SHA256_0_39_0` (dots become underscores) |
 
-## Verify the install is the canonical bytes
+Source: `scripts/install-pipelinek.sh:30-35`, `:228`, `:503`.
 
-Whatever install path you used, you can confirm the binary matches the
-canonical ZIP by checking `pipelinek version` reports exactly the version
-you installed (e.g. `pipeline 0.39.0`).
+## Channels that do not exist today
+
+Two methods work today: **Option A** (canonical ZIP) and **Option B** (the multi-version installer).
+Three more are specified but not built, and one is a common pattern that this project does not
+support at all:
+
+| Method | Status | Detail |
+|---|---|---|
+| `mise` (`mise use -g pipelinek@0.39.0`) | **Specified, not built** | Planned as **DIST-4** in [`DISTRIBUTION_ROADMAP.md`](../v2/05-roadmap/DISTRIBUTION_ROADMAP.md): register `pipelinek` on the Aqua or GitHub-release backend. The plugin registry is external to this repository, so the commands do not work yet |
+| `asdf` (the `asdf-pipeline` plugin) | **Specified, not built** | Planned as **DIST-7**, an external plugin exposing `bin/install`, `bin/download`, `bin/list-bin`. Also lives in the external harness. `asdf` already reads this repo's `.tool-versions` for `java`, `gradle` and `maven`, but `pipelinek` is not in it, and adding it today would break every `asdf` user with an unresolved plugin |
+| `curl \| sh` one-liner | **Does not exist** | `scripts/install-pipelinek.sh:46` sets `set -Eeuo pipefail` and the script requires **bash 4+** (associative arrays, `[[ ]]`). Line 56 reads `BASH_SOURCE[0]`, which is an empty array when the script arrives on stdin, so `set -u` aborts. `curl … \| sh` always fails; `curl … \| bash` works only on bash ≥ 4.4 |
+
+Every channel — the two that exist and the three planned ones — must consume the same canonical ZIP
+and verify the same SHA-256. That rule is in
+[`ADR-0089`](../v2/04-adrs/ADR-0089-distribution-artifact-authority-sdkman.md) and
+[`DISTRIBUTION_RELEASE_SPEC.md`](../v2/03-specifications/DISTRIBUTION_RELEASE_SPEC.md): no channel
+rebuilds PipelineK.
+
+The main README documents all five methods, including the exact shape `mise` and `asdf` are designed
+for: [`README.md` → Installation methods](../../README.md#installation-methods).
+
+| Channel | Status | Detail |
+|---|---|---|
+| GitHub Releases ZIP | **Available** | Option A above |
+| `scripts/install-pipelinek.sh` | **Available** | Option B above |
+| SDKMAN (`sdk install pipelinek`) | **Not available** | `SDKMAN_CANDIDATE` is `WAITING_EXTERNAL`; `SDKMAN_VERSION` and `SDKMAN_DEFAULT` are `BLOCKED`. Do not use `sdk install`, and do not rely on a `.sdkmanrc`. See [`docs/v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md`](../v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md) |
+| Homebrew (`brew install`) | **Not available** | There is no Homebrew tap for PipelineK. `brew install pipelinek` does not work |
+
+## Traps and edges
+
+Read these after a successful install.
+
+| Trap | What happens | What to do |
+|---|---|---|
+| You skipped the digest check | You trust a file you cannot prove | Always run `sha256sum -c -` first |
+| `pipelinek` not found after install | `${ROOT}/.../bin` is not on `PATH` | Add it to `~/.bashrc`, then open a new shell |
+| An older `pipelinek` shadows yours | `version` prints the wrong number | `scripts/install-pipelinek.sh doctor` warns about exactly this (`scripts/install-pipelinek.sh:474-478`) |
+| `pipelinek version` exits `3` | The artifact has no `Implementation-Version` in its manifest. The CLI refuses to invent one | Rebuild, or re-download: this is a broken artifact, not a broken machine (`Main.kt:80`) |
+| Mixing Option A and Option B | The installer names directories `versions/0.39.0`; the manual path unpacks to `versions/pipelinek-0.39.0` | Pick one method per machine |
+| You passed a pre-release to the installer | `0.47.0-rc1` is rejected: the version must be `MAJOR.MINOR.PATCH` | Use only published releases (`scripts/install-pipelinek.sh:55`) |
+
+## Next
+
+- [`quickstart.md`](quickstart.md) — write and run your first pipeline.
+- [`upgrading.md`](upgrading.md) — move to another version and roll back.
+- Hub: [`docs/user/README.md`](README.md).

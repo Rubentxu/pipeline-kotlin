@@ -39,6 +39,48 @@
       ],
       "removal_boundary": "n/a — additive field, no member removed",
       "supersedes": null
+    },
+    {
+      "module": "pipeline-scripting-api",
+      "sha": "93029b6f333c710e6b7a4be947fbf76bf645c5e5",
+      "surface": "StepSpec.Error.failureKind",
+      "change": "property type `String` -> `FailureKind`; getFailureKind() descriptor changes on all three DSL entry points, and the JVM signature moves from Ljava/lang/String; to Ldev/rubentxu/pipeline/v2/domain/FailureKind;",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "Two breaks, not one, and they are separate properties. BINARY: the descriptor changes, so",
+        "an artifact compiled against 0.47.0 calling getFailureKind() gets a NoSuchMethodError.",
+        "SOURCE: a pipeline that wrote error(\"boom\", \"USER\") no longer compiles.",
+        "",
+        "The alternative considered and rejected: keep a String overload alongside the typed one.",
+        "It would have preserved both breaks at the cost of the thing this migration exists to",
+        "remove — two spellings for one decision, only one of them checked. A typo in the String",
+        "overload would compile exactly as it did before, so the defect would survive behind a",
+        "compatibility shim. HARMONIC_COMPATIBILITY is the wrong word for a decision whose whole",
+        "problem was that it was unchecked.",
+        "",
+        "The change also moves the published Gradle contract: pipeline-scripting-api now declares",
+        "api(project(\":pipeline-domain\")) instead of implementation(...). That is what writes the",
+        "dependency into the compile-scope variant of the published module metadata, and without it",
+        "a consumer cannot name FailureKind at all. Recorded here because it is part of what a",
+        "consumer resolves, not an internal build detail.",
+        "",
+        "What did NOT change, and is why this is cheap for consumers: the wire. FailureKind.name is",
+        "the historical token of every case, so dsl-v1 payloads are byte-identical and durable",
+        "records written before this SHA still decode. The unknown-token refusal is unchanged too,",
+        "still an IllegalArgumentException at the decoder rather than a defaulted UNKNOWN.",
+        "",
+        "The habituated authoring form is unchanged: error(\"msg\") needs no import and no",
+        "vocabulary, because the default carries it. Only the explicit non-default case names the",
+        "type, which is the case where compile-time checking earns its import.",
+        "",
+        "Proven from the outside, not asserted: examples/scripting-contract-consumer declares ONE",
+        "coordinate and never names pipeline-domain, so the publisher's metadata is the only route",
+        "by which FailureKind resolves. Reverting api to implementation makes that build fail with",
+        "'Cannot access class dev.rubentxu.pipeline.v2.domain.FailureKind'. That control was",
+        "executed, which is what makes this entry a receipt rather than a promise."
+      ],
+      "removal_boundary": "n/a — no member removed; this is a descriptor change, not a deletion",
+      "supersedes": null
     }
   ]
 }

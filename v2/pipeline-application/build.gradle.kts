@@ -111,6 +111,10 @@ tasks.named("compileTestKotlin") { dependsOn(":buildExamplePlugin", ":buildExter
 tasks.test {
     dependsOn(":pipeline-application:installDist")
     dependsOn(":buildExamplePlugin", ":buildExternalDirectivePlugin", ":buildExampleBlockPlugin")
+    // S6/C: BuiltPluginManifestArtifactTest admits the REAL utilities artifact, so the JAR has to
+    // exist before the test runs. Ordered before compileTestKotlin is unnecessary here — the test
+    // resolves the JAR from the filesystem at runtime, not from the compile classpath.
+    dependsOn(":pipeline-step-sdk:utilities:jar")
     useJUnitPlatform()
 
     // ── Cross-module inputs, declared ────────────────────────────────────────────

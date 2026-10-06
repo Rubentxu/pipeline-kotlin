@@ -89,6 +89,43 @@ producir el fichero. Código de producción restaurado y verde re-verificado.
    con clases del classloader de test la ruta no se ejercitaba. Corregido con `artifactRootOf`,
    que quita el sufijo `!/` y el prefijo `jar:`.
 
+## Cierre de C: el artefacto REAL emite y es admitido
+
+`utilities` es el primero de los cuatro en cablear el documento, y lo hace **derivado del
+código**, no escrito a mano:
+
+- `UtilitiesPluginDeclaration` es la autoridad única. La lee el contributor en runtime **y** el
+  build en build time. Escribir el JSON a mano en `build.gradle.kts` habría creado una segunda
+  autoridad capaz de describir Steps que el código no tiene.
+- El build lanza `emitUtilitiesManifest` (`JavaExec`) **después** de `computeUtilitiesDigest`,
+  porque el manifest reporta el digest y sin procedencia fallaría cerrado.
+- Verificado sobre el artefacto construido: `META-INF/pipelinek/plugin-manifest.json` está
+  dentro de `utilities-0.36.0.jar`, con los 8 Steps, `apiRange [0.47.0, 0.49.0)` y el digest
+  real.
+
+### Prueba sobre el producto, no sobre un fixture
+
+`BuiltPluginManifestArtifactTest` carga el JAR que el build produce de verdad:
+
+- el JAR contiene el documento en la ruta canónica;
+- el gate lo **admite** a 0.47.0;
+- el gate lo **rechaza** a 0.60.0.
+
+Los dos últimos casos son **mutuamente falsables**: admitir prueba que el documento se lee, y
+ser rechazado fuera del rango prueba que se lee el dato correcto. Si la admisión ignorase el
+manifest, el segundo caso fallaría.
+
+Si el JAR no existiera la prueba **falla**, no se salta: un skip ahí sería un verde que no
+prueba nada.
+
+### Una fabricacion eliminada antes de cerrar
+
+`PluginManifestResourceReader.measure` hasheaba el **fichero del manifest** y ofrecía ese hash
+como `measuredDigest`. Eso compara un documento contra un artefacto: siempre discreparía, y
+discreparía *con significado* — un veredicto `Mismatch` dice «este plugin mintió», y el plugin
+estaría diciendo la verdad. Fabricar una medida es peor que no medir, así que ahora devuelve
+`measuredDigest = null`, que es `Unverified`: un tercer estado nombrado, no un pass.
+
 ## Lo que este bloque NO hace
 
 Se declara aquí para que no se lea como hecho:
@@ -99,10 +136,10 @@ Se declara aquí para que no se lea como hecho:
   siempre `null` y el veredicto es siempre `Unverified`. La comparación real es la condición
   de apertura de EVO-M3b. El tipo existe para que ese verificador encaje sin cambiar la
   firma de `admit`.
-- **El manifest no se escribe todavía en los plugins.** El codec y la ruta canónica existen y
-  hay prueba de ida y vuelta, pero los cuatro plugins siguen construyendo su manifest en
-  memoria. Cablear `RESOURCE_PATH` en el `build.gradle.kts` de cada plugin es el paso
-  siguiente, y hasta entonces `admitThenLoad` no los admitirá.
+- **Solo `utilities` emite el documento.** `http`, `scm-git` y `junit` siguen construyendo su
+  manifest en memoria y no son admitibles por `admitThenLoad` hasta que replicen el cableado.
+  `utilities` se eligió primero para probar el mecanismo de extremo a extremo sobre un
+  artefacto real antes de replicarlo tres veces.
 - **`admitContributions` existe pero no se invoca en producción.** El cross-check está escrito
   y probado en sus piezas, pendiente de engancharse al gate.
 - Sin Reactores: ADR-0104 sigue `DEFERRED` y esta release no abre esa puerta.

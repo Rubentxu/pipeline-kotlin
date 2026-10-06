@@ -1,25 +1,14 @@
 package dev.rubentxu.pipeline.v2.sdk.utilities.step
 
-import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
-import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
-import dev.rubentxu.pipeline.v2.domain.step.Delivery
-import dev.rubentxu.pipeline.v2.domain.step.Digest
 import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.ManifestSchemaVersion
-import dev.rubentxu.pipeline.v2.domain.step.PipelineKApiRange
 import dev.rubentxu.pipeline.v2.domain.step.PluginContributions
-import dev.rubentxu.pipeline.v2.domain.step.PluginFamily
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifest
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifestValidator
-import dev.rubentxu.pipeline.v2.domain.step.PluginReleaseRef
 import dev.rubentxu.pipeline.v2.domain.step.PluginStepContribution
-import dev.rubentxu.pipeline.v2.domain.step.SemVer
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepManifest
-import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistration
-import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 import java.io.File
 
 /**
@@ -61,8 +50,8 @@ class CoreUtilsStepDefinitionContributor : StepDefinitionContributor {
         listOf(readJsonStep, writeJsonStep, sha256Step, readYamlStep, writeYamlStep, findFilesStep, zipStep, unzipStep)
 
     override fun registrations(): Iterable<StepRegistration<*, *>> {
-        val provider = buildProvider()
-        val manifest = buildManifest(provider)
+        val provider = UtilitiesPluginDeclaration.provider()
+        val manifest = UtilitiesPluginDeclaration.manifest()
         PluginManifestValidator.validate(
             manifest,
             listOf(readJsonStep, writeJsonStep, sha256Step, readYamlStep, writeYamlStep, findFilesStep, zipStep, unzipStep),
@@ -88,114 +77,6 @@ class CoreUtilsStepDefinitionContributor : StepDefinitionContributor {
      * contributor refuses to register. Production wiring always threads
      * these values through Gradle.
      */
-    private fun buildProvider(): StepProviderMetadata {
-        val releaseProps = loadReleaseProperties()
-        val publisher = System.getProperty("pipeline.utilities.publisher")
-            ?: releaseProps["pipeline.utilities.publisher"]
-            ?: error("Missing publisher provenance (no system property 'pipeline.utilities.publisher' and no META-INF/utilities-release.properties in the JAR). The utilities OFFICIAL_PLUGIN refuses to register without it.")
-        val namespace = System.getProperty("pipeline.utilities.namespace")
-            ?: releaseProps["pipeline.utilities.namespace"]
-            ?: "pipeline.utilities"
-        val versionRaw = System.getProperty("pipeline.utilities.release.version")
-            ?: releaseProps["pipeline.utilities.release.version"]
-            ?: "0.0.0-dev"
-        val digestRaw = System.getProperty("pipeline.utilities.release.digest")
-            ?: releaseProps["pipeline.utilities.release.digest"]
-            ?: error("Missing digest provenance (no system property 'pipeline.utilities.release.digest' and no META-INF/utilities-release.properties in the JAR). The utilities OFFICIAL_PLUGIN refuses to register without the real SHA-256 of its own artefact.")
-        val semver = parseSemVer(versionRaw)
-        val plugin: ResourceRef = ResourceRefs.plugin(namespace, "utilities")
-        val release = PluginReleaseRef(
-            plugin = plugin,
-            version = semver,
-            digest = Digest(digestRaw),
-        )
-        return StepProviderMetadata.create(
-            plugin = plugin,
-            release = release,
-            publisher = publisher,
-            families = setOf(PluginFamily.UTILITIES),
-            delivery = Delivery.OFFICIAL_PLUGIN,
-            trust = TrustMetadata.Unverified,
-        )
-    }
-
-    private fun buildManifest(provider: StepProviderMetadata): PluginManifest = PluginManifest(
-        schemaVersion = ManifestSchemaVersion.CURRENT,
-        apiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 49, 0)),
-        plugin = provider.plugin,
-        release = provider.release,
-        publisher = provider.publisher,
-        families = provider.families,
-        delivery = provider.delivery,
-        trust = provider.trust,
-        contributions = PluginContributions(
-            steps = listOf(
-                PluginStepContribution(
-                    stepKey = CoreUtilsReadJsonKey.VALUE,
-                    declaredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
-                ),
-                PluginStepContribution(
-                    stepKey = CoreUtilsWriteJsonKey.VALUE,
-                    declaredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
-                ),
-                PluginStepContribution(
-                    stepKey = CoreUtilsSha256Key.VALUE,
-                    declaredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
-                ),
-                PluginStepContribution(
-                    stepKey = CoreUtilsReadYamlKey.VALUE,
-                    declaredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
-                ),
-                PluginStepContribution(
-                    stepKey = CoreUtilsWriteYamlKey.VALUE,
-                    declaredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
-                ),
-                PluginStepContribution(
-                    stepKey = CoreUtilsFindFilesKey.VALUE,
-                    declaredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
-                ),
-                PluginStepContribution(
-                    stepKey = CoreUtilsZipKey.VALUE,
-                    declaredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
-                ),
-                PluginStepContribution(
-                    stepKey = CoreUtilsUnzipKey.VALUE,
-                    declaredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
-                ),
-            ),
-            capabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
-        ),
-
-    )
-
-    private fun loadReleaseProperties(): Map<String, String> {
-        val resource = javaClass.classLoader.getResource("META-INF/utilities-release.properties")
-            ?: return emptyMap()
-        val text = resource.openStream().use { it.readBytes().toString(Charsets.UTF_8) }
-        val map = linkedMapOf<String, String>()
-        for (line in text.lineSequence()) {
-            val trimmed = line.trim()
-            if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
-            val idx = trimmed.indexOf('=')
-            if (idx > 0) {
-                val k = trimmed.substring(0, idx).trim()
-                val v = trimmed.substring(idx + 1).trim()
-                map[k] = v
-            }
-        }
-        return map
-    }
-
-    private fun parseSemVer(raw: String): SemVer {
-        // Tolerate a leading `v` (matches the scm-git implementation pattern).
-        val cleaned = raw.removePrefix("v")
-        val parts = cleaned.split(".")
-        return SemVer(
-            major = parts.getOrNull(0)?.toIntOrNull() ?: 0,
-            minor = parts.getOrNull(1)?.toIntOrNull() ?: 0,
-            patch = parts.getOrNull(2)?.toIntOrNull() ?: 0,
-        )
-    }
 }
 
 /**

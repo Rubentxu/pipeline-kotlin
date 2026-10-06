@@ -7,7 +7,6 @@ import dev.rubentxu.pipeline.v2.domain.step.MeasuredArtifactIdentity
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifestCodec
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifestDecodeResult
 import java.io.InputStream
-import java.security.MessageDigest
 
 /**
  * S6/C — reads a plugin's manifest DOCUMENT out of its artifact.
@@ -87,33 +86,37 @@ object PluginManifestResourceReader {
     }
 
     /**
-     * Hash the bytes the runtime read.
-     *
-     * Returns null when the resource cannot be re-read for measurement, which is NOT a
-     * pass: [MeasuredArtifactIdentity] renders that as [ArtifactIdentityVerdict.Unverified],
-     * a third state distinct from both agreement and disagreement.
-     */
-    fun measure(
-        classLoader: ClassLoader,
-        declaredDigest: Digest,
-        origin: ArtifactOrigin,
-    ): MeasuredArtifactIdentity {
-        val measured = runCatching {
-            val bytes = classLoader.getResourceAsStream(PluginManifestCodec.RESOURCE_PATH)?.use { it.readBytes() }
-            bytes?.let { sha256(it) }
-        }.getOrNull()
-
-        return MeasuredArtifactIdentity(
-            declaredDigest = declaredDigest,
-            measuredDigest = measured?.let { Digest("sha256:$it") },
-            origin = origin,
-        )
-    }
-
-    private fun sha256(bytes: ByteArray): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest(bytes)
-            .joinToString("") { "%02x".format(it) }
+ * Record the artifact identity S6 can actually establish — and no more.
+ *
+ * ## Why this returns an unmeasured identity rather than hashing something
+ *
+ * An earlier version of this method read the manifest resource back and hashed it, then
+ * offered that hash as `measuredDigest`. That was fabrication with a SHA-256 on top: the
+ * declared digest covers the whole artifact, while the bytes reachable through a
+ * [ClassLoader] are the declaration document, so the comparison is between a container and
+ * its contents and can only ever disagree. Worse, it disagreed *meaningfully* — a Mismatch
+ * verdict reads as "this plugin lied", and the plugin would have been telling the truth.
+ *
+ * Producing a false accusation is worse than producing no measurement, so this returns
+ * `measuredDigest = null`, which [MeasuredArtifactIdentity] renders as
+ * [ArtifactIdentityVerdict.Unverified]: a named third state rather than a pass.
+ *
+ * ## What would close it
+ *
+ * Measuring the artifact needs the artifact's bytes, which means resolving where it came
+ * from — a [ArtifactOrigin] the runtime does not have today. That capability is the opening
+ * condition of EVO-M3b's generic artifact model. Until it exists, admission is a
+ * DECLARATION gate: it refuses malformed, incompatible, duplicate and unverifiable
+ * manifests, and it says nothing at all about whether the bytes match the claim.
+ */
+fun measure(
+    declaredDigest: Digest,
+    origin: ArtifactOrigin,
+): MeasuredArtifactIdentity = MeasuredArtifactIdentity(
+    declaredDigest = declaredDigest,
+    measuredDigest = null,
+    origin = origin,
+)
 
     /**
      * The artifact that CONTAINS a resource URL.

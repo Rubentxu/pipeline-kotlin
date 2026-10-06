@@ -1,3 +1,5 @@
+import java.io.ByteArrayOutputStream
+
 plugins {
     kotlin("jvm")
 }
@@ -124,6 +126,78 @@ val computeUtilitiesDigest = tasks.register<Exec>("computeUtilitiesDigest") {
 
 tasks.named("jar") {
     dependsOn(computeUtilitiesDigest)
+}
+
+// ----------------------------------------------------------------------------
+// S6/C — the manifest DOCUMENT, derived from the code, not typed by hand.
+//
+// The plugin declares itself once, in UtilitiesPluginDeclaration, and both this build and
+// the runtime read that same declaration. Writing the JSON here instead would create a
+// second authority able to describe Steps the code does not have.
+//
+// Ordering is load-bearing: the digest task must run FIRST, because the manifest reports
+// the digest and would otherwise fail closed for lack of provenance.
+//
+// The declared digest covers the artifact content EXCLUDING this document, the same
+// convention `utilities-release.properties` already uses — a digest that included the
+// manifest carrying it would have no fixed point.
+// ----------------------------------------------------------------------------
+
+val utilitiesManifest = layout.buildDirectory.file("resources/main/META-INF/pipelinek/plugin-manifest.json")
+
+val emitUtilitiesManifest = tasks.register<JavaExec>("emitUtilitiesManifest") {
+    group = "utilities"
+    description = "S6/C: emit the machine-readable plugin manifest into the artifact."
+
+    dependsOn(computeUtilitiesDigest)
+    mainClass.set("dev.rubentxu.pipeline.v2.sdk.utilities.step.UtilitiesPluginDeclarationKt")
+
+    // The main reads META-INF/utilities-release.properties off ITS OWN classpath, so the
+    // classpath must include the freshly generated resources directory.
+    classpath = sourceSets["main"].runtimeClasspath +
+        files(layout.buildDirectory.dir("resources/main"))
+
+    inputs.files(utilitiesReleaseProps)
+    inputs.property("apiRange", "[0.47.0, 0.49.0)")
+    outputs.file(utilitiesManifest)
+
+    // Captured into a buffer rather than stdout: Gradle prints task output to the console,
+    // and the document must land in a file with no shell quoting in between.
+    //
+    // The buffer is created at CONFIGURATION time, outside `providers`: inside that lambda
+    // the identifier `java` resolves to Gradle's own JavaPluginExtension, not the java.io
+    // package, and the DSL stops compiling.
+    val out = utilitiesManifest
+    val captured = ByteArrayOutputStream()
+    standardOutput = captured
+
+    doFirst {
+        out.get().asFile.parentFile.mkdirs()
+        // The buffer lives for the whole configuration, so a second execution in the same build
+        // would APPEND to the first document and emit concatenated JSON. Resetting here keeps
+        // the output a function of the current inputs rather than of how many times the task ran.
+        captured.reset()
+    }
+
+    doLast {
+        val text = captured.toString(Charsets.UTF_8)
+        if (text.isBlank()) {
+            throw GradleException(
+                "S6/C: manifest emission produced no output. The utilities OFFICIAL_PLUGIN would ship " +
+                    "without META-INF/pipelinek/plugin-manifest.json and admission would refuse it at runtime.",
+            )
+        }
+        out.get().asFile.writeText(text)
+        println("utilities: manifest emitted to ${out.get().asFile}")
+    }
+}
+
+tasks.named("processResources") {
+    finalizedBy(emitUtilitiesManifest)
+}
+
+tasks.named("jar") {
+    dependsOn(emitUtilitiesManifest)
 }
 
 val utilitiesReleasePropsFile = utilitiesReleaseProps

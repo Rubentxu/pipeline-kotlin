@@ -95,7 +95,6 @@ object PluginAdmissionGate {
         // Phase 3: MEASURE what the runtime can measure, then decide.
         val origin = ArtifactOrigin.LocalClasspathEntry(contributorClass.protectionDomain?.codeSource?.location?.toString() ?: "unknown")
         val identity = PluginManifestResourceReader.measure(
-            classLoader = classLoader,
             declaredDigest = accepted.manifest.release.digest,
             origin = origin,
         )

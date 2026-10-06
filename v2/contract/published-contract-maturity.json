@@ -18,7 +18,29 @@
     "",
     "Consumed by P3EPublishedContractMaturityFitnessTest, which fails the build when a module",
     "published from build.gradle.kts has no entry here. See publishedContractExceptions() in",
-    "the same test for how a deliberate breaking change is recorded rather than discussed."
+    "the same test for how a deliberate breaking change is recorded rather than discussed.",
+    "",
+    "P3-E E6 — SURFACES. A module is not one thing. `contracts` above is the module-level DEFAULT,",
+    "and it exists because a flat EXPERIMENTAL on every module is not a decision: it is a blanket",
+    "that lets the next change ride on it without saying what it is riding on. `surfaces` below is",
+    "where the guarantee genuinely DIFFERS from the module default, and a surface entry must beat",
+    "the module on evidence or not exist.",
+    "",
+    "Resolution is: effective(module, surface) = surfaces[module][surface] if declared, else the",
+    "module's own classification. Nothing is inherited implicitly and nothing is inferred from the",
+    "package name.",
+    "",
+    "The four rules that make this executable rather than decorative, all enforced by the fitness",
+    "test:",
+    "  1. `covers` must resolve in BOTH independent authorities — the module's published .api dump",
+    "     and DSL_SURFACE_MANIFEST.md. One authority alone is forgeable: the ABI proves the symbol",
+    "     ships, the manifest proves what it means. A family that names something invented in",
+    "     either file fails the build.",
+    "  2. A surface may be STRICTER than its module. It may not be MORE PERMISSIVE. Refinement that",
+    "     loosens the policy is not refinement, it is an escape hatch with a longer name.",
+    "  3. An exception may not invoke a maturity looser than the effective one at its surface.",
+    "  4. UNSUPPORTED_FAIL_CLOSED hosts no exceptions, because a construct that refuses itself has",
+    "     nothing a consumer could have depended on. That is the whole meaning of the classification."
   ],
   "contracts": {
     "pipeline-domain": "EXPERIMENTAL",
@@ -56,5 +78,40 @@
       "EXPERIMENTAL: the smallest of the four and the least consumed; nothing in the P3-E",
       "block touched it."
     ]
+  },
+  "surfaces": {
+    "pipeline-scripting-api": {
+      "self-refusing-constructs": {
+        "maturity": "UNSUPPORTED_FAIL_CLOSED",
+        "covers": ["load", "node", "ansiColor", "retry (retrofit)"],
+        "guarantee": [
+          "These four are ACCEPTED SYNTAX THAT ALWAYS FAILS CLOSED, and they are the only",
+          "published surfaces in this repository where that is true.",
+          "",
+          "The manifest pins each one: `git` and `load` are ATOMIC_STEP with no handler and no",
+          "descriptor row, so admission rejects before any effect; `node` and `ansiColor` lower to",
+          "core.node / core.ansiColor with no descriptor row, so compile/validate rejects; the",
+          "`retry` retrofit points at the block form and throws IllegalArgumentException.",
+          "",
+          "Why they are not merely EXPERIMENTAL, which is what the module says as a whole: there is",
+          "no consumer program that can contain a working call to any of them. Compatibility is a",
+          "relation between a shipped artifact and a caller that got a value out of it. A construct",
+          "whose every call path ends in a refusal has no such caller, so there is nothing to freeze",
+          "and nothing to break. Calling that EXPERIMENTAL would be exactly the blanket this layer",
+          "exists to replace — it would promise a stability guarantee for a guarantee that does not",
+          "exist.",
+          "",
+          "The practical consequence is the direction that matters: removing or reshaping these four",
+          "does NOT need a recorded exception, while touching any other surface of",
+          "pipeline-scripting-api still does."
+        ],
+        "promotion_precondition": [
+          "Promotion here means IMPLEMENTING, not re-describing. The classification stops being",
+          "UNSUPPORTED_FAIL_CLOSED on the day the construct acquires a handler, a descriptor row and",
+          "an interpreter that can succeed — the same three things `agent` needed before it left",
+          "this state in S3.1. Promoting it without them would be classifying a stub as a contract."
+        ]
+      }
+    }
   }
 }

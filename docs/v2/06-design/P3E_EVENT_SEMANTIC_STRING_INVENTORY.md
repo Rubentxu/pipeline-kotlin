@@ -649,6 +649,64 @@ sobre la **misma** autoridad de cursor y página, sin duplicar paginación. Un o
 externo que necesite saltar un refusal lo hace por secuencia y a propósito, en vez de
 heredar un hueco del store.
 
+### 5.9 La madurez era por módulo, y un módulo no es una cosa (E6)
+
+E5 declaró qué puede romperse en cada artefacto publicado, y lo hizo bien: sin su
+clasificación, `apiCheck` sólo puede decir que algo se rompió, nunca si estaba permitido.
+Pero la granularidad era el módulo, y un módulo no es una cosa.
+
+Medido sobre los cuatro publicados:
+
+| módulo | líneas de `.api` | declaraciones públicas |GeneratedSerializer` |
+|---|---|---|---|
+| `pipeline-domain` | 7178 | 773 | 57 |
+| `pipeline-events` | 2503 | 158 | — |
+| `pipeline-scripting-api` | 1462 | 113 | — |
+| `pipeline-output` | 303 | 32 | — |
+
+Un `EXPERIMENTAL` plano sobre esas cuatro filas no es una clasificación: es una blanket. Y
+tiene un coste concreto — cualquier cambio puede esconderse detrás de ella sin decir sobre qué
+está apoyada. La frase "romper está permitido bajo una decisión registrada" describe el
+procedimiento, no la garantía.
+
+**La diferencia que sí existe, y es de otro tipo.** `pipeline-scripting-api` publica cuatro
+constructos que son **sintaxis aceptada que siempre falla cerrada**: `load`, `node`,
+`ansiColor` y el retrofit de `retry`. No tienen handler, no tienen fila de descriptor, y
+admiten o compilan con rechazo antes de cualquier efecto. Para esos cuatro no hay programa
+de consumidor que contenga una llamada que funcione. Compatibilidad es una relación entre un
+artefacto publicado y un consumidor que obtuvo un valor de él; un constructo cuya única
+ruta termina en negativa no tiene tal consumidor, así que no hay nada que congelar.
+
+Eso no es `EXPERIMENTAL`. Es el quinto valor de la taxonomía, `UNSUPPORTED_FAIL_CLOSED`, que
+llevaba en la taxonomía canónica desde E5 sin un solo usuario. E6 le da su primer usuario
+real.
+
+**Lo que hace la capa ejecutable en vez de decorativa.** `covers` tiene que resolver en
+**dos autoridades independientes**: el dump `.api` del módulo, que prueba que el símbolo se
+publica, y `DSL_SURFACE_MANIFEST.md`, que prueba qué significa. Con una sola se puede
+escribir cualquier clasificación — el ABI prueba que un nombre existe sin decir si
+funciona, y el manifiesto declara una intención sin probar que llegara a un consumidor.
+Además: una superficie puede tensar la política de su módulo pero nunca aflojarla; y una
+superficie que repite la clasificación de su módulo **falla**, porque repartir un módulo en
+familias y copiar su etiqueta en cada una no es refinar, es la misma política con más
+líneas.
+
+**Una divergencia que esto destapó.** `AGENTS.md` afirma que el manifiesto lleva "3 as
+`UNSUPPORTED_FAIL_CLOSED` (`agent`, `retry (retrofit)`, `retry conditions`)". Hoy lleva
+**6** (`git`, `load`, `node`, `ansiColor`, `retry (retrofit)`, `retry conditions`) y
+`agent` ya **no** está entre ellos: S3.1 le dio carrier, resolver e intérprete, y pasó a
+`DECLARATIVE_DIRECTIVE | STABLE`. La ley de E6 casi codifica la afirmación de `AGENTS.md`
+como verdad porque el KDoc del propio test de S0 todavía dice que `agent(..)` lanza
+`IllegalArgumentException`. Es la clase de defecto que un unico documento produces cuando
+nadie lo relee contra la fuente. No se corrige `AGENTS.md` aquí: se registra.
+
+**Lo que E6 deja abierto.** Tipar `StepSpec.Error.failureKind` contra `FailureKind` (§5.7)
+sigue sin hacerse, y es una ruptura real: cambia el tipo de retorno del getter en la ABI
+publicada. La auditoría encontró además que el obstáculo que se suponía —`pipeline-scripting-api`
+declara `implementation(project(":pipeline-domain"))` y por tanto no expone `FailureKind`—
+**no existe**: `pipeline-events/build.gradle.kts:31-32` ya declara `api(...)` de ambos, así
+que cualquier consumidor del set publicado ya los tiene en su classpath de compilación.
+
 ---
 
 ## 6. Qué NO autoriza este inventario

@@ -118,6 +118,33 @@ manifest, el segundo caso fallaría.
 Si el JAR no existiera la prueba **falla**, no se salta: un skip ahí sería un verde que no
 prueba nada.
 
+### Los cuatro plugins, no uno
+
+El cableado se replicó en `http`, `scm-git` y `junit`, cada uno con su objeto de declaración
+(`HttpPluginDeclaration`, `ScmGitPluginDeclaration`, `JUnitPluginDeclaration`) siguiendo el
+mismo contrato. Los cuatro JAR construidos contienen el documento en la ruta canónica.
+
+`BuiltPluginManifestArtifactTest` pasó a ser **parametrizada sobre los cuatro**, con 12 casos:
+cada plugin lleva su documento, es admitido a 0.47.0 y rechazado a 0.60.0.
+
+Regresión de los cuatro módulos de plugins: **289 tests, 0 fallos**, leída del XML.
+
+El arnés de esa prueba paramètresada necesitó dos correcciones, y **las dos las encontré por
+RED, no leyendo**:
+
+1. Con el classloader de test como padre, las clases de los plugins se resuelven desde el
+   directorio de salida de tests, no desde el JAR. `strict` rechazaba, y hacía bien: desde su
+   punto de vista un plugin se declaraba en un artefacto y aportaba código de otro.
+2. Al cambiar al cargador de plataforma, `pipeline-domain` desaparecía y el resolve fallaba
+   con `NoClassDefFoundError`. La solución es un padre que delega en el de tests **ocultando
+   los cuatro paquetes de plugin y el propio recurso del manifest** — sin esto último, el
+   padre seguía publicando `META-INF/pipelinek/plugin-manifest.json` y ganaba el JAR equivocado:
+   el fallo nombraba el JAR de scm-git cargando la clase de http.
+
+En los dos casos la comprobación de producción era correcta y el arnés estaba mal. Es la
+tercera vez que este arnés se autoengaña, y la razón es siempre la misma: dejar que el
+classloader resuelva por uno.
+
 ### Una fabricacion eliminada antes de cerrar
 
 `PluginManifestResourceReader.measure` hasheaba el **fichero del manifest** y ofrecía ese hash
@@ -136,10 +163,8 @@ Se declara aquí para que no se lea como hecho:
   siempre `null` y el veredicto es siempre `Unverified`. La comparación real es la condición
   de apertura de EVO-M3b. El tipo existe para que ese verificador encaje sin cambiar la
   firma de `admit`.
-- **Solo `utilities` emite el documento.** `http`, `scm-git` y `junit` siguen construyendo su
-  manifest en memoria y no son admitibles por `admitThenLoad` hasta que replicen el cableado.
-  `utilities` se eligió primero para probar el mecanismo de extremo a extremo sobre un
-  artefacto real antes de replicarlo tres veces.
+- **Los cuatro plugins oficiales emiten y son admitibles.** El ejemplo externo de
+  `BLOCK 1-I` todavía no lo hace, porque todavía no existe.
 - **`admitContributions` existe pero no se invoca en producción.** El cross-check está escrito
   y probado en sus piezas, pendiente de engancharse al gate.
 - Sin Reactores: ADR-0104 sigue `DEFERRED` y esta release no abre esa puerta.

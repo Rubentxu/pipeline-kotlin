@@ -1,3 +1,5 @@
+import java.io.ByteArrayOutputStream
+
 plugins {
     kotlin("jvm")
 }
@@ -140,4 +142,66 @@ tasks.withType<Test>().configureEach {
         systemProperty("pipeline.http.namespace", httpNamespace.get())
         systemProperty("pipeline.http.release.digest.missing", "true")
     }
+}
+
+
+// ----------------------------------------------------------------------------
+// S6/C — the manifest DOCUMENT, derived from the code, not typed by hand.
+//
+// The declaration object is the one authority: the contributor reads it at runtime
+// and this task reads it at build time. Typing the JSON here instead would create a
+// second authority able to describe Steps the code does not have.
+//
+// The digest task MUST run first: the manifest reports the digest and fails closed
+// for lack of provenance. The declared digest covers the artifact content EXCLUDING
+// this document, the same convention the release-properties file already uses.
+// ----------------------------------------------------------------------------
+
+val httpManifest = layout.buildDirectory.file("resources/main/META-INF/pipelinek/plugin-manifest.json")
+
+val emitHttpManifest = tasks.register<JavaExec>("emitHttpManifest") {
+    group = "http"
+    description = "S6/C: emit the machine-readable plugin manifest into the artifact."
+
+    dependsOn(computeHttpDigest)
+    mainClass.set("dev.rubentxu.pipeline.v2.sdk.http.HttpPluginDeclarationKt")
+
+    // The main reads its release properties off ITS OWN classpath, so the freshly
+    // generated resources directory has to be on it.
+    classpath = sourceSets["main"].runtimeClasspath + files(layout.buildDirectory.dir("resources/main"))
+
+    inputs.files(httpReleaseProps)
+    inputs.property("apiRange", "[0.47.0, 0.49.0)")
+    outputs.file(httpManifest)
+
+    val out = httpManifest
+    val captured = ByteArrayOutputStream()
+    standardOutput = captured
+
+    doFirst {
+        out.get().asFile.parentFile.mkdirs()
+        // The buffer lives for the whole configuration, so a second execution in the
+        // same build would APPEND to the first document and emit concatenated JSON.
+        captured.reset()
+    }
+
+    doLast {
+        val text = captured.toString(Charsets.UTF_8)
+        if (text.isBlank()) {
+            throw GradleException(
+                "S6/C: manifest emission produced no output. The http plugin would ship without " +
+                    "META-INF/pipelinek/plugin-manifest.json and admission would refuse it at runtime.",
+            )
+        }
+        out.get().asFile.writeText(text)
+        println("http: manifest emitted to " + out.get().asFile)
+    }
+}
+
+tasks.named("processResources") {
+    finalizedBy(emitHttpManifest)
+}
+
+tasks.named("jar") {
+    dependsOn(emitHttpManifest)
 }

@@ -48,107 +48,19 @@ class HttpStepDefinitionContributor : StepDefinitionContributor {
     override fun definitions(): Iterable<StepDefinition<*, *>> = listOf(requestDefinition)
 
     override fun registrations(): Iterable<StepRegistration<*, *>> {
-        val provider = buildProvider()
+        val provider = HttpPluginDeclaration.provider()
         // C5 cross-check before constructing the registration. Deterministic and
         // fail-closed: a manifest that disagrees with contract.requiredCapabilities
         // is rejected here, never coerced downstream.
-        val manifest = buildManifest(provider)
+        val manifest = HttpPluginDeclaration.manifest()
         PluginManifestValidator.validate(manifest, listOf(requestDefinition))
         @Suppress("UNCHECKED_CAST")
         val typed = requestDefinition as StepDefinition<Any, Any>
         return listOf(StepRegistration(typed, provider))
     }
 
-    private fun buildProvider(): StepProviderMetadata {
-        val releaseProps = loadReleaseProperties()
-        val publisher = System.getProperty("pipeline.http.publisher")
-            ?: releaseProps["pipeline.http.publisher"]
-            ?: error(
-                "Missing publisher provenance (no system property 'pipeline.http.publisher' and no " +
-                    "META-INF/http-release.properties in the JAR). The HTTP OFFICIAL_PLUGIN refuses to " +
-                    "register without it.",
-            )
-        val namespace = System.getProperty("pipeline.http.namespace")
-            ?: releaseProps["pipeline.http.namespace"]
-            ?: "pipeline-plugin-http"
-        val versionRaw = System.getProperty("pipeline.http.release.version")
-            ?: releaseProps["pipeline.http.release.version"]
-            ?: "0.0.0-dev"
-        val digestRaw = System.getProperty("pipeline.http.release.digest")
-            ?: releaseProps["pipeline.http.release.digest"]
-            ?: error(
-                "Missing digest provenance (no system property 'pipeline.http.release.digest' and no " +
-                    "META-INF/http-release.properties in the JAR). The HTTP OFFICIAL_PLUGIN refuses to " +
-                    "register without the real SHA-256 of its own artefact.",
-            )
-        val plugin: ResourceRef = ResourceRefs.plugin(namespace, "http")
-        val release = PluginReleaseRef(
-            plugin = plugin,
-            version = parseSemVer(versionRaw),
-            digest = Digest(digestRaw),
-        )
-        return StepProviderMetadata.create(
-            plugin = plugin,
-            release = release,
-            publisher = publisher,
-            families = setOf(PluginFamily.NETWORK),
-            delivery = Delivery.OFFICIAL_PLUGIN,
-            trust = TrustMetadata.Unverified,
-        )
-    }
-
-    private fun buildManifest(provider: StepProviderMetadata): PluginManifest = PluginManifest(
-        schemaVersion = ManifestSchemaVersion.CURRENT,
-        apiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 49, 0)),
-        plugin = provider.plugin,
-        release = provider.release,
-        publisher = provider.publisher,
-        families = provider.families,
-        delivery = provider.delivery,
-        trust = provider.trust,
-        contributions = PluginContributions(
-            steps = listOf(
-                PluginStepContribution(
-                    stepKey = HttpRequestKey.VALUE,
-                    declaredCapabilities = setOf(HTTP_TRANSPORT_CAPABILITY, NETWORK_EGRESS_CAPABILITY, BASIC_CREDENTIALS_CAPABILITY),
-                ),
-            ),
-            capabilities = setOf(HTTP_TRANSPORT_CAPABILITY, NETWORK_EGRESS_CAPABILITY, BASIC_CREDENTIALS_CAPABILITY),
-        ),
-    )
-
-    private fun loadReleaseProperties(): Map<String, String> {
-        val resource = javaClass.classLoader.getResource("META-INF/http-release.properties")
-            ?: return emptyMap()
-        val text = resource.openStream().use { it.readBytes().toString(Charsets.UTF_8) }
-        val map = linkedMapOf<String, String>()
-        for (line in text.lineSequence()) {
-            val trimmed = line.trim()
-            if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
-            val idx = trimmed.indexOf('=')
-            if (idx > 0) {
-                map[trimmed.substring(0, idx).trim()] = trimmed.substring(idx + 1).trim()
-            }
-        }
-        return map
-    }
-
-    private fun parseSemVer(raw: String): SemVer {
-        val parts = raw.split("-")[0].split(".")
-        require(parts.size == 3) { "SemVer must have 3 numeric components (got '$raw')" }
-        return SemVer(
-            major = parts[0].toInt(),
-            minor = parts[1].toInt(),
-            patch = parts[2].toInt(),
-        )
-    }
-
-    companion object {
-        /** Singleton access for tests and CLI bootstrap paths. */
-        @JvmStatic
-        fun instance(): HttpStepDefinitionContributor = HttpStepDefinitionContributor()
-    }
 }
+
 
 /**
  * Registers the HTTP OFFICIAL_PLUGIN with pinned provenance.

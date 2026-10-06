@@ -43,105 +43,14 @@ class JUnitStepDefinitionContributor : StepDefinitionContributor {
     override fun definitions(): Iterable<StepDefinition<*, *>> = listOf(resultsStep)
 
     override fun registrations(): Iterable<StepRegistration<*, *>> {
-        val provider = buildProvider()
-        val manifest = buildManifest(provider)
+        val provider = JUnitPluginDeclaration.provider()
+        val manifest = JUnitPluginDeclaration.manifest()
         PluginManifestValidator.validate(manifest, listOf(resultsStep))
         return listOf(StepRegistration(resultsStep, provider))
     }
 
-    private fun buildProvider(): StepProviderMetadata {
-        val releaseProps = loadReleaseProperties()
-        val publisher = System.getProperty("pipeline.junit.publisher")
-            ?: releaseProps["pipeline.junit.publisher"]
-            ?: error(
-                "Missing publisher provenance (no system property 'pipeline.junit.publisher' and no " +
-                    "META-INF/junit-release.properties in the JAR). The JUnit OFFICIAL_PLUGIN refuses to register without it.",
-            )
-        val namespace = System.getProperty("pipeline.junit.namespace")
-            ?: releaseProps["pipeline.junit.namespace"]
-            ?: "pipeline.junit"
-        val versionRaw = System.getProperty("pipeline.junit.release.version")
-            ?: releaseProps["pipeline.junit.release.version"]
-            ?: "0.0.0-dev"
-        val digestRaw = System.getProperty("pipeline.junit.release.digest")
-            ?: releaseProps["pipeline.junit.release.digest"]
-            ?: error(
-                "Missing digest provenance (no system property 'pipeline.junit.release.digest' and no " +
-                    "META-INF/junit-release.properties in the JAR). The JUnit OFFICIAL_PLUGIN refuses to register " +
-                    "without the real SHA-256 of its own artefact.",
-            )
-        require(digestRaw.startsWith("sha256:")) {
-            "junit release.digest must be 'sha256:<64-hex>' (got '$digestRaw')"
-        }
-        val semver = parseSemVer(versionRaw)
-        val plugin = ResourceRefs.plugin(namespace, "junit")
-        val release = PluginReleaseRef(
-            plugin = plugin,
-            version = semver,
-            digest = Digest(digestRaw),
-        )
-        return StepProviderMetadata.create(
-            plugin = plugin,
-            release = release,
-            publisher = publisher,
-            families = setOf(PluginFamily.TESTING, PluginFamily.REPORTING),
-            delivery = Delivery.OFFICIAL_PLUGIN,
-            trust = TrustMetadata.Unverified,
-        )
-    }
-
-    private fun buildManifest(provider: StepProviderMetadata): PluginManifest = PluginManifest(
-        schemaVersion = ManifestSchemaVersion.CURRENT,
-        apiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 49, 0)),
-        plugin = provider.plugin,
-        release = provider.release,
-        publisher = provider.publisher,
-        families = provider.families,
-        delivery = provider.delivery,
-        trust = provider.trust,
-        contributions = PluginContributions(
-            steps = listOf(
-                PluginStepContribution(
-                    stepKey = JUnitResultsKey.VALUE,
-                    declaredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
-                ),
-            ),
-            capabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
-        ),
-    )
-
-    private fun loadReleaseProperties(): Map<String, String> {
-        val resource = javaClass.classLoader.getResource("META-INF/junit-release.properties") ?: return emptyMap()
-        val text = resource.openStream().use { it.readBytes().toString(Charsets.UTF_8) }
-        val map = linkedMapOf<String, String>()
-        for (line in text.lineSequence()) {
-            val trimmed = line.trim()
-            if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
-            val idx = trimmed.indexOf('=')
-            if (idx > 0) {
-                val k = trimmed.substring(0, idx).trim()
-                val v = trimmed.substring(idx + 1).trim()
-                map[k] = v
-            }
-        }
-        return map
-    }
-
-    private fun parseSemVer(raw: String): SemVer {
-        val parts = raw.split("-")[0].split(".")
-        require(parts.size == 3) { "SemVer must have 3 numeric components (got '$raw')" }
-        return SemVer(
-            major = parts[0].toInt(),
-            minor = parts[1].toInt(),
-            patch = parts[2].toInt(),
-        )
-    }
-
-    companion object {
-        @JvmStatic
-        fun instance(): JUnitStepDefinitionContributor = JUnitStepDefinitionContributor()
-    }
 }
+
 
 /**
  * Convenience helper that registers the JUnit OFFICIAL_PLUGIN into

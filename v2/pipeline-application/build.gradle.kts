@@ -114,7 +114,12 @@ tasks.test {
     // S6/C: BuiltPluginManifestArtifactTest admits the REAL utilities artifact, so the JAR has to
     // exist before the test runs. Ordered before compileTestKotlin is unnecessary here — the test
     // resolves the JAR from the filesystem at runtime, not from the compile classpath.
-    dependsOn(":pipeline-step-sdk:utilities:jar")
+    dependsOn(
+        ":pipeline-step-sdk:http:jar",
+        ":pipeline-step-sdk:scm-git:jar",
+        ":pipeline-step-sdk:junit:jar",
+        ":pipeline-step-sdk:utilities:jar",
+    )
     useJUnitPlatform()
 
     // ── Cross-module inputs, declared ────────────────────────────────────────────

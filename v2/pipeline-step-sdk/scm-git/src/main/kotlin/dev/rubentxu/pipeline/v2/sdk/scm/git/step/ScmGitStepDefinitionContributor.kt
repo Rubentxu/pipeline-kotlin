@@ -63,13 +63,13 @@ class ScmGitStepDefinitionContributor : StepDefinitionContributor {
     override fun definitions(): Iterable<StepDefinition<*, *>> = listOf(checkoutStep)
 
     override fun registrations(): Iterable<StepRegistration<*, *>> {
-        val provider = buildProvider()
+        val provider = ScmGitPluginDeclaration.provider()
         // Validate the manifest C5 cross-check before constructing the
         // registration. The validator is deterministic and fail-closed: a
         // mismatch between manifest.declaredCapabilities and
         // contract.requiredCapabilities is rejected here, never silently
         // coerced downstream.
-        val manifest = buildManifest(provider)
+        val manifest = ScmGitPluginDeclaration.manifest()
         PluginManifestValidator.validate(manifest, listOf(checkoutStep))
         return listOf(StepRegistration(checkoutStep, provider))
     }
@@ -83,103 +83,8 @@ class ScmGitStepDefinitionContributor : StepDefinitionContributor {
      * Fail-closed if neither source yields the publisher / digest — the
      * contract requires real provenance, not self-declared values.
      */
-    private fun buildProvider(): StepProviderMetadata {
-        val releaseProps = loadReleaseProperties()
-        val publisher = System.getProperty("pipeline.scm-git.publisher")
-            ?: releaseProps["pipeline.scm-git.publisher"]
-            ?: error("Missing publisher provenance (no system property 'pipeline.scm-git.publisher' and no META-INF/scm-git-release.properties in the JAR). The SCM/Git OFFICIAL_PLUGIN refuses to register without it.")
-        val namespace = System.getProperty("pipeline.scm-git.namespace")
-            ?: releaseProps["pipeline.scm-git.namespace"]
-            ?: "pipeline.scm-git"
-        val versionRaw = System.getProperty("pipeline.scm-git.release.version")
-            ?: releaseProps["pipeline.scm-git.release.version"]
-            ?: "0.0.0-dev"
-        val digestRaw = System.getProperty("pipeline.scm-git.release.digest")
-            ?: releaseProps["pipeline.scm-git.release.digest"]
-            ?: error("Missing digest provenance (no system property 'pipeline.scm-git.release.digest' and no META-INF/scm-git-release.properties in the JAR). The SCM/Git OFFICIAL_PLUGIN refuses to register without the real SHA-256 of its own artefact.")
-        val semver = parseSemVer(versionRaw)
-        val plugin: ResourceRef = ResourceRefs.plugin(namespace, "scm-git")
-        val release = PluginReleaseRef(
-            plugin = plugin,
-            version = semver,
-            digest = Digest(digestRaw),
-        )
-        return StepProviderMetadata.create(
-            plugin = plugin,
-            release = release,
-            publisher = publisher,
-            families = setOf(PluginFamily.SCM, PluginFamily.NETWORK),
-            delivery = Delivery.OFFICIAL_PLUGIN,
-            trust = TrustMetadata.Unverified,
-        )
-    }
-
-    private fun buildManifest(provider: StepProviderMetadata): PluginManifest = PluginManifest(
-        schemaVersion = ManifestSchemaVersion.CURRENT,
-        apiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 49, 0)),
-        plugin = provider.plugin,
-        release = provider.release,
-        publisher = provider.publisher,
-        families = provider.families,
-        delivery = provider.delivery,
-        trust = provider.trust,
-        contributions = PluginContributions(
-            steps = listOf(
-                PluginStepContribution(
-                    stepKey = ScmGitCheckoutKey.VALUE,
-                    declaredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
-                ),
-            ),
-            capabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
-        ),
-    )
-
-    /**
-     * Reads `META-INF/scm-git-release.properties` from the classpath if
-     * present. Returns an empty map otherwise (the system-property path
-     * still works for tests that pin metadata explicitly).
-     */
-    private fun loadReleaseProperties(): Map<String, String> {
-        val resource = javaClass.classLoader.getResource("META-INF/scm-git-release.properties")
-            ?: return emptyMap()
-        val text = resource.openStream().use { it.readBytes().toString(Charsets.UTF_8) }
-        val map = linkedMapOf<String, String>()
-        for (line in text.lineSequence()) {
-            val trimmed = line.trim()
-            if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
-            val idx = trimmed.indexOf('=')
-            if (idx > 0) {
-                val k = trimmed.substring(0, idx).trim()
-                val v = trimmed.substring(idx + 1).trim()
-                map[k] = v
-            }
-        }
-        return map
-    }
-
-    private fun parseSemVer(raw: String): SemVer {
-        val parts = raw.split("-")[0].split(".")
-        require(parts.size == 3) {
-            "SemVer must have 3 numeric components (got '$raw')"
-        }
-        return SemVer(
-            major = parts[0].toInt(),
-            minor = parts[1].toInt(),
-            patch = parts[2].toInt(),
-        )
-    }
-
-    companion object {
-        /**
-         * Singleton access used by tests and the legacy `registerScmGit`
-         * helper. ServiceLoader-driven discovery instantiates a fresh
-         * instance via the public no-arg constructor; both paths converge
-         * on the same [registrations] implementation.
-         */
-        @JvmStatic
-        fun instance(): ScmGitStepDefinitionContributor = ScmGitStepDefinitionContributor()
-    }
 }
+
 
 /**
  * Convenience helper for tests / CLI bootstrappers that want to register

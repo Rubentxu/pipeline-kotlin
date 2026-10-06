@@ -376,10 +376,16 @@ sealed interface ContextOverlay {
     // EM-5/EM-6 (catcherror-semantics-em56): carries stageResult + message so the coordinator's
     // catchError fold-walk can publish the CatchErrorTriggered domain event at the point of the
     // real failure (re-throw/suppress decision) instead of at a later IR marker step.
+    //
+    // P3-E D3: both results are typed, and both keep travelling as BARE JSON STRINGS. The
+    // explicit serializer is load-bearing — kotlinx would otherwise emit `{"type":"UNSTABLE"}`
+    // and change the compiled-pipeline format this overlay has always had.
     @Serializable
     data class CatchErrorOverlay(
-        val buildResult: String,
-        val stageResult: String,
+        @Serializable(with = CatchErrorBuildResult.Serializer::class)
+        val buildResult: CatchErrorBuildResult,
+        @Serializable(with = CatchErrorBuildResult.Serializer::class)
+        val stageResult: CatchErrorBuildResult,
         val message: String?,
         val enteredAt: Long,
     ) : ContextOverlay

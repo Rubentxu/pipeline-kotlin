@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
+import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
 import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
 import java.time.Instant
@@ -53,8 +54,8 @@ class SemanticFieldAbsentIsMalformedTest {
         sequence = 4L,
         occurredAt = occurredAt,
         stageName = "build",
-        buildResult = "FAILURE",
-        stageResult = "UNSTABLE",
+        buildResult = CatchErrorBuildResult.Failure,
+        stageResult = CatchErrorBuildResult.Unstable,
         message = "rethrow to the outer scope",
     )
 

@@ -129,6 +129,21 @@ open class StageScopeCore(
         steps.add(StepSpec.Error(message, failureKind))
     }
 
+    /**
+     * The STABLE historical spelling, kept as a validated adapter.
+     *
+     * `error` is STABLE in `DSL_SURFACE_MANIFEST.md`, so `error("boom", "USER")` keeps
+     * compiling. What it no longer does is ACCEPT anything: the token is validated here, at
+     * script-construction time, and an unrecognised one refuses the pipeline before a run
+     * exists. See [LegacyResultVocabulary].
+     *
+     * `failureKind` has no default so that `error("boom")` is not ambiguous between the two
+     * overloads; the bare call resolves to the typed one.
+     */
+    fun error(message: String, failureKind: String) {
+        steps.add(StepSpec.Error(message, LegacyResultVocabulary.failureKind(failureKind)))
+    }
+
     fun sleep(seconds: Long) {
         steps.add(StepSpec.Sleep(seconds))
     }

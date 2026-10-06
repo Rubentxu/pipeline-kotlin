@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
@@ -116,8 +117,8 @@ sealed interface StructuralOverlay {
 
     /** A catchError scope is entered; the coordinator pushes the matching context frame. */
     data class CatchErrorEntered(
-        val buildResult: String,
-        val stageResult: String,
+        val buildResult: CatchErrorBuildResult,
+        val stageResult: CatchErrorBuildResult,
         val message: String?,
         val enteredAt: String?,
     ) : StructuralOverlay
@@ -139,18 +140,38 @@ object StructuralOverlayProjection {
 
     fun project(stepKey: PluginStepId, envelope: JsonObject): StructuralOverlay {
         if (stepKey.value != EMIT_EVENT_PLUGIN) return StructuralOverlay.None
-        val buildResult = envelope["buildResult"]?.jsonPrimitive?.contentOrNull ?: "UNSTABLE"
-        return when (val kind = envelope["kind"]?.jsonPrimitive?.contentOrNull) {
-            "CatchErrorEntered" -> StructuralOverlay.CatchErrorEntered(
-                buildResult = buildResult,
-                stageResult = envelope["stageResult"]?.jsonPrimitive?.contentOrNull ?: buildResult,
-                message = envelope["message"]?.jsonPrimitive?.contentOrNull,
-                enteredAt = envelope["enteredAt"]?.jsonPrimitive?.contentOrNull,
-            )
-            "CatchErrorTriggered" -> StructuralOverlay.CatchErrorTriggered(
+        val kind = envelope["kind"]?.jsonPrimitive?.contentOrNull
+        if (kind != "CatchErrorEntered" && kind != "CatchErrorTriggered") {
+            return StructuralOverlay.None
+        }
+        // P3-E D3 — no defaults here. This used to read
+        //   `?: "UNSTABLE"` for buildResult and `?: buildResult` for stageResult,
+        // which is the same fail-open E4c removed from the store: an unreadable field
+        // became a semantic claim, and UNSTABLE is the claim that SUPPRESSES the failure
+        // this scope was installed to catch. A corrupt payload used to be the one input
+        // guaranteed not to abort the run.
+        //
+        // `None` is the fail-closed direction rather than a silent coercion: no overlay is
+        // pushed, so the scope never catches, so the failure propagates and the run fails
+        // loudly. That is the opposite of the old behaviour, by construction.
+        if (kind == "CatchErrorTriggered") {
+            return StructuralOverlay.CatchErrorTriggered(
                 emitted = envelope["emitted"]?.jsonPrimitive?.contentOrNull == "true",
             )
-            else -> StructuralOverlay.None
         }
+        val buildResult = envelope["buildResult"]?.jsonPrimitive?.contentOrNull
+            ?.let(CatchErrorBuildResult::parse)
+            ?: return StructuralOverlay.None
+        // A scope that declares no stageResult inherits buildResult, which is the producer's
+        // own rule (`stageResult?.uppercase() ?: effectiveBuildResult`) and not an invention.
+        val stageResult = envelope["stageResult"]?.jsonPrimitive?.contentOrNull
+            ?.let(CatchErrorBuildResult::parse)
+            ?: buildResult
+        return StructuralOverlay.CatchErrorEntered(
+            buildResult = buildResult,
+            stageResult = stageResult,
+            message = envelope["message"]?.jsonPrimitive?.contentOrNull,
+            enteredAt = envelope["enteredAt"]?.jsonPrimitive?.contentOrNull,
+        )
     }
 }

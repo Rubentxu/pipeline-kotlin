@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
+import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.StageFinished
@@ -167,14 +169,111 @@ class ErrorHandlingTest {
             "CatchErrorTriggered must be emitted. Events: ${result.events.map { it::class.simpleName }}")
         val evt = catchEvents.first()
         assertEquals("tolerated", evt.message)
-        assertEquals("UNSTABLE", evt.buildResult)
-        assertEquals("UNSTABLE", evt.stageResult)
+        assertEquals(CatchErrorBuildResult.Unstable, evt.buildResult)
+        assertEquals(CatchErrorBuildResult.Unstable, evt.stageResult)
 
         // echo("after-failure") should NOT run (sh exits immediately on failure)
         // echo("after-catch") MUST run
         val stepNames = result.events.filterIsInstance<StepFinished>().map { it.stepName }
         assertTrue(stepNames.lastIsTopLevelEcho(),
             "echo after catchError should run last. Steps: $stepNames")
+    }
+
+    // =============================================================================
+    // P3-E E6 — the STABLE authoring bridge, proven across the scripting host.
+    // =============================================================================
+
+    @Test
+    fun `the legacy spelling still runs and emits the historical wire token`() {
+        // If this ever stops passing, the bridge has been removed and STABLE source is gone.
+        // It is the test that stops someone deleting the adapter in six months.
+        val script = tempDir.resolve("e6-legacy-spelling.pipeline.kts")
+        Files.writeString(script, """
+            pipeline {
+                stages {
+                    stage("test") {
+                        catchError(buildResult = "FAILURE", stageResult = "UNSTABLE") {
+                            sh("exit 1")
+                        }
+                        echo("after-catch")
+                    }
+                }
+            }
+        """.trimIndent())
+
+        val result = runPipeline(script)
+
+        // buildResult = "FAILURE" means "do NOT catch here", so a non-zero exit is the
+        // CORRECT outcome — ERR-S-002 already pins that reading. What this test adds is that
+        // the legacy SPELLING still compiles and still runs at all.
+        assertTrue(
+            result.events.any { it is RunStarted },
+            "the legacy spelling must still compile and start a run. stdout=${result.stdout}",
+        )
+        assertEquals(1, result.exitCode, "buildResult=FAILURE re-throws. stdout=${result.stdout}")
+        val evt = result.events.filterIsInstance<CatchErrorTriggered>().first()
+        assertEquals(CatchErrorBuildResult.Failure, evt.buildResult)
+        assertEquals(CatchErrorBuildResult.Unstable, evt.stageResult)
+    }
+
+    @Test
+    fun `a misspelled legacy result is refused BEFORE the run starts`() {
+        // The claim is about WHEN the refusal happens. A refusal that arrived mid-run would
+        // have emitted RunStarted, possibly run steps, and only then failed — which is a
+        // materially different guarantee from "this pipeline could not be built".
+        val script = tempDir.resolve("e6-misspelled-legacy.pipeline.kts")
+        Files.writeString(script, """
+            pipeline {
+                stages {
+                    stage("test") {
+                        catchError(buildResult = "FALURE") {
+                            sh("exit 1")
+                        }
+                        echo("must-not-run")
+                    }
+                }
+            }
+        """.trimIndent())
+
+        val result = runPipeline(script)
+
+        assertTrue(
+            result.events.none { it is RunStarted },
+            "the run must never start: the pipeline is refused at CONSTRUCTION. stdout=${result.stdout}",
+        )
+        assertTrue(
+            result.events.none { it is CatchErrorTriggered },
+            "a refused scope must not fire. stdout=${result.stdout}",
+        )
+        assertTrue(
+            result.events.none { it is StepFinished },
+            "no step may execute in a pipeline that could not be built. stdout=${result.stdout}",
+        )
+        assertTrue(
+            result.exitCode != 0,
+            "a refused pipeline must not report success. exitCode=${result.exitCode}",
+        )
+    }
+
+    @Test
+    fun `a misspelled legacy error kind is refused before the run starts`() {
+        val script = tempDir.resolve("e6-misspelled-error-kind.pipeline.kts")
+        Files.writeString(script, """
+            pipeline {
+                stages {
+                    stage("test") {
+                        error("boom", "USR")
+                    }
+                }
+            }
+        """.trimIndent())
+
+        val result = runPipeline(script)
+
+        assertTrue(
+            result.events.none { it is RunStarted },
+            "error(\"boom\", \"USR\") must be refused at construction. stdout=${result.stdout}",
+        )
     }
 
     // =============================================================================
@@ -208,8 +307,8 @@ class ErrorHandlingTest {
         assertTrue(catchEvents.isNotEmpty(),
             "CatchErrorTriggered must be emitted")
         val evt = catchEvents.first()
-        assertEquals("FAILURE", evt.buildResult)
-        assertEquals("FAILURE", evt.stageResult)
+        assertEquals(CatchErrorBuildResult.Failure, evt.buildResult)
+        assertEquals(CatchErrorBuildResult.Failure, evt.stageResult)
 
         // echo("after-catch") should NOT run
         val stepNames = result.events.filterIsInstance<StepFinished>().map { it.stepName }
@@ -248,8 +347,8 @@ class ErrorHandlingTest {
         assertTrue(catchEvents.isNotEmpty(),
             "CatchErrorTriggered must be emitted for warnError")
         val evt = catchEvents.first()
-        assertEquals("UNSTABLE", evt.buildResult)
-        assertEquals("UNSTABLE", evt.stageResult)
+        assertEquals(CatchErrorBuildResult.Unstable, evt.buildResult)
+        assertEquals(CatchErrorBuildResult.Unstable, evt.stageResult)
         assertEquals("degraded", evt.message)
 
         // StageMarkedUnstable must be emitted

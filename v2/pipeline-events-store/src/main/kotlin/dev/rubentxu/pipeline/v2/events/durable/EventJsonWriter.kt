@@ -616,9 +616,9 @@ internal object EventJsonWriter {
                 sb.append(",\"stageName\":")
                 sb.append(EventJsonWriter.jsonString(event.stageName))
                 sb.append(",\"buildResult\":")
-                sb.append(EventJsonWriter.optionalJsonString(event.buildResult))
+                sb.append(EventJsonWriter.optionalJsonString(event.buildResult?.wireToken))
                 sb.append(",\"stageResult\":")
-                sb.append(EventJsonWriter.jsonString(event.stageResult))
+                sb.append(EventJsonWriter.jsonString(event.stageResult.wireToken))
                 sb.append(",\"message\":")
                 sb.append(EventJsonWriter.optionalJsonString(event.message))
             }

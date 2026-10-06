@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.events
 
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
+import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.events.PluginEventEmitted
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.CredentialsRef
@@ -33,6 +34,23 @@ internal fun id(n: Int): String = "evt-$n"
 internal fun v(n: Int, k: Int): String = "e${n}f$k"
 
 internal fun i(n: Int, k: Int): Int = n * 100 + k
+
+/**
+ * P3-E D3 — the catchError results, derived from their number like every other value here.
+ *
+ * The rule above ("cada propiedad lleva un valor DISTINTO") cannot be met literally for a
+ * closed vocabulary of three: there are not 42 distinct catchError results to hand out. What
+ * the property actually needs is that two fields of the same type do not carry the SAME value,
+ * because that is what makes a `copy` that permutes them detectable. This helper keeps that:
+ * consecutive indices land on different cases, so `buildResult` and `stageResult` of any one
+ * event differ.
+ */
+internal fun cr(n: Int, k: Int): CatchErrorBuildResult =
+    when ((n + k) % 3) {
+        0 -> CatchErrorBuildResult.Success
+        1 -> CatchErrorBuildResult.Unstable
+        else -> CatchErrorBuildResult.Failure
+    }
 
 internal fun l(n: Int, k: Int): Long = n * 10_000L + k
 
@@ -136,7 +154,7 @@ internal fun controlDeFlujo(): List<DomainEvent> = listOf(
     DirExited(id(39), RUN_ID, l(39, 0), AT, v(39, 1), v(39, 2)),
     DirDeleted(id(40), RUN_ID, l(40, 0), AT, v(40, 1), i(40, 2), sha(40, 3)),
     WsCleaned(id(41), RUN_ID, l(41, 0), AT, i(41, 1), i(41, 2), listOf(v(41, 3)), sha(41, 4)),
-    CatchErrorTriggered(id(42), RUN_ID, l(42, 0), AT, v(42, 1), v(42, 2), v(42, 3), v(42, 4)),
+    CatchErrorTriggered(id(42), RUN_ID, l(42, 0), AT, v(42, 1), cr(42, 2), cr(42, 3), v(42, 4)),
     StageMarkedUnstable(id(43), RUN_ID, l(43, 0), AT, v(43, 1), v(43, 2)),
     WorkflowLoaded(id(44), RUN_ID, l(44, 0), AT, v(44, 1), i(44, 2), sha(44, 3)),
     WaitUntilPolled(id(45), RUN_ID, l(45, 0), AT, i(45, 1), l(45, 2), true),

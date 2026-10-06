@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.harness
 
+import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.StepFinished
@@ -131,7 +132,8 @@ class RealHistoryParityTest {
         val h = history("07-catch-error.out.json").toMutableList()
         val unstable = h.indexOfFirst {
             it.kind == "CatchErrorTriggered" &&
-                (it.event as? dev.rubentxu.pipeline.v2.events.CatchErrorTriggered)?.buildResult == "UNSTABLE"
+                (it.event as? dev.rubentxu.pipeline.v2.events.CatchErrorTriggered)
+                    ?.buildResult == CatchErrorBuildResult.Unstable
         }
         assertTrue(unstable >= 0)
         val e = h[unstable]

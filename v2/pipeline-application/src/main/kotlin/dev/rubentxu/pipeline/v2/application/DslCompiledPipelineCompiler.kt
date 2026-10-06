@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialBindingsPayload
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
@@ -203,8 +204,8 @@ object DslCompiledPipelineCompiler {
             )
             is StepSpec.WarnError -> rewriteWorkflowControl(
                 projection = WorkflowControlProjection.WarnError,
-                buildResult = "UNSTABLE", // forced per ADR-0054 §D5
-                stageResult = "UNSTABLE",
+                buildResult = CatchErrorBuildResult.Unstable, // forced per ADR-0054 §D5
+                stageResult = CatchErrorBuildResult.Unstable,
                 message = step.message,
                 innerSteps = step.steps,
                 parentToken = parentToken,
@@ -437,15 +438,21 @@ object DslCompiledPipelineCompiler {
      */
     private fun rewriteWorkflowControl(
         projection: WorkflowControlProjection,
-        buildResult: String?,
-        stageResult: String?,
+        buildResult: CatchErrorBuildResult?,
+        stageResult: CatchErrorBuildResult?,
         message: String?,
         innerSteps: List<StepSpec>,
         parentToken: String,
         occurrence: Int,
     ): List<StepNode> {
-        val effectiveBuildResult = buildResult?.uppercase() ?: "UNSTABLE"
-        val effectiveStageResult = stageResult?.uppercase() ?: effectiveBuildResult
+        // P3-E D3 — was `buildResult?.uppercase() ?: "UNSTABLE"` and
+        // `stageResult?.uppercase() ?: effectiveBuildResult`. The `uppercase()` was the tell:
+        // a free-text authoring String was being normalised on its way to the wire, so the
+        // token that reached durable history was one the author never wrote. Both defaults
+        // are unchanged as POLICY (Jenkins UNSTABLE, and stage inheriting buildResult) — they
+        // are now expressed over the closed type instead of over a string.
+        val effectiveBuildResult = buildResult ?: CatchErrorBuildResult.Unstable
+        val effectiveStageResult = stageResult ?: effectiveBuildResult
         val tokenPrefix = projection.token
         val scopeToken = "$parentToken/${tokenPrefix}-body-$occurrence"
         val liftedUnstable = when (projection) {
@@ -461,8 +468,8 @@ object DslCompiledPipelineCompiler {
                 stepId = "$parentToken/${tokenPrefix}-enter-$occurrence",
                 eventKind = "CatchErrorEntered",
                 payload = buildJsonObject {
-                    put("buildResult", effectiveBuildResult)
-                    put("stageResult", effectiveStageResult)
+                    put("buildResult", effectiveBuildResult.wireToken)
+                    put("stageResult", effectiveStageResult.wireToken)
                     put("enteredAt", System.currentTimeMillis().toString())
                     // EM-5/EM-6: carry the message so the coordinator's overlay can publish the
                     // CatchErrorTriggered event at the real-failure fold (D5). Nullable/absent OK.
@@ -476,8 +483,8 @@ object DslCompiledPipelineCompiler {
                 stepId = "$parentToken/${tokenPrefix}-trigger-$occurrence",
                 eventKind = "CatchErrorTriggered",
                 payload = buildJsonObject {
-                    put("buildResult", effectiveBuildResult)
-                    put("stageResult", effectiveStageResult)
+                    put("buildResult", effectiveBuildResult.wireToken)
+                    put("stageResult", effectiveStageResult.wireToken)
                     put("message", message ?: "")
                     put("emitted", "true")
                 },
@@ -574,8 +581,8 @@ object DslCompiledPipelineCompiler {
                     flushPlainRun()
                     nodes += rewriteWorkflowControl(
                         projection = WorkflowControlProjection.WarnError,
-                        buildResult = "UNSTABLE", // forced per ADR-0054 §D5
-                        stageResult = "UNSTABLE",
+                        buildResult = CatchErrorBuildResult.Unstable, // forced per ADR-0054 §D5
+                        stageResult = CatchErrorBuildResult.Unstable,
                         message = step.message,
                         innerSteps = step.steps,
                         parentToken = scopeToken,
@@ -767,8 +774,11 @@ object DslCompiledPipelineCompiler {
                 }
                 is StepSpec.CatchError -> {
                     put("kind", "catchError")
-                    put("buildResult", step.buildResult ?: "")
-                    put("stageResult", step.stageResult ?: "")
+                    // `.wireToken`, not the case: this payload feeds the fingerprint, so the
+                    // exact historical strings are load-bearing. A `name` projection here would
+                    // have changed every catchError fingerprint in the repository.
+                    put("buildResult", step.buildResult?.wireToken ?: "")
+                    put("stageResult", step.stageResult?.wireToken ?: "")
                     put("message", JsonNull)
                 }
                 is StepSpec.WarnError -> {

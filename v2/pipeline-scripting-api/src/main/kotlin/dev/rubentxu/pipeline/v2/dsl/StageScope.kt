@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.dsl
 
+import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.domain.RuntimeConfig
 
 /**
@@ -129,10 +130,54 @@ class StageScope(
      * Jenkins verbatim (catalog §1.1 lines 41-43):
      * `catchError(buildResult: String? = null, stageResult: String? = null, message: String? = null) { ... }`
      *
+     * P3-E D3 — both results are [CatchErrorBuildResult] and no longer `String`. A typo such
+     * as `catchError(buildResult = "USR")` used to compile and reach the runtime, where the
+     * only thing that read it was an `else` arm that suppressed the caught failure. It is now
+     * a compile error.
+     *
      * @param buildResult Override build result (null = default Jenkins UNSTABLE)
      * @param stageResult Override stage result (null = use buildResult or default UNSTABLE)
      * @param message User-visible message
      * @param block Nested steps
+     */
+    @Deprecated(
+        message = "LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.",
+        replaceWith = ReplaceWith("catchError(buildResult, stageResult, message, block)"),
+    )
+    fun catchError(
+        buildResult: CatchErrorBuildResult,
+        stageResult: CatchErrorBuildResult? = null,
+        message: String? = null,
+        block: StageScope.() -> Unit,
+    ) {
+        val inner = StageScope(stageName, runtimeConfig)
+        inner.block()
+        steps.add(StepSpec.CatchError(
+            buildResult = buildResult,
+            stageResult = stageResult,
+            message = message,
+            steps = inner.steps(),
+        ))
+    }
+
+    /**
+     * The STABLE historical spelling, kept as a validated adapter.
+     *
+     * `DSL_SURFACE_MANIFEST.md` documents `catchError(buildResult?, stageResult?, message?)` and
+     * declares the construct **DEPRECATED** (LFC1-007) — which is a promise about this
+     * signature: DEPRECATED means members may be removed only after the declared removal
+     * boundary, not at the convenience of the next migration. It parses IMMEDIATELY — see
+     * [LegacyResultVocabulary] — so the token is typed before the pipeline exists and never
+     * reaches the IR or the runtime.
+     *
+     * `catchError { ... }` with no results resolves HERE, because the typed overload requires
+     * `buildResult`. That is deliberate rather than accidental: two overloads with all
+     * parameters defaulted would make every bare `catchError { }` call ambiguous, which was
+     * measured (mutation D3-M1 failed to compile for exactly that reason). A declared absence
+     * produces the same typed state either way, so nothing is lost by routing it through here.
+     *
+     * Removal is not scheduled. It needs the LFC1-007 exit (`try/catch` at the orchestrator),
+     * which is the declared replacement path — not a deprecation added by this change.
      */
     @Deprecated(
         message = "LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.",
@@ -147,8 +192,8 @@ class StageScope(
         val inner = StageScope(stageName, runtimeConfig)
         inner.block()
         steps.add(StepSpec.CatchError(
-            buildResult = buildResult,
-            stageResult = stageResult,
+            buildResult = LegacyResultVocabulary.catchBuildResult(buildResult, "buildResult"),
+            stageResult = LegacyResultVocabulary.catchStageResult(stageResult),
             message = message,
             steps = inner.steps(),
         ))

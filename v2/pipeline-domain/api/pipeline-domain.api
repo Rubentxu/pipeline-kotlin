@@ -156,6 +156,7 @@ public final class dev/rubentxu/pipeline/v2/domain/BoundPurpose : java/lang/Enum
 
 public abstract interface class dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Companion;
+	public abstract fun getWireToken ()Ljava/lang/String;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Companion {
@@ -166,13 +167,24 @@ public final class dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Compani
 public final class dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Failure : dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Failure;
 	public fun equals (Ljava/lang/Object;)Z
+	public fun getWireToken ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Serializer : kotlinx/serialization/KSerializer {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Serializer;
+	public fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Success : dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Success;
 	public fun equals (Ljava/lang/Object;)Z
+	public fun getWireToken ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -180,6 +192,7 @@ public final class dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Success
 public final class dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Unstable : dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult$Unstable;
 	public fun equals (Ljava/lang/Object;)Z
+	public fun getWireToken ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -443,18 +456,18 @@ public final class dev/rubentxu/pipeline/v2/domain/ContextOverlay$CancellationSc
 
 public final class dev/rubentxu/pipeline/v2/domain/ContextOverlay$CatchErrorOverlay : dev/rubentxu/pipeline/v2/domain/ContextOverlay {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/ContextOverlay$CatchErrorOverlay$Companion;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V
-	public final fun component1 ()Ljava/lang/String;
-	public final fun component2 ()Ljava/lang/String;
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;Ljava/lang/String;J)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;
 	public final fun component3 ()Ljava/lang/String;
 	public final fun component4 ()J
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)Ldev/rubentxu/pipeline/v2/domain/ContextOverlay$CatchErrorOverlay;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/ContextOverlay$CatchErrorOverlay;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/ContextOverlay$CatchErrorOverlay;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;Ljava/lang/String;J)Ldev/rubentxu/pipeline/v2/domain/ContextOverlay$CatchErrorOverlay;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/ContextOverlay$CatchErrorOverlay;Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;Ljava/lang/String;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/ContextOverlay$CatchErrorOverlay;
 	public fun equals (Ljava/lang/Object;)Z
-	public final fun getBuildResult ()Ljava/lang/String;
+	public final fun getBuildResult ()Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;
 	public final fun getEnteredAt ()J
 	public final fun getMessage ()Ljava/lang/String;
-	public final fun getStageResult ()Ljava/lang/String;
+	public final fun getStageResult ()Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -979,6 +992,7 @@ public final class dev/rubentxu/pipeline/v2/domain/ExecutionUnit$Single : dev/ru
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/FailureKind : java/lang/Enum {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/FailureKind$Companion;
 	public static final field ENGINE Ldev/rubentxu/pipeline/v2/domain/FailureKind;
 	public static final field INFRASTRUCTURE Ldev/rubentxu/pipeline/v2/domain/FailureKind;
 	public static final field NETWORK Ldev/rubentxu/pipeline/v2/domain/FailureKind;
@@ -992,6 +1006,11 @@ public final class dev/rubentxu/pipeline/v2/domain/FailureKind : java/lang/Enum 
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/FailureKind;
 	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/FailureKind;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/FailureKind$Companion {
+	public final fun getSupportedTokens ()Ljava/util/Set;
+	public final fun parse (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/FailureKind;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/InMemoryCompiledRunCoordinator {

@@ -89,12 +89,20 @@ class FArchL7JenkinsVerbatimSignatureReflectionTest {
         ),
 
         // ML-R9 error-handling steps (ERR-S-009)
+        //
+        // P3-E E6 — the two results are typed in the REPRESENTATION. That is the change this
+        // row records, and it is deliberate: `StepSpec.CatchError` is library ABI under
+        // `pipeline-scripting-api` (EXPERIMENTAL), while the AUTHORING function
+        // `StageScope.catchError(buildResult: String?, ...)` is STABLE and still accepts the
+        // Jenkins tokens — it validates them into these typed fields at script construction.
+        // So the Jenkins *user-visible* shape is preserved at the surface a user writes, and
+        // changed only in the surface a consumer compiles against.
         "CatchError" to StepShape(
             paramTypeDescriptors = listOf(
-                "Ljava/lang/String;",  // buildResult (nullable)
-                "Ljava/lang/String;",  // stageResult (nullable)
-                "Ljava/lang/String;",  // message (nullable)
-                "Ljava/util/List;"      // steps
+                "Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;",  // buildResult (nullable)
+                "Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;",  // stageResult (nullable)
+                "Ljava/lang/String;",                                       // message (nullable)
+                "Ljava/util/List;"                                         // steps
             ),
             fieldNames = setOf("buildResult", "stageResult", "message", "steps")
         ),

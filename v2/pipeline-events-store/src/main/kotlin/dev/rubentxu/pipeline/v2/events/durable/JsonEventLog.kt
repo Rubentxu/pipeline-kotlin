@@ -19,6 +19,7 @@ import dev.rubentxu.pipeline.v2.events.DirEntered
 import dev.rubentxu.pipeline.v2.events.DirExited
 import dev.rubentxu.pipeline.v2.events.DirectiveAdmitted
 import dev.rubentxu.pipeline.v2.events.DirectiveDenied
+import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.ExecutionTargetResolved
@@ -884,7 +885,12 @@ object JsonEventLog {
             }
             "CatchErrorTriggered" -> {
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
+                // P3-E D3 — both results now cross the codec as a CLOSED vocabulary.
+                // `buildResult` stays nullable (a declared absence is legitimate: the DSL's
+                // default), but a PRESENT token outside the vocabulary is corruption and is
+                // refused, exactly like the absent-and-required `stageResult` below.
                 val buildResult = EventJsonFields.optionalStringField(s, "buildResult")
+                    ?.let { CatchErrorBuildResult.parse(it) ?: return null }
                 // P3-E E4 — was `?: "UNSTABLE"`. That default turned a MISSING field into a
                 // semantic claim, and the claim was not neutral: UNSTABLE means the run
                 // continues while FAILURE aborts it. A record whose stageResult could not be
@@ -898,7 +904,9 @@ object JsonEventLog {
                 // legitimate encoding of "not declared" — it is corruption, exactly like the
                 // key being absent. One reader covers both, which is why no hasField probe
                 // is needed here even though `buildResult` right above it IS nullable.
-                val stageResult = EventJsonFields.stringField(s, "stageResult") ?: return null
+                val stageResult = EventJsonFields.stringField(s, "stageResult")
+                    ?.let { CatchErrorBuildResult.parse(it) }
+                    ?: return null
                 val message = EventJsonFields.optionalStringField(s, "message")
                 CatchErrorTriggered(
                     eventId = eventId,

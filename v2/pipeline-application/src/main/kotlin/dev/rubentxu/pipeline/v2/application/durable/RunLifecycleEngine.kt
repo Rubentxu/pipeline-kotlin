@@ -113,11 +113,20 @@ internal class RunLifecycleEngine(private val eventSink: EventSink) {
         // CTX-P2: identical EM-5/6 walk over the pure trailing chain (outermost-first fold order).
         val chain = executionContext.trailingCatchErrorChain()
         for (overlay in chain) {
-            // P3-E E4: parse ONCE at the decision, over the closed vocabulary, and never
-            // with a default. The previous `else -> ContinueUnstable` read UNSTABLE for
-            // every token that was not FAILURE or SUCCESS, so a typo in the pipeline's own
-            // error handling suppressed the failure it was installed to catch.
-            val declared = CatchErrorBuildResult.parse(overlay.buildResult)
+            // P3-E E4 parsed once at the decision, over the closed vocabulary, never with a
+            // default: the previous `else -> ContinueUnstable` read UNSTABLE for every token
+            // that was not FAILURE or SUCCESS, so a typo in the pipeline's own error handling
+            // suppressed the failure it was installed to catch.
+            //
+            // P3-E D3 removed the parse. `overlay.buildResult` IS the vocabulary now, so the
+            // `null` arm this used to need — an unrecognised token, aborted with SCHEMA — is
+            // no longer reachable, and that is the point: the illegal state became
+            // unrepresentable rather than handled. Refusal did not disappear, it moved to
+            // the three places where untrusted text still enters: StructuralOverlayProjection
+            // (unknown token -> no overlay), CatchErrorBuildResult.Serializer (unknown token
+            // -> SerializationException) and the event decoder (unknown token -> record
+            // refused). None of them can reach this walk with a value outside the type.
+            val declared = overlay.buildResult
             eventSink.append(
                 dev.rubentxu.pipeline.v2.events.CatchErrorTriggered(
                     eventId = UUID.randomUUID().toString(),
@@ -125,11 +134,9 @@ internal class RunLifecycleEngine(private val eventSink: EventSink) {
                     sequence = 0L,
                     occurredAt = Instant.now(),
                     stageName = stageName,
-                    // An unreadable result is published as ABSENT rather than echoed back:
-                    // the field is nullable precisely so this case has a truthful encoding,
-                    // and echoing an unrecognised token would put a value in the durable
-                    // stream that no consumer can classify.
-                    buildResult = declared?.let { overlay.buildResult },
+                    // Nullable because ABSENCE is a real historical encoding on this field,
+                    // not because this producer can fail to classify: it cannot any more.
+                    buildResult = declared,
                     stageResult = overlay.stageResult,
                     message = overlay.message,
                 ),
@@ -138,14 +145,6 @@ internal class RunLifecycleEngine(private val eventSink: EventSink) {
                 CatchErrorBuildResult.Failure -> Unit // re-throw outward to the next enclosing catch scope
                 CatchErrorBuildResult.Success -> return CanonicalContinuation.Continue
                 CatchErrorBuildResult.Unstable -> return CanonicalContinuation.ContinueUnstable
-                null -> return CanonicalContinuation.Abort(
-                    PipelineFailure(
-                        dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
-                        "catchError declared buildResult '${overlay.buildResult}', which is not one of " +
-                            "${CatchErrorBuildResult.supportedTokens.joinToString(", ")}; " +
-                            "the caught failure is not suppressed and cannot be classified, so the run fails closed",
-                    ),
-                )
             }
         }
         // Exhausted enclosing catch scopes (or no catch overlay) without a suppressor: abort.

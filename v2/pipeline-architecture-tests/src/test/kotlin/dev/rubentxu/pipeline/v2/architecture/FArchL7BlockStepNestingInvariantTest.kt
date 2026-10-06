@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.architecture
 
+import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import dev.rubentxu.pipeline.v2.sdk.api.BlockStepFlattener
 import dev.rubentxu.pipeline.v2.sdk.api.BlockNestingDepthExceededException
@@ -53,7 +54,7 @@ class FArchL7BlockStepNestingInvariantTest {
 
         // CatchError
         val catchError = StepSpec.CatchError(
-            buildResult = "UNSTABLE",
+            buildResult = CatchErrorBuildResult.Unstable,
             steps = listOf(StepSpec.Shell("exit 1"))
         )
         val catchErrorFlat = BlockStepFlattener.flatten(catchError)

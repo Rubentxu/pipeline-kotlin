@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.architecture
 
+import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
 import dev.rubentxu.pipeline.v2.events.DirDeleted
 import dev.rubentxu.pipeline.v2.events.DirEntered
@@ -124,8 +125,8 @@ class FArchL7EventPayloadOpacityTest {
             sequence = 3L,
             occurredAt = Instant.now(),
             stageName = "Build",
-            buildResult = "UNSTABLE",
-            stageResult = "UNSTABLE",
+            buildResult = CatchErrorBuildResult.Unstable,
+            stageResult = CatchErrorBuildResult.Unstable,
             message = "tolerated failure"
         )
 

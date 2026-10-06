@@ -25,4 +25,27 @@ enum class FailureKind {
     ENGINE,
     /** Unknown failure */
     UNKNOWN,
+    ;
+
+    companion object {
+
+        /**
+         * P3-E E6b — the single boundary where a declared token becomes typed.
+         *
+         * The map is derived from [entries] rather than written out again: a second list of
+         * the same vocabulary is a second authority, and the two drift the first time someone
+         * adds a constant.
+         *
+         * Returns **null** outside the vocabulary, and deliberately does NOT fall back to
+         * [UNKNOWN]: a default here would turn a typo into a silent classification, which is
+         * the exact defect the DSL bridge exists to refuse.
+         */
+        private val BY_TOKEN: Map<String, FailureKind> = entries.associateBy { it.name }
+
+        /** Every token this runtime accepts, for diagnostics on a refused spelling. */
+        val supportedTokens: Set<String> = BY_TOKEN.keys
+
+        /** Total over the vocabulary; **null** for anything else. Never defaults. */
+        fun parse(token: String): FailureKind? = BY_TOKEN[token]
+    }
 }

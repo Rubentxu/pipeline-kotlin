@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test
  */
 class CtxPExecutionContextTest {
 
-    private fun catchO(result: String, msg: String) =
+    private fun catchO(result: CatchErrorBuildResult, msg: String) =
         ContextOverlay.CatchErrorOverlay(buildResult = result, stageResult = result, message = msg, enteredAt = 1L)
 
     // ---- P1 value laws ------------------------------------------------------
@@ -65,8 +65,8 @@ class CtxPExecutionContextTest {
     // CTX-P2-1: innermost-first trailing chain, cut at first non-catch frame.
     @Test
     fun `P2-1 trailing chain is innermost first and cut at non-catch frames`() {
-        val outer = catchO("FAILURE", "outer")
-        val inner = catchO("SUCCESS", "inner")
+        val outer = catchO(CatchErrorBuildResult.Failure, "outer")
+        val inner = catchO(CatchErrorBuildResult.Success, "inner")
         val withCatch = ExecutionContext(listOf(ContextOverlay.Cwd("/ws"), outer, inner))
         assertEquals(listOf(inner, outer), withCatch.trailingCatchErrorChain())
 
@@ -83,7 +83,7 @@ class CtxPExecutionContextTest {
     @Test
     fun `P2-2 Entered transitions ctx0 to ctx1 by pure push`() {
         val ctx0 = ExecutionContext.EMPTY
-        val ctx1 = ctx0.pushed(catchO("UNSTABLE", "c1"))
+        val ctx1 = ctx0.pushed(catchO(CatchErrorBuildResult.Unstable, "c1"))
         assertEquals(1, ctx1.overlays.size)
         assertEquals(0, ctx0.overlays.size)
     }
@@ -91,7 +91,7 @@ class CtxPExecutionContextTest {
     // CTX-P2-3: Triggered(emitted=true) on an active scope -> ctx0 back.
     @Test
     fun `P2-3 Triggered exits the active catch scope`() {
-        val ctx1 = ExecutionContext.EMPTY.pushed(catchO("UNSTABLE", "c1"))
+        val ctx1 = ExecutionContext.EMPTY.pushed(catchO(CatchErrorBuildResult.Unstable, "c1"))
         val exit = ctx1.exitCatchError()
         val ctx2 = (exit as ContextTransition.Advanced).context
         assertEquals(ExecutionContext.EMPTY, ctx2)
@@ -112,8 +112,8 @@ class CtxPExecutionContextTest {
     // CTX-P2-5: full nested lifecycle fold.
     @Test
     fun `P2-5 nested lifecycle fold`() {
-        val outer = catchO("UNSTABLE", "outer")
-        val inner = catchO("FAILURE", "inner")
+        val outer = catchO(CatchErrorBuildResult.Unstable, "outer")
+        val inner = catchO(CatchErrorBuildResult.Failure, "inner")
         var ctx = ExecutionContext.EMPTY            // []
         ctx = ctx.pushed(outer)                     // [outer]
         ctx = ctx.pushed(inner)                     // [outer, inner]
@@ -129,8 +129,8 @@ class CtxPExecutionContextTest {
     @Test
     fun `P2-7 no stale catch frames survive scope exits`() {
         var ctx = ExecutionContext.EMPTY
-        ctx = ctx.pushed(catchO("UNSTABLE", "outer"))
-        ctx = ctx.pushed(catchO("FAILURE", "inner"))
+        ctx = ctx.pushed(catchO(CatchErrorBuildResult.Unstable, "outer"))
+        ctx = ctx.pushed(catchO(CatchErrorBuildResult.Failure, "inner"))
         ctx = (ctx.exitCatchError() as ContextTransition.Advanced).context
         ctx = (ctx.exitCatchError() as ContextTransition.Advanced).context
         assertTrue(ctx.trailingCatchErrorChain().isEmpty())

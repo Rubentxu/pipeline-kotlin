@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.Digest
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
 import dev.rubentxu.pipeline.v2.domain.StageBody
+import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.dsl.pipeline
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -210,7 +211,7 @@ class DslCompiledPipelineCompilerTest {
         val spec = pipeline {
             stages {
                 stage("Build") {
-                    catchError(buildResult = "FAILURE", stageResult = "FAILURE") {
+                    catchError(buildResult = CatchErrorBuildResult.Failure, stageResult = CatchErrorBuildResult.Failure) {
                         sh("exit 1")
                     }
                 }
@@ -332,7 +333,7 @@ class DslCompiledPipelineCompilerTest {
         val spec = pipeline {
             stages {
                 stage("Build") {
-                    catchError(buildResult = "FAILURE") {
+                    catchError(buildResult = CatchErrorBuildResult.Failure) {
                         unstable("inner unstable")
                     }
                 }

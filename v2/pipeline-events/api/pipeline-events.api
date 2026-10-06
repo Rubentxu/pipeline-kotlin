@@ -82,19 +82,19 @@ public final class dev/rubentxu/pipeline/v2/events/ArtifactEntry {
 }
 
 public final class dev/rubentxu/pipeline/v2/events/CatchErrorTriggered : dev/rubentxu/pipeline/v2/events/DomainEvent {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
 	public final fun component4 ()Ljava/time/Instant;
 	public final fun component5 ()Ljava/lang/String;
-	public final fun component6 ()Ljava/lang/String;
-	public final fun component7 ()Ljava/lang/String;
+	public final fun component6 ()Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;
+	public final fun component7 ()Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;
 	public final fun component8 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/CatchErrorTriggered;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/CatchErrorTriggered;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/CatchErrorTriggered;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/CatchErrorTriggered;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/CatchErrorTriggered;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/CatchErrorTriggered;
 	public fun equals (Ljava/lang/Object;)Z
-	public final fun getBuildResult ()Ljava/lang/String;
+	public final fun getBuildResult ()Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;
 	public fun getEventId ()Ljava/lang/String;
 	public fun getKind ()Ljava/lang/String;
 	public final fun getMessage ()Ljava/lang/String;
@@ -102,7 +102,7 @@ public final class dev/rubentxu/pipeline/v2/events/CatchErrorTriggered : dev/rub
 	public fun getRunId ()Ljava/lang/String;
 	public fun getSequence ()J
 	public final fun getStageName ()Ljava/lang/String;
-	public final fun getStageResult ()Ljava/lang/String;
+	public final fun getStageResult ()Ldev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }

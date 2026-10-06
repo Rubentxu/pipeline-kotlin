@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepId
@@ -90,8 +91,11 @@ class StructuralOverlayProjectionTest {
         val overlay = project(
             emitNode("""{"kind":"CatchErrorEntered","buildResult":"FAILURE","stageResult":"FAILURE","message":"tolerated"}"""),
         ) as StructuralOverlay.CatchErrorEntered
-        assertEquals("FAILURE", overlay.buildResult)
-        assertEquals("FAILURE", overlay.stageResult)
+        // P3-E D3: the envelope still carries the historical bare tokens; the projection turns
+        // them into cases. Asserting on the typed value here is what makes the wire-to-type
+        // boundary visible — the token spelling is pinned separately, on the store side.
+        assertEquals(CatchErrorBuildResult.Failure, overlay.buildResult)
+        assertEquals(CatchErrorBuildResult.Failure, overlay.stageResult)
         assertEquals("tolerated", overlay.message)
     }
 

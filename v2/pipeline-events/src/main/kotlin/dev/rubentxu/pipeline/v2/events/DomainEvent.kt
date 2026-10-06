@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.events
 
+import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.CredentialsRef
@@ -749,8 +750,12 @@ data class CatchErrorTriggered(
     override val sequence: Long,
     override val occurredAt: Instant,
     val stageName: String,
-    val buildResult: String?,
-    val stageResult: String,
+    // P3-E D3: typed. The wire spelling is unchanged — `.wireToken`, not `.name`, because
+    // these have always travelled UPPER CASE. Both fields share one vocabulary with the
+    // catchError scope that produced them, so `stageResult` can no longer drift into a
+    // token that `buildResult` never meant.
+    val buildResult: CatchErrorBuildResult?,
+    val stageResult: CatchErrorBuildResult,
     val message: String?,
 ) : DomainEvent {
     override val kind: String get() = "CatchErrorTriggered"

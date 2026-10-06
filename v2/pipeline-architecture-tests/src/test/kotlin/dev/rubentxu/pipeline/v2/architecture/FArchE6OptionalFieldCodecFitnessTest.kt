@@ -65,9 +65,24 @@ class FArchE6OptionalFieldCodecFitnessTest {
      */
     private val blockComment = Regex("""(?s)/\*(?!/).*?\*/""")
 
-    /** Fields the writer absence-encodes, read off the helper's call sites. */
+    /**
+     * Fields the writer absence-encodes, read off the helper's call sites.
+     *
+     * The anchor is the field name, and the argument is deliberately NOT pinned to end at the
+     * name. This scanner was born one migration too early: it matched `optionalJsonString(
+     * event.buildResult)` and reported a false RED the day `CatchErrorBuildResult` replaced that
+     * `String` with a typed value and the call became `event.buildResult?.wireToken`. The writer
+     * had not drifted — it absence-encodes exactly the same field — but the scan could no longer
+     * SEE the writer half, so `onlyRead` came back non-empty and the law fired at a scanner, not
+     * at a codec.
+     *
+     * A test that cannot see the half it exists to compare is not a weaker law; it is a broken
+     * instrument. Matching the field name and tolerating whatever projection is applied to it keeps
+     * the law intact AND makes it fire when a real field is added on one side only, which is the
+     * defect the law was written for.
+     */
     private fun writtenOptionalFields(): Set<String> =
-        Regex("""optionalJsonString\(event\.(\w+)\)""")
+        Regex("""optionalJsonString\(event\.(\w+)""")
             .findAll(readOrFail(writerFile()))
             .map { it.groupValues[1] }
             .toSet()
@@ -134,22 +149,85 @@ class FArchE6OptionalFieldCodecFitnessTest {
     }
 
     /**
+     * The `CatchErrorTriggered` decoder branch, as source text.
+     *
+     * Scoped to the branch on purpose. "The file somewhere contains `?: return null`" is the vacuous
+     * version of this law — the reader has a dozen fail-closed reads and would satisfy it no matter
+     * what happened to `stageResult`. Every assertion below has to be answerable by the branch alone.
+     *
+     * The branch is delimited by the next branch opener at the same 12-space indent; the reads inside
+     * sit at 16, so an inner string literal can never be mistaken for the end of the branch.
+     */
+    private fun catchErrorDecoder(): String {
+        val reader = readOrFail(readerFile())
+        val start = reader.indexOf("\"CatchErrorTriggered\" -> {")
+        assertTrue(start >= 0, "no se encontro la rama decodificadora de CatchErrorTriggered")
+
+        val nextBranch = reader.indexOf("\n            \"", start + 1)
+        val branch = if (nextBranch < 0) reader.substring(start) else reader.substring(start, nextBranch)
+
+        assertTrue(
+            branch.contains("CatchErrorTriggered("),
+            "la rama de CatchErrorTriggered no construye el evento; el recorte por sangria esta mal: $branch",
+        )
+        return branch
+    }
+
+    /**
      * The reader's REQUIRED fields must not have been quietly converted to the optional helper.
      *
      * That would be the opposite defect: a required field whose absence is corruption would start
      * reading corruption as a legitimate `null`. `stageResult` is the field this protects — its
      * reader refuses on absence today, and that refusal is the reason four historical records are
      * readable rather than four fabricated ones.
+     *
+     * The pin used to be one exact line ending in `?: return null`. That was a third spelling lock
+     * from before `stageResult` became a closed vocabulary: the read is now followed by a token
+     * parse and only THEN the fail-closed terminator, spread over three lines, while the property it
+     * protects — a present token, an absent key, and a JSON null all leave the reader refusing — is
+     * exactly as true. Pinning the line would have failed the migration without the defect existing.
+     *
+     * What replaces it discriminates the same three degradations without naming a layout:
+     *
+     *  - required helper downgraded to the optional one  → assertion 2 fails;
+     *  - fail-closed terminator removed                  → assertion 4 fails;
+     *  - terminator left in place but detached from this read (moved above it, so it guards
+     *    `buildResult` instead)                         → the ordering assertion fails, because
+     *    `?: return null` must sit AFTER the `stageResult` read and BEFORE the constructor call.
      */
     @Test
     fun `los campos requeridos siguen fallando cerrados y no degradaron a opcionales`() {
-        val reader = readOrFail(readerFile())
+        val branch = catchErrorDecoder()
+        val read = "EventJsonFields.stringField(s, \"stageResult\")"
 
         assertTrue(
-            reader.contains("val stageResult = EventJsonFields.stringField(s, \"stageResult\") ?: return null"),
+            branch.contains(read),
             "stageResult es NO-NULL en el evento y el escritor emite la clave incondicionalmente, " +
                 "asi que su ausencia es corrupcion, no una version que este runtime ignore. El " +
-                "lector debe seguir fallando cerrado con '?: return null'.",
+                "lector debe seguir leyendolo con el helper REQUERIDO stringField.",
+        )
+        assertTrue(
+            !branch.contains("optionalStringField(s, \"stageResult\")"),
+            "stageResult degradó a campo OPCIONAL: su ausencia es corrupcion y pasaria a leerse " +
+                "como un null legitimo, que es el defecto opuesto al que esta ley protege.",
+        )
+
+        val readAt = branch.indexOf(read)
+        val builtAt = branch.indexOf("CatchErrorTriggered(")
+        // The guard that protects THIS read, not the first one in the branch: the nullable
+        // `buildResult` above carries its own `?: return null`, and matching that one would let a
+        // `stageResult` left unguarded pass as long as the neighbouring field stayed fail-closed.
+        val closedAt = branch.indexOf("?: return null", readAt)
+
+        assertTrue(
+            readAt in 0 until builtAt,
+            "no se-localizo la lectura de stageResult dentro de la rama del constructor.",
+        )
+        assertTrue(
+            closedAt in (readAt + 1) until builtAt,
+            "el cierre '?: return null' de stageResult debe estar DESPUES de su lectura y ANTES de " +
+                "construir el evento; asi una ausencia o un token corrupto devuelven null en vez de " +
+                "un hecho fabricado. readAt=$readAt closedAt=$closedAt builtAt=$builtAt",
         )
     }
 }

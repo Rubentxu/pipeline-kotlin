@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.dsl
 
+import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
@@ -293,8 +294,13 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
             "remains as the rewrite's input shape; do not introduce new direct uses.",
     )
     data class CatchError(
-        val buildResult: String? = null,
-        val stageResult: String? = null,
+        // P3-E D3: typed at authoring. `FailureKind` on Error did the same for error handling;
+        // catchError had the identical shape of defect — a free string that only a runtime
+        // `else` ever read — and it was the worse of the two, because that `else` SUPPRESSED
+        // the failure. No String overload is kept on purpose: two spellings for one decision,
+        // only one of them checked, is the ambiguity this migration exists to remove.
+        val buildResult: CatchErrorBuildResult? = null,
+        val stageResult: CatchErrorBuildResult? = null,
         val message: String? = null,
         val steps: List<StepSpec> = emptyList(),
     ) : StepSpec {

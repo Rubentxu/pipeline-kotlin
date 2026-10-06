@@ -68,7 +68,12 @@ class ContextStackImmutabilityTest {
             ContextOverlay.Credentials("secret-id"),
             ContextOverlay.OutputDecorator("ansi"),
             ContextOverlay.CancellationScope("scope-123"),
-            ContextOverlay.CatchErrorOverlay("FAILURE", "FAILURE", "msg", System.currentTimeMillis()),
+            ContextOverlay.CatchErrorOverlay(
+                CatchErrorBuildResult.Failure,
+                CatchErrorBuildResult.Failure,
+                "msg",
+                System.currentTimeMillis(),
+            ),
             ContextOverlay.TimeoutOverlay(30, "MINUTES"),
             ContextOverlay.RetryOverlay(3, listOf("SCRIPT_FAILURE")),
         )
@@ -82,7 +87,15 @@ class ContextStackImmutabilityTest {
                 is ContextOverlay.Credentials -> assertEquals("secret-id", overlay.bindingId)
                 is ContextOverlay.OutputDecorator -> assertEquals("ansi", overlay.kind)
                 is ContextOverlay.CancellationScope -> assertEquals("scope-123", overlay.scopeId)
-                is ContextOverlay.CatchErrorOverlay -> assertEquals("FAILURE", overlay.buildResult)
+                // P3-E D3: asserted on the case, not the token. `assertEquals("FAILURE", x)`
+                // compiled happily against a typed `x` via the (Object, Object) overload and
+                // only failed at runtime — a reminder that assertEquals is not type-safe across
+                // unrelated types, so a migration has to change the expectation, not just the
+                // argument.
+                is ContextOverlay.CatchErrorOverlay -> {
+                    assertEquals(CatchErrorBuildResult.Failure, overlay.buildResult)
+                    assertEquals(CatchErrorBuildResult.Failure, overlay.stageResult)
+                }
                 is ContextOverlay.TimeoutOverlay -> { assertEquals(30L, overlay.time); assertEquals("MINUTES", overlay.unit) }
                 is ContextOverlay.RetryOverlay -> { assertEquals(3, overlay.count); assertEquals(listOf("SCRIPT_FAILURE"), overlay.conditions) }
             }

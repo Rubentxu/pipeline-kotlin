@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.harness
 
+import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
@@ -74,8 +75,13 @@ class EventHarnessContractTest {
         RetryAttemptFinished("e${next()}", "r1", next(), ts(), a, 3, "s", "sh", stage, step, o)
     private fun stepFailed(step: Int, msg: String) =
         StepFailed("e${next()}", "r1", next(), ts(), step, "s", "sh", dev.rubentxu.pipeline.v2.domain.FailureKind.SCRIPT, msg)
+    // P3-E D3: the token arrives as a String from the scenario and is parsed at the boundary,
+    // so the harness keeps its external contract while the event stays typed.
     private fun catchError(result: String) =
-        CatchErrorTriggered("e${next()}", "r1", next(), ts(), "stage", result, "FAILURE", null)
+        CatchErrorTriggered(
+            "e${next()}", "r1", next(), ts(), "stage",
+            CatchErrorBuildResult.parse(result), CatchErrorBuildResult.Failure, null,
+        )
     private fun echo(content: String) = EchoOutputCaptured("e${next()}", "r1", next(), ts(), 0, content)
     private fun timeoutScheduled(stage: Int = 0, step: Int = 0) =
         TimeoutScheduled("e${next()}", "r1", next(), ts(), 1, "FAILURE", "s", "sh", stage, step)

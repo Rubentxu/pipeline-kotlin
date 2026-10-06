@@ -30,7 +30,11 @@ object EventPayloadAccessor {
         val e = event.event
         return when (m) {
             is FieldMatch.CatchBuildResult ->
-                (e as? dev.rubentxu.pipeline.v2.events.CatchErrorTriggered)?.buildResult == m.value
+                // P3-E D3: the event field is typed, the scenario DSL still declares a token
+                // string. `.wireToken` keeps the harness's external contract unchanged instead
+                // of pushing the vocabulary onto every scenario author.
+                (e as? dev.rubentxu.pipeline.v2.events.CatchErrorTriggered)
+                    ?.buildResult?.wireToken == m.value
             is FieldMatch.RetryOutcome ->
                 (e as? dev.rubentxu.pipeline.v2.events.RetryAttemptFinished)?.outcome == m.value
             is FieldMatch.AttemptNumber ->

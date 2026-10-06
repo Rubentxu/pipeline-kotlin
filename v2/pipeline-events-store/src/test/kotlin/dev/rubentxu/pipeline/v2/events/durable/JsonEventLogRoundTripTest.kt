@@ -4,6 +4,7 @@ package dev.rubentxu.pipeline.v2.events.durable
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.FailureKind
+import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
@@ -571,8 +572,8 @@ class JsonEventLogRoundTripTest {
             sequence = 33L,
             occurredAt = Instant.parse("2026-08-30T10:00:03Z"),
             stageName = "Build",
-            buildResult = "UNSTABLE",
-            stageResult = "UNSTABLE",
+            buildResult = CatchErrorBuildResult.Unstable,
+            stageResult = CatchErrorBuildResult.Unstable,
             message = "tolerated failure",
         )
         val encoded = JsonEventLog.encode(listOf(event))
@@ -581,8 +582,11 @@ class JsonEventLogRoundTripTest {
         val restored = decoded[0] as CatchErrorTriggered
         assertEquals("CatchErrorTriggered", restored.kind)
         assertEquals("Build", restored.stageName)
-        assertEquals("UNSTABLE", restored.buildResult)
-        assertEquals("UNSTABLE", restored.stageResult)
+        // P3-E D3: this asserts the typed value. The WIRE spelling is asserted separately in
+        // CatchErrorResultWireCompatibilityTest, because "the round trip preserved a value" and
+        // "the round trip preserved the historical token" are two different claims.
+        assertEquals(CatchErrorBuildResult.Unstable, restored.buildResult)
+        assertEquals(CatchErrorBuildResult.Unstable, restored.stageResult)
         assertEquals("tolerated failure", restored.message)
     }
 
@@ -596,7 +600,7 @@ class JsonEventLogRoundTripTest {
             occurredAt = Instant.parse("2026-08-30T10:00:04Z"),
             stageName = "Test",
             buildResult = null,
-            stageResult = "FAILURE",
+            stageResult = CatchErrorBuildResult.Failure,
             message = null,
         )
         val encoded = JsonEventLog.encode(listOf(event))
@@ -604,7 +608,7 @@ class JsonEventLogRoundTripTest {
         assertEquals(1, decoded.size)
         val restored = decoded[0] as CatchErrorTriggered
         assertEquals(null, restored.buildResult)
-        assertEquals("FAILURE", restored.stageResult)
+        assertEquals(CatchErrorBuildResult.Failure, restored.stageResult)
         assertEquals(null, restored.message)
     }
 

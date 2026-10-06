@@ -327,6 +327,22 @@ class PostStepsScope {
         steps.add(StepSpec.Error(message, failureKind))
     }
 
+    /**
+     * The STABLE historical spelling, kept as a validated adapter.
+     *
+     * `error` is STABLE in `DSL_SURFACE_MANIFEST.md`. E6b typed the representation
+     * (`StepSpec.Error.failureKind`) but this signature is the published authoring surface,
+     * so `error("boom", "USER")` keeps compiling and is validated IMMEDIATELY at script
+     * construction — see [LegacyResultVocabulary].
+     *
+     * `failureKind` has NO default here on purpose. With one, `error("boom")` would be
+     * ambiguous between the two overloads; without it, the bare call resolves to the typed
+     * one and the legacy spelling is only reachable by actually passing a token.
+     */
+    fun error(message: String, failureKind: String) {
+        steps.add(StepSpec.Error(message, LegacyResultVocabulary.failureKind(failureKind)))
+    }
+
     fun sleep(seconds: Long) {
         steps.add(StepSpec.Sleep(seconds))
     }
@@ -365,6 +381,22 @@ class BranchScope {
 
     fun error(message: String, failureKind: FailureKind = FailureKind.USER) {
         steps.add(StepSpec.Error(message, failureKind))
+    }
+
+    /**
+     * The STABLE historical spelling, kept as a validated adapter.
+     *
+     * `error` is STABLE in `DSL_SURFACE_MANIFEST.md`. E6b typed the representation
+     * (`StepSpec.Error.failureKind`) but this signature is the published authoring surface,
+     * so `error("boom", "USER")` keeps compiling and is validated IMMEDIATELY at script
+     * construction — see [LegacyResultVocabulary].
+     *
+     * `failureKind` has NO default here on purpose. With one, `error("boom")` would be
+     * ambiguous between the two overloads; without it, the bare call resolves to the typed
+     * one and the legacy spelling is only reachable by actually passing a token.
+     */
+    fun error(message: String, failureKind: String) {
+        steps.add(StepSpec.Error(message, LegacyResultVocabulary.failureKind(failureKind)))
     }
 
     fun sleep(seconds: Long) {

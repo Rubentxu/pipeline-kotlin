@@ -41,12 +41,24 @@ class ScriptingAuthoringTest {
     }
 
     /**
-     * SOURCE — broken, deliberately, in the explicit case.
+     * SOURCE — the explicit case is expressed typed, and that is the PREFERRED spelling.
      *
-     * A consumer that wrote `error("boom", "USER")` no longer compiles. That is the recorded break.
-     * It is asserted here so that nobody later "fixes" it by adding a `String` overload, which would
-     * reintroduce the exact ambiguity this migration exists to remove: two spellings for one
-     * decision, only one of them checked.
+     * ~~A consumer that wrote `error("boom", "USER")` no longer compiles. That is the recorded break.~~
+     *
+     * **Corrected (P3-E E6):** it does compile. The bridge keeps
+     * `error(message: String, failureKind: String)` on the STABLE authoring surface, validating
+     * the token into `FailureKind` at script construction. `error` is declared STABLE in
+     * `DSL_SURFACE_MANIFEST.md`, so typing the parameter silently converted a published surface
+     * into a breaking one — and ten UAT scenarios that legitimately wrote the Jenkins spelling
+     * stopped compiling, which is how the difference between the two surfaces was discovered.
+     *
+     * What is NOT restored is the failure mode. `error("boom", "USR")` compiles now and is REFUSED
+     * when the pipeline is built, before any run exists; `error("boom", FailureKind.USR)` does not
+     * compile at all. Both are improvements, and neither is "nothing changed".
+     *
+     * What still must not come back is a `String` overload that ACCEPTS anything: two spellings for
+     * one decision, only one of them checked, is the ambiguity this migration exists to remove.
+     * The compatibility proof lives separately in `LegacyAuthoringCompatibilityTest`, on purpose.
      */
     @Test
     fun `el caso explicito se expresa tipado y proyecta el token historico`() {

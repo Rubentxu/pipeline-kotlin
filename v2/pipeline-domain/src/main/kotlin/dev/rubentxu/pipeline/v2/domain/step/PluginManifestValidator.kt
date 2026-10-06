@@ -1,71 +1,128 @@
 package dev.rubentxu.pipeline.v2.domain.step
 
+import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
+
 /**
- * C5 — structural cross-check between a [PluginManifest] and the
- * [StepDefinition] set the plugin provides.
+ * Structural cross-check between a [PluginManifest] and the contributions the
+ * plugin actually provides.
  *
- * Rejects:
- * - a [PluginManifest] that does not name every [StepDefinition] key
- *   the plugin wants registered;
- * - a [PluginManifest] whose [StepManifest.declaredCapabilities] set
- *   is not equal to the corresponding
- *   [StepContract.requiredCapabilities] set;
- * - a [PluginManifest] that names a StepKey absent from the provided
- *   definitions.
+ * ## What it checks
  *
- * The validator is **deterministic** (no I/O, no clock, no global state)
- * and **fail-closed**: any mismatch raises [IllegalArgumentException]
- * with a diagnostic that names the StepKey and the discrepancy, so the
- * plugin author can fix the manifest before re-registering.
+ * - every Step in the supplied definitions has a manifest entry, and every manifest
+ *   Step has a definition (neither direction may drift);
+ * - per Step, `declaredCapabilities` EQUALS `contract.requiredCapabilities` — a
+ *   plugin cannot under-claim to slip past admission, nor over-claim to make the
+ *   registry promise a capability the handler never asks for;
+ * - every declared Directive and Event resolves against the supplied definitions;
+ * - every Step contract's declared required capabilities appear in the manifest's
+ *   top-level capability set.
  *
- * The validator does NOT touch the registry. It is invoked by plugin
- * authors at construction time of [StepRegistration]; the registry
- * itself stays semantically neutral (its only invariant is duplicate-key
- * rejection).
+ * ## What it is NOT
+ *
+ * It is deterministic (no I/O, no clock, no global state) and fail-closed: any
+ * mismatch throws with a diagnostic naming the key and the discrepancy.
+ *
+ * It does NOT decide whether the plugin may be admitted at runtime. Admission (S6/C)
+ * runs BEFORE any contributor class is loaded;
+ * this validator runs AFTER loading, to prove the implementation matches the
+ * declaration. Keeping the two apart is the whole point of the two-phase check.
  */
 object PluginManifestValidator {
 
     /**
-     * Validates that the [manifest] is consistent with the [definitions]
-     * the plugin author wants to register.
+     * Validates that [manifest] is consistent with the contributions the plugin supplies.
+     *
+     * @param manifest the declaration read from the artifact.
+     * @param definitions the StepDefinitions the plugin's contributor produced.
+     * @param directiveKeys the DirectiveKeys the plugin's directive contributor produced.
+     * @param eventKinds the event kinds the plugin's event contributor produced.
      *
      * @throws IllegalArgumentException on any structural mismatch.
      */
-    fun validate(manifest: PluginManifest, definitions: List<StepDefinition<*, *>>) {
+    fun validate(
+        manifest: PluginManifest,
+        definitions: List<StepDefinition<*, *>>,
+        directiveKeys: Set<DirectiveKey> = emptySet(),
+        eventKinds: Set<String> = emptySet(),
+    ) {
+        validateSteps(manifest, definitions)
+        validateDirectives(manifest, directiveKeys)
+        validateEvents(manifest, eventKinds)
+        validateDeclaredCapabilitiesAppear(manifest, definitions)
+    }
+
+    private fun validateSteps(manifest: PluginManifest, definitions: List<StepDefinition<*, *>>) {
         val definitionKeys = definitions.map { it.contract.key }.toSet()
-        val manifestKeys = manifest.stepManifests.map { it.stepKey }.toSet()
+        val manifestKeys = manifest.contributions.steps.map { it.stepKey }.toSet()
 
-        // (a) Manifest names StepKeys absent from the supplied definitions.
-        val missing = manifestKeys - definitionKeys
-        if (missing.isNotEmpty()) {
-            throw IllegalArgumentException(
-                "PluginManifest references StepKeys not provided by these StepDefinitions: $missing",
-            )
+        val absent = manifestKeys - definitionKeys
+        require(absent.isEmpty()) {
+            "PluginManifest declares StepKeys the plugin does not provide: $absent"
         }
 
-        // (b) Supplied definitions without a manifest entry (also fail-closed
-        //     for the C5 happy path: the manifest is the authoritative declaration).
         val undeclared = definitionKeys - manifestKeys
-        if (undeclared.isNotEmpty()) {
-            throw IllegalArgumentException(
-                "PluginManifest is missing entries for supplied StepDefinitions: $undeclared",
-            )
+        require(undeclared.isEmpty()) {
+            "PluginManifest is missing entries for supplied StepDefinitions: $undeclared"
         }
 
-        // (c) For each Step, declaredCapabilities must equal contract.requiredCapabilities.
         val definitionsByKey = definitions.associateBy { it.contract.key }
-        for (entry in manifest.stepManifests) {
-            val def = definitionsByKey[entry.stepKey]
-                ?: error("internal validator invariant broken: ${entry.stepKey} resolved to null after set check")
+        for (entry in manifest.contributions.steps) {
+            val contract = definitionsByKey.getValue(entry.stepKey).contract
             val declared = entry.declaredCapabilities
-            val required = def.contract.requiredCapabilities
-            if (declared != required) {
-                throw IllegalArgumentException(
-                    "PluginManifest capabilities mismatch for ${entry.stepKey.value}: " +
-                        "declared=$declared contract=$required (every declared capability must appear " +
-                        "in the contract and vice-versa)",
-                )
+            val required = contract.requiredCapabilities
+            require(declared == required) {
+                "PluginManifest capabilities mismatch for ${entry.stepKey.value}: " +
+                    "declared=$declared contract=$required (the declared set must equal the " +
+                    "contract set exactly; under-claiming and over-claiming are both defects)"
             }
+        }
+    }
+
+    private fun validateDirectives(manifest: PluginManifest, provided: Set<DirectiveKey>) {
+        val declared = manifest.contributions.directives.map { it.directiveKey }.toSet()
+
+        val absent = declared - provided
+        require(absent.isEmpty()) {
+            "PluginManifest declares Directives the plugin does not provide: $absent"
+        }
+
+        val undeclared = provided - declared
+        require(undeclared.isEmpty()) {
+            "PluginManifest is missing entries for supplied Directives: $undeclared"
+        }
+    }
+
+    private fun validateEvents(manifest: PluginManifest, provided: Set<String>) {
+        val declared = manifest.contributions.events.map { it.eventKind }.toSet()
+
+        val absent = declared - provided
+        require(absent.isEmpty()) {
+            "PluginManifest declares Events the plugin does not provide: $absent"
+        }
+
+        val undeclared = provided - declared
+        require(undeclared.isEmpty()) {
+            "PluginManifest is missing entries for supplied Events: $undeclared"
+        }
+    }
+
+    /**
+     * A capability named at the top level is the plugin's request for it to be
+     * supplied. A Step that requires one and whose plugin never declared it would be
+     * admitted against a capability nobody asked to provide.
+     */
+    private fun validateDeclaredCapabilitiesAppear(
+        manifest: PluginManifest,
+        definitions: List<StepDefinition<*, *>>,
+    ) {
+        val topLevel = manifest.contributions.capabilities
+        val usedBySteps = definitions.flatMap { it.contract.requiredCapabilities }.toSet()
+
+        val unbacked = topLevel - usedBySteps
+        require(unbacked.isEmpty()) {
+            "PluginManifest declares top-level capabilities that no Step contract requires: " +
+                "$unbacked. A capability nobody uses is a broader declaration than the one the " +
+                "plugin actually needs"
         }
     }
 }

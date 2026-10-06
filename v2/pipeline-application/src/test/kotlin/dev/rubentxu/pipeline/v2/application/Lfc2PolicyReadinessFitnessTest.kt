@@ -2,12 +2,22 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
+import dev.rubentxu.pipeline.v2.domain.identity.InvalidResourceRefException
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceKind
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
-import dev.rubentxu.pipeline.v2.domain.identity.InvalidResourceRefException
+import dev.rubentxu.pipeline.v2.domain.step.Delivery
+import dev.rubentxu.pipeline.v2.domain.step.Digest
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.ManifestSchemaVersion
+import dev.rubentxu.pipeline.v2.domain.step.PipelineKApiRange
+import dev.rubentxu.pipeline.v2.domain.step.PluginContributions
+import dev.rubentxu.pipeline.v2.domain.step.PluginFamily
+import dev.rubentxu.pipeline.v2.domain.step.PluginManifest
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifestValidator
+import dev.rubentxu.pipeline.v2.domain.step.PluginReleaseRef
+import dev.rubentxu.pipeline.v2.domain.step.PluginStepContribution
+import dev.rubentxu.pipeline.v2.domain.step.SemVer
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
@@ -15,25 +25,19 @@ import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.domain.step.StepManifest
+import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistration
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
-import dev.rubentxu.pipeline.v2.domain.step.PluginFamily
-import dev.rubentxu.pipeline.v2.domain.step.Delivery
-import dev.rubentxu.pipeline.v2.domain.step.PluginManifest
-import dev.rubentxu.pipeline.v2.domain.step.PluginReleaseRef
-import dev.rubentxu.pipeline.v2.domain.step.SemVer
-import dev.rubentxu.pipeline.v2.domain.step.Digest
-import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.Timeout
+import java.io.File
+import java.util.concurrent.TimeUnit
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
-import java.util.concurrent.TimeUnit
-import java.io.File
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 
 /**
  * LFC-2E2-prep fitness suite for the Plugin Policy Readiness Gate
@@ -205,17 +209,22 @@ class Lfc2PolicyReadinessFitnessTest {
         val plugin = scmGitPluginRef()
         val release = scmGitRelease(plugin)
         val manifest = PluginManifest(
+            schemaVersion = ManifestSchemaVersion.CURRENT,
+            apiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 49, 0)),
             plugin = plugin,
             release = release,
             publisher = "io.rubentxu",
             families = setOf(PluginFamily.SCM, PluginFamily.NETWORK),
             delivery = Delivery.OFFICIAL_PLUGIN,
             trust = TrustMetadata.Unverified,
-            stepManifests = listOf(
-                StepManifest(
-                    stepKey = def.contract.key,
-                    declaredCapabilities = setOf(SCOPE_FS),
+            contributions = PluginContributions(
+                steps = listOf(
+                    PluginStepContribution(
+                        stepKey = def.contract.key,
+                        declaredCapabilities = setOf(SCOPE_FS),
+                    ),
                 ),
+                capabilities = setOf(SCOPE_FS),
             ),
         )
 
@@ -229,19 +238,25 @@ class Lfc2PolicyReadinessFitnessTest {
         val plugin = scmGitPluginRef()
         val release = scmGitRelease(plugin)
         val manifest = PluginManifest(
+            schemaVersion = ManifestSchemaVersion.CURRENT,
+            apiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 49, 0)),
             plugin = plugin,
             release = release,
             publisher = "io.rubentxu",
             families = setOf(PluginFamily.SCM),
             delivery = Delivery.OFFICIAL_PLUGIN,
             trust = TrustMetadata.Unverified,
-            stepManifests = listOf(
-                StepManifest(
-                    stepKey = def.contract.key,
-                    // Declares only filesystem.read; omits network. Mismatch.
-                    declaredCapabilities = setOf(SCOPE_FS),
+            contributions = PluginContributions(
+                steps = listOf(
+                    PluginStepContribution(
+                        stepKey = def.contract.key,
+                        // Declares only filesystem.read; omits network. Mismatch.
+                        declaredCapabilities = setOf(SCOPE_FS),
+                    ),
                 ),
+                capabilities = setOf(SCOPE_FS),
             ),
+
         )
 
         val ex = assertThrows(IllegalArgumentException::class.java) {
@@ -259,17 +274,22 @@ class Lfc2PolicyReadinessFitnessTest {
         val plugin = scmGitPluginRef()
         val release = scmGitRelease(plugin)
         val manifest = PluginManifest(
+            schemaVersion = ManifestSchemaVersion.CURRENT,
+            apiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 49, 0)),
             plugin = plugin,
             release = release,
             publisher = "io.rubentxu",
             families = setOf(PluginFamily.SCM),
             delivery = Delivery.OFFICIAL_PLUGIN,
             trust = TrustMetadata.Unverified,
-            stepManifests = listOf(
-                StepManifest(
-                    stepKey = PluginStepId("scm.git.nonexistent"),
-                    declaredCapabilities = emptySet(),
+            contributions = PluginContributions(
+                steps = listOf(
+                    PluginStepContribution(
+                        stepKey = PluginStepId("scm.git.nonexistent"),
+                        declaredCapabilities = emptySet(),
+                    ),
                 ),
+                capabilities = emptySet(),
             ),
         )
 

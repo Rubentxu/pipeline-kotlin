@@ -1,13 +1,19 @@
 package dev.rubentxu.pipeline.v2.sdk.http
 
+import dev.rubentxu.pipeline.v2.credentials.api.BASIC_CREDENTIALS_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
 import dev.rubentxu.pipeline.v2.domain.step.Delivery
 import dev.rubentxu.pipeline.v2.domain.step.Digest
+import dev.rubentxu.pipeline.v2.domain.step.ManifestSchemaVersion
+import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.PipelineKApiRange
+import dev.rubentxu.pipeline.v2.domain.step.PluginContributions
 import dev.rubentxu.pipeline.v2.domain.step.PluginFamily
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifest
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifestValidator
 import dev.rubentxu.pipeline.v2.domain.step.PluginReleaseRef
+import dev.rubentxu.pipeline.v2.domain.step.PluginStepContribution
 import dev.rubentxu.pipeline.v2.domain.step.SemVer
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor
@@ -92,17 +98,22 @@ class HttpStepDefinitionContributor : StepDefinitionContributor {
     }
 
     private fun buildManifest(provider: StepProviderMetadata): PluginManifest = PluginManifest(
+        schemaVersion = ManifestSchemaVersion.CURRENT,
+        apiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 49, 0)),
         plugin = provider.plugin,
         release = provider.release,
         publisher = provider.publisher,
         families = provider.families,
         delivery = provider.delivery,
         trust = provider.trust,
-        stepManifests = listOf(
-            StepManifest(
-                stepKey = HttpRequestKey.VALUE,
-                declaredCapabilities = requestDefinition.contract.requiredCapabilities,
+        contributions = PluginContributions(
+            steps = listOf(
+                PluginStepContribution(
+                    stepKey = HttpRequestKey.VALUE,
+                    declaredCapabilities = setOf(HTTP_TRANSPORT_CAPABILITY, NETWORK_EGRESS_CAPABILITY, BASIC_CREDENTIALS_CAPABILITY),
+                ),
             ),
+            capabilities = setOf(HTTP_TRANSPORT_CAPABILITY, NETWORK_EGRESS_CAPABILITY, BASIC_CREDENTIALS_CAPABILITY),
         ),
     )
 

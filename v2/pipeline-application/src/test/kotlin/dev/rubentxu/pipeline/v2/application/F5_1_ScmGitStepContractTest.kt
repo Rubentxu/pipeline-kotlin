@@ -1,31 +1,35 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepDescriptor
+import dev.rubentxu.pipeline.v2.domain.durable.Effect
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
 import dev.rubentxu.pipeline.v2.domain.step.Delivery
 import dev.rubentxu.pipeline.v2.domain.step.Digest
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
+import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.ManifestSchemaVersion
+import dev.rubentxu.pipeline.v2.domain.step.PipelineKApiRange
+import dev.rubentxu.pipeline.v2.domain.step.PluginContributions
 import dev.rubentxu.pipeline.v2.domain.step.PluginFamily
+import dev.rubentxu.pipeline.v2.domain.step.PluginManifest
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifestValidator
 import dev.rubentxu.pipeline.v2.domain.step.PluginReleaseRef
+import dev.rubentxu.pipeline.v2.domain.step.PluginStepContribution
 import dev.rubentxu.pipeline.v2.domain.step.SemVer
+import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepManifest
 import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistration
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
-import dev.rubentxu.pipeline.v2.domain.StepDescriptor
-import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
-import dev.rubentxu.pipeline.v2.domain.durable.Effect
-import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
-import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
-import dev.rubentxu.pipeline.v2.domain.step.PluginManifest
-import dev.rubentxu.pipeline.v2.domain.step.StepCapability
-import dev.rubentxu.pipeline.v2.domain.step.StepCodec
-import dev.rubentxu.pipeline.v2.domain.step.StepManifest
-import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.registerContributors
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutInputCodec
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutOutput
@@ -35,6 +39,9 @@ import dev.rubentxu.pipeline.v2.sdk.scm.git.step.SCM_GIT_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.ScmGitCheckoutKey
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.ScmGitStepDefinitionContributor
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.registerScmGit
+import java.io.File
+import java.nio.file.Files
+import java.nio.file.Path
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
@@ -43,9 +50,6 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
-import java.io.File
-import java.nio.file.Files
-import java.nio.file.Path
 
 /**
  * F5.1 / ADR-0092 — Step contract suite for `scm-git.checkout`.
@@ -153,17 +157,22 @@ class F5_1_ScmGitStepContractTest {
         val provider = makeProvider("pipeline-kotlin", "pipeline.scm-git", "scm-git", 0, 36, 0,
             "sha256:" + "e".repeat(64))
         val manifest = PluginManifest(
+            schemaVersion = ManifestSchemaVersion.CURRENT,
+            apiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 49, 0)),
             plugin = provider.plugin,
             release = provider.release,
             publisher = provider.publisher,
             families = provider.families,
             delivery = provider.delivery,
             trust = provider.trust,
-            stepManifests = listOf(
-                StepManifest(
-                    stepKey = ScmGitCheckoutKey.VALUE,
-                    declaredCapabilities = definition.contract.requiredCapabilities,
+            contributions = PluginContributions(
+                steps = listOf(
+                    PluginStepContribution(
+                        stepKey = ScmGitCheckoutKey.VALUE,
+                        declaredCapabilities = definition.contract.requiredCapabilities,
+                    ),
                 ),
+                capabilities = definition.contract.requiredCapabilities,
             ),
         )
         // Must not throw.
@@ -177,17 +186,22 @@ class F5_1_ScmGitStepContractTest {
             "sha256:" + "f".repeat(64))
         val wrongCapabilities = setOf(StepCapability("unrelated.capability"))
         val manifest = PluginManifest(
+            schemaVersion = ManifestSchemaVersion.CURRENT,
+            apiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 49, 0)),
             plugin = provider.plugin,
             release = provider.release,
             publisher = provider.publisher,
             families = provider.families,
             delivery = provider.delivery,
             trust = provider.trust,
-            stepManifests = listOf(
-                StepManifest(
-                    stepKey = ScmGitCheckoutKey.VALUE,
-                    declaredCapabilities = wrongCapabilities,
+            contributions = PluginContributions(
+                steps = listOf(
+                    PluginStepContribution(
+                        stepKey = ScmGitCheckoutKey.VALUE,
+                        declaredCapabilities = wrongCapabilities,
+                    ),
                 ),
+                capabilities = wrongCapabilities,
             ),
         )
         val ex = assertThrows(IllegalArgumentException::class.java) {
@@ -203,17 +217,22 @@ class F5_1_ScmGitStepContractTest {
         val provider = makeProvider("pipeline-kotlin", "pipeline.scm-git", "scm-git", 0, 36, 0,
             "sha256:" + "1".repeat(64))
         val manifest = PluginManifest(
+            schemaVersion = ManifestSchemaVersion.CURRENT,
+            apiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 49, 0)),
             plugin = provider.plugin,
             release = provider.release,
             publisher = provider.publisher,
             families = provider.families,
             delivery = provider.delivery,
             trust = provider.trust,
-            stepManifests = listOf(
-                StepManifest(
-                    stepKey = PluginStepId("scm-git.unknown"),
-                    declaredCapabilities = emptySet(),
+            contributions = PluginContributions(
+                steps = listOf(
+                    PluginStepContribution(
+                        stepKey = PluginStepId("scm-git.unknown"),
+                        declaredCapabilities = emptySet(),
+                    ),
                 ),
+                capabilities = emptySet(),
             ),
         )
         val ex = assertThrows(IllegalArgumentException::class.java) {

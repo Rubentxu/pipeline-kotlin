@@ -4,10 +4,15 @@ import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
 import dev.rubentxu.pipeline.v2.domain.step.Delivery
 import dev.rubentxu.pipeline.v2.domain.step.Digest
+import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.ManifestSchemaVersion
+import dev.rubentxu.pipeline.v2.domain.step.PipelineKApiRange
+import dev.rubentxu.pipeline.v2.domain.step.PluginContributions
 import dev.rubentxu.pipeline.v2.domain.step.PluginFamily
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifest
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifestValidator
 import dev.rubentxu.pipeline.v2.domain.step.PluginReleaseRef
+import dev.rubentxu.pipeline.v2.domain.step.PluginStepContribution
 import dev.rubentxu.pipeline.v2.domain.step.SemVer
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor
@@ -115,46 +120,52 @@ class CoreUtilsStepDefinitionContributor : StepDefinitionContributor {
     }
 
     private fun buildManifest(provider: StepProviderMetadata): PluginManifest = PluginManifest(
+        schemaVersion = ManifestSchemaVersion.CURRENT,
+        apiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 49, 0)),
         plugin = provider.plugin,
         release = provider.release,
         publisher = provider.publisher,
         families = provider.families,
         delivery = provider.delivery,
         trust = provider.trust,
-        stepManifests = listOf(
-            StepManifest(
-                stepKey = CoreUtilsReadJsonKey.VALUE,
-                declaredCapabilities = readJsonStep.contract.requiredCapabilities,
+        contributions = PluginContributions(
+            steps = listOf(
+                PluginStepContribution(
+                    stepKey = CoreUtilsReadJsonKey.VALUE,
+                    declaredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
+                ),
+                PluginStepContribution(
+                    stepKey = CoreUtilsWriteJsonKey.VALUE,
+                    declaredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
+                ),
+                PluginStepContribution(
+                    stepKey = CoreUtilsSha256Key.VALUE,
+                    declaredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
+                ),
+                PluginStepContribution(
+                    stepKey = CoreUtilsReadYamlKey.VALUE,
+                    declaredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
+                ),
+                PluginStepContribution(
+                    stepKey = CoreUtilsWriteYamlKey.VALUE,
+                    declaredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
+                ),
+                PluginStepContribution(
+                    stepKey = CoreUtilsFindFilesKey.VALUE,
+                    declaredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
+                ),
+                PluginStepContribution(
+                    stepKey = CoreUtilsZipKey.VALUE,
+                    declaredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
+                ),
+                PluginStepContribution(
+                    stepKey = CoreUtilsUnzipKey.VALUE,
+                    declaredCapabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
+                ),
             ),
-            StepManifest(
-                stepKey = CoreUtilsWriteJsonKey.VALUE,
-                declaredCapabilities = writeJsonStep.contract.requiredCapabilities,
-            ),
-            StepManifest(
-                stepKey = CoreUtilsSha256Key.VALUE,
-                declaredCapabilities = sha256Step.contract.requiredCapabilities,
-            ),
-            StepManifest(
-                stepKey = CoreUtilsReadYamlKey.VALUE,
-                declaredCapabilities = readYamlStep.contract.requiredCapabilities,
-            ),
-            StepManifest(
-                stepKey = CoreUtilsWriteYamlKey.VALUE,
-                declaredCapabilities = writeYamlStep.contract.requiredCapabilities,
-            ),
-            StepManifest(
-                stepKey = CoreUtilsFindFilesKey.VALUE,
-                declaredCapabilities = findFilesStep.contract.requiredCapabilities,
-            ),
-            StepManifest(
-                stepKey = CoreUtilsZipKey.VALUE,
-                declaredCapabilities = zipStep.contract.requiredCapabilities,
-            ),
-            StepManifest(
-                stepKey = CoreUtilsUnzipKey.VALUE,
-                declaredCapabilities = unzipStep.contract.requiredCapabilities,
-            ),
+            capabilities = setOf(EXECUTION_LOCATION_CAPABILITY),
         ),
+
     )
 
     private fun loadReleaseProperties(): Map<String, String> {

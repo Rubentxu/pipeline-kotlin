@@ -44,6 +44,55 @@ $ echo $?
 The same happens with no arguments, except the error is `MissingCommand` instead. If you are writing
 a wrapper, do not shell out to `pipelinek help` expecting text on stdout.
 
+## Known gap: `run` prints a JSON event wall, not a readable log
+
+**This is an open product defect, recorded here because it shapes everything you see.**
+
+What `pipelinek run` writes today, verified against the installed binary:
+
+- **stdout**: the whole event stream, encoded as one JSON array, unconditionally —
+  `println(JsonEventLog.encode(events))` at `Main.kt:436`. There is no flag to change or suppress it.
+- **stderr**: two or three summary lines — `Pipeline finished with SUCCESS`, or
+  `cause [SCRIPT]: shell exited with code 3`.
+- **The output of a `sh` step appears in neither.** It is only reachable through
+  `console`, from the durable control plane.
+
+So a first-time user types `pipelinek run hello.pipeline.kts` and gets a wall of JSON envelopes
+carrying `eventId`, `occurredAt` and `runId`. Nothing in that output reads like the run it reports.
+
+What the design already says should happen. [`CLI_OBSERVABILITY_SPEC.md`](../../docs/v2/03-specifications/CLI_OBSERVABILITY_SPEC.md)
+separates two axes:
+
+- **`view`** — *what* information: `normal` (the default human view: lifecycle, failures and a
+  bounded tail of the failing operation's transcript), `events`, `full`, `console`, `quiet`.
+- **`format`** — *how* it is rendered: `text` (human readable), `jsonl`, `json`.
+
+The spec states that on success `run` "does not stream all child output in `normal` mode. It shows
+important lifecycle and final summary", and that JSON appears **only** when `--format jsonl|json`
+is requested, with stdout carrying the machine payload alone.
+
+None of it is implemented. There is no `--view`, `--format`, `--quiet`, `--follow` or `--fields`
+anywhere in the application, and no `inspect` or `logs` command. The spec is marked `PROPOSED`.
+
+This also diverges from an accepted ADR. ADR-0077 §8 requires that "execution output
+(stdout/stderr/transcript) stays on a separate channel", and its *Rejected* list explicitly excludes
+"events encoded into console logs". Today the events **are** the console output.
+
+It also does not meet the Jenkins-familiarity rule this repository holds itself to, which is why a
+`pipelinek run` does not look like `+ echo hello` / `hello` / `Finished: SUCCESS`.
+
+**Until that is decided, this is what works.** Take the JSON apart yourself, and read shell output
+from the durable plane:
+
+```bash
+# every event, one line each, in order
+pipelinek run --db ./.d/j.sqlite --workspace . hello.pipeline.kts \
+  | jq -r '.[] | (.sequence|tostring) as $s | (($s+"        ")[0:4]) + "  " + .kind'
+
+# what a sh step actually printed
+pipelinek console --control-dir ./.d/durable-shell "$RUN_ID" "$OP_ID"
+```
+
 ## Subcommands
 
 | Subcommand | What it does | Line |

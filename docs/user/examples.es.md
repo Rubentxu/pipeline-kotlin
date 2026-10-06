@@ -9,6 +9,16 @@
 No son capturas. Cada fotograma es el binario real escribiendo en una terminal real, con el shim de
 `asdf` en el `PATH`. Nada está preparado ni editado a mano.
 
+> ### ⚠ Estas demos son provisionales
+>
+> Se grabaron antes de que quedara zanjada la cuestión de **qué debe imprimir `pipelinek run`**, así
+> que muestran el comportamiento actual, que es un array JSON de eventos en stdout — ver
+> [`cli-reference.es.md`](cli-reference.es.md) → «Hueco conocido». En varias de ellas el JSON domina
+> el fotograma y tapa la traza de ejecución de la que trata la demo. Eso es una pregunta de producto,
+> no de grabación, y está abierta.
+>
+> Estos GIF se van a regrabar cuando se decida. No tomes este conjunto como una galería terminada.
+
 ## Por qué cada uno es distinto
 
 La primera versión de esta página grababa diez GIF que eran, en la práctica, la misma grabación diez

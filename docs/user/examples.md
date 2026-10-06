@@ -9,6 +9,17 @@
 These are not screenshots. Every frame is the real binary writing to a real terminal, with the
 `asdf` shim in the `PATH`. Nothing is staged or hand-edited.
 
+> ### ⚠ These demos are provisional
+>
+> They were recorded before the question of **what `pipelinek run` should print** was settled, so
+> they show the current behaviour, which is a JSON event array on stdout — see
+> [`cli-reference.md`](cli-reference.md) → "Known gap". In several of them the JSON dominates the
+> frame and buries the execution trace that the demo is actually about. That is a product
+> question, not a recording question, and it is open.
+>
+> These GIFs are being re-recorded once that decision is taken. Do not treat the current set as a
+> finished gallery.
+
 ## Why each one is different
 
 The first version of this page recorded ten GIFs that were, in practice, the same recording ten

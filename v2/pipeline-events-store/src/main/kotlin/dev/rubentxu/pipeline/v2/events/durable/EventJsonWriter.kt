@@ -129,6 +129,20 @@ internal object EventJsonWriter {
         sb.append("]")
         return sb.toString()
     }
+    /**
+     * P3-E E6 — the write half of the optional-field convention.
+     *
+     * Pairs with [EventJsonFields.optionalStringField], which maps the same encoding back to
+     * `null`. Both existed as independent literals before: thirteen `?: ""` here and thirteen
+     * `takeIf { it.isNotEmpty() }` there, with nothing asserting that the two sets of fields
+     * correspond. A field added on one side only would compile, run, and silently decode wrong.
+     *
+     * The encoding is the empty string because that is what every historical record already
+     * carries; what changes is that the convention now has one name and a fitness test that
+     * pins the two sides to the same field set.
+     */
+    fun optionalJsonString(value: String?): String = jsonString(value ?: EventJsonFields.ABSENT_ON_WIRE)
+
     fun jsonString(s: String): String {
         val sb = StringBuilder()
         for (ch in s) {
@@ -249,7 +263,7 @@ internal object EventJsonWriter {
                 sb.append(",\"agentLabel\":")
                 sb.append(EventJsonWriter.jsonString(event.agentLabel))
                 sb.append(",\"remoteUri\":")
-                sb.append(EventJsonWriter.jsonString(event.remoteUri ?: ""))
+                sb.append(EventJsonWriter.optionalJsonString(event.remoteUri))
             }
             is ExecutionTargetResolved -> {
                 sb.append(",\"stageIndex\":")
@@ -317,9 +331,9 @@ internal object EventJsonWriter {
                 sb.append(",\"timeoutAction\":")
                 sb.append(EventJsonWriter.jsonString(event.timeoutAction))
                 sb.append(",\"stepName\":")
-                sb.append(EventJsonWriter.jsonString(event.stepName ?: ""))
+                sb.append(EventJsonWriter.optionalJsonString(event.stepName))
                 sb.append(",\"stepType\":")
-                sb.append(EventJsonWriter.jsonString(event.stepType ?: ""))
+                sb.append(EventJsonWriter.optionalJsonString(event.stepType))
                 sb.append(",\"stageIndex\":")
                 sb.append(event.stageIndex ?: -1)
                 sb.append(",\"stepIndex\":")
@@ -602,11 +616,11 @@ internal object EventJsonWriter {
                 sb.append(",\"stageName\":")
                 sb.append(EventJsonWriter.jsonString(event.stageName))
                 sb.append(",\"buildResult\":")
-                sb.append(EventJsonWriter.jsonString(event.buildResult ?: ""))
+                sb.append(EventJsonWriter.optionalJsonString(event.buildResult))
                 sb.append(",\"stageResult\":")
                 sb.append(EventJsonWriter.jsonString(event.stageResult))
                 sb.append(",\"message\":")
-                sb.append(EventJsonWriter.jsonString(event.message ?: ""))
+                sb.append(EventJsonWriter.optionalJsonString(event.message))
             }
             is StageMarkedUnstable -> {
                 sb.append(",\"stageName\":")
@@ -658,7 +672,7 @@ internal object EventJsonWriter {
                 sb.append(",\"ordinal\":")
                 sb.append(event.ordinal)
                 sb.append(",\"label\":")
-                sb.append(EventJsonWriter.jsonString(event.label ?: ""))
+                sb.append(EventJsonWriter.optionalJsonString(event.label))
             }
             is MilestoneAborted -> {
                 sb.append(",\"ordinal\":")
@@ -671,7 +685,7 @@ internal object EventJsonWriter {
                 sb.append(",\"resource\":")
                 sb.append(EventJsonWriter.jsonString(event.resource))
                 sb.append(",\"reason\":")
-                sb.append(EventJsonWriter.jsonString(event.reason ?: ""))
+                sb.append(EventJsonWriter.optionalJsonString(event.reason))
                 sb.append(",\"skipIfLocked\":")
                 sb.append(event.skipIfLocked)
             }
@@ -732,21 +746,21 @@ internal object EventJsonWriter {
                 sb.append(",\"message\":")
                 sb.append(EventJsonWriter.jsonString(event.message))
                 sb.append(",\"submitter\":")
-                sb.append(EventJsonWriter.jsonString(event.submitter ?: ""))
+                sb.append(EventJsonWriter.optionalJsonString(event.submitter))
                 sb.append(",\"id\":")
-                sb.append(EventJsonWriter.jsonString(event.id ?: ""))
+                sb.append(EventJsonWriter.optionalJsonString(event.id))
             }
             is InputProceed -> {
                 sb.append(",\"submitter\":")
-                sb.append(EventJsonWriter.jsonString(event.submitter ?: ""))
+                sb.append(EventJsonWriter.optionalJsonString(event.submitter))
                 sb.append(",\"message\":")
-                sb.append(EventJsonWriter.jsonString(event.message ?: ""))
+                sb.append(EventJsonWriter.optionalJsonString(event.message))
             }
             is InputAborted -> {
                 sb.append(",\"submitter\":")
-                sb.append(EventJsonWriter.jsonString(event.submitter ?: ""))
+                sb.append(EventJsonWriter.optionalJsonString(event.submitter))
                 sb.append(",\"message\":")
-                sb.append(EventJsonWriter.jsonString(event.message ?: ""))
+                sb.append(EventJsonWriter.optionalJsonString(event.message))
             }
             is InputDenied -> {
                 sb.append(",\"reason\":")

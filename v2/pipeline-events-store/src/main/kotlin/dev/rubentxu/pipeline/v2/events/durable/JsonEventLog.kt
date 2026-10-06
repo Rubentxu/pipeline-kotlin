@@ -377,7 +377,7 @@ object JsonEventLog {
                 sequence = sequence,
                 occurredAt = occurredAt,
                 agentLabel = EventJsonFields.stringField(s, "agentLabel") ?: "",
-                remoteUri = EventJsonFields.stringField(s, "remoteUri")?.takeIf { it.isNotEmpty() },
+                remoteUri = EventJsonFields.optionalStringField(s, "remoteUri"),
             )
             "ExecutionTargetResolved" -> ExecutionTargetResolved(
                 eventId = eventId,
@@ -441,8 +441,8 @@ object JsonEventLog {
                 occurredAt = occurredAt,
                 timeoutSeconds = EventJsonFields.longField(s, "timeoutSeconds") ?: 0L,
                 timeoutAction = EventJsonFields.stringField(s, "timeoutAction") ?: "FAIL",
-                stepName = EventJsonFields.stringField(s, "stepName")?.takeIf { it.isNotEmpty() },
-                stepType = EventJsonFields.stringField(s, "stepType")?.takeIf { it.isNotEmpty() },
+                stepName = EventJsonFields.optionalStringField(s, "stepName"),
+                stepType = EventJsonFields.optionalStringField(s, "stepType"),
                 stageIndex = EventJsonFields.intField(s, "stageIndex")?.takeIf { it != -1 },
                 stepIndex = EventJsonFields.intField(s, "stepIndex")?.takeIf { it != -1 },
             )
@@ -884,7 +884,7 @@ object JsonEventLog {
             }
             "CatchErrorTriggered" -> {
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
-                val buildResult = EventJsonFields.stringField(s, "buildResult")?.takeIf { it.isNotEmpty() }
+                val buildResult = EventJsonFields.optionalStringField(s, "buildResult")
                 // P3-E E4 — was `?: "UNSTABLE"`. That default turned a MISSING field into a
                 // semantic claim, and the claim was not neutral: UNSTABLE means the run
                 // continues while FAILURE aborts it. A record whose stageResult could not be
@@ -899,7 +899,7 @@ object JsonEventLog {
                 // key being absent. One reader covers both, which is why no hasField probe
                 // is needed here even though `buildResult` right above it IS nullable.
                 val stageResult = EventJsonFields.stringField(s, "stageResult") ?: return null
-                val message = EventJsonFields.stringField(s, "message")?.takeIf { it.isNotEmpty() }
+                val message = EventJsonFields.optionalStringField(s, "message")
                 CatchErrorTriggered(
                     eventId = eventId,
                     runId = runId,
@@ -1004,7 +1004,7 @@ object JsonEventLog {
             }
             "MilestoneReached" -> {
                 val ordinal = EventJsonFields.intField(s, "ordinal") ?: 0
-                val label = EventJsonFields.stringField(s, "label")?.takeIf { it.isNotEmpty() }
+                val label = EventJsonFields.optionalStringField(s, "label")
                 MilestoneReached(
                     eventId = eventId,
                     runId = runId,
@@ -1029,7 +1029,7 @@ object JsonEventLog {
             // RP6-A / WU-091 §6 lock events
             "LockRequested" -> {
                 val resource = EventJsonFields.stringField(s, "resource") ?: ""
-                val reason = EventJsonFields.stringField(s, "reason")?.takeIf { it.isNotEmpty() }
+                val reason = EventJsonFields.optionalStringField(s, "reason")
                 val skipIfLocked = EventJsonFields.boolField(s, "skipIfLocked") ?: false
                 LockRequested(
                     eventId = eventId,
@@ -1126,8 +1126,8 @@ object JsonEventLog {
             // RP6-B / WU-092 §6 input events
             "InputRequested" -> {
                 val message = EventJsonFields.stringField(s, "message") ?: ""
-                val submitter = EventJsonFields.stringField(s, "submitter")?.takeIf { it.isNotEmpty() }
-                val id = EventJsonFields.stringField(s, "id")?.takeIf { it.isNotEmpty() }
+                val submitter = EventJsonFields.optionalStringField(s, "submitter")
+                val id = EventJsonFields.optionalStringField(s, "id")
                 InputRequested(
                     eventId = eventId,
                     runId = runId,
@@ -1139,8 +1139,8 @@ object JsonEventLog {
                 )
             }
             "InputProceed" -> {
-                val submitter = EventJsonFields.stringField(s, "submitter")?.takeIf { it.isNotEmpty() }
-                val message = EventJsonFields.stringField(s, "message")?.takeIf { it.isNotEmpty() }
+                val submitter = EventJsonFields.optionalStringField(s, "submitter")
+                val message = EventJsonFields.optionalStringField(s, "message")
                 InputProceed(
                     eventId = eventId,
                     runId = runId,
@@ -1151,8 +1151,8 @@ object JsonEventLog {
                 )
             }
             "InputAborted" -> {
-                val submitter = EventJsonFields.stringField(s, "submitter")?.takeIf { it.isNotEmpty() }
-                val message = EventJsonFields.stringField(s, "message")?.takeIf { it.isNotEmpty() }
+                val submitter = EventJsonFields.optionalStringField(s, "submitter")
+                val message = EventJsonFields.optionalStringField(s, "message")
                 InputAborted(
                     eventId = eventId,
                     runId = runId,

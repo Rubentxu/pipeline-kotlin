@@ -229,8 +229,8 @@ SHA-256; ningún canal reconstruye PipelineK. Esa regla está decidida en
 | **ZIP canónico** | Descarga `pipelinek-0.47.0.zip` de la release, verifica su digest y descomprime. Java 21+, Linux/macOS/WSL |
 | **Instalador multi-versión** | `scripts/install-pipelinek.sh` — `install` / `use` / `list` / `uninstall` / `doctor`. Allowlist de URL fail-closed, digest verificado, sin `sudo` |
 | **Bootstrap `curl \| sh`** | `scripts/install-pipelinek-curl.sh` — POSIX `sh`, 13 códigos de salida nombrados, verifica el instalador antes de delegar. **Aún no usable**: ninguna release publica el instalador como asset (`…/download/v0.47.0/install-pipelinek.sh` da 404), así que sale con `10` en vez de instalar |
-| **mise** | `mise use -g pipelinek@0.47.0` |
-| **asdf** | `asdf install pipelinek 0.47.0` |
+| **asdf** | `asdf plugin add pipelinek https://github.com/rubentxu/asdf-pipelinek.git` y luego `asdf install pipelinek 0.47.0`. Descarga el ZIP de la release, comprueba su SHA-256 contra el `SHA256SUMS` publicado y falla cerrado si no coincide. Nunca compila. Necesita JDK 21+ en el `PATH`. **[Míralo funcionar](docs/user/examples.es.md#00--instalar-con-asdf)** |
+| **mise** | `mise use -g pipelinek@0.47.0`. La entrada del registro resuelve (`mise ls-remote pipelinek` lista 0.40.0–0.47.0); aquí **no** se completó un `mise install`, así que trátalo como no verificado de extremo a extremo |
 
 ```bash
 VERSION=0.47.0

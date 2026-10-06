@@ -1,0 +1,11 @@
+# Ficheros binarios: sin conversiones de fin de linea y sin diff textual.
+# El atributo `binary` es un macro de git que equivale a `-diff -merge -text`.
+# Razon: https://git-scm.com/docs/gitattributes
+*.gif   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.zip   binary
+*.jar   binary
+*.cast  binary
+*.gz    binary

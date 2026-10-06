@@ -230,8 +230,8 @@ no channel rebuilds PipelineK. That rule is decided in
 | **Canonical ZIP** | Download `pipelinek-0.47.0.zip` from the release, verify its digest, unzip. Java 21+, Linux/macOS/WSL |
 | **Multi-version installer** | `scripts/install-pipelinek.sh` — `install` / `use` / `list` / `uninstall` / `doctor`. Fail-closed URL allowlist, digest verified, no `sudo` |
 | **`curl \| sh` bootstrap** | `scripts/install-pipelinek-curl.sh` — POSIX `sh`, 13 named exit codes, verifies the installer before delegating. **Not usable yet**: no release publishes the installer as an asset yet (`…/download/v0.47.0/install-pipelinek.sh` is 404), so it exits `10` instead of installing |
-| **mise** | `mise use -g pipelinek@0.47.0` |
-| **asdf** | `asdf install pipelinek 0.47.0` |
+| **asdf** | `asdf plugin add pipelinek https://github.com/rubentxu/asdf-pipelinek.git` then `asdf install pipelinek 0.47.0`. Downloads the release ZIP, checks its SHA-256 against the published `SHA256SUMS`, fails closed on mismatch. Never compiles. Needs JDK 21+ on `PATH`. **[Watch it work](docs/user/examples.md#00--install-with-asdf)** |
+| **mise** | `mise use -g pipelinek@0.47.0`. The registry entry resolves (`mise ls-remote pipelinek` lists 0.40.0–0.47.0); a full `mise install` was **not** run here, so treat it as unverified end to end |
 
 ```bash
 VERSION=0.47.0

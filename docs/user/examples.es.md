@@ -1,188 +1,187 @@
 # PipelineK — Ejemplos grabados
 
-**Grabado contra**: `pipelinek 0.47.0`, construido desde la rama de desarrollo, 2026-10-06
-**No verificado contra un binario publicado.** Ver
-[Cómo se grabaron](#cómo-se-grabaron).
+**Grabado contra**: `pipelinek 0.47.0` instalado por asdf (`~/.asdf/installs/pipelinek/0.47.0`),
+2026-10-06. No es una compilación de Gradle: nada de salida del compilador ni ruido de build.
+**Ningún recibo publicado cubre estas grabaciones.** Este repositorio no tiene CI remota desde
+2026-09-30, así que esta página no reclama ningún gate de producción. Ver
+[`cli-reference.es.md`](cli-reference.es.md) → «Nota de autoridad».
 
-Hay diez pipelines ejecutables en [`examples/`](../../examples/). Cada uno se ejecuta contra el
-**binario real**, y esta página te enseña cada uno funcionando: la orden, el resultado y el código
-de salida.
+No son capturas. Cada fotograma es el binario real escribiendo en una terminal real, con el shim de
+`asdf` en el `PATH`. Nada está preparado ni editado a mano.
 
-| Si quieres ver… | Ve a |
-|---|---|
-| El pipeline más corto que funciona | [01 — Hello](#01--hello) |
-| Etapas ejecutándose en orden | [02 — Multi-stage](#02--multi-stage) |
-| Procesos reales del sistema | [03 — Shell](#03--shell) |
-| Control de flujo Kotlin dentro de un pipeline | [04 — Kotlin control flow](#04--kotlin-control-flow) |
-| **Un fallo que detiene el run** | [05 — Failing step](#05--failing-step) |
-| Reanudar desde un journal | [06 — Durable](#06--durable) |
-| **Recuperarse de un fallo** | [07 — Catch error](#07--catch-error) |
-| Dos ramas a la vez | [08 — Parallel](#08--parallel) |
-| Reintentar un step inestable | [09 — Retry](#09--retry) |
-| **Un timeout aplicado de verdad** | [10 — Timeout](#10--timeout) |
+## Por qué cada uno es distinto
 
----
+La primera versión de esta página grababa diez GIF que eran, en la práctica, la misma grabación diez
+veces: mismo comando de versión, mismo `pipelinek run`, mismo `echo $?`. Lo único que cambiaba era
+el nombre del fichero del pipeline. Eso no valía como documentación.
 
-## Qué enseñan estos GIF y qué no
+Cada demo de abajo responde ahora a **una pregunta concreta** y por tanto ejecuta **órdenes
+distintas**. La pregunta se enuncia antes del GIF, para que sepas qué vas a ver y puedas juzgar si la
+respuesta está en pantalla.
 
-Léelo antes de fiarte de un fotograma.
+| # | Pregunta | Orden que la distingue |
+|---|---|---|
+| 00 | ¿Cómo lo instalo y está mi máquina bien? | `asdf install`, `pipelinek doctor` |
+| 01 | ¿Qué es un pipeline y `validate` predice a `run`? | `validate` y luego `run` |
+| 02 | ¿Las etapas se ejecutan en el orden que escribí? | `events` filtrado por etapa |
+| 03 | ¿De verdad lanza procesos del sistema operativo? | transcripción con `console` |
+| 05 | ¿Qué pasa cuando un shell falla? | `run` + `events`, con `StepFailed` |
+| 07 | ¿Puede un pipeline acabar sin estar limpio y salir con 0? | `run`, con `UNSTABLE` |
+| 08 | ¿Las ramas van realmente en paralelo? | `console` sobre las dos ramas |
+| 10 | ¿Un timeout es solo otro fallo? | `run`, con `[TIMEOUT]` |
 
-**Lo que ves** es real: el binario `pipelinek` real, el fichero de pipeline real, la línea de
-resultado real y el código de salida real.
+No hay demo para `06-durable` ni para `09-retry`, y es una decisión deliberada, no un descuido. Medí
+ambos y ninguno deja una señal que los distinga en el CLI:
 
-**Lo que no ves** es el array JSON de eventos. `pipelinek run` lo imprime en **stdout** como una
-única línea JSON, con un UUID y una marca de tiempo ISO por evento. Falta a propósito en estos GIF
-por dos razones: a escala de GIF es ilegible, y **cambia en cada ejecución**, así que una demo que
-lo contenga nunca podría regenerarse igual dos veces.
+- **`06-durable`**: un segundo run contra el mismo `--db` produce exactamente el mismo espinazo de
+  eventos que el primero. Nada en pantalla dice «reutilizado».
+- **`09-retry`**: los reintentos **no se registran como steps separados**. El run muestra un único par
+  `StepStarted`/`StepFinished`, igual que un acierto al primer intento. El bucle de reintento es
+  invisible desde fuera.
 
-Ese array no es un log. Es la API de observabilidad, y es lo que vas a usar en CI. Está documentado
-entero en
-[Eventos y diagnóstico](events-and-troubleshooting.es.md), y `examples/run.sh` afirma sobre él.
+Publicar un GIF que no puede demostrar su propio tema repetiría el error original. Los dos pipelines
+siguen siendo ejecutables en [`examples/`](../../examples/) y están cubiertos en prosa en
+[`pipeline-dsl.es.md`](pipeline-dsl.es.md).
 
-La línea de resumen humano que **sí** ves viene de **stderr**:
+## Qué se ve en pantalla
+
+Cada grabación muestra, en este orden:
+
+1. La línea de `pipelinek version`, para que veas exactamente qué build se está ejecutando.
+2. La orden, escrita en el prompt.
+3. La salida completa: el array de eventos en **stdout**, la transcripción y el resumen en
+   **stderr**, y la salida de consola capturada. No se filtra nada por legibilidad. `jq` se usa sólo
+   como formateador de identidad, porque un sobre JSON de una sola línea a 140 columnas es ilegible y
+   recorta `RunFinished`.
+4. El código de salida real, leído de `${PIPESTATUS[0]}` cuando hay tubería — nunca de `$?`, que
+   devolvería el de `jq`.
+
+Sólo se quitan dos cosas de una grabación, y ambas son ruido de la máquina que graba, no de
+PipelineK:
+
+- Líneas `WARNING:` / `Picked up _JAVA_OPTIONS`, que el JDK de esta máquina emite y que contienen
+  la ruta de instalación de quien graba.
+- Líneas `mavis-trash:`, porque aquí `rm` está envuelto por una herramienta de papelera que imprime
+  por stdout.
+
+Todo lo demás — UUID, `occurredAt`, `eventId`, run ids — se deja. Es ruidoso, y es lo que el producto
+produce realmente.
+
+Una consecuencia se ve en todas las demos y conviene saber antes de copiar una orden: **los flags
+van antes de la ruta del script**. `pipelinek run script.kts --db x` **ignora** `--db` en silencio;
+`pipelinek run --db x script.kts` es la forma que funciona.
+
+## 00 — Instalar con asdf
+
+El plugin verifica el archivo contra el `SHA256SUMS` de la release y aborta si no coincide, así que
+es una instalación con integridad comprobada, no una descarga.
 
 ```bash
-# exactamente lo que grabó cada GIF
-pipelinek run --workspace . 05-failing-step.pipeline.kts 2>&1 >/dev/null
-echo $?
+asdf plugin add pipelinek https://github.com/rubentxu/asdf-pipelinek.git
+asdf install pipelinek 0.47.0
+asdf set -u pipelinek 0.47.0
+pipelinek version
+pipelinek doctor
 ```
 
----
+![Instalación con asdf](assets/examples/00-install-asdf.gif)
 
-## Reproducirlos tú
+`doctor` imprime tres líneas y nada más. La línea `workdir:` es una sonda real de escritura: crea
+un fichero en el directorio actual y lo borra.
 
-Un GIF es una foto de ayer. Esto es lo que hoy sí puedes comprobar:
+## 01 — El mínimo, y lo que `validate` no te dice
+
+![El pipeline mínimo](assets/examples/01-el-minimo.gif)
+
+Lo interesante aquí es la diferencia entre `validate` y `run`. `validate` imprime
+`VALIDATION SUCCESSFUL` para scripts que `run` después rechaza con exit `2`, porque `validate` nunca
+llega al puente canónico donde se rechazan construcciones como `git()`, `load()`, `node {}` y
+`ansiColor {}`. **La comprobación real es `run`.** Explicación completa en
+[`cli-reference.es.md`](cli-reference.es.md) → «`validate` frente a `run`».
+
+## 02 — ¿El orden que escribiste es el orden que se ejecuta?
+
+![El orden de las etapas leído del journal](assets/examples/02-el-orden-manda.gif)
+
+Esta demo deja deliberadamente de ser sólo un `run`. Lee el historial del journal con `events` y lo
+filtra a los subjects de etapa, para ver el orden en el historial registrado en lugar de deducirlo de
+la salida. **El pipeline no se re-ejecuta.**
+
+## 03 — Procesos reales del sistema operativo
+
+![Recuperando la transcripción del shell con console](assets/examples/03-procesos-reales.gif)
+
+Lo más útil de esta página. La salida de un step `sh` **no** aparece en el flujo de eventos: sólo
+los steps `echo` emiten `EchoOutputCaptured`. Para ver qué imprimió realmente un shell, hay que leer
+su transcripción durable:
 
 ```bash
-cd v2 && ./gradlew :pipeline-application:installDist
-examples/run.sh                    # los diez, afirmando código de salida y contrato de eventos
-examples/run.sh 05-failing-step.pipeline.kts   # sólo uno
+pipelinek console --control-dir ./.d/durable-shell "$RUN_ID" "$OP_ID"
 ```
 
-`examples/run.sh` es el harness real. No es un GIF, es una comprobación: si cambia el comportamiento
-del binario, se pone rojo. El contrato completo de cada ejemplo, incluidas sus limitaciones
-conocidas, está en [`examples/README.md`](../../examples/README.md).
+El `opId` se compone del subject del evento en un run lineal, tal y como describe la trampa 7 de
+[`cli-reference.es.md`](cli-reference.es.md).
 
----
+## 05 — Un step que falla detiene el run
 
-## 01 — Hello
+![Un step fallido y los eventos resultantes](assets/examples/05-un-fallo-para-el-run.gif)
 
-El mínimo: una etapa, un `echo`. Nada que configurar, nada de lo que depender.
+En pantalla hay dos cosas. La línea del motivo nombra el fallo con su tipo —
+`cause [SCRIPT]: shell exited with code 3` — y el flujo de eventos termina con `StepFailed` y
+**nunca abre la etapa siguiente**. El run sale con `1`.
 
-![PipelineK ejemplo 01 hello](assets/examples/01-hello.gif)
+## 07 — No limpio no es lo mismo que fallido
 
-Resultado `success`, código de salida `0`.
+![Un run UNSTABLE que aun así sale con 0](assets/examples/07-success-no-es-exit-0.gif)
 
-## 02 — Multi-stage
+Esta es la demo que más probablemente sorprende, y es la razón por la que la tabla de códigos de salida de
+[`cli-reference.es.md`](cli-reference.es.md) incluye `Unstable` como `0`. Un pipeline puede terminar
+**inestable** — no limpio, pero tampoco fallido — y el proceso sigue saliendo con `0`. Si tu CI
+decide sólo por el código de salida, este es el caso que te va a morder.
 
-Tres etapas. Se ejecutan en el orden que declaraste, no en orden alfabético — que es lo primero que
-se supone mal cuando alguien da por hecho lo contrario.
+## 08 — Ramas que sí van en paralelo
 
-![PipelineK ejemplo 02 multi-stage](assets/examples/02-multi-stage.gif)
+![Las dos transcripciones de rama](assets/examples/08-ramas-en-paralelo.gif)
 
-Resultado `success`, código de salida `0`.
+Las dos salidas de rama, recuperadas de los dos ficheros de stream distintos. Los `opId` llevan los
+segmentos `-b` y `-bp`, y **no se pueden componer desde el historial de eventos**: allí sólo se
+registran `stage` y `step`. Los nombres de los ficheros de stream del directorio de control son la
+única fuente. Ésta es la razón de que la trampa 7 de la referencia del CLI advierta contra componer
+el id a mano.
 
-## 03 — Shell
+## 10 — Un timeout es su propio tipo de fallo
 
-`sh` lanza un proceso real del sistema, incluido un bucle `for` del shell. Esto no es un
-intérprete fingiendo: es la shell de tu máquina.
+![Un fallo por timeout](assets/examples/10-el-timeout-es-otro-fallo.gif)
 
-![PipelineK ejemplo 03 shell](assets/examples/03-shell.gif)
-
-Resultado `success`, código de salida `0`.
-
-## 04 — Kotlin control flow
-
-Kotlin de verdad dentro de un bloque `script {}`: bucles, condicionales, el lenguaje de siempre,
-dentro de un pipeline en vez de al lado.
-
-![PipelineK ejemplo 04 kotlin control flow](assets/examples/04-kotlin-control-flow.gif)
-
-Resultado `success`, código de salida `0`.
-
-## 05 — Failing step
-
-**El primero por el que merece la pena parar.** Una etapa se ejecuta, el `sh` de la siguiente sale
-con `3`, y el run se detiene. La etapa posterior al fallo nunca se ejecuta — no es "se registra y se
-salta", es que no ocurre.
-
-![PipelineK ejemplo 05 failing step](assets/examples/05-failing-step.gif)
-
-Resultado `failure`, código de salida `1`. La línea del motivo es `shell exited with code 3`:
-PipelineK informa del código que devolvió tu proceso, no aplana todo fallo en un error genérico.
-
-## 06 — Durable
-
-Con `--db`, cada operación se registra en SQLite junto con una huella de sus entradas. Mata el run a
-la mitad y el siguiente lo retoma donde lo dejó en vez de empezar de cero.
-
-![PipelineK ejemplo 06 durable](assets/examples/06-durable.gif)
-
-Resultado `success`, código de salida `0`.
-
-## 07 — Catch error
-
-**El segundo por el que merece la pena parar.** Un `catchError` anidado: el bloque interior convierte
-un fallo en `FAILURE`, el exterior lo degrada a `UNSTABLE`, y el run continúa.
-
-![PipelineK ejemplo 07 catch error](assets/examples/07-catch-error.gif)
-
-Resultado `unstable`, código de salida **`0`**. Por eso "código de salida 0" no es lo mismo que
-"success": este run terminó, y te está diciendo que no quedó limpio. Los códigos de salida están en
-la [referencia del CLI](cli-reference.es.md).
-
-## 08 — Parallel
-
-Dos ramas ejecutándose a la vez. Ejecútalo una segunda vez con el mismo `--db` y reutiliza el
-resultado terminal en vez de relanzar el trabajo — la huella dice que las entradas no cambiaron.
-
-![PipelineK ejemplo 08 parallel](assets/examples/08-parallel.gif)
-
-Resultado `success`, código de salida `0`.
-
-## 09 — Retry
-
-`retry(3) { }`: el primer intento falla, el segundo funciona. El fichero marcador mantiene el
-ejemplo determinista en vez de depender del tiempo.
-
-![PipelineK ejemplo 09 retry](assets/examples/09-retry.gif)
-
-Resultado `success`, código de salida `0`.
-
-## 10 — Timeout
-
-`timeout(2, "SECONDS")` aborta un `sh` que se pasa de tiempo. Fíjate en **cómo** falla: un timeout
-es un `FAILURE`, no una muerte silenciosa.
-
-![PipelineK ejemplo 10 timeout](assets/examples/10-timeout.gif)
-
-Resultado `failure`, código de salida `1`. La línea del motivo dice `durable shell timed out`, que
-es un mensaje distinto del de un fallo de script normal — porque es una causa distinta.
-
----
+El mismo código de salida que la demo 05, con otro motivo: `cause [TIMEOUT]: durable shell timed
+out`. El tipo de fallo forma parte del mensaje precisamente para que puedas distinguir un timeout de
+un comando que devolvió un estado distinto de cero.
 
 ## Cómo se grabaron
 
-Lo digo para que puedas juzgarlos: se produjeron con [asciinema](https://asciinema.org/) capturando
-una sesión real y [agg](https://github.com/asciinema/agg) renderizándola. Ambas se ejecutan desde el
-directorio personal del usuario y **nada de las herramientas queda dentro de este repositorio** —
-ni scripts, ni ficheros de captura, ni binarios. Sólo se versionan los `.gif` terminados.
+- **Binario**: el `0.47.0` instalado por asdf, no el `installDist` de Gradle. Antes de cada grabación
+  se verificó el shim con `pipelinek version`.
+- **Lienzo**: 140x45 a 12 fps. Los 12 fps son deliberados: a los 50 fps por defecto las mismas
+  grabaciones ocupan 1317 KB; a 12 fps ocupan 705 KB, sin pérdida visible en salida de terminal,
+  porque el texto de terminal cambia a ráfagas y no de forma continua.
+- **Las rutas del journal llevan siempre componente de directorio.** `--db run.sqlite` revienta —
+  ver [`cli-reference.es.md`](cli-reference.es.md) → trampa 11.
+- **El harnés de grabación falla cerrado.** Tres puertas abortan la construcción: un escaneo de
+  fugas de rutas y hostname de esta máquina, una puerta de contenido que rechaza errores visibles y
+  exige las cadenas que distinguen a esa demo concreta, y una puerta de distinción que falla si dos
+  demos acaban con el mismo conjunto de órdenes. Esa tercera puerta es el test de regresión del
+  problema que tenía esta página.
+- **Los ficheros binarios se declaran en `.gitattributes`** como `binary`, que git documenta como
+  equivalente a `-diff -merge -text`, para que no se intenten conversiones de fin de línea ni diffs
+  textuales sobre ellos.
 
-Dos detalles que deciden si una grabación así es honesta o ruido:
-
-- **Se grabó stderr y se descartó stdout.** Motivo arriba: stdout es el array de eventos.
-- **La grabación filtra los avisos del propio JDK.** Un JDK 23 o superior imprime
-  `WARNING: sun.misc.Unsafe …` con la ruta absoluta de instalación, que filtra a quien grabó. El
-  proyecto apunta a JDK 21, donde ese aviso no aparece. La salida de PipelineK no se filtra nunca.
-
-Si un fotograma de aquí discrepa de lo que obtengas en tu máquina, quédate con `examples/run.sh`
-antes que con el GIF.
-
----
+Regenerar estos GIF no está automatizado a propósito. Cada regeneración añade un juego nuevo de
+blobs que Git conserva para siempre, y las grabaciones son correctas para el binario con el que se
+hicieron.
 
 ## Siguiente
 
-- [`quickstart.es.md`](quickstart.es.md) — escribe y ejecuta tu primer pipeline.
-- [`pipeline-dsl.es.md`](pipeline-dsl.es.md) — todas las construcciones que ofrece el DSL.
-- [`events-and-troubleshooting.es.md`](events-and-troubleshooting.es.md) — el array de eventos que los GIF omiten.
-- Hub: [`docs/user/README.es.md`](README.es.md).
+- [`installation.es.md`](installation.es.md) — las tres vías de instalación, verificadas.
+- [`cli-reference.es.md`](cli-reference.es.md) — cada comando, flag y código de salida.
+- [`events-and-troubleshooting.es.md`](events-and-troubleshooting.es.md) — leer un run fallido.
+- [`README.es.md`](README.es.md) — el índice.

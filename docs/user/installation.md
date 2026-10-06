@@ -191,21 +191,30 @@ Source: `scripts/install-pipelinek.sh:30-35`, `:228`, `:503`.
 
 ## Channels that do not exist today
 
-Two methods work today: **Option A** (canonical ZIP) and **Option B** (the multi-version installer).
-Three more are specified but not built, and one is a common pattern that this project does not
-support at all:
+Three methods work today: **Option A** (canonical ZIP), **Option B** (the multi-version installer) and
+**asdf**. One is specified but blocked, and one is a pattern this project does not support at all:
 
 | Method | Status | Detail |
 |---|---|---|
-| `mise` (`mise use -g pipelinek@0.47.0`) | **Specified, not built** | Planned as **DIST-4** in [`DISTRIBUTION_ROADMAP.md`](../v2/05-roadmap/DISTRIBUTION_ROADMAP.md): register `pipelinek` on the Aqua or GitHub-release backend. The plugin registry is external to this repository, so the commands do not work yet |
-| `asdf` (the `asdf-pipeline` plugin) | **Specified, not built** | Planned as **DIST-7**, an external plugin exposing `bin/install`, `bin/download`, `bin/list-bin`. Also lives in the external harness. `asdf` already reads this repo's `.tool-versions` for `java`, `gradle` and `maven`, but `pipelinek` is not in it, and adding it today would break every `asdf` user with an unresolved plugin |
-| `curl \| sh` one-liner | **Exists, with a caveat** | `scripts/install-pipelinek-curl.sh` is a POSIX `sh` bootstrap that resolves the installer, verifies it and delegates to it. It exists because `scripts/install-pipelinek.sh:46` sets `set -Eeuo pipefail` and line 56 reads `BASH_SOURCE[0]`, which is empty on stdin — so `curl … \| sh` against the installer *itself* always fails. **Blocked in practice**: no published release ships the installer as a release asset yet (verified 2026-10-06: `…/releases/download/v0.47.0/install-pipelinek.sh` is HTTP 404), so the bootstrap exits `10` rather than installing. It is correct code against an incomplete release pipeline |
+| **`asdf`** (`asdf-pipelinek`) | **Available, verified 2026-10-06** | `asdf plugin add pipelinek https://github.com/rubentxu/asdf-pipelinek.git`, then `asdf install pipelinek 0.47.0`. The plugin downloads the **release ZIP**, checks its SHA-256 against the published `SHA256SUMS`, and aborts on any mismatch; it never compiles PipelineK and never installs Java. **NO VERIFICADO**: it was not installed into this repository's own `.tool-versions`, so a clone does not get it automatically |
+| `mise` (`mise use -g pipelinek@0.47.0`) | **Resolves, not installed here** | `mise ls-remote pipelinek` lists `0.40.0` … `0.47.0`, so the registry entry exists. This page has **not** run a `mise install` to completion, so treat it as unverified end to end |
+| `curl \| sh` one-liner | **Exists, blocked in practice** | `scripts/install-pipelinek-curl.sh` is a POSIX `sh` bootstrap that resolves the installer, verifies it and delegates to it. It exists because `scripts/install-pipelinek.sh:46` sets `set -Eeuo pipefail` and line 56 reads `BASH_SOURCE[0]`, which is empty on stdin — so `curl … \| sh` against the installer *itself* always fails. **Blocked**: no published release ships the installer as a release asset yet (verified 2026-10-06: `…/releases/download/v0.47.0/install-pipelinek.sh` is HTTP 404), so the bootstrap exits `10` rather than installing. Correct code against an incomplete release pipeline |
 
-Every channel — the two that exist and the three planned ones — must consume the same canonical ZIP
+> **This page said asdf did not exist. It does.** `DISTRIBUTION_ROADMAP.md` still lists **DIST-7** as
+> "Not started (harness)", and this page repeated that. The plugin is published at
+> `github.com/rubentxu/asdf-pipelinek`, it installs, and `pipelinek version` answers through it. The
+> roadmap is stale on this point; the roadmap is not mine to rewrite, so it is reported rather than
+> corrected here. **Rule this suggests: a status table in a normative document is a claim about the
+> outside world, and it decays exactly like documentation that describes a retired architecture.**
+
+Every channel — the working ones and the planned ones — must consume the same canonical ZIP
 and verify the same SHA-256. That rule is in
 [`ADR-0089`](../v2/04-adrs/ADR-0089-distribution-artifact-authority-sdkman.md) and
 [`DISTRIBUTION_RELEASE_SPEC.md`](../v2/03-specifications/DISTRIBUTION_RELEASE_SPEC.md): no channel
-rebuilds PipelineK.
+rebuilds PipelineK. The `asdf` plugin honours it — it downloads and verifies, it does not compile.
+
+A recorded session of the asdf route, from a clean asdf to a running pipeline, is on
+[`examples.md` → Install with asdf](examples.md#install-with-asdf).
 
 The main README documents all five methods, including the exact shape `mise` and `asdf` are designed
 for: [`README.md` → Installation methods](../../README.md#installation-methods).

@@ -241,6 +241,28 @@
       ],
       "removal_boundary": "n/a — the three-argument <init>, copy and copy$default are removed by THIS entry and are not coming back; the four-argument forms are the contract from 0.48 onward",
       "supersedes": null
+    },
+    {
+      "module": "pipeline-domain",
+      "sha": "4ab62e5d887a799dd09cfa7ebf9a19a89c919785",
+      "surface": "PluginManifest, PluginManifestValidator.validate, StepManifest",
+      "change": "THREE separate breaks in one commit, and they are listed separately because treating them as one would hide the only part a consumer has to act on. (1) PluginManifest: the constructor, copy and copy$default change arity and shape — schemaVersion:ManifestSchemaVersion, apiRange:PipelineKApiRange and contributions:PluginContributions are added, and getStepManifests() is REMOVED. (2) StepManifest: the class disappears from the dump entirely, replaced by PluginStepContribution with the same two members; the typealias StepManifest = PluginStepContribution keeps SOURCE compatibility for Kotlin callers and does nothing for a compiled caller. (3) PluginManifestValidator.validate: (PluginManifest, List) becomes (PluginManifest, List, Set, Set); the new parameters carry default values, which buys SOURCE compatibility and NO binary compatibility, since Kotlin emits the full four-argument form plus a synthetic one and never the old two-argument descriptor",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "BINARY, in all three parts. An artifact compiled against 0.47.0 that constructs a PluginManifest, calls getStepManifests(), or calls the two-argument validate receives a NoSuchMethodError. A consumer that REBUILDS against 0.48 needs no source edit at all: the new fields are named, the two-argument validate still compiles through its defaults, and StepManifest resolves to the typealias. That difference is the whole reason this entry exists rather than a compatibility shim.",
+        "",
+        "The alternative considered and rejected for each: keep StepManifest as a deprecated subclass, keep a two-argument validate overload, and keep a deprecated getStepManifests(). Together they would have made apiCheck pass with NO entry at all. What they would also have done is publish three ways to say the same thing, only one of which is checked — and the unchecked ones are exactly the ones a plugin author would keep reaching for, because they are the ones that still compile. A manifest is a DECLARATION whose whole value is being cross-checked against what the plugin actually provides; duplicating its vocabulary makes the unchecked spelling the convenient one, and the convenience is the defect. The cross-check only has force if there is exactly one thing to cross-check.",
+        "",
+        "What this buys, stated as the defect it removes: before this SHA the manifest could not express which PipelineK versions it supports, so there was nothing for admission to refuse a plugin on. PluginManifestValidator ran INSIDE each plugin, which meant a plugin could forget to validate and nothing in the runtime would notice. And the duplicate declaration had nowhere to die — a manifest naming the same StepKey twice was not a contradiction that failed, it was a first-wins question that answered itself at registration time in whatever order the classpath happened to offer.",
+        "",
+        "PluginContributions now refuses duplicates AT CONSTRUCTION, so a self-contradictory manifest cannot be built rather than merely being discouraged. families was KEPT and is not a second truth: it answers 'what domain is this plugin for' (SCM, NETWORK, TESTING) while contributions answers 'which structural shapes does it add', and neither derives from the other — a TESTING plugin contributes Steps, a NETWORK plugin contributes a Step plus a Capability.",
+        "",
+        "Two defects were found while reviewing this change before committing it, and both are corrected in the SAME SHA, which is worth recording because both were laws that could not fail. First, the capability cross-check was tautological: every migrated plugin declared declaredCapabilities by READING contract.requiredCapabilities, and the validator compares declared == required, so the equality was guaranteed by construction and no mutation could ever turn it red. The per-Step capabilities are now declared as literals. Second, validateDirectives and validateEvents returned early when the supplied set was empty, so a manifest declaring a Directive or an Event that no contributor provides passed silently — precisely the negative mutant that must be refused. Both were caught by reading, not by a failing test, which is why they are named here rather than left as an unremarkable part of the diff.",
+        "",
+        "This entry does NOT claim the work is finished, and the ledger is the wrong place to pretend otherwise. There is no machine-readable manifest inside the artifact yet: schemaVersion and apiRange exist in the domain, but no codec reads them from a JAR. PluginAdmission does not exist as a central authority: the validator is still called from inside each plugin, which is the inverted responsibility that BLOCK 1-D exists to fix. The manifest is a better declaration than it was; it is not yet an admission gate."
+      ],
+      "removal_boundary": "n/a — getStepManifests() and the StepManifest class are REMOVED by THIS entry and are not coming back; PluginStepContribution is the contract from 0.48 onward, reachable under the old name only as a Kotlin typealias",
+      "supersedes": null
     }
   ]
 }

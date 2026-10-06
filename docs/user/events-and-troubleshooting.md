@@ -136,6 +136,34 @@ pipelinek console --control-dir .pipelinek/control RUN_ID OP_ID
 pipelinek console --control-dir .pipelinek/control --max-bytes 4096 RUN_ID OP_ID
 ```
 
+### Trap 3: `OP_ID` is not an index you pick
+
+The `opId` is derived from the run, not invented. Its format is
+`<runId>-s<stageIndex>-<stepIndex>[-b<branchIndex>][-bp<N>-<segment>…]` (`OpId.kt:60`), and it repeats
+the `runId` as its prefix. A guess such as `0`, `1` or `op-1` is rejected with
+`console-refused: unknown-stream` (`MainConsoleCli.kt:98`) **[ran]**.
+
+For a **linear** run you can compose it from the event subject **[ran]**:
+
+```bash
+OP_ID=$(pipelinek events --db .pipelinek/journal.sqlite "$RUN_ID" --kind StepStarted \
+        | jq -r 'select(.subject.kind=="STEP") | "\(.subject.segments[2])-s\(.subject.segments[4])-\(.subject.segments[6])"' \
+        | head -1)
+```
+
+For a **branched** run that recipe produces an id `console` refuses: a step inside `parallel` carries
+`-b` and `-bp` segments, and `StepStarted` subjects record only `stage` and `step`. The event history
+does not carry the `opId`.
+
+In every case the source of truth is the stream filename, `<runId>_<opId>_transcript`:
+
+```bash
+ls -1 .pipelinek/durable-shell/output-plane/streams/ | sed -E "s/^${RUN_ID}_//; s/_transcript$//"
+```
+
+Note that an atomic step such as `echo` produces **no** transcript at all, so it has no entry —
+asking `console` for one returns `unknown-stream` **[ran]**.
+
 Secrets from the credential store are redacted at the durable shell seam before the transcript is
 written. See [credentials-and-security.md](credentials-and-security.md).
 

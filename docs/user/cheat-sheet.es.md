@@ -53,8 +53,11 @@ Sólo `validate` y `run` pasan por el parser de argumentos (`CliParser.kt:135`).
 | `0` | éxito, incluido `RunOutcome.Unstable` |
 | `1` | `Failure` / `Aborted` del pipeline, **y argumentos CLI inválidos** (`Main.kt:151`) |
 | `2` | invocación / admisión: script no encontrado, `validate` fallido, `--resume`/`--rerun` sin `--db`, `--control-root` inválido, Step no canónico, lease ya poseído, compilación fallida, `doctor` no escribible |
-| `3` | artefacto sin `Implementation-Version`; credenciales sin passphrase o con passphrase incorrecta |
-| `4` | almacén de credenciales adulterado |
+| `3` | artefacto sin `Implementation-Version`; **durante un run**, almacén de credenciales con passphrase ausente o incorrecta (`Main.kt:723,728`) |
+| `4` | **durante un run**, almacén de credenciales adulterado (`Main.kt:732`) |
+
+`pipelinek credentials list` sin passphrase sale con `1`, no con `3`; con una passphrase incorrecta
+lista filas `Unknown` y sale con `0`.
 
 Los argumentos CLI inválidos son `1`; el resto de rechazos de entrada son `2`. No los unifiques
 (`Main.kt:151` frente a `Main.kt:186`, `:225`, `:241`, `:269`, `:430`, `:830`).
@@ -79,9 +82,17 @@ pipelinek events --db ./run.sqlite "$RUN_ID"
 pipelinek events --db ./run.sqlite "$RUN_ID" --kind StepFinished --limit 20
 pipelinek events verify --db ./run.sqlite --run "$RUN_ID" --contract c.yaml [--scope last-segment]
 
-# Transcripción de consola
-pipelinek console --control-dir ./.pipelinek/ctl "$RUN_ID" "$OP_ID" --max-bytes 65536
+# Transcripción de consola — el opId viene de los nombres de los streams, nunca de un índice suelto
+for OP in $(ls -1 ./.pipelinek/durable-shell/output-plane/streams/ \
+            | sed -E "s/^${RUN_ID}_//; s/_transcript$//"); do
+  pipelinek console --control-dir ./.pipelinek/durable-shell "$RUN_ID" "$OP" --max-bytes 65536
+done
 ```
+
+Un `opId` tiene la forma `<runId>-s<stage>-<step>`, repitiendo el `runId` como prefijo
+(`OpId.kt:60`). Un valor adivinado como `0` u `op-1` falla con
+`console-refused: unknown-stream`, y en un run con `parallel` el id lleva además segmentos
+`-b`/`-bp` que el historial de eventos no registra: el nombre del stream es la fuente de verdad.
 
 ## Ejemplos — exit codes esperados
 

@@ -53,8 +53,11 @@ Only `validate` and `run` go through the argument parser (`CliParser.kt:135`).
 | `0` | success, including `RunOutcome.Unstable` |
 | `1` | pipeline `Failure` / `Aborted`, **and invalid CLI arguments** (`Main.kt:151`) |
 | `2` | invocation / admission: script not found, failed `validate`, `--resume`/`--rerun` without `--db`, invalid `--control-root`, non-canonical Step, lease already held, compile failure, `doctor` not writable |
-| `3` | artifact without `Implementation-Version`; credentials passphrase missing or wrong |
-| `4` | tampered credential store |
+| `3` | artifact without `Implementation-Version`; **during a run**, a credential store whose passphrase is missing or wrong (`Main.kt:723,728`) |
+| `4` | **during a run**, tampered credential store (`Main.kt:732`) |
+
+`pipelinek credentials list` without a passphrase exits `1`, not `3`; with a wrong passphrase it
+lists `Unknown` rows and exits `0`.
 
 Invalid CLI arguments are `1`; every other input rejection is `2`. Do not unify them
 (`Main.kt:151` against `Main.kt:186`, `:225`, `:241`, `:269`, `:430`, `:830`).
@@ -79,9 +82,17 @@ pipelinek events --db ./run.sqlite "$RUN_ID"
 pipelinek events --db ./run.sqlite "$RUN_ID" --kind StepFinished --limit 20
 pipelinek events verify --db ./run.sqlite --run "$RUN_ID" --contract c.yaml [--scope last-segment]
 
-# Console transcript
-pipelinek console --control-dir ./.pipelinek/ctl "$RUN_ID" "$OP_ID" --max-bytes 65536
+# Console transcript — the opId comes from the stream filenames, never from a bare index
+for OP in $(ls -1 ./.pipelinek/durable-shell/output-plane/streams/ \
+            | sed -E "s/^${RUN_ID}_//; s/_transcript$//"); do
+  pipelinek console --control-dir ./.pipelinek/durable-shell "$RUN_ID" "$OP" --max-bytes 65536
+done
 ```
+
+An `opId` looks like `<runId>-s<stage>-<step>`, repeating the `runId` as a prefix
+(`OpId.kt:60`). A guessed value such as `0` or `op-1` fails with
+`console-refused: unknown-stream`, and in a `parallel` run the id also carries `-b`/`-bp`
+segments that the event history does not record — the stream filename is the source of truth.
 
 ## Examples — expected exit codes
 

@@ -241,11 +241,14 @@ comunica. Resumen por capa:
 | Adaptadores | `application`, `events-store`, `output-store`, `scripting-kotlin24`, `step-sdk` (7), `credentials` (3) | 15 |
 | Calidad y soporte | `architecture-tests`, `testkit`, `event-harness`, `release`, `binding-factory`, `artefacts-local` | 6 |
 
-> **Aviso importante, porque es una trampa de newcomer.** Existe un `docs/v2/02-architecture/MODULES.md`
-> que **no coincide** con el build: describe módulos que no existen (`pipeline-worker-runtime`,
-> `pipeline-worker-gateway`, `pipeline-jenkins-plugin`…) y no menciona 27 que sí existen. Data del
-> 2026-08-21 y describe una arquitectura aspiracional, no la vigente. **Fíjate en
-> `v2/settings.gradle.kts:29-71`, que es la verdad.**
+> **Aviso importante, porque es una trampa de newcomer.** Hasta el **2026-10-06** esta carpeta
+> contenía un `MODULES.md` y un `ARCHITECTURE.md` que describían una arquitectura **aspiracional**
+> —distributed, con *workers*, *gateway*, plugin de Jenkins— que **no coincide con el build**: de los
+> 14 módulos que nombraban, 9 no existen, y no mencionaban 27 que sí. **Se han borrado**, junto con
+> un `C4.md` igualmente ficticio. No los busques: no están. Si los encuentras en un checkout viejo o
+> en el historial de git, están describiendo algo que nunca existió.
+>
+> **La lista autoritativa es `v2/settings.gradle.kts:29-71`**, y ese documento es su explicación legible.
 
 ---
 
@@ -258,7 +261,7 @@ Los cinco que verás en tus primeras semanas.
 | **Confundir `pipelinek` (producto) con `core/`, `pipeline-cli/`** (V1) | Editas `core/` y no pasa nada | El build activo es `v2/`. La raíz sólo tiene `includeBuild("v2")`. El V1 está en disco como historia, y sus `build.gradle.kts` están **vivos pero no se compilan** |
 | **`./gradlew` desde la raíz** | "no such file" | El wrapper vive en `v2/`. Usa `cd v2 && ./gradlew …` |
 | **Documentarse por `README.es.md` viejo** | Aprendes una arquitectura que ya no existe | Empieza por [`docs/user/README.es.md`](../user/README.es.md) |
-| **Leer `docs/v2/02-architecture/MODULES.md` como verdad** | Persigues módulos inexistentes | Contrasta siempre con `v2/settings.gradle.kts` |
+| **Fijarte en el `MODULES.md` antiguo de `docs/v2/02-architecture/`** | Persigues módulos inexistentes (`pipeline-worker-runtime`, `pipeline-jenkins-plugin`…) | Ya no existe: se borró el 2026-10-06. Contrasta siempre con `v2/settings.gradle.kts` |
 | **Creerte un badge de CI verde** | Asumes que algo está probado | **No hay CI remota desde el 2026-09-30.** La verificación es local y manual |
 
 ---

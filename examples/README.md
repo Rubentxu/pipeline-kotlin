@@ -1,15 +1,22 @@
 # pipeline-kotlin examples
 
-Real, runnable pipelines executed by the V2 CLI binary
-(`v2/pipeline-application/build/install/pipeline-application/bin/pipeline-application`).
+Real, runnable pipelines executed by the V2 CLI binary, at
+`v2/pipeline-application/build/install/pipelinek/bin/pipelinek`.
+
+> **Want to watch instead of read?** [`docs/user/examples.md`](../docs/user/examples.md) runs all ten
+> against the real binary, one animated GIF each, and states what each GIF leaves out.
+> Spanish: [`docs/user/examples.es.md`](../docs/user/examples.es.md).
 
 ## Run them
 
 ```bash
-./gradlew -p v2 :pipeline-application:installDist   # once, or let run.sh do it
-examples/run.sh                                     # run all examples (asserts expected outcomes)
-examples/run.sh 03-shell.pipeline.kts               # run one
+cd v2 && ./gradlew :pipeline-application:installDist   # once, or let run.sh do it
+examples/run.sh                                        # run all examples (asserts expected outcomes)
+examples/run.sh 03-shell.pipeline.kts                  # run one
 ```
+
+The Gradle wrapper only exists at `v2/gradlew`, so `cd v2` first. There is no `./gradlew` at the
+repository root.
 
 `run.sh` checks each example's exit code AND terminal outcome
 (`success` / `failure` / `unstable`), plus event-level contracts for the

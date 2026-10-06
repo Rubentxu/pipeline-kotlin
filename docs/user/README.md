@@ -38,6 +38,10 @@ assumes the previous one.
 Keep [Cheat sheet](cheat-sheet.md) open in a second tab. It is the copy-paste table of exit codes,
 subcommands, flags and examples.
 
+If you would rather **watch than read**, [Examples, recorded](examples.md) runs all ten example
+pipelines against the real binary, one animated GIF each: the command, the outcome, and the exit
+code. Every GIF states what it omits, and `examples/run.sh` is the check behind them.
+
 [Español](README.es.md) · **English**
 
 ---

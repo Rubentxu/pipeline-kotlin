@@ -1,10 +1,12 @@
 # Los 27 módulos, uno a uno
 
-> **Antes de nada, una advertencia que te va a ahorrar tiempo.** Existe otro
-> `docs/v2/02-architecture/MODULES.md` que **no coincide con el build actual**: nombra módulos que no
-> existen (`pipeline-worker-runtime`, `pipeline-worker-gateway`, `pipeline-jenkins-plugin`,
-> `pipeline-step-codegen`…) y no menciona 27 que sí existen. Data del **2026-08-21** y describe una
-> arquitectura aspiracional, no la vigente.
+> **Antes de nada, algo que te va a ahorrar tiempo.** `docs/v2/02-architecture/` contenía un
+> `MODULES.md` que **no coincidía con el build actual**: de los 14 módulos que nombraba, 9 no
+> existían (`pipeline-worker-runtime`, `pipeline-worker-gateway`, `pipeline-jenkins-plugin`,
+> `pipeline-step-codegen`…) y no mencionaba los 27 que sí existen. Data del **2026-08-21** y
+> describía una arquitectura aspiracional, no la vigente. **Se borró el 2026-10-06**, junto con un
+> `ARCHITECTURE.md` y un `C4.md` igualmente ficticios. Si los encuentras en un checkout viejo, están
+> describiendo algo que nunca existió.
 >
 > **La lista autoritativa es `v2/settings.gradle.kts:29-71`.** Este documento es la explicación legible
 > de esa lista.

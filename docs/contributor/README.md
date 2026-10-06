@@ -27,21 +27,27 @@ at [`docs/user/`](../user/) instead.
 
 ---
 
-## Read these two before you start
+## One thing to know before you start
 
-Both guides point at older documents that look authoritative and are not.
+Until **2026-10-06**, `docs/v2/02-architecture/` carried three documents that looked authoritative and
+described an architecture that does not exist: `MODULES.md`, `ARCHITECTURE.md` and `C4.md`. They
+depicted a distributed design — worker gateway, Kubernetes workers, a Jenkins plugin — and of the 14
+modules `MODULES.md` named, **9 were never in the build**.
 
-1. **`docs/v2/02-architecture/MODULES.md` does not match the build.** It names modules that do not
-   exist (`pipeline-worker-runtime`, `pipeline-worker-gateway`, `pipeline-jenkins-plugin`,
-   `pipeline-step-codegen`) and omits 27 that do. Dated 2026-08-21. It describes an aspirational
-   architecture, not the current one. **The truth is `v2/settings.gradle.kts:29-71`.**
+**They are deleted.** Do not go looking for them. If you find them in an old checkout or in git
+history, they describe something that was never built.
 
-2. **`docs/v2/02-architecture/ARCHITECTURE.md` contains a section that was retired.** The
-   "Controller vs worker" split no longer exists.
+What replaced them is this directory. The module list is still verified against
+`v2/settings.gradle.kts:29-71`, and the retired distributed vision is not lost: it lives in
+[`ROADMAP.md`](../v2/05-roadmap/ROADMAP.md) §11 (RP-9, which hands Jenkins and Kubernetes to
+`pipelinek-fabric`), [`WORKER_PROTOCOL.md`](../v2/03-specifications/WORKER_PROTOCOL.md), and ADR-0010.
 
-If you find a contradiction and want it fixed, that is decision **A2** from the 2026-10-06 grill:
-leave the documents in place but mark them obsolete at the top, rather than rewriting normative
-documents that nobody has reviewed.
+> **The rule that decided which files went.** A document that presents itself as a description of the
+> *current* system while describing something retired is worse than no document, because it looks
+> authoritative. A document that declares its own status and date is a historical record, and stays:
+> [`GRADLE_GRAPH_INVENTORY.md`](../v2/02-architecture/GRADLE_GRAPH_INVENTORY.md) says "completed,
+> 2026-09-03, snapshot taken before LFC0-003 changed the active build", so it is honest about its own
+> limits and was kept.
 
 ---
 

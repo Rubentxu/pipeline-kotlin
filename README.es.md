@@ -166,6 +166,16 @@ estado es la razón por la que `0` no siempre significa `success`.
 Detalle completo, incluidas las limitaciones conocidas de cada ejemplo:
 [`examples/README.md`](examples/README.md).
 
+**Mira los diez en vez de leer sobre ellos** —
+[`docs/user/examples.es.md`](docs/user/examples.es.md) ejecuta cada pipeline contra el binario real,
+un GIF animado por pipeline, con el código de salida en pantalla. Aquí va el que merece verse primero,
+porque `unstable` es un estado que la mayoría de sistemas de CI no tiene:
+
+![pipelinek run sobre 07-catch-error.pipeline.kts, terminando UNSTABLE con código de salida 0](docs/user/assets/examples/07-catch-error.gif)
+
+Cada GIF declara en la página qué deja fuera — el array JSON de eventos de stdout — y
+[`examples/run.sh`](examples/run.sh) es la comprobación que hay detrás, no las imágenes.
+
 ---
 
 ## Cómo funciona
@@ -218,6 +228,7 @@ SHA-256; ningún canal reconstruye PipelineK. Esa regla está decidida en
 |---|---|
 | **ZIP canónico** | Descarga `pipelinek-0.47.0.zip` de la release, verifica su digest y descomprime. Java 21+, Linux/macOS/WSL |
 | **Instalador multi-versión** | `scripts/install-pipelinek.sh` — `install` / `use` / `list` / `uninstall` / `doctor`. Allowlist de URL fail-closed, digest verificado, sin `sudo` |
+| **Bootstrap `curl \| sh`** | `scripts/install-pipelinek-curl.sh` — POSIX `sh`, 13 códigos de salida nombrados, verifica el instalador antes de delegar. **Aún no usable**: ninguna release publica el instalador como asset (`…/download/v0.47.0/install-pipelinek.sh` da 404), así que sale con `10` en vez de instalar |
 | **mise** | `mise use -g pipelinek@0.47.0` |
 | **asdf** | `asdf install pipelinek 0.47.0` |
 
@@ -301,7 +312,7 @@ cd v2 && ./gradlew :pipeline-application:installDist
 | `cd v2 && ./gradlew check` | Gate normal |
 | `cd v2 && ./gradlew check --rerun-tasks` | Gate completo desde cero |
 | `cd v2 && ./gradlew :pipeline-application:test --tests 'CanonicalInMemoryCliTest'` | Bucle rápido de un test |
-| `cd v2 && ./gradlew :pipeline-architecture-tests:test` | Sólo los ~45 fitness tests de arquitectura |
+| `cd v2 && ./gradlew :pipeline-architecture-tests:test` | Sólo los fitness tests de arquitectura (47 clases `FArch*`, ~510 casos) |
 
 Requiere JDK 21 y Gradle 8.14.5 vía el wrapper, que **sólo existe en `v2/gradlew`**. Opcionalmente
 `just` + `devbox`.
@@ -310,6 +321,15 @@ Dos cosas que le cuestan una hora a la gente aquí: nunca lances dos Gradle a la
 (hay un `FileLock` que falla rápido), y lee siempre `^e: ` antes de creer cualquier resultado de test —
 si la compilación de los tests falló, Gradle ejecuta la clase compilada *anterior* e informa de su
 resultado.
+
+### Dónde se trackea el trabajo de ingeniería
+
+| Si quieres saber… | Lee |
+|---|---|
+| Qué se está construyendo y en qué orden | [`docs/v2/05-roadmap/ROADMAP.md`](docs/v2/05-roadmap/ROADMAP.md) |
+| Por qué existe el trabajo de la fundación local | [`LOCAL_FOUNDATION_CONSOLIDATION.md`](docs/v2/05-roadmap/LOCAL_FOUNDATION_CONSOLIDATION.md) — el roadmap de consolidación LFC, con el progreso por fase |
+| Qué se decidió, y por qué | [`docs/v2/04-adrs/`](docs/v2/04-adrs/) |
+| Qué está realmente verificado | [`docs/v2/07-uat/`](docs/v2/07-uat/) — la evidencia es por commit y nunca se hereda |
 
 ---
 

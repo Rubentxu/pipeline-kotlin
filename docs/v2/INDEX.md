@@ -21,11 +21,8 @@
 | [`01-product/JENKINS_FAMILIARITY.md`](01-product/JENKINS_FAMILIARITY.md) | Jenkins Familiarity Contract |
 | [`01-product/JENKINS_FAMILIARITY_CATALOG.md`](01-product/JENKINS_FAMILIARITY_CATALOG.md) | Canonical Jenkins step-signature catalog (source-verified) |
 | [`01-product/PRD_V2.md`](01-product/PRD_V2.md) | PRD — Pipeline Kotlin V2 |
-| [`02-architecture/ARCHITECTURE.md`](02-architecture/ARCHITECTURE.md) | Arquitectura V2 |
-| [`02-architecture/C4.md`](02-architecture/C4.md) | C4 Model |
 | [`02-architecture/GRADLE_GRAPH_INVENTORY.md`](02-architecture/GRADLE_GRAPH_INVENTORY.md) | Inventario LFC0-002 del grafo Gradle |
 | [`02-architecture/EVENT_GRAPH_ARCHITECTURE.md`](02-architecture/EVENT_GRAPH_ARCHITECTURE.md) | Event + Graph Architecture |
-| [`02-architecture/MODULES.md`](02-architecture/MODULES.md) | Module Boundaries |
 | [`02-architecture/OBSERVABILITY.md`](02-architecture/OBSERVABILITY.md) | Observability |
 | [`02-architecture/RUNTIME_MODEL.md`](02-architecture/RUNTIME_MODEL.md) | Runtime Model — Durable Kotlin without CPS |
 | [`02-architecture/SECURITY.md`](02-architecture/SECURITY.md) | Security Architecture |

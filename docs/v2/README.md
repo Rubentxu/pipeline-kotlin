@@ -52,14 +52,13 @@ Copiar este árbol bajo `docs/v2/`. No reemplazar de golpe la documentación V1:
 1. `00-context/VISION.md`
 2. `00-context/CURRENT_STATE.md`
 3. `01-product/PRD_V2.md`
-4. `02-architecture/ARCHITECTURE.md`
-5. `02-architecture/RUNTIME_MODEL.md`
-6. `03-specifications/DSL_SPEC.md`
-7. `03-specifications/EVENT_MODEL.md`
-8. `03-specifications/WORKER_PROTOCOL.md`
-9. `04-adrs/README.md`
-10. `05-roadmap/ROADMAP.md`
-11. `07-uat/UAT_MASTER_PLAN.md`
+4. `02-architecture/RUNTIME_MODEL.md`
+5. `03-specifications/DSL_SPEC.md`
+6. `03-specifications/EVENT_MODEL.md`
+7. `03-specifications/WORKER_PROTOCOL.md`
+8. `04-adrs/README.md`
+9. `05-roadmap/ROADMAP.md`
+10. `07-uat/UAT_MASTER_PLAN.md`
 
 ## Gobierno documental
 

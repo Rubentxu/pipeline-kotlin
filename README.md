@@ -167,6 +167,16 @@ state is the reason `0` is not always `success`.
 Full detail, including the known limitations of each example:
 [`examples/README.md`](examples/README.md).
 
+**Watch all ten instead of reading about them** —
+[`docs/user/examples.md`](docs/user/examples.md) runs each pipeline against the real binary, one
+animated GIF apiece, with the exit code on screen. Here is the one worth seeing first, because
+`unstable` is a state most CI systems do not have:
+
+![pipelinek run on 07-catch-error.pipeline.kts, finishing UNSTABLE with exit code 0](docs/user/assets/examples/07-catch-error.gif)
+
+Every GIF states on the page what it leaves out — the JSON event array on stdout — and
+[`examples/run.sh`](examples/run.sh) is the assertion behind them, not the pictures.
+
 ---
 
 ## How it works
@@ -219,6 +229,7 @@ no channel rebuilds PipelineK. That rule is decided in
 |---|---|
 | **Canonical ZIP** | Download `pipelinek-0.47.0.zip` from the release, verify its digest, unzip. Java 21+, Linux/macOS/WSL |
 | **Multi-version installer** | `scripts/install-pipelinek.sh` — `install` / `use` / `list` / `uninstall` / `doctor`. Fail-closed URL allowlist, digest verified, no `sudo` |
+| **`curl \| sh` bootstrap** | `scripts/install-pipelinek-curl.sh` — POSIX `sh`, 13 named exit codes, verifies the installer before delegating. **Not usable yet**: no release publishes the installer as an asset yet (`…/download/v0.47.0/install-pipelinek.sh` is 404), so it exits `10` instead of installing |
 | **mise** | `mise use -g pipelinek@0.47.0` |
 | **asdf** | `asdf install pipelinek 0.47.0` |
 
@@ -302,7 +313,7 @@ cd v2 && ./gradlew :pipeline-application:installDist
 | `cd v2 && ./gradlew check` | Normal gate |
 | `cd v2 && ./gradlew check --rerun-tasks` | Full gate from scratch |
 | `cd v2 && ./gradlew :pipeline-application:test --tests 'CanonicalInMemoryCliTest'` | Fast single-test loop |
-| `cd v2 && ./gradlew :pipeline-architecture-tests:test` | Only the ~45 architecture fitness tests |
+| `cd v2 && ./gradlew :pipeline-architecture-tests:test` | Only the architecture fitness tests (47 `FArch*` classes, ~510 test cases) |
 
 Requires JDK 21 and Gradle 8.14.5 via the wrapper, which **only exists at `v2/gradlew`**. Optionally
 `just` + `devbox`.
@@ -310,6 +321,15 @@ Requires JDK 21 and Gradle 8.14.5 via the wrapper, which **only exists at `v2/gr
 Two things that cost people an hour here: never run two Gradle invocations on one checkout (there is
 a fail-fast `FileLock`), and always read `^e: ` before believing any test result — if test compilation
 failed, Gradle runs the *previously compiled* class and reports its result.
+
+### Where the engineering work is tracked
+
+| If you want to know… | Read |
+|---|---|
+| What is being built, and in what order | [`docs/v2/05-roadmap/ROADMAP.md`](docs/v2/05-roadmap/ROADMAP.md) |
+| Why the local foundation work exists | [`LOCAL_FOUNDATION_CONSOLIDATION.md`](docs/v2/05-roadmap/LOCAL_FOUNDATION_CONSOLIDATION.md) — the LFC consolidation roadmap, with per-phase progress |
+| What was decided, and why | [`docs/v2/04-adrs/`](docs/v2/04-adrs/) |
+| What is actually verified | [`docs/v2/07-uat/`](docs/v2/07-uat/) — evidence is per-commit and never inherits |
 
 ---
 

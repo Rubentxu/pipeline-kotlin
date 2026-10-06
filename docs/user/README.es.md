@@ -38,6 +38,10 @@ orden; cada página asume la anterior.
 Ten [la chuleta](cheat-sheet.es.md) abierta en otra pestaña. Es la tabla copiable de códigos de
 salida, subcomandos, flags y ejemplos.
 
+Si prefieres **mirar en vez de leer**, [Ejemplos grabados](examples.es.md) ejecuta los diez pipelines
+de ejemplo contra el binario real, un GIF animado por pipeline: la orden, el resultado y el código de
+salida. Cada GIF declara qué omite, y `examples/run.sh` es la comprobación que hay detrás.
+
 **English** · [Español](README.es.md)
 
 ---

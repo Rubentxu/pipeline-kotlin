@@ -1,27 +1,39 @@
 # P3-E E6 — el vocabulario semántico que viaja como `String` deja de autorizarse a mano
 
-**Estado:** `STEP-CERT` para E6a, E6b y E6c. **`P3-E` NO queda cerrado**: D3 sigue abierto (§5).
+**Estado:** `STEP-CERT` para E6a, E6b, E6c **y D3**. **`P3-E` queda `CLOSED`** (§1, §5, §6).
 **Work item:** `c2d7f818-3260-41d0-8e46-e9fa300b9f59`
 **Base:** `4700f23db8e38bb5677af56f7aa2e5084c4cd197`
-**SHA final:** `88a2747accef15c04fc4c7fd339070978de31b18`
-**Árbol:** `e6c1ddc05ef722e6e70b804155cdd6b29da5470e`
+**SHA E6:** `88a2747accef15c04fc4c7fd339070978de31b18` · árbol `e6c1ddc05ef722e6e70b804155cdd6b29da5470e`
+**SHA D3:** `072f9a31006cfbba63d7aac9c7c59d9e401f28fc` · árbol `93a646ce3b1657dd28c0f9ad7a612d4efa61c6d1`
+**SHA gobernanza:** `cea3e85c72321d500130b1f51c8eb076d9aa0c41`
+
+> **Cómo se cierra D3 y qué cambió respecto a la primera versión de este recibo.** Este documento
+> se escribió cuando D3 seguía abierta y su §1 era, deliberadamente, una explicación de por qué
+> **no** se declaraba `P3-E = CLOSED`. Esa sección y el §5 se han reescrito porque su premisa ya
+> no es cierta. Se conserva el texto original donde sigue siendo verdadero —el hallazgo de §5.1,
+> los obstáculos de §5.2 a §5.4— porque son la razón por la que D3 fue una unidad de otro tamaño
+> y no el final de E6b. Lo que cambió no fue el análisis sino su veredicto.
 
 ---
 
-## 1. Qué certify este recibo, y por qué no cierra P3-E
+## 1. Qué certifica este recibo, y por qué ahora sí cierra P3-E
 
-E6 tenía tres unidades abiertas en el inventario. Las tres están implementadas y verificadas
-sobre el mismo árbol. La cuarta —**D3**— no lo está, y el propio inventario la pone como
-bloqueante:
+E6 tenía tres unidades abiertas en el inventario, más una cuarta que las desbloqueaba:
 
 > `D1, D2 y D3 bloquean E4 y por tanto E6.` — `P3E_EVENT_SEMANTIC_STRING_INVENTORY.md` §7
 
-D1 y D2 están cerradas (E4b.4 y `RunLifecycleEngine.kt:138-148`). **D3 no.** Un recibo que
-declarara `P3-E = CLOSED` sobre un bloqueo abierto sería un verde falso por construcción: el
-documento que autoriza el cierre sería la primera evidencia en contra.
+**Las cuatro están cerradas.** D1 y D2 lo estaban desde E4b.4 y `RunLifecycleEngine`; **D3 se
+cierra en `072f9a31`**, y §6 recoge la evidencia con la que se verificó y §5 explica por qué era
+una unidad distinta y no el final de E6b.
 
-Lo que este recibo hace es **bancar la evidencia de lo que sí está verificado**, de modo que
-D3 se implemente sobre un estado conocido y no sobre una suposición.
+El inventario se reconcilia en el mismo commit que este recibo: §7 pasa a registrar D1, D2 y D3
+como cerradas con su SHA, y mantiene D4 y D5 como abiertas. Un inventario que dijera lo contrario
+sería el documento que desmiente al propio cierre, que es exactamente el fallo que este recibo
+existía para evitar.
+
+**Lo que cierra `P3-E` y lo que no.** Cierran E6a, E6b, E6c y D3. **No** se cierra el
+`PRODUCT-GATE`, que sigue `BLOCKED_EXTERNAL` desde `754ddda0`: no hay CI remota en este
+repositorio, y un `STEP-CERT` nuevo tampoco lo vuelve verde. Ver §4.
 
 ---
 
@@ -200,7 +212,7 @@ SHA futuro no se inventa para poder registrar la excepción.
 
 ## 4. Lo que este recibo NO hace
 
-- **No cierra `P3-E`.** D3 sigue abierto (§5).
+- **Cierra `P3-E`** (E6a, E6b, E6c y D3), y lo cierra **con su SHA y su árbol** (§6).
 - **No certifica el PRODUCT-GATE**, que sigue `BLOCKED_EXTERNAL` desde `754ddda0`: no hay CI
   remota en este repositorio y «CI verde» no es una evidencia disponible aquí. Un
   `STEP-CERT` nuevo tampoco vuelve verde el `PRODUCT-GATE`.
@@ -212,7 +224,12 @@ SHA futuro no se inventa para poder registrar la excepción.
 
 ---
 
-## 5. D3 — por qué sigue abierta, y por qué no se cerró a medias
+## 5. D3 — el hallazgo que la abrió, y por qué fue una unidad de otro tamaño
+
+> Esta sección se escribió cuando D3 **no** estaba implementada, y su entonces §5.5 se titulaba
+> «por qué no se decide aquí». Ese texto se conserva abajo como §5.5 *bis* porque describe una
+> decisión de producto que efectivamente se tomó después: **interpretar, no retirar**. Lo que ya
+> no está es el veredicto de «abierta».
 
 ### 5.1 El hallazgo
 
@@ -267,7 +284,7 @@ Cerrar D3 preservingando el cable exige, por tanto: el ADT con su token declarad
 de ABI publicadas registradas, y un gate completo. Eso es una unidad propia —como dice el propio
 §4.3— y no el final de E6b.
 
-### 5.5 Por qué no se decide aquí
+### 5.5 bis La decisión que sí se tomó: interpretar, no retirar
 
 Retirar el campo es una **decisión de producto con consecuencias de historia**: está en el `.api`
 publicado, viaja en **4/4** registros históricos (`FAILURE` ×2, `UNSTABLE` ×2, evidencia en
@@ -279,16 +296,149 @@ cuesta una ruptura de ABI en dos módulos publicados sobre una superficie que ya
 Un ADT ceremonial no es la respuesta: `stageResult` ya tiene autoridad, y lo que falta es que
 esa autoridad llegue hasta el cable.
 
+**Lo que se decidió en `072f9a31` es la segunda de las dos lecturas: `stageResult` se
+interpreta.** No se retira, no se marca `UNSUPPORTED_FAIL_CLOSED`, y no se deja como `String`. Las
+tres lecturas eran defendibles; la que se descartó fue dejar el campo como texto, porque un
+`String` que nadie lee es el `dead semantic parameter` que abrió la unidad.
+
+Y aparece una cuarta que el §5.5 original no contemplaba, y que resultó ser la que hacía el
+trabajo: **la superficie de autoría no se rompe**. `catchError(buildResult = "FAILURE", …)` sigue
+compilando, con puente, y un token mal escrito muere en construcción. El detalle está en §6.
+
 ---
 
-## 6. Referencias
+## 6. D3 — evidencia del cierre
+
+**SHA `072f9a31006cfbba63d7aac9c7c59d9e401f28fc` · árbol
+`93a646ce3b1657dd28c0f9ad7a612d4efa61c6d1`** — gobernanza en `cea3e85c72321d500130b1f51c8eb076d9aa0c41`.
+
+### 6.1 Gate final sobre el árbol exacto
+
+```text
+./v2/gradlew -p v2 --no-daemon check --rerun-tasks
+BUILD SUCCESSFUL in 30m 54s
+329 actionable tasks: 329 executed
+```
+
+- **Huella del árbol congelada antes de lanzar:** `2c317f0a…` sobre 44 ficheros. **Idéntica
+  después de la corrida.** Es la comprobación que evita repetir el precedente de certificar un
+  árbol que se había movido durante la puerta: aquí la huella se toma antes y se vuelve a tomar
+  después, y ambas se comparan.
+- **Recuento acotado por `mtime >= 2026-10-06 13:56:17` (el arranque), sobre el árbol completo
+  `v2/**`:** 760 clases, **5049 tests, 0 failures, 0 errors**, 140 skipped.
+- `apiCheck` en **6 módulos** y `detekt` en **27**, dentro de esa misma corrida.
+
+### 6.2 La puerta anterior fue ROJA, y no se declaró verde por diagnóstico
+
+A las `13:18:15Z` se lanzó una puerta sobre el mismo árbol y falló en
+`UatDurableDefaultReuseCliTest` con «CLI did not finish». Lo que se comprobó, en orden:
+
+| comprobación | resultado |
+|---|---|
+| ¿el fichero lo modifica esta unidad? | **no** |
+| ¿el script del test usa `catchError`/`error`? | **0 llamadas** |
+| ¿qué imprimió el CLI? | **nada** — un fallo de producto imprime diagnóstico |
+| carga de la máquina | **16.6 / 61.4 / 23.4**, con **dos sesiones ajenas** lanzando Gradle en `pkf-b2` y `PipelineFabrickServer` |
+| reejecuciones aisladas | **3 de 3 verdes** |
+
+Se relanzó la puerta sobre el árbol sin tocar un solo fichero y salió verde. **El hallazgo que
+queda abierto, y que no se corrige aquí:** ese test afirma con
+`process.waitFor(45, TimeUnit.SECONDS)`, es decir asienta sobre **duración**, que es justo lo que
+la Ley de Fidelidad de Harness prohíbe —un umbral en milisegundos es una propiedad de la máquina
+y acabará fallando en una caja cargada, donde se leerá como un defecto del producto. Es un
+defecto real del harness, no del producto, y está fuera de P3-E.
+
+### 6.3 Un falso rojo que era del propio instrumento
+
+`FArchE6OptionalFieldCodecFitnessTest` falló en la primera puerta con **2 RED**, y ninguna era
+un defecto del producto:
+
+- su regex del escritor exigía que el argumento terminase en el nombre del campo, y al tiparse
+  la llamada quedó `event.buildResult?.wireToken`; el escáner dejó de **ver** la mitad del
+  escritor que existe para comparar, y `onlyRead` salió no vacío;
+- su pin de `stageResult` exigía la línea literal `… ?: return null`, y la lectura son ahora tres
+  líneas con el parseo del token y el cierre **intacto** detrás.
+
+Lo que se corrigió fue el instrumento, no la ley. **Y la prueba de que no se relajó son tres
+mutaciones que matan las tres degradaciones que las leyes existen para detectar:**
+
+| | qué muta | resultado |
+|---|---|---|
+| **M5** | `stageResult` de campo requerido a opcional | **2 leyes rojas** |
+| **M6** | el cierre fail-closed sustituido por un default inventado | **1 ley roja** |
+| **M7** | el lector pierde un campo que el escritor sí codifica | **1 ley roja** |
+
+Restauradas con sha256 verificado (`JsonEventLog.kt` = `aa15429d…`).
+
+### 6.4 Mutaciones de D3
+
+| | qué muta | resultado |
+|---|---|---|
+| **M1** | overload `String` con todos los parámetros opcionales | **NO compila** (ambigüedad) — **no es un RED y no se cuenta como uno**; es lo que destapó el criterio de no-ambigüedad |
+| **M2** | overload `String` con `buildResult` obligatorio | 16 tests, **1 rojo**: el de autoría, con `exitCode=0` — el defecto original reproducido |
+| **M3** | restaurar `?: "UNSTABLE"` / `?: buildResult` | 7 tests, **1 rojo**: la ley de no-overlay, mostrando el `Unstable` inventado |
+| **M4** | borrar el adaptador legacy | **3 leyes rojas**, incluida la principal de superficie `STABLE` |
+
+### 6.5 Consumidores externos, y por qué están fuera del número de arriba
+
+```text
+:scripting-contract-consumer   12 tests, 0 fallos   (9 legacy + 3 tipado)
+:fabric-contract-consumer      16 tests, 0 fallos   (3 clases)
+```
+
+Ejecutados **directamente** con `--rerun-tasks` contra los artifacts publicados en `sdk-repo`,
+porque las tareas `Exec` dan `UP-TO-DATE` y **`UP-TO-DATE` no es una corrida**. Por eso el §6.1
+no los suma: no entran dentro de `check`.
+
+Procedencia de los artifacts publicados tras `publishSdkForExternalPlugin`:
+
+```text
+pipeline-domain          21d236f2…   cambia — FailureKind.parse / supportedTokens
+pipeline-scripting-api   a757646b…   cambia — el puente
+pipeline-events          ab07c773…   cambia — CatchErrorTriggered tipado
+pipeline-output          36afbcd5…   IDÉNTICO — esta unidad no lo toca
+```
+
+`pipeline-output` byte-idéntico al registrado en la puerta de E6 es la comprobación de que la
+publicación es reproducible y de que el delta está donde el cambio dice y no en otro sitio.
+
+### 6.6 Rupturas registradas
+
+```text
+072f9a31  pipeline-domain          ContextOverlay.CatchErrorOverlay.buildResult/.stageResult
+072f9a31  pipeline-events          CatchErrorTriggered.buildResult/.stageResult
+072f9a31  pipeline-scripting-api   StepSpec.CatchError.buildResult/.stageResult
+```
+
+**Lo que no se registró, y por qué importa que no esté:** la superficie de autoría.
+`catchError(String, String, String, Function1)` **no aparece en las líneas eliminadas del dump**:
+sigue byte-idéntica, y `error(String, String)` se **añadió** en `PostStepsScope` y
+`BranchScope`. Registrar esa superficie como rota sería mentir sobre lo que salió, y haría creer
+al siguiente lector que el puente es prescindible cuando su único propósito es sobrevivir hasta
+la frontera de retirada declarada.
+
+`apiDump` registra una decisión ya tomada. Estas tres entradas son el recibo de una decisión que
+ya se había tomado, y por eso el commit de gobernanza va **inmediatamente después** del de
+ruptura: un SHA futuro no se inventa para poder registrar la excepción.
+
+### 6.7 Corpus que no se reescribió
+
+Los **53** tests que escriben tokens en su grafía `String` original siguen compilando **sin
+migrarlos**: `ErrorHandlingTest` 7, `UatLocal012ErrorHandlingTest` 8, `CompatibilityCorpusTest`
+30. `examples/07-catch-error.pipeline.kts` y los 7 escenarios UAT siguen usando literales
+`String`. Un puente que obliga a reescribir el corpus no es un puente: es una migración con
+nombre más amable.
+
+---
+
+## 7. Referencias
 
 - `docs/v2/06-design/P3E_EVENT_SEMANTIC_STRING_INVENTORY.md` — §2.3 tabla maestra, §4.3
   caracterización de D3, §4.5 decisión implicada, §7 decisiones abiertas
 - `docs/v2/surface/DSL_SURFACE_MANIFEST.md` — segunda autoridad para `covers`
 - `v2/contract/published-contract-maturity.json` — capa `surfaces`, familia
   `self-refusing-constructs`
-- `v2/contract/published-contract-exceptions.json` — 2 entradas
+- `v2/contract/published-contract-exceptions.json` — 5 entradas (3 de ellas de `072f9a31`)
 - `examples/scripting-contract-consumer/` — consumidor de una sola coordenada
 - `v2/pipeline-events-store/src/test/resources/fixtures/07-catch-error.out.json` — evidencia
   real de `stageResult` en 4/4 registros

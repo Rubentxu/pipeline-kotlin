@@ -808,12 +808,26 @@ que cualquier consumidor del set publicado ya los tiene en su classpath de compi
 
 ## 7. Decisiones que este inventario deja abiertas
 
-| # | Decisión | Depende de |
-|---|---|---|
-| D1 | Modelo de terminación de `WaitUntilCompleted`: un eje o dos; y si `RejectDivergence` debe emitir | E4 |
-| D2 | Autoridad upstream de `CatchError`: ADT en el DSL vs. sólo en IR, y valor por defecto | E4 |
-| D3 | Si `stageResult` se interpreta o se retira | E4 |
-| D4 | Tratamiento de `CoreWaitUntilStep`: `QUARANTINED` vs. implementar el handler real | decisión independiente |
-| D5 | Madurez de `pipeline-events` y del resto de módulos publicados | E5 |
+| # | Decisión | Depende de | Estado |
+|---|---|---|---|
+| D1 | Modelo de terminación de `WaitUntilCompleted`: un eje o dos; y si `RejectDivergence` debe emitir | E4 | **CERRADA** — `e456d407` |
+| D2 | Autoridad upstream de `CatchError`: ADT en el DSL vs. sólo en IR, y valor por defecto | E4 | **CERRADA** — ADT en el dominio (`CatchErrorBuildResult`), y el valor por defecto es una **ausencia legítima**, no un token inventado |
+| D3 | Si `stageResult` se interpreta o se retira | E4 | **CERRADA** — `072f9a31`: **se interpreta**, tipado, conservando el cable histórico exacto |
+| D4 | Tratamiento de `CoreWaitUntilStep`: `QUARANTINED` vs. implementar el handler real | decisión independiente | **ABIERTA** — fuera de P3-E; `Allowlisted` por fichero y línea |
+| D5 | Madurez de `pipeline-events` y del resto de módulos publicados | E5 | **PARCIAL** — la capa `surfaces` y el registro de excepciones están hechos (`cea3e85c`); la promoción de madurez queda para S8 |
 
-D4 y D5 no bloquean E2 ni E3. D1, D2 y D3 bloquean E4 y por tanto E6.
+**D4 y D5 no bloquean E2 ni E3, y tampoco bloqueaban a E6.** D1, D2 y D3 sí lo bloqueaban, y las
+tres están cerradas: `P3-E` queda `CLOSED`.
+
+Lo que D3 dejó decidido, y que conviene no releer como pendiente:
+
+- `stageResult` **no se retira**. Viaja en 4/4 registros históricos y un observador externo lo
+  espera, así que retirarlo habría roto historia para no ganar nada.
+- **La superficie de autoría no se rompe.** `catchError(String, …)` sigue compilando con puente
+  deprecado, y un token fuera de vocabulario muere en construcción. La ruptura se confinó al IR,
+  que es la forma que un autor nunca nombra.
+- `DSL_SURFACE_MANIFEST.md` decía `catchError = STABLE` mientras el código llevaba
+  `@Deprecated(LFC1-007)`. La divergencia era real y quedó reconciliada a `DEPRECATED`, que es lo
+  que el código ya afirmaba.
+
+Evidencia y SHA en `docs/v2/07-uat/P3E_E6_SEMANTIC_STRING_MIGRATION_RECEIPT.md` §6.

@@ -69,7 +69,7 @@ import java.time.Instant
  *      wasCloned + credentialApplied
  *  5.  envelope — input codec emits a well-formed JSON object
  *      (durable eligible; no `declarativeValue` leak)
- *  6.  registry resolution — InMemoryStepRegistry resolves scm-git.checkout
+ *  6.  registry resolution — StepRegistry resolves scm-git.checkout
  *  7.  capability admission — fails closed when EXECUTION_LOCATION_CAPABILITY absent
  *  8.  success — handler returns typed GitCheckoutOutput for a stubbed
  *      executor that produces a deterministic GitCheckoutResult
@@ -285,10 +285,12 @@ class CoreScmGitCheckoutStepContractSuiteTest {
     // =========================================================================
 
     @Test
-    fun `registry — InMemoryStepRegistry resolves scm-git checkout`() {
+    fun `frozen registry resolves scm-git checkout`() {
         val stub = stubbedStep(stubResult = Result.success(GitCheckoutResult("deadbeef", 0L, "no-op")))
-        val registry = dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry()
-        registry.register(stub)
+        val registry: dev.rubentxu.pipeline.v2.domain.step.StepRegistry =
+            dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder()
+                .apply { add(stub) }
+                .build()
         val resolved = registry.definition(ScmGitCheckoutKey.VALUE)
         assertNotNull(resolved, "scm-git.checkout must be resolvable through the registry")
         assertEquals(ScmGitCheckoutKey.VALUE, resolved!!.contract.key)

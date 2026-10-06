@@ -36,12 +36,13 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.dsl.pipeline
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
@@ -221,8 +222,8 @@ class CoreArchiveArtifactsStepContractSuiteTest {
     private fun tempDir(prefix: String): Path =
         Files.createTempDirectory(prefix).also { tempDirs.add(it) }
 
-    private fun registry(): InMemoryStepRegistry =
-        InMemoryStepRegistry().apply { CoreArchiveArtifactsStep.registerInto(this) }
+    private fun registry(): StepRegistry =
+        StepRegistryBuilder().apply { CoreArchiveArtifactsStep.registerInto(this) }.build()
 
     private fun noOpCredentialScopePort(): CredentialScopePort =
         CredentialScopePort { _, _ ->
@@ -383,7 +384,8 @@ class CoreArchiveArtifactsStepContractSuiteTest {
         assertEquals("core.archiveArtifacts", CoreArchiveArtifactsStep.KEY.value)
         assertEquals("core.archiveArtifacts", CoreArchiveArtifactsStep.definition.contract.descriptor.stepId)
         assertEquals("archiveArtifacts", CoreArchiveArtifactsStep.definition.contract.descriptor.name)
-        val r = registry()
+        val r = StepRegistryBuilder()
+        CoreArchiveArtifactsStep.registerInto(r)
         assertTrue(
             runCatching { CoreArchiveArtifactsStep.registerInto(r) }.isFailure,
             "duplicate registration of core.archiveArtifacts must fail closed",
@@ -754,8 +756,8 @@ class CoreArchiveArtifactsStepContractSuiteTest {
 
     @Test
     fun `typed failure negative control — a thrown handler is re-classified ENGINE by the boundary`() {
-        val throwingRegistry = InMemoryStepRegistry().apply {
-            register(
+        val throwingRegistry = StepRegistryBuilder().apply {
+            add(
                 object : StepDefinition<ArchiveArtifactsInput, dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput> {
                     override val contract = StepContract(
                         key = CoreArchiveArtifactsStep.KEY,
@@ -771,7 +773,7 @@ class CoreArchiveArtifactsStepContractSuiteTest {
                         }
                 },
             )
-        }
+        }.build()
         runBlocking {
             val root = tempDir("archiveartifacts-throw-")
             val sink = InMemoryEventStore()

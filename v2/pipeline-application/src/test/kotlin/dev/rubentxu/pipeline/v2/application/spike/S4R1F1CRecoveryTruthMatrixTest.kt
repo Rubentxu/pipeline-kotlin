@@ -28,8 +28,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.FailureRecord
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.scripting.ReturnStatus
 import dev.rubentxu.pipeline.v2.scripting.ReturnStdout
@@ -110,7 +110,7 @@ class S4R1F1CRecoveryTruthMatrixTest {
     private class Rig(private val runId: String, controlDirRoot: Path?) {
         val launches = AtomicInteger(0)
         val journal = InMemoryOperationJournal(SystemClock())
-        val registry = InMemoryStepRegistry().also { CoreShellStep.registerInto(it) }
+        val registry = StepRegistryBuilder().also { CoreShellStep.registerInto(it) }.build()
 
         val invoker = ScriptedInvokerFixture.build(
             registry = registry,
@@ -271,7 +271,7 @@ class S4R1F1CRecoveryTruthMatrixTest {
         val wire = (row?.output?.result as? JsonPrimitive)?.takeIf { it !is JsonNull } ?: return null
         val encoded = runCatching { Json.parseToJsonElement(wire.content).jsonObject }.getOrNull()
             ?: return null
-        val registry = InMemoryStepRegistry().also { CoreShellStep.registerInto(it) }
+        val registry = StepRegistryBuilder().also { CoreShellStep.registerInto(it) }.build()
         val definition = requireNotNull(registry.definition(CoreShellStep.KEY))
         definition.contract.outputCodec.decode(EncodedStepValue(wire.content))
         return DecodedValue(
@@ -631,7 +631,7 @@ class S4R1F1CRecoveryTruthMatrixTest {
      */
     @Test
     fun `the materialiser materialises a real core shell terminal and names its own failure cases`() {
-        val registry = InMemoryStepRegistry().also { CoreShellStep.registerInto(it) }
+        val registry = StepRegistryBuilder().also { CoreShellStep.registerInto(it) }.build()
         val definition = requireNotNull(registry.definition(CoreShellStep.KEY)) {
             "PRECONDITION: core.sh must be resolvable from the registry"
         }

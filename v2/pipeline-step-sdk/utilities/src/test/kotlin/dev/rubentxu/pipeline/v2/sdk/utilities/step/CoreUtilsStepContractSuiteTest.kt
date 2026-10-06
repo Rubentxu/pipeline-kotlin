@@ -70,7 +70,7 @@ import java.security.MessageDigest
  *  - input codec encode/decode roundtrip
  *  - output codec encode/decode roundtrip
  *  - canonical envelope (well-formed JSON object)
- *  - registry resolution (InMemoryStepRegistry)
+ *  - registry resolution (StepRegistryBuilder -> immutable StepRegistry)
  *  - capability admission (fails closed when EXECUTION_LOCATION_CAPABILITY absent)
  *  - success (happy path)
  *  - typed failure (missing file / invalid JSON / unsupported algorithm)

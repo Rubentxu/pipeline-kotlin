@@ -37,11 +37,11 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
 import dev.rubentxu.pipeline.v2.domain.step.BodyInvocationContext
 import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
@@ -291,11 +291,11 @@ class LockFeasibilityProofTest {
         coordinator.releases.clear()
     }
 
-    private fun registry() = InMemoryStepRegistry().apply {
-        register(lockDefinition)
-        register(failDefinition)
+    private fun registry() = StepRegistryBuilder().apply {
+        add(lockDefinition)
+        add(failDefinition)
         CoreEchoStep.registerInto(this)
-    }
+    }.build()
 
     private fun harness(
         tag: String,

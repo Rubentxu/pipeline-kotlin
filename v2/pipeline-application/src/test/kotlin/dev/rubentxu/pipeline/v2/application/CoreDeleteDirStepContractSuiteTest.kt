@@ -29,12 +29,13 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.DirDeleted
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.StepFinished
@@ -103,8 +104,8 @@ import org.junit.jupiter.api.Timeout
 @Timeout(30)
 class CoreDeleteDirStepContractSuiteTest {
 
-    private fun registry(): InMemoryStepRegistry =
-        InMemoryStepRegistry().apply { CoreDeleteDirStep.registerInto(this) }
+    private fun registry(): StepRegistry =
+        StepRegistryBuilder().apply { CoreDeleteDirStep.registerInto(this) }.build()
 
     private fun noOpCredentialScopePort(): CredentialScopePort =
         CredentialScopePort { _, _ ->
@@ -175,7 +176,8 @@ class CoreDeleteDirStepContractSuiteTest {
         assertEquals("core.deleteDir", CoreDeleteDirStep.KEY.value)
         assertEquals("core.deleteDir", CoreDeleteDirStep.definition.contract.descriptor.stepId)
         assertEquals("deleteDir", CoreDeleteDirStep.definition.contract.descriptor.name)
-        val r = registry()
+        val r = StepRegistryBuilder()
+        CoreDeleteDirStep.registerInto(r)
         assertTrue(
             runCatching { CoreDeleteDirStep.registerInto(r) }.isFailure,
             "duplicate registration of core.deleteDir must fail",
@@ -436,8 +438,8 @@ class CoreDeleteDirStepContractSuiteTest {
             StepHandler { _: DeleteDirInput, _: StepHandlerContext ->
                 throw IllegalStateException("core.deleteDir handler contract violated for test")
             }
-        val throwingRegistry = InMemoryStepRegistry().apply {
-            register(
+        val throwingRegistry = StepRegistryBuilder().apply {
+            add(
                 object : StepDefinition<DeleteDirInput, DeleteDirOutput> {
                     override val contract: StepContract<DeleteDirInput, DeleteDirOutput> = StepContract(
                         key = CoreDeleteDirStep.KEY,
@@ -449,7 +451,7 @@ class CoreDeleteDirStepContractSuiteTest {
                     override val handler: StepHandler<DeleteDirInput, DeleteDirOutput> = throwingHandler
                 },
             )
-        }
+        }.build()
         val clock = SystemClock()
         val journal = InMemoryOperationJournal(clock)
         val cursorStore = InMemoryReplayCursorStore(clock)

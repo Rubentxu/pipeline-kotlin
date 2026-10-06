@@ -23,6 +23,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.InputAborted
 import dev.rubentxu.pipeline.v2.events.InputDenied
@@ -253,8 +254,8 @@ object CoreInputStep {
             override val handler: StepHandler<CoreInputInput, CoreInputOutput> = this@CoreInputStep.handler
         }
 
-    fun registerInto(registry: StepRegistry) {
-        registry.register(definition)
+    fun registerInto(builder: StepRegistryBuilder) {
+        builder.add(definition)
     }
 }
 

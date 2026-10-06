@@ -14,12 +14,13 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.application.SystemClock
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.scripting.ScriptedCallSiteId
@@ -107,7 +108,7 @@ class ScriptedRegistryInvokerTest {
      *   ADR-0103 RPL-4: the replay decision needs the descriptor, and needs no capability.
      */
     private fun invokerOver(
-        registry: InMemoryStepRegistry,
+        registry: StepRegistry,
         journal: InMemoryOperationJournal,
         admitNoCapabilities: Boolean = false,
     ): ScriptedRegistryInvoker =
@@ -138,7 +139,7 @@ class ScriptedRegistryInvokerTest {
     @Test
     fun `fresh - registry resolution, handler exactly once, output persisted and returned`() = runBlocking {
         val fixture = FixtureStep()
-        val registry = InMemoryStepRegistry().also { it.register(fixture) }
+        val registry = StepRegistryBuilder().also { it.add(fixture) }.build()
         val journal = InMemoryOperationJournal(SystemClock())
         val result = invokerOver(registry, journal).invoke(newCall())
 
@@ -156,7 +157,7 @@ class ScriptedRegistryInvokerTest {
     @Test
     fun `reuse - restores persisted value with zero handler invocations`() = runBlocking {
         val fixture = FixtureStep()
-        val registry = InMemoryStepRegistry().also { it.register(fixture) }
+        val registry = StepRegistryBuilder().also { it.add(fixture) }.build()
         val journal = InMemoryOperationJournal(SystemClock())
         val invoker = invokerOver(registry, journal)
 
@@ -186,7 +187,7 @@ class ScriptedRegistryInvokerTest {
         // not need to OBSERVE anything. This test now proves it with the declaration present
         // and the capability absent, which is the shape production actually has.
         val fixture = FixtureStep()
-        val registry = InMemoryStepRegistry().also { it.register(fixture) }
+        val registry = StepRegistryBuilder().also { it.add(fixture) }.build()
         val journal = InMemoryOperationJournal(SystemClock())
         invokerOver(registry, journal).invoke(newCall())
         assertEquals(1, fixture.handlerInvocations.get())
@@ -203,7 +204,7 @@ class ScriptedRegistryInvokerTest {
     @Test
     fun `distinct ordinal or input position is a distinct durable operation (loop safety)`() = runBlocking {
         val fixture = FixtureStep()
-        val registry = InMemoryStepRegistry().also { it.register(fixture) }
+        val registry = StepRegistryBuilder().also { it.add(fixture) }.build()
         val journal = InMemoryOperationJournal(SystemClock())
         val invoker = invokerOver(registry, journal)
 
@@ -218,7 +219,7 @@ class ScriptedRegistryInvokerTest {
     @Test
     fun `negative - unknown stepKey fails closed before any effect`() = runBlocking {
         val fixture = FixtureStep()
-        val registry = InMemoryStepRegistry().also { it.register(fixture) }
+        val registry = StepRegistryBuilder().also { it.add(fixture) }.build()
         val journal = InMemoryOperationJournal(SystemClock())
         val result = invokerOver(registry, journal).invoke(
             newCall().copy(stepKey = PluginStepId("scripted.does-not-exist")),
@@ -249,7 +250,7 @@ class ScriptedRegistryInvokerTest {
     @Test
     fun `negative - missing capability fails closed with handler 0`() = runBlocking {
         val fixture = CapRequiringFixture()
-        val registry = InMemoryStepRegistry().also { it.register(fixture) }
+        val registry = StepRegistryBuilder().also { it.add(fixture) }.build()
         val journal = InMemoryOperationJournal(SystemClock())
         val result = invokerOver(registry, journal).invoke(newCall())
         assertTrue(result is ScriptedRegistryResult.Failed)
@@ -259,7 +260,7 @@ class ScriptedRegistryInvokerTest {
     @Test
     fun `negative - SUCCEEDED row without persisted output fails closed, never fabricates`() = runBlocking {
         val fixture = FixtureStep()
-        val registry = InMemoryStepRegistry().also { it.register(fixture) }
+        val registry = StepRegistryBuilder().also { it.add(fixture) }.build()
         val journal = InMemoryOperationJournal(SystemClock())
         val invoker = invokerOver(registry, journal)
         invoker.invoke(newCall())
@@ -286,7 +287,7 @@ class ScriptedRegistryInvokerTest {
     @Test
     fun `negative - diverged input on an existing operation fails closed`() = runBlocking {
         val fixture = FixtureStep()
-        val registry = InMemoryStepRegistry().also { it.register(fixture) }
+        val registry = StepRegistryBuilder().also { it.add(fixture) }.build()
         val journal = InMemoryOperationJournal(SystemClock())
         val invoker = invokerOver(registry, journal)
         invoker.invoke(newCall(input = "41"))
@@ -298,7 +299,7 @@ class ScriptedRegistryInvokerTest {
     @Test
     fun `negative - FAILED history re-executes, because the descriptor policy says RERUN`() = runBlocking {
         val fixture = FixtureStep()
-        val registry = InMemoryStepRegistry().also { it.register(fixture) }
+        val registry = StepRegistryBuilder().also { it.add(fixture) }.build()
         val journal = InMemoryOperationJournal(SystemClock())
         val invoker = invokerOver(registry, journal)
 

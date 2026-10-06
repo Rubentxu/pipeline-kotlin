@@ -39,27 +39,29 @@ class StepDefinitionContributorTest {
 
     @Test
     fun `zero contributors leaves registry with only pre-seeded core`() {
-        val registry = InMemoryStepRegistry()
-        registry.register(stringDefinition("core.x"))
-        registry.registerContributors(emptyList())
+        val registry = StepRegistryBuilder().apply {
+            add(stringDefinition("core.x"))
+            registerContributors(emptyList())
+        }.build()
         assertTrue(registry.contains(dev.rubentxu.pipeline.v2.domain.PluginStepId("core.x")))
     }
 
     @Test
     fun `contributor with a distinct key registers and is resolvable`() {
-        val registry = InMemoryStepRegistry()
         val contributor = contributor("example.uppercase", stringDefinition("example.uppercase"))
-        registry.registerContributors(listOf(contributor))
+        val registry = StepRegistryBuilder().apply {
+            registerContributors(listOf(contributor))
+        }.build()
         assertTrue(registry.contains(dev.rubentxu.pipeline.v2.domain.PluginStepId("example.uppercase")))
     }
 
     @Test
     fun `duplicate key across core and plugin fails closed naming contributor`() {
-        val registry = InMemoryStepRegistry()
-        registry.register(stringDefinition("example.uppercase")) // simulate core occupying the key
+        val builder = StepRegistryBuilder()
+        builder.add(stringDefinition("example.uppercase")) // simulate core occupying the key
         val plugin = contributor("example.uppercase-plugin", stringDefinition("example.uppercase"))
         val ex = assertThrows(IllegalArgumentException::class.java) {
-            registry.registerContributors(listOf(plugin))
+            builder.registerContributors(listOf(plugin))
         }
         assertTrue(ex.message!!.contains("example.uppercase"), "diagnostic must name the StepKey")
         assertTrue(ex.message!!.contains("example.uppercase-plugin"), "diagnostic must name the contributor")
@@ -67,20 +69,21 @@ class StepDefinitionContributorTest {
 
     @Test
     fun `duplicate key across two plugins fails closed (no first-wins)`() {
-        val registry = InMemoryStepRegistry()
+        val builder = StepRegistryBuilder()
         val a = contributor("plugin-a", stringDefinition("example.shared"))
-        registry.registerContributors(listOf(a))
+        builder.registerContributors(listOf(a))
         val b = contributor("plugin-b", stringDefinition("example.shared"))
         assertThrows(IllegalArgumentException::class.java) {
-            registry.registerContributors(listOf(b))
+            builder.registerContributors(listOf(b))
         }
     }
 
     @Test
     fun `composite keys set reflects exactly the registered definitions`() {
-        val registry = InMemoryStepRegistry()
-        registry.register(stringDefinition("core.echo"))
-        registry.registerContributors(listOf(contributor("p", stringDefinition("example.a"))))
+        val registry = StepRegistryBuilder().apply {
+            add(stringDefinition("core.echo"))
+            registerContributors(listOf(contributor("p", stringDefinition("example.a"))))
+        }.build()
         val keys = registry.keys().map { it.value }.toSet()
         assertEquals(setOf("core.echo", "example.a"), keys)
     }

@@ -67,16 +67,6 @@ class CoreUtilsStepDefinitionContributor : StepDefinitionContributor {
             StepRegistration(unzipStep, provider),
         )
     }
-
-    /**
-     * Build-time provenance is consumed from `META-INF/utilities-release.properties`
-     * inside the JAR. System properties override the resource values when
-     * present (so unit tests can pin metadata without rebuilding).
-     *
-     * Fail-closed: if neither source yields publisher / digest, the
-     * contributor refuses to register. Production wiring always threads
-     * these values through Gradle.
-     */
 }
 
 /**

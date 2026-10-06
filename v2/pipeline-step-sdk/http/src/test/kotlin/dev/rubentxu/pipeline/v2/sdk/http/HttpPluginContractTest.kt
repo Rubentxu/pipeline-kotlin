@@ -6,8 +6,9 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.credentials.api.BASIC_CREDENTIALS_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.dsl.pipeline
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -105,8 +106,9 @@ class HttpPluginContractTest {
 
     @Test
     fun `the step registers into an open registry like any external step`() {
-        val registry = InMemoryStepRegistry()
-        HttpRequestStep.registerInto(registry)
+        val registry: StepRegistry = StepRegistryBuilder()
+            .also { HttpRequestStep.registerInto(it) }
+            .build()
 
         assertTrue(
             registry.definition(HttpRequestKey.VALUE) != null,

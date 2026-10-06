@@ -15,6 +15,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.UnixDetected
 import kotlinx.serialization.json.Json
@@ -177,7 +178,7 @@ object CoreIsUnixStep {
         }
 
     /** Registers the candidate through the same open registry seam as any external Step. */
-    fun registerInto(registry: StepRegistry) {
-        registry.register(definition)
+    fun registerInto(builder: StepRegistryBuilder) {
+        builder.add(definition)
     }
 }

@@ -16,11 +16,12 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 import dev.rubentxu.pipeline.v2.domain.durable.outcomeOf
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.scripting.ScriptedCallSiteId
 import dev.rubentxu.pipeline.v2.scripting.ScriptedDynamicScopeId
@@ -179,7 +180,7 @@ class S4D2ScriptedUnstablePreservationTest {
             definitionDigest = id.definitionDigest,
         ).operationId()
 
-    private fun invokerOver(registry: InMemoryStepRegistry) = ScriptedInvokerFixture.build(
+    private fun invokerOver(registry: StepRegistry) = ScriptedInvokerFixture.build(
         registry = registry,
         journal = InMemoryOperationJournal(SystemClock()),
     )
@@ -210,7 +211,7 @@ class S4D2ScriptedUnstablePreservationTest {
         runBlocking {
             // D2's certified contract. It says nothing about replay: see the DURABLE FRONTIER test.
             val step = CarrierStep(marker = "unstable")
-            val registry = InMemoryStepRegistry().also { it.register(step) }
+            val registry = StepRegistryBuilder().also { it.add(step) }.build()
             val journal = InMemoryOperationJournal(SystemClock())
             val invoker = ScriptedInvokerFixture.build(registry = registry, journal = journal)
             val id = identity("run-unstable")
@@ -293,7 +294,7 @@ class S4D2ScriptedUnstablePreservationTest {
             // `DurableInvocationResolver` decides, `ScriptedTypedResult.from` derives the
             // outcome from the decoded carrier.
             val step = CarrierStep(marker = "unstable")
-            val registry = InMemoryStepRegistry().also { it.register(step) }
+            val registry = StepRegistryBuilder().also { it.add(step) }.build()
             val journal = InMemoryOperationJournal(SystemClock())
             val invoker = ScriptedInvokerFixture.build(registry = registry, journal = journal)
             val id = identity("run-unstable")
@@ -339,7 +340,7 @@ class S4D2ScriptedUnstablePreservationTest {
                 replayPolicy = ReplayPolicy.RERUN,
                 effects = listOf(Effect.EXECUTES_SUBPROCESS),
             )
-            val registry = InMemoryStepRegistry().also { it.register(step) }
+            val registry = StepRegistryBuilder().also { it.add(step) }.build()
             val journal = InMemoryOperationJournal(SystemClock())
             val invoker = ScriptedInvokerFixture.build(registry = registry, journal = journal)
             val id = identity("run-unstable-rerun")
@@ -363,7 +364,7 @@ class S4D2ScriptedUnstablePreservationTest {
         // The substrate fact, stated generically and without naming any Step. It is what makes
         // the previous test's result a property of the replay policy rather than of D2.
         val step = CarrierStep(marker = "fail")
-        val registry = InMemoryStepRegistry().also { it.register(step) }
+        val registry = StepRegistryBuilder().also { it.add(step) }.build()
         val journal = InMemoryOperationJournal(SystemClock())
         val invoker = ScriptedInvokerFixture.build(registry = registry, journal = journal)
         val call = ScriptedRegistryCall(
@@ -400,7 +401,7 @@ class S4D2ScriptedUnstablePreservationTest {
     fun `a Success Step stays Success on both paths, so the fix is not a blanket Unstable`() =
         runBlocking {
             val step = CarrierStep(marker = "ok")
-            val registry = InMemoryStepRegistry().also { it.register(step) }
+            val registry = StepRegistryBuilder().also { it.add(step) }.build()
             val invoker = invokerOver(registry)
             val id = identity("run-success")
             val callSite = ScriptedCallSiteId("cs-d2")

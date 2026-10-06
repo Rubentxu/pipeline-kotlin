@@ -23,6 +23,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.LockAcquireFailed
 import dev.rubentxu.pipeline.v2.events.LockAcquired
@@ -470,8 +471,8 @@ object CoreLockStep {
             override val handler: StepHandler<CoreLockInput, CoreLockOutput> = this@CoreLockStep.handler
         }
 
-    fun registerInto(registry: StepRegistry) {
-        registry.register(definition)
+    fun registerInto(builder: StepRegistryBuilder) {
+        builder.add(definition)
     }
 }
 

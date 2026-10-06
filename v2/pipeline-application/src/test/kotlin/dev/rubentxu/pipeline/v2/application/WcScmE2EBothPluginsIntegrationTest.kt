@@ -125,14 +125,15 @@ class WcScmE2EBothPluginsIntegrationTest {
 
         // 5. Run through the canonical engine with workspaceBase pinned.
         val eventStore = InMemoryEventStore()
-        val registry: StepRegistry = CoreStepRegistryFactory.registry()
         // Register both OFFICIAL_PLUGINs through their contributors so the
         // canonical engine can resolve their StepKeys via the open registry
         // seam (the same path MainKt drives in production after
         // ServiceLoader discovery).
-        registry.registerContributors(listOf(
+        val registryBuilder = CoreStepRegistryFactory.builder()
+        registryBuilder.registerContributors(listOf(
             dev.rubentxu.pipeline.v2.sdk.scm.git.step.ScmGitStepDefinitionContributor(),
         ))
+        val registry: StepRegistry = registryBuilder.build()
         assertNotNull(registry.definition(PluginStepId("scm-git.checkout")),
             "Production registry must resolve scm-git.checkout; OFFICIAL_PLUGIN must be installed")
 
@@ -217,14 +218,15 @@ class WcScmE2EBothPluginsIntegrationTest {
 
         // 4. Run.
         val eventStore = InMemoryEventStore()
-        val registry: StepRegistry = CoreStepRegistryFactory.registry()
         // Register the OFFICIAL_PLUGIN through its contributor so the
         // canonical engine can resolve its StepKey via the open registry
         // seam (the same path MainKt drives in production after
         // ServiceLoader discovery).
-        registry.registerContributors(listOf(
+        val registryBuilder = CoreStepRegistryFactory.builder()
+        registryBuilder.registerContributors(listOf(
             dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitStepDefinitionContributor(),
         ))
+        val registry: StepRegistry = registryBuilder.build()
         assertNotNull(registry.definition(PluginStepId("junit.results")),
             "Production registry must resolve junit.results; OFFICIAL_PLUGIN must be installed")
 
@@ -319,10 +321,11 @@ class WcScmE2EBothPluginsIntegrationTest {
                 ),
             )
             val eventStore = InMemoryEventStore()
-            val registry: StepRegistry = CoreStepRegistryFactory.registry()
-            registry.registerContributors(listOf(
+            val registryBuilder = CoreStepRegistryFactory.builder()
+            registryBuilder.registerContributors(listOf(
                 dev.rubentxu.pipeline.v2.sdk.scm.git.step.ScmGitStepDefinitionContributor(),
             ))
+            val registry: StepRegistry = registryBuilder.build()
             val coordinator = CanonicalDurableRunCoordinator(
                 dispatcher = CanonicalNodeDispatcher(),
                 journal = InMemoryOperationJournal(SystemClock()),

@@ -172,7 +172,7 @@ class A4_REGISTRY_PRIMARY_Core_Sh_Proof_Test {
     fun `metadata resolution does NOT consult the legacy row for core sh post-flip`() {
         // Direct proof: with `core.sh` absent from the registry, the composite resolver
         // MUST raise EngineInvariantViolation rather than fall back to CanonicalCoreStepMetadata.
-        val emptyRegistry = dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry()
+        val emptyRegistry = dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder().build()
         val resolver = RegistryStepMetadataResolver.composite(emptyRegistry)
         assertThrows(dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation::class.java) {
             resolver.resolve(PluginStepId("core.sh"))

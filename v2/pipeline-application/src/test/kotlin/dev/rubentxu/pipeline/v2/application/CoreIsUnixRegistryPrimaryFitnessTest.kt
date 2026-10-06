@@ -196,7 +196,7 @@ class CoreIsUnixRegistryPrimaryFitnessTest {
         )
         // Resolution via an EMPTY registry fails closed — proves that the legacy row
         // is NOT consulted as a fallback by the production path.
-        val emptyRegistry = dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry()
+        val emptyRegistry = dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder().build()
         val emptyComposite = RegistryStepMetadataResolver.composite(emptyRegistry)
         assertThrows(EngineInvariantViolation::class.java) {
             emptyComposite.resolve(key)

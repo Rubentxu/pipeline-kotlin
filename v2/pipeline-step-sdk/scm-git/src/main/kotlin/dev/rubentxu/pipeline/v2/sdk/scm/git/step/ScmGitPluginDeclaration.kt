@@ -31,7 +31,15 @@ object ScmGitPluginDeclaration {
     /** Exclusive upper bound: 0.49 is where support stops, not where parsing stops. */
     val API_RANGE: PipelineKApiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 49, 0))
 
-    /** Fail-closed provenance: never accept a hand-typed digest. */
+    /**
+     * The publisher / version / digest / namespace come from build-time
+     * provenance (Gradle writes them to [RELEASE_PROPERTIES_RESOURCE]
+     * inside the JAR). System properties override the resource values when
+     * present so tests can pin metadata without rebuilding the JAR.
+     *
+     * Fail-closed if neither source yields the publisher / digest — the
+     * contract requires real provenance, not self-declared values.
+     */
     fun provider(classLoader: ClassLoader = ScmGitPluginDeclaration::class.java.classLoader): StepProviderMetadata {
         val props = releaseProperties(classLoader)
         val publisher = System.getProperty("pipeline.scm-git.publisher")

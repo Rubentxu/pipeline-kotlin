@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 
 /**
  * Single production authority for the core [StepDefinition]s registered into a [StepRegistry]
@@ -24,8 +25,15 @@ import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
  */
 object CoreStepRegistryFactory {
 
-    /** A fresh [StepRegistry] seeded with every registered core [StepDefinition]. */
-    fun registry(): InMemoryStepRegistry = InMemoryStepRegistry().apply {
+    /**
+     * A fresh BUILDER seeded with every registered core Step.
+     *
+     * S6/F: the composition root composes and the runtime reads. Exposing a builder here rather
+     * than a finished registry is what lets external plugins join the SAME composition before
+     * anything is frozen — there is no post-hoc mutation path for them to take, because none
+     * exists.
+     */
+    fun builder(): StepRegistryBuilder = StepRegistryBuilder().apply {
         CoreEchoStep.registerInto(this)
         // LB-02 / A4 WU2: register CoreShellStep alongside CoreEchoStep.
         // After the structural flip (WU3, removal of "core.sh" from LEGACY_PLUGIN_IDS),
@@ -198,4 +206,12 @@ object CoreStepRegistryFactory {
         // compiler (G3.4).
         CoreInputStep.registerInto(this)
     }
+
+    /**
+     * A finished, immutable registry carrying every core Step.
+     *
+     * Prefer [builder] when external plugins still have to join the composition; this shortcut
+     * exists for the call sites that genuinely have nothing left to add.
+     */
+    fun registry(): StepRegistry = builder().build()
 }

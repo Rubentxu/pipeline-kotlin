@@ -53,7 +53,15 @@ object UtilitiesPluginDeclaration {
      */
     val API_RANGE: PipelineKApiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 49, 0))
 
-    /** Build-time provenance, fail-closed: never accept a hand-typed digest. */
+    /**
+     * Build-time provenance is consumed from [RELEASE_PROPERTIES_RESOURCE]
+     * inside the JAR. System properties override the resource values when
+     * present (so unit tests can pin metadata without rebuilding).
+     *
+     * Fail-closed: if neither source yields publisher / digest, the
+     * contributor refuses to register. Production wiring always threads
+     * these values through Gradle.
+     */
     fun provider(classLoader: ClassLoader = UtilitiesPluginDeclaration::class.java.classLoader): StepProviderMetadata {
         val props = releaseProperties(classLoader)
         val publisher = System.getProperty("pipeline.utilities.publisher")

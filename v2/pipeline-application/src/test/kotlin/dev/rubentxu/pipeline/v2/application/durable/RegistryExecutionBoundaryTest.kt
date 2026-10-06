@@ -10,12 +10,12 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
@@ -87,7 +87,7 @@ class RegistryExecutionBoundaryTest {
     @Test
     fun `fresh valid registry invocation runs the handler once without re-decoding`() = runBlocking {
         val counter = AtomicInteger(0)
-        val registry = InMemoryStepRegistry().apply { register(countingDefinition(counter, emptySet())) }
+        val registry = StepRegistryBuilder().apply { add(countingDefinition(counter, emptySet())) }.build()
         val store = InMemoryEventStore()
         val access = CanonicalRuntimeCapabilityAccess(runtime(store))
 
@@ -113,7 +113,7 @@ class RegistryExecutionBoundaryTest {
     @Test
     fun `typed-invalid registry input rejects during prepare so handler never runs`() {
         val counter = AtomicInteger(0)
-        val registry = InMemoryStepRegistry().apply { register(countingDefinition(counter, emptySet())) }
+        val registry = StepRegistryBuilder().apply { add(countingDefinition(counter, emptySet())) }.build()
         val store = InMemoryEventStore()
 
         val prepared = RegistryExecutionPreparation.prepare(
@@ -130,9 +130,9 @@ class RegistryExecutionBoundaryTest {
     @Test
     fun `missing declared capability rejects during prepare so handler never runs`() {
         val counter = AtomicInteger(0)
-        val registry = InMemoryStepRegistry().apply {
-            register(countingDefinition(counter, setOf(EVENT_SINK_CAPABILITY)))
-        }
+        val registry = StepRegistryBuilder().apply {
+            add(countingDefinition(counter, setOf(EVENT_SINK_CAPABILITY)))
+        }.build()
 
         // Admission against a capability set that does NOT supply the declared EVENT_SINK.
         val prepared = RegistryExecutionPreparation.prepare(
@@ -186,7 +186,7 @@ class RegistryExecutionBoundaryTest {
 
     @Test
     fun `echo registry execution supplies the event sink capability and emits once`() = runBlocking {
-        val registry = InMemoryStepRegistry().apply { CoreEchoStep.registerInto(this) }
+        val registry = StepRegistryBuilder().apply { CoreEchoStep.registerInto(this) }.build()
         val store = InMemoryEventStore()
         val runtime = runtime(store)
 

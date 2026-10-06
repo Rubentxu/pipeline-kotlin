@@ -15,6 +15,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactHandle
 import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability
 import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactQueryInput
@@ -213,7 +214,7 @@ object CoreArtifactQueryStep {
         }
 
     /** Registers through the same open registry seam as any external Step. */
-    fun registerInto(registry: StepRegistry) {
-        registry.register(definition)
+    fun registerInto(builder: StepRegistryBuilder) {
+        builder.add(definition)
     }
 }

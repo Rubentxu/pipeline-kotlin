@@ -9,7 +9,6 @@ import dev.rubentxu.pipeline.v2.domain.StageBody
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
@@ -17,6 +16,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.dsl.pipeline
 import dev.rubentxu.pipeline.v2.dsl.StageScope
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -77,7 +77,7 @@ class EP_F26_GenericProductionPathProofTest {
 
     /** Runtime-adapter-style discovery: contributor → registry (no core knowledge of the key). */
     private fun discover(contributor: StepDefinitionContributor): StepRegistry =
-        InMemoryStepRegistry().apply { contributor.definitions().forEach(::register) }
+        StepRegistryBuilder().apply { contributor.definitions().forEach(::add) }.build()
 
     private val contributor = object : StepDefinitionContributor {
         override val id = "fixture.neutral"
@@ -137,7 +137,7 @@ class EP_F26_GenericProductionPathProofTest {
         val (_, node) = compiledStageKeys()
 
         // Temporal semantics: before discovery the key is NOT canonical-eligible...
-        val emptyRegistry = InMemoryStepRegistry()
+        val emptyRegistry = StepRegistryBuilder().build()
         val eligibleBefore = canonicalEligible(node.pluginStepId.value, registryKeys(emptyRegistry))
         assertFalse(eligibleBefore, "external key must NOT be canonical-eligible before contribution")
 

@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor
-import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import java.util.ServiceLoader
 
 /**
@@ -12,8 +12,8 @@ import java.util.ServiceLoader
  * is the ONLY place ServiceLoader is used for Steps.
  *
  * Admission order (single composition authority remains
- * [CoreStepRegistryFactory.registry]): core Steps register first; external
- * contributions register afterwards. [StepRegistry.register] fails closed on a
+ * [CoreStepRegistryFactory.builder]): core Steps are composed first; external
+ * contributions are composed afterwards. [StepRegistryBuilder.add] fails closed on a
  * duplicate key, so an external plugin can never silently shadow a core Step.
  *
  * Fail-open-vs-closed: a contributor that throws during discovery aborts
@@ -31,7 +31,7 @@ object ExternalStepPluginDiscovery {
      * metadata, so contributors that only override `definitions()` continue
      * to work unchanged (C10 backwards-compat).
      */
-    fun registerInto(registry: StepRegistry): List<String> {
+    fun registerInto(builder: StepRegistryBuilder): List<String> {
         val registered = mutableListOf<String>()
         val loader = ServiceLoader.load(StepDefinitionContributor::class.java)
         val iterator = loader.iterator()
@@ -45,8 +45,8 @@ object ExternalStepPluginDiscovery {
                 )
             }
             // Use the additive path so every registration (legacy or new)
-            // is validated through StepRegistry.register(StepRegistration).
-            contributor.registrations().forEach(registry::register)
+            // is validated through StepRegistryBuilder.add(StepRegistration).
+            builder.addAll(contributor.registrations())
             registered.add(contributor.id)
         }
         return registered

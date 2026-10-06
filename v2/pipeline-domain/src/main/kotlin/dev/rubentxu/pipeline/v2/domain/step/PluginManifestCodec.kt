@@ -126,13 +126,43 @@ object PluginManifestCodec {
             is DecodeSuccess -> PluginManifestDecodeResult.Accepted(parsed.manifest)
         }
 
+    /** What a whole document decode produces: exactly a manifest or exactly a rejection. */
     private sealed interface DecodeOutcome
+
+    /**
+     * What ONE section of the document produced.
+     *
+     * A separate closed type rather than more cases of [DecodeOutcome]: a section is not a
+     * document, and letting the two share one hierarchy would force `decode`'s `when` to carry
+     * three branches that can never occur at the top level. Keeping them apart is what lets
+     * that `when` stay exhaustive over its two real cases with no `else` to hide a third.
+     */
+    private sealed interface SectionOutcome
 
     private data class DecodeSuccess(val manifest: PluginManifest) : DecodeOutcome
 
-    private data class DecodeFailure(val rejection: PluginManifestRejection) : DecodeOutcome
+    private data class DecodeFailure(val rejection: PluginManifestRejection) : DecodeOutcome, SectionOutcome
 
-    @Suppress("ReturnCount")
+    /** The document discriminator plus everything that identifies WHICH plugin this claims to be. */
+    private data class Header(
+        val schema: ManifestSchemaVersion,
+        val plugin: ResourceRef,
+        val release: PluginReleaseRef,
+    ) : SectionOutcome
+
+    /** The compatibility contract the plugin publishes for itself. */
+    private data class Contract(
+        val apiRange: PipelineKApiRange,
+        val publisher: String,
+        val delivery: Delivery,
+    ) : SectionOutcome
+
+    /** What the plugin declares it contributes, and the domain families it belongs to. */
+    private data class Contributions(
+        val families: Set<PluginFamily>,
+        val contributions: PluginContributions,
+    ) : SectionOutcome
+
     private fun decodeOrNull(text: String): DecodeOutcome? {
         val root = JsonCursor(text).readObject() ?: return null
 
@@ -146,6 +176,46 @@ object PluginManifestCodec {
             return DecodeFailure(PluginManifestRejection.UnknownCodec(codec))
         }
 
+        // The three sections below run in the order their fields are read, so the FIRST
+        // malformed field is still the one reported. Reordering them would change which
+        // rejection a document with two defects receives, which is part of the contract
+        // rather than an incidental detail.
+        val header = decodeHeader(root)
+        if (header is DecodeFailure) return header
+        val contract = decodeContract(root)
+        if (contract is DecodeFailure) return contract
+        val contributions = decodeContributions(root)
+        if (contributions is DecodeFailure) return contributions
+
+        val h = header as Header
+        val c = contract as Contract
+        val k = contributions as Contributions
+
+        // The PluginManifest constructor enforces the cross-field invariants (identity ==
+        // release.plugin, known schema, non-empty families, non-empty contributions). Letting
+        // it throw here is correct and not the exception case: those invariants are part of
+        // the TYPE, so a document that satisfies the grammar and violates them is a malformed
+        // document, not a valid one.
+        return runCatching {
+            PluginManifest(
+                schemaVersion = h.schema,
+                plugin = h.plugin,
+                release = h.release,
+                apiRange = c.apiRange,
+                publisher = c.publisher,
+                families = k.families,
+                delivery = c.delivery,
+                trust = TrustMetadata.Unverified,
+                contributions = k.contributions,
+            )
+        }.fold(
+            onSuccess = { DecodeSuccess(it) },
+            onFailure = { DecodeFailure(PluginManifestRejection.MalformedDocument(it.message ?: "invariant violated")) },
+        )
+    }
+
+    @Suppress("ReturnCount")
+    private fun decodeHeader(root: Map<String, Any>): SectionOutcome {
         val schemaRaw = root.str("schemaVersion") ?: return DecodeFailure(
             PluginManifestRejection.MalformedDocument("missing 'schemaVersion' field"),
         )
@@ -173,6 +243,11 @@ object PluginManifestCodec {
             PluginManifestRejection.MalformedDocument("releaseDigest is not a sha256 digest: $digestRaw"),
         )
 
+        return Header(schema, plugin, PluginReleaseRef(plugin = plugin, version = version, digest = digest))
+    }
+
+    @Suppress("ReturnCount")
+    private fun decodeContract(root: Map<String, Any>): SectionOutcome {
         val apiRangeRaw = root.str("apiRange") ?: return DecodeFailure(
             PluginManifestRejection.MalformedDocument("missing 'apiRange' field"),
         )
@@ -200,6 +275,11 @@ object PluginManifestCodec {
             )
         }
 
+        return Contract(apiRange, publisher, delivery)
+    }
+
+    @Suppress("ReturnCount")
+    private fun decodeContributions(root: Map<String, Any>): SectionOutcome {
         val familiesRaw = root.strings("families") ?: return DecodeFailure(
             PluginManifestRejection.MalformedDocument("missing or malformed 'families'"),
         )
@@ -258,21 +338,15 @@ object PluginManifestCodec {
         )
         val capabilities = capabilitiesRaw.map { StepCapability(it) }.toSet()
 
-        // The PluginManifest constructor enforces the cross-field invariants (identity ==
-        // release.plugin, known schema, non-empty families, non-empty contributions). Letting
-        // it throw here is correct and not the exception case: those invariants are part of
-        // the TYPE, so a document that satisfies the grammar and violates them is a malformed
-        // document, not a valid one.
+        // PluginContributions is constructed HERE rather than left to the top-level
+        // PluginManifest, and it still has to be guarded: its constructor refuses a duplicate
+        // StepKey, and a document carrying one must come back as a typed rejection rather than
+        // as an IllegalArgumentException thrown across the decode boundary. Moving the
+        // construction out of the top-level runCatching without re-establishing the guard is
+        // exactly how that regression happened once.
         return runCatching {
-            PluginManifest(
-                schemaVersion = schema,
-                plugin = plugin,
-                release = PluginReleaseRef(plugin = plugin, version = version, digest = digest),
-                apiRange = apiRange,
-                publisher = publisher,
+            Contributions(
                 families = families,
-                delivery = delivery,
-                trust = TrustMetadata.Unverified,
                 contributions = PluginContributions(
                     steps = steps,
                     directives = directives,
@@ -280,10 +354,9 @@ object PluginManifestCodec {
                     capabilities = capabilities,
                 ),
             )
-        }.fold(
-            onSuccess = { DecodeSuccess(it) },
-            onFailure = { DecodeFailure(PluginManifestRejection.MalformedDocument(it.message ?: "invariant violated")) },
-        )
+        }.getOrElse {
+            DecodeFailure(PluginManifestRejection.MalformedDocument(it.message ?: "invariant violated"))
+        }
     }
 
     private fun trustToken(trust: TrustMetadata): String = when (trust) {

@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.v2.application.EchoInput
 import dev.rubentxu.pipeline.v2.application.SystemClock
 import dev.rubentxu.pipeline.v2.domain.durable.ParallelFrame
 import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.BranchExecutionResult
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
@@ -49,7 +49,7 @@ class D7ScriptedCursorSilenceTest {
             val clock = SystemClock()
             val journal = InMemoryOperationJournal(clock)
             val cursor = RecordingCursorStore(InMemoryReplayCursorStore(clock))
-            val registry = InMemoryStepRegistry().also { CoreEchoStep.registerInto(it) }
+            val registry = StepRegistryBuilder().also { CoreEchoStep.registerInto(it) }.build()
             val controlDirRoot = Files.createTempDirectory("d7-b5-ctrl-")
             val events = InMemoryEventStore()
 

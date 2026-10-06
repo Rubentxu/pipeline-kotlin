@@ -6186,16 +6186,6 @@ public final class dev/rubentxu/pipeline/v2/domain/step/ExecutionContextPatch$No
 	public fun toString ()Ljava/lang/String;
 }
 
-public final class dev/rubentxu/pipeline/v2/domain/step/InMemoryStepRegistry : dev/rubentxu/pipeline/v2/domain/step/StepRegistry {
-	public fun <init> ()V
-	public fun contains-bQvmloc (Ljava/lang/String;)Z
-	public fun definition-bQvmloc (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/StepDefinition;
-	public fun keys ()Ljava/util/Set;
-	public fun providerOf-bQvmloc (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/StepProviderMetadata;
-	public fun register (Ldev/rubentxu/pipeline/v2/domain/step/StepDefinition;)V
-	public fun register (Ldev/rubentxu/pipeline/v2/domain/step/StepRegistration;)V
-}
-
 public abstract interface class dev/rubentxu/pipeline/v2/domain/step/InterpretedBody {
 }
 
@@ -6936,12 +6926,19 @@ public abstract interface class dev/rubentxu/pipeline/v2/domain/step/StepRegistr
 	public abstract fun definition-bQvmloc (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/StepDefinition;
 	public abstract fun keys ()Ljava/util/Set;
 	public abstract fun providerOf-bQvmloc (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/StepProviderMetadata;
-	public abstract fun register (Ldev/rubentxu/pipeline/v2/domain/step/StepDefinition;)V
-	public abstract fun register (Ldev/rubentxu/pipeline/v2/domain/step/StepRegistration;)V
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/StepRegistryBuilder {
+	public fun <init> ()V
+	public final fun add (Ldev/rubentxu/pipeline/v2/domain/step/StepDefinition;)Ldev/rubentxu/pipeline/v2/domain/step/StepRegistryBuilder;
+	public final fun add (Ldev/rubentxu/pipeline/v2/domain/step/StepRegistration;)Ldev/rubentxu/pipeline/v2/domain/step/StepRegistryBuilder;
+	public final fun addAll (Ljava/lang/Iterable;)Ldev/rubentxu/pipeline/v2/domain/step/StepRegistryBuilder;
+	public final fun addContributors ([Ldev/rubentxu/pipeline/v2/domain/step/StepDefinitionContributor;)Ldev/rubentxu/pipeline/v2/domain/step/StepRegistryBuilder;
+	public final fun build ()Ldev/rubentxu/pipeline/v2/domain/step/StepRegistry;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/step/StepRegistryKt {
-	public static final fun registerContributors (Ldev/rubentxu/pipeline/v2/domain/step/StepRegistry;Ljava/lang/Iterable;)V
+	public static final fun registerContributors (Ldev/rubentxu/pipeline/v2/domain/step/StepRegistryBuilder;Ljava/lang/Iterable;)V
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/domain/step/TrustMetadata {

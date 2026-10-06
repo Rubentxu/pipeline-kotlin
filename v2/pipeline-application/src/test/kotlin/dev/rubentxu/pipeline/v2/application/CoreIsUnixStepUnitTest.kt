@@ -14,8 +14,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.UnixDetected
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
@@ -229,7 +229,7 @@ class CoreIsUnixStepUnitTest {
         // The handler reads osName ONLY through PlatformIdentity. This test pins the
         // separation by driving the handler directly with a synthetic observation that
         // differs from the host JVM and asserting the classification follows the CAPABILITY.
-        val registry = InMemoryStepRegistry().also { CoreIsUnixStep.registerInto(it) }
+        val registry = StepRegistryBuilder().also { CoreIsUnixStep.registerInto(it) }
         val isUnixDefinition = CoreIsUnixStep.definition
         val sink = InMemoryEventStore()
         val synthetic = object : dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess {
@@ -426,7 +426,7 @@ class CoreIsUnixStepUnitTest {
 
     @Test
     fun `duplicate registration fails closed`() {
-        val registry = InMemoryStepRegistry().also { CoreIsUnixStep.registerInto(it) }
+        val registry = StepRegistryBuilder().also { CoreIsUnixStep.registerInto(it) }
         try {
             CoreIsUnixStep.registerInto(registry)
             throw AssertionError("expected duplicate-key rejection")

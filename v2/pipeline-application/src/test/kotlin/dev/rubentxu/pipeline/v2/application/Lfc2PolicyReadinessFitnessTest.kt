@@ -8,7 +8,6 @@ import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
 import dev.rubentxu.pipeline.v2.domain.step.Delivery
 import dev.rubentxu.pipeline.v2.domain.step.Digest
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.ManifestSchemaVersion
 import dev.rubentxu.pipeline.v2.domain.step.PipelineKApiRange
 import dev.rubentxu.pipeline.v2.domain.step.PluginContributions
@@ -27,6 +26,8 @@ import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.domain.step.StepManifest
 import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistration
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -141,7 +142,7 @@ class Lfc2PolicyReadinessFitnessTest {
 
     @Test
     fun `C3 StepRegistration composes definition plus provider and registry providerOf is O1`() {
-        val reg = InMemoryStepRegistry()
+        val reg = StepRegistryBuilder()
         val def = definition("scm.git.checkout", caps = setOf(SCOPE_FS))
         val plugin = scmGitPluginRef()
         val release = scmGitRelease(plugin)
@@ -155,14 +156,15 @@ class Lfc2PolicyReadinessFitnessTest {
         )
 
         val reg_step = StepRegistration(definition = def, provider = provider)
-        reg.register(reg_step)
+        reg.add(reg_step)
+        val frozen: StepRegistry = reg.build()
 
-        val lookup = reg.providerOf(def.contract.key)
+        val lookup = frozen.providerOf(def.contract.key)
         assertNotNull(lookup)
         assertEquals("io.rubentxu", lookup!!.publisher)
         assertEquals(setOf(PluginFamily.SCM, PluginFamily.NETWORK), lookup.families)
         assertEquals(Delivery.OFFICIAL_PLUGIN, lookup.delivery)
-        assertSame(reg_step.definition, reg.definition(def.contract.key))
+        assertSame(reg_step.definition, frozen.definition(def.contract.key))
     }
 
     @Test
@@ -304,7 +306,7 @@ class Lfc2PolicyReadinessFitnessTest {
     fun `C7 OFFICIAL_PLUGIN and EXTERNAL_REFERENCE have identical admission semantics`() {
         // Both are admitted on the same path (registry accepts both, capability
         // admission is decided by the runtime capability set, not by Delivery).
-        val reg = InMemoryStepRegistry()
+        val reg = StepRegistryBuilder()
         val key = "scm.git.x"
         val defA = definition(key, caps = setOf(SCOPE_FS))
         val pluginA = ResourceRefs.plugin("rubentxu", "scm-git")
@@ -314,7 +316,7 @@ class Lfc2PolicyReadinessFitnessTest {
             families = setOf(PluginFamily.SCM), delivery = Delivery.OFFICIAL_PLUGIN,
             trust = TrustMetadata.Unverified,
         )
-        reg.register(StepRegistration(defA, offProvider))
+        reg.add(StepRegistration(defA, offProvider))
 
         // Same key, different Delivery (EXTERNAL_REFERENCE) from a different plugin
         // ref must fail closed: the registry is duplicate-key fail-closed.
@@ -331,7 +333,7 @@ class Lfc2PolicyReadinessFitnessTest {
         )
         val defB = definition(key, caps = setOf(SCOPE_FS))
         assertThrows(IllegalArgumentException::class.java) {
-            reg.register(StepRegistration(defB, extProvider))
+            reg.add(StepRegistration(defB, extProvider))
         }
     }
 
@@ -367,12 +369,13 @@ class Lfc2PolicyReadinessFitnessTest {
         // The 16 CORE Steps and example.uppercase register via the legacy overload.
         // After the additive change, that path MUST still succeed and the registry
         // MUST return null from providerOf for a legacy entry.
-        val reg = InMemoryStepRegistry()
+        val reg = StepRegistryBuilder()
         val def = definition("core.echo", caps = emptySet())
-        reg.register(def)
+        reg.add(def)
+        val frozen: StepRegistry = reg.build()
 
-        assertNull(reg.providerOf(def.contract.key), "legacy registration has no provider metadata")
-        assertSame(def, reg.definition(def.contract.key))
+        assertNull(frozen.providerOf(def.contract.key), "legacy registration has no provider metadata")
+        assertSame(def, frozen.definition(def.contract.key))
     }
 
     @Test
@@ -381,7 +384,7 @@ class Lfc2PolicyReadinessFitnessTest {
         // passing through PluginManifestValidator is admitted, but it has no
         // manifest cross-check. This documents the opt-in nature of C5: a
         // plugin author who wants C5 enforcement uses StepRegistration.fromManifest().
-        val reg = InMemoryStepRegistry()
+        val reg = StepRegistryBuilder()
         val def = definition("scm.git.y", caps = setOf(SCOPE_FS, StepCapability("network")))
         val plugin = scmGitPluginRef()
         val release = scmGitRelease(plugin)
@@ -390,8 +393,9 @@ class Lfc2PolicyReadinessFitnessTest {
             families = setOf(PluginFamily.SCM), delivery = Delivery.OFFICIAL_PLUGIN,
             trust = TrustMetadata.Unverified,
         )
-        reg.register(StepRegistration(def, provider))
-        assertNotNull(reg.providerOf(def.contract.key))
+        reg.add(StepRegistration(def, provider))
+        val frozen: StepRegistry = reg.build()
+        assertNotNull(frozen.providerOf(def.contract.key))
     }
 
     // ---- C8 ----
@@ -402,7 +406,7 @@ class Lfc2PolicyReadinessFitnessTest {
         // and attaches the audit projection to the envelope. The envelope is the
         // single authority for audit identity (EVT-2 blast-radius rule); this test
         // verifies the end-to-end behaviour, not just that a data class exists.
-        val reg = InMemoryStepRegistry()
+        val reg = StepRegistryBuilder()
         val def = definition("scm.git.checkout", caps = emptySet())
         val plugin = scmGitPluginRef()
         val release = scmGitRelease(plugin)
@@ -412,7 +416,8 @@ class Lfc2PolicyReadinessFitnessTest {
             delivery = Delivery.OFFICIAL_PLUGIN,
             trust = TrustMetadata.Unverified,
         )
-        reg.register(StepRegistration(def, provider))
+        reg.add(StepRegistration(def, provider))
+        val frozen: StepRegistry = reg.build()
 
         val startedEvent = dev.rubentxu.pipeline.v2.events.StepStarted(
             eventId = "ev-1",
@@ -433,7 +438,7 @@ class Lfc2PolicyReadinessFitnessTest {
         // Projector with the registry seam: provenance appears.
         val seamEnvelope = dev.rubentxu.pipeline.v2.events.identity.EnvelopeProjector.project(
             startedEvent,
-            providerLookup = { key -> reg.providerOf(key) },
+            providerLookup = { key -> frozen.providerOf(key) },
         )
         val prov = seamEnvelope.provenance
         assertNotNull(prov, "envelope must carry provenance when the seam resolves the provider")
@@ -450,9 +455,10 @@ class Lfc2PolicyReadinessFitnessTest {
     fun `C8 StepStarted from a legacy-registered Step has no provenance`() {
         // C10 backwards-compat: legacy Step registration has no provider metadata,
         // so the envelope must carry provenance = null even when a seam is supplied.
-        val reg = InMemoryStepRegistry()
+        val reg = StepRegistryBuilder()
         val def = definition("core.echo", caps = emptySet())
-        reg.register(def) // legacy overload, no provider
+        reg.add(def) // legacy overload, no provider
+        val frozen: StepRegistry = reg.build()
 
         val startedEvent = dev.rubentxu.pipeline.v2.events.StepStarted(
             eventId = "ev-1",
@@ -467,7 +473,7 @@ class Lfc2PolicyReadinessFitnessTest {
 
         val envelope = dev.rubentxu.pipeline.v2.events.identity.EnvelopeProjector.project(
             startedEvent,
-            providerLookup = { key -> reg.providerOf(key) },
+            providerLookup = { key -> frozen.providerOf(key) },
         )
         assertNull(envelope.provenance, "legacy core.echo has no provider, so no provenance")
     }

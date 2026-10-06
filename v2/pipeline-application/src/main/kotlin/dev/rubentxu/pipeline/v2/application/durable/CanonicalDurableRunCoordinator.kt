@@ -555,16 +555,15 @@ class CanonicalDurableRunCoordinator(
  * WU-RP-033: read-only [StepRegistry] view over a nullable registry. Used by the
  * composed body-policy authority so callers that never wired a registry keep the
  * historical behaviour (open-registry lookup returns UnknownStep and the canonical
- * core table answers). Read-only: register/register Throws are impossible here, an
- * invariant this adapter makes unrepresentable.
+ * core table answers).
+ *
+ * S6/F note: this adapter used to implement both `register` overloads by throwing
+ * `UnsupportedOperationException`. That was the "freeze boolean" shape — a mutable-shaped
+ * object carrying a flag that said it was immutable — and a caller could still reach the
+ * method and be told so at runtime. [StepRegistry] no longer declares `register` at all, so
+ * the adapter has nothing to refuse and the invariant is a property of the type.
  */
 private class NoopStepRegistry(private val delegate: StepRegistry?) : StepRegistry {
-    override fun register(definition: StepDefinition<*, *>) =
-        throw UnsupportedOperationException("NoopStepRegistry is read-only")
-
-    override fun register(registration: StepRegistration<*, *>) =
-        throw UnsupportedOperationException("NoopStepRegistry is read-only")
-
     override fun definition(key: dev.rubentxu.pipeline.v2.domain.PluginStepId) =
         delegate?.definition(key)
 

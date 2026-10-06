@@ -21,6 +21,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistration
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistration.Companion.legacy
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 import java.nio.file.Files
 import java.nio.file.Path
@@ -73,16 +74,6 @@ class ScmGitStepDefinitionContributor : StepDefinitionContributor {
         PluginManifestValidator.validate(manifest, listOf(checkoutStep))
         return listOf(StepRegistration(checkoutStep, provider))
     }
-
-    /**
-     * The publisher / version / digest / namespace come from build-time
-     * provenance (Gradle writes them to `META-INF/scm-git-release.properties`
-     * inside the JAR). System properties override the resource values when
-     * present so tests can pin metadata without rebuilding the JAR.
-     *
-     * Fail-closed if neither source yields the publisher / digest — the
-     * contract requires real provenance, not self-declared values.
-     */
 }
 
 
@@ -99,7 +90,7 @@ class ScmGitStepDefinitionContributor : StepDefinitionContributor {
  * used by the production runtime — the production path always reads
  * the properties from the Gradle build.
  */
-fun StepRegistry.registerScmGit(
+fun StepRegistryBuilder.registerScmGit(
     publisher: String,
     namespace: String = "pipeline.scm-git",
     version: String = "0.0.0-dev",
@@ -117,7 +108,7 @@ fun StepRegistry.registerScmGit(
     val saved = prev.map { (k, _) -> k to System.getProperty(k) }
     prev.forEach { (k, v) -> System.setProperty(k, v) }
     try {
-        ScmGitStepDefinitionContributor().registrations().forEach { register(it) }
+        ScmGitStepDefinitionContributor().registrations().forEach { add(it) }
     } finally {
         saved.forEach { (k, prev) ->
             if (prev == null) System.clearProperty(k) else System.setProperty(k, prev)

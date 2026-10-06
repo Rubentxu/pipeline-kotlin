@@ -10,8 +10,8 @@ import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.ShellCommand
 import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint
@@ -80,7 +80,7 @@ class S4IdentityOrdinalFalsificationTest {
         val runtime = ScriptedArtifactRuntime(
             operationRuntime = ScriptedOperationRuntime { error("sh is registry-routed") },
             registryInvoker = dev.rubentxu.pipeline.v2.application.support.ScriptedInvokerFixture.build(
-                    registry = InMemoryStepRegistry().also { CoreShellStep.registerInto(it) },
+                    registry = StepRegistryBuilder().also { CoreShellStep.registerInto(it) }.build(),
                     journal = journal,
                     capabilityAccessFactory = { context ->
                                         object : CanonicalRuntimeCapabilityAccess(context) {

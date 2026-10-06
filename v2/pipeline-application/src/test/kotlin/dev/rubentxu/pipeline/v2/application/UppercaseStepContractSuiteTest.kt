@@ -22,12 +22,13 @@ import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.dsl.pipeline
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
@@ -70,8 +71,8 @@ import org.junit.jupiter.api.Timeout
 @Timeout(15)
 class UppercaseStepContractSuiteTest {
 
-    private fun registry(): InMemoryStepRegistry =
-        InMemoryStepRegistry().apply { ExternalStepPluginDiscovery.registerInto(this) }
+    private fun registry(): StepRegistry =
+        StepRegistryBuilder().apply { ExternalStepPluginDiscovery.registerInto(this) }.build()
 
     private fun harness(
         eventStore: InMemoryEventStore,
@@ -138,9 +139,10 @@ class UppercaseStepContractSuiteTest {
     fun `identity - KEY is example dot uppercase and duplicate registration fails closed`() {
         assertEquals(PluginStepId("example.uppercase"), UppercaseStepDefinition.KEY)
         assertEquals("example.uppercase", UppercaseStepDefinition.KEY.value)
-        val r = registry()
+        val r = StepRegistryBuilder()
+        r.add(UppercaseStepDefinition)
         assertTrue(
-            runCatching { r.register(UppercaseStepDefinition) }.isFailure,
+            runCatching { r.add(UppercaseStepDefinition) }.isFailure,
             "duplicate registration of example.uppercase must fail closed",
         )
     }
@@ -221,8 +223,8 @@ class UppercaseStepContractSuiteTest {
     @Test
     fun `capability admission - missing capability surfaces as Rejected fail-closed`() {
         val absent = StepCapability("never.declared.capability")
-        val altRegistry = InMemoryStepRegistry().apply {
-            register(object : StepDefinition<UppercaseInput, UppercaseOutput> {
+        val altRegistry = StepRegistryBuilder().apply {
+            add(object : StepDefinition<UppercaseInput, UppercaseOutput> {
                 override val contract = StepContract(
                     key = UppercaseStepDefinition.KEY,
                     descriptor = UppercaseStepDefinition.contract.descriptor,
@@ -232,7 +234,7 @@ class UppercaseStepContractSuiteTest {
                 )
                 override val handler = UppercaseStepDefinition.handler
             })
-        }
+        }.build()
         val admission = RegistryExecutionPreparation.prepare(
             registry = altRegistry,
             key = UppercaseStepDefinition.KEY,

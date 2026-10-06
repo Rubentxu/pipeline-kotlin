@@ -14,7 +14,8 @@ import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineStepException
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.UnixDetected
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
@@ -97,7 +98,7 @@ class ScriptedIsUnixRuntimeTest {
     /** Builds an invoker whose capability bridge observes [osName] instead of the host JVM. */
     private fun invokerObserving(
         osName: String,
-        registry: InMemoryStepRegistry,
+        registry: StepRegistry,
         journal: InMemoryOperationJournal,
         sink: InMemoryEventStore,
         platformReads: AtomicInteger = AtomicInteger(0),
@@ -108,8 +109,8 @@ class ScriptedIsUnixRuntimeTest {
         capabilityAccessFactory = { context -> SyntheticPlatformAccess(context, osName, platformReads) },
     )
 
-    private fun registryWithIsUnix(): InMemoryStepRegistry =
-        InMemoryStepRegistry().also { CoreIsUnixStep.registerInto(it) }
+    private fun registryWithIsUnix(): StepRegistry =
+        StepRegistryBuilder().also { CoreIsUnixStep.registerInto(it) }.build()
 
     private fun compiledEntryPoint(observed: MutableList<Boolean>) = object : CompiledScriptedEntryPoint {
         override val artifact = ScriptedArtifactIdentity(
@@ -209,7 +210,7 @@ class ScriptedIsUnixRuntimeTest {
         // resume must not CONSULT A CAPABILITY. The platform/workspace observation is a
         // capability read, and the counter must still end at 0.
         val reuseReads = AtomicInteger(0)
-        val registry = InMemoryStepRegistry().also { CoreIsUnixStep.registerInto(it) }
+        val registry = StepRegistryBuilder().also { CoreIsUnixStep.registerInto(it) }.build()
         val reuseInvoker = invokerObserving("Windows 11", registry, journal, sink, reuseReads)
         val reuseObserved = mutableListOf<Boolean>()
         runtime(reuseInvoker).execute(runId, compiledEntryPoint(reuseObserved))
@@ -230,7 +231,7 @@ class ScriptedIsUnixRuntimeTest {
         assertEquals(listOf(false), freshObserved)
 
         val reuseObserved = mutableListOf<Boolean>()
-        val registry = InMemoryStepRegistry().also { CoreIsUnixStep.registerInto(it) }
+        val registry = StepRegistryBuilder().also { CoreIsUnixStep.registerInto(it) }.build()
         runtime(invokerObserving("Linux", registry, journal, sink))
             .execute(runId, compiledEntryPoint(reuseObserved))
         assertEquals(listOf(false), reuseObserved, "reuse must NOT re-observe even when the new platform flips the answer")
@@ -273,7 +274,7 @@ class ScriptedIsUnixRuntimeTest {
 
         // A second execution of the same entry point reuses every operation: no new events.
         val before = unixDetected(sink).size
-        runtime(invokerObserving("Windows 11", InMemoryStepRegistry().also { CoreIsUnixStep.registerInto(it) }, journal, sink)).execute(runId, ep)
+        runtime(invokerObserving("Windows 11", StepRegistryBuilder().also { CoreIsUnixStep.registerInto(it) }.build(), journal, sink)).execute(runId, ep)
         assertEquals(before, unixDetected(sink).size, "repeat execution must reuse all five durable operations")
     }
 
@@ -291,7 +292,7 @@ class ScriptedIsUnixRuntimeTest {
     fun `fail closed - missing step on fresh throws, never fabricates a Boolean`() {
         val sink = InMemoryEventStore()
         val journal = InMemoryOperationJournal(SystemClock())
-        val registry = InMemoryStepRegistry()
+        val registry: StepRegistry = StepRegistryBuilder().build()
         val observed = mutableListOf<Boolean>()
         val ex = assertThrows(PipelineStepException::class.java) {
             runBlocking {
@@ -345,7 +346,7 @@ class ScriptedIsUnixRuntimeTest {
         val reuse = mutableListOf<Boolean>()
         val ex = assertThrows(PipelineStepException::class.java) {
             runBlocking {
-                runtime(invokerObserving("SunOS", InMemoryStepRegistry().also { CoreIsUnixStep.registerInto(it) }, journal, sink))
+                runtime(invokerObserving("SunOS", StepRegistryBuilder().also { CoreIsUnixStep.registerInto(it) }.build(), journal, sink))
                     .execute(runId, compiledEntryPoint(reuse))
             }
         }
@@ -384,7 +385,7 @@ class ScriptedIsUnixRuntimeTest {
         val reuse = mutableListOf<Boolean>()
         val ex = assertThrows(PipelineStepException::class.java) {
             runBlocking {
-                runtime(invokerObserving("SunOS", InMemoryStepRegistry().also { CoreIsUnixStep.registerInto(it) }, journal, sink))
+                runtime(invokerObserving("SunOS", StepRegistryBuilder().also { CoreIsUnixStep.registerInto(it) }.build(), journal, sink))
                     .execute(runId, compiledEntryPoint(reuse))
             }
         }

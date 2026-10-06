@@ -24,6 +24,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.application.durable.toStepOutcome
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -573,7 +574,7 @@ object CoreShellStep {
         ): RecoveredProjection<CoreShellOutput> = recoveredProjection.project(input, terminal)
     }
 
-    fun registerInto(registry: StepRegistry) {
-        registry.register(definition)
+    fun registerInto(builder: StepRegistryBuilder) {
+        builder.add(definition)
     }
 }

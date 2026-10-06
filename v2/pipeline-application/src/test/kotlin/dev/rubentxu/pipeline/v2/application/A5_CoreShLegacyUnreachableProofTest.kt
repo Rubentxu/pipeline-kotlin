@@ -33,12 +33,13 @@ import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
@@ -180,8 +181,9 @@ class A5_CoreShLegacyUnreachableProofTest {
         }
         // The composite resolver follows the registered descriptor exactly (here None), proving the
         // registry StepDescriptor is the single metadata authority for core.sh.
-        val registry = InMemoryStepRegistry()
-        registry.register(customShDefinition(RecoveryPolicy.None))
+        val registryBuilder = StepRegistryBuilder()
+        registryBuilder.add(customShDefinition(RecoveryPolicy.None))
+        val registry: StepRegistry = registryBuilder.build()
         val resolved = RegistryStepMetadataResolver.composite(registry).resolve(CoreShellStep.KEY)
         assertNotNull(resolved, "registry-resolved core.sh metadata must be present")
         val metadata = resolved!!

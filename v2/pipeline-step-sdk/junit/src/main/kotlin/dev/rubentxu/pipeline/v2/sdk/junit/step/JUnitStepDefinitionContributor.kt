@@ -59,7 +59,7 @@ class JUnitStepDefinitionContributor : StepDefinitionContributor {
  * the contributor directly through [JUnitStepDefinitionContributor]
  * and Gradle.
  */
-fun dev.rubentxu.pipeline.v2.domain.step.StepRegistry.registerJUnit(
+fun dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder.registerJUnit(
     publisher: String,
     namespace: String = "pipeline.junit",
     version: String = "0.0.0-dev",
@@ -77,7 +77,7 @@ fun dev.rubentxu.pipeline.v2.domain.step.StepRegistry.registerJUnit(
     val saved = props.map { (k, _) -> k to System.getProperty(k) }
     props.forEach { (k, v) -> System.setProperty(k, v) }
     try {
-        JUnitStepDefinitionContributor().registrations().forEach { register(it) }
+        JUnitStepDefinitionContributor().registrations().forEach { add(it) }
     } finally {
         saved.forEach { (k, prev) ->
             if (prev == null) System.clearProperty(k) else System.setProperty(k, prev)

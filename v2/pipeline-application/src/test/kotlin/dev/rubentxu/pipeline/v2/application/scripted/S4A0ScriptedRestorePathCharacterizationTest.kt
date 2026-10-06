@@ -14,12 +14,12 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
@@ -131,7 +131,7 @@ class S4A0ScriptedRestorePathCharacterizationTest {
     )
 
     private fun invokerOver(journal: InMemoryOperationJournal): ScriptedRegistryInvoker {
-        val registry = InMemoryStepRegistry().also { it.register(FixtureStep()) }
+        val registry = StepRegistryBuilder().also { it.add(FixtureStep()) }.build()
         return dev.rubentxu.pipeline.v2.application.support.ScriptedInvokerFixture.build(
             registry = registry,
             journal = journal,

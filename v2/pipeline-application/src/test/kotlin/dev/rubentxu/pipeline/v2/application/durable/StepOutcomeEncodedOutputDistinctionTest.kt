@@ -9,11 +9,12 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -164,8 +165,8 @@ class StepOutcomeEncodedOutputDistinctionTest {
         eventSink = InMemoryEventStore(),
     )
 
-    private fun registryWith(vararg defs: StepDefinition<*, *>): InMemoryStepRegistry =
-        InMemoryStepRegistry().apply { defs.forEach { register(it) } }
+    private fun registryWith(vararg defs: StepDefinition<*, *>): StepRegistry =
+        StepRegistryBuilder().apply { defs.forEach { add(it) } }.build()
 
     // -------- Law 1: structured typed output crosses under encodedOutput --------
 

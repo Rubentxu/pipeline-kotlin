@@ -9,7 +9,7 @@ import dev.rubentxu.pipeline.v2.domain.step.PluginReleaseRef
 import dev.rubentxu.pipeline.v2.domain.step.SemVer
 import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.StepFinished
@@ -155,7 +155,7 @@ class F5_1_ScmGitProviderProvenanceTest {
         // The C3 invariant (O(1) lookup) is satisfied by StepRegistry's
         // providerOf(key) implementation. We wire the reader through a
         // registry-backed lambda and verify the seam is wired correctly.
-        val registry: StepRegistry = InMemoryStepRegistry()
+        val registryBuilder = StepRegistryBuilder()
         val provider = StepProviderMetadata.create(
             plugin = ResourceRefs.plugin("pipeline.scm-git", "scm-git"),
             release = PluginReleaseRef(
@@ -178,17 +178,9 @@ class F5_1_ScmGitProviderProvenanceTest {
             ),
         )
 
-        // Note: we cannot use `registry::providerOf` directly because
-        // InMemoryStepRegistry.providerOf is not exposed as a SAM-able
-        // function reference; we wrap it explicitly. The seam signature
-        // is `((PluginStepId) -> StepProviderMetadata?)` and the registry
-        // matches it.
-        val lookup: (PluginStepId) -> StepProviderMetadata? = { key ->
-            registry.providerOf(key)
-        }
         // Seed the registry through the additive StepRegistration seam
         // (this is what F5.1 does in production).
-        registry.register(
+        registryBuilder.add(
             dev.rubentxu.pipeline.v2.domain.step.StepRegistration(
                 definition = object : dev.rubentxu.pipeline.v2.domain.step.StepDefinition<Unit, Unit> {
                     override val contract = dev.rubentxu.pipeline.v2.domain.step.StepContract(
@@ -218,6 +210,15 @@ class F5_1_ScmGitProviderProvenanceTest {
                 provider = provider,
             ),
         )
+        val registry: StepRegistry = registryBuilder.build()
+        // Note: we cannot use `registry::providerOf` directly because
+        // the registry's providerOf is not exposed as a SAM-able
+        // function reference; we wrap it explicitly. The seam signature
+        // is `((PluginStepId) -> StepProviderMetadata?)` and the registry
+        // matches it.
+        val lookup: (PluginStepId) -> StepProviderMetadata? = { key ->
+            registry.providerOf(key)
+        }
 
         val reader = EventHistoryReader(store, lookup)
         val envelope = reader.history(ResourceRefs.run(runId), EventQuery.All).single()

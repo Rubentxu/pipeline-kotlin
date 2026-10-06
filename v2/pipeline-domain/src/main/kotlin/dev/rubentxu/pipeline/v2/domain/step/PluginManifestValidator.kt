@@ -107,9 +107,20 @@ object PluginManifestValidator {
     }
 
     /**
-     * A capability named at the top level is the plugin's request for it to be
-     * supplied. A Step that requires one and whose plugin never declared it would be
-     * admitted against a capability nobody asked to provide.
+     * The manifest's top-level capability set and the set its Step contracts actually require
+     * must be EQUAL, and both directions are checked.
+     *
+     * Only one direction was enforced here for a while, and the KDoc claimed the other. That is
+     * the defect this row exists to close: the class documented "every required capability
+     * appears in the top-level set" while the code computed the reverse, so a plugin whose Step
+     * required a capability it never asked for was admitted against something the plugin had
+     * not declared it needed. One direction is not a weaker check, it is a check of the wrong
+     * set.
+     *
+     * Over-claiming is the first direction because it is the one that widens what the runtime
+     * promises: a capability nobody uses is a broader declaration than the plugin needs.
+     * Under-claiming is the second because it is the one that lets a Step demand something the
+     * plugin never requested to be supplied.
      */
     private fun validateDeclaredCapabilitiesAppear(
         manifest: PluginManifest,
@@ -123,6 +134,13 @@ object PluginManifestValidator {
             "PluginManifest declares top-level capabilities that no Step contract requires: " +
                 "$unbacked. A capability nobody uses is a broader declaration than the one the " +
                 "plugin actually needs"
+        }
+
+        val unrequested = usedBySteps - topLevel
+        require(unrequested.isEmpty()) {
+            "PluginManifest is missing top-level capability requests that its Step contracts " +
+                "require: $unrequested. A Step would be admitted against a capability the plugin " +
+                "never declared it needs"
         }
     }
 }

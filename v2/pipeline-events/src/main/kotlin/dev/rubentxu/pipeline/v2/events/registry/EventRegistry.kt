@@ -22,37 +22,15 @@ package dev.rubentxu.pipeline.v2.events.registry
  *    storage remain the EventStore's authority. This registry answers "what does this kind MEAN
  *    and how is it decoded" — nothing else.
  */
-class EventRegistry private constructor() {
-
-    private val byKind = LinkedHashMap<String, RegisteredEvent>()
+class EventRegistry private constructor(
+    private val byKind: Map<String, RegisteredEvent>,
+) {
 
     /** A definition and the immutable registration facts the read side can surface. */
     class RegisteredEvent internal constructor(
         val definition: EventDefinition<*>,
         val registeredOrder: Int,
     )
-
-    /**
-     * Admits a validated definition. Total over its input: every outcome is one of the
-     * [RegistrationOutcome] cases, none of which throws.
-     */
-    fun register(creation: EventDefinitionCreation<*>): RegistrationOutcome {
-        val definition = when (creation) {
-            is EventDefinitionCreation.Valid<*> -> creation.definition
-            is EventDefinitionCreation.Invalid<*> -> return RegistrationOutcome.RejectedDefinition(
-                creation.problems,
-            )
-        }
-        val existing = byKind[definition.kind]
-        if (existing != null) {
-            return RegistrationOutcome.DuplicateKind(
-                kind = definition.kind,
-                registeredBy = existing.definition.emittedBy,
-            )
-        }
-        byKind[definition.kind] = RegisteredEvent(definition, byKind.size + 1)
-        return RegistrationOutcome.Registered(definition.kind)
-    }
 
     /** The definition for [kind], or `null` — never a placeholder for an unknown kind. */
     fun definition(kind: String): EventDefinition<*>? = byKind[kind]?.definition
@@ -66,9 +44,70 @@ class EventRegistry private constructor() {
     /** The number of registered kinds. */
     fun size(): Int = byKind.size
 
+    /**
+     * S6/F: composition is a separate TYPE from observation.
+     *
+     * This class had a public `register` and a KDoc that claimed "read-only after
+     * registration". The claim was false for as long as it held a `register`: any holder of
+     * the reference could extend the registry a reader is consulting, so the reader's
+     * "immutable snapshot" was only immutable by convention. `register` now lives on
+     * [Builder], so the law is a property of the type rather than a promise in a comment.
+     *
+     * Duplicate rejection and invalid-definition rejection are unchanged and are still
+     * TOTAL: [Builder.register] returns a [RegistrationOutcome] and never throws, so
+     * composition reports refusals as values.
+     */
+    class Builder {
+        private val byKind = LinkedHashMap<String, RegisteredEvent>()
+
+        /**
+         * Admits a validated definition. Total over its input: every outcome is one of the
+         * [RegistrationOutcome] cases, none of which throws.
+         */
+        fun register(creation: EventDefinitionCreation<*>): RegistrationOutcome {
+            val definition = when (creation) {
+                is EventDefinitionCreation.Valid<*> -> creation.definition
+                is EventDefinitionCreation.Invalid<*> -> return RegistrationOutcome.RejectedDefinition(
+                    creation.problems,
+                )
+            }
+            val existing = byKind[definition.kind]
+            if (existing != null) {
+                return RegistrationOutcome.DuplicateKind(
+                    kind = definition.kind,
+                    registeredBy = existing.definition.emittedBy,
+                )
+            }
+            byKind[definition.kind] = RegisteredEvent(definition, byKind.size + 1)
+            return RegistrationOutcome.Registered(definition.kind)
+        }
+
+        /**
+         * Freeze the composition.
+         *
+         * The copy is what makes a builder safe to reuse: a `Builder` kept alive after
+         * `build()` can keep collecting declarations, and none of them reach the registry
+         * already handed out.
+         */
+        fun build(): EventRegistry {
+            val snapshot = LinkedHashMap<String, RegisteredEvent>(byKind.size)
+            byKind.entries.forEachIndexed { index, entry -> snapshot[entry.key] = entry.value }
+            return EventRegistry(snapshot)
+        }
+    }
+
     companion object {
-        /** An empty registry. Registration order starts at 1. */
-        fun create(): EventRegistry = EventRegistry()
+        /** A fresh [Builder]. Registration order starts at 1. */
+        fun builder(): Builder = Builder()
+
+        /**
+         * An empty, ALREADY-FROZEN registry. Registration order starts at 1.
+         *
+         * Used where "a plugin declared nothing" and "nothing is registered" must be the
+         * same typed refusal. There is no registration path off the returned value, so an
+         * empty registry cannot later grow under a reader.
+         */
+        fun create(): EventRegistry = Builder().build()
     }
 }
 

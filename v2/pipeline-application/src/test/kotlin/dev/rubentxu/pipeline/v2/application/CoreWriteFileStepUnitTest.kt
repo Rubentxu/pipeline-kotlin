@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import java.nio.file.Files
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
@@ -33,7 +33,8 @@ class CoreWriteFileStepUnitTest {
     @Test
     fun `identity — KEY is core dot file dot writeFile and duplicate registration fails`() {
         assertEquals(dev.rubentxu.pipeline.v2.domain.PluginStepId("core.file.writeFile"), CoreWriteFileStep.KEY)
-        val r = InMemoryStepRegistry().apply { CoreWriteFileStep.registerInto(this) }
+        val r = StepRegistryBuilder()
+        CoreWriteFileStep.registerInto(r)
         assertTrue(
             runCatching { CoreWriteFileStep.registerInto(r) }.isFailure,
             "duplicate registration of core.file.writeFile must fail",

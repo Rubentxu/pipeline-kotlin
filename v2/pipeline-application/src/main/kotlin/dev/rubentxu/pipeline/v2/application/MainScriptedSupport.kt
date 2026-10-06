@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfigResolver
@@ -24,7 +24,7 @@ internal fun runScriptedFrontend(
     entryPoint: dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint,
     runId: String,
     artifact: dev.rubentxu.pipeline.v2.scripting.ScriptedArtifactIdentity,
-    stepRegistry: InMemoryStepRegistry,
+    stepRegistry: StepRegistry,
     journal: OperationJournal,
     eventSink: EventSink,
     clock: Clock,

@@ -14,9 +14,9 @@ import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.cancelAndJoin
@@ -158,7 +158,7 @@ class CoreSleepStepUnitTest {
                 CoreSleepOutput
             }
         }
-        val registry = InMemoryStepRegistry().also { it.register(definition) }
+        val registry = StepRegistryBuilder().also { it.add(definition) }.build()
         val preparation = RegistryExecutionPreparation.prepare(
             registry = registry,
             key = CoreSleepStep.KEY,

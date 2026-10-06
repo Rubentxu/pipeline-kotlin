@@ -22,12 +22,13 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.dsl.pipeline
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
@@ -90,8 +91,8 @@ import org.junit.jupiter.api.Timeout
 @Timeout(30)
 class WriteFileStepContractSuiteTest {
 
-    private fun registry(): InMemoryStepRegistry =
-        InMemoryStepRegistry().apply { CoreWriteFileStep.registerInto(this) }
+    private fun registry(): StepRegistry =
+        StepRegistryBuilder().apply { CoreWriteFileStep.registerInto(this) }.build()
 
     private fun noOpCredentialScopePort(): dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort =
         dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort { _, _ ->
@@ -160,7 +161,8 @@ class WriteFileStepContractSuiteTest {
     fun `identity — CoreWriteFileStep KEY is core dot file dot writeFile and duplicate registration fails`() {
         assertEquals(PluginStepId("core.file.writeFile"), CoreWriteFileStep.KEY)
         assertEquals("core.file.writeFile", CoreWriteFileStep.KEY.value)
-        val r = registry()
+        val r = StepRegistryBuilder()
+        CoreWriteFileStep.registerInto(r)
         assertTrue(
             runCatching { CoreWriteFileStep.registerInto(r) }.isFailure,
             "duplicate registration of core.file.writeFile must fail",
@@ -375,8 +377,8 @@ class WriteFileStepContractSuiteTest {
             StepHandler { _: CoreWriteFileInput, _: StepHandlerContext ->
                 throw IllegalStateException("core.file.writeFile handler contract violated for test")
             }
-        val throwingRegistry = InMemoryStepRegistry().apply {
-            register(
+        val throwingRegistry = StepRegistryBuilder().apply {
+            add(
                 object : StepDefinition<CoreWriteFileInput, CoreWriteFileOutput> {
                     override val contract: StepContract<CoreWriteFileInput, CoreWriteFileOutput> = StepContract(
                         key = CoreWriteFileStep.KEY,
@@ -388,7 +390,7 @@ class WriteFileStepContractSuiteTest {
                     override val handler: StepHandler<CoreWriteFileInput, CoreWriteFileOutput> = throwingHandler
                 },
             )
-        }
+        }.build()
         val clock = SystemClock()
         val journal = InMemoryOperationJournal(clock)
         val cursorStore = InMemoryReplayCursorStore(clock)

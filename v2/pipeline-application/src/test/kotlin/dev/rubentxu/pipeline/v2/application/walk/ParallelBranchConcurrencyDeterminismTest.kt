@@ -27,11 +27,11 @@ import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
@@ -95,14 +95,14 @@ class ParallelBranchConcurrencyDeterminismTest {
     fun `three parallel branches are dispatched concurrently, proved by a barrier and not by a clock`() =
         runBlocking {
             val barrier = BarrierStep(branchCount = 3)
-            val registry = InMemoryStepRegistry().also { r ->
+            val registry = StepRegistryBuilder().also { r ->
                 CoreStepRegistryFactory.registry().let { composed ->
                     // the core registry is already populated; mirror its registrations, then add
                     // the barrier so the parallel stage can dispatch it alongside real Steps
-                    composed.keys().forEach { r.register(composed.definition(it)!!) }
+                    composed.keys().forEach { r.add(composed.definition(it)!!) }
                 }
-                r.register(barrier)
-            }
+                r.add(barrier)
+            }.build()
             val clock = SystemClock()
             val journal = InMemoryOperationJournal(clock)
             val sink = InMemoryEventStore()

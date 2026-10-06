@@ -9,8 +9,9 @@ import dev.rubentxu.pipeline.v2.application.durable.StructuralStepFamily
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.FileWritten
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.StageMarkedUnstable
@@ -36,8 +37,8 @@ import org.junit.jupiter.api.Timeout
 @Timeout(30)
 class CoreEmitEventStepUnitTest {
 
-    private fun registry(): InMemoryStepRegistry =
-        InMemoryStepRegistry().apply { CoreEmitEventStep.registerInto(this) }
+    private fun registry(): StepRegistry =
+        StepRegistryBuilder().apply { CoreEmitEventStep.registerInto(this) }.build()
 
     /** Minimal in-memory harness: event store + explicit capability table + handler ctx. */
     private class EmitHarness(
@@ -318,7 +319,8 @@ class CoreEmitEventStepUnitTest {
 
     @Test
     fun `identity — duplicate registration fails`() {
-        val r = registry()
+        val r = StepRegistryBuilder()
+        CoreEmitEventStep.registerInto(r)
         assertTrue(runCatching { CoreEmitEventStep.registerInto(r) }.isFailure)
     }
 }

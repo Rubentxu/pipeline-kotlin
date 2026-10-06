@@ -21,8 +21,8 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
@@ -326,7 +326,7 @@ class CoreErrorRegistryPrimaryFitnessTest {
         // CanonicalCoreStepMetadata). It MUST raise EngineInvariantViolation
         // because the empty registry has no definition and core.error is no longer
         // a legacy executable.
-        val emptyRegistry = InMemoryStepRegistry()
+        val emptyRegistry = StepRegistryBuilder().build()
         val resolver = RegistryStepMetadataResolver.composite(emptyRegistry)
         assertThrows(EngineInvariantViolation::class.java) {
             resolver.resolve(CoreErrorStep.KEY)

@@ -3,7 +3,8 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.application.CoreEchoStep
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
@@ -97,8 +98,8 @@ class ExecutionBoundaryFactoryTest {
         decodedInput = "decoded-input",
     )
 
-    private fun registryWithEcho(): InMemoryStepRegistry =
-        InMemoryStepRegistry().apply { CoreEchoStep.registerInto(this) }
+    private fun registryWithEcho(): StepRegistry =
+        StepRegistryBuilder().apply { CoreEchoStep.registerInto(this) }.build()
 
     @Test
     fun `build returns LegacyOnly boundary when registry is null`(@TempDir tempDir: java.nio.file.Path) {

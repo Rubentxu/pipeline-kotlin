@@ -17,7 +17,7 @@ import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.RunId
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.domain.RunIdGenerator
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
@@ -339,12 +339,12 @@ fun main(args: Array<String>) {
 
         // LB-02 / EP-6: compose registry BEFORE the gate so contributed keys are eligible.
         val pluginClassLoader = pluginClassLoaderFor(config.pluginJars)
-        val composedStepRegistry = CoreStepRegistryFactory.registry()
+        val composedStepRegistryBuilder = CoreStepRegistryFactory.builder()
         if (pluginClassLoader != null) {
             val previousTccl = Thread.currentThread().contextClassLoader
             Thread.currentThread().contextClassLoader = pluginClassLoader
             try {
-                val contributed = ExternalStepPluginDiscovery.registerInto(composedStepRegistry)
+                val contributed = ExternalStepPluginDiscovery.registerInto(composedStepRegistryBuilder)
                 if (contributed.isNotEmpty()) {
                     System.err.println("Discovered external Step plugins: " + contributed.joinToString(", "))
                 }
@@ -352,6 +352,10 @@ fun main(args: Array<String>) {
                 Thread.currentThread().contextClassLoader = previousTccl
             }
         }
+        // S6/F: composition is over — freeze it. Everything below (canonical eligibility,
+        // coordinator, dispatcher) reads the frozen registry; there is no registration path
+        // left to take after this line, because the registry type has none.
+        val composedStepRegistry = composedStepRegistryBuilder.build()
         val nonCanonicalSteps = compiledPipeline
             ?.analyzeCanonicalDurableExecution(composedStepRegistry).orEmpty()
         // WU-LPR-103: the default `pipeline run <script>` (in-memory) branch composes
@@ -752,12 +756,12 @@ fun main(args: Array<String>) {
     // visible to the gate or a contributed key would be wrongly rejected as
     // non-canonical. Same composed registry is handed to the coordinator below.
     val pluginClassLoader = pluginClassLoaderFor(config.pluginJars)
-    val composedStepRegistry = CoreStepRegistryFactory.registry()
+    val composedStepRegistryBuilder = CoreStepRegistryFactory.builder()
     val contributedPlugins = if (pluginClassLoader != null) {
         val previousTccl = Thread.currentThread().contextClassLoader
         Thread.currentThread().contextClassLoader = pluginClassLoader
         try {
-            ExternalStepPluginDiscovery.registerInto(composedStepRegistry)
+            ExternalStepPluginDiscovery.registerInto(composedStepRegistryBuilder)
         } finally {
             Thread.currentThread().contextClassLoader = previousTccl
         }
@@ -765,6 +769,10 @@ fun main(args: Array<String>) {
     if (contributedPlugins.isNotEmpty()) {
         System.err.println("Discovered external Step plugins: " + contributedPlugins.joinToString(", "))
     }
+    // S6/F: freeze the composition exactly once, here at the boundary. The coordinator below
+    // receives an immutable registry; a plugin that had not been admitted by this point cannot
+    // join the run, which is what makes the canonical-eligibility gate trustworthy.
+    val composedStepRegistry = composedStepRegistryBuilder.build()
     // RP034-H / ADR-0101 clause 3.1 + RP034-Id: the workspace origin is decided
     // ONCE, here at the boundary, and both facts cross into the runtime — the
     // shared directory and its owner. `--isolated` keeps the historical

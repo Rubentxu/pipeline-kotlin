@@ -89,14 +89,17 @@ private val ALLOWED_READS: List<AllowedRead> = listOf(
     AllowedRead(
         relativePath =
             "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilStep.kt",
-        line = 69,
+        line = 70,
         reason = "WaitUntilOutput.outcome derives Success/Failure by matching " +
             "resultOutcome == \"completed\". This is a published scripting surface: three " +
             "contract tests construct WaitUntilOutput by named argument and its StepCodec " +
             "round-trips the value through a JSON `outcome` field, so replacing it with a " +
             "WaitUntilCompletion is a step-contract change with its own gate, not part of " +
             "E4b.4. The handler is a non-routed registry candidate (§5.3). Migrating it is " +
-            "tracked; this entry exists so that ANY second read in this file fails the law.",
+            "tracked; this entry exists so that ANY second read in this file fails the law. " +
+            "S6/F moved the line from 69 to 70 by adding one import for StepRegistryBuilder; the " +
+            "defect is unchanged and stays assigned to S7, so the entry moved with the line rather " +
+            "than being widened to a file-level exemption.",
     ),
 )
 

@@ -4,10 +4,11 @@ import dev.rubentxu.pipeline.v2.application.CoreShellOutput
 import dev.rubentxu.pipeline.v2.application.CoreShellStep
 import dev.rubentxu.pipeline.v2.application.SHELL_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.ShellOperations
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.serialization.json.jsonPrimitive
@@ -88,9 +89,9 @@ class ScriptedScopeTest {
             }
         },
         onLaunch: () -> Unit = {},
-    ): Triple<ScriptedRegistryInvoker, InMemoryOperationJournal, InMemoryStepRegistry> {
+    ): Triple<ScriptedRegistryInvoker, InMemoryOperationJournal, StepRegistry> {
         val journal = InMemoryOperationJournal(SystemClock())
-        val registry = InMemoryStepRegistry().also { CoreShellStep.registerInto(it) }
+        val registry = StepRegistryBuilder().also { CoreShellStep.registerInto(it) }.build()
         val invoker = dev.rubentxu.pipeline.v2.application.support.ScriptedInvokerFixture.build(
             registry = registry,
             journal = journal,
@@ -295,7 +296,7 @@ class ScriptedScopeTest {
     fun `a recovered terminal is recovered rather than relaunched, and no typed value is fabricated`() = runBlocking {
         var launches = 0
         val journal = InMemoryOperationJournal(SystemClock())
-        val registry = InMemoryStepRegistry().also { CoreShellStep.registerInto(it) }
+        val registry = StepRegistryBuilder().also { CoreShellStep.registerInto(it) }.build()
         val capabilityAccessFactory = { context: CanonicalRuntimeContext ->
             object : CanonicalRuntimeCapabilityAccess(context) {
                 override fun available(): Set<StepCapability> = setOf(SHELL_OPERATIONS_CAPABILITY)
@@ -436,7 +437,7 @@ class ScriptedScopeTest {
     ) = runBlocking {
         var launches = 0
         val journal = InMemoryOperationJournal(SystemClock())
-        val registry = InMemoryStepRegistry().also { CoreShellStep.registerInto(it) }
+        val registry = StepRegistryBuilder().also { CoreShellStep.registerInto(it) }.build()
         val capabilityAccessFactory = { context: CanonicalRuntimeContext ->
             object : CanonicalRuntimeCapabilityAccess(context) {
                 override fun available(): Set<StepCapability> = setOf(SHELL_OPERATIONS_CAPABILITY)

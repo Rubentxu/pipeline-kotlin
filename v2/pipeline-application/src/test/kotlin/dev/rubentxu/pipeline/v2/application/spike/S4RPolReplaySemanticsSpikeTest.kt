@@ -307,10 +307,6 @@ class S4RPolReplaySemanticsSpikeTest {
         private val delegate: StepRegistry,
         private val onHandlerInvoke: () -> Unit,
     ) : StepRegistry {
-        override fun register(definition: StepDefinition<*, *>) = delegate.register(definition)
-
-        override fun register(registration: StepRegistration<*, *>) = delegate.register(registration)
-
         override fun providerOf(key: PluginStepId) = delegate.providerOf(key)
 
         override fun contains(key: PluginStepId) = delegate.contains(key)

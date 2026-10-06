@@ -6,11 +6,11 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -263,7 +263,7 @@ class CoreErrorStepUnitTest {
 
     @Test
     fun `registerInto -- registry resolves core error to the new StepDefinition`() {
-        val registry: StepRegistry = InMemoryStepRegistry().also { CoreErrorStep.registerInto(it) }
+        val registry: StepRegistry = StepRegistryBuilder().also { CoreErrorStep.registerInto(it) }.build()
         val resolved = registry.definition(dev.rubentxu.pipeline.v2.domain.PluginStepId("core.error"))
         assertNotNull(resolved, "registry MUST resolve core.error to CoreErrorStep.definition")
         assertSame(CoreErrorStep.definition, resolved)
@@ -273,7 +273,7 @@ class CoreErrorStepUnitTest {
     fun `registerInto -- duplicate registration fails closed`() {
         // The registry MUST be fail-closed on duplicate `core.error` keys. Mirrors the
         // Step Constitution law (duplicate StepKey → fail closed, never "first/last wins").
-        val registry = InMemoryStepRegistry().also { CoreErrorStep.registerInto(it) }
+        val registry = StepRegistryBuilder().also { CoreErrorStep.registerInto(it) }
         assertThrows(IllegalArgumentException::class.java) {
             CoreErrorStep.registerInto(registry)
         }

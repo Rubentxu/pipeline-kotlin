@@ -1,8 +1,9 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -28,7 +29,7 @@ class CoreWaitUntilStepUnitTest {
 
     @Test
     fun `identity — duplicate registration fails`() {
-        val r = InMemoryStepRegistry()
+        val r = StepRegistryBuilder()
         CoreWaitUntilStep.registerInto(r)
         assertTrue(
             runCatching { CoreWaitUntilStep.registerInto(r) }.isFailure,
@@ -96,12 +97,13 @@ class CoreWaitUntilStepUnitTest {
     // ===== 5. isolated registry registration =====
 
     @Test
-    fun `registry — CoreWaitUntilStep registers into an isolated InMemoryStepRegistry`() {
+    fun `registry — CoreWaitUntilStep registers into an isolated StepRegistry`() {
         // core.waitUntil is not in CoreStepRegistryFactory.registry() (removed at WU-G5R.4).
         // The StepContractSuite uses an isolated registry for its tests. This test verifies
         // that CoreWaitUntilStep.registerInto() works correctly in isolation.
-        val registry = InMemoryStepRegistry()
-        CoreWaitUntilStep.registerInto(registry)
+        val registryBuilder = StepRegistryBuilder()
+        CoreWaitUntilStep.registerInto(registryBuilder)
+        val registry: StepRegistry = registryBuilder.build()
         assertTrue(
             registry.contains(CoreWaitUntilStep.KEY),
             "isolated registry must contain core.waitUntil after registerInto",

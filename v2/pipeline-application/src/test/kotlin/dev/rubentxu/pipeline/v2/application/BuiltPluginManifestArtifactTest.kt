@@ -113,51 +113,6 @@ class BuiltPluginManifestArtifactTest {
         )
     }
 
-    /**
-     * Delegating parent that hides the four official plugin packages.
-     *
-     * Without this the plugin classes resolve from the test output directory and `strict`
-     * refuses, because the manifest then genuinely comes from a different artifact than the
-     * contribution code — which is the substitution the check exists to catch, and which here
-     * would be an artefact of the harness rather than a real defect.
-     */
-    private class PluginApiParent(
-        private val delegate: ClassLoader = BuiltPluginManifestArtifactTest::class.java.classLoader,
-    ) : ClassLoader(null) {
-
-        private val hiddenPackages = listOf(
-            "dev.rubentxu.pipeline.v2.sdk.http",
-            "dev.rubentxu.pipeline.v2.sdk.scm",
-            "dev.rubentxu.pipeline.v2.sdk.junit",
-            "dev.rubentxu.pipeline.v2.sdk.utilities",
-        )
-
-        override fun loadClass(name: String, resolve: Boolean): Class<*> {
-            if (hiddenPackages.any { name.startsWith(it) }) {
-                throw ClassNotFoundException(name)
-            }
-            return delegate.loadClass(name)
-        }
-
-        /**
-         * Hides the canonical manifest resource as well as the plugin packages.
-         *
-         * Without this the parent still publishes `META-INF/pipelinek/plugin-manifest.json` —
-         * and since four plugins put a copy of that SAME path on the test classpath, whichever
-         * the parent answers first wins. The failure named scm-git's JAR while loading http's
-         * class, which is the kind of cross-plugin substitution `strict` exists to refuse, so
-         * the check was right again and the harness was wrong for the second time.
-         */
-        override fun getResource(name: String): java.net.URL? =
-            if (name == dev.rubentxu.pipeline.v2.domain.step.PluginManifestCodec.RESOURCE_PATH ||
-                hiddenPackages.any { name.startsWith("dev/rubentxu/pipeline/v2/sdk") }
-            ) {
-                null
-            } else {
-                delegate.getResource(name)
-            }
-    }
-
     companion object {
         @JvmStatic
         fun artifacts(): Stream<Arguments> = Stream.of(

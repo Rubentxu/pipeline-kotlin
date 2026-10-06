@@ -12,11 +12,12 @@ import dev.rubentxu.pipeline.v2.application.durable.ExecutionPreparation
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionPreparation
 import dev.rubentxu.pipeline.v2.application.durable.toStepOutcome
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.domain.step.StepInvocationOutcome
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -58,9 +59,9 @@ class A4_2ShellOperationsCapabilityTest {
 
     // ----- helpers --------------------------------------------------------
 
-    private fun freshRegistry(): InMemoryStepRegistry = InMemoryStepRegistry().apply {
+    private fun freshRegistry(): StepRegistry = StepRegistryBuilder().apply {
         CoreShellStep.registerInto(this)
-    }
+    }.build()
 
     private fun fakeCapabilities(ops: ShellOperations): StepCapabilityAccess =
         object : StepCapabilityAccess {

@@ -30,12 +30,13 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.PwdResolved
 import dev.rubentxu.pipeline.v2.events.StepFinished
@@ -117,8 +118,8 @@ import org.junit.jupiter.api.Timeout
 @Timeout(30)
 class CorePwdStepContractSuiteTest {
 
-    private fun registry(): InMemoryStepRegistry =
-        InMemoryStepRegistry().apply { CorePwdStep.registerInto(this) }
+    private fun registry(): StepRegistry =
+        StepRegistryBuilder().apply { CorePwdStep.registerInto(this) }.build()
 
     private fun noOpCredentialScopePort(): CredentialScopePort =
         CredentialScopePort { _, _ ->
@@ -187,7 +188,8 @@ class CorePwdStepContractSuiteTest {
     fun `identity — CorePwdStep KEY is core dot pwd and duplicate registration fails`() {
         assertEquals(PluginStepId("core.pwd"), CorePwdStep.KEY)
         assertEquals("core.pwd", CorePwdStep.KEY.value)
-        val r = registry()
+        val r = StepRegistryBuilder()
+        CorePwdStep.registerInto(r)
         assertTrue(
             runCatching { CorePwdStep.registerInto(r) }.isFailure,
             "duplicate registration of core.pwd must fail",
@@ -458,8 +460,8 @@ class CorePwdStepContractSuiteTest {
             StepHandler { _: PwdInput, _: StepHandlerContext ->
                 throw IllegalStateException("core.pwd handler contract violated for test")
             }
-        val throwingRegistry = InMemoryStepRegistry().apply {
-            register(
+        val throwingRegistry = StepRegistryBuilder().apply {
+            add(
                 object : StepDefinition<PwdInput, PwdOutput> {
                     override val contract: StepContract<PwdInput, PwdOutput> = StepContract(
                         key = CorePwdStep.KEY,
@@ -471,7 +473,7 @@ class CorePwdStepContractSuiteTest {
                     override val handler: StepHandler<PwdInput, PwdOutput> = throwingHandler
                 },
             )
-        }
+        }.build()
         val clock = SystemClock()
         val journal = InMemoryOperationJournal(clock)
         val cursorStore = InMemoryReplayCursorStore(clock)

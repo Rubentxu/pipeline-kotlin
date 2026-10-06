@@ -18,7 +18,7 @@ import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.StepId
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
@@ -72,10 +72,10 @@ class CoordinatorRunLifecycleCharacterizationTest {
             },
             controlDirRoot = Files.createTempDirectory("lifecycle-char-").resolve("control"),
             shOptions = ShOptions.EMPTY,
-            stepRegistry = InMemoryStepRegistry().apply {
+            stepRegistry = StepRegistryBuilder().apply {
                 CoreEchoStep.registerInto(this)
                 CoreErrorStep.registerInto(this)
-            },
+            }.build(),
         )
         return Triple(coordinator, journal, events)
     }

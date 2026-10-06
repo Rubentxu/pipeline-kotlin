@@ -173,8 +173,9 @@ class CoreReadFileStepContractSuiteTest {
 
     @Test
     fun `13 — registered through the open registry seam (no privileged core path)`() {
-        val registry = dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry()
-        CoreReadFileStep.registerInto(registry)
+        val registryBuilder = dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder()
+        CoreReadFileStep.registerInto(registryBuilder)
+        val registry: dev.rubentxu.pipeline.v2.domain.step.StepRegistry = registryBuilder.build()
         val resolved = registry.definition(CoreReadFileStep.KEY)
         assertNotNull(resolved, "registry MUST resolve core.readFile through the open seam")
         assertEquals(CoreReadFileStep.definition.contract.key, resolved!!.contract.key)
@@ -182,27 +183,28 @@ class CoreReadFileStepContractSuiteTest {
 
     @Test
     fun `14 — registry key does not collide with any other registered Step`() {
-        val registry = dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry()
+        val registryBuilder = dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder()
         // Register the rest of the catalog (mirrors CoreStepRegistryFactory, minus core.readFile
         // itself which is the SUT).
-        CoreEchoStep.registerInto(registry)
-        CoreShellStep.registerInto(registry)
-        CoreErrorStep.registerInto(registry)
-        CoreSleepStep.registerInto(registry)
-        CoreWriteFileStep.registerInto(registry)
-        CoreFileExistsStep.registerInto(registry)
-        CoreArchiveArtifactsStep.registerInto(registry)
-        CoreArtifactQueryStep.registerInto(registry)
-        CoreEmitEventStep.registerInto(registry)
-        CoreIsUnixStep.registerInto(registry)
-        CorePwdStep.registerInto(registry)
-        CorePwdTmpStep.registerInto(registry)
-        CoreDeleteDirStep.registerInto(registry)
-        CoreCleanWsStep.registerInto(registry)
-        CoreMilestoneStep.registerInto(registry)
-        CoreWaitUntilStep.registerInto(registry)
+        CoreEchoStep.registerInto(registryBuilder)
+        CoreShellStep.registerInto(registryBuilder)
+        CoreErrorStep.registerInto(registryBuilder)
+        CoreSleepStep.registerInto(registryBuilder)
+        CoreWriteFileStep.registerInto(registryBuilder)
+        CoreFileExistsStep.registerInto(registryBuilder)
+        CoreArchiveArtifactsStep.registerInto(registryBuilder)
+        CoreArtifactQueryStep.registerInto(registryBuilder)
+        CoreEmitEventStep.registerInto(registryBuilder)
+        CoreIsUnixStep.registerInto(registryBuilder)
+        CorePwdStep.registerInto(registryBuilder)
+        CorePwdTmpStep.registerInto(registryBuilder)
+        CoreDeleteDirStep.registerInto(registryBuilder)
+        CoreCleanWsStep.registerInto(registryBuilder)
+        CoreMilestoneStep.registerInto(registryBuilder)
+        CoreWaitUntilStep.registerInto(registryBuilder)
         // Now register the SUT — duplicate key MUST fail closed.
-        CoreReadFileStep.registerInto(registry)
+        CoreReadFileStep.registerInto(registryBuilder)
+        val registry: dev.rubentxu.pipeline.v2.domain.step.StepRegistry = registryBuilder.build()
         val resolved = registry.definition(CoreReadFileStep.KEY)
         assertNotNull(resolved)
         assertEquals(CoreReadFileStep.definition.contract.key, resolved!!.contract.key)

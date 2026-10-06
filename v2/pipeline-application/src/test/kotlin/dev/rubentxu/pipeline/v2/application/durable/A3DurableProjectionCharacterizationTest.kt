@@ -23,8 +23,8 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
@@ -105,7 +105,7 @@ class A3DurableProjectionCharacterizationTest {
         val clock = SystemClock()
         val journal = InMemoryOperationJournal(clock)
         val cursor = InMemoryReplayCursorStore(clock)
-        val registry = InMemoryStepRegistry().apply { CoreEchoStep.registerInto(this) }
+        val registry = StepRegistryBuilder().apply { CoreEchoStep.registerInto(this) }.build()
         val coordinator = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(),
             journal,
@@ -134,7 +134,7 @@ class A3DurableProjectionCharacterizationTest {
         // Atomicity law: invoking the boundary twice with different inputs yields
         // independent carriers; re-invoking the first reproduces the original carrier.
         // No hidden state, no ThreadLocal, no per-key cache.
-        val registry = InMemoryStepRegistry().apply { CoreEchoStep.registerInto(this) }
+        val registry = StepRegistryBuilder().apply { CoreEchoStep.registerInto(this) }.build()
         val ctx = CanonicalRuntimeContext(
             opId = OpId("a3-6", 0, 0),
             runId = "a3-6",

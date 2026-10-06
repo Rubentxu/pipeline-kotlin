@@ -60,13 +60,13 @@ import org.junit.jupiter.api.Timeout
 @Timeout(60)
 class ExampleBlockPluginCertificationTest {
 
-    private fun registry() = dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry().apply {
+    private fun registry() = dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder().apply {
         // The REAL discovery path: ServiceLoader over the external plugin JARs on the test
         // classpath. `example.repeat` enters exactly as a third-party contribution.
         ExternalStepPluginDiscovery.registerInto(this)
         CoreEchoStep.registerInto(this)
         CoreErrorStep.registerInto(this)
-    }
+    }.build()
 
     private fun harness() = run {
         val clock = SystemClock()

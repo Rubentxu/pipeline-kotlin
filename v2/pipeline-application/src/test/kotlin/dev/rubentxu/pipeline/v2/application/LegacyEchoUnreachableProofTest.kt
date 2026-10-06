@@ -3,7 +3,6 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.application.durable.StructuralFamilyResolver
 import dev.rubentxu.pipeline.v2.application.durable.StructuralStepFamily
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -15,7 +14,7 @@ import org.junit.jupiter.api.Test
  * The structural switch on the durable spine is the closed [StructuralStepFamily] token
  * (LegacyCore | Registry), classified by [StructuralFamilyResolver] using
  * [CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS] as the closed legacy authority and the open
- * [InMemoryStepRegistry] as the registry authority.
+ * [StepRegistry] as the registry authority.
  *
  * This test proves the precondition for S3.1:
  *

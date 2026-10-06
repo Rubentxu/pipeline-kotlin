@@ -9,8 +9,9 @@ import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAc
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
 import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.UnixDetected
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
@@ -140,7 +141,7 @@ class ScriptedIsUnixCompilerMappingTest {
 
     private fun invokerObserving(
         osName: String,
-        registry: InMemoryStepRegistry,
+        registry: StepRegistry,
         journal: InMemoryOperationJournal,
         sink: InMemoryEventStore,
         platformReads: AtomicInteger = AtomicInteger(0),
@@ -259,7 +260,9 @@ class ScriptedIsUnixCompilerMappingTest {
         // REUSE: EMPTY registry, Windows-view bridge (cannot supply capabilities),
         // same durable identity -> SAME branch, zero observation, zero new events.
         val reuseReads = AtomicInteger(0)
-        executeWith(entryPoint, invokerObserving("Windows 11", InMemoryStepRegistry().also { CoreIsUnixStep.registerInto(it) }, journal, sink, reuseReads))
+        val reuseRegistry: StepRegistry =
+            StepRegistryBuilder().also { CoreIsUnixStep.registerInto(it) }.build()
+        executeWith(entryPoint, invokerObserving("Windows 11", reuseRegistry, journal, sink, reuseReads))
         assertEquals(listOf("unix"), recordedFrom(scriptInstance), "the replayed runtime value must replay the Kotlin decision")
         assertEquals(0, reuseReads.get(), "reuse must not consult the platform")
         assertEquals(1, unixDetected(sink).size, "reuse must not emit new events")
@@ -276,7 +279,7 @@ class ScriptedIsUnixCompilerMappingTest {
         executeWith(entryPoint, invokerObserving("SunOS", registryWithIsUnix(), journal, sink))
         assertEquals(listOf("unix"), recordedFrom(scriptInstance))
         // Second execution reuses the SAME compiled object (no recompilation/re-eval).
-        executeWith(entryPoint, invokerObserving("Windows 11", InMemoryStepRegistry().also { CoreIsUnixStep.registerInto(it) }, journal, sink))
+        executeWith(entryPoint, invokerObserving("Windows 11", StepRegistryBuilder().also { CoreIsUnixStep.registerInto(it) }.build(), journal, sink))
         assertEquals(listOf("unix"), recordedFrom(scriptInstance))
     }
 
@@ -331,6 +334,6 @@ class ScriptedIsUnixCompilerMappingTest {
         }
     }
 
-    private fun registryWithIsUnix(): InMemoryStepRegistry =
-        InMemoryStepRegistry().also { CoreIsUnixStep.registerInto(it) }
+    private fun registryWithIsUnix(): StepRegistry =
+        StepRegistryBuilder().also { CoreIsUnixStep.registerInto(it) }.build()
 }

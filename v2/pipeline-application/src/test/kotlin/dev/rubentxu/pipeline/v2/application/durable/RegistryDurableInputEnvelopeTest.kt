@@ -11,13 +11,14 @@ import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.application.CanonicalStructuralPreparation
 import dev.rubentxu.pipeline.v2.application.StructuralPreparation
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -64,7 +65,7 @@ class RegistryDurableInputEnvelopeTest {
     }
 
     /** A registered step whose input codec emits a well-formed JSON OBJECT. */
-    private fun jsonObjectRegistry(): InMemoryStepRegistry {
+    private fun jsonObjectRegistry(): StepRegistry {
         val definition: StepDefinition<PingInput, String> = object : StepDefinition<PingInput, String> {
             override val contract: StepContract<PingInput, String> = StepContract(
                 key = PING_KEY,
@@ -88,9 +89,7 @@ class RegistryDurableInputEnvelopeTest {
                 "ran:${input.text}"
             }
         }
-        val registry = InMemoryStepRegistry()
-        registry.register(definition)
-        return registry
+        return StepRegistryBuilder().apply { add(definition) }.build()
     }
 
     /** Spine StepNode whose durable payload is the codec-authored EncodedStepValue (a JSON object). */

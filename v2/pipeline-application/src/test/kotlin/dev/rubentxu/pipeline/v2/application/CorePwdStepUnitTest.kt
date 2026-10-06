@@ -14,7 +14,7 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.PwdResolved
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
@@ -404,7 +404,7 @@ class CorePwdStepUnitTest {
 
     @Test
     fun `duplicate registration fails closed`() {
-        val registry = InMemoryStepRegistry().also { CorePwdStep.registerInto(it) }
+        val registry = StepRegistryBuilder().also { CorePwdStep.registerInto(it) }
         try {
             CorePwdStep.registerInto(registry)
             throw AssertionError("expected duplicate-key rejection")

@@ -214,7 +214,8 @@ class BodyExecutionPolicyTest {
 
         @Test
         fun `an unregistered key is rejected through the registry port`() {
-            val resolver = RegistryBodyPolicyResolver(InMemoryStepRegistry(), BodyExecutionSupport.FULL)
+            val registry = StepRegistryBuilder().build()
+            val resolver = RegistryBodyPolicyResolver(registry, BodyExecutionSupport.FULL)
 
             val resolution = resolver.resolve(PluginStepId("plugin.notInstalled"))
 
@@ -374,7 +375,6 @@ class BodyExecutionPolicyTest {
          */
         @Test
         fun `resolution reads the registered contract and not the step key`() {
-            val registry = InMemoryStepRegistry()
             val descriptor = StepDescriptor(
                 stepId = "example.reshape",
                 name = "reshape",
@@ -388,7 +388,9 @@ class BodyExecutionPolicyTest {
                     introduces = ContextKind.ENVIRONMENT,
                 ),
             )
-            registry.register(UnitDefinition(PluginStepId("example.reshape"), descriptor))
+            val registry = StepRegistryBuilder()
+                .apply { add(UnitDefinition(PluginStepId("example.reshape"), descriptor)) }
+                .build()
 
             val resolver = RegistryBodyPolicyResolver(registry, BodyExecutionSupport.FULL)
 
@@ -405,7 +407,6 @@ class BodyExecutionPolicyTest {
         /** The port resolves from the contract descriptor exactly as the pure function does. */
         @Test
         fun `the registry port agrees with the pure function over the same descriptor`() {
-            val registry = InMemoryStepRegistry()
             val descriptor = StepDescriptor(
                 stepId = "core.retry",
                 name = "retry",
@@ -419,7 +420,7 @@ class BodyExecutionPolicyTest {
                 ),
             )
             val definition = UnitDefinition(PluginStepId("core.retry"), descriptor)
-            registry.register(definition)
+            val registry = StepRegistryBuilder().apply { add(definition) }.build()
 
             val viaPort = RegistryBodyPolicyResolver(registry, BodyExecutionSupport.FULL)
                 .resolve(PluginStepId("core.retry"))

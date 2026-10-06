@@ -86,6 +86,9 @@ class EmitEventStepContractSuiteTest {
 
     private fun registry() = CoreStepRegistryFactory.registry()
 
+    /** The mutable side, for the one row that asserts composition itself fails closed. */
+    private fun registryBuilder() = CoreStepRegistryFactory.builder()
+
     private fun runtime(store: InMemoryEventStore, runId: String = "emit-suite"): CanonicalRuntimeContext =
         CanonicalRuntimeContext(
             opId = OpId("emit-suite", 0, 0),
@@ -187,7 +190,7 @@ class EmitEventStepContractSuiteTest {
 
     @Test
     fun `identity — duplicate registration fails closed`() {
-        assertTrue(runCatching { CoreEmitEventStep.registerInto(registry()) }.isFailure)
+        assertTrue(runCatching { CoreEmitEventStep.registerInto(registryBuilder()) }.isFailure)
     }
 
     // ===== 1. descriptor frozen (G2/G5 values, exact sets) =====

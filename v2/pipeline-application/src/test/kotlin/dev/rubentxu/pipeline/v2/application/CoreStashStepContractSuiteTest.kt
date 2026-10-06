@@ -5,10 +5,11 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -137,8 +138,9 @@ class CoreStashStepContractSuiteTest {
 
     @Test
     fun `10 — registered through the open registry seam`() {
-        val registry = InMemoryStepRegistry()
-        CoreStashStep.registerInto(registry)
+        val registryBuilder = StepRegistryBuilder()
+        CoreStashStep.registerInto(registryBuilder)
+        val registry: StepRegistry = registryBuilder.build()
         val resolved = registry.definition(CoreStashStep.KEY)
         assertNotNull(resolved, "registry MUST resolve core.stash through the open seam")
         assertEquals(CoreStashStep.KEY, resolved!!.contract.key)
@@ -146,26 +148,27 @@ class CoreStashStepContractSuiteTest {
 
     @Test
     fun `11 — registry key uniqueness vs other CoreSteps (no StepKey collisions)`() {
-        val registry = InMemoryStepRegistry()
-        CoreEchoStep.registerInto(registry)
-        CoreShellStep.registerInto(registry)
-        CoreErrorStep.registerInto(registry)
-        CoreSleepStep.registerInto(registry)
-        CoreWriteFileStep.registerInto(registry)
-        CoreReadFileStep.registerInto(registry)
-        CoreFileExistsStep.registerInto(registry)
-        CoreArchiveArtifactsStep.registerInto(registry)
-        CoreArtifactQueryStep.registerInto(registry)
-        CoreEmitEventStep.registerInto(registry)
-        CoreIsUnixStep.registerInto(registry)
-        CorePwdStep.registerInto(registry)
-        CorePwdTmpStep.registerInto(registry)
-        CoreDeleteDirStep.registerInto(registry)
-        CoreCleanWsStep.registerInto(registry)
-        CoreMilestoneStep.registerInto(registry)
-        CoreWaitUntilStep.registerInto(registry)
-        CoreStashStep.registerInto(registry)
-        CoreUnstashStep.registerInto(registry)
+        val registryBuilder = StepRegistryBuilder()
+        CoreEchoStep.registerInto(registryBuilder)
+        CoreShellStep.registerInto(registryBuilder)
+        CoreErrorStep.registerInto(registryBuilder)
+        CoreSleepStep.registerInto(registryBuilder)
+        CoreWriteFileStep.registerInto(registryBuilder)
+        CoreReadFileStep.registerInto(registryBuilder)
+        CoreFileExistsStep.registerInto(registryBuilder)
+        CoreArchiveArtifactsStep.registerInto(registryBuilder)
+        CoreArtifactQueryStep.registerInto(registryBuilder)
+        CoreEmitEventStep.registerInto(registryBuilder)
+        CoreIsUnixStep.registerInto(registryBuilder)
+        CorePwdStep.registerInto(registryBuilder)
+        CorePwdTmpStep.registerInto(registryBuilder)
+        CoreDeleteDirStep.registerInto(registryBuilder)
+        CoreCleanWsStep.registerInto(registryBuilder)
+        CoreMilestoneStep.registerInto(registryBuilder)
+        CoreWaitUntilStep.registerInto(registryBuilder)
+        CoreStashStep.registerInto(registryBuilder)
+        CoreUnstashStep.registerInto(registryBuilder)
+        val registry: StepRegistry = registryBuilder.build()
         // Verify both stash-related keys are distinct.
         assertEquals(PluginStepId("core.stash"), CoreStashStep.KEY)
         assertEquals(PluginStepId("core.unstash"), CoreUnstashStep.KEY)

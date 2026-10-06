@@ -6,12 +6,13 @@ import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -62,8 +63,9 @@ class RegistryExecutionPreparationTest {
 
     @Test
     fun `fresh valid registry input prepares Ready without running the handler`() {
-        val registry = InMemoryStepRegistry()
-        registry.register(registryStep("test.echo"))
+        val registryBuilder = StepRegistryBuilder()
+        registryBuilder.add(registryStep("test.echo"))
+        val registry: StepRegistry = registryBuilder.build()
         handlerCalls = 0
 
         val result = RegistryExecutionPreparation.prepare(
@@ -82,8 +84,9 @@ class RegistryExecutionPreparationTest {
 
     @Test
     fun `fresh typed-invalid registry input rejects without running the handler`() {
-        val registry = InMemoryStepRegistry()
-        registry.register(registryStep("test.echo"))
+        val registryBuilder = StepRegistryBuilder()
+        registryBuilder.add(registryStep("test.echo"))
+        val registry: StepRegistry = registryBuilder.build()
         handlerCalls = 0
 
         val result = RegistryExecutionPreparation.prepare(
@@ -99,7 +102,7 @@ class RegistryExecutionPreparationTest {
 
     @Test
     fun `unknown registry step rejects during prepare`() {
-        val registry = InMemoryStepRegistry()
+        val registry: StepRegistry = StepRegistryBuilder().build()
 
         val result = RegistryExecutionPreparation.prepare(
             registry,
@@ -114,9 +117,10 @@ class RegistryExecutionPreparationTest {
 
     @Test
     fun `missing capability rejects during prepare before decode or handler`() {
-        val registry = InMemoryStepRegistry()
+        val registryBuilder = StepRegistryBuilder()
         val sink = StepCapability("sink")
-        registry.register(registryStep("test.needssink", required = setOf(sink)))
+        registryBuilder.add(registryStep("test.needssink", required = setOf(sink)))
+        val registry: StepRegistry = registryBuilder.build()
         handlerCalls = 0
 
         // Payload is decodable ("ok:...") but the declared capability is absent: admission must reject
@@ -134,9 +138,10 @@ class RegistryExecutionPreparationTest {
 
     @Test
     fun `supplied capability admits a valid registry input to Ready`() {
-        val registry = InMemoryStepRegistry()
+        val registryBuilder = StepRegistryBuilder()
         val sink = StepCapability("sink")
-        registry.register(registryStep("test.needssink", required = setOf(sink)))
+        registryBuilder.add(registryStep("test.needssink", required = setOf(sink)))
+        val registry: StepRegistry = registryBuilder.build()
         handlerCalls = 0
 
         val result = RegistryExecutionPreparation.prepare(

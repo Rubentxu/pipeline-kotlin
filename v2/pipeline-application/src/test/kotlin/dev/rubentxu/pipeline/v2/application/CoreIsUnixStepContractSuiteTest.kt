@@ -29,12 +29,13 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
@@ -114,8 +115,8 @@ import org.junit.jupiter.api.Timeout
 @Timeout(30)
 class CoreIsUnixStepContractSuiteTest {
 
-    private fun registry(): InMemoryStepRegistry =
-        InMemoryStepRegistry().apply { CoreIsUnixStep.registerInto(this) }
+    private fun registry(): StepRegistry =
+        StepRegistryBuilder().apply { CoreIsUnixStep.registerInto(this) }.build()
 
     private fun noOpCredentialScopePort(): CredentialScopePort =
         CredentialScopePort { _, _ ->
@@ -193,7 +194,8 @@ class CoreIsUnixStepContractSuiteTest {
     fun `identity — CoreIsUnixStep KEY is core dot isUnix and duplicate registration fails`() {
         assertEquals(PluginStepId("core.isUnix"), CoreIsUnixStep.KEY)
         assertEquals("core.isUnix", CoreIsUnixStep.KEY.value)
-        val r = registry()
+        val r = StepRegistryBuilder()
+        CoreIsUnixStep.registerInto(r)
         assertTrue(
             runCatching { CoreIsUnixStep.registerInto(r) }.isFailure,
             "duplicate registration of core.isUnix must fail",
@@ -460,8 +462,8 @@ class CoreIsUnixStepContractSuiteTest {
             StepHandler { _: IsUnixInput, _: StepHandlerContext ->
                 throw IllegalStateException("core.isUnix handler contract violated for test")
             }
-        val throwingRegistry = InMemoryStepRegistry().apply {
-            register(
+        val throwingRegistry = StepRegistryBuilder().apply {
+            add(
                 object : StepDefinition<IsUnixInput, IsUnixOutput> {
                     override val contract: StepContract<IsUnixInput, IsUnixOutput> = StepContract(
                         key = CoreIsUnixStep.KEY,
@@ -473,7 +475,7 @@ class CoreIsUnixStepContractSuiteTest {
                     override val handler: StepHandler<IsUnixInput, IsUnixOutput> = throwingHandler
                 },
             )
-        }
+        }.build()
         val clock = SystemClock()
         val journal = InMemoryOperationJournal(clock)
         val cursorStore = InMemoryReplayCursorStore(clock)

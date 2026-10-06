@@ -11,7 +11,8 @@ import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
 import dev.rubentxu.pipeline.v2.domain.PipelineStepException
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.PwdResolved
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
@@ -107,7 +108,7 @@ class ScriptedPwdRuntimeTest {
     /** Builds an invoker whose capability bridge observes [workspaceRoot] instead of the host JVM. */
     private fun invokerObserving(
         workspaceRoot: Path,
-        registry: InMemoryStepRegistry,
+        registry: StepRegistry,
         journal: InMemoryOperationJournal,
         sink: InMemoryEventStore,
         workspaceReads: AtomicInteger = AtomicInteger(0),
@@ -124,8 +125,8 @@ class ScriptedPwdRuntimeTest {
         },
     )
 
-    private fun registryWithPwdOnly(): InMemoryStepRegistry =
-        InMemoryStepRegistry().also { CorePwdStep.registerInto(it) }
+    private fun registryWithPwdOnly(): StepRegistry =
+        StepRegistryBuilder().also { CorePwdStep.registerInto(it) }.build()
 
     private fun compiledEntryPoint(observed: MutableList<String>) =
         object : CompiledScriptedEntryPoint {
@@ -207,7 +208,7 @@ class ScriptedPwdRuntimeTest {
         // resume must not CONSULT A CAPABILITY. The platform/workspace observation is a
         // capability read, and the counter must still end at 0.
 
-        val registry = InMemoryStepRegistry().also { CorePwdStep.registerInto(it) }
+        val registry = StepRegistryBuilder().also { CorePwdStep.registerInto(it) }.build()
         val reuseReads = AtomicInteger(0)
         val reuseObserved = mutableListOf<String>()
         runtime(invokerObserving(secondWorkspace, registry, journal, sink, reuseReads))
@@ -237,7 +238,7 @@ class ScriptedPwdRuntimeTest {
     fun `fail closed - missing step on fresh throws, never fabricates a String`() = runBlocking {
         val sink = InMemoryEventStore()
         val journal = InMemoryOperationJournal(SystemClock())
-        val registry = InMemoryStepRegistry()
+        val registry: StepRegistry = StepRegistryBuilder().build()
         val observed = mutableListOf<String>()
         val ex = assertThrows(PipelineStepException::class.java) {
             runBlocking {

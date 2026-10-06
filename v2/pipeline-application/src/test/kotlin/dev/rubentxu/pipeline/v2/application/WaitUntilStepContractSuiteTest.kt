@@ -26,8 +26,9 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
@@ -84,8 +85,8 @@ import java.nio.file.Files
 @Timeout(30)
 class WaitUntilStepContractSuiteTest {
 
-    private fun registry(): InMemoryStepRegistry =
-        InMemoryStepRegistry().apply { CoreWaitUntilStep.registerInto(this) }
+    private fun registry(): StepRegistry =
+        StepRegistryBuilder().apply { CoreWaitUntilStep.registerInto(this) }.build()
 
     private fun noOpCredentialScopePort(): CredentialScopePort =
         CredentialScopePort { _, _ ->
@@ -157,7 +158,8 @@ class WaitUntilStepContractSuiteTest {
     fun `identity — CoreWaitUntilStep KEY is core dot waitUntil and duplicate registration fails`() {
         assertEquals(PluginStepId("core.waitUntil"), CoreWaitUntilStep.KEY)
         assertEquals("core.waitUntil", CoreWaitUntilStep.KEY.value)
-        val r = registry()
+        val r = StepRegistryBuilder()
+        CoreWaitUntilStep.registerInto(r)
         assertTrue(
             runCatching { CoreWaitUntilStep.registerInto(r) }.isFailure,
             "duplicate registration of core.waitUntil must fail",

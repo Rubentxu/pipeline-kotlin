@@ -7,11 +7,11 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertSame
@@ -100,10 +100,10 @@ class A4_1DescriptorRecoveryCharacterizationTest {
 
     @Test
     fun `A4-1-2 registry resolver propagates descriptor recoveryPolicy for non-core keys`() {
-        val registry = InMemoryStepRegistry().apply {
-            register(customDefinition(PluginStepId("acme.recoverable"), RecoveryPolicy.ExternalSubprocess))
-            register(customDefinition(PluginStepId("acme.normal"), RecoveryPolicy.None))
-        }
+        val registry = StepRegistryBuilder().apply {
+            add(customDefinition(PluginStepId("acme.recoverable"), RecoveryPolicy.ExternalSubprocess))
+            add(customDefinition(PluginStepId("acme.normal"), RecoveryPolicy.None))
+        }.build()
         val resolver = RegistryStepMetadataResolver.composite(registry)
 
         val recoverable = resolver.resolve(PluginStepId("acme.recoverable"))
@@ -142,9 +142,9 @@ class A4_1DescriptorRecoveryCharacterizationTest {
         // future external plugin declaring `recoveryPolicy = ExternalSubprocess` will resolve
         // identically without modifying the resolver. The structural proof: a generic plugin
         // key resolves with the right RecoveryPolicy without any code change in this file.
-        val registry = InMemoryStepRegistry().apply {
-            register(customDefinition(PluginStepId("ext.external-subprocess"), RecoveryPolicy.ExternalSubprocess))
-        }
+        val registry = StepRegistryBuilder().apply {
+            add(customDefinition(PluginStepId("ext.external-subprocess"), RecoveryPolicy.ExternalSubprocess))
+        }.build()
         val resolver = RegistryStepMetadataResolver.composite(registry)
         val metadata = resolver.resolve(PluginStepId("ext.external-subprocess"))
         assertEquals(RecoveryPolicy.ExternalSubprocess, metadata!!.recoveryPolicy)

@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.CoreEchoStep
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Timeout
 class FamilyRouterTest {
 
     private fun registryOwningKey(): dev.rubentxu.pipeline.v2.domain.step.StepRegistry =
-        InMemoryStepRegistry().also(CoreEchoStep::registerInto)
+        StepRegistryBuilder().also(CoreEchoStep::registerInto).build()
 
     /**
      * `CanonicalNodeDispatcher` is a concrete class; `FamilyRouter.decide` only uses it to

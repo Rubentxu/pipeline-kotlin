@@ -22,11 +22,12 @@ import dev.rubentxu.pipeline.v2.domain.StepId
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.application.MilestoneOperations
 import dev.rubentxu.pipeline.v2.application.MilestoneOperationsAdapter
 import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
@@ -118,8 +119,8 @@ import java.nio.file.Files
 @Timeout(30)
 class CoreMilestoneStepContractSuiteTest {
 
-    private fun registry(): InMemoryStepRegistry =
-        InMemoryStepRegistry().apply { CoreMilestoneStep.registerInto(this) }
+    private fun registry(): StepRegistry =
+        StepRegistryBuilder().apply { CoreMilestoneStep.registerInto(this) }.build()
 
     private fun noOpCredentialScopePort(): CredentialScopePort = CredentialScopePort { _, _ ->
         CredentialScopeOutcome.Unavailable(
@@ -212,7 +213,8 @@ class CoreMilestoneStepContractSuiteTest {
     fun `identity — CoreMilestoneStep KEY is core dot milestone and unique`() {
         assertEquals(PluginStepId("core.milestone"), CoreMilestoneStep.KEY)
         assertEquals("core.milestone", CoreMilestoneStep.KEY.value)
-        val r = registry()
+        val r = StepRegistryBuilder()
+        CoreMilestoneStep.registerInto(r)
         assertTrue(
             runCatching { CoreMilestoneStep.registerInto(r) }.isFailure,
             "duplicate registration of core.milestone must fail",
@@ -572,8 +574,8 @@ class CoreMilestoneStepContractSuiteTest {
     @Test
     fun `missing capability — admission rejects when EVENT_SINK is absent`() {
         val absent = StepCapability("missing.capability.never.declared")
-        val altRegistry = InMemoryStepRegistry().apply {
-            register(object : StepDefinition<MilestoneInput, MilestoneOutput> {
+        val altRegistry = StepRegistryBuilder().apply {
+            add(object : StepDefinition<MilestoneInput, MilestoneOutput> {
                 override val contract = StepContract(
                     key = CoreMilestoneStep.KEY,
                     descriptor = CoreMilestoneStep.definition.contract.descriptor,
@@ -584,7 +586,7 @@ class CoreMilestoneStepContractSuiteTest {
                 )
                 override val handler = CoreMilestoneStep.definition.handler
             })
-        }
+        }.build()
         val admission = RegistryExecutionPreparation.prepare(
             registry = altRegistry,
             key = CoreMilestoneStep.KEY,
@@ -604,8 +606,8 @@ class CoreMilestoneStepContractSuiteTest {
     @Test
     fun `missing capability — admission rejects when MILESTONE_OPERATIONS is absent`() {
         val absent = StepCapability("missing.capability.never.declared")
-        val altRegistry = InMemoryStepRegistry().apply {
-            register(object : StepDefinition<MilestoneInput, MilestoneOutput> {
+        val altRegistry = StepRegistryBuilder().apply {
+            add(object : StepDefinition<MilestoneInput, MilestoneOutput> {
                 override val contract = StepContract(
                     key = CoreMilestoneStep.KEY,
                     descriptor = CoreMilestoneStep.definition.contract.descriptor,
@@ -616,7 +618,7 @@ class CoreMilestoneStepContractSuiteTest {
                 )
                 override val handler = CoreMilestoneStep.definition.handler
             })
-        }
+        }.build()
         val admission = RegistryExecutionPreparation.prepare(
             registry = altRegistry,
             key = CoreMilestoneStep.KEY,

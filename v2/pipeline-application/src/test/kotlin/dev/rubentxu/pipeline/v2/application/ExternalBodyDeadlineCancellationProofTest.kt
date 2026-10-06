@@ -30,11 +30,11 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
@@ -120,11 +120,11 @@ class ExternalBodyDeadlineCancellationProofTest {
         override val handler = StepHandler<UpperBlockInput, String> { input, _ -> input.prefix }
     }
 
-    private fun registry() = InMemoryStepRegistry().apply {
-        register(definition)
+    private fun registry() = StepRegistryBuilder().apply {
+        add(definition)
         CoreEchoStep.registerInto(this)
         CoreShellStep.registerInto(this)
-    }
+    }.build()
 
     private fun harness(tempDir: java.nio.file.Path): Triple<CanonicalDurableRunCoordinator, InMemoryOperationJournal, InMemoryEventStore> {
         val clock = SystemClock()

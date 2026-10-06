@@ -10,11 +10,12 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
@@ -97,7 +98,7 @@ class RegistryExecutionOutcomeTest {
         eventSink = store,
     )
 
-    private fun prepareValid(registry: InMemoryStepRegistry, key: PluginStepId): PreparedRegistryExecution {
+    private fun prepareValid(registry: StepRegistry, key: PluginStepId): PreparedRegistryExecution {
         val store = InMemoryEventStore()
         val ready = RegistryExecutionPreparation.prepare(
             registry = registry,
@@ -112,9 +113,9 @@ class RegistryExecutionOutcomeTest {
     @Test
     fun `typed handler output reduces to Success and never reaches the coordinator`() = runBlocking {
         val store = InMemoryEventStore()
-        val registry = InMemoryStepRegistry().apply {
+        val registry = StepRegistryBuilder().apply {
             CoreEchoStep.registerInto(this)
-        }
+        }.build()
         // Echo's durable input is the byte-identical dsl-v1 envelope (B1.2c3-slice1); author it via the
         // codec so the migrated echo definition decodes it, exactly as the spine will on a registry run.
         val encoded = CoreEchoStep.definition.contract.inputCodec.encode(EchoInput("1"))
@@ -140,7 +141,7 @@ class RegistryExecutionOutcomeTest {
     @Test
     fun `void unit handler output reduces to Success`() = runBlocking {
         val unitKey = PluginStepId("test.unit-out")
-        val registry = InMemoryStepRegistry().apply { register(unitStep(unitKey)) }
+        val registry = StepRegistryBuilder().apply { add(unitStep(unitKey)) }.build()
         val prepared = prepareValid(registry, unitKey)
 
         val outcome = RegistryExecutionBoundary.adapt().execute(prepared, runtime(InMemoryEventStore())).outcome
@@ -154,7 +155,7 @@ class RegistryExecutionOutcomeTest {
         val throwingStep = stringStep(boomKey, StepHandler<Int, String> { _, _ ->
             throw IllegalStateException("handler exploded")
         })
-        val registry = InMemoryStepRegistry().apply { register(throwingStep) }
+        val registry = StepRegistryBuilder().apply { add(throwingStep) }.build()
         val prepared = prepareValid(registry, boomKey)
 
         val outcome = RegistryExecutionBoundary.adapt().execute(prepared, runtime(InMemoryEventStore())).outcome
@@ -170,7 +171,7 @@ class RegistryExecutionOutcomeTest {
     fun `durable coordinator surface exposes only StepOutcome with no carried value`() = runBlocking {
         val typedKey = PluginStepId("test.typed-out")
         val typedStep = stringStep(typedKey, StepHandler<Int, String> { input, _ -> "out:$input" })
-        val registry = InMemoryStepRegistry().apply { register(typedStep) }
+        val registry = StepRegistryBuilder().apply { add(typedStep) }.build()
         val prepared = prepareValid(registry, typedKey)
 
         val result = RegistryExecutionBoundary.adapt().execute(prepared, runtime(InMemoryEventStore()))

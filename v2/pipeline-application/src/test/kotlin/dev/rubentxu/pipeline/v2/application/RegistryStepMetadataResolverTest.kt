@@ -7,11 +7,12 @@ import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
@@ -55,9 +56,9 @@ class RegistryStepMetadataResolverTest {
         override val handler: StepHandler<String, String> = StepHandler { input, _ -> input }
     }
 
-    private fun registry(): InMemoryStepRegistry = InMemoryStepRegistry().apply {
-        register(pluginDefinition())
-    }
+    private fun registry(): StepRegistry = StepRegistryBuilder().apply {
+        add(pluginDefinition())
+    }.build()
 
     @Test
     fun `a registered non-core plugin step resolves metadata from its definition descriptor`() {

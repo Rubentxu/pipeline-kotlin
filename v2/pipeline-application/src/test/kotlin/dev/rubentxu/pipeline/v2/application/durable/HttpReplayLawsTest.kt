@@ -26,9 +26,9 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.step.AllowAll
 import dev.rubentxu.pipeline.v2.domain.step.CompositeCapabilityContributor
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.sdk.http.HTTP_TRANSPORT_CAPABILITY
@@ -140,7 +140,7 @@ class HttpReplayLawsTest {
             clock = clock,
             journal = journal,
             eventSink = InMemoryEventStore(),
-            stepRegistry = InMemoryStepRegistry().apply { register(HttpRequestStep.definition) },
+            stepRegistry = StepRegistryBuilder().apply { add(HttpRequestStep.definition) }.build(),
             shOptions = ShOptions(
                 workspaceRoot = Files.createTempDirectory("h7"),
                 captureStdout = false,

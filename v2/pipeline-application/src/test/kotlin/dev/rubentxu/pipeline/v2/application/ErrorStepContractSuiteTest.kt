@@ -25,7 +25,8 @@ import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepFinished
@@ -105,8 +106,8 @@ import org.junit.jupiter.api.Timeout
 @Timeout(15)
 class ErrorStepContractSuiteTest {
 
-    private fun registry(): InMemoryStepRegistry =
-        InMemoryStepRegistry().apply { CoreErrorStep.registerInto(this) }
+    private fun registry(): StepRegistry =
+        StepRegistryBuilder().apply { CoreErrorStep.registerInto(this) }.build()
 
     private fun noOpCredentialScopePort(): CredentialScopePort = CredentialScopePort { _, _ ->
         CredentialScopeOutcome.Unavailable(
@@ -175,7 +176,8 @@ class ErrorStepContractSuiteTest {
         assertEquals(PluginStepId("core.error"), CoreErrorStep.KEY)
         assertEquals("core.error", CoreErrorStep.KEY.value)
         // Re-registering must fail (deterministic / idempotent error).
-        val r = registry()
+        val r = StepRegistryBuilder()
+        CoreErrorStep.registerInto(r)
         assertTrue(
             runCatching { CoreErrorStep.registerInto(r) }.isFailure,
             "duplicate registration of core.error must fail",

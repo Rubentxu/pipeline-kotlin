@@ -3,12 +3,13 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.RegistryStepInvoker
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.domain.step.StepInvocationOutcome
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import kotlinx.coroutines.runBlocking
@@ -33,7 +34,7 @@ class CoreEchoSeamTest {
             map[key] as? T ?: throw IllegalArgumentException("capability unavailable: $key")
     }
 
-    private fun registry(): InMemoryStepRegistry = InMemoryStepRegistry().apply { CoreEchoStep.registerInto(this) }
+    private fun registry(): StepRegistry = StepRegistryBuilder().apply { CoreEchoStep.registerInto(this) }.build()
 
     @Test
     fun `registry resolves and contains core echo`() {
@@ -44,7 +45,7 @@ class CoreEchoSeamTest {
 
     @Test
     fun `duplicate registration of core echo fails deterministically`() {
-        val registry = registry()
+        val registry = StepRegistryBuilder().also { CoreEchoStep.registerInto(it) }
         assertThrows(IllegalArgumentException::class.java) {
             CoreEchoStep.registerInto(registry)
         }

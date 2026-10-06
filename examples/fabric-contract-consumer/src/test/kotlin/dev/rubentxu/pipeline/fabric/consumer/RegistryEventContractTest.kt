@@ -65,11 +65,12 @@ class RegistryEventContractTest {
             codec = codec,
             emittedBy = "fabric-tripwire",
         )
-        val registry = EventRegistry.create()
-        val registered = registry.register(creation)
+        val builder = EventRegistry.builder()
+        val registered = builder.register(creation)
         assertTrue(registered is dev.rubentxu.pipeline.v2.events.registry.RegistrationOutcome.Registered) {
             "a well-formed definition must be admitted: $registered"
         }
+        val registry = builder.build()
 
         // 2. EMIT through the store-authority bridge.
         val sink = ConsumerSink()

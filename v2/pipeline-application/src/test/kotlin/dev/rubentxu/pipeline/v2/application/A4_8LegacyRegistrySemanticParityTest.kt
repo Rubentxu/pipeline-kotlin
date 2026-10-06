@@ -21,10 +21,11 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind
 import dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -506,7 +507,7 @@ class A4_8LegacyRegistrySemanticParityTest {
     // ========================================================================
 
     private fun readyPrepared(
-        registry: InMemoryStepRegistry,
+        registry: StepRegistry,
         key: dev.rubentxu.pipeline.v2.domain.PluginStepId,
         access: StepCapabilityAccess,
     ): PreparedExecution {
@@ -598,7 +599,7 @@ class A4_8LegacyRegistrySemanticParityTest {
     private fun canonicalAccess(runId: String): CanonicalRuntimeCapabilityAccess =
         CanonicalRuntimeCapabilityAccess(runtimeContext(runId))
 
-    private fun makeStringStep(runId: String): Pair<InMemoryStepRegistry, dev.rubentxu.pipeline.v2.domain.PluginStepId> {
+    private fun makeStringStep(runId: String): Pair<StepRegistry, dev.rubentxu.pipeline.v2.domain.PluginStepId> {
         val key = dev.rubentxu.pipeline.v2.domain.PluginStepId("test.branch1.$runId")
         val codec = object : dev.rubentxu.pipeline.v2.domain.step.StepCodec<String> {
             override fun encode(value: String) = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue(value)
@@ -621,10 +622,10 @@ class A4_8LegacyRegistrySemanticParityTest {
             )
             override val handler = dev.rubentxu.pipeline.v2.domain.step.StepHandler<String, String> { _, _ -> "ok" }
         }
-        return InMemoryStepRegistry().apply { register(def) } to key
+        return StepRegistryBuilder().apply { add(def) }.build() to key
     }
 
-    private fun makeThrowingStep(runId: String): Pair<InMemoryStepRegistry, dev.rubentxu.pipeline.v2.domain.PluginStepId> {
+    private fun makeThrowingStep(runId: String): Pair<StepRegistry, dev.rubentxu.pipeline.v2.domain.PluginStepId> {
         val key = dev.rubentxu.pipeline.v2.domain.PluginStepId("test.branch2.$runId")
         val codec = object : dev.rubentxu.pipeline.v2.domain.step.StepCodec<String> {
             override fun encode(value: String) = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue(value)
@@ -649,13 +650,13 @@ class A4_8LegacyRegistrySemanticParityTest {
                 throw IllegalStateException("branch2 blow")
             }
         }
-        return InMemoryStepRegistry().apply { register(def) } to key
+        return StepRegistryBuilder().apply { add(def) }.build() to key
     }
 
     private fun makeTypedShellStep(
         runId: String,
         result: ShellInvocationResult,
-    ): Pair<InMemoryStepRegistry, dev.rubentxu.pipeline.v2.domain.PluginStepId> {
+    ): Pair<StepRegistry, dev.rubentxu.pipeline.v2.domain.PluginStepId> {
         val key = dev.rubentxu.pipeline.v2.domain.PluginStepId("test.branch3.$runId")
         val def = object : dev.rubentxu.pipeline.v2.domain.step.StepDefinition<String, CoreShellOutput> {
             override val contract = dev.rubentxu.pipeline.v2.domain.step.StepContract(
@@ -681,6 +682,6 @@ class A4_8LegacyRegistrySemanticParityTest {
                 CoreShellOutput(result = result, outcome = result.toStepOutcome())
             }
         }
-        return InMemoryStepRegistry().apply { register(def) } to key
+        return StepRegistryBuilder().apply { add(def) }.build() to key
     }
 }

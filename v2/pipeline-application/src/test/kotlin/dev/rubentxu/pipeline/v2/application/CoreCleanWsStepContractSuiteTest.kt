@@ -29,12 +29,13 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
@@ -139,8 +140,8 @@ import org.junit.jupiter.api.Timeout
 @Timeout(30)
 class CoreCleanWsStepContractSuiteTest {
 
-    private fun registry(): InMemoryStepRegistry =
-        InMemoryStepRegistry().apply { CoreCleanWsStep.registerInto(this) }
+    private fun registry(): StepRegistry =
+        StepRegistryBuilder().apply { CoreCleanWsStep.registerInto(this) }.build()
 
     private fun noOpCredentialScopePort(): CredentialScopePort =
         CredentialScopePort { _, _ ->
@@ -210,7 +211,8 @@ class CoreCleanWsStepContractSuiteTest {
         assertEquals("core.cleanWs", CoreCleanWsStep.KEY.value)
         assertEquals("core.cleanWs", CoreCleanWsStep.definition.contract.descriptor.stepId)
         assertEquals("cleanWs", CoreCleanWsStep.definition.contract.descriptor.name)
-        val r = registry()
+        val r = StepRegistryBuilder()
+        CoreCleanWsStep.registerInto(r)
         assertTrue(
             runCatching { CoreCleanWsStep.registerInto(r) }.isFailure,
             "duplicate registration of core.cleanWs must fail",
@@ -483,8 +485,8 @@ class CoreCleanWsStepContractSuiteTest {
             StepHandler { _: CleanWsInput, _: StepHandlerContext ->
                 throw IllegalStateException("core.cleanWs handler contract violated for test")
             }
-        val throwingRegistry = InMemoryStepRegistry().apply {
-            register(
+        val throwingRegistry = StepRegistryBuilder().apply {
+            add(
                 object : StepDefinition<CleanWsInput, CleanWsOutput> {
                     override val contract: StepContract<CleanWsInput, CleanWsOutput> = StepContract(
                         key = CoreCleanWsStep.KEY,
@@ -496,7 +498,7 @@ class CoreCleanWsStepContractSuiteTest {
                     override val handler: StepHandler<CleanWsInput, CleanWsOutput> = throwingHandler
                 },
             )
-        }
+        }.build()
         runBlocking {
             // G4 promotion path: admission over the throwing registry is Ready (admission never
             // runs the handler), then the boundary maps the thrown exception to a typed failure.

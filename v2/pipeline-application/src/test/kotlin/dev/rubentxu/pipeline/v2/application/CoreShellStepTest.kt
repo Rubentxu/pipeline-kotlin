@@ -11,10 +11,10 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import kotlinx.coroutines.runBlocking
@@ -41,9 +41,9 @@ import org.junit.jupiter.api.Timeout
 @Timeout(15)
 class CoreShellStepTest {
 
-    private fun freshRegistry() = InMemoryStepRegistry().apply {
+    private fun freshRegistry() = StepRegistryBuilder().apply {
         CoreShellStep.registerInto(this)
-    }
+    }.build()
 
     private fun fakeCapabilities(ops: ShellOperations): StepCapabilityAccess = object : StepCapabilityAccess {
         override fun available(): Set<dev.rubentxu.pipeline.v2.domain.step.StepCapability> = setOf(SHELL_OPERATIONS_CAPABILITY)
@@ -77,7 +77,8 @@ class CoreShellStepTest {
         assertEquals(PluginStepId("core.sh"), CoreShellStep.KEY)
         assertEquals("core.sh", CoreShellStep.KEY.value)
         // Re-registering must fail (deterministic / idempotent error).
-        val r = freshRegistry()
+        val r = StepRegistryBuilder()
+        CoreShellStep.registerInto(r)
         assertTrue(
             runCatching { CoreShellStep.registerInto(r) }.isFailure,
             "duplicate registration of core.sh must fail",

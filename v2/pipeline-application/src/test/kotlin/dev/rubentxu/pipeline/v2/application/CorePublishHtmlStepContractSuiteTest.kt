@@ -25,10 +25,11 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.HtmlReportPublished
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.StepFinished
@@ -273,8 +274,9 @@ class CorePublishHtmlStepContractSuiteTest {
 
     @Test
     fun `10 — registered through the open registry seam`() {
-        val registry = InMemoryStepRegistry()
-        CorePublishHtmlStep.registerInto(registry)
+        val registryBuilder = StepRegistryBuilder()
+        CorePublishHtmlStep.registerInto(registryBuilder)
+        val registry: StepRegistry = registryBuilder.build()
         val resolved = registry.definition(CorePublishHtmlStep.KEY)
         assertNotNull(resolved, "CorePublishHtmlStep MUST resolve via the open registry seam")
         assertEquals(CorePublishHtmlStep.definition, resolved)
@@ -393,7 +395,7 @@ class CorePublishHtmlStepContractSuiteTest {
 
     @Test
     fun `12 — capability admission succeeds when PUBLISH_HTML_OPERATIONS is available`() {
-        val r = InMemoryStepRegistry().apply { CorePublishHtmlStep.registerInto(this) }
+        val r = StepRegistryBuilder().apply { CorePublishHtmlStep.registerInto(this) }.build()
         val encoded = CorePublishHtmlStep.definition.contract.inputCodec.encode(
             PublishHtmlInput(
                 name = "html-report",
@@ -415,7 +417,7 @@ class CorePublishHtmlStepContractSuiteTest {
 
     @Test
     fun `13 — missing capability rejected when PUBLISH_HTML_OPERATIONS is absent`() {
-        val r = InMemoryStepRegistry().apply { CorePublishHtmlStep.registerInto(this) }
+        val r = StepRegistryBuilder().apply { CorePublishHtmlStep.registerInto(this) }.build()
         val encoded = CorePublishHtmlStep.definition.contract.inputCodec.encode(
             PublishHtmlInput(
                 name = "html-report",

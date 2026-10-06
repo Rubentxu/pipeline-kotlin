@@ -22,12 +22,13 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.dsl.pipeline
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
@@ -95,8 +96,8 @@ import org.junit.jupiter.api.Timeout
 @Timeout(30)
 class SleepStepContractSuiteTest {
 
-    private fun registry(): InMemoryStepRegistry =
-        InMemoryStepRegistry().apply { CoreSleepStep.registerInto(this) }
+    private fun registry(): StepRegistry =
+        StepRegistryBuilder().apply { CoreSleepStep.registerInto(this) }.build()
 
     private fun noOpCredentialScopePort(): dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort =
         dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort { _, _ ->
@@ -163,7 +164,8 @@ class SleepStepContractSuiteTest {
     fun `identity — CoreSleepStep KEY is core dot sleep and duplicate registration fails`() {
         assertEquals(PluginStepId("core.sleep"), CoreSleepStep.KEY)
         assertEquals("core.sleep", CoreSleepStep.KEY.value)
-        val r = registry()
+        val r = StepRegistryBuilder()
+        CoreSleepStep.registerInto(r)
         assertTrue(
             runCatching { CoreSleepStep.registerInto(r) }.isFailure,
             "duplicate registration of core.sleep must fail",
@@ -347,8 +349,8 @@ class SleepStepContractSuiteTest {
         // a capability the runtime does not expose MUST be rejected fail-closed before the
         // handler can run. core.sleep itself declares none; this pins the seam.
         val absent = StepCapability("missing.capability.never.declared")
-        val altRegistry = InMemoryStepRegistry().apply {
-            register(
+        val altRegistry = StepRegistryBuilder().apply {
+            add(
                 object : StepDefinition<CoreSleepInput, CoreSleepOutput> {
                     override val contract: StepContract<CoreSleepInput, CoreSleepOutput> = StepContract(
                         key = CoreSleepStep.KEY,
@@ -361,7 +363,7 @@ class SleepStepContractSuiteTest {
                         CoreSleepStep.definition.handler
                 },
             )
-        }
+        }.build()
         val admission = RegistryExecutionPreparation.prepare(
             registry = altRegistry,
             key = CoreSleepStep.KEY,
@@ -398,8 +400,8 @@ class SleepStepContractSuiteTest {
             StepHandler { _: CoreSleepInput, _: StepHandlerContext ->
                 throw IllegalStateException("core.sleep handler contract violated for test")
             }
-        val throwingRegistry = InMemoryStepRegistry().apply {
-            register(
+        val throwingRegistry = StepRegistryBuilder().apply {
+            add(
                 object : StepDefinition<CoreSleepInput, CoreSleepOutput> {
                     override val contract: StepContract<CoreSleepInput, CoreSleepOutput> = StepContract(
                         key = CoreSleepStep.KEY,
@@ -411,7 +413,7 @@ class SleepStepContractSuiteTest {
                     override val handler: StepHandler<CoreSleepInput, CoreSleepOutput> = throwingHandler
                 },
             )
-        }
+        }.build()
         val clock = SystemClock()
         val journal = InMemoryOperationJournal(clock)
         val cursorStore = InMemoryReplayCursorStore(clock)

@@ -22,13 +22,14 @@ import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.StepId
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.dsl.pipeline
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
@@ -85,8 +86,8 @@ import org.junit.jupiter.api.Timeout
 @Timeout(15)
 class EchoStepContractSuiteTest {
 
-    private fun registry(): InMemoryStepRegistry =
-        InMemoryStepRegistry().apply { CoreEchoStep.registerInto(this) }
+    private fun registry(): StepRegistry =
+        StepRegistryBuilder().apply { CoreEchoStep.registerInto(this) }.build()
 
     private fun noOpCredentialScopePort(): CredentialScopePort = CredentialScopePort { _, _ ->
         CredentialScopeOutcome.Unavailable(
@@ -155,7 +156,8 @@ class EchoStepContractSuiteTest {
         assertEquals(PluginStepId("core.echo"), CoreEchoStep.KEY)
         assertEquals("core.echo", CoreEchoStep.KEY.value)
         // Re-registering must fail (deterministic / idempotent error).
-        val r = registry()
+        val r = StepRegistryBuilder()
+        CoreEchoStep.registerInto(r)
         assertTrue(
             runCatching { CoreEchoStep.registerInto(r) }.isFailure,
             "duplicate registration of core.echo must fail",
@@ -297,8 +299,8 @@ class EchoStepContractSuiteTest {
             StepHandler { _: EchoInput, _: StepHandlerContext ->
                 throw IllegalStateException("core.echo handler contract violated for test")
             }
-        val throwingRegistry = InMemoryStepRegistry().apply {
-            register(
+        val throwingRegistry = StepRegistryBuilder().apply {
+            add(
                 object : StepDefinition<EchoInput, String> {
                     override val contract: StepContract<EchoInput, String> = StepContract(
                         key = CoreEchoStep.KEY,
@@ -310,7 +312,7 @@ class EchoStepContractSuiteTest {
                     override val handler: StepHandler<EchoInput, String> = throwingHandler
                 },
             )
-        }
+        }.build()
         val clock = SystemClock()
         val journal = InMemoryOperationJournal(clock)
         val cursorStore = InMemoryReplayCursorStore(clock)
@@ -421,8 +423,8 @@ class EchoStepContractSuiteTest {
     fun `missing capability — admission rejects when EVENT_SINK is absent`() {
         // Construct a registry whose definition declares a different (absent) capability.
         val absent = StepCapability("missing.capability.never.declared")
-        val altRegistry = InMemoryStepRegistry().apply {
-            register(
+        val altRegistry = StepRegistryBuilder().apply {
+            add(
                 object : StepDefinition<EchoInput, String> {
                     override val contract: StepContract<EchoInput, String> = StepContract(
                         key = CoreEchoStep.KEY,
@@ -434,7 +436,7 @@ class EchoStepContractSuiteTest {
                     override val handler: StepHandler<EchoInput, String> = CoreEchoStep.definition.handler
                 },
             )
-        }
+        }.build()
         // Direct registry admission surfaces the missing capability as a Rejected preparation.
         val admission = RegistryExecutionPreparation.prepare(
             registry = altRegistry,

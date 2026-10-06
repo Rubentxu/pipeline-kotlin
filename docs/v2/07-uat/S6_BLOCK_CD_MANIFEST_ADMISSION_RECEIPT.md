@@ -195,7 +195,113 @@ repositorio tiene el precedente exacto — `EventQuery.matches` quedó fuera del
 mismo modo — y la regla dice que registrar una adición sería mentir sobre lo que se publicó.
 Lo que corresponde es `apiDump`, y `apiCheck` queda verde con él.
 
-## Lo que este bloque NO hace
+## BLOCK 1-F — los registries se congelan: componer y observar son capacidades distintas
+
+`StepRegistry` exponía `register` y su propio KDoc pedía tratarlo como lectura. Era falso
+mientras tuviera ese método: cualquier tenedor de la referencia podía extender el registry que
+un lector está consultando, así que el "snapshot inmutable" sólo lo era por convención.
+
+Ahora la inmutabilidad es **una propiedad del tipo**, no una promesa:
+
+| | Antes | Después |
+|---|---|---|
+| Composición | `StepRegistry.register(...)` | `StepRegistryBuilder.add(...)` |
+| Congelado | no existía | `build()` copia el mapa |
+| Lectura | la misma referencia | `StepRegistry` sin ningún método de registro |
+| `keys()` | el key set vivo | vista `unmodifiable` |
+
+`EventRegistry` se convierte igual: `register` pasa a su `Builder` y `create()` devuelve un
+registro **ya congelado**, que es exactamente lo que necesitan los tres call sites de producción
+que lo usaban como "vacío". `registerContributors` deja de ser extensión de `StepRegistry` y
+pasa a serlo de `StepRegistryBuilder`.
+
+El patrón no es nuevo: es `DirectiveRegistry.Builder`, que ya estaba probado aquí. Lo que S6
+hace es aplicarlo al segundo registry que se había quedado mutable.
+
+### Radio y reparto
+
+**92 ficheros** usaban `InMemoryStepRegistry` y se migraron al builder. Se repartieron en tres
+cubos por directorio — aplicación top-level, subdirectorios, y `pipeline-step-sdk` — más los
+tests de contrato del dominio, que escribí aparte porque son la prueba de la ley nueva y no una
+migración mecánica.
+
+El cambio completo toca **104 ficheros de test**, y los 12 que no estaban en esos 92 tienen una
+causa distinta que merece nombrarse: dos decoradores `CountingRegistry` que delegaban
+`register` (eliminados, no migrados, porque no tenían a qué migrar: delegaban a un método que ya
+no existe), dos contratos de `EventRegistry`, un test que comprobaba el rechazo de duplicado
+pasando un registry ya congelado, uno con una línea que se pasó de largo, uno cuyo nombre
+nombraba la clase borrada, y el test nuevo del validador.
+
+Y **44 de producción**, de los cuales sólo 26 son de este bloque: los otros 18 son las firmas
+`registerInto` de los Steps y contributors que ahora reciben un builder.
+
+En seis ficheros de prueba hay un builder que **no se congela a propósito**: son las pruebas de
+`duplicate registration fails closed`, que necesitan el lado mutable para provocar el segundo
+`add` y afirmar que lanza. Medido, no estimado: son exactamente seis ficheros y siete
+declaraciones de builder, todas dentro de una prueba de rechazo por duplicado. Congelarlos
+haría imposible probar la ley.
+
+### La ley, probada por mutación
+
+Tres filas nuevas, cada una con la mutación que la mata:
+
+1. **`build()` copia.** Mutar `FrozenStepRegistry(entries)` por el mapa vivo hace que un `add`
+   posterior aparezca en un registry ya entregado.
+2. **`keys()` es inmodificable.** Mutar `keys()` por `entries.keys` sin `unmodifiableSet` permite
+   añadir Steps por el lado de lectura.
+3. **`StepRegistry` no expone registro.** Re-añadir `register` deja verdes las dos filas
+   anteriores mientras el runtime recupera un camino de mutación. Esta es la fila que lo nota.
+
+La tercera es la que Justifica las otras dos: sin ella, las dos primeras pasarían aunque la
+interfaz volviera a ser mutable.
+
+### Lo que encontró el gate, y era culpa de bloques anteriores
+
+BLOCK 1-C se certificó con pruebas dirigidas. **El gate completo no se había ejecutado desde
+`961bda11`.** Al correrlo por primera vez en este bloque aparecieron cuatro fallos que no
+pertenecían a 1-F:
+
+1. **detekt rojo en cinco ficheros** de 1-C/1-D: sin newline final, y `decodeOrNull` con 129
+   líneas y complejidad 28 sobre límites de 120 y 25. Extraído en tres secciones puras
+   (`decodeHeader`, `decodeContract`, `decodeContributions`) **conservando el orden exacto de
+   rechazo**, porque qué campo falla primero es parte del contrato.
+2. **Un bug que me introduce esa extracción**: al sacar `PluginContributions(...)` del
+   `runCatching` superior, su constructor — que rechaza un StepKey duplicado — pasó a lanzar
+   `IllegalArgumentException` cruzando la frontera de decode. Lo detectó la prueba de fidelidad;
+   el guard quedó restablecido donde la construcción ocurre ahora.
+3. **`PluginApiParent`**, un duplicado muerto de `PluginArtifactFixture.ScopedParent`, con un
+   KDoc que describía una protección del arnés que en realidad vive en el otro sitio.
+4. **Cobertura de `pipeline-domain` al 72,86 %** con mínimo 75: `PluginManifest` y
+   `PluginManifestValidator` estaban al **0 %** en su propio módulo, porque sus pruebas vivían
+   en `pipeline-application`. No es relleno: el validador es una función de decisión pura y sus
+   pruebas estaban en un módulo que no es dueño de la clase.
+
+### Un defecto real que encontró esa prueba nueva
+
+Al escribir el test de dominio del validador vi que su KDoc promete que las capabilities
+requeridas por los contratos **aparecen** en el conjunto de nivel superior del manifest, y el
+código comprobaba sólo lo contrario: `topLevel - usedBySteps`. Una dirección no es una
+comprobación más débil, es la comprobación del conjunto equivocado — un Step podía exigir una
+capability que el plugin nunca pidió.
+
+Ahora se comprueban **las dos direcciones**, y cada una tiene su fila con su mutación. La
+mutación ejecutada — quitar el check de under-claiming — tumba **exactamente una fila** y deja
+las otras 16 en verde.
+
+### BCV: aquí sí procede la excepción
+
+En C/D/E medí que no había ruptura y **no** la registré. Aquí la medición dice lo contrario:
+
+- `pipeline-domain`: se **elimina** la clase `InMemoryStepRegistry` completa, desaparecen los
+  dos `register` de la interfaz `StepRegistry`, y `registerContributors` cambia de receptor.
+- `pipeline-events`: `EventRegistry.register` desaparece del registry y aparece en su `Builder`.
+
+Es ruptura binaria real y queda registrada contra el SHA de implementación, con la alternativa
+rechazada por escrito: mantener `register` con `@Deprecated` habría dejado `apiCheck` verde sin
+ninguna entrada, y a la vez habría publicado dos maneras de componer, sólo una de las cuales
+obligaría a componer antes de observar.
+
+
 
 Se declara aquí para que no se lea como hecho:
 

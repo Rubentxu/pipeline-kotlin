@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.v2.application.CoreEchoStep
 import dev.rubentxu.pipeline.v2.application.EVENT_SINK_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
@@ -82,7 +82,7 @@ class LegacyExecutionAdapterTest {
         val store = InMemoryEventStore()
         // A registry-family payload must never reach the legacy old executor: CDE.3-d2 families are
         // distinct structural strategy kinds and the legacy adapter only routes legacy ones.
-        val registry = InMemoryStepRegistry().apply { CoreEchoStep.registerInto(this) }
+        val registry = StepRegistryBuilder().apply { CoreEchoStep.registerInto(this) }.build()
         val ready = RegistryExecutionPreparation.prepare(
             registry = registry,
             key = CoreEchoStep.KEY,

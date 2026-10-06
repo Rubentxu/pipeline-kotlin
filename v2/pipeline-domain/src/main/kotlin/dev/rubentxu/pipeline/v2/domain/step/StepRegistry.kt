@@ -127,44 +127,46 @@ sealed interface StepInvocationOutcome<out O : Any> {
 }
 
 /**
- * Open registry of Step families (ADR-0070).
+ * Open registry of Step families, as an immutable READ VIEW (ADR-0070).
  *
- * Registration is open to core Steps and external plugins alike; there is no privileged
+ * Composition is open to core Steps and external plugins alike; there is no privileged
  * registration path. A duplicate key MUST fail deterministically so a plugin cannot
- * silently shadow a core Step.
+ * silently shadow a core Step — and that refusal now belongs to [StepRegistryBuilder],
+ * the only type that can register anything.
  *
- * Two additive register overloads are supported:
- * - [register] of a bare [StepDefinition] — the legacy path used by the 16 CORE Steps
- *   and by `example.uppercase`; provider metadata is unknown to the registry, and
+ * This interface has no mutation method, and that is deliberate rather than incidental. A
+ * registry handed to the runtime cannot grow afterwards, so a reader never observes a
+ * registry changing shape underneath it. Two additive registration shapes are supported on
+ * the builder:
+ * - [StepRegistryBuilder.add] of a bare [StepDefinition] — the legacy path used by the CORE
+ *   Steps and by `example.uppercase`; provider metadata is unknown to the registry, and
  *   [providerOf] returns null for that key (C10 backwards-compat).
- * - [register] of a [StepRegistration] — the additive path used by the new plugin
- *   shape (LFC-2E2-prep / ADR-0092); the registry stores the provider metadata and
+ * - [StepRegistryBuilder.add] of a [StepRegistration] — the additive path used by the new
+ *   plugin shape (LFC-2E2-prep / ADR-0092); the registry stores the provider metadata and
  *   exposes it via [providerOf] (C3, O(1)).
  *
- * Both overloads share the same underlying map. A duplicate key is rejected on
- * either path, naming the StepKey in the diagnostic. No plugin can shadow a CORE
- * Step via either path.
+ * Both share the same underlying map. A duplicate key is rejected on either path, naming the
+ * StepKey in the diagnostic. No plugin can shadow a CORE Step via either path.
  */
+/**
+ * One registered Step, with the provider metadata that came with it or null for the legacy
+ * shape that carries none. File-level rather than nested in [StepRegistryBuilder] because the
+ * immutable registry reads it too, and a builder-private type would force the built object to
+ * expose its own internals.
+ */
+internal data class StepRegistryEntry(
+    val definition: StepDefinition<*, *>,
+    val provider: StepProviderMetadata?,
+)
+
 interface StepRegistry {
-    /** Registers a Step family. Throws [IllegalArgumentException] if the key is already present. */
-    fun register(definition: StepDefinition<*, *>)
-
-    /**
-     * Registers a [StepRegistration] composed of a [StepDefinition] and its
-     * [StepProviderMetadata]. Throws [IllegalArgumentException] if the key is
-     * already present (including a legacy entry registered via the [register]
-     * overload above). The same Map-backed invariant applies.
-     */
-    fun register(registration: StepRegistration<*, *>)
-
     /** Returns the registered definition for [key], or null. */
     fun definition(key: PluginStepId): StepDefinition<*, *>?
 
     /**
-     * Returns the registered provider metadata for [key], or null if the
-     * registration was made via the legacy [register] overload
-     * ([StepDefinition] only). Backed by the same Map as [definition], so it
-     * is O(1) (C3).
+     * Returns the registered provider metadata for [key], or null if the registration was made
+     * via the legacy [StepRegistryBuilder.add] path that carries no provider. O(1), backed by the
+     * same map as [definition] (C3).
      */
     fun providerOf(key: PluginStepId): StepProviderMetadata?
 
@@ -173,30 +175,84 @@ interface StepRegistry {
     fun keys(): Set<PluginStepId>
 }
 
-/** Default in-memory [StepRegistry] with deterministic duplicate-key rejection. */
-class InMemoryStepRegistry : StepRegistry {
-    private data class Entry(
-        val definition: StepDefinition<*, *>,
-        val provider: StepProviderMetadata?,
-    )
+/**
+ * S6/F — the MUTABLE side of Step composition, and the only place it exists.
+ *
+ * ## Why this is a separate type
+ *
+ * A registry that exposes `register` is a mutable object with a promise attached, and the
+ * promise is only as good as the discipline of every holder. The runtime holds a [StepRegistry],
+ * which has no mutation method at all: after composition there is no way to change it, because
+ * there is no way to ask.
+ *
+ * This mirrors [dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry.Builder], which is
+ * the proven pattern in this repository — not a new idea, applied to the second registry that
+ * had been left mutable.
+ *
+ * ## `build()` copies
+ *
+ * [build] hands the constructor a fresh [LinkedHashMap], so a builder reused after building
+ * cannot reach back into a registry already handed to the runtime. Copying is what makes the
+ * immutability a property of the value rather than a claim about caller behaviour.
+ */
+class StepRegistryBuilder {
 
-    private val entries = linkedMapOf<PluginStepId, Entry>()
+    private val entries = LinkedHashMap<PluginStepId, StepRegistryEntry>()
 
-    override fun register(definition: StepDefinition<*, *>) {
-        val key = definition.contract.key
-        if (entries.containsKey(key)) {
-            throw IllegalArgumentException("Duplicate StepKey '${key.value}'")
-        }
-        entries[key] = Entry(definition = definition, provider = null)
+    /**
+     * Adds a bare [StepDefinition] — the legacy shape used by the CORE Steps and by
+     * `example.uppercase`, where the registry learns no provider metadata and [providerOf]
+     * returns null for that key (C10 backwards-compat).
+     */
+    fun add(definition: StepDefinition<*, *>): StepRegistryBuilder = apply {
+        put(definition.contract.key, StepRegistryEntry(definition = definition, provider = null))
     }
 
-    override fun register(registration: StepRegistration<*, *>) {
-        val key = registration.stepKey
-        if (entries.containsKey(key)) {
-            throw IllegalArgumentException("Duplicate StepKey '${key.value}'")
-        }
-        entries[key] = Entry(definition = registration.definition, provider = registration.provider)
+    /**
+     * Adds a [StepRegistration] composed of a [StepDefinition] and its [StepProviderMetadata].
+     * The registry stores the provider and exposes it via [StepRegistry.providerOf] (C3).
+     */
+    fun add(registration: StepRegistration<*, *>): StepRegistryBuilder = apply {
+        put(registration.stepKey, StepRegistryEntry(definition = registration.definition, provider = registration.provider))
     }
+
+    /**
+     * Adds many registrations at once.
+     *
+     * Only the [StepRegistration] overload exists. A second `addAll(Iterable<StepDefinition>)`
+     * would erase to the same JVM signature, and picking one by overload resolution would make
+     * which path a caller gets depend on its static type — a silent behavioural difference for a
+     * method whose whole job is to be predictable. Callers holding bare definitions call
+     * `definitions().forEach { add(it) }`.
+     */
+    fun addAll(registrations: Iterable<StepRegistration<*, *>>): StepRegistryBuilder =
+        apply { registrations.forEach(::add) }
+
+    /** Folds contributors in, composing rather than branching. */
+    fun addContributors(vararg contributors: StepDefinitionContributor): StepRegistryBuilder =
+        apply { contributors.forEach { addAll(it.registrations()) } }
+
+    /** An immutable registry. The builder may keep mutating afterwards without touching it. */
+    fun build(): StepRegistry = FrozenStepRegistry(LinkedHashMap(entries))
+
+    private fun put(key: PluginStepId, entry: StepRegistryEntry) {
+        if (entries.containsKey(key)) {
+            throw IllegalArgumentException(
+                "Duplicate StepKey '${key.value}': a Step is already registered for it and shadowing " +
+                    "is refused, so the composition does not depend on classpath order",
+            )
+        }
+        entries[key] = entry
+    }
+}
+
+/**
+ * The immutable [StepRegistry]. Constructor takes the map and copies it again, so neither the
+ * builder nor any caller retains a handle to the live contents.
+ */
+private class FrozenStepRegistry(entries: Map<PluginStepId, StepRegistryEntry>) : StepRegistry {
+
+    private val entries: Map<PluginStepId, StepRegistryEntry> = java.util.Collections.unmodifiableMap(LinkedHashMap(entries))
 
     override fun definition(key: PluginStepId): StepDefinition<*, *>? = entries[key]?.definition
 
@@ -204,7 +260,8 @@ class InMemoryStepRegistry : StepRegistry {
 
     override fun contains(key: PluginStepId): Boolean = entries.containsKey(key)
 
-    override fun keys(): Set<PluginStepId> = entries.keys
+    // A read-only VIEW, not the live key set: a caller cannot cast it back to a MutableSet.
+    override fun keys(): Set<PluginStepId> = java.util.Collections.unmodifiableSet(entries.keys)
 }
 
 /**
@@ -255,12 +312,18 @@ class RegistryStepInvoker(private val registry: StepRegistry) : StepInvoker {
 }
 
 /**
- * Registers every definition from each [StepDefinitionContributor] into this registry, fail-closed on
- * a duplicate StepKey. Deterministic ordering is the caller's responsibility (iteration order of
- * [contributors]). On a duplicate the thrown diagnostic names BOTH the StepKey and the contributor id
- * (never first-wins/last-wins). Used by the runtime composition adapter (EP-F1).
+ * S6/F — folds contributors into a [StepRegistryBuilder], fail-closed on a duplicate StepKey.
+ *
+ * Deterministic ordering is the caller's responsibility (iteration order of [contributors]). On a
+ * duplicate the diagnostic names BOTH the StepKey and the contributor id, never first-wins or
+ * last-wins — a composition that resolved collisions by classpath order would make the resulting
+ * registry a function of how the JARs happened to be laid out.
+ *
+ * It is an extension on the BUILDER rather than on [StepRegistry], because the registry no longer
+ * has a mutation path to extend. That is the whole point of the split: a reader of this file can
+ * see that composing Steps and reading them are different capabilities.
  */
-fun StepRegistry.registerContributors(contributors: Iterable<StepDefinitionContributor>) {
+fun StepRegistryBuilder.registerContributors(contributors: Iterable<StepDefinitionContributor>) {
     for (contributor in contributors) {
         // Always use the additive registrations() path (LFC-2E2 / F5.1 /
         // ADR-0092). The default implementation in StepDefinitionContributor
@@ -274,7 +337,7 @@ fun StepRegistry.registerContributors(contributors: Iterable<StepDefinitionContr
         for (registration in contributor.registrations()) {
             val key = registration.stepKey
             try {
-                register(registration)
+                add(registration)
             } catch (e: IllegalArgumentException) {
                 throw IllegalArgumentException(
                     "Duplicate StepKey '${key.value}' contributed by '${contributor.id}': ${e.message}",

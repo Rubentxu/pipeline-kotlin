@@ -19,7 +19,7 @@ import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.StepId
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
@@ -82,11 +82,11 @@ class BodyExecutionCharacterizationTest {
             },
             controlDirRoot = root.resolve("control"),
             shOptions = ShOptions.EMPTY,
-            stepRegistry = InMemoryStepRegistry().apply {
+            stepRegistry = StepRegistryBuilder().apply {
                 CoreEchoStep.registerInto(this)
                 CoreErrorStep.registerInto(this)
                 CoreWriteFileStep.registerInto(this)
-            },
+            }.build(),
         )
         return Quadruple(coordinator, journal, events, root)
     }

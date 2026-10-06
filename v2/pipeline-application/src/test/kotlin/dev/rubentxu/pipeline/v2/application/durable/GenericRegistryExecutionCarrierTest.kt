@@ -10,11 +10,11 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.echo
 import dev.rubentxu.pipeline.v2.sdk.StepContext
@@ -163,7 +163,7 @@ class GenericRegistryExecutionCarrierTest {
         // First the canonical existing echo fixture, exercised through the
         // new coexecute path. Proves the carrier works against an existing,
         // CERTIFIED step family.
-        val registry = InMemoryStepRegistry().apply { CoreEchoStep.registerInto(this) }
+        val registry = StepRegistryBuilder().apply { CoreEchoStep.registerInto(this) }.build()
         val ctx = buildContext()
         val prepared: PreparedRegistryExecution = RegistryExecutionPreparation.prepare(
             registry = registry,
@@ -185,7 +185,7 @@ class GenericRegistryExecutionCarrierTest {
     fun `Step returning Unit produces encodedOutput null but Success outcome`() = runBlocking {
         // A handler returning Unit (the void Step) must reduce to encodedOutput = null,
         // NOT a String "kotlin.Unit". The boundary classifies Unit specially.
-        val registry = InMemoryStepRegistry().apply { register(unitFixture) }
+        val registry = StepRegistryBuilder().apply { add(unitFixture) }.build()
         val ctx = buildContext()
         val prepared: PreparedRegistryExecution = RegistryExecutionPreparation.prepare(
             registry = registry,
@@ -206,7 +206,7 @@ class GenericRegistryExecutionCarrierTest {
         // Echo proves a Success carrier. This proves a Failure carrier: a thrown
         // handler (adapter defect) surfaces as StepOutcome.Failure(ENGINE) with
         // encodedOutput = null because there is no successful terminal to encode.
-        val registry = InMemoryStepRegistry().apply { register(failingFixture) }
+        val registry = StepRegistryBuilder().apply { add(failingFixture) }.build()
         val ctx = buildContext()
         val prepared: PreparedRegistryExecution = RegistryExecutionPreparation.prepare(
             registry = registry,
@@ -231,7 +231,7 @@ class GenericRegistryExecutionCarrierTest {
         // returns a CommonExecutionResult carrying both the closed StepOutcome and the
         // (optional) encoded typed output. Echo's typed String crosses via EVENT_SINK,
         // not via this slot, so encodedOutput is null here.
-        val registry = InMemoryStepRegistry().apply { CoreEchoStep.registerInto(this) }
+        val registry = StepRegistryBuilder().apply { CoreEchoStep.registerInto(this) }.build()
         val ctx = buildContext()
         val boundary = RegistryExecutionBoundary.adapt()
         val prepared: PreparedRegistryExecution = RegistryExecutionPreparation.prepare(
@@ -259,7 +259,7 @@ class GenericRegistryExecutionCarrierTest {
     fun `seamed router — legacy family still routes through Pre-existing CommonExecutionBoundary`() = runBlocking {
         // Belt-and-braces: the existing CommonExecutionBoundary shape remains; the
         // carrier extension is registry-only.
-        val registry = InMemoryStepRegistry().apply { CoreEchoStep.registerInto(this) }
+        val registry = StepRegistryBuilder().apply { CoreEchoStep.registerInto(this) }.build()
         val ctx = buildContext()
         val boundary = RegistryExecutionBoundary.adapt()
         val echoPrepared: PreparedRegistryExecution = RegistryExecutionPreparation.prepare(

@@ -73,13 +73,18 @@ object ExternalEventDefinitionDiscovery {
      * Deterministic and fresh per call; no global registry, matching
      * [CoreStepRegistryFactory.registry].
      *
+     * S6/F: declarations are admitted onto a BUILDER and the frozen registry is produced once,
+     * at the end. Composition is the only window in which a kind can enter, and it closes before
+     * any emitter or reader receives the registry — the registry type has no `register`, so a
+     * plugin that was not admitted here cannot join the run by any later route.
+     *
      * @throws IllegalStateException naming the contributor and every reason, if any declaration is
      *   refused. There is no partial-success mode.
      */
     fun compose(
         contributors: List<EventDefinitionContributor> = discover(),
     ): EventRegistry {
-        val registry = EventRegistry.create()
+        val builder = EventRegistry.builder()
         for (contributor in contributors) {
             val declarations = try {
                 contributor.definitions()
@@ -92,7 +97,7 @@ object ExternalEventDefinitionDiscovery {
                 )
             }
             for (creation in declarations) {
-                when (val outcome = registry.register(creation)) {
+                when (val outcome = builder.register(creation)) {
                     is RegistrationOutcome.Registered -> Unit
                     is RegistrationOutcome.DuplicateKind -> throw IllegalStateException(
                         "Event definition contributor '${contributor.id}' declared kind " +
@@ -108,6 +113,6 @@ object ExternalEventDefinitionDiscovery {
                 }
             }
         }
-        return registry
+        return builder.build()
     }
 }

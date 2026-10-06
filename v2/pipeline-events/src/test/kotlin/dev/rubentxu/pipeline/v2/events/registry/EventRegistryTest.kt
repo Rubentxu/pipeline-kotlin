@@ -42,9 +42,9 @@ class EventRegistryTest {
         emittedBy = emittedBy,
     )
 
-    private fun registryWithValidated(): EventRegistry = EventRegistry.create().also {
+    private fun registryWithValidated(): EventRegistry = EventRegistry.builder().also {
         it.register(validatedDefinition())
-    }
+    }.build()
 
     // ---- declaration validation -------------------------------------------------
 
@@ -90,17 +90,19 @@ class EventRegistryTest {
     inner class Admission {
         @Test
         fun `registration succeeds once and admits the declared kind`() {
-            val registry = EventRegistry.create()
-            val outcome = registry.register(validatedDefinition())
+            val builder = EventRegistry.builder()
+            val outcome = builder.register(validatedDefinition())
             assertEquals(RegistrationOutcome.Registered("acme.validated"), outcome)
+            val registry = builder.build()
             assertTrue(registry.isRegistered("acme.validated"))
             assertEquals(1, registry.size())
         }
 
         @Test
         fun `a duplicate kind is REJECTED, never overwritten, and names the owner`() {
-            val registry = registryWithValidated()
-            val outcome = registry.register(
+            val builder = EventRegistry.builder().also { it.register(validatedDefinition()) }
+            val registry = builder.build()
+            val outcome = builder.register(
                 validatedDefinition(emittedBy = "a-different-plugin"),
             )
             assertEquals(
@@ -128,8 +130,9 @@ class EventRegistryTest {
          */
         @Test
         fun `a known kind re-declared under a different schema version is refused, not upgraded`() {
-            val registry = registryWithValidated()
-            val outcome = registry.register(
+            val builder = EventRegistry.builder().also { it.register(validatedDefinition()) }
+            val registry = builder.build()
+            val outcome = builder.register(
                 validatedDefinition(schemaVersion = 2, emittedBy = "a-different-plugin"),
             )
             assertEquals(
@@ -148,13 +151,13 @@ class EventRegistryTest {
         }
 
         @Test
-        fun `an invalid definition cannot be registered at all - no acceptance with warnings`() {            val registry = EventRegistry.create()
-            val outcome = registry.register(validatedDefinition(schemaVersion = 0))
+        fun `an invalid definition cannot be registered at all - no acceptance with warnings`() {            val builder = EventRegistry.builder()
+            val outcome = builder.register(validatedDefinition(schemaVersion = 0))
             assertEquals(
                 RegistrationOutcome.RejectedDefinition::class,
                 outcome::class,
             )
-            assertEquals(0, registry.size(), "a rejected definition must leave nothing behind")
+            assertEquals(0, builder.build().size(), "a rejected definition must leave nothing behind")
         }
 
         @Test
@@ -169,6 +172,78 @@ class EventRegistryTest {
         }
     }
 
+    // ---- S6/F: the laws the Builder split introduces --------------------------------
+
+    /**
+     * The class KDoc claimed "read-only after registration" while `EventRegistry` itself
+     * carried a public `register`. The claim was a promise; it is now a property of the type,
+     * and these rows are the enforcement.
+     */
+    @Nested
+    @DisplayName("S6/F the registry cannot be extended after build()")
+    inner class FrozenAfterBuild {
+        /**
+         * MUTATION THAT KILLS THIS: `build()` implemented as `EventRegistry(byKind)` without the
+         * copy. A builder kept alive after building would then keep growing the registry an
+         * emitter and a read-back are already consulting — a new event kind would appear mid-run
+         * for one reader and not the other.
+         */
+        @Test
+        fun `build snapshots - a later registration never reaches the frozen registry`() {
+            val builder = EventRegistry.builder()
+            builder.register(validatedDefinition(kind = "acme.first"))
+            val frozen = builder.build()
+
+            builder.register(validatedDefinition(kind = "acme.later"))
+
+            assertEquals(
+                listOf("acme.first"),
+                frozen.registeredKinds(),
+                "the frozen registry must not observe a registration made after build()",
+            )
+            assertEquals(1, frozen.size())
+            assertTrue(
+                !frozen.isRegistered("acme.later"),
+                "a kind added after build() must not be visible to a reader",
+            )
+            assertEquals(
+                listOf("acme.first", "acme.later"),
+                builder.build().registeredKinds(),
+                "the builder is still free to grow; it just no longer reaches what was handed out",
+            )
+        }
+
+        /**
+         * MUTATION THAT KILLS THIS: re-adding `fun register(...)` to the `EventRegistry`
+         * interface. The builder, the copy and every admission row above would still pass while
+         * the runtime regained a mutation path. This row is the one that notices.
+         */
+        @Test
+        fun `EventRegistry exposes no registration method`() {
+            // Match on the Kotlin name and on the exact mutation verbs. A prefix test on
+            // "register" would flag `registeredKinds`, which is a read and is part of the
+            // declared surface below.
+            val mutationMethods = EventRegistry::class.java.declaredMethods.map { it.name.substringBefore('-') }
+                .filter { n ->
+                    n == "register" || n == "unregister" || n.startsWith("add") ||
+                        n == "put" || n == "remove" || n == "clear"
+                }
+
+            assertTrue(
+                mutationMethods.isEmpty(),
+                "EventRegistry must not expose any registration method, but found: " +
+                    mutationMethods.joinToString(),
+            )
+            // Inline value classes mangle the JVM name of any parameter they appear in
+            // (`definition-bQvmloc`), so compare on the Kotlin name.
+            assertEquals(
+                setOf("definition", "isRegistered", "registeredKinds", "size"),
+                EventRegistry::class.java.declaredMethods.map { it.name.substringBefore('-') }.toSet(),
+                "EventRegistry's read surface must stay exactly these four operations",
+            )
+        }
+    }
+
     // ---- determinism / no defaults ------------------------------------------------
 
     @Nested
@@ -176,18 +251,29 @@ class EventRegistryTest {
     inner class Determinism {
         @Test
         fun `same registrations in same order produce the same registry`() {
-            fun build(): EventRegistry = EventRegistry.create().also { r ->
+            fun build(): EventRegistry = EventRegistry.builder().also { r ->
                 r.register(validatedDefinition(kind = "acme.first"))
                 r.register(validatedDefinition(kind = "acme.second"))
-            }
+            }.build()
             assertEquals(build().registeredKinds(), build().registeredKinds())
         }
 
         @Test
         fun `registration order is preserved in the snapshot`() {
-            val registry = registryWithValidated()
-            registry.register(validatedDefinition(kind = "acme.later"))
-            assertEquals(listOf("acme.validated", "acme.later"), registry.registeredKinds())
+            val builder = EventRegistry.builder().also { it.register(validatedDefinition()) }
+            val registry = builder.build()
+            builder.register(validatedDefinition(kind = "acme.later"))
+            val withBoth = builder.build()
+            assertEquals(
+                listOf("acme.validated", "acme.later"),
+                withBoth.registeredKinds(),
+                "order is a property of the composition, and it must survive the freeze",
+            )
+            assertEquals(
+                listOf("acme.validated"),
+                registry.registeredKinds(),
+                "the registry frozen before the second registration must not observe it",
+            )
         }
 
         @Test

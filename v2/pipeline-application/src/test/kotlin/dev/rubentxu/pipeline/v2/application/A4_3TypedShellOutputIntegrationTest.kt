@@ -25,7 +25,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
@@ -33,6 +32,8 @@ import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
@@ -118,7 +119,7 @@ class A4_3TypedShellOutputIntegrationTest {
         }
 
     private fun readyPreparedForCoreSh(
-        registry: InMemoryStepRegistry,
+        registry: StepRegistry,
         access: StepCapabilityAccess,
         input: CoreShellInput,
     ): PreparedExecution {
@@ -398,7 +399,7 @@ class A4_3TypedShellOutputIntegrationTest {
     }
 
     private fun readyPrepared(
-        registry: InMemoryStepRegistry,
+        registry: StepRegistry,
         key: PluginStepId,
         access: StepCapabilityAccess,
     ): PreparedExecution {
@@ -420,7 +421,7 @@ class A4_3TypedShellOutputIntegrationTest {
     @Test
     fun `boundary projects outcome=SUCCESS from a TypedStepOutput carrier`() = runBlocking {
         val key = PluginStepId("test.typed.success")
-        val registry = InMemoryStepRegistry().apply { register(typedStepDefinition(key, StepOutcome.Success)) }
+        val registry = StepRegistryBuilder().apply { add(typedStepDefinition(key, StepOutcome.Success)) }.build()
         val access = canonicalAccess("a4-3-boundary-success")
         val prepared = readyPrepared(registry, key, access)
         val result = RegistryExecutionBoundary.adapt().execute(prepared, runtimeContext("a4-3-boundary-success"))
@@ -435,15 +436,15 @@ class A4_3TypedShellOutputIntegrationTest {
     fun `boundary projects outcome=FAILURE from a TypedStepOutput carrier`() = runBlocking {
         val key = PluginStepId("test.typed.failure")
         val failure = PipelineFailure(kind = FailureKind.SCRIPT, message = "exit 1")
-        val registry = InMemoryStepRegistry().apply {
-            register(
+        val registry = StepRegistryBuilder().apply {
+            add(
                 typedStepDefinition(
                     key,
                     StepOutcome.Failure(failure),
                     encoded = "exit 1",
                 ),
             )
-        }
+        }.build()
         val access = canonicalAccess("a4-3-boundary-failure")
         val prepared = readyPrepared(registry, key, access)
         val result = RegistryExecutionBoundary.adapt().execute(prepared, runtimeContext("a4-3-boundary-failure"))
@@ -482,7 +483,7 @@ class A4_3TypedShellOutputIntegrationTest {
 
             override val handler: StepHandler<String, String> = StepHandler { _, _ -> "ok" }
         }
-        val registry = InMemoryStepRegistry().apply { register(def) }
+        val registry = StepRegistryBuilder().apply { add(def) }.build()
         val access = canonicalAccess("a4-3-boundary-nontyped")
         val prepared = readyPrepared(registry, key, access)
         val result = RegistryExecutionBoundary.adapt().execute(prepared, runtimeContext("a4-3-boundary-nontyped"))
@@ -498,13 +499,13 @@ class A4_3TypedShellOutputIntegrationTest {
         // adapter), but the typed carrier is null because the handler never
         // returned. Outcome is classified by the boundary itself, NOT by the
         // classifier — the classifier only runs on successful handler returns.
-        val registry = InMemoryStepRegistry()
+        val registryBuilder = StepRegistryBuilder()
         val blowingKey = PluginStepId("test.blow")
         val codec = object : StepCodec<String> {
             override fun encode(value: String): EncodedStepValue = EncodedStepValue(value)
             override fun decode(encoded: EncodedStepValue): String = encoded.value
         }
-        registry.register(
+        registryBuilder.add(
             object : StepDefinition<String, String> {
                 override val contract: StepContract<String, String> = StepContract(
                     key = blowingKey,
@@ -526,6 +527,7 @@ class A4_3TypedShellOutputIntegrationTest {
                 }
             },
         )
+        val registry: StepRegistry = registryBuilder.build()
 
         val prep = RegistryExecutionPreparation.prepare(
             registry = registry,

@@ -11,7 +11,6 @@ import dev.rubentxu.pipeline.v2.domain.step.Delivery
 import dev.rubentxu.pipeline.v2.domain.step.Digest
 import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.ManifestSchemaVersion
 import dev.rubentxu.pipeline.v2.domain.step.PipelineKApiRange
 import dev.rubentxu.pipeline.v2.domain.step.PluginContributions
@@ -29,6 +28,8 @@ import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepManifest
 import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistration
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 import dev.rubentxu.pipeline.v2.domain.step.registerContributors
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutInputCodec
@@ -140,12 +141,13 @@ class F5_1_ScmGitStepContractTest {
 
     @Test
     fun `registry-backed lookup returns OFFICIAL_PLUGIN provider for the registered StepKey`() {
-        val registry = InMemoryStepRegistry()
+        val registryBuilder = StepRegistryBuilder()
         val provider = makeProvider("pipeline-kotlin", "pipeline.scm-git", "scm-git", 0, 36, 0,
             "sha256:" + "d".repeat(64))
         val definition = GitCheckoutStepDefinition()
 
-        registry.register(StepRegistration(definition, provider))
+        registryBuilder.add(StepRegistration(definition, provider))
+        val registry: StepRegistry = registryBuilder.build()
 
         assertSame(definition, registry.definition(ScmGitCheckoutKey.VALUE))
         assertEquals(provider, registry.providerOf(ScmGitCheckoutKey.VALUE))
@@ -243,7 +245,7 @@ class F5_1_ScmGitStepContractTest {
 
     @Test
     fun `C10 backwards-compat legacy contributor registers through additive registrations path`() {
-        val registry = InMemoryStepRegistry()
+        val registryBuilder = StepRegistryBuilder()
         val legacyContributor = object : dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor {
             override val id: String = "legacy.fixture"
             override fun definitions(): Iterable<StepDefinition<*, *>> = listOf(
@@ -276,7 +278,8 @@ class F5_1_ScmGitStepContractTest {
                 },
             )
         }
-        registry.registerContributors(listOf(legacyContributor))
+        registryBuilder.registerContributors(listOf(legacyContributor))
+        val registry: StepRegistry = registryBuilder.build()
         // Legacy registration does NOT fail-closed: the contract key is
         // present in the registry.
         assertTrue(registry.contains(PluginStepId("legacy.fixture.greet")))
@@ -327,14 +330,15 @@ class F5_1_ScmGitStepContractTest {
     @Test
     fun `registerScmGit helper produces a registration with real digest and OFFICIAL_PLUGIN delivery`() {
         val realDigest = "sha256:" + "9".repeat(64)
-        val registry = InMemoryStepRegistry()
+        val registryBuilder = StepRegistryBuilder()
         val provider = registerScmGitFixture(
             publisher = "pipeline-kotlin",
             namespace = "pipeline.scm-git",
             version = "0.36.0",
             digestSha256 = realDigest,
-            registry = registry,
+            registry = registryBuilder,
         )
+        val registry: StepRegistry = registryBuilder.build()
         assertEquals(Delivery.OFFICIAL_PLUGIN, provider.delivery)
         assertEquals(realDigest, provider.release.digest.value)
         assertEquals("pipeline-kotlin", provider.publisher)
@@ -353,7 +357,7 @@ class F5_1_ScmGitStepContractTest {
         namespace: String,
         version: String,
         digestSha256: String,
-        registry: dev.rubentxu.pipeline.v2.domain.step.StepRegistry,
+        registry: dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder,
     ): StepProviderMetadata {
         require(digestSha256.startsWith("sha256:"))
         val saved = listOf("pipeline.scm-git.publisher", "pipeline.scm-git.namespace",
@@ -365,7 +369,7 @@ class F5_1_ScmGitStepContractTest {
             System.setProperty("pipeline.scm-git.release.version", version)
             System.setProperty("pipeline.scm-git.release.digest", digestSha256)
             val registration = ScmGitStepDefinitionContributor().registrations().single()
-            registry.register(registration)
+            registry.add(registration)
             return registration.provider
         } finally {
             saved.forEach { (k, prev) ->

@@ -10,11 +10,11 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
@@ -114,7 +114,7 @@ class RegistryExecutionBoundaryFailureKindTest {
 
     private fun prepareAndExecute(def: StepDefinition<String, Carrier<String, String>>, input: String) =
         runBlocking {
-            val registry = InMemoryStepRegistry().apply { register(def) }
+            val registry = StepRegistryBuilder().apply { add(def) }.build()
             val store = InMemoryEventStore()
             val ctx = runtime(store)
             val prepared = RegistryExecutionPreparation.prepare(

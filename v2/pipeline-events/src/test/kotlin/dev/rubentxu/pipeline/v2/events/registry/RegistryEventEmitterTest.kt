@@ -52,7 +52,7 @@ class RegistryEventEmitterTest {
         }
     }
 
-    private fun registeredRegistry(vararg kinds: String): EventRegistry = EventRegistry.create().also { r ->
+    private fun registeredRegistry(vararg kinds: String): EventRegistry = EventRegistry.builder().also { r ->
         kinds.forEach { k ->
             r.register(
                 EventDefinition.create(
@@ -61,7 +61,7 @@ class RegistryEventEmitterTest {
                 ),
             )
         }
-    }
+    }.build()
 
     private fun emitter(registry: EventRegistry, sink: OrderedSink) =
         RegistryEventEmitter(registry, sink, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC))

@@ -11,7 +11,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
 import dev.rubentxu.pipeline.v2.domain.step.Delivery
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.PluginFamily
 import dev.rubentxu.pipeline.v2.domain.step.PluginReleaseRef
 import dev.rubentxu.pipeline.v2.domain.step.SemVer
@@ -23,6 +22,8 @@ import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistration
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 import dev.rubentxu.pipeline.v2.domain.step.registerContributors
 import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitResultsInput
@@ -167,14 +168,15 @@ class F5_2_JUnitStepContractTest {
     @Test
     fun `JUnitStepDefinitionContributor builds a real registration with OFFICIAL_PLUGIN delivery when provenance is well-formed`() {
         val realDigest = "sha256:" + "a".repeat(64)
-        val registry = InMemoryStepRegistry()
+        val registryBuilder = StepRegistryBuilder()
         val provider = registerJUnitFixture(
             publisher = "pipeline-kotlin",
             namespace = "pipeline.junit",
             version = "0.1.0",
             digestSha256 = realDigest,
-            registry = registry,
+            registry = registryBuilder,
         )
+        val registry: StepRegistry = registryBuilder.build()
         assertEquals(Delivery.OFFICIAL_PLUGIN, provider.delivery)
         assertEquals(realDigest, provider.release.digest.value)
         assertEquals("pipeline-kotlin", provider.publisher)
@@ -185,9 +187,10 @@ class F5_2_JUnitStepContractTest {
 
     @Test
     fun `C10 backwards-compat legacy contributor coexists with JUnit contributor`() {
-        val registry = InMemoryStepRegistry()
+        val registryBuilder = StepRegistryBuilder()
         val legacyContributor = legacyFixture("legacy.fixture", "legacy-fixture", 1, 0, 0)
-        registry.registerContributors(listOf(legacyContributor))
+        registryBuilder.registerContributors(listOf(legacyContributor))
+        val registry: StepRegistry = registryBuilder.build()
         val legacyKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("legacy.fixture.greet")
         assertTrue(registry.contains(legacyKey))
         val legacyProvider = registry.providerOf(legacyKey)
@@ -683,7 +686,7 @@ class F5_2_JUnitStepContractTest {
         namespace: String,
         version: String,
         digestSha256: String,
-        registry: dev.rubentxu.pipeline.v2.domain.step.StepRegistry,
+        registry: dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder,
     ): StepProviderMetadata {
         require(digestSha256.startsWith("sha256:"))
         val saved = listOf(
@@ -699,7 +702,7 @@ class F5_2_JUnitStepContractTest {
             System.setProperty("pipeline.junit.release.digest", digestSha256)
             val registration: StepRegistration<*, *> =
                 JUnitStepDefinitionContributor().registrations().single()
-            registry.register(registration)
+            registry.add(registration)
             return registration.provider
         } finally {
             saved.forEach { (k, prev) ->

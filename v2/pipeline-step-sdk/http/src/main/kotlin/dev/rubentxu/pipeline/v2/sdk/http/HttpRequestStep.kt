@@ -15,6 +15,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 
 /**
  * The canonical StepKey of the HTTP OFFICIAL_PLUGIN (LFC-2E3 / WU-093).
@@ -256,9 +257,14 @@ object HttpRequestStep {
                 capabilityRoutedHandler
         }
 
-    /** Registers through the same open registry seam as any external Step. */
-    fun registerInto(registry: StepRegistry) {
-        registry.register(definition)
+    /**
+     * Adds this Step to a composition in progress.
+     *
+     * The parameter is a [StepRegistryBuilder], not a [StepRegistry]: the runtime holds a
+     * registry that cannot be mutated, so composing and reading are separate capabilities.
+     */
+    fun registerInto(builder: StepRegistryBuilder) {
+        builder.add(definition)
     }
 
     /**

@@ -13,9 +13,9 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
@@ -447,7 +447,7 @@ class CoreArchiveArtifactsStepUnitTest {
 
     @Test
     fun `duplicate registration fails closed`() {
-        val registry = InMemoryStepRegistry().also { CoreArchiveArtifactsStep.registerInto(it) }
+        val registry = StepRegistryBuilder().also { CoreArchiveArtifactsStep.registerInto(it) }
         try {
             CoreArchiveArtifactsStep.registerInto(registry)
             throw AssertionError("expected duplicate-key rejection")

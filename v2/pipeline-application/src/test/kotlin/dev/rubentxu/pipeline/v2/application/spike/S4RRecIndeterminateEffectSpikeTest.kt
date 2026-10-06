@@ -32,11 +32,12 @@ import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
@@ -753,7 +754,7 @@ class S4RRecIndeterminateEffectSpikeTest {
         reattachPoll: ((Path, Long) -> Int?)? = null,
     ) {
         private val journal = InMemoryOperationJournal(SystemClock())
-        private val registry = InMemoryStepRegistry().also { it.register(probe) }
+        private val registry = StepRegistryBuilder().also { it.add(probe) }.build()
         private val coordinator = CanonicalDurableRunCoordinator(
             dispatcher = CanonicalNodeDispatcher(),
             journal = journal,

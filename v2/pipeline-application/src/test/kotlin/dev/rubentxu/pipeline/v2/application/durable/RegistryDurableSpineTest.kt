@@ -24,12 +24,13 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import kotlinx.coroutines.runBlocking
@@ -68,7 +69,7 @@ class RegistryDurableSpineTest {
     private val UNAVAILABLE = StepCapability("not.supplied.by.runtime")
 
     /** A registered neutral step whose input codec emits a well-formed JSON OBJECT (durable-spine shape). */
-    private fun registerIdentity(registry: InMemoryStepRegistry, counters: Counters) {
+    private fun registerIdentity(builder: StepRegistryBuilder, counters: Counters) {
         val definition: StepDefinition<IdentityInput, String> = object : StepDefinition<IdentityInput, String> {
             override val contract: StepContract<IdentityInput, String> = StepContract(
                 key = IDENTITY_KEY,
@@ -100,11 +101,11 @@ class RegistryDurableSpineTest {
                 "identity:${input.value}"
             }
         }
-        registry.register(definition)
+        builder.add(definition)
     }
 
     /** A registered step that DECLARES a capability the runtime never supplies (fail-closed DREG-5). */
-    private fun registerNeedsUnavailable(registry: InMemoryStepRegistry, counters: Counters) {
+    private fun registerNeedsUnavailable(builder: StepRegistryBuilder, counters: Counters) {
         val definition: StepDefinition<IdentityInput, String> = object : StepDefinition<IdentityInput, String> {
             override val contract: StepContract<IdentityInput, String> = StepContract(
                 key = NEEDS_KEY,
@@ -136,7 +137,7 @@ class RegistryDurableSpineTest {
                 "identity:${input.value}"
             }
         }
-        registry.register(definition)
+        builder.add(definition)
     }
 
     private fun pipeline(key: PluginStepId, encoded: String) = CompiledPipeline(
@@ -163,14 +164,15 @@ class RegistryDurableSpineTest {
     private fun identityPayload(text: String): String =
         JsonObject(mapOf("value" to JsonPrimitive(text))).toString()
 
-    private fun coordinator(registry: InMemoryStepRegistry, clock: SystemClock, journal: InMemoryOperationJournal) =
+    private fun coordinator(registry: StepRegistry, clock: SystemClock, journal: InMemoryOperationJournal) =
         CoordinatorFixture.default(clock, journal, InMemoryEventStore(), registry)
 
     @Test
     fun `DREG-1 fresh registry valid executes codec and handler once on the durable spine`() = runBlocking {
         val counters = Counters()
-        val registry = InMemoryStepRegistry()
-        registerIdentity(registry, counters)
+        val builder = StepRegistryBuilder()
+        registerIdentity(builder, counters)
+        val registry: StepRegistry = builder.build()
         val clock = SystemClock()
         val journal = InMemoryOperationJournal(clock)
         val outcome = coordinator(registry, clock, journal).run(pipeline(IDENTITY_KEY, identityPayload("hi")), RunId("dreg-1"))
@@ -184,8 +186,9 @@ class RegistryDurableSpineTest {
     @Test
     fun `DREG-2 replayed registry outcome is reused without codec or handler`() = runBlocking {
         val counters = Counters()
-        val registry = InMemoryStepRegistry()
-        registerIdentity(registry, counters)
+        val builder = StepRegistryBuilder()
+        registerIdentity(builder, counters)
+        val registry: StepRegistry = builder.build()
         val clock = SystemClock()
         val runId = RunId("dreg-2")
         val journal = InMemoryOperationJournal(clock)
@@ -217,8 +220,9 @@ class RegistryDurableSpineTest {
     @Test
     fun `DREG-3 divergent registry input fails closed without codec or handler`() = runBlocking {
         val counters = Counters()
-        val registry = InMemoryStepRegistry()
-        registerIdentity(registry, counters)
+        val builder = StepRegistryBuilder()
+        registerIdentity(builder, counters)
+        val registry: StepRegistry = builder.build()
         val clock = SystemClock()
         val runId = RunId("dreg-3")
         val journal = InMemoryOperationJournal(clock)
@@ -252,8 +256,9 @@ class RegistryDurableSpineTest {
     @Test
     fun `DREG-4 typed-invalid registry input rejects as schema without common execution or handler`() = runBlocking {
         val counters = Counters()
-        val registry = InMemoryStepRegistry()
-        registerIdentity(registry, counters)
+        val builder = StepRegistryBuilder()
+        registerIdentity(builder, counters)
+        val registry: StepRegistry = builder.build()
         val clock = SystemClock()
         val journal = InMemoryOperationJournal(clock)
         // A well-formed JSON object the identity codec cannot decode (missing the "value" field) is
@@ -270,8 +275,9 @@ class RegistryDurableSpineTest {
     @Test
     fun `DREG-5 missing capability fails closed at prepare admission with handler 0`() = runBlocking {
         val counters = Counters()
-        val registry = InMemoryStepRegistry()
-        registerNeedsUnavailable(registry, counters)
+        val builder = StepRegistryBuilder()
+        registerNeedsUnavailable(builder, counters)
+        val registry: StepRegistry = builder.build()
         val clock = SystemClock()
         val journal = InMemoryOperationJournal(clock)
         val outcome = coordinator(registry, clock, journal).run(pipeline(NEEDS_KEY, identityPayload("hi")), RunId("dreg-5"))

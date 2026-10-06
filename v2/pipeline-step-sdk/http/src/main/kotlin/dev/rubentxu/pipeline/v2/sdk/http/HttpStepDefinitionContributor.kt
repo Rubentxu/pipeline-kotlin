@@ -21,6 +21,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepManifest
 import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistration
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 
 /**
@@ -70,7 +71,7 @@ class HttpStepDefinitionContributor : StepDefinitionContributor {
  * exercising [PluginManifestValidator]. It is NOT the production path — that one
  * always reads the properties the build wrote.
  */
-fun StepRegistry.registerHttp(
+fun StepRegistryBuilder.registerHttp(
     publisher: String,
     namespace: String = "pipeline-plugin-http",
     version: String = "0.0.0-dev",
@@ -88,7 +89,7 @@ fun StepRegistry.registerHttp(
     val saved = prev.map { (k, _) -> k to System.getProperty(k) }
     prev.forEach { (k, v) -> System.setProperty(k, v) }
     try {
-        HttpStepDefinitionContributor().registrations().forEach { register(it) }
+        HttpStepDefinitionContributor().registrations().forEach { add(it) }
     } finally {
         saved.forEach { (k, before) ->
             if (before == null) System.clearProperty(k) else System.setProperty(k, before)

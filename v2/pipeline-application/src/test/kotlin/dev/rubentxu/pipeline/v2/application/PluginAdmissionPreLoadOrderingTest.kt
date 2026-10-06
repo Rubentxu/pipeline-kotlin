@@ -79,8 +79,12 @@ class PluginAdmissionPreLoadOrderingTest {
             families = setOf(PluginFamily.TESTING),
             delivery = Delivery.EXTERNAL_REFERENCE,
             trust = TrustMetadata.Unverified,
+            // Declares a capability and NO Steps, because the fixture genuinely provides no
+            // Step. It used to declare `sentinel.step` and implement nothing, which BLOCK 1-E
+            // correctly caught as drift — the cross-check found a real inconsistency in a test
+            // fixture that had been passing precisely because nothing compared it.
             contributions = PluginContributions(
-                steps = listOf(PluginStepContribution(PluginStepId("sentinel.step"), emptySet())),
+                capabilities = setOf(dev.rubentxu.pipeline.v2.domain.step.StepCapability("test.sentinel")),
             ),
         )
         return PluginManifestCodec.encode(manifest)

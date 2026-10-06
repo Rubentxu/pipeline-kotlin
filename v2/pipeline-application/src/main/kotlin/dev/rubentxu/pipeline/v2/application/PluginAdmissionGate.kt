@@ -4,6 +4,8 @@ import dev.rubentxu.pipeline.v2.domain.step.ArtifactOrigin
 import dev.rubentxu.pipeline.v2.domain.step.PluginAdmission
 import dev.rubentxu.pipeline.v2.domain.step.PluginAdmissionResult
 import dev.rubentxu.pipeline.v2.domain.step.SemVer
+import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
+import dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor
 import java.util.ServiceLoader
 
 /**
@@ -93,7 +95,8 @@ object PluginAdmissionGate {
             )
 
         // Phase 3: MEASURE what the runtime can measure, then decide.
-        val origin = ArtifactOrigin.LocalClasspathEntry(contributorClass.protectionDomain?.codeSource?.location?.toString() ?: "unknown")
+        val codeSource = contributorClass.protectionDomain?.codeSource?.location?.toString() ?: "unknown"
+        val origin = ArtifactOrigin.LocalClasspathEntry(codeSource)
         val identity = PluginManifestResourceReader.measure(
             declaredDigest = accepted.manifest.release.digest,
             origin = origin,
@@ -110,14 +113,49 @@ object PluginAdmissionGate {
             return admitted
         }
 
+        val admittedPlugin = (admitted as PluginAdmissionResult.Admitted).plugin
+
         // Phase 4: ONLY NOW may plugin code initialise and contribute.
-        try {
+        val crossCheck = try {
             Class.forName(contributorClassName, /* initialize = */ true, classLoader)
-            ServiceLoader.load(contributorClass, classLoader).forEach { /* force provider construction */ }
+
+            val definitions = mutableListOf<StepDefinition<*, *>>()
+            // ServiceLoader is Iterable but NOT Closeable, so `use` does not apply here.
+            //
+            // The filter is load-bearing and was found by a failing test. ServiceLoader returns
+            // EVERY contributor on the classloader, so an unscoped cross-check compares one
+            // plugin's manifest against every other plugin's Steps and reports them all as
+            // undeclared. A plugin's cross-check is about ITS OWN contributions, so providers
+            // are selected by the artifact they come from — the same scoping `strict` applies
+            // to the manifest. Without it every plugin refuses and the gate admits nothing.
+            for (provider in ServiceLoader.load(StepDefinitionContributor::class.java, classLoader)) {
+                val providerSource = provider.javaClass.protectionDomain?.codeSource?.location?.toString()
+                if (providerSource != codeSource) continue
+                provider.registrations().forEach { definitions.add(it.definition) }
+            }
+
+            // S6/E — the cross-check. It runs HERE, after the contributor's code has run,
+            // because comparing a declaration against contributions is only possible once
+            // the contributions exist. Splitting it from phase 3 is the point: the first gate
+            // is pre-load and cheap, the second is post-load and complete, and collapsing
+            // them would either run code before admission or make admission incomplete.
+            admittedPlugin.admitContributions(definitions = definitions)
         } catch (e: Throwable) {
             return PluginAdmissionResult.Refused(
                 dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection.MalformedDocument(
                     "contributor $contributorClassName initialised but failed to provide: ${e.message}",
+                ),
+            )
+        }
+
+        if (!crossCheck.isConsistent) {
+            // The plugin RAN and then failed to match what it declared. Refusing here does not
+            // undo the execution, which is precisely why the pre-load gate in phase 1 exists:
+            // this check catches drift, the earlier one prevents untrusted code from starting.
+            return PluginAdmissionResult.Refused(
+                dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection.InvalidManifest(
+                    admittedPlugin.pluginId,
+                    crossCheck.describe(),
                 ),
             )
         }

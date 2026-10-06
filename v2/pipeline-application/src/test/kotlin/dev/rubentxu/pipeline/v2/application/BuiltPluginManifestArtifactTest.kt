@@ -55,57 +55,14 @@ class BuiltPluginManifestArtifactTest {
         PluginArtifact("utilities", "utilities", "dev.rubentxu.pipeline.v2.sdk.utilities.step.CoreUtilsStepDefinitionContributor", 8),
     )
 
-    private fun jarFor(artifact: PluginArtifact): Path {
-        val libsDir = Paths.get("..", "pipeline-step-sdk", artifact.module, "build", "libs")
-        val candidates = if (Files.isDirectory(libsDir)) {
-            Files.list(libsDir).use { stream ->
-                stream.filter {
-                    it.fileName.toString().startsWith(artifact.jarPrefix + "-") &&
-                        it.toString().endsWith(".jar") &&
-                        !it.fileName.toString().endsWith("-sources.jar")
-                }.toList()
-            }
-        } else {
-            emptyList()
-        }
-        assertTrue(
-            candidates.isNotEmpty(),
-            "no built ${artifact.module} JAR under $libsDir. The build must produce the artifact " +
-                "before this proof can mean anything; skipping here would be a green that proves nothing.",
-        )
-        return candidates.first()
-    }
-
-    /**
-     * A loader whose parent is the PLATFORM loader, not the test classloader.
-     *
-     * This matters and was found by a RED rather than by reading. The four plugin classes are
-     * on the test classpath, so with the test loader as parent the contribution class RESOLVES
-     * FROM THERE and its code source is the test output directory — while the manifest resource
-     * resolves from the JAR. `strict` then correctly refused, because from its point of view a
-     * plugin had declared itself in one artifact and contributed code from another. The check
-     * was right and the harness was wrong.
-     *
-     * Neither extreme works on its own. The platform loader cannot see pipeline-domain, so
-     * resolving the contributor fails with NoClassDefFoundError on StepDefinitionContributor.
-     * This parent delegates to the test classloader EXCEPT for the four plugin packages, which
-     * is exactly the shape a real runtime has: PipelineK's own classes are visible, and a
-     * plugin resolves to the artifact under test rather than to a copy on the test classpath.
-     */
-    private fun withLoader(artifact: PluginArtifact, block: (URLClassLoader) -> Unit) {
-        val loader = URLClassLoader(arrayOf(jarFor(artifact).toUri().toURL()), PluginApiParent())
-        try {
-            block(loader)
-        } finally {
-            loader.close()
-        }
-    }
+    private fun withLoader(artifact: PluginArtifact, block: (java.net.URLClassLoader) -> Unit) =
+        PluginArtifactFixture.withScopedLoader(PluginArtifactFixture.builtJar(artifact.module), block)
 
     @ParameterizedTest(name = "{0} ships its manifest at the canonical path")
     @MethodSource("artifacts")
     @DisplayName("the shipped JAR carries the manifest at the canonical path")
     internal fun jarCarriesTheManifestAtTheCanonicalPath(artifact: PluginArtifact) {
-        val entry = java.util.zip.ZipFile(jarFor(artifact).toFile()).use { zip ->
+        val entry = java.util.zip.ZipFile(PluginArtifactFixture.builtJar(artifact.module).toFile()).use { zip ->
             zip.getEntry(PluginManifestCodec.RESOURCE_PATH)
         }
         assertTrue(

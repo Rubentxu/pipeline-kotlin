@@ -5173,6 +5173,23 @@ public final class dev/rubentxu/pipeline/v2/domain/scm/SecretHandleRef {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/step/AdmittedPlugin {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;Ldev/rubentxu/pipeline/v2/domain/step/MeasuredArtifactIdentity;)V
+	public final fun admitContributions (Ljava/util/List;Ljava/util/Set;Ljava/util/Set;)Ldev/rubentxu/pipeline/v2/domain/step/PluginContributionCrossCheck;
+	public static synthetic fun admitContributions$default (Ldev/rubentxu/pipeline/v2/domain/step/AdmittedPlugin;Ljava/util/List;Ljava/util/Set;Ljava/util/Set;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginContributionCrossCheck;
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/step/MeasuredArtifactIdentity;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;Ldev/rubentxu/pipeline/v2/domain/step/MeasuredArtifactIdentity;)Ldev/rubentxu/pipeline/v2/domain/step/AdmittedPlugin;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/AdmittedPlugin;Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;Ldev/rubentxu/pipeline/v2/domain/step/MeasuredArtifactIdentity;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/AdmittedPlugin;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getApiRange ()Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;
+	public final fun getIdentity ()Ldev/rubentxu/pipeline/v2/domain/step/MeasuredArtifactIdentity;
+	public final fun getManifest ()Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;
+	public final fun getPluginId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/step/AggregateDurableRole : java/lang/Enum {
 	public static final field PARALLEL_STAGE_AGGREGATE Ldev/rubentxu/pipeline/v2/domain/step/AggregateDurableRole;
 	public static final field RETRY_CONTROL_ROW Ldev/rubentxu/pipeline/v2/domain/step/AggregateDurableRole;
@@ -5187,6 +5204,84 @@ public final class dev/rubentxu/pipeline/v2/domain/step/AllowAll : dev/rubentxu/
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/step/AllowAll;
 	public fun decide (Ldev/rubentxu/pipeline/v2/domain/step/EgressDestination;)Ldev/rubentxu/pipeline/v2/domain/step/EgressDecision;
 	public fun getPermitsAny ()Z
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/ArtifactIdentityVerdict {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/ArtifactIdentityVerdict$Mismatch : dev/rubentxu/pipeline/v2/domain/step/ArtifactIdentityVerdict {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/Digest;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/Digest;)Ldev/rubentxu/pipeline/v2/domain/step/ArtifactIdentityVerdict$Mismatch;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/ArtifactIdentityVerdict$Mismatch;Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/Digest;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/ArtifactIdentityVerdict$Mismatch;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDeclared ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun getMeasured ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/ArtifactIdentityVerdict$Unverified : dev/rubentxu/pipeline/v2/domain/step/ArtifactIdentityVerdict {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;)Ldev/rubentxu/pipeline/v2/domain/step/ArtifactIdentityVerdict$Unverified;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/ArtifactIdentityVerdict$Unverified;Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/ArtifactIdentityVerdict$Unverified;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOrigin ()Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/ArtifactIdentityVerdict$Verified : dev/rubentxu/pipeline/v2/domain/step/ArtifactIdentityVerdict {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/Digest;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/Digest;)Ldev/rubentxu/pipeline/v2/domain/step/ArtifactIdentityVerdict$Verified;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/ArtifactIdentityVerdict$Verified;Ldev/rubentxu/pipeline/v2/domain/step/Digest;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/ArtifactIdentityVerdict$Verified;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDigest ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin$LocalClasspathEntry : dev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin$LocalClasspathEntry;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin$LocalClasspathEntry;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin$LocalClasspathEntry;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLocation ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin$ResolvedCoordinate : dev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin$ResolvedCoordinate;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin$ResolvedCoordinate;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin$ResolvedCoordinate;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArtifact ()Ljava/lang/String;
+	public final fun getGroup ()Ljava/lang/String;
+	public final fun getVersion ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin$ReusedCompiledArtifact : dev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin$ReusedCompiledArtifact;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin$ReusedCompiledArtifact;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin$ReusedCompiledArtifact;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCacheKey ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/step/AttemptSegment {
@@ -6179,6 +6274,22 @@ public final class dev/rubentxu/pipeline/v2/domain/step/ManifestSchemaVersion$Co
 	public final fun parseOrNull-hjn4R_4 (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/ManifestSchemaVersion;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/step/MeasuredArtifactIdentity {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;)Ldev/rubentxu/pipeline/v2/domain/step/MeasuredArtifactIdentity;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/MeasuredArtifactIdentity;Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/MeasuredArtifactIdentity;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDeclaredDigest ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun getMeasuredDigest ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun getOrigin ()Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;
+	public final fun getVerdict ()Ldev/rubentxu/pipeline/v2/domain/step/ArtifactIdentityVerdict;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/domain/step/NetworkEgressGate {
 	public abstract fun decide (Ldev/rubentxu/pipeline/v2/domain/step/EgressDestination;)Ldev/rubentxu/pipeline/v2/domain/step/EgressDecision;
 	public abstract fun getPermitsAny ()Z
@@ -6228,6 +6339,63 @@ public final class dev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange {
 	public final fun getFromInclusive ()Ldev/rubentxu/pipeline/v2/domain/step/SemVer;
 	public final fun getUntilExclusive ()Ldev/rubentxu/pipeline/v2/domain/step/SemVer;
 	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/PluginAdmission {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/step/PluginAdmission;
+	public final fun admit (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestDecodeResult;Ldev/rubentxu/pipeline/v2/domain/step/MeasuredArtifactIdentity;Ldev/rubentxu/pipeline/v2/domain/step/SemVer;Ljava/util/Set;)Ldev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult$Admitted : dev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/AdmittedPlugin;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/AdmittedPlugin;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/AdmittedPlugin;)Ldev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult$Admitted;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult$Admitted;Ldev/rubentxu/pipeline/v2/domain/step/AdmittedPlugin;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult$Admitted;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPlugin ()Ldev/rubentxu/pipeline/v2/domain/step/AdmittedPlugin;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult$Refused : dev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection;)Ldev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult$Refused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult$Refused;Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult$Refused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRejection ()Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/PluginContributionCrossCheck {
+	public fun <init> (Ljava/lang/String;Ljava/util/Set;Ljava/util/Set;Ljava/util/List;Ljava/util/Set;Ljava/util/Set;Ljava/util/Set;Ljava/util/Set;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/Set;
+	public final fun component3 ()Ljava/util/Set;
+	public final fun component4 ()Ljava/util/List;
+	public final fun component5 ()Ljava/util/Set;
+	public final fun component6 ()Ljava/util/Set;
+	public final fun component7 ()Ljava/util/Set;
+	public final fun component8 ()Ljava/util/Set;
+	public final fun copy (Ljava/lang/String;Ljava/util/Set;Ljava/util/Set;Ljava/util/List;Ljava/util/Set;Ljava/util/Set;Ljava/util/Set;Ljava/util/Set;)Ldev/rubentxu/pipeline/v2/domain/step/PluginContributionCrossCheck;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/PluginContributionCrossCheck;Ljava/lang/String;Ljava/util/Set;Ljava/util/Set;Ljava/util/List;Ljava/util/Set;Ljava/util/Set;Ljava/util/Set;Ljava/util/Set;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginContributionCrossCheck;
+	public final fun describe ()Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMismatchedCapabilities ()Ljava/util/List;
+	public final fun getMissingDirectives ()Ljava/util/Set;
+	public final fun getMissingEvents ()Ljava/util/Set;
+	public final fun getMissingImplementation ()Ljava/util/Set;
+	public final fun getPluginId ()Ljava/lang/String;
+	public final fun getUndeclaredDirectives ()Ljava/util/Set;
+	public final fun getUndeclaredEvents ()Ljava/util/Set;
+	public final fun getUndeclaredImplementation ()Ljava/util/Set;
+	public fun hashCode ()I
+	public final fun isConsistent ()Z
 	public fun toString ()Ljava/lang/String;
 }
 
@@ -6311,6 +6479,122 @@ public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifest {
 	public final fun getRelease ()Ldev/rubentxu/pipeline/v2/domain/step/PluginReleaseRef;
 	public final fun getSchemaVersion-xr2q4qU ()I
 	public final fun getTrust ()Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifestCodec {
+	public static final field CODEC Ljava/lang/String;
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestCodec;
+	public static final field RESOURCE_PATH Ljava/lang/String;
+	public final fun decode (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestDecodeResult;
+	public final fun encode (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;)Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/PluginManifestDecodeResult {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestDecodeResult$Companion;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifestDecodeResult$Accepted : dev/rubentxu/pipeline/v2/domain/step/PluginManifestDecodeResult {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestDecodeResult$Accepted;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestDecodeResult$Accepted;Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestDecodeResult$Accepted;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getManifest ()Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifestDecodeResult$Companion {
+	public final fun accept (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestDecodeResult;
+	public final fun reject (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestDecodeResult;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifestDecodeResult$Rejected : dev/rubentxu/pipeline/v2/domain/step/PluginManifestDecodeResult {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestDecodeResult$Rejected;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestDecodeResult$Rejected;Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestDecodeResult$Rejected;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRejection ()Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$DuplicateIdentity : dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$DuplicateIdentity;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$DuplicateIdentity;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$DuplicateIdentity;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIdentity ()Ljava/lang/String;
+	public final fun getIncumbent ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$IncompatibleApiRange : dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection {
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;Ldev/rubentxu/pipeline/v2/domain/step/SemVer;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/step/SemVer;
+	public final fun copy (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;Ldev/rubentxu/pipeline/v2/domain/step/SemVer;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$IncompatibleApiRange;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$IncompatibleApiRange;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;Ldev/rubentxu/pipeline/v2/domain/step/SemVer;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$IncompatibleApiRange;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDeclared ()Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;
+	public final fun getIdentity ()Ljava/lang/String;
+	public final fun getRuntime ()Ldev/rubentxu/pipeline/v2/domain/step/SemVer;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$InvalidManifest : dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$InvalidManifest;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$InvalidManifest;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$InvalidManifest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDetail ()Ljava/lang/String;
+	public final fun getIdentity ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$MalformedDocument : dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$MalformedDocument;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$MalformedDocument;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$MalformedDocument;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDetail ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$UnknownCodec : dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$UnknownCodec;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$UnknownCodec;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$UnknownCodec;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFound ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$UnsupportedSchema : dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$UnsupportedSchema;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$UnsupportedSchema;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$UnsupportedSchema;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFound ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }

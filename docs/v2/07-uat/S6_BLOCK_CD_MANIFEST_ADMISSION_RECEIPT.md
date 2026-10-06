@@ -153,6 +153,48 @@ discreparía *con significado* — un veredicto `Mismatch` dice «este plugin mi
 estaría diciendo la verdad. Fabricar una medida es peor que no medir, así que ahora devuelve
 `measuredDigest = null`, que es `Unverified`: un tercer estado nombrado, no un pass.
 
+## BLOCK 1-E — el cross-check, enganchado y con no-vacuidad probada
+
+El gate ahora **descarta** era el punto ciego: la fase 4 forzaba la construcción del
+contributor y tiraba el resultado. `admitContributions` queda enganchado, y su valor está en
+que la prueba lo demuestra con **mutantes de artefacto real**, no con mocks.
+
+| Caso | Artefacto | Resultado |
+|---|---|---|
+| declara un Step que no aporta | JAR de junit con el manifest reescrito | rechazado nombrando `junit.ghost` |
+| aporta un Step que no declara | JAR de utilities con `readJson` eliminado del manifest | rechazado nombrando `core-utils.readJson` |
+| control: los 4 oficiales sin mutar | los 4 JAR reales | admitidos |
+
+El control importa: un cross-check que rechazara todo también rechazaría los dos mutantes, y
+la puerta parecería funcionar mientras no admitiera nada.
+
+### Tres defectos que encontró el cross-check
+
+1. **En el gate (producción).** El cross-check comparaba el manifest admitido contra **todos**
+   los contributors del classloader, no sólo los del plugin admitido: `ServiceLoader` devuelve
+   todos. Con cuatro plugins en el classpath, cada plugin veía los Steps de los otros como
+   "implementados sin declarar". Habría hecho que **todo plugin fuese rechazado en runtime**.
+   Corregido acotando los providers al artefacto admitido — el mismo ámbito que `strict` ya
+   aplicaba al manifest.
+
+2. **En el arnés.** El helper que construye el JAR mutante **aplastaba** las rutas `META-INF/`
+   a su nombre base. Eso destruía `META-INF/services` y dejaba al mutante sin proveedor: el
+   arnés fabricaba exactamente el fallo que decía estar probando.
+
+3. **En el arnés, y era verdad.** El fixture de ordenación de BLOCK 1-D declaraba
+   `sentinel.step` y **no lo implementaba**. El cross-check lo detectó como drift. Era una
+   inconsistencia real en una prueba que llevaba días en verde precisamente porque nada la
+   comparaba. Ahora declara una capability y ningún Step, que es lo que de verdad aporta.
+
+### Corrección de una predicción mía
+
+En el ack de SDDK de `961bda11` afirmé que `apiCheck` exigiría una excepción BCV por las
+superficies nuevas. **Era falso.** Medido: el diff del dump tiene **cero eliminaciones**, sólo
+adiciones. Una excepción registra rupturas deliberadas, y aquí no hay ninguna. El propio
+repositorio tiene el precedente exacto — `EventQuery.matches` quedó fuera del ledger del
+mismo modo — y la regla dice que registrar una adición sería mentir sobre lo que se publicó.
+Lo que corresponde es `apiDump`, y `apiCheck` queda verde con él.
+
 ## Lo que este bloque NO hace
 
 Se declara aquí para que no se lea como hecho:
@@ -165,8 +207,10 @@ Se declara aquí para que no se lea como hecho:
   firma de `admit`.
 - **Los cuatro plugins oficiales emiten y son admitibles.** El ejemplo externo de
   `BLOCK 1-I` todavía no lo hace, porque todavía no existe.
-- **`admitContributions` existe pero no se invoca en producción.** El cross-check está escrito
-  y probado en sus piezas, pendiente de engancharse al gate.
+- **El cross-check cubre Steps, Directives y Events, pero sólo los Steps tienen productor real
+  hoy.** La dirección inversa para Directives y Events se comprueba con conjuntos vacíos,
+  porque ningún plugin oficial los contribuye todavía; el caso con DirectoryKey y EventKind
+  reales llega con el plugin externo de BLOCK 1-I.
 - Sin Reactores: ADR-0104 sigue `DEFERRED` y esta release no abre esa puerta.
 
 ## ADR-EVO-003 y su estado

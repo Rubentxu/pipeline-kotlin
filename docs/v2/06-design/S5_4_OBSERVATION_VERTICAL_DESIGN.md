@@ -82,18 +82,47 @@ y se reparte. La diferencia es de qué se hace con el rechazo, no de cómo se co
 **R1, R2 y R4 quedan estructuralmente garantizados:** un rechazo no puede desaparecer (viaja), distingue
 malformado de desconocido (viaja `reason`) y no se proyecta a envelope (sólo `decoded` se proyecta).
 
-### 2.3 La vertical externa
+### 2.3 La superficie externa es la CLI, y eso obliga a tocarla
 
-Fuera de `v2`, en `examples/`, con su propio `settings.gradle.kts` y **sin `project(...)`**: es la
-misma forma que los consumidores que ya certifican el contrato publicado.
+**Corrección de alcance, hecha al escribir este plan y no antes.**
 
+La versión anterior de este documento daba `MainEventsCli` por fuera de alcance. **Es falso**, y
+por una razón que no es de opinión sino de la arquitectura publicada:
+
+> The package is `events.durable` for every file here … `events` and `events.identity` are
+> published, `events.durable` is not, and **a published source that names the third is a build
+> error waiting to be written**. — `pipeline-events-store/build.gradle.kts`
+
+`SqliteEventStore` vive en `events.durable` y **no se publica, deliberadamente**, porque
+
+> The read side and the write side are different authorities. A consumer that can name the journal
+> can decide what a replay returns; a consumer that can only page history can only observe.
+
+De ahí sale todo lo demás: **un proceso externo no puede abrir el store**, porque el store no está
+publicado y porque las fuentes publicadas no pueden nombrarlo. El único punto de entrada durable
+externo que existe es la CLI (`Main.kt:121` → `MainEventsCli`), que está en `pipeline-application`
+y tampoco se publica.
+
+Consecuencia: para entregar BLOCK C —dos procesos, cursor real entre ellos, rechazo visible— **hay
+que arreglar `MainEventsCli`**, porque es por donde un proceso externo puede observar. No es
+ampliación: es el camino. Y arreglarlo es lo que convierte el fail-open del §4 en un hecho cerrado.
+
+El cambio en la CLI es el mismo que en el reader, no otro:
+
+```kotlin
+reader.readAfter(run, cursor, limit)   // en vez de history(...) + take(limit)
 ```
-proceso A: abre historia → lee página → escribe cursor → sale
-proceso B: arranca limpio → recupera cursor → continúa
-```
 
-**R6** es lo que prueba que el cursor es real y no una paginación local: si el cursor fuese interno
-al proceso, B no podría continuar donde A paró.
+y emitir los rechazos de la página de forma que un proceso externo los **vea**, no los adivine.
+
+**Alternativas descartadas por qué no:**
+
+- *Publicar `pipeline-events-store`*: deshace la separación entre lado lectura y lado escritura
+  que es la razón de que no esté publicado. Prohibido por diseño.
+- *Que el consumidor externo lea el SQLite por su cuenta*: segunda implementación de la lectura,
+  es decir exactamente lo que E4c eliminó.
+- *Que el consumidor resuelva el store por reflexión o classpath*: puerta de atrás, y el mismo
+  repositorio lo llama «side door» al hablar del consumidor de una sola coordenada.
 
 ---
 
@@ -103,9 +132,9 @@ al proceso, B no podría continuar donde A paró.
   existe; esta vertical es la que elige el modo observabilidad. **R5.**
 - **El store y la persistencia.** `SqliteEventStore` ya sabe rehusar y ya nombra la fila por
   columnas. No se toca SQL, ni esquema, ni `readRecord`.
-- **`history` sigue igual.** Sigue siendo el camino «sólo decodificados» y por eso sigue sin poder
-  rehusar. No se corrige aquí; es la base del fail-open de `MainEventsCli`, que es trabajo
-  distinto.
+- **`history` sigue existiendo.** Sigue siendo el camino «sólo decodificados» y por eso sigue sin
+  poder rehusar. **No se borra**: es un atajo legítimo para quien quiere sólo lo decodificable y
+  lo sabe. Lo que se corrige es que `MainEventsCli` deje de usarlo (§2.3).
 - **`EventCursor`, `EventSlice`, la secuencia durable y `EventRegistry`.** No hay cursor nuevo, ni
   secuencia nueva, ni replay engine, ni store, ni base de suscripciones.
 
@@ -119,8 +148,9 @@ adaptador crezca hacia dentro mantiene la dirección hexagonal: el puerto nombra
 adaptador ya sabe producir, no uno nuevo que el adaptador tendría que inventar.
 
 **Un solo camino:** no hay una segunda ruta de lectura. `readAfter` sigue siendo *el* camino del
-reader; lo que cambia es si colapsa o no. `MainEventsCli` sigue usando `history` y por eso sigue
-siendo un fail-open — **que es justo por lo que no puede ser la prueba de esta vertical**.
+reader; lo que cambia es si colapsa el rechazo o no. Y `MainEventsCli` **deja de tener un camino
+propio**: pasa de filtrar `history` en memoria a usar `readAfter`, con lo que el fail-open del §4
+desaparece por construida y no por convención.
 
 **Fitness que vigila el resultado:**
 
@@ -152,6 +182,11 @@ tumbar nada, no es un control.**
 olvidar el segundo punto, dejando un contrato que miente sobre sus capacidades. Por eso el fitness
 nuevo tiene que comprobar **las dos mitades**, no que el campo exista.
 
+**D-M5 cubre la CLI**, que entró en alcance al descubrirse §2.3: volver a `history` + `take(limit)`
+en memoria, dejando el reader arreglado. Es la tentación de «no tocar la CLI porque es mucho más
+código». Si esa mutación no rompe nada, **BLOCK C no está entregado**: el puerto observaría el
+rechazo y el único proceso que puede observarlo en la práctica seguiría sin verlo.
+
 ---
 
 ## 6. Orden de ejecución
@@ -159,11 +194,12 @@ nuevo tiene que comprobar **las dos mitades**, no que el campo exista.
 1. `EventPage.refusals` + fitness de las dos mitades (que debe **fallar** con `readAfter` sin
    tocar: es la prueba de que la ley discrimina).
 2. `readAfter` → `readRecords`.
-3. Los siete requisitos R1–R7 como pruebas.
-4. **D-M1…D-M4**, cada una atribuida 1:1, restaurada con sha256.
-5. `apiCheck` y, si BCV rechaza, la excepción con SHA real.
-6. La vertical externa con la prueba de reinicio de R6.
-7. `check --rerun-tasks` completo sobre el árbol exacto.
+3. `MainEventsCli` → `readAfter`, con los rechazos visibles en su salida (§2.3).
+4. Los siete requisitos R1–R7 como pruebas.
+5. **D-M1…D-M4**, cada una atribuida 1:1, restaurada con sha256.
+6. `apiCheck` y, si BCV rechaza, la excepción con SHA real.
+7. La vertical externa con la prueba de reinicio de R6.
+8. `check --rerun-tasks` completo sobre el árbol exacto.
 
 ---
 

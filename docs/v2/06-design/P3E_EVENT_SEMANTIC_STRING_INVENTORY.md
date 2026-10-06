@@ -332,6 +332,55 @@ Viaja DSL → IR → contexto → evento por cuatro capas y **ningún consumidor
 decisión de §4.2 usa exclusivamente `buildResult`. Es el `dead semantic parameter` de la
 Semantic Constitution Law §2 (`metadata accepted but never interpreted`).
 
+#### Caracterizado en E6, no cerrado — y por qué cerrarlo a medias es peor que dejarlo abierto
+
+La afirmación de §4.2 quedó obsoleta: la decisión ya no hace `when` sobre un `String`.
+`RunLifecycleEngine.kt:138-148` decide sobre el ADT `CatchErrorBuildResult` y traduce un
+token no reconocido a `Abort(PipelineFailure(FailureKind.SCHEMA, …))`. D2 está cerrado en
+la autoridad de decisión. Lo que sigue abierto es el otro campo, y la caracterización
+cambia lo que la migración correcta sería.
+
+**El codecs de `stageResult` ya es honesto.** `JsonEventLog.kt:901` lee
+`?: return null` — falla cerrado ante ausencia o `null` JSON — y la justificación es
+verificable: el escritor emite la clave incondicionalmente y la historia la trae. Eso sí
+es un dato medido, en `pipeline-events-store/src/test/resources/fixtures/`: **2 fixtures,
+4 registros, 4/4 con `stageResult` presente** (`FAILURE` y `UNSTABLE`). *No* está en
+`v2/compatibility/baseline.json`, que es un baseline de pipelines y no el corpus de
+eventos; buscarla ahí da cero y parece que la evidencia no existe.
+
+**Por qué tipar sólo el evento sería un retroceso.** La tentación es cambiar
+`CatchErrorTriggered.stageResult: String` por `CatchErrorBuildResult` y cerrar el
+`UNRESOLVED_SEMANTIC` en una línea. Sería incorrecto, y por una razón que sólo se ve al
+contar los cuatro registros:
+
+Hoy el `String` llega al evento **sin validar**, y un token fuera de vocabulario se
+decodifica sin protesta. Si se tipa el evento y el decode pasa a fallar cerrado — que es lo
+correcto — entonces una errata que el autor escribió en el DSL, que sigue siendo `String`
+en las tres capas de arriba, produciría un registro **que este runtime no puede volver a
+leer**. Se convertiría texto mal escrito en pérdida de historia: exactamente el
+defecto que E4c cerró en el otro extremo del mismo problema.
+
+Es decir: la migración de D3 no es "tipar el evento", es **tipar la cadena completa** —
+`StageScope.catchError` → `CompiledPipeline.CatchErrorOverlay` →
+`ContextOverlay.CatchErrorOverlay` → `CatchErrorTriggered` — de modo que ningún productor
+pueda emitir un token fuera del vocabulario. Recién entonces el decode fail-closed es
+seguro.
+
+**Lo que eso cuesta, y por qué no se hace aquí.** Cuatro capas, una superficie de autoría
+`@Deprecated(LFC1-007)` que además se está retirando hacia `try/catch`, una ruptura de ABI
+publicada y otra de historia si el token cambia. Es una unidad propia, no el final de
+E6b. El campo no es basura: está en el `.api` publicado, viaja en 4/4 registros históricos
+y un observador externo de Jenkins lo espera. Retirarlo sería una decisión de producto con
+consecuencias de historia, no una limpieza.
+
+**Lo que sí queda hecho en E6 para esta zona.** El otro ida y vuelta por cadena vacía —el
+de `buildResult`— es una invitación a fabricar un token que no está en el vocabulario y luego
+deshacerlo: `EventJsonWriter` escribe `buildResult ?: ""` y `JsonEventLog` lo lee con
+`takeIf { it.isNotEmpty() }`. Los dos `""` son literales independientes en dos módulos,
+así que la convención no está declarada en ninguna parte; sólo la obedience de dos autores
+distintos la mantiene. Declarar el par como una autoridad única de codec, con su test, es
+lo que corresponde a E6 sin tocar contrato ni cable.
+
 ### 4.4 El decoder también es fail-open aquí
 
 `JsonEventLog.kt:765`:

@@ -401,6 +401,15 @@ afirmación, es la afirmación contraria.
 > y por eso un solo lector cubre los dos casos de fallo sin necesidad de sondar si la clave
 > existe.
 
+> **CORREGIDO — este defecto ya no existe.** `c0fa1d69` (*un registro sin campo legible no
+> puede afirmar un hecho*, E4c) eliminó el default: hoy la línea es
+> `EventJsonFields.stringField(s, "stageResult") ?: return null`, y
+> `SemanticFieldAbsentIsMalformedTest` lo fija con tres casos (ausente, `null` JSON, y un
+> registro malo que no se lleva por delante a sus vecinos sanos). La línea citada en §4.4 era
+> `JsonEventLog.kt:765` **antes** de ese commit; después el archivo creció y la lectura está en
+> `:901`. El apartado se conserva porque el razonamiento sigue siendo el que justifica el
+> fail-closed, pero leerlo como defecto abierto induce a «arreglar» algo ya arreglado.
+
 ### 4.5 Decisión implicada
 
 El DSL está `@Deprecated` y siendo reescrito pre-compiler hacia `try/catch` del

@@ -4,8 +4,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.regex.Pattern
 
-private const val IMPORT_ANCHOR_TEMPLATE = "^import\\s+([\\w.]+\\.)?<TOKEN>(\\..*)?\\s*$"
-
 private fun importAnchorFor(token: String): Pattern =
     Pattern.compile("^import\\s+([\\w.]+\\.)?${Pattern.quote(token)}(\\..*)?\\s*$")
 
@@ -52,29 +50,6 @@ object SourceScanner {
 
     fun findExcludeCalls(root: Path): List<Finding> {
         return findBuildSubstring(root, "exclude(")
-    }
-
-    fun findUnallowedImplementation(buildFile: Path, allowed: Set<String>): List<Finding> {
-        val findings = mutableListOf<Finding>()
-        if (!Files.exists(buildFile)) return findings
-        val implPattern = Pattern.compile("""implementation\s*\(\s*["']([^"']+)["']\s*\)""")
-        for ((lineIdx, line) in Files.readAllLines(buildFile).withIndex()) {
-            val trimmed = line.trim()
-            if (trimmed.startsWith("//")) continue
-            val matcher = implPattern.matcher(line)
-            if (matcher.find()) {
-                val coords = matcher.group(1)!!
-                if (coords.startsWith("project(")) continue
-                val parts = coords.split(":")
-                if (parts.size >= 2) {
-                    val groupArtifact = "${parts[0]}:${parts[1]}"
-                    if (groupArtifact !in allowed) {
-                        findings.add(Finding(buildFile, lineIdx + 1, groupArtifact, line))
-                    }
-                }
-            }
-        }
-        return findings
     }
 
     /**

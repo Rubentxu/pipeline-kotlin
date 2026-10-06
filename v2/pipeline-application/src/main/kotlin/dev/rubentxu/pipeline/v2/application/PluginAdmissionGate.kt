@@ -1,0 +1,128 @@
+package dev.rubentxu.pipeline.v2.application
+
+import dev.rubentxu.pipeline.v2.domain.step.ArtifactOrigin
+import dev.rubentxu.pipeline.v2.domain.step.PluginAdmission
+import dev.rubentxu.pipeline.v2.domain.step.PluginAdmissionResult
+import dev.rubentxu.pipeline.v2.domain.step.SemVer
+import java.util.ServiceLoader
+
+/**
+ * S6/D — the composition gate that makes "admit, THEN load" an ordering, not a promise.
+ *
+ * ## Why this type exists
+ *
+ * [PluginAdmission] is a pure decision and [PluginManifestResourceReader] is a pure read.
+ * Neither of them can enforce WHEN a plugin's code runs; a caller that loads the contributor
+ * first and admits afterwards satisfies both signatures perfectly and defeats the entire
+ * guarantee. That is the inversion this gate closes: the ordering lives in the type that
+ * both halves are called from, so a wrong order is not possible to express here.
+ *
+ * ## The four phases, and why each is where it is
+ *
+ * ```text
+ * Class.forName(name, initialize = false)   -> link, do NOT run plugin code
+ * read manifest by resource name            -> the DECLARATION
+ * admit(decoded, measured, runtime, seen)   -> the DECISION
+ * Class.forName(name, initialize = true)    -> ONLY NOW may plugin code run
+ * ServiceLoader contributions               -> and only what admission accepted
+ * ```
+ *
+ * `initialize = false` is load-bearing and is the reason the first line is safe: it resolves
+ * the class without running its static initialiser, which is what lets the manifest be read
+ * "by artifact" without touching a line of plugin code. A reader that needed an instance to
+ * find the declaration could not make that promise, and the difference between those two
+ * readers is the whole content of ADR-EVO-003.
+ *
+ * ## A refused plugin is never linked
+ *
+ * On refusal nothing after the decision runs, and the method returns the typed rejection. It
+ * does not throw, does not skip, and does not return an empty list a caller could mistake for
+ * "this plugin contributed nothing" — absence of a plugin and absence of a contribution are
+ * different facts and must stay different.
+ */
+object PluginAdmissionGate {
+
+    /**
+     * Admit a contributor class and, only if admitted, let its code run.
+     *
+     * @param contributorClassName the ServiceLoader provider class name.
+     * @param classLoader loader that will also supply the manifest resource.
+     * @param runtimeVersion the running PipelineK version, for the API range comparison.
+     * @param alreadyAdmitted plugin identities admitted so far in this composition.
+     * @param strict whether the manifest must come from the same code source as the
+     *   contributor. Left on in production; tests inject manifests for classes they cannot
+     *   repackage and pass `false`, which is a weaker promise and says so.
+     */
+    fun admitThenLoad(
+        contributorClassName: String,
+        classLoader: ClassLoader,
+        runtimeVersion: SemVer,
+        alreadyAdmitted: Set<String>,
+        strict: Boolean = true,
+    ): PluginAdmissionResult {
+        // Phase 1: LINK ONLY. initialize=false, so no static initialiser in the plugin runs.
+        val contributorClass = try {
+            Class.forName(contributorClassName, /* initialize = */ false, classLoader)
+        } catch (e: ClassNotFoundException) {
+            return PluginAdmissionResult.Refused(
+                dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection.MalformedDocument(
+                    "contributor class $contributorClassName is not on the runtime classpath",
+                ),
+            )
+        }
+
+        // Phase 2: read the DECLARATION, by resource name, with no reference to the class.
+        val read = PluginManifestResourceReader.read(classLoader, contributorClass, strict)
+        val decoded = when (read) {
+            is PluginManifestReadOutcome.NoManifest ->
+                return PluginAdmissionResult.Refused(
+                    dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection.MalformedDocument(
+                        "no manifest at ${dev.rubentxu.pipeline.v2.domain.step.PluginManifestCodec.RESOURCE_PATH} " +
+                            "for contributor $contributorClassName; a plugin declares itself, and one that " +
+                            "declares nothing is refused rather than admitted on trust",
+                    ),
+                )
+
+            is PluginManifestReadOutcome.Refused -> return PluginAdmissionResult.Refused(read.rejection)
+            is PluginManifestReadOutcome.Read -> read.decoded
+        }
+
+        val accepted = decoded as? dev.rubentxu.pipeline.v2.domain.step.PluginManifestDecodeResult.Accepted
+            ?: return PluginAdmissionResult.Refused(
+                (decoded as dev.rubentxu.pipeline.v2.domain.step.PluginManifestDecodeResult.Rejected).rejection,
+            )
+
+        // Phase 3: MEASURE what the runtime can measure, then decide.
+        val origin = ArtifactOrigin.LocalClasspathEntry(contributorClass.protectionDomain?.codeSource?.location?.toString() ?: "unknown")
+        val identity = PluginManifestResourceReader.measure(
+            classLoader = classLoader,
+            declaredDigest = accepted.manifest.release.digest,
+            origin = origin,
+        )
+
+        val admitted = PluginAdmission.admit(
+            decoded = decoded,
+            identity = identity,
+            runtimeVersion = runtimeVersion,
+            alreadyAdmitted = alreadyAdmitted,
+        )
+        if (admitted is PluginAdmissionResult.Refused) {
+            // Nothing below this line runs for a refused plugin. That is the guarantee.
+            return admitted
+        }
+
+        // Phase 4: ONLY NOW may plugin code initialise and contribute.
+        try {
+            Class.forName(contributorClassName, /* initialize = */ true, classLoader)
+            ServiceLoader.load(contributorClass, classLoader).forEach { /* force provider construction */ }
+        } catch (e: Throwable) {
+            return PluginAdmissionResult.Refused(
+                dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection.MalformedDocument(
+                    "contributor $contributorClassName initialised but failed to provide: ${e.message}",
+                ),
+            )
+        }
+
+        return admitted
+    }
+}

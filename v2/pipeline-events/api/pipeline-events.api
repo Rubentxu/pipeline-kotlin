@@ -2079,16 +2079,19 @@ public final class dev/rubentxu/pipeline/v2/events/identity/EventInspection {
 }
 
 public final class dev/rubentxu/pipeline/v2/events/identity/EventPage {
-	public fun <init> (Ljava/util/List;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;Z)V
+	public fun <init> (Ljava/util/List;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;ZLjava/util/List;)V
+	public synthetic fun <init> (Ljava/util/List;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;ZLjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/util/List;
 	public final fun component2 ()Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;
 	public final fun component3 ()Z
-	public final fun copy (Ljava/util/List;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;Z)Ldev/rubentxu/pipeline/v2/events/identity/EventPage;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/identity/EventPage;Ljava/util/List;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;ZILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/identity/EventPage;
+	public final fun component4 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;ZLjava/util/List;)Ldev/rubentxu/pipeline/v2/events/identity/EventPage;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/identity/EventPage;Ljava/util/List;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;ZLjava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/identity/EventPage;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getEnvelopes ()Ljava/util/List;
 	public final fun getHasMore ()Z
 	public final fun getNextCursor ()Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;
+	public final fun getRefusals ()Ljava/util/List;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -2098,6 +2101,7 @@ public abstract interface class dev/rubentxu/pipeline/v2/events/identity/EventPu
 }
 
 public abstract class dev/rubentxu/pipeline/v2/events/identity/EventQuery {
+	public final fun matches (Ldev/rubentxu/pipeline/v2/events/identity/PipelineEventEnvelope;)Z
 }
 
 public final class dev/rubentxu/pipeline/v2/events/identity/EventQuery$All : dev/rubentxu/pipeline/v2/events/identity/EventQuery {

@@ -1,0 +1,260 @@
+{
+  "schema_version": 1,
+  "refinement": "Gradle-informed specification refinement r2",
+  "date": "2026-10-06",
+  "document_status": "PROPOSED",
+  "input_archive": {
+    "sha256": "8d6d4e1e41da6070ec8707183a563ca7a8bce69ff0acee3ec7d5f193448aabb2",
+    "original_manifest_verified": true
+  },
+  "pipelinek_baseline": {
+    "repository": "https://github.com/Rubentxu/pipeline-kotlin",
+    "commit": "569a088cc76f1a826c619577eefa1475404c3fb4",
+    "scope": "Inspected implementation and canonical design; no product code changed by this refinement."
+  },
+  "inspected_primary_sources": [
+    {
+      "key": "compiler98",
+      "url": "https://github.com/gradle/gradle/blob/v9.8.0/platforms/core-configuration/kotlin-dsl/src/main/kotlin/org/gradle/kotlin/dsl/support/KotlinCompiler.kt",
+      "github_blob_sha": "9715d28f70459ec008a62c5c69a4ef1f17333a5b",
+      "verified": true
+    },
+    {
+      "key": "jpms98",
+      "url": "https://github.com/gradle/gradle/blob/v9.8.0/platforms/core-runtime/base-services/src/main/java/org/gradle/internal/jvm/JpmsConfiguration.java",
+      "github_blob_sha": "d12da160d45bea5f368456e711fabe092bbdd457",
+      "verified": true
+    },
+    {
+      "key": "programid",
+      "url": "https://github.com/gradle/gradle/blob/v8.14.5/platforms/core-configuration/kotlin-dsl/src/main/kotlin/org/gradle/kotlin/dsl/execution/ProgramId.kt",
+      "github_blob_sha": "702fb622f7ebc01d6e6ebbc3a561f6d73d28d674",
+      "verified": true
+    },
+    {
+      "key": "gradle_followup_d3",
+      "url": "https://github.com/gradle/gradle/blob/v9.8.0/platforms/core-configuration/kotlin-dsl/src/main/kotlin/org/gradle/kotlin/dsl/execution/Interpreter.kt",
+      "github_blob_sha": "4c97dbd6ae402d81aa8b0889d4901feceb2699c1",
+      "verified": true
+    },
+    {
+      "key": "gradle_followup_d4",
+      "url": "https://github.com/gradle/gradle/blob/v9.8.0/platforms/core-configuration/kotlin-dsl/src/main/kotlin/org/gradle/kotlin/dsl/execution/ProgramId.kt",
+      "github_blob_sha": "1ae03ec9fc1575ee17531342bb7c91a104325125",
+      "verified": true
+    },
+    {
+      "key": "gradle_followup_script_saving",
+      "url": "https://github.com/JetBrains/kotlin/blob/v2.4.10/libraries/scripting/jvm-host/src/kotlin/script/experimental/jvmhost/jvmScriptSaving.kt",
+      "github_blob_sha": "b1033c66fa9a6ded83c9916ec919d48c44e5cc5b",
+      "verified": true
+    },
+    {
+      "key": "jpms814",
+      "url": "https://github.com/gradle/gradle/blob/v8.14.5/platforms/core-runtime/base-services/src/main/java/org/gradle/internal/jvm/JpmsConfiguration.java",
+      "github_blob_sha": "9cf8f1a86ec1542b328a105112efe26b6f47f601",
+      "verified": true
+    },
+    {
+      "key": "evaluator814",
+      "url": "https://github.com/gradle/gradle/blob/v8.14.5/platforms/core-configuration/kotlin-dsl/src/main/kotlin/org/gradle/kotlin/dsl/provider/KotlinScriptEvaluator.kt",
+      "github_blob_sha": "9920fa2b0ad92a67258e95425ef3fac779a87371",
+      "verified": true
+    }
+  ],
+  "additional_verified_sources": [
+    {
+      "key": "kotlin-fastjar-2.4.10",
+      "url": "https://github.com/JetBrains/kotlin/blob/v2.4.10/compiler/cli/cli-base/src/org/jetbrains/kotlin/cli/jvm/compiler/jarfs/FastJarFileSystem.kt",
+      "github_blob_sha": "812ed434ce0982f6a9aecd77f5574072806576b4",
+      "verified": true
+    },
+    {
+      "key": "kotlin-fastjar-2.4.20",
+      "url": "https://github.com/JetBrains/kotlin/blob/v2.4.20/compiler/cli/cli-base/src/org/jetbrains/kotlin/cli/jvm/compiler/jarfs/FastJarFileSystem.kt",
+      "github_blob_sha": "812ed434ce0982f6a9aecd77f5574072806576b4",
+      "verified": true
+    },
+    {
+      "key": "kotlin-core-environment-2.4.10",
+      "url": "https://github.com/JetBrains/kotlin/blob/v2.4.10/compiler/cli/cli-base/src/org/jetbrains/kotlin/cli/jvm/compiler/KotlinCoreEnvironment.kt",
+      "verified": true
+    },
+    {
+      "key": "kotlin-arguments-2.4.10",
+      "url": "https://github.com/JetBrains/kotlin/blob/v2.4.10/compiler/arguments/src/org/jetbrains/kotlin/arguments/description/JvmCompilerArguments.kt",
+      "verified": true
+    },
+    {
+      "key": "gradle-8.14.5-compiler",
+      "url": "https://github.com/gradle/gradle/blob/v8.14.5/platforms/core-configuration/kotlin-dsl/src/main/kotlin/org/gradle/kotlin/dsl/support/KotlinCompiler.kt",
+      "verified": true
+    },
+    {
+      "key": "gradle-kotlin-dsl-user-guide",
+      "url": "https://docs.gradle.org/current/userguide/kotlin_dsl.html",
+      "observed_document_version": "9.8.0",
+      "verified": true
+    },
+    {
+      "key": "gradle-configuration-cache-user-guide",
+      "url": "https://docs.gradle.org/current/userguide/configuration_cache.html",
+      "observed_document_version": "9.8.0",
+      "verified": true
+    },
+    {
+      "key": "jdk25-launcher",
+      "url": "https://docs.oracle.com/en/java/javase/25/docs/specs/man/java.html",
+      "verified": true
+    }
+  ],
+  "findings": [
+    {
+      "id": "F01",
+      "sources": [
+        "compiler98",
+        "gradle-8.14.5-compiler",
+        "gradle_followup_script_saving"
+      ],
+      "observed": "Gradle owns compiler configuration and generates script classes with a non-evaluating compiler result.",
+      "transfer": "Explicit phases and actual representation spike; saving classes does not prove PipelineK reconstruction."
+    },
+    {
+      "id": "F02",
+      "sources": [
+        "programid",
+        "gradle_followup_d4",
+        "evaluator814"
+      ],
+      "observed": "Compiled program identity includes source/template/options/classpath context; disk and loaded-program reuse are distinct.",
+      "transfer": "Complete semantic v2 key, effective ordered dependency bytes and separate memory/persistence gates."
+    },
+    {
+      "id": "F03",
+      "sources": [
+        "gradle_followup_d3"
+      ],
+      "observed": "Staged buildscript/plugin preparation precedes body compilation and program execution.",
+      "transfer": "Prepare admitted dependencies through existing PipelineK configuration/plan; no new plugins DSL."
+    },
+    {
+      "id": "F04",
+      "sources": [
+        "jpms98",
+        "jpms814"
+      ],
+      "observed": "Gradle 9.8 adds Unsafe allow for Java 24+ daemon use; the corresponding 8.14.5 configuration does not.",
+      "transfer": "Version-specific comparison; allow suppresses warnings, not the compiler operation."
+    },
+    {
+      "id": "F05",
+      "sources": [
+        "kotlin-fastjar-2.4.10",
+        "kotlin-fastjar-2.4.20",
+        "kotlin-core-environment-2.4.10",
+        "kotlin-arguments-2.4.10",
+        "jdk25-launcher"
+      ],
+      "observed": "Kotlin FastJar cleanup invokes Unsafe; inspected FastJar source is identical in 2.4.10/2.4.20.",
+      "transfer": "Explicit standard reader in host/mapper and real Unsafe deny regression, preserving source diagnostics."
+    },
+    {
+      "id": "F06",
+      "sources": [
+        "gradle-configuration-cache-user-guide"
+      ],
+      "observed": "Gradle configuration cache has a separate configuration model and input constraints.",
+      "transfer": "No evaluated PipelineK plan/context caching in this proposal; future input-observation ADR required."
+    },
+    {
+      "id": "F07",
+      "sources": [
+        "pipelinek-canonical-compiler",
+        "pipelinek-host",
+        "pipelinek-cache-key",
+        "pipelinek-scripted-api",
+        "pipelinek-scripting-host-api"
+      ],
+      "observed": "Canonical design already owns compile/evaluate ports; actual public host combines compilation/evaluation and current key is path/manual-revision based. The inspected path does not expose persistent artifact lookup/write.",
+      "transfer": "Reconcile implemented consumers and existing identities; no third engine or claim of observed stale persistent bytecode."
+    },
+    {
+      "id": "F08",
+      "sources": [
+        "pipelinek-s6-sdk",
+        "pipelinek-roadmap"
+      ],
+      "observed": "Semantic SDK/manifest/frozen registry and active roadmap already have canonical owners.",
+      "transfer": "Reuse all canonical contributor families and current sequencing; preserve bundle M0–M10 and terminal retirement."
+    }
+  ],
+  "evidence_limits": {
+    "specification_revision_is_implementation": false,
+    "new_compilation_cache_certified": false,
+    "new_session_reuse_certified": false,
+    "new_product_uat_execution": "NOT_RUN",
+    "prior_warning_study_scope": "Focused original/modified paths, real JDK24 deny probes and scoped fixtures; not certification of the new cache/phase/session design.",
+    "jdk25_from_prior_warning_study": "BLOCKED_ENVIRONMENT; no inferred PASS",
+    "full_repository_release_gate_from_prior_warning_study": "NOT_CERTIFIED",
+    "sddk_state_changed": false,
+    "source_repository_modified": false
+  },
+  "pipelinek_source_snapshots": [
+    {
+      "key": "pipelinek-canonical-compiler",
+      "path": "docs/v2/03-specifications/SCRIPTING_COMPILER_SPEC.md",
+      "url": "https://github.com/Rubentxu/pipeline-kotlin/blob/569a088cc76f1a826c619577eefa1475404c3fb4/docs/v2/03-specifications/SCRIPTING_COMPILER_SPEC.md",
+      "content_sha256": "5621a9f8178211a9633034a8af965985b232543053f037f22c9e4e1c18ffa286",
+      "verified": true
+    },
+    {
+      "key": "pipelinek-host",
+      "path": "v2/pipeline-scripting-kotlin24/src/main/kotlin/dev/rubentxu/pipeline/v2/scripting/Kotlin24ScriptingHost.kt",
+      "url": "https://github.com/Rubentxu/pipeline-kotlin/blob/569a088cc76f1a826c619577eefa1475404c3fb4/v2/pipeline-scripting-kotlin24/src/main/kotlin/dev/rubentxu/pipeline/v2/scripting/Kotlin24ScriptingHost.kt",
+      "content_sha256": "d42be70629f4eb8268f104f0f3e577c41fff6eb5a1f4b4078ad7d34ba04d70f7",
+      "verified": true
+    },
+    {
+      "key": "pipelinek-mapper",
+      "path": "v2/pipeline-scripting-kotlin24/src/main/kotlin/dev/rubentxu/pipeline/v2/scripting/KotlinScriptedSourceMapper.kt",
+      "url": "https://github.com/Rubentxu/pipeline-kotlin/blob/569a088cc76f1a826c619577eefa1475404c3fb4/v2/pipeline-scripting-kotlin24/src/main/kotlin/dev/rubentxu/pipeline/v2/scripting/KotlinScriptedSourceMapper.kt",
+      "content_sha256": "51c552b767e06119419fd4eaf498f121564afa42c7d33fb04a02950b9036c022",
+      "verified": true
+    },
+    {
+      "key": "pipelinek-cache-key",
+      "path": "v2/pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/scripting/CacheKey.kt",
+      "url": "https://github.com/Rubentxu/pipeline-kotlin/blob/569a088cc76f1a826c619577eefa1475404c3fb4/v2/pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/scripting/CacheKey.kt",
+      "content_sha256": "90400f7fb3b1648ce10f32df186299360fd310f2377cbeff441cd880eba0f95f",
+      "verified": true
+    },
+    {
+      "key": "pipelinek-scripted-api",
+      "path": "v2/pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/scripting/ScriptedExecutionApi.kt",
+      "url": "https://github.com/Rubentxu/pipeline-kotlin/blob/569a088cc76f1a826c619577eefa1475404c3fb4/v2/pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/scripting/ScriptedExecutionApi.kt",
+      "content_sha256": "eb2677197b8bda5436c79e3734e55849cdfffed80b8e57e7d1e582e34c15e4e6",
+      "verified": true
+    },
+    {
+      "key": "pipelinek-scripting-host-api",
+      "path": "v2/pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/scripting/ScriptingHost.kt",
+      "url": "https://github.com/Rubentxu/pipeline-kotlin/blob/569a088cc76f1a826c619577eefa1475404c3fb4/v2/pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/scripting/ScriptingHost.kt",
+      "content_sha256": "6a880dc082d6e9d298e997dd731b10e429871ba1f93672b48dcf49746a6cf516",
+      "verified": true
+    },
+    {
+      "key": "pipelinek-s6-sdk",
+      "path": "docs/pipelinek-semantic-evolution/05-step-plugin-sdk-v2.md",
+      "url": "https://github.com/Rubentxu/pipeline-kotlin/blob/569a088cc76f1a826c619577eefa1475404c3fb4/docs/pipelinek-semantic-evolution/05-step-plugin-sdk-v2.md",
+      "content_sha256": "b4d312f87efb174b3750e629208c1e77ed210edbbd579b9f35485c37b7a0de8a",
+      "verified": true
+    },
+    {
+      "key": "pipelinek-roadmap",
+      "path": "docs/v2/05-roadmap/ROADMAP.md",
+      "url": "https://github.com/Rubentxu/pipeline-kotlin/blob/569a088cc76f1a826c619577eefa1475404c3fb4/docs/v2/05-roadmap/ROADMAP.md",
+      "content_sha256": "da7eff7c457d23cfd9ba4aa50541b49d6da10016e7327d5b223beb9c0ae01f99",
+      "verified": true
+    }
+  ]
+}

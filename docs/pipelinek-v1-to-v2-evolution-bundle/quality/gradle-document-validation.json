@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-06",
+  "status": "PASS_DOCUMENT_CHECKS_ONLY",
+  "input_sha256": "8d6d4e1e41da6070ec8707183a563ca7a8bce69ff0acee3ec7d5f193448aabb2",
+  "baseline": "569a088cc76f1a826c619577eefa1475404c3fb4",
+  "checks": [
+    {
+      "name": "original_archive_and_manifest",
+      "status": "PASS",
+      "details": "Input SHA256 and 30 payload fingerprints verified"
+    },
+    {
+      "name": "original_documents_retained",
+      "status": "PASS",
+      "details": "31 original files retained; manifest will be regenerated"
+    },
+    {
+      "name": "identifier_definitions_and_cross_references",
+      "status": "PASS",
+      "details": {
+        "UAT": 43,
+        "AAT": 28,
+        "WU": 42,
+        "ADR": 14,
+        "GR": 16,
+        "resolved_references": 524
+      }
+    },
+    {
+      "name": "requirement_trace_coverage",
+      "status": "PASS",
+      "details": "All 16 GR requirements have normative contract, ADR, work units, UAT, AAT and scope"
+    },
+    {
+      "name": "proposal_status_and_roadmap_continuity",
+      "status": "PASS",
+      "details": "M0–M10 ordered, M10 terminal, all ADRs Proposed, product gates NOT_RUN and conditional scopes explicit"
+    },
+    {
+      "name": "markdown_links_fences_and_json_examples",
+      "status": "PASS",
+      "details": {
+        "local_links_resolved": 43,
+        "markdown_files": 40,
+        "fences": "balanced",
+        "JSON_examples": "parsed"
+      }
+    },
+    {
+      "name": "evidence_provenance_and_limits",
+      "status": "PASS",
+      "details": {
+        "sources": 24,
+        "findings": 8,
+        "repository_anchors": 27,
+        "baseline_snapshots": 8,
+        "scope": "primary source identities plus documentation checks; no new product certification"
+      }
+    },
+    {
+      "name": "inspected_repository_unchanged",
+      "status": "PASS",
+      "details": {
+        "commit": "569a088cc76f1a826c619577eefa1475404c3fb4",
+        "working_tree": "clean"
+      }
+    }
+  ],
+  "changes": {
+    "modified_original_documents": [
+      "00-README.md",
+      "01-executive-proposal.md",
+      "02-current-state-and-guardrails.md",
+      "03-target-architecture.md",
+      "16-migration-and-compatibility.md",
+      "17-v1-retirement-and-repository-cleanup.md",
+      "18-definition-of-done.md",
+      "REFERENCES.md",
+      "adrs/ADR-EVO-002-script-dependency-plan.md",
+      "adrs/ADR-EVO-003-static-manifest-before-classloading.md",
+      "adrs/ADR-EVO-008-cachekey-v2-content-identity.md",
+      "plans/11-roadmap.md",
+      "plans/12-work-units.md",
+      "quality/13-UAT-master-plan.md",
+      "quality/14-AAT-master-plan.md",
+      "quality/15-risk-register.md",
+      "specifications/04-shared-libraries-2.0.md",
+      "specifications/05-affordance-api-and-cli-discovery.md",
+      "specifications/06-plugin-and-library-artifact-admission.md",
+      "specifications/07-introspection-diagnostics-lsp.md",
+      "specifications/08-plan-why-not-and-inline-invocation.md",
+      "specifications/09-cachekey-v2-and-compilation-performance.md",
+      "specifications/10-config-and-resource-budget-policy.md"
+    ],
+    "unchanged_original_documents": [
+      "adrs/ADR-EVO-001-library-plugin-separation.md",
+      "adrs/ADR-EVO-004-affordance-api.md",
+      "adrs/ADR-EVO-005-introspection-read-model.md",
+      "adrs/ADR-EVO-006-preparation-decision-authority.md",
+      "adrs/ADR-EVO-007-lsp-from-runtime-metadata.md",
+      "adrs/ADR-EVO-009-xdg-no-repo-litter.md",
+      "adrs/ADR-EVO-010-v1-terminal-retirement.md"
+    ],
+    "added_payload_documents": [
+      "22-gradle-refinement-review.md",
+      "adrs/ADR-EVO-011-compiler-phase-separation.md",
+      "adrs/ADR-EVO-012-compiled-artifact-reuse.md",
+      "adrs/ADR-EVO-013-owned-compiler-sessions.md",
+      "adrs/ADR-EVO-014-explicit-jvm-compiler-policy.md",
+      "quality/gradle-benchmark-protocol.md",
+      "quality/gradle-document-validation.json",
+      "quality/gradle-primary-evidence.json",
+      "quality/gradle-traceability.md",
+      "specifications/19-script-compilation-and-evaluation.md",
+      "specifications/20-compiled-artifact-cache.md",
+      "specifications/21-compiler-session-lifecycle.md"
+    ],
+    "manifest": "regenerated; original manifest separately verified",
+    "checksum_file": "generated"
+  },
+  "implementation_acceptance": {
+    "UAT": "NOT_RUN",
+    "AAT": "NOT_RUN",
+    "new_cache_benchmarks": "NOT_RUN",
+    "ADRs": "PROPOSED",
+    "SDDK_registration": "NOT_PERFORMED",
+    "source_changes": false
+  },
+  "reproduction": "Extract the ZIP; verify SHA256SUMS and MANIFEST.json file_count/bytes/sha256; resolve local Markdown links and GR/ADR/WU/UAT/AAT definitions. Source snapshot fingerprints refer to the exact inspected baseline, not certification of a future implementation."
+}

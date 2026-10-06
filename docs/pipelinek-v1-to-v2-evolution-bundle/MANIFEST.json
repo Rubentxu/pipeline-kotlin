@@ -1,0 +1,226 @@
+{
+  "bundle": "pipelinek-v1-to-v2-evolution-bundle",
+  "date": "2026-10-06",
+  "baseline": "569a088cc76f1a826c619577eefa1475404c3fb4",
+  "revision": "gradle-refinement-r2",
+  "status": "PROPOSED",
+  "input_archive_sha256": "8d6d4e1e41da6070ec8707183a563ca7a8bce69ff0acee3ec7d5f193448aabb2",
+  "excludes": [
+    "MANIFEST.json",
+    "SHA256SUMS"
+  ],
+  "exclusion_reason": "Avoid recursive self-hashes; SHA256SUMS covers MANIFEST.json and all payload files, excluding itself.",
+  "file_count": 42,
+  "files": [
+    {
+      "path": "00-README.md",
+      "sha256": "133654ce3303156f0b0b2c47eb2f6dd4cdd43bc1129b995a566b83c37dba39b4",
+      "bytes": 5141
+    },
+    {
+      "path": "01-executive-proposal.md",
+      "sha256": "cfb1186fc12f1720258cd7f6aa446df4cb76c3ff876ce51adfc34d278a5986e1",
+      "bytes": 6796
+    },
+    {
+      "path": "02-current-state-and-guardrails.md",
+      "sha256": "71c4912647db33b065a34e18740010140ec4d8121d817d75783cec8fe818b1bc",
+      "bytes": 5245
+    },
+    {
+      "path": "03-target-architecture.md",
+      "sha256": "2ed80e2f9bd46fa190c1b940214e09fe813599b7fcca0ea070680aa37e808dce",
+      "bytes": 5205
+    },
+    {
+      "path": "16-migration-and-compatibility.md",
+      "sha256": "6cc52b011f3eb93c4eaace767344032fa81a9c8df1f6ed217ab8c94811174b85",
+      "bytes": 3481
+    },
+    {
+      "path": "17-v1-retirement-and-repository-cleanup.md",
+      "sha256": "da0cb5e6a72c0f9ed471b35fb29f41d3f2630d03e5b1dead00aa2ca2ca686510",
+      "bytes": 6103
+    },
+    {
+      "path": "18-definition-of-done.md",
+      "sha256": "e69654bc579bb1405b91ba72c6f51871b43121013caee149cd19f39110fd3dc7",
+      "bytes": 4125
+    },
+    {
+      "path": "22-gradle-refinement-review.md",
+      "sha256": "e4129916465f07fd2ac6e79223cf8971a4b2b7287a23aae3d3b94bfc0642a90e",
+      "bytes": 9449
+    },
+    {
+      "path": "REFERENCES.md",
+      "sha256": "742629eebb25175e785142d1cfb6d0b36075a8331458f6dd734878924b7de705",
+      "bytes": 10255
+    },
+    {
+      "path": "adrs/ADR-EVO-001-library-plugin-separation.md",
+      "sha256": "d6dd63651ffd968fbb5b7a7e249a3d4ce297ae2a763d2d734d4acc9885c07b00",
+      "bytes": 835
+    },
+    {
+      "path": "adrs/ADR-EVO-002-script-dependency-plan.md",
+      "sha256": "9a3525f271a891977036b4c888a799fdfa3f3cfe730d65080dbe34269c86ec75",
+      "bytes": 675
+    },
+    {
+      "path": "adrs/ADR-EVO-003-static-manifest-before-classloading.md",
+      "sha256": "724287ccd1742b5f875c76cdf8c39b8f7d8d7848b99bf39ad2611a4bc92679b1",
+      "bytes": 649
+    },
+    {
+      "path": "adrs/ADR-EVO-004-affordance-api.md",
+      "sha256": "39d162f15aeef9c99c5421ac4a37dd8e56afe915c31b2a39ea6b14b823c429bd",
+      "bytes": 364
+    },
+    {
+      "path": "adrs/ADR-EVO-005-introspection-read-model.md",
+      "sha256": "5f7483fbff63ba59b45bb0501602695dd301cc8b862ed10552448d2df5cea68f",
+      "bytes": 341
+    },
+    {
+      "path": "adrs/ADR-EVO-006-preparation-decision-authority.md",
+      "sha256": "b75f335a3d80952cea760fdc1915ab6849576fafe949676b7657f954fec5542b",
+      "bytes": 375
+    },
+    {
+      "path": "adrs/ADR-EVO-007-lsp-from-runtime-metadata.md",
+      "sha256": "2934deb17fe366c3757a2b2eccd0cc962ade060a692f8ac0cc8e3bda5f63a52c",
+      "bytes": 334
+    },
+    {
+      "path": "adrs/ADR-EVO-008-cachekey-v2-content-identity.md",
+      "sha256": "e16d9917484c2db904e09c9c385bd3f19f265c8978ddd8af31008212a01cd46d",
+      "bytes": 1347
+    },
+    {
+      "path": "adrs/ADR-EVO-009-xdg-no-repo-litter.md",
+      "sha256": "44539f109ba32dd4c413087d99fb629f5e1ffb2edce175ecb237ff8940004942",
+      "bytes": 395
+    },
+    {
+      "path": "adrs/ADR-EVO-010-v1-terminal-retirement.md",
+      "sha256": "e5aa12bfde32fde63a77b7558e27fb9ea9ab0da8fe55754e71b477ce8748cbe0",
+      "bytes": 674
+    },
+    {
+      "path": "adrs/ADR-EVO-011-compiler-phase-separation.md",
+      "sha256": "8580e33a03145994f3f4968d74befaa4401684bc39d398f94e000d960699115f",
+      "bytes": 1544
+    },
+    {
+      "path": "adrs/ADR-EVO-012-compiled-artifact-reuse.md",
+      "sha256": "f3e34ff1d8768f5bc5ad870a94248d5b136ae81c210ec766a69ed287001cdb67",
+      "bytes": 1448
+    },
+    {
+      "path": "adrs/ADR-EVO-013-owned-compiler-sessions.md",
+      "sha256": "552df46f104a1c1f188b4fc1288f5fa989580dc174702963d771b5a080fd2d47",
+      "bytes": 1064
+    },
+    {
+      "path": "adrs/ADR-EVO-014-explicit-jvm-compiler-policy.md",
+      "sha256": "93ee233c1304d66548f2643c27edc4470e9a9d0cce35fd7b6a5d1d2e13e26153",
+      "bytes": 1393
+    },
+    {
+      "path": "plans/11-roadmap.md",
+      "sha256": "77d23579dcbd26ffa7d69b62ac48d43b0a715ac0d2273074010f404f4a8d387a",
+      "bytes": 10131
+    },
+    {
+      "path": "plans/12-work-units.md",
+      "sha256": "5ceca82911959f09105b65b17b726e2a2cf968dd843c93880bc07c4e5044d116",
+      "bytes": 10452
+    },
+    {
+      "path": "quality/13-UAT-master-plan.md",
+      "sha256": "1bb06796ee41bd17091ed951e6e50475acae8b1ea8a117515e8989603bb60a09",
+      "bytes": 17384
+    },
+    {
+      "path": "quality/14-AAT-master-plan.md",
+      "sha256": "36ecda43ac8cb6bef3ff50896350854c69bef3674d4f0238cd865392a028c155",
+      "bytes": 8548
+    },
+    {
+      "path": "quality/15-risk-register.md",
+      "sha256": "8a2e9079ee591aa22d033c3049db337f5a137e64adcc6fc8a9d51287963297fb",
+      "bytes": 4381
+    },
+    {
+      "path": "quality/gradle-benchmark-protocol.md",
+      "sha256": "0360178cadebe08cd12cac1268c6ccb662ad0194c48c44836b929adb16cf7dad",
+      "bytes": 2618
+    },
+    {
+      "path": "quality/gradle-document-validation.json",
+      "sha256": "bef788c985e4d5950173973974d0b3f5aaff4abfeb83c1d9491c802131fe3f49",
+      "bytes": 4804
+    },
+    {
+      "path": "quality/gradle-primary-evidence.json",
+      "sha256": "55403bcc2dbed36e44d90bb9c0452f435eda8c6f02ce4b736e6278b14cda27c9",
+      "bytes": 12369
+    },
+    {
+      "path": "quality/gradle-traceability.md",
+      "sha256": "47b421e11114002d9c5648509b725937adc65e543c8055833729e4dbaf7729cf",
+      "bytes": 5550
+    },
+    {
+      "path": "specifications/04-shared-libraries-2.0.md",
+      "sha256": "1c260169f07f2344c2fea57b4f4bfb308810d97ef1a4e966fd567d5f8f19d712",
+      "bytes": 7487
+    },
+    {
+      "path": "specifications/05-affordance-api-and-cli-discovery.md",
+      "sha256": "6598c6ffcd48b84748a9b91d2c5df1068cac206b3d95cf79f9db5511641e804f",
+      "bytes": 4705
+    },
+    {
+      "path": "specifications/06-plugin-and-library-artifact-admission.md",
+      "sha256": "b2aab48dbe27e3951f3e8a0552ecd6b295c1790ca1654b65951bc6d512916f31",
+      "bytes": 4386
+    },
+    {
+      "path": "specifications/07-introspection-diagnostics-lsp.md",
+      "sha256": "4ee351686c93a25da5ed3ac9896286329408aafde1307a17a24c08e3b8574e14",
+      "bytes": 3954
+    },
+    {
+      "path": "specifications/08-plan-why-not-and-inline-invocation.md",
+      "sha256": "c16d99a9acf561bf28813c07b5879122bcd418014f627dbffc86c0b8a95a6c15",
+      "bytes": 2708
+    },
+    {
+      "path": "specifications/09-cachekey-v2-and-compilation-performance.md",
+      "sha256": "ea9b5019a3cdde49068585f6ec5166a2fd1c0fb8241d99e6eaff7400ddccf924",
+      "bytes": 5961
+    },
+    {
+      "path": "specifications/10-config-and-resource-budget-policy.md",
+      "sha256": "c3f91529ccd14a9022a52cf701a8f6b49ea58cba22c51ea4fe9423d6579258a6",
+      "bytes": 1962
+    },
+    {
+      "path": "specifications/19-script-compilation-and-evaluation.md",
+      "sha256": "b129f4c9b52ac766d70be938e134b80b11d2a2d0cd5be3511bc67dd59c76c3c8",
+      "bytes": 6818
+    },
+    {
+      "path": "specifications/20-compiled-artifact-cache.md",
+      "sha256": "34e65165cc39b5bd002d33a10bfb15752a0b01f8c4a7755e0c1616c9dbff28ca",
+      "bytes": 5100
+    },
+    {
+      "path": "specifications/21-compiler-session-lifecycle.md",
+      "sha256": "0ad4759458e81c79541ada9792764d49c2d174bbad6773e191d87a6127cf9eb4",
+      "bytes": 3077
+    }
+  ]
+}

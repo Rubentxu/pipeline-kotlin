@@ -83,7 +83,7 @@
     "pipeline-scripting-api": {
       "self-refusing-constructs": {
         "maturity": "UNSUPPORTED_FAIL_CLOSED",
-        "covers": ["load", "node", "ansiColor", "retry (retrofit)"],
+        "covers": ["git", "load", "node", "ansiColor", "retry (retrofit)"],
         "guarantee": [
           "These four are ACCEPTED SYNTAX THAT ALWAYS FAILS CLOSED, and they are the only",
           "published surfaces in this repository where that is true.",

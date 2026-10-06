@@ -137,6 +137,47 @@ class P3EPublishedContractMaturityFitnessTest {
     private fun searchToken(cover: String): String = cover.substringBefore(" (").trim()
 
     /**
+     * Whether the published ABI really declares [cover], and — the part that matters — whether we
+     * are able to tell.
+     *
+     * "Absent" and "we could not look" are different facts, and collapsing them is how a construct
+     * ends up unprotected while every law passes. This was not hypothetical: `git` is
+     * `UNSUPPORTED_FAIL_CLOSED` in the manifest and ships in the ABI as
+     *
+     * ```
+     * public final fun git--CS5l-g (Ljava/lang/String;...)V
+     * ```
+     *
+     * The `--CS5l-g` suffix is Kotlin's inline-class mangling, so neither `fun git ` nor `fun git(`
+     * occurs in the dump. A search built on those two literals therefore reports `git` as ABSENT —
+     * in both directions at once. Forward, listing `git` in `covers` would have raised a false red
+     * saying it is not published; reverse, it is invisible and so cannot be required. That is a
+     * credible mechanism for the omission it is now written to prevent.
+     *
+     * [Unresolvable] is the third answer and the reason this is a sealed type: a cover such as
+     * `retry conditions` normalises to a phrase with a space, which no JVM method name can contain.
+     * Treating that as "absent" would be a guess that happens to be right; it is reported as
+     * unresolvable so the distinction survives, and so a future cover cannot be added whose
+     * resolution is silent.
+     */
+    private sealed interface Presence {
+        data object Present : Presence
+        data object Absent : Presence
+        data class Unresolvable(val cover: String) : Presence
+    }
+
+    private fun abiPresence(dump: String, cover: String): Presence {
+        val token = searchToken(cover)
+        if (token.isEmpty() || !token.all { it.isLetterOrDigit() || it == '_' }) {
+            return Presence.Unresolvable(cover)
+        }
+        // The `-` arm is the mangled form; it cannot collide with a distinct Kotlin name because
+        // a function name cannot itself contain one.
+        val declared = dump.contains("fun $token ") || dump.contains("fun $token(") || dump.contains("fun $token-")
+        return if (declared) Presence.Present else Presence.Absent
+    }
+
+    /**
      * The manifest row's STATE column, for a construct named exactly [cover].
      *
      * Two things this has to get right, both of which were wrong on its first execution:
@@ -383,13 +424,17 @@ class P3EPublishedContractMaturityFitnessTest {
             families.flatMap { (family, body) ->
                 body["covers"]!!.jsonArray.mapNotNull { cover ->
                     val name = cover.jsonPrimitive.content
-                    val token = searchToken(name)
-                    val inAbi = dump.contains("fun $token ") || dump.contains("fun $token(")
+                    // Same resolver as the reverse law. Resolving "is it published" two ways is how
+                    // the two directions came to disagree about `git`.
+                    val presence = abiPresence(dump, name)
                     val state = manifestStateOf(name)
-                    when {
-                        !inAbi -> "$module/$family cubre '$name', que no esta en $module.api"
-                        state == null -> "$module/$family cubre '$name', ausente de DSL_SURFACE_MANIFEST"
-                        else -> null
+                    when (presence) {
+                        is Presence.Unresolvable ->
+                            "$module/$family cubre '$name', que no es un nombre que se pueda buscar " +
+                                "en la ABI. Declararlo es afirmar una resolucion que nadie comprueba."
+                        Presence.Absent -> "$module/$family cubre '$name', que no esta en $module.api"
+                        Presence.Present ->
+                            if (state == null) "$module/$family cubre '$name', ausente de DSL_SURFACE_MANIFEST" else null
                     }
                 }
             }
@@ -429,6 +474,76 @@ class P3EPublishedContractMaturityFitnessTest {
                 "lo que se pierde es un consumidor que si depende de el.",
         )
     }
+
+    /**
+     * The reverse direction, and the one that actually protects: a construct the manifest refuses
+     * and the ABI still ships MUST be inside some `UNSUPPORTED_FAIL_CLOSED` family.
+     *
+     * Every other law in this class reads ledger → manifest: they check that what the ledger CLAIMS
+     * is true. This one checks what the ledger is SILENT about, and it was written because the
+     * silence had a shape. `git` is classified `UNSUPPORTED_FAIL_CLOSED` by the manifest, ships in
+     * `pipeline-scripting-api.api`, and appears in no `covers` list — while the guarantee of the
+     * family that does list its siblings says reshaping them "does NOT need a recorded exception".
+     * All four pre-existing laws passed on that, because not one of them asks whether a construct
+     * belongs to a family; they only ask whether the family tells the truth about its own members.
+     *
+     * ## Why the omission is expensive rather than tidy
+     *
+     * `UNSUPPORTED_FAIL_CLOSED` is the classification that says there is no compatibility surface:
+     * no consumer program can contain a working call, so there is nothing to freeze and nothing to
+     * break. That is exactly why it must not be reachable by DEFAULT. An unlisted construct has no
+     * such promise, and no promise either — it is simply not in the ledger, so reshaping it requires
+     * no exception and no law notices it was ever part of the family. The classification that is
+     * supposed to be the cheapest to change is the one that silently costs the most.
+     *
+     * ## Why "ships in some published ABI" and not "is in module M"
+     *
+     * The manifest has no module column, so the ABI question is asked against every published
+     * module, reusing [apiDump] and [searchToken] exactly as the forward laws do. Inventing a second
+     * notion of "is this construct published" would be a second authority for a fact that already
+     * has one. A construct with no ABI presence anywhere — `retry conditions`, an overload REMOVED
+     * from the surface — is legitimately out of scope, and this law says so instead of failing on it:
+     * a removed overload cannot resolve in the dump, so requiring it in `covers` would be demanding
+     * an entry that could not satisfy rule 1.
+     */
+    @Test
+    fun `todo constructo que el manifiesto niega y la ABI publica debe estar en alguna familia`() {
+        val dumps = parsePublishedModules().associateWith { apiDump(it) }
+        val covered = surfaces.values
+            .flatMap { families -> families.values }
+            .flatMap { body ->
+                body["covers"]!!.jsonArray.map { it.jsonPrimitive.content }
+            }
+            .toSet()
+
+        val unprotected = manifestRows()
+            .filter { (_, state) -> state == "UNSUPPORTED_FAIL_CLOSED" }
+            .filter { (name, _) -> dumps.values.any { abiPresence(it, name) == Presence.Present } }
+            .mapNotNull { (name, _) -> if (name in covered) null else name }
+
+        assertEquals(
+            emptyList<String>(),
+            unprotected,
+            "constructos que el manifiesto clasifica UNSUPPORTED_FAIL_CLOSED y que la ABI publica " +
+                "sigue enviando, pero que ninguna superficie del ledger cubre: $unprotected. " +
+                "Sin estar en una familia no heredan su garantia, asi que redirigirlos no exige " +
+                "asiento y ninguna ley se entera de que pertenecian. O entra en la familia, o la " +
+                "clasificacion del manifiesto es falsa. Las dos salidas son honestas; el silencio no.",
+        )
+    }
+
+    /** Manifest table rows as `(construct name, STATE)`, read exactly as [manifestStateOf] reads them. */
+    private fun manifestRows(): List<Pair<String, String>> =
+        manifestText()
+            .lineSequence()
+            .filter { it.trimStart().startsWith("|") }
+            .map { it.split("|").map(String::trim) }
+            .mapNotNull { cells ->
+                val name = cells.getOrNull(1)?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val state = cells.getOrNull(4)?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                name to state
+            }
+            .toList()
 
     @Test
     fun `ninguna superficie es mas permisiva que su modulo`() {

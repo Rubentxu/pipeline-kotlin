@@ -72,6 +72,26 @@ sealed class EventQuery {
 
     /** Events with store-assigned sequence in [fromSequence, toSequence]. */
     data class BySequenceRange(val fromSequence: Long, val toSequence: Long) : EventQuery()
+
+    /**
+     * S5.4 — whether [envelope] satisfies this query. Pure, total, no I/O.
+     *
+     * This predicate used to be a private method of [EventHistoryReader], which made it unreachable
+     * for a consumer that reads through [EventTail] instead: `readAfter` returns a typed [EventPage]
+     * and applies no filter, so a paging consumer holding a `--kind` or `--subject` query had no way
+     * to evaluate it. The two available answers were both wrong — re-derive the predicate and own a
+     * second implementation of query semantics, or go back to `history` and lose the refusals.
+     *
+     * It lives on the query because the query is what defines matching. The reader delegates to it,
+     * so there is one implementation rather than two that have to be kept in agreement by review.
+     */
+    fun matches(envelope: PipelineEventEnvelope): Boolean = when (this) {
+        is All -> true
+        is ByKind -> envelope.kind == kind
+        is BySource -> envelope.eventRef.source.canonicalText() == source.canonicalText()
+        is BySubject -> envelope.subject.canonicalText() == subject.canonicalText()
+        is BySequenceRange -> envelope.sequence in fromSequence..toSequence
+    }
 }
 
 /**

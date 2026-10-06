@@ -2,6 +2,8 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
+import dev.rubentxu.pipeline.v2.events.EventRecordRead
+import dev.rubentxu.pipeline.v2.events.UndecodableReason
 import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
 import dev.rubentxu.pipeline.v2.events.identity.EnvelopeCodec
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
@@ -11,12 +13,60 @@ import dev.rubentxu.pipeline.v2.events.identity.EventQuery
 /**
  * EVT-2 minimal CLI for structured local history inspection:
  *
- *   pipeline events --db <path> <runId> [--kind K] [--subject-kind KIND:ID...] [--limit N] [--after-cursor TOKEN]
+ *   pipeline events --db <path> <runId> [--kind K] [--subject KIND:ID...] [--limit N] [--after-cursor TOKEN]
  *
  * Reads history through the EventHistory port (never parses stdout, never
  * touches the console transcript). Output = one JSON envelope per line.
  * History != stdout rule: this command's stdout is the CLI's query output;
  * no process streams are involved.
+ *
+ * ## S5.4 — the refusal is on the wire, not merely in the type
+ *
+ * This used to read `history(run, query).filter { cursor == null || it.sequence > cursor.lastSequence }
+ * .take(limit)`.
+ *
+ * **What that failure actually was, measured and not assumed.** The first draft of this note claimed
+ * the unreadable row vanished silently. D-M5 says otherwise: restoring the `history` call and running
+ * the tests shows `history` → `EventStore.eventsFor` THROWING `UndecodableEventRecordException` at the
+ * unreadable row. `Sequence<DomainEvent>` has no case for a refusal, so the store fails closed there.
+ *
+ * So the real defect was not a quiet omission. It was that **an unreadable row destroyed the whole
+ * observation**: an unhandled exception out of `main`, a stack trace on stderr, no history at all, and
+ * an exit status produced by the JVM rather than by this command. An external observer gets a crash
+ * where it asked for facts, and gets none of the forty readable rows that came before row 41. Naming
+ * the row is not enough when the answer to "what happened" is "the process fell over".
+ *
+ * The second defect is real but was **unreachable**, which is worth saying because it would be easy to
+ * credit it: the continuation was `envelopes.lastOrNull()?.sequence`, so a page ending in a refusal
+ * would have produced a cursor pointing before it. The throw above always fired first. That cursor
+ * property is proved where it is reachable — at the reader, in `EventPageDrainTest` — rather than
+ * claimed here.
+ *
+ * So the read now goes through [EventPageDrain], which can only call `EventTail.readAfter`, and a
+ * refusal is emitted on **stderr** as its own line:
+ *
+ * ```
+ * evt-refusal-v1:<runId>:<sequence>:<malformedPayload|unknownKind>:<kind or ->
+ * ```
+ *
+ * **stderr, not stdout, and the reason is the stdout contract.** stdout is documented as one JSON
+ * envelope per line, and a refusal is not an envelope: it is the absence of an interpretation, and
+ * putting a non-envelope there would make that sentence untrue for every consumer that parses the
+ * stream. stderr already carries this command's non-envelope control output — the cursor — and an
+ * external observer already has to read it to resume. A consumer that redirects stdout to a file and
+ * ignores stderr is the consumer that cannot see refusals, and that is a choice it now has to make
+ * visibly.
+ *
+ * The line is machine-readable, not prose: the run id and the kind are percent-escaped the same way
+ * [EventCursor.encode] escapes the run id, because a refusal line is parsed by a program and an
+ * unescaped colon inside a run id would silently shift the fields. The reason is rendered as its two
+ * exhaustive tags rather than the decoder's free-text `detail`, which is not a wire format.
+ *
+ * Exit code stays 0 when a page carries refusals. The read did what was asked and reported it; a
+ * non-zero code here would say "the command failed", which would be its own kind of untruth — and it
+ * would be a DIFFERENT untruth from the one fixed above, where the status came from an unhandled
+ * exception rather than from a decision. An unknown run is likewise a successful empty read:
+ * observation stays read-only.
  */
 object MainEventsCli {
 
@@ -25,8 +75,9 @@ object MainEventsCli {
         var runId: String? = null
         var kind: String? = null
         var subjectCanonical: String? = null
-        var limit = 100
+        var limit = DEFAULT_LIMIT
         var afterCursor: String? = null
+        var limitArg: String? = null
 
         var i = 0
         while (i < args.size) {
@@ -34,7 +85,7 @@ object MainEventsCli {
                 "--db" -> db = args.getOrNull(++i)
                 "--kind" -> kind = args.getOrNull(++i)
                 "--subject" -> subjectCanonical = args.getOrNull(++i)
-                "--limit" -> limit = args.getOrNull(++i)?.toIntOrNull() ?: 100
+                "--limit" -> limitArg = args.getOrNull(++i)
                 "--after-cursor" -> afterCursor = args.getOrNull(++i)
                 else -> if (!args[i].startsWith("--") && runId == null) runId = args[i]
             }
@@ -46,13 +97,33 @@ object MainEventsCli {
             return 2
         }
 
+        // A flag that does not parse must not become the default. `--limit abc` used to read as 100,
+        // which is the same shape as a command that silently did something other than what was asked.
+        if (limitArg != null) {
+            val parsed = limitArg.toIntOrNull()
+            if (parsed == null || parsed <= 0) {
+                System.err.println("Error: --limit must be a positive integer, got: $limitArg")
+                return 2
+            }
+            limit = parsed
+        }
+
         if (!java.nio.file.Files.exists(java.nio.file.Path.of(db))) {
             System.err.println("Error: db not found: $db")
             return 2
         }
 
-        val cursor = afterCursor?.let {
-            EventCursor.decode(it) ?: throw IllegalArgumentException("invalid cursor token: $it")
+        val cursor = afterCursor?.let { token ->
+            EventCursor.decode(token) ?: run {
+                System.err.println("Error: invalid cursor token: $token")
+                return 2
+            }
+        }
+        // The token carries its run id precisely so it cannot be read as another run's position. A
+        // cursor from run A applied to run B used to be accepted and would have skipped B's rows.
+        if (cursor != null && cursor.runId != runId) {
+            System.err.println("Error: cursor belongs to run '${cursor.runId}', not to '$runId'")
+            return 2
         }
 
         val store = SqliteEventStore(db)
@@ -64,26 +135,68 @@ object MainEventsCli {
                 subjectCanonical != null ->
                     EventQuery.BySubject(
                         decodeSubject(subjectCanonical)
-                            ?: throw IllegalArgumentException("cannot parse subject ref: $subjectCanonical"),
+                            ?: run {
+                                System.err.println("Error: cannot parse subject ref: $subjectCanonical")
+                                return 2
+                            },
                     )
                 else -> EventQuery.All
             }
 
-            val envelopes = reader.history(run, query)
-                .filter { cursor == null || it.sequence > cursor.lastSequence }
-                .take(limit)
-                .toList()
+            when (val outcome = EventPageDrain.drain(reader, run, query, cursor, limit)) {
+                is EventPageDrain.Outcome.Answered -> {
+                    outcome.page.envelopes.forEach { println(EnvelopeCodec.encode(it)) }
+                    reportRefusals(runId, outcome.page.refusals)
+                    reportContinuation(outcome.page.nextCursor)
+                }
 
-            envelopes.forEach { println(EnvelopeCodec.encode(it)) }
-            if (cursor != null || envelopes.isNotEmpty()) {
-                val last = envelopes.lastOrNull()?.sequence ?: cursor?.lastSequence ?: 0L
-                System.err.println("evt-cursor-v1:$runId:$last")
+                is EventPageDrain.Outcome.Stalled -> {
+                    // The store said there was more and the continuation stopped moving. Answering
+                    // as if history ended would be a silent truncation, so it is named on the wire.
+                    outcome.page.envelopes.forEach { println(EnvelopeCodec.encode(it)) }
+                    reportRefusals(runId, outcome.page.refusals)
+                    reportContinuation(outcome.page.nextCursor)
+                    System.err.println(
+                        "evt-stalled-v1:$runId:${outcome.page.nextCursor?.lastSequence ?: 0L}: " +
+                            "the store reported more rows and the continuation did not advance; " +
+                            "history past this point was NOT read",
+                    )
+                }
             }
             return 0
         } finally {
             store.close()
         }
     }
+
+    /** One line per refusal, then a count, so "were there any" is a single-token question. */
+    private fun reportRefusals(runId: String, refusals: List<EventRecordRead.Undecodable>) {
+        if (refusals.isEmpty()) return
+        refusals.forEach { refusal ->
+            val kind = refusal.kind?.let { escape(it) } ?: ABSENT
+            System.err.println("evt-refusal-v1:${escape(runId)}:${refusal.sequence}:${reasonTag(refusal.reason)}:$kind")
+        }
+        System.err.println("evt-refusals-v1:${escape(runId)}:${refusals.size}")
+    }
+
+    /**
+     * The store's own position, encoded by [EventCursor.encode] rather than by string
+     * interpolation here. This command both emits and accepts that token, and a hand-built copy of
+     * its wire form is a second place that can disagree with the one that parses it.
+     */
+    private fun reportContinuation(nextCursor: EventCursor?) {
+        val cursor = nextCursor ?: return
+        System.err.println(cursor.encode())
+    }
+
+    /** Exhaustive over the closed reason type: a new case must be named here, not defaulted. */
+    private fun reasonTag(reason: UndecodableReason): String = when (reason) {
+        is UndecodableReason.MalformedPayload -> "malformedPayload"
+        is UndecodableReason.UnknownKind -> "unknownKind"
+    }
+
+    /** Same escaping [EventCursor.encode] uses, so a run id with a colon cannot shift the fields. */
+    private fun escape(text: String): String = java.net.URLEncoder.encode(text, Charsets.UTF_8)
 
     /**
      * Parses a canonical ResourceRef text (`v1:kind:seg0:seg1...`) back to a
@@ -103,3 +216,8 @@ object MainEventsCli {
         }
     }
 }
+
+private const val DEFAULT_LIMIT = 100
+
+/** Stands in for an absent value on a `:`-separated wire line, rather than printing nothing. */
+private const val ABSENT = "-"

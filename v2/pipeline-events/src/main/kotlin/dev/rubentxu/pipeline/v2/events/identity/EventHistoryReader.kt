@@ -40,7 +40,7 @@ class EventHistoryReader(
         val runId = run.segments.last()
         return sink.eventsFor(runId)
             .map { EnvelopeProjector.project(it, providerLookup) }
-            .filter { matches(it, query) }
+            .filter { query.matches(it) }
     }
 
     override fun readAfter(run: ResourceRef, cursor: EventCursor?, limit: Int): EventPage {
@@ -78,14 +78,5 @@ class EventHistoryReader(
             hasMore = slice.hasMore,
             refusals = slice.refusals,
         )
-    }
-
-    private fun matches(envelope: PipelineEventEnvelope, query: EventQuery): Boolean = when (query) {
-        is EventQuery.All -> true
-        is EventQuery.ByKind -> envelope.kind == query.kind
-        is EventQuery.BySource -> envelope.eventRef.source.canonicalText() == query.source.canonicalText()
-        is EventQuery.BySubject -> envelope.subject.canonicalText() == query.subject.canonicalText()
-        is EventQuery.BySequenceRange ->
-            envelope.sequence in query.fromSequence..query.toSequence
     }
 }

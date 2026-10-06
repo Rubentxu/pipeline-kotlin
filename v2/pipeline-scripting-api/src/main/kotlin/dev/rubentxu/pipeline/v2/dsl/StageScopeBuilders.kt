@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.dsl
 
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.RuntimeConfig
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
@@ -124,7 +125,7 @@ open class StageScopeCore(
         )
     }
 
-    fun error(message: String, failureKind: String = "USER") {
+    fun error(message: String, failureKind: FailureKind = FailureKind.USER) {
         steps.add(StepSpec.Error(message, failureKind))
     }
 

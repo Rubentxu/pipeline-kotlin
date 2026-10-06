@@ -82,6 +82,10 @@ kotlin {
     jvmToolchain(21)
 }
 
+// P3-E E6: the single-coordinate boundary moved to examples/scripting-contract-consumer.
+// A source set here inherits this project's `implementation`, which declares all four coordinates,
+// so it could not tell the publisher's metadata apart from this build's own dependency list.
+
 tasks.test {
     useJUnitPlatform()
     testLogging {

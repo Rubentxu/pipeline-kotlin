@@ -2,8 +2,8 @@ public final class dev/rubentxu/pipeline/v2/dsl/BranchScope {
 	public fun <init> ()V
 	public final fun dir (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public final fun echo (Ljava/lang/String;)V
-	public final fun error (Ljava/lang/String;Ljava/lang/String;)V
-	public static synthetic fun error$default (Ldev/rubentxu/pipeline/v2/dsl/BranchScope;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun error (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;)V
+	public static synthetic fun error$default (Ldev/rubentxu/pipeline/v2/dsl/BranchScope;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;ILjava/lang/Object;)V
 	public final fun getSteps ()Ljava/util/List;
 	public final fun lock (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;)V
 	public static synthetic fun lock$default (Ldev/rubentxu/pipeline/v2/dsl/BranchScope;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
@@ -132,8 +132,8 @@ public final class dev/rubentxu/pipeline/v2/dsl/PostScope {
 public final class dev/rubentxu/pipeline/v2/dsl/PostStepsScope {
 	public fun <init> ()V
 	public final fun echo (Ljava/lang/String;)V
-	public final fun error (Ljava/lang/String;Ljava/lang/String;)V
-	public static synthetic fun error$default (Ldev/rubentxu/pipeline/v2/dsl/PostStepsScope;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun error (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;)V
+	public static synthetic fun error$default (Ldev/rubentxu/pipeline/v2/dsl/PostStepsScope;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;ILjava/lang/Object;)V
 	public final fun getSteps ()Ljava/util/List;
 	public final fun sh (Ljava/lang/String;)V
 	public final fun sleep (J)V
@@ -216,8 +216,8 @@ public class dev/rubentxu/pipeline/v2/dsl/StageScopeCore {
 	public final fun echo (Ljava/lang/String;)V
 	public final fun environment (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public final fun environment (Lkotlin/jvm/functions/Function1;)V
-	public final fun error (Ljava/lang/String;Ljava/lang/String;)V
-	public static synthetic fun error$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeCore;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun error (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;)V
+	public static synthetic fun error$default (Ldev/rubentxu/pipeline/v2/dsl/StageScopeCore;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;ILjava/lang/Object;)V
 	protected final fun getRuntimeConfig ()Ldev/rubentxu/pipeline/v2/domain/RuntimeConfig;
 	protected final fun getStageEnvironment ()Ldev/rubentxu/pipeline/v2/dsl/EnvironmentSpec;
 	protected final fun getStageName ()Ljava/lang/String;
@@ -529,14 +529,14 @@ public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Echo : dev/rubentxu/pip
 }
 
 public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Error : dev/rubentxu/pipeline/v2/dsl/StepSpec {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;)V
+	public synthetic fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
-	public final fun component2 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Error;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Error;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Error;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/FailureKind;
+	public final fun copy (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Error;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Error;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Error;
 	public fun equals (Ljava/lang/Object;)Z
-	public final fun getFailureKind ()Ljava/lang/String;
+	public final fun getFailureKind ()Ldev/rubentxu/pipeline/v2/domain/FailureKind;
 	public final fun getMessage ()Ljava/lang/String;
 	public fun getName ()Ljava/lang/String;
 	public fun getType ()Ljava/lang/String;

@@ -619,3 +619,52 @@ val verifyFabricContractConsumer by tasks.registering(Exec::class) {
         "check",
     )
 }
+
+/**
+ * P3-E E6 — the SINGLE-coordinate consumer, run as a gate step.
+ *
+ * `StepSpec.Error.failureKind` became `FailureKind`, a type from `:pipeline-domain`. That forces
+ * `pipeline-scripting-api` to publish that dependency at `api` rather than `implementation`, and
+ * that is a change to the PUBLICATION contract: `api` is what writes a compile-scope dependency
+ * into the published Gradle Module Metadata, so it is the only reason a consumer can name the type
+ * at all.
+ *
+ * `examples/fabric-contract-consumer` cannot observe this. It declares all four coordinates, so it
+ * compiles whether the publisher said `api` or `implementation` — the property under test would be
+ * satisfied by that build's own dependency list. `examples/scripting-contract-consumer` declares
+ * ONE coordinate and never names `pipeline-domain`, so the publisher's metadata is the only route
+ * by which `FailureKind` can resolve.
+ *
+ * The control is mechanical and it was measured, not assumed: reverting the publisher to
+ * `implementation(...)` makes that build fail with `Cannot access class
+ * dev.rubentxu.pipeline.v2.domain.FailureKind. Check your module classpath`. The declaration is
+ * therefore the test; a comment asserting that the declaration exists would be worth nothing.
+ *
+ * Like the consumer above, it is NOT a dependency of `check`: wiring it in would make every
+ * `check` publish to `sdk-repo` and fork a second Gradle against the working tree. BLOCK E names it
+ * as a required closeout step rather than leaving it to habit.
+ */
+val verifyScriptingContractConsumer by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Proves FailureKind reaches a consumer declaring only pipeline-scripting-api, via publisher metadata."
+    dependsOn(publishSdkForExternalPlugin)
+
+    val consumerDir = file("../examples/scripting-contract-consumer")
+    inputs.dir(consumerDir.resolve("src"))
+    inputs.files(consumerDir.resolve("build.gradle.kts"), consumerDir.resolve("settings.gradle.kts"))
+    // Only the scripting jar's bytes are read. Listing `pipeline-domain` here would defeat the
+    // experiment: the whole claim is that the consumer cannot get the type except through the
+    // publisher's own declaration of it.
+    inputs.files(project(":pipeline-scripting-api").tasks.named("jar"))
+    outputs.file(consumerDir.resolve("build/libs/scripting-contract-consumer-0.1.0.jar"))
+
+    workingDir = rootDir
+    commandLine(
+        rootDir.resolve("gradlew").absolutePath,
+        "-p", consumerDir.absolutePath,
+        "--console=plain",
+        "-PsdkRepo=" + sdkRepoDir.get().asFile.absolutePath,
+        "-PsdkVersion=" + rootProject.version.toString(),
+        "check",
+    )
+}

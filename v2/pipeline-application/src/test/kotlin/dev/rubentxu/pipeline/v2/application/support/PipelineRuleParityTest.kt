@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.support
 
+import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.dsl.pipeline
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
@@ -105,7 +106,7 @@ class PipelineRuleParityTest {
             stages {
                 stage("test") {
                     catchError(message = "caught") {
-                        error("Simulated build error", "SCRIPT")
+                        error("Simulated build error", FailureKind.SCRIPT)
                     }
                     echo("after-catch")
                 }

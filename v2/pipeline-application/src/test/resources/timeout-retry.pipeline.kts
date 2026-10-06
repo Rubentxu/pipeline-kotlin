@@ -1,3 +1,5 @@
+
+import dev.rubentxu.pipeline.v2.domain.FailureKind
 // Timeout and retry fixture exercising retry and timeout semantics.
 
 pipeline {
@@ -24,7 +26,7 @@ pipeline {
         stage("ErrorHandling") {
             echo("Testing error recording")
             catchError {
-                error("Recorded error condition", "SCRIPT")
+                error("Recorded error condition", FailureKind.SCRIPT)
             }
             sh("echo error-handling-done")
         }

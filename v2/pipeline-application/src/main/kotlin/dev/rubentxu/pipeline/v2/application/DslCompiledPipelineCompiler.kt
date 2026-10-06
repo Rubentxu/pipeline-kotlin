@@ -740,7 +740,12 @@ object DslCompiledPipelineCompiler {
                 }
                 is StepSpec.Error -> {
                     put("message", step.message)
-                    put("failureKind", step.failureKind)
+                    // P3-E E6: `failureKind` is typed, and the wire is not. `FailureKind.name` IS
+                    // the historical token for every case, so this projection is byte-identical to
+                    // the String it replaces — which is the point. The String that used to live
+                    // here was the last place a typed decision was degraded before it was
+                    // re-parsed by `CoreErrorStep`'s decoder.
+                    put("failureKind", step.failureKind.name)
                 }
                 is StepSpec.Sleep -> put("seconds", step.seconds)
                 is StepSpec.WriteFile -> {

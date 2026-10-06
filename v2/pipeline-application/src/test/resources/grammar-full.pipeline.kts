@@ -1,3 +1,5 @@
+
+import dev.rubentxu.pipeline.v2.domain.FailureKind
 // Full DSL grammar fixture exercising the canonical M2-R1 grammar:
 // environment (withEnv), options, steps, parallel, retry, timeout
 // (agent at stage level was removed: no runtime interpreter, S0 honesty gate)
@@ -18,7 +20,7 @@ pipeline {
             sh("echo compile done")
             sleep(2)
             catchError {
-                error("Simulated build error", "SCRIPT")
+                error("Simulated build error", FailureKind.SCRIPT)
             }
         }
 

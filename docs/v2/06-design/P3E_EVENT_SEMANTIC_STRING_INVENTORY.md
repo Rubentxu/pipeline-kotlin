@@ -566,8 +566,24 @@ Corrección aplicada en E4a: default `USER` en los cuatro sitios, test que fija 
 que los tres receptores no divergan, y mutación que devuelve `UNKNOWN` a uno solo de los
 tres para probar que el test la detecta.
 
-El parámetro sigue siendo `String`: `pipeline-scripting-api` es ABI publicada y tiparlo
-contra `FailureKind` es la migración de E6, gobernada por la madurez de E5.
+**Cerrado en E6.** `StepSpec.Error.failureKind` es `FailureKind`, no `String`. Como cadena,
+una errata compilaba: `error("boom", "USR")` producía un pipeline que se ejecutaba y sólo
+fallaba cuando el decoder de `core.error` alcanzaba un token fuera del vocabulario — un
+fallo descubierto a mitad de run sobre una decisión que el autor ya había tomado y creído
+aceptada. Tipado, es un error de compilación contra el vocabulario, que es el único sitio
+donde puede atraparse sin ejecutar nada. Es la última cadena por la que pasaba una decisión
+semántica que el propio P3-E había escrito.
+
+Lo que **no** cambia: el cable. `FailureKind.name` **es** el token histórico de cada caso, así
+que la proyección al payload `dsl-v1` es byte-idéntica a la cadena que escribía el encoder
+previo. La ruptura es de ABI (`getFailureKind()` pasa de devolver `String` a devolver
+`FailureKind`), no de historia, y queda registrada como excepción deliberada en
+`published-contract-exceptions.json`.
+
+Lo que **tampoco** cambia es la ceremonia de autoría: `error("msg")` — la inmensa mayoría —
+sigue sin import, sin vocabulario y sin ceremonia, porque lo carga el default. Sólo el caso
+explícito no-default nombra `FailureKind.X`, y ese es justo el caso donde un chequeo en tiempo
+de compilación vale un import.
 
 ### 5.8 El read-side perdía evidencia durable, no sólo semántica (E4c)
 

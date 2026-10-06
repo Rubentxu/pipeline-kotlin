@@ -41,7 +41,7 @@ class ErrorStepDefaultFailureKindTest {
         val spec = scope.steps().single() as StepSpec.Error
 
         assertEquals(
-            "USER",
+            FailureKind.USER,
             spec.failureKind,
             "error() sin kind es un fallo de USUARIO por autorizacion deliberada. " +
                 "UNKNOWN significa 'este runtime no pudo clasificar el fallo', que es otra " +
@@ -49,30 +49,41 @@ class ErrorStepDefaultFailureKindTest {
         )
     }
 
-    @Test
-    fun `el default declarado sigue siendo un FailureKind del vocabulario`() {
-        val scope = StageScope("vocab")
-        scope.error("boom")
-
-        val declared = (scope.steps().single() as StepSpec.Error).failureKind
-
-        assertTrue(
-            FailureKind.entries.any { it.name == declared },
-            "el default '$declared' no pertenece al vocabulario FailureKind. Un token fuera " +
-                "del enum hace fallar el codec al ADMITIR el Step, con lo que el fallo aparece " +
-                "antes de ejecutar nada en lugar de al declarar el error.",
-        )
-    }
+    /**
+ * REMOVED in E6, deliberately, and the removal is the evidence.
+ *
+ * This used to be:
+ *
+ * ```
+ * val declared = (scope.steps().single() as StepSpec.Error).failureKind
+ * assertTrue(FailureKind.entries.any { it.name == declared })
+ * ```
+ *
+ * It guarded a real defect: `failureKind` was a `String`, so a token outside the vocabulary
+ * could reach `StepSpec.Error` and only be caught by the decoder at Step admission — a failure
+ * discovered mid-run about a decision the author had already made. The test could only assert
+ * the value happened to be in the vocabulary; it could not stop an author writing `"USR"`.
+ *
+ * E6 typed the field as [FailureKind], so the property is now guaranteed by the compiler. The
+ * assertion became vacuous: `FailureKind.entries.any { it.name == <FailureKind> }` is a question
+ * with no failure mode. Rewriting it to assert the same thing against a typed value would be
+ * theatre — a test whose verdict cannot change.
+ *
+ * So it is gone rather than re-pointed. What replaced it is not a test in this file: the
+ * surviving risk after the migration is no longer vocabulary membership, it is that the IR
+ * projection stops emitting `failureKind.name` and moves the wire. That is pinned where the
+ * projection lives, in `ErrorFailureKindWireCompatibilityTest`.
+ */
 
     @Test
     fun `el kind declarado por el autor se respeta sin transformacion`() {
         val scope = StageScope("explicit")
-        scope.error("tarde", "TIMEOUT")
+        scope.error("tarde", FailureKind.TIMEOUT)
 
         val spec = scope.steps().single() as StepSpec.Error
 
         assertEquals(
-            "TIMEOUT",
+            FailureKind.TIMEOUT,
             spec.failureKind,
             "un kind explicito viaja tal cual: el Step lo proyecta al stream y el autor debe " +
                 "poder distinguir su fallo de uno clasificado por el runtime.",
@@ -85,7 +96,7 @@ class ErrorStepDefaultFailureKindTest {
         // BranchScope and StageScopeCore — and three copies of a default are three places to
         // forget. This test exists so that moving one without the others is a RED rather than
         // a divergence nobody reads.
-        val defaults = mutableListOf<String>()
+        val defaults = mutableListOf<FailureKind>()
 
         PostStepsScope().also { it.error("x") }.steps
             .filterIsInstance<StepSpec.Error>().single().let { defaults += it.failureKind }
@@ -99,7 +110,7 @@ class ErrorStepDefaultFailureKindTest {
             .filterIsInstance<StepSpec.Error>().single().let { defaults += it.failureKind }
 
         assertEquals(
-            listOf("USER", "USER", "USER"),
+            listOf(FailureKind.USER, FailureKind.USER, FailureKind.USER),
             defaults,
             "los tres declaraciones de error() han divergido en el default del kind: " +
                 "$defaults",

@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.dsl
 
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.domain.scm.Scm
@@ -322,7 +323,7 @@ class PostStepsScope {
         steps.add(StepSpec.Shell(command))
     }
 
-    fun error(message: String, failureKind: String = "USER") {
+    fun error(message: String, failureKind: FailureKind = FailureKind.USER) {
         steps.add(StepSpec.Error(message, failureKind))
     }
 
@@ -362,7 +363,7 @@ class BranchScope {
         steps.add(StepSpec.Shell(command))
     }
 
-    fun error(message: String, failureKind: String = "USER") {
+    fun error(message: String, failureKind: FailureKind = FailureKind.USER) {
         steps.add(StepSpec.Error(message, failureKind))
     }
 

@@ -23,7 +23,16 @@ kotlin {
 }
 
 dependencies {
-    implementation(project(":pipeline-domain"))
+    // P3-E E6: `StepSpec.Error.failureKind` is typed as `FailureKind`, so the published ABI of
+    // this module names a type from `:pipeline-domain`. That makes the dependency part of the
+    // contract and it has to be `api`, not `implementation`.
+    //
+    // This is a declaration, not a new exposure. `pipeline-events/build.gradle.kts:31-32` already
+    // declares `api(project(":pipeline-domain"))` AND `api(project(":pipeline-scripting-api"))`,
+    // and all four modules are published to the same SDK repository, so any consumer of the
+    // published set already compiles with both on its classpath. Before this change that coupling
+    // was real but undeclared: it existed transitively, by accident of the module graph.
+    api(project(":pipeline-domain"))
     testImplementation(libs.junit.jupiter)
     testImplementation("org.jetbrains.kotlin:kotlin-reflect:2.4.10")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")

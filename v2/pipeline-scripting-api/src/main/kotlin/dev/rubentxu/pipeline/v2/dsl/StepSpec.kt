@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.dsl
 
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.domain.scm.Scm
@@ -52,7 +53,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     }
 
     /**
-     * P3-E E4 — [failureKind] defaults to `USER`, not `UNKNOWN`.
+     * P3-E E4 — [failureKind] defaults to [FailureKind.USER], not `UNKNOWN`.
      *
      * `error("msg")` is a deliberate, human-authored abort: somebody wrote it, on purpose,
      * with a message. `USER` is what that is. `UNKNOWN` means "this runtime could not
@@ -65,12 +66,32 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      * the default used to be the one value that could only ever have come from nobody
      * choosing.
      *
-     * Still a [String] because `pipeline-scripting-api` is published ABI; typing it against
-     * `FailureKind` is the P3-E E6 migration, governed by E5's maturity.
+     * P3-E E6 — [failureKind] is now [FailureKind], not a [String].
+     *
+     * As a String, a typo compiled. `error("boom", "USR")` produced a pipeline that ran, and
+     * only failed when `CoreErrorStep`'s decoder reached a token outside the vocabulary — a
+     * failure discovered at admission, mid-run, about a decision the author had already made
+     * and believed was accepted. The author was wrong about the world and had no way to learn
+     * so until something executed.
+     *
+     * Typed, that is a compile error against the vocabulary itself, which is the only place it
+     * can be caught without running anything. This closes the last `String` in this module that
+     * a P3-E authored semantic decision passed through.
+     *
+     * Two things this deliberately does NOT change:
+     *
+     *  - The wire. `D3`/the IR encoder projects `failureKind.name`, and every `FailureKind`
+     *    case's `name` is its historical token, so `dsl-v1` payloads are byte-identical.
+     *  - The authoring ceremony. `error("msg")` — the overwhelming majority — still needs no
+     *    import, no vocabulary and no ceremony, because the default carries it. Only the
+     *    explicit non-default case names `FailureKind.X`, and that case is the one where a
+     *    compile-time check is worth an import.
+     *
+     * Recorded as a deliberate binary break in `published-contract-exceptions.json`.
      */
     data class Error(
         val message: String,
-        val failureKind: String = "USER",
+        val failureKind: FailureKind = FailureKind.USER,
     ) : StepSpec {
         override val name: String get() = "error"
         override val type: String get() = "error"

@@ -263,6 +263,66 @@
       ],
       "removal_boundary": "n/a — getStepManifests() and the StepManifest class are REMOVED by THIS entry and are not coming back; PluginStepContribution is the contract from 0.48 onward, reachable under the old name only as a Kotlin typealias",
       "supersedes": null
+    },
+    {
+      "module": "pipeline-domain",
+      "sha": "98a18992a38223c8dea0939fd294c751e491ad5c",
+      "surface": "dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry, StepRegistry.register(StepDefinition), StepRegistry.register(StepRegistration), StepRegistryKt.registerContributors",
+      "change": "removed the whole InMemoryStepRegistry class from the ABI, removed both register methods from the StepRegistry interface, and changed the receiver of the registerContributors extension from StepRegistry to StepRegistryBuilder; StepRegistryBuilder was added as the new composition type",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "This is a genuine binary break and the measurement says so, unlike C/D/E where the",
+        "apiDump diff carried zero removals and registering an exception would have been a",
+        "false record of what was published.",
+        "",
+        "StepRegistry's own KDoc already demanded the opposite of what the type allowed. It said",
+        "the registry was read-only after registration and that no mutation path existed, while",
+        "the interface carried two public register methods. Any holder of the reference could",
+        "extend the registry a reader was consulting, so the immutability was a convention. This",
+        "change makes it a property of the type: the interface has no registration method at all,",
+        "and StepRegistryBuilder is the only type that can register anything.",
+        "",
+        "The alternative considered and rejected: keep register with @Deprecated. That would have",
+        "let apiCheck pass with no entry recorded here, while publishing two ways to compose —",
+        "only one of which would force composition to finish before observation. A deprecated",
+        "mutation path on a published registry is the exact shape this block exists to remove, and",
+        "a break recorded honestly is cheaper than a silent second authority.",
+        "",
+        "InMemoryStepRegistry was deleted rather than deprecated for a second reason: it had no",
+        "reader that was not a test constructing a registry to register into, and keeping it would",
+        "have left a mutable StepRegistry implementation on the classpath of every consumer for a",
+        "migration nobody had asked for. pipeline-domain is EXPERIMENTAL, and an EXPERIMENTAL",
+        "module is exactly where this break is allowed.",
+        "",
+        "The cut is provable rather than asserted: FArchE4b4 and StepRegistryTest were extended so",
+        "that re-adding a method named register to the interface fails the build, and so that",
+        "mutating the builder after build() does not reach a registry already handed out."
+      ],
+      "removal_boundary": "Consumption in this repository is complete: 104 test files and 26 production files migrated, and the only remaining references to InMemoryStepRegistry in the tree were three test NAMES that named the deleted class. The external blast radius is bounded by the maturity classification: every published module here is EXPERIMENTAL, so no CONSUMER_COMPATIBLE promise is being broken.",
+      "supersedes": null
+    },
+    {
+      "module": "pipeline-events",
+      "sha": "98a18992a38223c8dea0939fd294c751e491ad5c",
+      "surface": "dev.rubentxu.pipeline.v2.events.registry.EventRegistry.register(EventDefinitionCreation)",
+      "change": "moved register off the EventRegistry class onto a new nested EventRegistry.Builder, and added EventRegistry.builder(); EventRegistry.create() is retained and now returns an already-frozen EMPTY registry",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "Same defect class as pipeline-domain, in the second registry: EventRegistry's KDoc said",
+        "the registry was read-only after registration, and it carried a public register. The",
+        "claim was false for exactly as long as that method existed.",
+        "",
+        "register stays on the ABI, as EventRegistry.Builder.register, so a caller who wants to",
+        "compose has a method with the same name and signature; what disappears is the ability to",
+        "compose through a reference that readers already hold. create() is kept precisely so that",
+        "the three production call sites that wanted an empty registry keep working, and they now",
+        "receive a value that cannot grow afterwards.",
+        "",
+        "The alternative considered and rejected: leave register in place and rely on discipline.",
+        "That is the same claim-as-comment that this entry records as having been false."
+      ],
+      "removal_boundary": "Three production call sites migrated (ExternalEventDefinitionDiscovery.compose and two EventRegistry.create() sites that needed no change because create() survives). Test call sites in pipeline-events and examples/fabric-contract-consumer migrated. The RegistrationOutcome return type is unchanged, so total rejection semantics are identical. pipeline-events is EXPERIMENTAL.",
+      "supersedes": null
     }
   ]
 }

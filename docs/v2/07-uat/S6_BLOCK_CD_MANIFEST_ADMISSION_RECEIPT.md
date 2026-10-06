@@ -296,10 +296,16 @@ En C/D/E medí que no había ruptura y **no** la registré. Aquí la medición d
   dos `register` de la interfaz `StepRegistry`, y `registerContributors` cambia de receptor.
 - `pipeline-events`: `EventRegistry.register` desaparece del registry y aparece en su `Builder`.
 
-Es ruptura binaria real y queda registrada contra el SHA de implementación, con la alternativa
-rechazada por escrito: mantener `register` con `@Deprecated` habría dejado `apiCheck` verde sin
-ninguna entrada, y a la vez habría publicado dos maneras de componer, sólo una de las cuales
-obligaría a componer antes de observar.
+Es ruptura binaria real y queda registrada en `v2/contract/published-contract-exceptions.json`
+contra el SHA de implementación **`98a18992`**, con la alternativa rechazada por escrito:
+mantener `register` con `@Deprecated` habría dejado `apiCheck` verde sin ninguna entrada, y a
+la vez habría publicado dos maneras de componer, sólo una de las cuales obligaría a componer
+antes de observar. Una ruta de mutación deprecada sobre un registry publicado es exactamente
+la forma que este bloque elimina.
+
+`create()` se conserva a propósito en `EventRegistry`: los tres call sites de producción que
+querían un registry vacío siguen funcionando, y ahora reciben un valor que no puede crecer
+después.
 
 
 

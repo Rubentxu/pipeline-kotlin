@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.output.OutputFrameIndex
+import dev.rubentxu.pipeline.v2.output.OutputStreamAddress
 import dev.rubentxu.pipeline.v2.output.store.OutputStreamHandle
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputRefusal
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputSink
@@ -40,6 +42,8 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputSink
  */
 internal class RedactingOutputIngress(
     private val handle: OutputStreamHandle,
+    private val frameIndex: OutputFrameIndex,
+    private val address: OutputStreamAddress,
 ) : ProcessOutputSink {
 
     private var refusal: ProcessOutputRefusal? = null
@@ -58,7 +62,14 @@ internal class RedactingOutputIngress(
             val payload = if (offset == 0 && length == bytes.size) bytes
             else bytes.copyOfRange(offset, offset + length)
             reservation.write(payload)
-            reservation.commit()
+            val committedEnd = reservation.commit()
+
+            // OBS-C2.3: the frame records the order PipelineK OBSERVED this range, and it is
+            // appended AFTER the bytes are committed — that ordering is the whole contract, since
+            // it is what makes a committed-but-unframed range recoverable rather than lost. The
+            // channel is not passed here: it rides in the stream's own identity, so a crash cannot
+            // separate attribution from the bytes it describes.
+            frameIndex.append(address.stream, address.channel, committedEnd - length, committedEnd)
         } catch (t: Throwable) {
             refusal = ProcessOutputRefusal(
                 detail = "the transcript could not be persisted to stream ${handle.stream.value}",

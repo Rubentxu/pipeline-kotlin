@@ -73,6 +73,80 @@ data class ProcessOutputRefusal(
 }
 
 /**
+ * Which of a child process' two byte streams a [ProcessOutputSink] receives.
+ *
+ * ## Why the substrate names channels at all
+ *
+ * It does not, and that is the point. The shell knows it started a process with two pipes, and it
+ * must route each pipe somewhere; that is a property of the process it launched, not of any Output
+ * Plane. Naming the two streams here costs the substrate nothing and keeps
+ * [dev.rubentxu.pipeline.v2.output.OutputChannel] — which carries a persisted stream id shape — on the
+ * application side, where the Output Plane lives.
+ *
+ * ## Why this is a closed set and not a boolean or a string
+ *
+ * A process has exactly two streams, so the state space is finite and closed. A
+ * `stdout: Boolean` would make "redirect neither" and "redirect both" representable, and neither is
+ * something a launch can mean; a `"out" | "err"` string would move the illegal case to run time.
+ * With this enum, an exhaustive `when` over the two sinks is a compile-time obligation, which is what
+ * makes "a third channel was silently dropped" a build failure rather than a missing byte.
+ */
+enum class ProcessOutputChannel {
+    /** The child's standard output. */
+    STDOUT,
+
+    /** The child's standard error. */
+    STDERR,
+    ;
+
+    companion object {
+        /** Both channels, in a fixed order so a caller never has to invent one. */
+        val all: List<ProcessOutputChannel> get() = entries
+    }
+}
+
+/**
+ * The two per-channel destinations of one launch.
+ *
+ * ## Why a sink pair rather than one sink that takes a channel per write
+ *
+ * Routing the channel per **write** would put the channel in the same position as the bytes: a sink
+ * would have to be told "this chunk came from stderr" on every call, and the pairing could be wrong
+ * for one chunk out of thousands. Carrying the channel in the sink's own identity makes the pairing
+ * structural — a stderr sink only ever receives stderr bytes, because there is no code path that
+ * hands it anything else.
+ *
+ * It also mirrors where the channel actually lives. The application maps each address to its own
+ * channel-addressed stream, so the channel is part of *which stream the bytes are in*, and survives
+ * a crash and a cursor hand-off with nothing extra to keep in step.
+ *
+ * ## Merged output is not a third case
+ *
+ * There is deliberately no `MERGED` entry. A merged console is what a reader builds from the two
+ * streams; persisting it as a third sink would recreate the second byte authority this design
+ * exists to remove, and the bytes would then exist twice with no authority over which is current.
+ */
+data class ProcessOutputSinks(
+    val stdout: ProcessOutputSink,
+    val stderr: ProcessOutputSink,
+) {
+    /** The sink [channel] addresses, for a launch that pumps one pipe per channel. */
+    operator fun get(channel: ProcessOutputChannel): ProcessOutputSink = when (channel) {
+        ProcessOutputChannel.STDOUT -> stdout
+        ProcessOutputChannel.STDERR -> stderr
+    }
+
+    /** Both sinks, in a fixed order so an iteration order is never invented by a caller. */
+    fun all(): List<ProcessOutputSink> = listOf(stdout, stderr)
+
+    companion object {
+        /** Two sinks built from [stdoutSink] and [stderrSink]. */
+        fun of(stdoutSink: ProcessOutputSink, stderrSink: ProcessOutputSink): ProcessOutputSinks =
+            ProcessOutputSinks(stdoutSink, stderrSink)
+    }
+}
+
+/**
  * How many sanitized bytes the pump asks for per read — and therefore how much transcript a reader
  * waits for before it can see any of it.
  *

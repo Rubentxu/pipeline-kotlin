@@ -204,12 +204,15 @@ class DurableShellExecutor : DurableShellLaunching {
         env: Map<String, SecretHandle> = emptyMap(),
         workspaceRoot: Path? = null,
         sandbox: SandboxConfig = SandboxConfig.NONE,
-        // WU-LPR-011R2 (Gate-1 at-rest closure): wrap factory applied to the child's
-        // merged output stream BEFORE any byte reaches `console.log`. The factory
-        // must return a chunk-boundary-safe redacting stream (StreamingRedactor).
+        // WU-LPR-011R2 (Gate-1 at-rest closure): wrap factory applied to EACH child's
+        // stream BEFORE any byte reaches its sink. The factory must return a
+        // chunk-boundary-safe redacting stream (StreamingRedactor).
         // Null = explicit legacy/test composition (raw transcript, unredacted).
         transcriptRedactor: ((java.io.InputStream) -> java.io.InputStream)? = null,
-        transcriptSink: ProcessOutputSink? = null,
+        // OBS-C2.3: one sink per channel. Null entries mean "this composition has no destination
+        // for that channel", which the launch treats as "pump it to the control-dir file" rather
+        // than as a request to discard it — a missing sink must never become a dropped byte.
+        channelSinks: Map<ProcessOutputChannel, ProcessOutputSink> = emptyMap(),
     ): ProcessHandle {
         checkLinuxOrThrow()
 
@@ -244,7 +247,9 @@ class DurableShellExecutor : DurableShellLaunching {
         // OBS-B: the wrapper must not open a console.log handle whenever the bytes are piped to the
         // JVM, whether or not they are redacted on the way. Keying this on redaction alone meant a
         // piped-but-unredacted composition had two writers of the same file.
-        val pumpedThroughJvm = transcriptRedactor != null || transcriptSink != null
+        // OBS-C2.3: "pumped" now means "has a per-channel destination", which is the condition
+        // that makes one-pump-per-channel possible at all.
+        val pumpedThroughJvm = transcriptRedactor != null || channelSinks.isNotEmpty()
         val wrapperContent = buildWrapperContent(controlDir, scriptFile, config, captureStdout, opId, pumpedThroughJvm)
         Files.writeString(wrapperFile, wrapperContent)
         Files.setPosixFilePermissions(wrapperFile, java.util.EnumSet.of(
@@ -317,20 +322,20 @@ class DurableShellExecutor : DurableShellLaunching {
         // Redirect stdin to /dev/null to prevent blocking on input
         // LB-02 / S6.8 (mode-aware projection): the durable file separation depends on the Sh
         // invocation mode.
-        //   plain (captureStdout=false): stdout+stderr merged via ONE file descriptor into the
-        //     durable console transcript (console.log). redirectErrorStream(true) gives a single
-        //     O_TRUNC open, so no stream is lost or duplicated.
+        //   plain (captureStdout=false): BOTH channels are PIPEs when pumped, so each channel is
+        //     observed before it is persisted and each lands in its own sink. OBS-C2.3 removed the
+        //     `redirectErrorStream(true)` that used to be here: it fused the two channels inside one
+        //     kernel descriptor, so `--channel stderr` was unrecoverable at every boundary after it.
         //   captureStdout=true: stdout goes to the separate stdout value file (output.txt) and
-        //     stderr to console.log (durable console transcript). No fusion: the typed value must
-        //     never be polluted by stderr.
-        // console.log always has a single writer per launch.
+        //     stderr to the transcript sink. No fusion: the typed value must never be polluted by
+        //     stderr.
         //
         // WU-LPR-011R2 (Gate-1 at-rest closure): when a transcript redactor is active, the
-        // console transcript is NO LONGER a ProcessBuilder redirect target. The redirected
-        // stream is pumped through the redactor by a runtime-owned pump thread so ONLY
-        // already-redacted bytes reach `console.log` — redaction happens BEFORE persistence,
-        // not during cleanup. The typed value channel (output.txt) is unaffected: capture-mode
-        // stdout remains an exact redirect (typed values are never scrubbed).
+        // redirected streams are NOT ProcessBuilder redirect targets. Each piped stream is pumped
+        // through the redactor by a runtime-owned pump thread so ONLY already-redacted bytes reach
+        // the sinks — redaction happens BEFORE persistence, not during cleanup. The typed value
+        // channel (output.txt) is unaffected: capture-mode stdout remains an exact redirect (typed
+        // values are never scrubbed).
         pb.redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
         // (pumpedThroughJvm was resolved above, before the wrapper content was built.)
         if (captureStdout) {
@@ -341,13 +346,17 @@ class DurableShellExecutor : DurableShellLaunching {
             } else {
                 pb.redirectError(ProcessBuilder.Redirect.to(logFile.toFile()))
             }
+        } else if (pumpedThroughJvm) {
+            // OBS-C2.3: two independent pipes. Fusing them here would make the channel distinction
+            // unrecoverable at the kernel boundary, which is precisely what made `--channel stderr`
+            // unanswerable in ObsCChannelAndTailCharacterisationTest.
+            pb.redirectOutput(ProcessBuilder.Redirect.PIPE)
+            pb.redirectError(ProcessBuilder.Redirect.PIPE)
         } else {
-            pb.redirectErrorStream(true)
-            if (pumpedThroughJvm) {
-                pb.redirectOutput(ProcessBuilder.Redirect.PIPE)
-            } else {
-                pb.redirectOutput(ProcessBuilder.Redirect.to(logFile.toFile()))
-            }
+            // Not pumped: nothing can attribute the channels, so a single file is honest about the
+            // fact that this composition does not separate them.
+            pb.redirectOutput(ProcessBuilder.Redirect.to(logFile.toFile()))
+            pb.redirectError(ProcessBuilder.Redirect.to(logFile.toFile()))
         }
         // Pre-create console.log so the wrapper heartbeat `touch` and external observers always see
         // the transcript file, and so a fallback sink owns the ONLY writer handle from the first
@@ -359,44 +368,67 @@ class DurableShellExecutor : DurableShellLaunching {
 
             return try {
             val process = pb.start()
-            // WU-LPR-011R2: drain the redirected stream through the redactor into the composed
-            // sink on a daemon pump. Redaction happens BEFORE persistence: at any instant the durable
+            // WU-LPR-011R2: drain the redirected streams through the redactor into the composed
+            // sinks on daemon pumps. Redaction happens BEFORE persistence: at any instant the durable
             // authority contains only sanitized bytes, and a JVM crash can leave at most a partial
             // SANITIZED transcript. The typed value channel (output.txt) is unaffected: capture-mode
             // stdout remains an exact redirect (typed values are never scrubbed).
+            //
+            // OBS-C2.3: ONE PUMP PER CHANNEL. Two pumps on two threads is what lets each channel be
+            // attributed before it is persisted. It also means both pipes are drained concurrently,
+            // so neither child stream can block on a full pipe while the other is being read — which
+            // is the deadlock that made the old "wait, then read the other channel" shape unsafe.
             if (pumpedThroughJvm) {
-                val raw: java.io.InputStream = if (captureStdout) process.errorStream else process.inputStream
-                val redacted = transcriptRedactor?.invoke(raw) ?: raw
+                // In capture mode stdout is an exact redirect to the typed-value file, so the only
+                // piped channel is stderr. In plain mode both are piped and each gets its own pump.
+                val pumpedChannels: Map<ProcessOutputChannel, java.io.InputStream> =
+                    if (captureStdout) {
+                        mapOf(ProcessOutputChannel.STDERR to process.errorStream)
+                    } else {
+                        mapOf(
+                            ProcessOutputChannel.STDOUT to process.inputStream,
+                            ProcessOutputChannel.STDERR to process.errorStream,
+                        )
+                    }
+
+                val pumps = mutableListOf<Thread>()
+                val sinks = mutableListOf<ProcessOutputSink>()
+
                 // Without a composed sink the destination is the control-dir file, which keeps the
                 // legacy/test composition working exactly as it did. With one, the file is not a
                 // second copy: it is simply absent.
-                val target: ProcessOutputSink = transcriptSink
-                    ?: StreamProcessOutputSink(
-                        java.io.BufferedOutputStream(java.nio.file.Files.newOutputStream(logFile)),
-                    )
-                val pump = Thread {
-                    val window = ByteArray(TRANSCRIPT_LIVE_WINDOW_BYTES)
-                    try {
-                        while (true) {
-                            val n = redacted.read(window)
-                            if (n < 0) break
-                            target.write(window, 0, n)
+                for ((channel, raw) in pumpedChannels) {
+                    val redacted = transcriptRedactor?.invoke(raw) ?: raw
+                    val target: ProcessOutputSink = channelSinks[channel]
+                        ?: StreamProcessOutputSink(
+                            java.io.BufferedOutputStream(java.nio.file.Files.newOutputStream(logFile, java.nio.file.StandardOpenOption.APPEND)),
+                        )
+                    val pump = Thread {
+                        val window = ByteArray(TRANSCRIPT_LIVE_WINDOW_BYTES)
+                        try {
+                            while (true) {
+                                val n = redacted.read(window)
+                                if (n < 0) break
+                                target.write(window, 0, n)
+                            }
+                        } catch (_: Exception) {
+                            // Child killed / pipe broken mid-flight: keep whatever
+                            // sanitized bytes were already persisted.
+                        } finally {
+                            // Close the redacting stream FIRST: its pending buffer
+                            // (EOF drain) is what flushes the final sanitized bytes.
+                            try { redacted.close() } catch (_: Exception) {}
+                            try { target.close() } catch (_: Exception) {}
                         }
-                    } catch (_: Exception) {
-                        // Child killed / pipe broken mid-flight: keep whatever
-                        // sanitized bytes were already persisted.
-                    } finally {
-                        // Close the redacting stream FIRST: its pending buffer
-                        // (EOF drain) is what flushes the final sanitized bytes.
-                        try { redacted.close() } catch (_: Exception) {}
-                        try { target.close() } catch (_: Exception) {}
                     }
+                    pump.isDaemon = true
+                    pump.name = "durable-sh-transcript-pump-$opId-${channel.name.lowercase()}"
+                    pump.start()
+                    pumps += pump
+                    sinks += target
                 }
-                pump.isDaemon = true
-                pump.name = "durable-sh-transcript-pump-$opId"
-                pump.start()
-                lastTranscriptPump = pump
-                lastTranscriptSink = target
+                lastTranscriptPumps = pumps
+                lastTranscriptSinks = sinks
             }
             val handle = process.toHandle()
 
@@ -991,13 +1023,13 @@ class DurableShellExecutor : DurableShellLaunching {
         shOptions: ShOptions,
         config: DurableShConfig = DurableShConfig.fromSystemProperties(),
         transcriptRedactor: ((java.io.InputStream) -> java.io.InputStream)? = null,
-        transcriptSink: ProcessOutputSink? = null,
+        channelSinks: Map<ProcessOutputChannel, ProcessOutputSink> = emptyMap(),
     ): DurableTaskTerminal = executeCore(
         controlDir = controlDir,
         scriptContent = scriptContent,
         opId = opId,
         config = config,
-        transcriptSink = transcriptSink,
+        channelSinks = channelSinks,
         transcriptRedactor = transcriptRedactor,
         request = DurableShellExecutionRequest(
             timeoutMs = shOptions.timeoutMs ?: 0L,
@@ -1050,25 +1082,28 @@ class DurableShellExecutor : DurableShellLaunching {
      * executeCore to drain the pump before projecting the persisted transcript.
      */
     @Volatile
-    private var lastTranscriptPump: Thread? = null
+    private var lastTranscriptPumps: List<Thread> = emptyList()
 
     /**
-     * The sink the pump wrote into, kept so the terminal projection can read its refusal.
+     * The sinks the pumps wrote into, kept so the terminal projection can read their refusals.
      *
-     * The pump cannot propagate a persistence failure to the caller by throwing — it runs on a
-     * daemon thread whose whole purpose is to survive the child. So the failure is recorded on the
-     * sink and read here, after the pump has been joined, which is the first point at which the
-     * answer is stable.
+     * The pumps cannot propagate a persistence failure to the caller by throwing — they run on
+     * daemon threads whose whole purpose is to survive the child. So a failure is recorded on the
+     * sink and read here, after the pumps have been joined, which is the first point at which the
+     * answer is stable. OBS-C2.3 made this a list because one launch now pumps up to two channels,
+     * and a refusal on stderr must not be hidden behind a healthy stdout.
      */
     @Volatile
-    private var lastTranscriptSink: ProcessOutputSink? = null
+    private var lastTranscriptSinks: List<ProcessOutputSink> = emptyList()
 
-    private fun transcriptRefusal(): ProcessOutputRefusal? = lastTranscriptSink?.refusal()
+    /** The first refusal any channel's sink accepted responsibility for and could not fulfil. */
+    private fun transcriptRefusal(): ProcessOutputRefusal? =
+        lastTranscriptSinks.firstNotNullOfOrNull { it.refusal() }
 
-    private fun consumeLastTranscriptPump(@Suppress("UNUSED_PARAMETER") handle: ProcessHandle): Thread? {
-        val pump = lastTranscriptPump
-        lastTranscriptPump = null
-        return pump
+    private fun consumeLastTranscriptPumps(@Suppress("UNUSED_PARAMETER") handle: ProcessHandle): List<Thread> {
+        val pumps = lastTranscriptPumps
+        lastTranscriptPumps = emptyList()
+        return pumps
     }
 
     private fun executeCore(
@@ -1078,16 +1113,20 @@ class DurableShellExecutor : DurableShellLaunching {
         config: DurableShConfig,
         request: DurableShellExecutionRequest,
         transcriptRedactor: ((java.io.InputStream) -> java.io.InputStream)? = null,
-        transcriptSink: ProcessOutputSink? = null,
+        channelSinks: Map<ProcessOutputChannel, ProcessOutputSink> = emptyMap(),
     ): DurableTaskTerminal {
         var exitCode = -1
         var process: ProcessHandle? = null
         var launched = false
         val timeoutTriggered = AtomicBoolean(false)
-        // WU-LPR-011R2: reference to the transcript pump so the terminal projection
-        // can drain it BEFORE reading console.log (redaction-before-persistence
-        // means the file is only complete once the pump reaches EOF).
-        var transcriptPump: Thread? = null
+        // WU-LPR-011R2: reference to the transcript pumps so the terminal projection can drain them
+        // BEFORE reading any durable transcript (redaction-before-persistence means the bytes are
+        // only complete once the pumps reach EOF).
+        //
+        // OBS-C2.3: a LIST, because one launch pumps up to two channels. Joining only the first
+        // would let the terminal be projected while stderr was still arriving — which is exactly
+        // the "short, ordered, plausible transcript" failure this path exists to prevent.
+        var transcriptPumps: List<Thread> = emptyList()
 
         try {
             // Step 1: Launch
@@ -1102,9 +1141,9 @@ class DurableShellExecutor : DurableShellLaunching {
                 request.workspaceRoot,
                 request.sandbox,
                 transcriptRedactor,
-                transcriptSink,
+                channelSinks,
             ).also { handle ->
-                transcriptPump = consumeLastTranscriptPump(handle)
+                transcriptPumps = consumeLastTranscriptPumps(handle)
             }
             launched = true
 
@@ -1191,10 +1230,14 @@ class DurableShellExecutor : DurableShellLaunching {
                 }
             }
 
-            // Drain the transcript pump BEFORE projecting, so the last sanitized bytes have reached
+            // Drain the transcript pumps BEFORE projecting, so the last sanitized bytes have reached
             // the durable authority before the step is reported. Bounded, because a pump stuck on a
             // live child must not hold the step open.
-            transcriptPump?.join(10_000)
+            //
+            // OBS-C2.3: every channel's pump is drained, not just one. Joining a single pump would
+            // let stderr still be in flight when the step is reported, and a reader tailing the
+            // stderr stream would see the step finish before its last bytes arrive.
+            transcriptPumps.forEach { it.join(10_000) }
 
             // A persistence refusal is a step failure, not a warning. The bytes left the pipe when
             // the pump read them, so a transcript that is short, ordered and plausible is the worst

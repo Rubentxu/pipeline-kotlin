@@ -116,7 +116,13 @@ class ObsBJvmDeathOutputRecoveryUatTest {
     /** Committed bytes for this run's stream, read the way a brand-new process would read them. */
     private fun committedTranscript(): ByteArray {
         val store = OutputPlaneProvider.storeFor(controlRoot)
-        val stream = OutputPlaneProvider.streamId(runId, OpId(runId, 0, 0).format())
+        // OBS-C2.3: the producer emits on stdout, so that is the channel-addressed stream it now
+        // writes. Reading the old merged stream would report zero bytes for a producer that is
+        // durably committing them, and this row's whole claim is about those bytes surviving a kill.
+        val stream = OutputPlaneProvider
+            .streamsOf(runId, OpId(runId, 0, 0).format())
+            .stdout
+            .stream
         if (store.read(stream, OutputCursor.start(stream), 4096) is OutputReadResult.Refused) {
             // A refusal here is a fact, not a silent empty: the caller below waits for committed
             // bytes before the crash, so reaching the crash path with a refusal means the ingress was

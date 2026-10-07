@@ -105,8 +105,19 @@ class ObsCChannelAndTailCharacterisationTest {
 
     /** Everything a run of one blocked step yields, as an external consumer would see it. */
     private class Observation(
-        /** Transcript bytes read through the published port once the step had ended. */
+        /**
+         * Every committed byte of BOTH channel streams, concatenated in the fixed channel order.
+         *
+         * OBS-C2.3: this used to be the single fused `.../transcript` stream. That stream no longer
+         * exists on the canonical path, so "the transcript" is now something a reader ASSEMBLES from
+         * two streams — which is the honest shape, and the reason the rows below had to be rewritten
+         * rather than merely flipped.
+         */
         val transcript: ByteArray,
+        /** The stdout stream's committed bytes, read separately so attribution can be asserted. */
+        val stdoutBytes: ByteArray,
+        /** The stderr stream's committed bytes, read separately so attribution can be asserted. */
+        val stderrBytes: ByteArray,
         /** Page metadata observed MID-STEP, before the release barrier. */
         val midStepNextWasNull: Boolean,
         val midStepCommittedEnd: Long,
@@ -176,7 +187,8 @@ class ObsCChannelAndTailCharacterisationTest {
         Thread.sleep(1500)
 
         val store = OutputPlaneProvider.storeFor(controlDirRoot)
-        val stream = OutputPlaneProvider.streamId(runId, OpId(runId, 0, 0).format())
+        val streams = OutputPlaneProvider.streamsOf(runId, OpId(runId, 0, 0).format())
+        val stream = streams.stdout.stream
         val midStep = store.read(stream, OutputCursor.start(stream), PAGE_BYTES)
         val midStepPage = (midStep as? OutputReadResult.Page)?.page
 
@@ -184,8 +196,16 @@ class ObsCChannelAndTailCharacterisationTest {
         runner.join(TimeUnit.SECONDS.toMillis(90))
         assertFalse(runner.isAlive, "the step thread did not finish after release")
 
+        // OBS-C2.3: read BOTH channels. The stdout stream is the one sampled mid-step, because it is
+        // the channel the majority of a shell's work goes to; the attribution assertions compare the
+        // two afterwards.
+        val stdoutBytes = readAllBytes(store, streams.stdout.stream)
+        val stderrBytes = readAllBytes(store, streams.stderr.stream)
+
         return Observation(
-            transcript = readAllBytes(store, stream),
+            transcript = stdoutBytes + stderrBytes,
+            stdoutBytes = stdoutBytes,
+            stderrBytes = stderrBytes,
             midStepNextWasNull = midStepPage?.next == null,
             midStepCommittedEnd = midStepPage?.committedEnd ?: -1L,
             finalCommittedEnd = store.committedExtent(stream) ?: -1L,
@@ -282,23 +302,28 @@ class ObsCChannelAndTailCharacterisationTest {
     }
 
     /**
-     * CHARACTERISATION — the same transcript, byte for byte, reached by two different channels.
+     * INVERTED BY OBS-C2.3 — the same payload, byte for byte, now lands in a DIFFERENT stream.
      *
-     * `printf X` and `printf X >&2` are different process behaviour that Jenkins, `kubectl logs`
-     * and every user of a console treat as different information. Today they produce a transcript
-     * that is **byte-identical**, produced by `redirectErrorStream(true)` in
-     * [dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor], so the fusion happens in
-     * one kernel-level descriptor before any of this code can observe it.
+     * This row used to assert that `printf X` and `printf X >&2` produced **byte-identical**
+     * transcripts, because `DurableShellExecutor` called `redirectErrorStream(true)` and the kernel
+     * merged both channels into one descriptor before any PipelineK code could observe them. The
+     * bytes were conserved; the attribution was irrecoverable at that point, so `--channel stderr`
+     * had no boundary left to recover from.
      *
-     * The consequence is not "the bytes are wrong". The bytes are conserved exactly. The consequence
-     * is that `--channel stderr` is **irrecoverable at this point in the pipeline**: there is no
-     * boundary left to recover from.
+     * It now asserts the closure of that defect, and it is deliberately the same payload on both
+     * sides so that **only the channel differs**. Everything a fused transcript could not answer is
+     * now answerable:
      *
-     * Closed by: OBS-C2. Invert then — assert the two transcripts land in DIFFERENT streams — and
-     * do not delete the row.
+     * ```text
+     * before:  stdout-run and stderr-run agree byte for byte, so they are indistinguishable
+     * after:   stdout-run's bytes are in the stdout stream, stderr-run's in the stderr stream
+     * ```
+     *
+     * The row was inverted, never deleted: its negative control below is what keeps the inversion
+     * honest, because it proves the reader discriminates DIFFERENT payloads too.
      */
     @Test
-    fun `a byte-identical transcript cannot say which channel it came from`() {
+    fun `an identical payload on stderr is distinguishable from the same payload on stdout`() {
         val viaStdout = observeBlockedStep(
             "r-obsc-c1-same-out",
             "printf '%s' '$SHARED_PAYLOAD'",
@@ -308,17 +333,28 @@ class ObsCChannelAndTailCharacterisationTest {
             "printf '%s' '$SHARED_PAYLOAD' >&2",
         )
 
-        assertEquals(
-            viaStdout.transcript.toString(Charsets.UTF_8),
-            viaStderr.transcript.toString(Charsets.UTF_8),
-            "OBS-C1 measured that the transcript cannot attribute a channel, and the two runs no " +
-                "longer agree. That is expected once OBS-C2 lands: they will reach different " +
-                "streams. This row is then replaced by the inverted assertion, not deleted.",
-        )
+        // The stdout run wrote to stdout: its own stream must hold it.
         assertTrue(
-            viaStdout.transcript.toString(Charsets.UTF_8).contains(SHARED_PAYLOAD),
-            "the stdout run did not persist its payload, so the equality above would hold over " +
-                "two empty transcripts and would mean nothing",
+            viaStdout.stdoutBytes.toString(Charsets.UTF_8).contains(SHARED_PAYLOAD),
+            "the stdout run did not persist its payload to the stdout stream, so everything below " +
+                "would hold over two empty streams and would mean nothing",
+        )
+        // The stderr run wrote to stderr: the STDERR stream must hold it, and the stdout one must not.
+        assertTrue(
+            viaStderr.stderrBytes.toString(Charsets.UTF_8).contains(SHARED_PAYLOAD),
+            "ATTRIBUTION NOT CLOSED: an identical payload written to stderr did not reach the " +
+                "stderr stream. stderr stream held '${viaStderr.stderrBytes.toString(Charsets.UTF_8)}'",
+        )
+        assertFalse(
+            viaStderr.stdoutBytes.toString(Charsets.UTF_8).contains(SHARED_PAYLOAD),
+            "ATTRIBUTION NOT CLOSED: the stderr payload is also in the stdout stream, which is the " +
+                "fusion `redirectErrorStream(true)` produced. stdout stream held " +
+                "'${viaStderr.stdoutBytes.toString(Charsets.UTF_8)}'",
+        )
+        assertFalse(
+            viaStdout.stderrBytes.toString(Charsets.UTF_8).contains(SHARED_PAYLOAD),
+            "ATTRIBUTION CROSSED: the stdout payload also appears in the stderr stream, so the " +
+                "split is crossed rather than merely separated",
         )
         assertEquals(
             "UNIT",
@@ -334,12 +370,14 @@ class ObsCChannelAndTailCharacterisationTest {
     }
 
     /**
-     * CHARACTERISATION — the transcript conserves **every** byte, on both channels.
-     *
-     * Worth pinning before the fix, because the fix introduces a second pump and a second stream,
-     * and a refactor that splits a stream can very easily lose or duplicate a byte. This row is
-     * the conservation law the split must not break; it must still be green afterwards.
-     */
+ * CHARACTERISATION, RETAINED THROUGH OBS-C2.3 — the transcript conserves **every** byte, on both
+ * channels.
+ *
+ * Worth pinning before the fix, because the fix introduced a second pump and a second stream, and a
+ * refactor that splits a stream can very easily lose or duplicate a byte. This row is the
+ * conservation law the split must not break, and it must still be green afterwards — which it is,
+ * because splitting is a change of ADDRESSING and not of which bytes exist.
+ */
     @Test
     fun `every byte on both channels is conserved exactly once`() {
         val runId = "r-obsc-c1-both"
@@ -350,17 +388,27 @@ class ObsCChannelAndTailCharacterisationTest {
                 "printf '%s' '$CONTROL_STDERR_PAYLOAD' >&2",
             ).joinToString("\n"),
         )
+        // The two channel streams concatenated in a fixed order. A consumer that wants "the whole
+        // console" assembles exactly this; the Output Plane itself stores no merged copy.
         val text = observation.transcript.toString(Charsets.UTF_8)
 
         assertEquals(
             1,
             occurrences(text, CONTROL_STDOUT_PAYLOAD),
-            "stdout bytes must appear exactly once in the transcript",
+            "stdout bytes must appear exactly once across the two channel streams",
         )
         assertEquals(
             1,
             occurrences(text, CONTROL_STDERR_PAYLOAD),
-            "stderr bytes must appear exactly once in the transcript",
+            "stderr bytes must appear exactly once across the two channel streams",
+        )
+        assertTrue(
+            observation.stdoutBytes.toString(Charsets.UTF_8).contains(CONTROL_STDOUT_PAYLOAD) &&
+                observation.stderrBytes.toString(Charsets.UTF_8).contains(CONTROL_STDERR_PAYLOAD),
+            "each payload must live in ITS OWN stream: splitting that merely moved both payloads to " +
+                "one stream would conserve the bytes while losing the attribution. stdout held " +
+                "'${observation.stdoutBytes.toString(Charsets.UTF_8)}', stderr held " +
+                "'${observation.stderrBytes.toString(Charsets.UTF_8)}'",
         )
         assertTrue(
             text.contains(TAIL_PAYLOAD),

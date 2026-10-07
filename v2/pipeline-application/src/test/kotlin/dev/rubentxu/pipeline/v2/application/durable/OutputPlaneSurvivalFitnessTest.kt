@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.ConsoleReadService
 import dev.rubentxu.pipeline.v2.domain.ShellCommand
 import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
 import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
@@ -97,21 +98,15 @@ class OutputPlaneSurvivalFitnessTest {
         )
     }
 
-    /** Read a stream to exhaustion through a caller-supplied store, as a fresh process would. */
-    private fun readAll(stream: OutputStreamId, store: SegmentOutputStore): ByteArray {
-        val out = java.io.ByteArrayOutputStream()
-        var cursor: OutputCursor? = OutputCursor.start(stream)
-        while (cursor != null) {
-            val page = assertInstanceOf(
-                OutputReadResult.Page::class.java,
-                store.read(stream, cursor, 4096),
-                "read must page, not refuse",
-            ).page
-            out.write(page.bytes)
-            cursor = page.next
-        }
-        return out.toByteArray()
-    }
+    /**
+     * OBS-C2.3: this file no longer reads a raw store stream.
+     *
+     * It used to carry a `readAll(stream, store)` helper that addressed the operation's fused
+     * `.../transcript` stream. That stream no longer receives bytes, and a helper like it is worse
+     * than its absence: it would keep offering a reader a way to see "stdout only" and call it the
+     * transcript. Reads now go through [ConsoleReadService], which composes the operation's channel
+     * streams the way a consumer actually does.
+     */
 
     @Test
     fun `committed output survives the invocation that produced it, as seen by a later process`(
@@ -148,10 +143,13 @@ class OutputPlaneSurvivalFitnessTest {
         // The invocation is over. Drop the cached store so the next read cannot borrow the live
         // object that wrote these bytes - this is what a new JVM looks like.
         OutputPlaneProvider.forget(controlDirRoot)
-        val laterProcess = OutputPlaneProvider.storeFor(controlDirRoot)
-
-        val stream = OutputPlaneProvider.streamId(runId, opId.format())
-        val bytes = readAll(stream, laterProcess).toString(StandardCharsets.UTF_8)
+        // OBS-C2.3: read through the console service, which is what a consumer actually calls. It
+        // composes the operation's two channel streams; asking the store for one of them directly
+        // would read stdout only and then call that "the transcript".
+        val bytes = (
+            ConsoleReadService.read(controlDirRoot, runId, opId.format(), null, 64 * 1024)
+                as? dev.rubentxu.pipeline.v2.application.ConsoleReadService.Result.Page
+            )?.page?.bytes?.toString(StandardCharsets.UTF_8).orEmpty()
 
         assertTrue(
             bytes.contains("SURVIVOR-MARKER"),
@@ -215,15 +213,11 @@ class OutputPlaneSurvivalFitnessTest {
         )
 
         OutputPlaneProvider.forget(controlDirRoot)
-        val laterProcess = OutputPlaneProvider.storeFor(controlDirRoot)
-        val stream = OutputPlaneProvider.streamId(runId, opId.format())
-
-        // An unknown or unrecovered stream is a refusal, not an empty success. If a later process
-        // silently answered "no output" instead of refusing, an operator would read a lost
-        // transcript as a step that printed nothing - the worst possible failure direction.
+        // OBS-C2.3: the recovered console is composed from the operation's channel streams, so this
+        // row asserts against what a consumer actually receives rather than against one channel.
         val fromStart = assertInstanceOf(
-            OutputReadResult.Page::class.java,
-            laterProcess.read(stream, OutputCursor.start(stream), 4096),
+            dev.rubentxu.pipeline.v2.application.ConsoleReadService.Result.Page::class.java,
+            ConsoleReadService.read(controlDirRoot, runId, opId.format(), null, 4096),
             "a recovered stream must page, not refuse",
         )
         assertTrue(

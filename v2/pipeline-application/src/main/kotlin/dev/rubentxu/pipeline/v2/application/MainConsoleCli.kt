@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.output.OutputCursor
 import dev.rubentxu.pipeline.v2.output.OutputPage
 import dev.rubentxu.pipeline.v2.output.OutputReadResult
 import dev.rubentxu.pipeline.v2.output.OutputRefusal
+import dev.rubentxu.pipeline.v2.output.OutputStreamAddress
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import java.io.PrintStream
 import java.nio.charset.StandardCharsets
@@ -53,11 +54,26 @@ object ConsoleReadService {
     }
 
     /**
-     * Read one bounded page of [opId]'s transcript in [runId], continuing after [after].
-     *
-     * @param after `null` reads from the start. A token for a different stream is **refused**,
-     *   not clamped — see the class KDoc.
-     */
+ * Read one bounded page of [opId]'s transcript in [runId], continuing after [after].
+ *
+ * ## Why one call still answers "the whole console"
+ *
+ * OBS-C2.3 split an operation's output into two channel-addressed streams, and this method is where
+ * a consumer is meant to see them as one console again. The concatenation happens HERE, on the read
+ * side, and is never persisted — a merged run on disk would be the second byte authority that
+ * `ADR-M1 §D2` exists to prevent.
+ *
+ * The continuation cursor names **the channel the page stopped on**, because that is the only thing
+ * an [OutputCursor] can honestly name: it addresses a byte position inside ONE stream, and the type
+ * refuses a cursor that claims otherwise. So a reader resuming from the returned cursor continues
+ * exactly where it stopped, and the remaining channel is picked up afterwards. Reconstructing that
+ * ordering across channels — the interleaving a real console shows — is `OutputFrameIndex`'s job, and
+ * this method deliberately does NOT pretend to do it: it concatenates in a fixed channel order, which
+ * is a projection and not a claim about what the kernel interleaved.
+ *
+ * @param after `null` reads from the start. A token for a different stream is **refused**,
+ *   not clamped — see the class KDoc.
+ */
     fun read(
         controlDirRoot: Path,
         runId: String,
@@ -66,19 +82,105 @@ object ConsoleReadService {
         maxBytes: Int = DEFAULT_PAGE_BYTES,
     ): Result {
         val store = OutputPlaneProvider.storeFor(controlDirRoot)
-        val stream = OutputPlaneProvider.streamId(runId, opId)
-        // The foreign-stream check is NOT repeated here. SegmentOutputStore.read already refuses a
-        // cursor naming another stream, with the identical OutputRefusal, and a mutation harness
-        // proved the duplicate was unreachable: disabling the service's copy left the suite green
-        // because the store caught it anyway. One place owns the rule.
-        val cursor = after ?: OutputCursor.start(stream)
-        return when (val result = store.read(stream, cursor, maxBytes)) {
-            is OutputReadResult.Page -> Result.Page(result.page)
-            is OutputReadResult.Refused -> Result.Refused(result.reason)
+        val ordered = OutputPlaneProvider.streamsOf(runId, opId).all
+
+        // A cursor names one stream. If it names one of THIS operation's channels, the merged read
+        // starts there. If it names some other stream entirely — another operation, another run —
+        // the store is asked to refuse it against the stream it actually names, which is the refusal
+        // that names the caller's real mistake. Falling through to "read from the start" instead
+        // would silently answer a different question than the one that was asked.
+        val startIndex = after
+            ?.let { cursor -> ordered.indexOfFirst { it.stream == cursor.stream } }
+            ?.takeIf { it >= 0 }
+
+        if (after != null && startIndex == null) {
+            return Result.Refused(
+                OutputRefusal.ForeignStream(expected = ordered.first().stream, actual = after.stream),
+            )
         }
+
+        val first: Int = startIndex ?: 0
+
+        val out = java.io.ByteArrayOutputStream()
+        var nextCursor: OutputCursor? = null
+        var anyChannelAnswered = false
+
+        for (address in ordered.drop(first)) {
+            if (out.size() >= maxBytes) break
+
+            val cursor = if (address.stream == after?.stream) after!!
+            else OutputCursor.start(address.stream)
+
+            val budget = maxOf(1, maxBytes - out.size())
+            when (val result = store.read(address.stream, cursor, budget)) {
+                is OutputReadResult.Refused -> {
+                    // A channel that was never opened is not an error. In `returnStdout` mode stdout
+                    // is the typed VALUE and goes to output.txt, so the stdout stream legitimately
+                    // does not exist while stderr does. Skipping an UNKNOWN stream is what lets one
+                    // read answer both invocation modes; any OTHER refusal is still propagated,
+                    // because that is a fact about the question rather than about the output.
+                    if (result.reason is OutputRefusal.UnknownStream) continue
+                    return Result.Refused(result.reason)
+                }
+                is OutputReadResult.Page -> {
+                    anyChannelAnswered = true
+                    out.write(result.page.bytes)
+                    if (result.page.next != null) {
+                        nextCursor = result.page.next
+                    }
+                }
+            }
+            if (nextCursor != null) break
+        }
+
+        // Both channels absent is a fact the CALLER must be able to tell from "one channel, no
+        // bytes": reporting an empty page here would let a silent step look like a step whose output
+        // was truncated to nothing. The refusal carries the first channel's identity, which is the
+        // one a reader would have asked for.
+        if (!anyChannelAnswered) {
+            val absent = ordered.getOrNull(first) ?: ordered.first()
+            return Result.Refused(OutputRefusal.UnknownStream(absent.stream))
+        }
+
+        // `readRange` and `read` must name the SAME absent stream for one operation, so a caller
+        // that switched entry points still recognises "nothing was written" as the same fact.
+
+        // The page reports the stream and offset it actually came from. When the whole console fit,
+        // the first channel is the honest answer; when it did not, `nextCursor` already names where
+        // the reader stopped. When a channel was skipped as absent, the reported stream is the first
+        // one that actually produced bytes — reporting a stream that holds nothing would be a page
+        // that lies about its own origin.
+        val reported = ordered.drop(first).firstOrNull { it.stream == nextCursor?.stream }
+            ?: ordered.drop(first).firstOrNull { address ->
+                (store.committedExtent(address.stream) ?: 0L) > 0L
+            }
+            ?: ordered.getOrNull(first)
+            ?: ordered.first()
+
+        return Result.Page(
+            OutputPage(
+                bytes = out.toByteArray(),
+                stream = reported.stream,
+                from = after?.takeIf { it.stream == reported.stream }?.committedOffset ?: 0L,
+                next = nextCursor,
+                committedEnd = after?.takeIf { it.stream == reported.stream }?.committedOffset
+                    ?.plus(out.size().toLong())
+                    ?: out.size().toLong(),
+            ),
+        )
     }
 
-    /** Read an arbitrary committed byte range. The same bytes a paged read would deliver. */
+    /**
+     * Read an arbitrary committed byte range of [opId]'s console.
+     *
+     * ## The merged offset space
+     *
+     * OBS-C2.3 gives an operation two channel streams, so "byte 30 of this console" is only
+     * meaningful once the two are put in an order. That order is the fixed channel order used by
+     * [read], which makes a range and a page agree by construction: the same offsets name the same
+     * bytes whichever way a reader asks for them. It is a **projection**, not a claim about what the
+     * kernel interleaved — reconstructing the real observation order is `OutputFrameIndex`'s job.
+     */
     fun readRange(
         controlDirRoot: Path,
         runId: String,
@@ -87,11 +189,56 @@ object ConsoleReadService {
         to: Long,
     ): Result {
         val store = OutputPlaneProvider.storeFor(controlDirRoot)
-        val stream = OutputPlaneProvider.streamId(runId, opId)
-        return when (val result = store.readRange(stream, from, to)) {
-            is OutputReadResult.Page -> Result.Page(result.page)
-            is OutputReadResult.Refused -> Result.Refused(result.reason)
+        val ordered = OutputPlaneProvider.streamsOf(runId, opId).all
+
+        // A channel that was never opened contributes zero bytes to the merged space, which is what
+        // makes one range read correct for both plain and `returnStdout` invocations.
+        val bounds = ordered.map { store.committedExtent(it.stream) ?: 0L }
+        val total = bounds.sum()
+        require(from >= 0 && to >= from && to <= total) {
+            "range [$from, $to) is outside this operation's committed console of $total bytes"
         }
+
+        val out = java.io.ByteArrayOutputStream()
+        var consumed = 0L
+        for ((address, extent) in ordered.zip(bounds)) {
+            // The channel's own slice of the merged space is [consumed, consumed + extent).
+            val channelStart = consumed
+            val channelEnd = consumed + extent
+            consumed = channelEnd
+            if (extent == 0L) continue
+            if (channelEnd <= from) continue
+            if (channelStart >= to) break
+
+            val sliceFrom = maxOf(from, channelStart) - channelStart
+            val sliceTo = minOf(to, channelEnd) - channelStart
+            if (sliceTo <= sliceFrom) continue
+
+            when (val result = store.readRange(address.stream, sliceFrom, sliceTo)) {
+                is OutputReadResult.Refused -> return Result.Refused(result.reason)
+                is OutputReadResult.Page -> out.write(result.page.bytes)
+            }
+        }
+
+        val bytes = out.toByteArray()
+        // `OutputPage` reports one stream, so this names the channel that contributed the FIRST byte
+        // of the range. A range is not a resumable read — `next` is null by construction, because
+        // continuation is expressed with a cursor and there is no honest single cursor for a span of
+        // two streams.
+        val firstChannel = ordered.withIndex().firstOrNull { (index, _) ->
+            val start = bounds.take(index).sum()
+            start + bounds[index] > from && bounds[index] > 0L
+        }?.value ?: ordered.first()
+
+        return Result.Page(
+            OutputPage(
+                bytes = bytes,
+                stream = firstChannel.stream,
+                from = from,
+                next = null,
+                committedEnd = from + bytes.size,
+            ),
+        )
     }
 
     /** Render a refusal as one stable line, so a script can branch on the reason. */
@@ -240,8 +387,15 @@ object MainConsoleCli {
 
     internal fun decodeForTest(token: String): OutputCursor? = OutputCursor.decode(token)
 
-    internal fun streamIdFor(runId: String, opId: String): OutputStreamId =
-        OutputPlaneProvider.streamId(runId, opId)
+    /**
+ * The stream id a consumer is handed for one operation's console.
+ *
+ * OBS-C2.3: the console is the operation's channel-addressed streams, and a reader that wants one
+ * channel asks for it by name. This stays a single helper so the shape is minted in ONE place — the
+ * same reason [OutputStreamAddress.parse] reads it back from the two ends.
+ */
+    internal fun streamIdFor(runId: String, opId: String, channel: dev.rubentxu.pipeline.v2.output.OutputChannel): OutputStreamId =
+        OutputPlaneProvider.streamId(runId, opId, channel)
 
     internal fun utf8(bytes: ByteArray): String = String(bytes, StandardCharsets.UTF_8)
 }

@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
 import dev.rubentxu.pipeline.v2.domain.ShellCommand
 import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.output.OutputChannel
 import dev.rubentxu.pipeline.v2.output.OutputCursor
 import dev.rubentxu.pipeline.v2.output.OutputReadResult
 import dev.rubentxu.pipeline.v2.output.OutputRefusal
@@ -177,11 +178,11 @@ class ConsoleReadServiceTest {
         runSh(controlDirRoot, workspaceRoot, "echo stream-a", "r-a")
         runSh(controlDirRoot, workspaceRoot, "echo stream-b", "r-b")
 
-        val foreign = OutputCursor(MainConsoleCli.streamIdFor("r-a", OpId("r-a", 0, 0).format()), 0L)
+        val foreign = OutputCursor(MainConsoleCli.streamIdFor("r-a", OpId("r-a", 0, 0).format(), OutputChannel.STDOUT), 0L)
         assertEquals(
             OutputRefusal.ForeignStream(
-                expected = MainConsoleCli.streamIdFor("r-b", OpId("r-b", 0, 0).format()),
-                actual = MainConsoleCli.streamIdFor("r-a", OpId("r-a", 0, 0).format()),
+                expected = MainConsoleCli.streamIdFor("r-b", OpId("r-b", 0, 0).format(), OutputChannel.STDOUT),
+                actual = MainConsoleCli.streamIdFor("r-a", OpId("r-a", 0, 0).format(), OutputChannel.STDOUT),
             ),
             refusal(ConsoleReadService.read(controlDirRoot, "r-b", OpId("r-b", 0, 0).format(), after = foreign)),
         )
@@ -196,7 +197,7 @@ class ConsoleReadServiceTest {
 
         val result = ConsoleReadService.read(controlDirRoot, "r-present", "op-never-ran", after = null)
         assertEquals(
-            OutputRefusal.UnknownStream(MainConsoleCli.streamIdFor("r-present", "op-never-ran")),
+            OutputRefusal.UnknownStream(MainConsoleCli.streamIdFor("r-present", "op-never-ran", OutputChannel.STDOUT)),
             refusal(result),
         )
         // The rendered refusal is stable and greppable, so a shell script can branch on it.
@@ -247,7 +248,7 @@ class ConsoleReadServiceTest {
         val code = PrintStream(out, true, StandardCharsets.UTF_8).use { o ->
             PrintStream(err, true, StandardCharsets.UTF_8).use { e ->
                 MainConsoleCli.emit(
-                    ConsoleReadService.Result.Refused(OutputRefusal.UnknownStream(MainConsoleCli.streamIdFor("nope", "op"))),
+                    ConsoleReadService.Result.Refused(OutputRefusal.UnknownStream(MainConsoleCli.streamIdFor("nope", "op", OutputChannel.STDOUT))),
                     o,
                     e,
                 )

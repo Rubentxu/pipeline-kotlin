@@ -1,6 +1,9 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.output.OperationOutputStreams
+import dev.rubentxu.pipeline.v2.output.OutputChannel
 import dev.rubentxu.pipeline.v2.output.OutputReadPort
+import dev.rubentxu.pipeline.v2.output.OutputStreamAddress
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import dev.rubentxu.pipeline.v2.output.store.OutputAppendPort
 import dev.rubentxu.pipeline.v2.output.store.OutputRecoveryPort
@@ -57,9 +60,37 @@ object OutputPlaneProvider {
      * Shape is `{opId}` under a per-run stream so a cursor cannot be mistaken for one from a
      * different run: the id alone has to be enough to reject a foreign cursor, and a bare op id
      * would collide across runs.
+     *
+     * ## This is the pre-OBS-C2 shape, and it is kept deliberately
+     *
+     * Its trailing segment is `transcript`, which is **not** a channel, so
+     * [dev.rubentxu.pipeline.v2.output.OutputStreamAddress.parse] returns `null` for it. That is the
+     * correct reading: a stream written before the channels were separated carries no channel
+     * attribution and must not be guessed at. The canonical producer uses [streamId] with a channel;
+     * this overload exists for the callers that address a historical or whole-operation stream.
      */
     fun streamId(runId: String, opId: String): OutputStreamId =
         OutputStreamId("$runId/$opId/transcript")
+
+    /**
+     * The stream id carrying [channel]'s bytes for one operation.
+     *
+     * The channel is part of the **identity**, not metadata beside the bytes. Attribution then
+     * survives a crash, a reopen and a cursor hand-off for free, because those already address bytes
+     * by stream — a separate frame of metadata would be a second thing to keep in step with the
+     * bytes, and keeping it in step is exactly what a crash interrupts.
+     */
+    fun streamId(runId: String, opId: String, channel: OutputChannel): OutputStreamId =
+        OutputStreamAddress.of(runId, opId, channel).stream
+
+    /**
+     * The pair of channel streams one operation writes.
+     *
+     * Exposed as the address type rather than as two loose ids so a caller cannot mix one
+     * operation's stdout with another's stderr.
+     */
+    fun streamsOf(runId: String, opId: String): OperationOutputStreams =
+        OperationOutputStreams.of(runId, opId)
 
     /** Drop the cached store for [controlDirRoot], forcing the next access to recover again. */
     fun forget(controlDirRoot: Path) {

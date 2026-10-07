@@ -425,10 +425,20 @@ object ConsolePlaneProbe {
             val result = ConsoleReadService.read(controlDirRoot, runId, opId, cursor)
             val page: OutputPage = when (result) {
                 is ConsoleReadService.Result.Page -> result.page
-                is ConsoleReadService.Result.Refused -> throw AssertionError(
-                    "continuation of run '$runId' op '$opId' was refused: " +
-                        ConsoleReadService.renderRefusal(result.reason),
-                )
+                is ConsoleReadService.Result.Refused -> {
+                    // OBS-C2.3: an operation's console is two channel streams, and a step need not
+                    // write to both. `returnStdout` mode writes no transcript to stdout at all, and a
+                    // plain step may emit nothing on stderr. Once SOME bytes have been read, a channel
+                    // that was never opened means "this run said nothing on that channel" — it is
+                    // the end of the console, not a failure to read it. Treating it as a refusal made
+                    // a correct producer look broken, which is the worst direction for a law about
+                    // what a step DID write.
+                    if (result.reason is OutputRefusal.UnknownStream && sink.isNotEmpty()) break
+                    throw AssertionError(
+                        "continuation of run '$runId' op '$opId' was refused: " +
+                            ConsoleReadService.renderRefusal(result.reason),
+                    )
+                }
             }
             sink.append(String(page.bytes))
             cursor = page.next

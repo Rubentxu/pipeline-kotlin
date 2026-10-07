@@ -27,6 +27,8 @@ import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.sdk.StepContext
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EnvModel
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputChannel
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
 import java.io.InputStream
@@ -185,15 +187,34 @@ object ShExecution {
 
             // OBS-B: the composed destination for the child's bytes. This is the whole change — the
             // transcript is handed to the Output Plane by the pump WHILE the step runs, instead of
-            // being written to a control-dir file and ingested once the step has returned. The
-            // stream id is the same one the previous post-step ingestion used, so a reader holding a
-            // cursor from an earlier run of this operation still addresses the same stream.
-            val ingress: RedactingOutputIngress? = controlDirRoot?.let { root ->
-                RedactingOutputIngress(
-                    OutputPlaneProvider.storeFor(root)
-                        .open(OutputPlaneProvider.streamId(runId, opId.format())),
-                )
-            }
+            // being written to a control-dir file and ingested once the step has returned.
+            //
+            // OBS-C2.3: one ingress per CHANNEL, each addressing its own channel-addressed stream.
+            // The channel is part of the stream identity, so attribution survives a crash, a reopen
+            // and a cursor hand-off with nothing extra to keep in step with the bytes. Declaring
+            // both streams up front is what makes a crash between the first byte commit and the
+            // first frame recoverable instead of lost — see OutputFrameIndex.declareStream.
+            val ingressSinks: Map<ProcessOutputChannel, ProcessOutputSink> = controlDirRoot?.let { root ->
+                val store = OutputPlaneProvider.storeFor(root)
+                val streams = OutputPlaneProvider.streamsOf(runId, opId.format())
+                buildMap {
+                    ProcessOutputChannel.all.forEach { channel ->
+                        val address = when (channel) {
+                            ProcessOutputChannel.STDOUT -> streams.stdout
+                            ProcessOutputChannel.STDERR -> streams.stderr
+                        }
+                        store.frameIndex().declareStream(address.stream, address.channel)
+                        put(
+                            channel,
+                            RedactingOutputIngress(
+                                store.open(address.stream),
+                                store.frameIndex(),
+                                address,
+                            ) as ProcessOutputSink,
+                        )
+                    }
+                }
+            } ?: emptyMap()
 
             // Execute with tee-gated wrapper if captureStdout is enabled
             // P2: env injected via pb.environment().putAll (not argv) in DurableShellExecutor.launch()
@@ -210,17 +231,20 @@ object ShExecution {
                 transcriptRedactor = secretPatternRegistry?.let { registry ->
                     { raw -> dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor(registry).wrap(raw) }
                 },
-                // OBS-B: live destination. Null only when there is no control-dir root, which is
-                // the non-durable fallback handled above.
-                transcriptSink = ingress,
+                // OBS-B: live destination, one per channel. Empty only when there is no control-dir root,
+                // which is the non-durable fallback handled above.
+                channelSinks = ingressSinks,
             )
 
             // Project the durable console transcript and the typed value separately.
-            //   plain (returnMode != STDOUT): console.log holds stdout+stderr merged; the whole
-            //     transcript is the observable console output. No typed value.
+            //   plain (returnMode != STDOUT): stdout and stderr are SEPARATE channel-addressed
+            //     streams in the Output Plane. Neither is merged on the way in, so neither is
+            //     merged on the way out: a consumer reads the one it wants, or reads both and
+            //     interleaves them by OutputFrame.ordinal. No typed value.
             //   captureStdout (returnMode == STDOUT): stdout is the captured typed VALUE (output.txt,
-            //     read as terminal.capturedStdout); console.log holds only stderr and is the
-            //     observable transcript. The stdout value must NOT be re-emitted as a console event.
+            //     read as terminal.capturedStdout) and is NOT part of the transcript at all; the
+            //     stderr stream is the observable transcript. The stdout value must NOT be re-emitted
+            //     as a console event.
             // OBS-B: there is nothing left to ingest here, and that is the point.
             //
             // M1-P2 established that the transcript enters the Output Plane exactly once and that
@@ -228,12 +252,16 @@ object ShExecution {
             // step returned, which meant the store was authoritative but never live: a reader
             // tailing the stream saw nothing until the step ended, however long it ran.
             //
-            // The pump now writes each sanitized chunk straight into the stream above, so:
+            // The pump now writes each sanitized chunk straight into the channel stream above, so:
             //   - `console.log` is not written, not read, and not deleted. It was a staging buffer
             //     whose lifetime was the reason the store could not be live.
             //   - post-mortem retention is no longer the existence of a file that a `finally`
             //     block happens to leave behind. It is the Output Plane's retention policy, which
             //     is where the other durable authorities already keep it.
+            //
+            // OBS-C2.3 added the per-channel split on top of that: there is no merged stream at all,
+            // so a merged console is a read-side projection over two streams and the frame index
+            // that orders them — never a third copy on disk.
             //
             // What did NOT change, and is checked above and by OutputSingleAuthorityFitnessTest:
             // redaction happens before persistence, the bytes land in one authority, and no

@@ -138,11 +138,27 @@ class OutputSingleAuthorityFitnessTest {
         )
 
         val store = OutputPlaneProvider.storeFor(controlDirRoot)
-        val stream = OutputPlaneProvider.streamId("r-single-authority", OpId("r-single-authority", 0, 0).format())
-        val transcript: String = readAll(stream, store).toString(StandardCharsets.UTF_8)
+        // OBS-C2.3: "the transcript" is no longer one stream, so this law is asserted over the pair.
+        // What D2 protects is that the bytes exist in exactly ONE durable authority — which is now
+        // two channel streams, not a fused file. Reading only one of them would make this row pass
+        // for a producer that silently dropped the other channel.
+        val streams = OutputPlaneProvider.streamsOf("r-single-authority", OpId("r-single-authority", 0, 0).format())
+        val stdoutText = readAll(streams.stdout.stream, store).toString(StandardCharsets.UTF_8)
+        val stderrText = readAll(streams.stderr.stream, store).toString(StandardCharsets.UTF_8)
 
-        assertTrue(transcript.contains("alpha"), "stdout must reach the Output Plane, got: $transcript")
-        assertTrue(transcript.contains("beta"), "stderr must reach the Output Plane, got: $transcript")
+        assertTrue(
+            stdoutText.contains("alpha"),
+            "stdout must reach the Output Plane's stdout stream, got: $stdoutText",
+        )
+        assertTrue(
+            stderrText.contains("beta"),
+            "stderr must reach the Output Plane's stderr stream, got: $stderrText",
+        )
+        assertFalse(
+            stdoutText.contains("beta"),
+            "stderr bytes also appear in the stdout stream, so the channels are fused and the single " +
+                "authority holds the same bytes twice",
+        )
 
         // console.log is a STAGING BUFFER, not an authority. If it survives a successful exit then
         // the same bytes exist in two durable places and D2 is violated by the filesystem rather
@@ -174,7 +190,11 @@ class OutputSingleAuthorityFitnessTest {
         )
 
         val store = OutputPlaneProvider.storeFor(controlDirRoot)
-        val stream = OutputPlaneProvider.streamId("r-contiguous", OpId("r-contiguous", 0, 0).format())
+        // OBS-C2.3: this step writes only to stdout, so the stdout stream is the transcript.
+        val stream = OutputPlaneProvider
+            .streamsOf("r-contiguous", OpId("r-contiguous", 0, 0).format())
+            .stdout
+            .stream
         val actual: String = readAll(stream, store).toString(StandardCharsets.UTF_8)
 
         // Read it a second time through a different page size: a cursor that only worked for one
@@ -209,7 +229,11 @@ class OutputSingleAuthorityFitnessTest {
         )
 
         val store = OutputPlaneProvider.storeFor(controlDirRoot)
-        val stream = OutputPlaneProvider.streamId("r-range", OpId("r-range", 0, 0).format())
+        // OBS-C2.3: stdout-addressed stream; a cursor never leaves the stream it was minted for.
+        val stream = OutputPlaneProvider
+            .streamsOf("r-range", OpId("r-range", 0, 0).format())
+            .stdout
+            .stream
         val all: String = readAll(stream, store).toString(StandardCharsets.UTF_8)
 
         for (from in listOf(0L, 3L, 11L, 25L)) {
@@ -252,7 +276,15 @@ class OutputSingleAuthorityFitnessTest {
         assertEquals("THE-VALUE", value.value.trim())
 
         val store = OutputPlaneProvider.storeFor(controlDirRoot)
-        val stream = OutputPlaneProvider.streamId("r-return-stdout", OpId("r-return-stdout", 0, 0).format())
+        // OBS-C2.3: with returnStdout, stdout is the typed VALUE (an exact redirect to output.txt,
+        // never part of the transcript) and stderr is the observable transcript — so the transcript
+        // is the STDERR stream. This row therefore becomes the sharpest one in the file: it asserts
+        // that a channel-specific identity keeps the value and the observability apart by
+        // construction, not by a convention that happened to hold while both shared one stream.
+        val stream = OutputPlaneProvider
+            .streamsOf("r-return-stdout", OpId("r-return-stdout", 0, 0).format())
+            .stderr
+            .stream
         val transcript: String = readAll(stream, store).toString(StandardCharsets.UTF_8)
 
         assertTrue(transcript.contains("THE-TRANSCRIPT"), "stderr belongs in the transcript: $transcript")

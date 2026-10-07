@@ -189,7 +189,13 @@ class ObsBLiveOutputIngressTest {
         Thread.sleep(1500)
 
         val store = OutputPlaneProvider.storeFor(controlDirRoot)
-        val stream = OutputPlaneProvider.streamId(runId, OpId(runId, 0, 0).format())
+        // OBS-C2.3: this row is about LIVE VISIBILITY, not about channels, so it reads whichever
+        // stream carries the work. A plain `sh` step writes its stdout to the stdout-addressed
+        // stream and its stderr to the stderr-addressed one; the emitters here write to stdout, so
+        // that is the stream sampled. Reading the old two-argument merged stream would report an
+        // empty store for a producer that is working perfectly.
+        val streams = OutputPlaneProvider.streamsOf(runId, OpId(runId, 0, 0).format())
+        val stream = streams.stdout.stream
         val duringBlock = readAll(store, stream)
         val consoleDuringBlock = consoleLogSize()
 

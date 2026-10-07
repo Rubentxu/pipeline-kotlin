@@ -149,7 +149,7 @@ class FrameIndexedObservationOutputReader(
         for (frame in frames) {
             when (val read = readFrameBytes(frame)) {
                 is ReadOutcome.Refused -> return ObservationOutputRead.Refused(read.reason)
-                is ReadOutcome.Bytes -> records += ObservationRecord.Output(frame, read.text)
+                is ReadOutcome.Bytes -> records += ObservationRecord.Output(frame, read.bytes, read.text)
             }
         }
         return ObservationOutputRead.Page(
@@ -166,7 +166,8 @@ class FrameIndexedObservationOutputReader(
     }
 
     private sealed interface ReadOutcome {
-        data class Bytes(val text: String) : ReadOutcome
+        /** The frame's raw bytes, and their decoded view. Both are bounded by the frame's range. */
+        data class Bytes(val bytes: ByteArray, val text: String) : ReadOutcome
         data class Refused(val reason: OutputRefusal) : ReadOutcome
     }
 
@@ -178,7 +179,7 @@ class FrameIndexedObservationOutputReader(
 
         return when (val read = bytes.read(frame.stream, OutputCursor(frame.stream, frame.from), length.toInt())) {
             is OutputReadResult.Refused -> ReadOutcome.Refused(read.reason)
-            is OutputReadResult.Page -> ReadOutcome.Bytes(decodeWindow(read.page.bytes))
+            is OutputReadResult.Page -> ReadOutcome.Bytes(read.page.bytes, decodeWindow(read.page.bytes))
         }
     }
 

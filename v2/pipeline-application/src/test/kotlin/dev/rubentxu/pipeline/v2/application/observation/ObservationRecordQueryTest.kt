@@ -68,7 +68,14 @@ class ObservationRecordQueryTest {
         channel: OutputChannel,
         text: String,
         stream: String = "run-1/build/sh-0/${channel.token}",
-    ) = ObservationRecord.Output(frame(ordinal, channel, stream = stream), text)
+    ): ObservationRecord.Output {
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        return ObservationRecord.Output(
+            OutputFrame(ordinal, OutputStreamId(stream), channel, 0, bytes.size.toLong()),
+            bytes,
+            text,
+        )
+    }
 
     private fun message(text: String): ObservationRecord =
         ObservationRecord.Event(EchoOutputCaptured("e-m", "run-1", 10, at, 0, text))
@@ -177,7 +184,8 @@ class ObservationRecordQueryTest {
             from = 0,
             to = 4,
         )
-        val record = ObservationRecord.Output(legacy, "text")
+        val payload = "text".toByteArray(Charsets.UTF_8)
+        val record = ObservationRecord.Output(legacy, payload, "text")
 
         assertNull(
             record.address,

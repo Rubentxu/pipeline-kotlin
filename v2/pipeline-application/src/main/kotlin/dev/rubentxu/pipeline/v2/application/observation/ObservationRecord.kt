@@ -54,11 +54,20 @@ sealed interface ObservationRecord {
      * @property frame the durable metadata: which stream, which channel, which byte range, which
      *   observation ordinal. It carries **no payload**, because the bytes live exactly once in the
      *   Output Plane.
-     * @property text those bytes decoded for this window. Present because a reader has to be able to
-     *   filter on text, not because the record may keep bytes: it holds one bounded window at a
-     *   time, and the window is the reader's to bound.
+     * @property bytes that range's raw bytes, exactly as committed. Present because a machine format
+     *   has to be able to emit bytes that are not valid UTF-8, and a record that only carried a
+     *   decoded [text] would have destroyed them before any encoder could offer a base64 fallback.
+     *   It is the same window [frame] names — never a second copy of the stream, and never the whole
+     *   transcript, because the reader bounds the window.
+     * @property text those same bytes decoded for filtering. A VIEW over [bytes], not a replacement
+     *   for them: a character split across frames decodes to U+FFFD here and is still intact in
+     *   [bytes].
      */
-    data class Output(val frame: OutputFrame, val text: String) : ObservationRecord {
+    data class Output(
+        val frame: OutputFrame,
+        val bytes: ByteArray,
+        val text: String,
+    ) : ObservationRecord {
 
         /** Which of the child's streams produced these bytes. Never a guess — the frame carries it. */
         val channel: OutputChannel get() = frame.channel
@@ -72,6 +81,18 @@ sealed interface ObservationRecord {
          * frame), and a query on operation or run is the thing that correctly refuses such bytes.
          */
         val address: OutputStreamAddress? get() = OutputStreamAddress.parse(frame.stream)
+
+        /** Structural equality over a byte array needs this, or two equal windows compare unequal. */
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is Output) return false
+            return frame == other.frame &&
+                bytes.contentEquals(other.bytes) &&
+                text == other.text
+        }
+
+        override fun hashCode(): Int =
+            (frame.hashCode() * 31 + bytes.contentHashCode()) * 31 + text.hashCode()
     }
 }
 

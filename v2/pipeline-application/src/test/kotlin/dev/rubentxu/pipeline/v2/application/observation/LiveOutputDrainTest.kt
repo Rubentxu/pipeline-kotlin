@@ -36,15 +36,16 @@ import java.util.concurrent.TimeUnit
  * LIVE-1    bytes committed while the drain runs ARE emitted, before the run is told to stop
  * LIVE-2    a truncated page does not end the drain mid-transcript
  * LIVE-3    a run that has written nothing yet is not "finished"
- * SEALED-1  the drain ends only when every stream is sealed
+ * SEALED-1  the owner ends the drain; an open tail only classifies how it ended
+ * LIVE-4    a later step output survives every stream looking sealed in between
  * SEALED-2  the owner stopping the drain is a distinct outcome from draining
  * REFUSE-2  a refusal ends the drain as a refusal, not as a clean finish
  * ```
  *
  * ## Mutation
  *
- * - `M-E11` (stop when the page ends) → return Drained as soon as a page comes back short,
- *   ignoring the tail states.
+ * - `M-E11` (the plane decides when the run is over) → return Drained as soon as every
+ *   stream looks sealed, which is what loses LIVE-4.
  * - `M-E12` (position advances per page) → advance the ordinal once per page.
  * - `M-E13` (refusal propagates) → treat a refusal as an empty page.
  */
@@ -101,12 +102,13 @@ class LiveOutputDrainTest {
         val emitted = StringBuilder()
         // The run is told to stop only once the drain has emitted what the step produced, which is
         // the property `pipeline run` depends on: the bytes must be visible while the step lives.
+        // Deliberately does NOT seal: this row is about WHEN bytes are emitted, not about how the
+        // drain classifies its ending. The tail stays open, which is also the state a step that is
+        // still running is in.
         val stopWhen = {
-            val stopped = emitted.isNotEmpty() && store.committedExtent(
+            emitted.isNotEmpty() && store.committedExtent(
                 OutputStreamAddress.of(runId, operationId, OutputChannel.STDOUT).stream,
             ) == emitted.length.toLong()
-            if (stopped) seal(operationId)
-            stopped
         }
 
         publish(operationId, OutputChannel.STDOUT, "compiling module A\n")
@@ -132,8 +134,9 @@ class LiveOutputDrainTest {
         val emitted = StringBuilder()
         // frameLimit = 2 forces three pages for five frames. A drain that stops when a page comes
         // back short would emit the first two lines and quietly lose the rest.
+        var polls = 0
         val drain = LiveOutputDrain(reader, frameLimit = 2, pollIntervalMs = 5)
-        val result = drain.drain(runId, { false }) { emitted.append(it.text) }
+        val result = drain.drain(runId, { ++polls > 8 }) { emitted.append(it.text) }
 
         assertEquals(
             "line 0\nline 1\nline 2\nline 3\nline 4\n",
@@ -170,11 +173,17 @@ class LiveOutputDrainTest {
         )
 
         assertTrue(sealedLate, "the drain must not have ended on its own before the owner stopped it")
-        assertInstanceOf(LiveOutputDrainResult.Stopped::class.java, result)
+        assertInstanceOf(
+            LiveOutputDrainResult.Drained::class.java,
+            result,
+            "a run with no output at all, whose owner stopped it, HAS been fully drained. The " +
+                "empty-history law is about not calling a RUN finished early — and the owner, " +
+                "not the tail states, is what says a run is finished.",
+        )
     }
 
     @Test
-    fun `SEALED-1 the drain ends only when every stream is sealed`() {
+    fun `SEALED-1 the owner ends the drain, and an open tail only classifies how`() {
         val operationId = operationId(0)
         publish(operationId, OutputChannel.STDOUT, "partial\n")
 
@@ -184,7 +193,7 @@ class LiveOutputDrainTest {
             runId,
             {
                 polls++
-                if (polls > 5) true else false
+                if (polls > 3) true else false
             },
             { },
         )
@@ -192,10 +201,48 @@ class LiveOutputDrainTest {
         assertInstanceOf(
             LiveOutputDrainResult.Stopped::class.java,
             result,
-            "the stream is OPEN — the seal is a statement that no more bytes will arrive, and " +
-                "the pump merely ending is not that. A run that dies mid-step leaves its tail open " +
-                "and must keep its console readable.",
+            "the owner stopped the drain, so it ended — but the stream is OPEN, and that is the " +
+                "normal state for a run that died mid-step. It must be reported as Stopped rather " +
+                "than as a completed drain, because a seal promises that no more bytes will arrive " +
+                "and an open tail is exactly a promise not yet made.",
         )
+    }
+
+    @Test
+    fun `LIVE-4 a later step output survives every stream looking sealed in between`() {
+        // This is the race that decided the drain shape. `ShExecution` seals a step streams from
+        // INSIDE `invoke`, while the run continues, so there is a window — between one `sh`
+        // finishing and the next one declaring its streams — in which every stream the run has is
+        // Sealed. A drain that treated that as the run being over would exit inside the window and
+        // drop every byte the remaining steps print.
+        val first = operationId(0)
+        publish(first, OutputChannel.STDOUT, "step one\n")
+        seal(first)
+
+        var polls = 0
+        val second = operationId(1)
+        val emitted = StringBuilder()
+
+        // The second step streams appear two polls in, well inside the all-sealed window.
+        val drain = LiveOutputDrain(reader, frameLimit = 4, pollIntervalMs = 5)
+        val result = drain.drain(
+            runId,
+            {
+                polls++
+                if (polls == 2) publish(second, OutputChannel.STDOUT, "step two\n")
+                polls > 6
+            },
+            { emitted.append(it.text) },
+        )
+
+        assertEquals(
+            "step one\nstep two\n",
+            emitted.toString(),
+            "the second step printed while every stream the run had was already sealed, and the " +
+                "drain was still watching. A seal-based terminator ends right here and loses it, " +
+                "which is why the OWNER ends the drain and the tail states only classify it.",
+        )
+        assertInstanceOf(LiveOutputDrainResult.Stopped::class.java, result)
     }
 
     @Test
@@ -206,8 +253,9 @@ class LiveOutputDrainTest {
         seal(operationId)
 
         val emitted = StringBuilder()
+        var polls = 0
         val drain = LiveOutputDrain(reader, frameLimit = 8, pollIntervalMs = 5)
-        val result = drain.drain(runId, { false }) { emitted.append(it.text) }
+        val result = drain.drain(runId, { ++polls > 8 }) { emitted.append(it.text) }
 
         assertEquals("done\na warning\n", emitted.toString())
         assertInstanceOf(LiveOutputDrainResult.Drained::class.java, result)

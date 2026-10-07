@@ -67,12 +67,14 @@ class LiveOutputDrain(
      * observing" unobservable from outside, and a run that could not stop observing is a run whose
      * console outlives it.
      *
-     * @param shouldStop consulted before every read. A run finishing is the usual reason to stop,
-     *   but so is an interrupt, and both are the owner's decision rather than this type's.
+     * @param shouldStop consulted after every read, and it is what ENDS the drain. Only the owner
+     *   knows the run is over — see the race documented in the body. The tail states then classify
+     *   the ending ([Drained] versus [Stopped]); they never decide it.
      * @param emit receives one record at a time, in observation order. It is called only for bytes
      *   that are already committed, so an emitter that throws has emitted nothing false.
-     * @return why the drain ended. [LiveOutputDrainResult.Drained] means the plane said the run is
-     *   sealed and nothing was left behind.
+     * @return why the drain ended. [LiveOutputDrainResult.Drained] means the owner stopped it and
+     *   every stream was sealed; [LiveOutputDrainResult.Stopped] means the owner stopped it while
+     *   some tail was still open, which is the normal state for a run that died mid-step.
      */
     fun drain(
         runId: String,
@@ -82,32 +84,38 @@ class LiveOutputDrain(
         var ordinal = -1L
 
         while (true) {
-            if (shouldStop()) return LiveOutputDrainResult.Stopped
-
+            // Read FIRST, then ask whether to stop. The order is the whole fix for a race that a
+            // seal-based terminator cannot avoid:
+            //
+            //   `ShExecution` seals a step's streams from INSIDE `invoke`, while the run continues.
+            //   So between one `sh` finishing and the next one declaring its streams, every stream
+            //   the run has is Sealed. A drain that treated "all sealed" as "the run is over" would
+            //   exit there — and silently drop the output of every LATER step. LIVE-4 pins that.
+            //
+            // Reading before asking means the bytes committed up to the moment the owner stopped are
+            // emitted, and asking before reading would drop the last poll's worth.
             when (val read = reader.readOutput(runId, ordinal, frameLimit)) {
                 is ObservationOutputRead.Refused -> return LiveOutputDrainResult.Refused(read.reason)
                 is ObservationOutputRead.Page -> {
-                    val page = read.page
-                    for (record in page.records) {
+                    for (record in read.page.records) {
                         emit(record)
                         // The position advances per RECORD, not per page. Advancing per page would
                         // skip any record an emitter rejected and lose it for good.
                         ordinal = record.frame.ordinal
                     }
+                }
+            }
 
-                    // Two conditions, and BOTH must hold before this is a finish:
-                    //
-                    // 1. `moreFrames` is false — the page was not truncated by frameLimit. A
-                    //    truncated page means bytes are waiting to be read, so returning here would
-                    //    end the console mid-transcript.
-                    // 2. Every stream is Sealed. An EMPTY tail list is not "sealed": a run that
-                    //    has not written a byte yet has no streams, and treating that as finished
-                    //    would cut the console at the exact moment the build starts. Same law as
-                    //    elsewhere in this package — null is not Sealed, and an empty history is
-                    //    not a completion.
-                    val tails = reader.tailStatesOf(runId)
-                    val everyStreamSealed = tails.isNotEmpty() && tails.all { it is OutputTailState.Sealed }
-                    if (!page.moreFrames && everyStreamSealed) return LiveOutputDrainResult.Drained
+            if (shouldStop()) {
+                // The OWNER ends the drain, because only the owner knows the run is over. The tail
+                // states then classify HOW it ended, and they classify rather than decide: an
+                // empty tail list is fine here, because an owner that stopped a run with no output
+                // really did drain everything there was.
+                val tails = reader.tailStatesOf(runId)
+                return if (tails.all { it is OutputTailState.Sealed }) {
+                    LiveOutputDrainResult.Drained
+                } else {
+                    LiveOutputDrainResult.Stopped
                 }
             }
 
@@ -127,10 +135,15 @@ class LiveOutputDrain(
 /** Why a [LiveOutputDrain] stopped. */
 sealed interface LiveOutputDrainResult {
 
-    /** Every stream of the run is sealed and every frame was emitted. */
+    /** The owner stopped it and every stream was sealed. Nothing was left behind. */
     data object Drained : LiveOutputDrainResult
 
-    /** The owner asked it to stop. Bytes may remain committed and un-emitted. */
+    /**
+     * The owner stopped it while some tail was still open.
+     *
+     * Not an error and not a gap: a run that died mid-step leaves its tail open deliberately, so
+     * that a resumed run can append to the same streams rather than start a second transcript.
+     */
     data object Stopped : LiveOutputDrainResult
 
     /**

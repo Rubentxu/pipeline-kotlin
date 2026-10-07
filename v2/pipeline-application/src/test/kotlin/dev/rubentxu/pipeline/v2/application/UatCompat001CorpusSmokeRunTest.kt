@@ -267,29 +267,15 @@ class UatCompat001CorpusSmokeRunTest {
         assertTrue(failures.isEmpty(), "Corpus must have zero failures: $failures")
     }
 
-    @Test
-    @Timeout(value = 600, unit = TimeUnit.SECONDS)
-    fun `each corpus fixture produces non-empty event stream`(@TempDir workspace: Path) {
-        AppBinSupport.discover()
-
-        val fixtures = discoverFixtures()
-        assertEquals(31, fixtures.size, "Corpus must have 31 valid fixtures (WU-LPR-076 keeps the count in lock-step with CompatibilityCorpusTest; WU-LPR-089 added 31-stash-unstash; WU-LPR-090 added 32-publish-html)")
-        val appBin = AppBinSupport.discover()
-        val controlRoot = java.nio.file.Files.createTempDirectory("compat-corpus-ctrl")
-        val storePath = seedCorpusCredentialsStore(controlRoot)
-
-        fixtures.forEach { fixture ->
-            val runResult = sweepFixture(fixture, workspace, storePath)
-            val name = fixture.fileName.toString()
-            val stdout = runResult.stdout.trim()
-
-            val isBroken = brokenFixtures.contains(name)
-
-            if (isBroken) {
-            } else {
-                val events = JsonEventLog.decode(stdout)
-                assertTrue(events.isNotEmpty(), "$name must produce events")
-            }
-        }
-    }
+    // S6-PRE.12: the second sweep `each corpus fixture produces non-empty event stream` was DELETED,
+    // not weakened. It called this class's own sweepFixture over the same 31 fixtures, the same
+    // staging, the same credential store and the same binary, and then asserted strictly less:
+    // `events.isNotEmpty()` where the surviving test asserts the exit code FIRST and the event
+    // count second. A run that fails this one always fails the survivor, and never the reverse, so
+    // it could only ever fail when the real test had already failed. It cost 31 extra CLI spawns
+    // (~193 s measured) and bought no coverage.
+    //
+    // It is deleted AFTER the harness fix and AFTER a green gate, never before: eliminating the
+    // exercise that provoked the failure at the same time as fixing it would make it impossible to
+    // tell a fixed harness from a silenced one.
 }

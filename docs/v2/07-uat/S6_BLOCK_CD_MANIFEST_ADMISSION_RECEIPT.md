@@ -1172,6 +1172,34 @@ No-vacuidad por mutacion: quitar `UatStep004SleepTimingTest.kt` del allowlist po
 nombrando exactamente ese fichero (`BUILD FAILED`, `fallos= 1`). Restaurado y verificado por `diff`
 contra la lista real: la ley y la realidad coinciden exactamente.
 
+### S6-PRE.12 — el barrido dominado, eliminado despues del verde
+
+La secuencia fue `RED -> arreglo del harness -> GREEN -> eliminar -> GREEN`, y el orden importa: si el
+barrido se hubiera eliminado al mismo tiempo que se arreglaba el cuelgue, no habria forma de
+distinguir un harness arreglado de uno silenciado.
+
+La dominacion se verifico leyendo el codigo, no recordandolo. Los dos tests llamaban al **mismo**
+`sweepFixture` sobre los mismos 31 fixtures, con el mismo staging, el mismo credential store y el
+mismo binario; y el segundo comprobaba estrictamente menos:
+
+| | test 1 (`corpus smoke-runs green`) | test 2 (`each corpus fixture ...`) |
+|---|---|---|
+| codigo de salida | si, por fixture | **no** |
+| eventos no vacios | si, por fixture | si, por fixture |
+
+Una corrida que hace rojo el segundo siempre hace rojo el primero, y al reves nunca. No podia fallar
+que el primero hubiera pasado.
+
+Coste medido: la clase paso de **399,6 s a 191,7 s**. Exactamente la mitad, que es lo que ocupaba el
+barrido eliminado. Verificacion: **1 test · 0 fallos** en el XML fresco, y la clase compilada
+expone un unico metodo de test.
+
+Lo que **no** se elimino, y por que: `UatCompat001` en su conjunto **no** esta dominado por
+`CompatibilityCorpusTest`. Barren los mismos fixtures pero con una configuracion distinta —el usa
+`--isolated` para todos, mientras este reparte entre `--isolated` y `--workspace` segun
+`fixturesWithIsolatedWorkspace`, y ambos inyectan el credential store—, asi que la cobertura que
+aporta es real y se conserva.
+
 ### Estado verificado de este bloque
 
 Corridas aisladas, cada una leida desde el XML de `test-results`:
@@ -1181,6 +1209,7 @@ Corridas aisladas, cada una leida desde el XML de `test-results`:
 | `OwnedSubprocessRunTest` | 4 tests · 0 fallos |
 | `InstalledDistributionHarnessFitnessTest` | 1 test · 0 fallos |
 | `UatCompat001CorpusSmokeRunTest` migrado | 2 tests · 0 fallos · 389 s (antes 600 s por test) |
+| `UatCompat001` tras eliminar el barrido dominado | **1 test · 0 fallos · 191,7 s** (antes 399,6 s con dos barridos) |
 | `UatDsl001JenkinsFamiliarityTest` migrado | 4 tests · 0 fallos · 45 s |
 | `CompatibilityCorpusTest` migrado | 30 tests · 0 fallos · 181 s |
 | `S54ExternalVerticalRestartUatTest` migrado | 2 tests · 0 fallos · 10,5 s |
@@ -1199,6 +1228,19 @@ La aritmetica cuadra contra el ultimo gate verde de BLOCK 1-J (`2e9b4824`, 775 c
 0 fallos / 140 skips): **+3 clases y +7 tests**, exactamente las tres que introduce este bloque
 (`PluginAdmissionInstalledDistributionUatTest` 2, `OwnedSubprocessRunTest` 4,
 `InstalledDistributionHarnessFitnessTest` 1). Ni una clase perdida, ni un skip cambiado.
+
+**Segundo gate**, el de S6-PRE.12 tras eliminar el barrido dominado:
+
+```text
+BUILD SUCCESSFUL
+318 actionable tasks: 318 executed        (cero up-to-date)
+778 clases · 5154 tests · 0 fallos · 0 errores · 140 skips
+procesos pipelinek supervivientes: 0
+```
+
+**5155 → 5154**: un test menos, que es exactamente el eliminado y nada mas. Las clases siguen siendo
+778 porque la clase sigue existiendo con un test menos, y los skips siguen siendo 140. Un verde
+obtenido quitando lo que sobra, sobre un gate que ya era verde antes de quitarlo.
 
 ### H8-10, caracterizado y NO re-subido
 

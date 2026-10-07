@@ -104,7 +104,7 @@ class ObservationWakeupTest {
         val store = SegmentOutputStore(root.resolve("output-plane"))
         store.recover()
         val index = store.frameIndex()
-        val reader: ObservationOutputReader = FrameIndexedObservationOutputReader(index, store)
+        val reader: ObservationOutputReader = FrameIndexedObservationOutputReader(index, store, store)
 
         val lineCount = 40
         for (index2 in 0 until lineCount) {
@@ -173,7 +173,7 @@ class ObservationWakeupTest {
         }
 
         // A consumer woken ZERO times, that simply polls the authority from its own cursor.
-        val reader: ObservationOutputReader = FrameIndexedObservationOutputReader(index, store)
+        val reader: ObservationOutputReader = FrameIndexedObservationOutputReader(index, store, store)
         val text = pageOf(reader.readOutput(run, -1, frameLimit = 10)).text
 
         assertEquals(
@@ -224,6 +224,56 @@ class ObservationWakeupTest {
             followDecision(moreFrames = false, tailStates = emptyList()),
             "a follower that has read nothing has not proven the run finished. Treating an empty " +
                 "history as completion would end every follow that started before the first frame",
+        )
+    }
+
+    @Test
+    fun `FOLLOW-4 a follower that has read NO frames can still reach a verdict`() {
+        val store = SegmentOutputStore(root.resolve("follow4"))
+        store.recover()
+        val index = store.frameIndex()
+        val reader: ObservationOutputReader = FrameIndexedObservationOutputReader(index, store, store)
+
+        val stderr = OutputStreamId("$run/build/sh-0/stderr")
+
+        // 1. Declared in the index, never opened in the store: the shape of a run whose steps have
+        // not produced output yet. A follower listing only the streams it saw FRAMES from would see
+        // nothing at all here.
+        index.declareStream(stderr, OutputChannel.STDERR)
+        assertEquals(
+            listOf<OutputTailState?>(null),
+            reader.tailStatesOf(run),
+            "a declared-but-unopened stream answers null: the index knows it, the store does not. " +
+                "The follower must read that as 'not established yet', never as finished",
+        )
+        assertEquals(
+            FollowDecision.ReadAgain,
+            followDecision(moreFrames = false, tailStates = reader.tailStatesOf(run)),
+            "an unestablished stream keeps the follower going",
+        )
+
+        // 2. Opened but still empty. OBS-C3 made open() create the directory, which is what turns
+        // Open(0) into a reachable state instead of a guess.
+        store.open(stderr)
+        assertEquals(
+            listOf(OutputTailState.Open(0L)),
+            reader.tailStatesOf(run),
+            "an opened but empty stream is Open at zero, which is a fact a reader can rely on",
+        )
+        assertEquals(
+            FollowDecision.ReadAgain,
+            followDecision(moreFrames = false, tailStates = reader.tailStatesOf(run)),
+        )
+
+        // 3. Sealed, with no frame ever published. The follower may conclude.
+        store.seal(stderr)
+        assertEquals(
+            FollowDecision.Finished,
+            followDecision(moreFrames = false, tailStates = reader.tailStatesOf(run)),
+            "with every declared stream sealed and nothing pending, the follower may conclude. " +
+                "Without streamsOfRun this verdict was unreachable for a follower that had read " +
+                "nothing, and 'read until nothing is pending' became an infinite poll of a run that " +
+                "had already finished",
         )
     }
 

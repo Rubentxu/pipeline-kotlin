@@ -151,6 +151,34 @@ interface OutputFrameIndex {
     fun lastOrdinal(runId: String): Long?
 
     /**
+     * Every stream DECLARED for [runId], whether or not it has a frame yet.
+     *
+     * ## Why a follower needs this and cannot work it out
+     *
+     * A consumer that follows a run has to answer "can any of this run's streams still grow", and
+     * the answer is a statement about ALL of them. A follower that has read frames can list the
+     * streams it saw — but a follower that started before the first byte has seen nothing, and a
+     * run whose steps have not produced output yet has declared streams and no frames at all.
+     *
+     * Without this method that follower has no way to ask, so it can never conclude the tail is
+     * final, and "read until nothing is pending" becomes an infinite poll of a run that already
+     * finished. That is the asymmetry this closes.
+     *
+     * ## Declared, not written
+     *
+     * This lists streams [declareStream] was told about, which is deliberately a SUPERSET of the
+     * streams that hold bytes: [ShExecution] declares both channels before the first byte precisely
+     * so a crash between a stream's first commit and its first frame is recoverable. A stream
+     * declared and never written to is listed here and contributes nothing to recovery, and
+     * answering a tail question about it is safe rather than misleading — an absent stream is not
+     * [dev.rubentxu.pipeline.v2.output.OutputTailState.Sealed], so a follower keeps waiting.
+     *
+     * Empty when [runId] has declared nothing, which is distinct from a run whose streams are all
+     * sealed and is the difference between "I know of no streams" and "I checked and they are done".
+     */
+    fun streamsOfRun(runId: String): List<OutputStreamId>
+
+    /**
      * Closes the gap between committed bytes and indexed frames, and returns what it closed.
      *
      * This is the recovery half of the contract, and the reason the two authorities are separate.

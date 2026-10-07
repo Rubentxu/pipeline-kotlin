@@ -136,6 +136,17 @@ class SegmentFrameIndex(
     }
 
     /**
+     * Sorted, so a caller that lists streams gets a stable order without asking for one.
+     *
+     * [loadDeclared] is what makes this survive a reopen: the in-memory cache is a cache over a
+     * durable file, and a consumer in a fresh JVM has to get the same answer as one that stayed up.
+     */
+    override fun streamsOfRun(runId: String): List<OutputStreamId> = lock.withLock {
+        if (!declaredByRun.containsKey(runId)) loadDeclared(runId)
+        declaredByRun[runId]?.sortedBy { it.value } ?: emptyList()
+    }
+
+    /**
      * Closes every gap between a stream's committed extent and its last indexed frame.
      *
      * Idempotent: with no newly committed bytes there is nothing to close, so recovery can run on

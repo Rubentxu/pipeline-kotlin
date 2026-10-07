@@ -68,7 +68,7 @@ class ObservationOutputReaderTest {
     fun setUp() {
         store = SegmentOutputStore(root.resolve("output-plane"))
         store.recover()
-        reader = FrameIndexedObservationOutputReader(store.frameIndex(), store)
+        reader = FrameIndexedObservationOutputReader(store.frameIndex(), store, store)
     }
 
     /** The production order: declare, write, commit, THEN append the frame. */
@@ -246,6 +246,7 @@ class ObservationOutputReaderTest {
                     to: Long,
                 ): OutputReadResult = OutputReadResult.Refused(OutputRefusal.UnknownStream(stream))
             },
+            store,
         )
         publish(stdout, OutputChannel.STDOUT, "text that exists but cannot be read\n")
 

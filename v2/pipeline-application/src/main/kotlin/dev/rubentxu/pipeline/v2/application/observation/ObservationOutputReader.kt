@@ -6,6 +6,8 @@ import dev.rubentxu.pipeline.v2.output.OutputFrameIndex
 import dev.rubentxu.pipeline.v2.output.OutputReadPort
 import dev.rubentxu.pipeline.v2.output.OutputReadResult
 import dev.rubentxu.pipeline.v2.output.OutputRefusal
+import dev.rubentxu.pipeline.v2.output.OutputTailPort
+import dev.rubentxu.pipeline.v2.output.OutputTailState
 
 /**
  * The OUTPUT lane of the read model: committed bytes, in the order PipelineK observed them, as
@@ -58,6 +60,20 @@ interface ObservationOutputReader {
      * @param frameLimit how many frames this read may pull. Bounds the work and the memory.
      */
     fun readOutput(runId: String, afterOrdinal: Long, frameLimit: Int): ObservationOutputRead
+
+    /**
+     * Tail state of every stream DECLARED for [runId], in a stable order.
+     *
+     * This is what makes [followDecision] answerable for a follower that has read nothing. Reading
+     * frames is not enough: a run whose steps have not produced output yet has declared streams and
+     * no frames, and a follower that lists only what it has seen would conclude nothing about them.
+     *
+     * A `null` entry means the store does not know that stream — which is NOT
+     * [dev.rubentxu.pipeline.v2.output.OutputTailState.Sealed], and deliberately keeps a follower
+     * waiting. That is the safe direction: a stream declared a moment ago may not have a directory
+     * yet, and a follower must not treat "not there yet" as "finished".
+     */
+    fun tailStatesOf(runId: String): List<OutputTailState?>
 }
 
 /** One bounded page of the output lane, or the reason there isn't one. */
@@ -119,7 +135,11 @@ data class ObservationOutputPage(
 class FrameIndexedObservationOutputReader(
     private val index: OutputFrameIndex,
     private val bytes: OutputReadPort,
+    private val tails: OutputTailPort,
 ) : ObservationOutputReader {
+
+    override fun tailStatesOf(runId: String): List<OutputTailState?> =
+        index.streamsOfRun(runId).map { tails.tailState(it) }
 
     override fun readOutput(runId: String, afterOrdinal: Long, frameLimit: Int): ObservationOutputRead {
         require(frameLimit > 0) { "frameLimit must be positive, got $frameLimit" }

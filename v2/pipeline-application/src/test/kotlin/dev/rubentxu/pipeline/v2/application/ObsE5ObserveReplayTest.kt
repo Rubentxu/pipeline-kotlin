@@ -92,6 +92,14 @@ class ObsE5ObserveReplayTest {
         override val hasOutputPlane: Boolean get() = pages.isNotEmpty() || refusal != null
         override fun eventsOf(runId: String): Sequence<DomainEvent> = events.orEmpty().asSequence()
 
+        override fun eventSliceOf(
+            runId: String,
+            after: dev.rubentxu.pipeline.v2.events.identity.EventCursor?,
+            limit: Int,
+        ): dev.rubentxu.pipeline.v2.events.EventSlice? = null
+
+        override fun outputTailsOf(runId: String): List<dev.rubentxu.pipeline.v2.output.OutputTailState?>? = null
+
         override fun outputOf(runId: String, afterOrdinal: Long, frameLimit: Int): ObservationOutputRead? {
             reads++
             refusal?.let { return ObservationOutputRead.Refused(it) }

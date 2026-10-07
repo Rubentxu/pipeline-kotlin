@@ -7,7 +7,10 @@ import dev.rubentxu.pipeline.v2.application.observation.ObservationJsonLines
 import dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
 import dev.rubentxu.pipeline.v2.application.observation.RunObservationOutput
+import dev.rubentxu.pipeline.v2.application.observation.FollowDecision
+import dev.rubentxu.pipeline.v2.application.observation.followDecision
 import dev.rubentxu.pipeline.v2.events.DomainEvent
+import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.output.OutputRefusal
 import java.io.OutputStreamWriter
 import java.io.PrintStream
@@ -53,6 +56,9 @@ object MainObserveCli {
      */
     private const val FRAMES_PER_READ = 256
 
+    /** Rows per event-lane read while following. A read bound, never a result size. */
+    private const val EVENTS_PER_READ = 256
+
     fun main(args: Array<String>): Int {
         // The run id comes FIRST and the options after it, so there is never a question about
         // whether `--channel stderr` consumed the run id or the flag was missing its value.
@@ -80,10 +86,26 @@ object MainObserveCli {
             return 2
         }
 
-        val outcome = replay(lanes, runId, parsed, System.out, System.err)
+        val outcome = if (parsed.follow) {
+            MainObserveCli.follow(
+                lanes,
+                runId,
+                parsed,
+                InterruptFollow { Thread.currentThread().isInterrupted },
+                System.out,
+                System.err,
+            )
+        } else {
+            replay(lanes, runId, parsed, System.out, System.err)
+        }
         lanes.close()
         return when (outcome) {
             is ObserveOutcome.Replayed -> 0
+            // Every follow is a success: it returned because the run reached its terminal fact, or
+            // because the consumer stopped it. The exit code says the READER succeeded; how the run
+            // ended is on the run plane, and putting it in an exit code would make this verb a
+            // second authority on the outcome.
+            is ObserveOutcome.Followed -> 0
             is ObserveOutcome.Refused -> {
                 System.err.println("observe: ${outcome.reason}")
                 2
@@ -134,8 +156,6 @@ object MainObserveCli {
     ): ObserveOutcome {
         if (!lanes.hasOutputPlane) return ObserveOutcome.Refused(ObserveRefusal.NoOutputPlane)
 
-        // Wrapped, never closed: `documentFor` and the replay both write to the SAME writer, and
-        // closing this would close stdout.
         val presentation = LiveOutputPresentation(parsed.format, PrintStream(out), diagnostics)
         val selected = mutableListOf<dev.rubentxu.pipeline.v2.application.observation.ObservationRecord.Output>()
         var afterOrdinal = -1L
@@ -165,6 +185,166 @@ object MainObserveCli {
         out.flush()
         return ObserveOutcome.Replayed
     }
+
+    /**
+     * Follows ONE lane until it is finished or the consumer stops asking.
+     *
+     * ## Why one lane, never both
+     *
+     * Following the event lane and the output lane in one loop would have to emit them in SOME
+     * order, and that order is not a fact about the run — it is a fact about when this process
+     * happened to poll each store. Emitting them as one stream would be claiming an interleaving,
+     * which is the same fabrication that keeps [ObservationView.FULL] refused. So `--follow` follows
+     * the lane the chosen view names, and a caller who wants both uses two readers with two cursors.
+     *
+     * ## How each lane knows it is finished
+     *
+     * Two different answers, and neither is a tail state:
+     *
+     * - the event lane ends on `RunFinished` committed in the store — a terminal FACT, not an
+     *   inference about how much longer the run might write;
+     * - the output lane ends when no frame is pending and every stream it has seen is sealed —
+     *   which is [followDecision]'s own question, and which says nothing about success.
+     *
+     * ## What it polls, stated plainly
+     *
+     * There is no `EventsCommitted` emitter yet (OBS-D bis), so this asks the durable authority for
+     * its position rather than being told. That is a NAMED gap, not a hidden one: it costs a cheap
+     * indexed read per idle round instead of a push, and the alternative would have been to ship a
+     * follow whose latency source was undocumented.
+     */
+    fun follow(
+        lanes: ObserveLanes,
+        runId: String,
+        parsed: ObservationParseResult.Parsed,
+        control: FollowControl,
+        out: PrintStream,
+        diagnostics: PrintStream,
+    ): ObserveOutcome = when (parsed.view) {
+        ObservationView.CONSOLE -> followOutput(lanes, runId, parsed, control, out, diagnostics)
+        ObservationView.NORMAL, ObservationView.EVENTS, ObservationView.QUIET ->
+            followEvents(lanes, runId, parsed, control, out)
+        ObservationView.FULL -> ObserveOutcome.Refused(ObserveRefusal.FullViewUnavailable)
+    }
+
+    private fun followEvents(
+        lanes: ObserveLanes,
+        runId: String,
+        parsed: ObservationParseResult.Parsed,
+        control: FollowControl,
+        out: PrintStream,
+    ): ObserveOutcome {
+        if (!lanes.hasEventStore) return ObserveOutcome.Refused(ObserveRefusal.NoDurableEventStore)
+        // The parser already refused this combination before opening a store; this is the same
+        // decision read from the same place, at this boundary, so that this function cannot be
+        // talked into emitting a document per round by a caller that skipped the parser.
+        if (!RunObservationOutput.isIncremental(parsed.format)) {
+            return ObserveOutcome.Refused(
+                ObserveRefusal.FollowNeedsAnIncrementalFormat(parsed.format.wire),
+            )
+        }
+        var cursor: dev.rubentxu.pipeline.v2.events.identity.EventCursor? = null
+        // ONE writer for the whole follow, and ONE presentation. `writeTo` writes and does NOT
+        // flush, so a fresh writer per round would leave the round's bytes sitting in that round's
+        // buffer, and flushing the PrintStream underneath it flushes nothing: these are different
+        // buffers. The presentation is kept open across rounds for a second reason — human
+        // rendering is stateful, and a per-round renderer forgets the stage that names a later step.
+        val writer = OutputStreamWriter(out, Charsets.UTF_8)
+        val presentation =
+            RunObservationOutput.Stream(parsed.view, parsed.format, parsed.compiled, writer)
+        while (true) {
+            val slice = lanes.eventSliceOf(runId, cursor, EVENTS_PER_READ)
+                ?: return ObserveOutcome.Refused(ObserveRefusal.NoDurableEventStore)
+            if (slice.events.isNotEmpty()) {
+                cursor = slice.nextCursor
+                // `write` streams and drops as it goes; the query runs per element, so a long run
+                // is never materialised just to be filtered at the end.
+                presentation.write(slice.events.asSequence())
+                writer.flush()
+            }
+            if (slice.events.any { it is dev.rubentxu.pipeline.v2.events.RunFinished } && !slice.hasMore) {
+                return FollowOutcome.ReachedRunFinish.asOutcome()
+            }
+            if (control.shouldStop()) return FollowOutcome.StoppedByConsumer.asOutcome()
+            if (slice.events.isEmpty()) control.idle()
+        }
+    }
+
+    private fun followOutput(
+        lanes: ObserveLanes,
+        runId: String,
+        parsed: ObservationParseResult.Parsed,
+        control: FollowControl,
+        out: PrintStream,
+        diagnostics: PrintStream,
+    ): ObserveOutcome {
+        if (!lanes.hasOutputPlane) return ObserveOutcome.Refused(ObserveRefusal.NoOutputPlane)
+        val presentation = LiveOutputPresentation(parsed.format, PrintStream(out), diagnostics)
+        var afterOrdinal = -1L
+        while (true) {
+            var moreFrames = false
+            when (val read = lanes.outputOf(runId, afterOrdinal, FRAMES_PER_READ)) {
+                null -> return ObserveOutcome.Refused(ObserveRefusal.NoOutputPlane)
+                is ObservationOutputRead.Refused ->
+                    return ObserveOutcome.Refused(ObserveRefusal.PlaneRefused(read.reason))
+
+                is ObservationOutputRead.Page -> {
+                    val page = read.page
+                    moreFrames = page.moreFrames
+                    page.records.filter { parsed.compiled.accepts(it) }.forEach { record ->
+                        presentation.emit(record)
+                    }
+                    afterOrdinal = page.lastOrdinal
+                }
+            }
+            val tails = lanes.outputTailsOf(runId).orEmpty()
+            when (followDecision(moreFrames, tails)) {
+                FollowDecision.ReadAgain -> {
+                    if (control.shouldStop()) return FollowOutcome.StoppedByConsumer.asOutcome()
+                    if (!moreFrames) control.idle()
+                }
+
+                FollowDecision.Finished -> return FollowOutcome.ReachedSealedOutput.asOutcome()
+            }
+        }
+    }
+}
+
+/** Why a follow stopped, which is not the same as whether the run succeeded. */
+sealed interface FollowOutcome {
+    data object ReachedRunFinish : FollowOutcome
+    data object ReachedSealedOutput : FollowOutcome
+    data object StoppedByConsumer : FollowOutcome
+
+    fun asOutcome(): ObserveOutcome = ObserveOutcome.Followed(this)
+}
+
+/**
+ * The control the CLI hands a follow.
+ *
+ * Interruption rather than a duration: a user who does not want to watch a run any more presses a
+ * key or sends a signal, and "should I keep waiting" is answered by whether anyone is still asking.
+ */
+private class InterruptFollow(private val interrupted: () -> Boolean) : FollowControl {
+    override fun shouldStop(): Boolean = interrupted()
+    override fun idle() = Thread.sleep(FOLLOW_IDLE_MILLIS)
+}
+
+/** Idle wait between reads that found nothing. A consumer policy, tuned in OBS-F with measurements. */
+private const val FOLLOW_IDLE_MILLIS = 25L
+
+/**
+ * When a follow reads again, and when it gives up.
+ *
+ * A port rather than a clock so a test can stop after a COUNT of idle rounds instead of waiting for
+ * a duration: a follower that only ends when the wall clock says so is a follower whose test is a
+ * timing assertion, and those fail on a loaded machine and get read as a product defect.
+ */
+interface FollowControl {
+    fun shouldStop(): Boolean
+
+    /** Called when a round read nothing. The wait belongs to the consumer, not the product. */
+    fun idle()
 }
 
 /** The two durable authorities, as ports. Narrow so a test can answer for both without disk. */
@@ -191,6 +371,27 @@ interface ObserveLanes : AutoCloseable {
      */
     fun outputOf(runId: String, afterOrdinal: Long, frameLimit: Int): ObservationOutputRead?
 
+    /**
+     * One bounded page of the event lane, resumed strictly after [after].
+     *
+     * Incremental on purpose: a follower that re-read the whole history every round would be O(run)
+     * per poll, which is the difference between following a build and stalling on it. `null` means
+     * this lane is absent, exactly as in [outputOf].
+     */
+    fun eventSliceOf(
+        runId: String,
+        after: dev.rubentxu.pipeline.v2.events.identity.EventCursor?,
+        limit: Int,
+    ): dev.rubentxu.pipeline.v2.events.EventSlice?
+
+    /**
+     * Tail state per stream of the run, or `null` when the lane is absent.
+     *
+     * Entries that are `null` INSIDE the list are streams whose state could not be established, and
+     * [followDecision] keeps reading on them — unknown is the safe direction.
+     */
+    fun outputTailsOf(runId: String): List<dev.rubentxu.pipeline.v2.output.OutputTailState?>?
+
     override fun close() = Unit
 }
 
@@ -198,6 +399,15 @@ interface ObserveLanes : AutoCloseable {
 sealed interface ObserveOutcome {
     data object Replayed : ObserveOutcome
     data class Refused(val reason: ObserveRefusal) : ObserveOutcome
+
+    /**
+     * A follow stopped for a NAMED reason.
+     *
+     * Carrying which one matters because "followed to the end" and "stopped when I asked" are
+     * different facts about the run, and a reader that reported both as "done" would be claiming
+     * the run had finished when this process simply went away.
+     */
+    data class Followed(val reason: FollowOutcome) : ObserveOutcome
 }
 
 sealed interface ObserveRefusal {
@@ -227,6 +437,21 @@ sealed interface ObserveRefusal {
         override fun toString(): String =
             "the Output Plane refused to answer: $reason. The bytes are unread, not absent."
     }
+
+    /**
+     * A follow was asked for in a format that cannot be continued.
+     *
+     * Refused rather than approximated. Emitting one array per round would put several documents on
+     * stdout with nothing between them, and closing the array when a consumer cuts the follow short
+     * would claim the run was complete when it is not. Neither is the document that was asked for,
+     * so the answer names the format that is.
+     */
+    data class FollowNeedsAnIncrementalFormat(val format: String) : ObserveRefusal {
+        override fun toString(): String =
+            "--format $format is a document: it is only a document once its closing bracket arrives, " +
+                "and a follow can be stopped before that. Emitting one document per round would not be " +
+                "a continuation of the first. Use --format jsonl, where every line stands alone."
+    }
 }
 
 /**
@@ -254,6 +479,15 @@ internal object ComposeLanes {
                 eventStore?.eventsFor(runId) ?: emptySequence()
             override fun outputOf(runId: String, afterOrdinal: Long, frameLimit: Int) =
                 reader?.readOutput(runId, afterOrdinal, frameLimit)
+
+            override fun eventSliceOf(
+                runId: String,
+                after: dev.rubentxu.pipeline.v2.events.identity.EventCursor?,
+                limit: Int,
+            ) = eventStore?.readSlice(runId, after, limit)
+
+            override fun outputTailsOf(runId: String) =
+                reader?.tailStatesOf(runId)
             override fun close() {
                 eventStore?.close()
             }

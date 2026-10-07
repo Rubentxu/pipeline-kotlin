@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.application.observation.LineSelector
 import dev.rubentxu.pipeline.v2.application.observation.compileQuery
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.application.observation.ObservationQuery
+import dev.rubentxu.pipeline.v2.application.observation.RunObservationOutput
 import dev.rubentxu.pipeline.v2.application.observation.TextSelector
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
 import dev.rubentxu.pipeline.v2.application.observation.ViewParseResult
@@ -219,6 +220,33 @@ sealed interface CliError {
     data class InvalidQuery(val reason: String) : CliError {
         override fun toString(): String = "InvalidQuery: $reason"
     }
+
+    /**
+     * `--follow` in a format that has no continuation.
+     *
+     * Refused because the combination has no honest answer, not because it is unusual: a document
+     * format is complete only when its closing bracket arrives, and following is by definition
+     * stopping before you know whether that has happened.
+     */
+    data class FollowNeedsAnIncrementalFormat(val format: String) : CliError {
+        override fun toString(): String =
+            "FollowNeedsAnIncrementalFormat: --follow with --format $format would emit one document " +
+                "per round, which is not a continuation of the first. Use --format jsonl, where every " +
+                "line stands alone and needs no closing bracket."
+    }
+
+    /**
+     * `--follow` on `run`.
+     *
+     * The inverse of [OptionNotReadable], and refused for the same reason. `run` already reads its
+     * run as it happens, so the flag asks for nothing; accepting it anyway would leave a parameter
+     * that is parsed, remembered and never read.
+     */
+    data object FollowBelongsToObserve : CliError {
+        override fun toString(): String =
+            "FollowBelongsToObserve: --follow is what a READER does, and 'run' already reads its run " +
+                "as it happens — there is nothing left to follow. Use 'pipelinek observe <runId> --follow'."
+    }
 }
 
 /**
@@ -267,6 +295,8 @@ sealed interface ObservationParseResult {
         val compiled: CompiledObservationQuery,
         val view: ObservationView,
         val format: ObservationFormat,
+        /** Keep reading after the durable authority is exhausted. */
+        val follow: Boolean,
         /** Where the event lane is. Null means no durable event store was named. */
         val dbPath: String?,
         /** Where the Output Plane is. Null means it was not named. */
@@ -324,6 +354,13 @@ private class ParseState(
      * where a flag's meaning is decided, which is how one flag ends up meaning two things.
      */
     var deliverableViews: Set<ObservationView> = ObservationView.EVENT_LANE_VIEWS,
+    /**
+     * `--follow`. Read-only and therefore legal here and on `observe`, unlike the execution options.
+     *
+     * A flag rather than a mode: following is how long you read, not what you read, and the view
+     * still decides the lane.
+     */
+    var follow: Boolean = false,
     /** ADR-0088 `--format`. JSON/JSONL are opt-in; text is the default. */
     var format: ObservationFormat = ObservationFormat.TEXT,
     /**
@@ -393,6 +430,13 @@ object CliParser {
             }
         }
 
+        // `applyOption` is shared with `parseObservation`, so `--follow` lands here too — into a
+        // `CliFlags` that has no field for it. Refused by name rather than dropped, for the same
+        // reason the execution options are refused on the other verb.
+        if (state.follow) {
+            return CliParseResult.Rejected(CliError.FollowBelongsToObserve)
+        }
+
         // `--grep-invert` negates a group; with no group there is nothing to
         // negate. Rejected rather than defaulted to "exclude everything".
         if (state.grepInvert && state.grepSelectors.isEmpty()) {
@@ -435,7 +479,7 @@ object CliParser {
                     stageNames = state.stageNames,
                     stepNames = state.stepNames,
                     eventKinds = state.eventKinds,
-            channels = state.channels,
+                    channels = state.channels,
                 ),
             ),
         )
@@ -478,6 +522,13 @@ object CliParser {
         if (state.grepInvert && state.grepSelectors.isEmpty()) {
             return ObservationParseResult.Rejected(CliError.InvertWithoutGrep)
         }
+        // Before any store is opened. `RunObservationOutput.isIncremental` is the decision; this is
+        // only its first of two refusals, so that the follow itself does not have to trust it.
+        if (state.follow && !RunObservationOutput.isIncremental(state.format)) {
+            return ObservationParseResult.Rejected(
+                CliError.FollowNeedsAnIncrementalFormat(state.format.wire),
+            )
+        }
         val query = buildObservationQuery(
             grepSelectors = state.grepSelectors,
             grepInvert = state.grepInvert,
@@ -492,6 +543,7 @@ object CliParser {
                 compiled = compiled.value,
                 view = state.view,
                 format = state.format,
+                follow = state.follow,
                 dbPath = state.dbPath,
                 controlRoot = state.controlRoot,
             )
@@ -507,15 +559,6 @@ object CliParser {
      * Listed explicitly because the alternative — accepting them and ignoring them — is how a
      * reader ends up replaying a run the caller did not ask for.
      */
-    /**
-     * What a reader that reads BOTH lanes can deliver, which is what `observe` parses against.
-     *
-     * Still excluding [ObservationView.FULL]: events and output have no total order, so a view
-     * claiming to be both would be claiming an interleaving this build cannot produce.
-     */
-    private val READS_BOTH_LANES: Set<ObservationView> =
-        ObservationView.EVENT_LANE_VIEWS + ObservationView.CONSOLE
-
     private val EXECUTION_ONLY_OPTIONS = setOf(
         "--resume",
         "--rerun",
@@ -525,6 +568,16 @@ object CliParser {
         "--plugin-jar",
         "--allow-network",
     )
+
+    /**
+     * What a reader that reads BOTH lanes can deliver, which is what `observe` parses against.
+     *
+     * Still excluding [ObservationView.FULL]: events and output have no total order, so a view
+     * claiming to be both would be claiming an interleaving this build cannot produce.
+     */
+    private val READS_BOTH_LANES: Set<ObservationView> =
+        ObservationView.EVENT_LANE_VIEWS + ObservationView.CONSOLE
+
     /**
      * Process one CLI option at [index] of [args], mutating [state] and
      * returning the next index or a typed rejection. Extracted from
@@ -671,6 +724,10 @@ object CliParser {
                 }
                 state.eventKinds += value
                 ApplyOutcome.Applied(index + 2)
+            }
+            "--follow" -> {
+                state.follow = true
+                ApplyOutcome.Applied(index + 1)
             }
             "--channel" -> {
                 val value = args.getOrNull(index + 1)

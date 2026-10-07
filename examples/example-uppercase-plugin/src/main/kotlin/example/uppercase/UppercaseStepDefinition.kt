@@ -106,5 +106,6 @@ class UppercaseContributor : StepDefinitionContributor {
             UppercaseStepDefinition,
             UppercaseObservedStepDefinition,
             UppercaseCasedStepDefinition,
+            UppercaseAnnouncedCasedStepDefinition,
         )
 }

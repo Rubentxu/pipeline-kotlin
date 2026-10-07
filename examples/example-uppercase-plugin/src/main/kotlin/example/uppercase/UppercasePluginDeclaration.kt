@@ -133,6 +133,10 @@ object UppercasePluginDeclaration {
                         UppercaseCasedStepDefinition.KEY,
                         setOf(EXAMPLE_CASE_TABLE_CAPABILITY),
                     ),
+                    PluginStepContribution(
+                        UppercaseAnnouncedCasedStepDefinition.KEY,
+                        setOf(EXAMPLE_CASE_TABLE_CAPABILITY, PLUGIN_EVENT_EMISSION_CAPABILITY),
+                    ),
                 ),
                 directives = listOf(
                     PluginDirectiveContribution(UppercaseCasedOnDirectiveDefinition.KEY),

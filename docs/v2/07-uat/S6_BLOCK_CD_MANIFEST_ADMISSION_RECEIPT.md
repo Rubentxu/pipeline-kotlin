@@ -790,3 +790,159 @@ Discovered external event definitions: example.uppercase.applied
 - **No** hay prueba sobre la distribución instalada: eso es BLOCK 2.
 - **No** toca identidad por bytes. `trust` sigue `unverified` y el digest sigue declarado, no medido
   en runtime. Es la misma frontera de ADR-EVO-003 que 1-H dejó nombrada.
+
+---
+
+## BLOCK 1-J — un constructo nuevo, cero cambios en el core, y la ley que lo impide volver atrás
+
+### Lo que este bloque demuestra y lo que no
+
+`Block1AuthorityClosureTest` ya fija «ningún dispatcher ramifica sobre una StepKey concrete». Eso es
+una ley **negativa**: prohíbe una forma. No demuestra que la costura sea **suficiente**, que es la
+afirmación que importa — «un plugin nuevo no necesita tocar el core».
+
+Un escaneo sólo puede mostrar la ausencia de algo. La suficiencia se demuestra **haciendo**, y lo
+hecho aquí fue añadir un Step nuevo a un plugin externo y medir el diff.
+
+### El experimento
+
+`example.uppercase.announcedCased` — un Step que depende de **dos** capabilities a la vez, de dueños
+distintos:
+
+```text
+example.uppercase.case-table   lo SUMISTRE este mismo plugin
+plugin.event-emission          sólo lo tiene el HOST
+```
+
+No añadí un cuarto Step simple porque eso ya estaba cubierto tres veces. Este es el que de verdad
+estresa la costura: si el camino de composición fuera de dueño único, este Step es el que falla.
+
+Medición del diff, por separado y sin mezclar:
+
+```text
+git diff --stat -- 'examples/**'
+  UppercasePluginDeclaration.kt   | 4 ++++
+  UppercaseStepDefinition.kt      | 1 +
+  2 files changed, 5 insertions(+)
+
+git diff --name-only -- 'v2/**/src/main/**'
+  v2/pipeline-domain/.../StepRegistration.kt
+```
+
+La lectura correcta de esas dos líneas, que es donde es fácil engañarse:
+
+- **El Step nuevo toca sólo `examples/`. Cero cambios en producción del core.** Eso es la prueba.
+- El único fichero de producción del core que mueve 1-J es `StepRegistration.kt`, y **no** es por el
+  Step: es el arreglo del hallazgo de abajo.
+
+Un pathspec mal escrito (`v2/*/src/main`) devolvió vacío y casi reporto un diff limpio que no lo
+era. El hallazgo salía en `git status` a la vista. Medido dos veces, no una.
+
+### El hallazgo: el core conocía el espacio de nombres de un plugin
+
+```kotlin
+// antes, en producción del core:
+val families: Set<PluginFamily> = if (key.value.startsWith("scm-git.")) {
+    setOf(PluginFamily.SCM)
+} else {
+    setOf(PluginFamily.UTILITIES)
+}
+```
+
+Un plugin escribía su nombre en el core que debe no conocer ninguno, y el propio KDoc del fichero
+decía «this is metadata, not a verdict; the registry never branches on it» — mientras la calculaba
+ramificando sobre él.
+
+Medí quién lee `families` antes de tocarlo: los únicos lectores en producción son las dos
+validaciones de no-vacío y el codec que serializa las familias que declara **el propio plugin**. En
+el camino legacy no lo lee nadie. La rama compraba un nombre y no devolvía comportamiento.
+
+**Eliminado.** `legacy()` reporta `UTILITIES` para toda registration legacy, y queda escrito en el
+KDoc qué cambia exactamente y por qué, en vez de fingir que no cambia nada.
+
+### La ley, auto-mantenida
+
+`CoreKnowsNoExternalPluginNamespaceFitnessTest` forbid que producción del core nombre un namespace de
+plugin. Dos decisiones que importan:
+
+- **Los namespaces prohibidos se DERIVAN**, no se listan: se leen de los `PluginStepId("…")` que los
+  plugins declaran de verdad y se reducen a su primer segmento. Una lista fija se queda obsoleta
+  justo cuando hace falta, que es cuando aparece un plugin nuevo. Una ley que hay que actualizar
+  cuando cambia aquello que vigila es más débil que una que lee aquello.
+- **El punto es obligatorio.** `NetworkEgress` compara con el literal `"http"`, que es un esquema de
+  URL, y el namespace del plugin `http` se escribe igual. Sin el punto, la ley tumbaría código
+  correcto. Medido: sin el punto, 2 falsos positivos; con él, 0.
+
+Y `pipeline-step-sdk` queda **fuera** de «core»: esos cuatro módulos SON plugins, y un plugin que
+se nombra a sí mismo es el caso normal. Mi primera versión metió también `examples/` y la ley
+falló contra quince autorreferencias honestas — es lo que se ve una ley demasiado ancha desde
+dentro: encuentra cadenas reales y sigue contestando la pregunta equivocada.
+
+Tres filas, y dos de ellas existen para que la tercera no sea decorativa:
+
+```text
+the plugin namespace set is derived and not empty          (el derivador funciona)
+no core production source names an external plugin ...     (la ley)
+the namespace detector actually fires on a plugin-shaped   (el detector no se ha roto)
+```
+
+### No-vacuidad por mutación
+
+Reintroducir la rama `scm-git.` tumba **exactamente 1 de 3** — la fila de escaneo. Las otras dos no
+dependen del arreglo y deben seguir verdes; si se hubieran puesto rojas, la mutación habría probado
+que las filas estaban mal escritas en vez de que la ley muerde.
+
+```text
+CoreKnowsNoExternalPluginNamespaceFitnessTest > no core production source names an external plugin namespace in code() FAILED
+3 tests completed, 1 failed
+```
+
+Restaurado con hash verificado antes y después:
+
+```text
+sha antes de la mutación : 07e711a726a8c1c0617a791c25de57db243169cacf481d34d1859a62f82a1e6d
+sha tras restaurar       : 07e711a726a8c1c0617a791c25de57db243169cacf481d34d1859a62f82a1e6d
+```
+
+### Dos fallos míos que el build y el test atraparon
+
+1. **`Syntax error: Unclosed comment`**: el KDoc del Step nuevo decía `v2/*/src/main`, y ese `*/`
+   **cerraba el bloque de comentario por dentro**. El resto del fichero se lexía como código. Es un
+   recordatorio de por qué un fallo de compilación no es un RED ni un hueco.
+2. **Una aserción escrita contra una frase que inventé**: pedía «contributed Steps absent from the
+   manifest» y el texto real es «implemented Steps absent from the manifest». La fila pasó el mutante
+   correcto y falló en la palabra, que es la forma más fácil de tener un test que no prueba lo que
+   dice.
+
+### Evidencia ejecutada sobre el SHA
+
+```text
+cd v2 && PIPELINEK_SPIKE_HOME=/var/home/rubentxu/.local/state/pipelinek-bundles/e4c-4700f23d \
+  ./gradlew -p . --no-daemon --offline check --rerun-tasks
+```
+
+```text
+BUILD SUCCESSFUL in 29m 5s
+318 actionable tasks: 318 executed
+```
+
+**775 clases · 5148 tests · 0 fallos · 0 errores · 140 skips**, contados desde los XML de
+`test-results` acotados por `mtime` de esta corrida.
+
+Las dos clases que este bloque introduce o amplía:
+
+```text
+CoreKnowsNoExternalPluginNamespaceFitnessTest   3 tests  0 fallos  0 errores
+ExternalPluginFourFamilyAdmissionTest           9 tests  0 fallos  0 errores
+```
+
+Sin ruptura de ABI y sin excepción BCV que registrar: `StepRegistration.legacy()` cambió su
+cuerpo, no su firma.
+
+### Lo que este bloque NO demuestra
+
+- **No** es una prueba sobre la distribución instalada. Es BLOCK 2.
+- **No** toca identidad por bytes: `trust` sigue `unverified`, con la misma frontera de ADR-EVO-003.
+- **No** cierra el hueco de capabilities que 1-I dejó caracterizado. Esa decisión —qué capa es la
+  dueña de esa comparación, y si cerrarla exige rediseñar `SentinelPluginArtifact`— sigue abierta y
+  no se ha tomado aquí.

@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection
 import dev.rubentxu.pipeline.v2.domain.step.SemVer
 import java.nio.file.Path
 import java.util.jar.JarFile
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -183,6 +184,67 @@ class ExternalPluginFourFamilyAdmissionTest {
         assertTrue(
             detail.contains("contributed Events absent from the manifest"),
             "the refusal must state the direction of the mismatch; got '$detail'",
+        )
+    }
+
+    /**
+     * BLOCK 1-J — the Step that was ADDED to prove a new construct needs no core change.
+     *
+     * These two rows exist because the no-core-change claim is a claim about a DIFF, and a diff is
+     * not something a test can re-derive. What a test CAN hold is the two halves around it: the new
+     * Step is in the cross-check like any other, and it is reachable through the open registry with
+     * both of its declared capabilities. The empty core diff is recorded in the receipt, measured
+     * on the tree.
+     */
+    @Test
+    @DisplayName("the announcedCased Step added in 1-J is cross-checked like every other")
+    fun theNewlyAddedStepIsCrossChecked() {
+        val jar = PluginArtifactFixture.externalJarWithRewrittenManifest { text ->
+            val rewritten = text.replace(
+                """{"stepKey": "example.uppercase.announcedCased", "declaredCapabilities": ["example.uppercase.case-table", "plugin.event-emission"]},""",
+                "",
+            )
+            assertTrue(rewritten != text, "the manifest no longer declares example.uppercase.announcedCased")
+            rewritten
+        }
+
+        val detail = crossCheckDetail(jar)
+        assertTrue(
+            detail.contains("example.uppercase.announcedCased"),
+            "a Step added by an external plugin must enter the cross-check through the same door as " +
+                "every other one; if this is refused for some other reason the seam is not open. Got '$detail'",
+        )
+        assertTrue(
+            detail.contains("implemented Steps absent from the manifest"),
+            "the refusal must name the direction of the mismatch, and here the direction is fixed: " +
+                "this mutant removes the DECLARATION while the implementation stays, so the Step is " +
+                "contributed and undeclared. Got '$detail'",
+        )
+    }
+
+    @Test
+    @DisplayName("the newly added Step reaches the registry with BOTH of its capabilities")
+    fun theNewlyAddedStepIsRegisteredWithBothCapabilities() {
+        @Suppress("UNCHECKED_CAST")
+        val definitions = PluginArtifactFixture.withScopedLoader(
+            PluginArtifactFixture.builtExternalPluginJar(),
+        ) { loader ->
+            val contributorClass = loader.loadClass("example.uppercase.UppercaseContributor")
+            val contributor = contributorClass.getDeclaredConstructor().newInstance() as
+                dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor
+            contributor.definitions().toList()
+        }
+
+        val announced = definitions.singleOrNull {
+            it.contract.key.value == "example.uppercase.announcedCased"
+        }
+        assertTrue(announced != null, "the Step added in BLOCK 1-J must be discoverable by the contributor")
+
+        assertEquals(
+            setOf("example.uppercase.case-table", "plugin.event-emission"),
+            announced!!.contract.requiredCapabilities.map { it.key }.toSet(),
+            "both seams must reach the registry: one this plugin SUPPLIES and one only the HOST has. " +
+                "A Step that declared only one would prove composition, not composition of owners.",
         )
     }
 

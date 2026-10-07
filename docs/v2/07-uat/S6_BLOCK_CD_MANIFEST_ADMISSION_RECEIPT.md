@@ -402,6 +402,71 @@ Mutaciones ejecutadas, con atribución 1:1:
 No sustituye a BLOCK 2: esto es caracterización de la decisión de composición **en proceso**, no
 certificación de comportamiento sobre la distribución instalada.
 
+## BLOCK 1-H — el KSP era una segunda autoridad de metadata, y decía lo contrario
+
+BLOCK 1-A quitó del KSP los interruptores semánticos por nombre. Este bloque audita lo que quedó:
+comprobar si el generador que sobrevivió merecía sobrevivir.
+
+### Lo que se midió, no lo que se suponía
+
+| | La autoridad real | El fichero generado por el KSP |
+|---|---|---|
+| `requiredCapabilities` | `{EVENT_SINK_CAPABILITY}` | `emptyList()` |
+| `configRef` | `""` | `"core.echo.config"` (inventado) |
+| `jenkinsSurface` | `""` | `"echo\|workflow-durable-task-step\|F3"` (formato inventado) |
+| `executionLocation`, `effects`, `replayPolicy` | coinciden | coinciden |
+
+Y por encima de todo eso: **`GeneratedStepDescriptors.all` no tenía ni un consumidor** en todo el
+repositorio. Nadie leía `@Step` ni `@JenkinsSurface` en runtime; la cadena entera era
+`anotación → KSP → fichero → nada`.
+
+### El defecto real ya estaba diagnosticado, y no donde parecía
+
+`CoreShSingleAdmissionAuthorityTest` documenta, para `core.sh`, que «KSP lo convirtió en un
+descriptor con `requiredCapabilities = emptyList()` donde el descriptor canónico exige
+`SHELL_OPERATIONS_CAPABILITY`». P1 lo arregló borrando la **declaración duplicada**. El KSP que
+fabricaba el descriptor equivocado se quedó.
+
+O sea: el defecto nunca fue la declaración duplicada. Era que **el procesador emitía una lista de
+capabilities vacía sin condiciones para todos los Steps que procesaba**. Si algo hubiera leído
+ese fichero, toda decisión de admisión de capabilities habría sido errónea, en silencio.
+
+### Lo que se retira
+
+El módulo `pipeline-step-sdk:processor`, su `ksp(...)`, la declaración del plugin KSP en
+`settings.gradle.kts`, las anotaciones `@Step` y `@JenkinsSurface`, y sus usos en `StepExecutors`.
+
+`CompatibilityLevel` sobrevive: es un hecho sobre el ecosistema Jenkins, no sobre ningún Step, y
+lo fija `CompatibilityLevelEnumTest`. La Jenkins surface de esos cuatro Steps **no se pierde**,
+porque nunca se entregó: vivía en un fichero que nadie leía mientras el `StepDescriptor` real la
+tenía a `""`. Recuperarla es trabajo de BLOCK 1-I/6 sobre la autoridad que sí se usa.
+
+### La ley que sustituye a la anterior
+
+`StepDescriptorGeneratorNoNameSemanticsFitnessTest` prohibía un `when` por nombre dentro de un
+fichero que ya no existe — una prohibición satisfecha por un escaneo vacío, el verde más vacío que
+hay. Se reemplaza por `NoSecondStepMetadataAuthorityFitnessTest`, que afirma sobre **ausencia**:
+
+1. ninguna fuente de producción sintetiza una lista de `StepDescriptor`;
+2. ningún build aplica un processor KSP para metadata de Step;
+3. ninguna fuente de producción declara un Step por anotación;
+4. y la mitad positiva: `core.echo` **sigue** declarando `EVENT_SINK_CAPABILITY`.
+
+La primera fila es de no-vacuidad: sin ella, «no existe» lo satisface un árbol que nadie ha
+mirado.
+
+### No-vacuidad, y una lección sobre lo que enseña una mutación inaplicable
+
+Reintroducir `@Step(` en `StepExecutors.kt` **no llegó a ejecutarse la fila**: el árbol no compiló,
+porque la anotación ya no existe. Eso es una garantía más fuerte que un escaneo de fuentes — la
+reintroducción es imposible por el compilador — y la fila queda como segunda línea de defensa para
+el caso en que alguien reinstale la anotación *y* la use.
+
+La lección general: cuando la mutación de una ley no puede aplicarse porque el tipo desapareció, eso
+no es un fallo del experimento. Es un dato sobre la fuerza de la ley, y se registra como tal en
+lugar de forzar una versión débil de la prueba.
+
+
 
 
 

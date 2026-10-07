@@ -91,9 +91,9 @@ class CoreShSingleAdmissionAuthorityTest {
 
     @Test
     fun `no production source re-declares the core sh StepKey outside the canonical owner`() {
-        // The canonical owner is the application module. Anywhere else, a second
-        // `@Step(id = "core.sh")` is a second admission authority by definition, and the
-        // generated descriptor for it would claim a weaker capability set than the real one.
+        // The canonical owner is the application module. Anywhere else, a second declaration of
+        // the `core.sh` StepKey is a second admission authority by definition, whatever mechanism
+        // produced it.
         val offenders = kotlinSources(v2Root)
             .filterNot { it.fileName.toString() == "CoreShellStep.kt" }
             .filterNot { it.relativeToV2().startsWith("pipeline-application/src/test/") }
@@ -102,7 +102,7 @@ class CoreShSingleAdmissionAuthorityTest {
 
         assertTrue(
             offenders.isEmpty(),
-            "core.sh is declared once, in CoreShellStep. A second @Step(id=\"core.sh\") produces " +
+            "core.sh is declared once, in CoreShellStep. A second declaration of the key produces " +
                 "a second admission authority whose requiredCapabilities can disagree with the " +
                 "canonical one. Offending files: $offenders",
         )

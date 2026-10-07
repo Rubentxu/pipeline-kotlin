@@ -1,6 +1,5 @@
 plugins {
     kotlin("jvm")
-    id("com.google.devtools.ksp")
     // WU-RP-040 R4: selective mutation (durable decision kernels). Run explicitly: :pipeline-step-sdk:runtime:pitest
     id("info.solidsoft.pitest")
 }
@@ -43,7 +42,6 @@ dependencies {
     implementation(project(":pipeline-events-store"))
     implementation(project(":pipeline-scripting-api"))
     implementation(libs.kotlinx.coroutines.core)
-    ksp(project(":pipeline-step-sdk:processor"))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 }

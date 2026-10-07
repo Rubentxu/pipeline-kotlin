@@ -259,7 +259,11 @@ fun main(args: Array<String>) {
         // untouched and are written once, at the end, exactly as before.
         val eventStore: dev.rubentxu.pipeline.v2.events.EventSink =
             if (config.format == ObservationFormat.TEXT) {
-                ConsolePrintingEventSink(redactedStore, config.view) { line ->
+                // The query rides along because this is the only place a TEXT run is printed: the
+                // end-of-run dump is suppressed below, so a filter honoured only there would be
+                // honoured by nothing. It suppresses presentation only; the store still receives
+                // every event.
+                ConsolePrintingEventSink(redactedStore, config.view, compiledQuery) { line ->
                     System.out.println(line)
                 }
             } else {

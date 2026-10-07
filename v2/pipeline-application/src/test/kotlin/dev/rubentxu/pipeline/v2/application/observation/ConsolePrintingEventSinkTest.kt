@@ -50,12 +50,18 @@ class ConsolePrintingEventSinkTest {
     private fun note() = DirEntered("e5", "run-1", 5, at, "nested", ".")
     private fun finished() = RunFinished("e6", "run-1", 6, at, "SUCCESS", emptyList())
 
-    private class Harness(view: ObservationView) {
+    private class Harness(view: ObservationView, query: ObservationQuery = ObservationQuery()) {
         val delegate = RecordingSink()
         val emitted = mutableListOf<String>()
-        val sink = ConsolePrintingEventSink(delegate, view) { emitted += it }
+        val sink = ConsolePrintingEventSink(delegate, view, compileOk(query)) { emitted += it }
 
         fun feed(vararg events: DomainEvent) = events.forEach(sink::append)
+    }
+
+    private companion object {
+        /** The CLI compiles the query once before any effect; a bad one never reaches the sink. */
+        fun compileOk(query: ObservationQuery): CompiledObservationQuery =
+            (compileQuery(query) as CompileResult.Ok).value
     }
 
     @Test
@@ -90,7 +96,7 @@ class ConsolePrintingEventSinkTest {
         val exploding = object : EventSink by delegate {
             override fun append(event: DomainEvent) = delegate.append(event)
         }
-        val sink = ConsolePrintingEventSink(exploding, ObservationView.NORMAL) { error("boom") }
+        val sink = ConsolePrintingEventSink(exploding, ObservationView.NORMAL, compileOk(ObservationQuery())) { error("boom") }
 
         runCatching { sink.append(started()) }
 
@@ -145,5 +151,57 @@ class ConsolePrintingEventSinkTest {
         h.feed(started())
 
         assertEquals(1, h.sink.eventsFor("run-1").count())
+    }
+
+    /**
+ * The query is a READ filter. A `--grep` that also dropped events from the store would make
+ * the run unreplayable and would turn a display preference into a durability decision.
+ *
+ * The markers are deliberately non-overlapping: `Literal` is substring semantics, and "unwanted"
+ * contains "wanted", so overlapping fixtures would make this row pass for the wrong reason.
+ *
+ * Mutation that kills it: move the `query.accepts` guard above `delegate.append`, so a filtered
+ * event is dropped on its way to the store.
+ */
+@Test
+    fun `FILTER-1 a filtered event is not printed but is still stored`() {
+        val h = Harness(
+            ObservationView.NORMAL,
+            ObservationQuery(lines = LineSelector.Only(listOf(TextSelector.Literal("keep me")))),
+        )
+
+        h.feed(started(), echo("keep me"), echo("drop me"))
+
+        assertTrue(
+    h.emitted.any { it == "keep me" },
+            "the matching message must be printed, got ${h.emitted}",
+        )
+        assertFalse(
+            h.emitted.any { it.contains("drop me") },
+            "the non-matching message must not be printed, got ${h.emitted}",
+        )
+        assertEquals(listOf("RunStarted", "EchoOutputCaptured", "EchoOutputCaptured"),
+            h.delegate.appended.map { it.kind },
+            "every event must still be stored, whatever the filter selected")
+    }
+
+    /**
+     * The stream carries the stage-name scope that later lines resolve against. Here the query
+     * selects ONLY step lines, so the `StageStarted` that feeds that scope is itself filtered out
+     * — and must still be folded, or the one selected line loses its stage.
+     *
+     * Mutation that kills it: early-return on `!query.accepts(event)` before `stream.accept`.
+     */
+    @Test
+    fun `FILTER-2 a filtered-out stage still feeds the scope of selected lines`() {
+        val h = Harness(
+            ObservationView.NORMAL,
+            ObservationQuery(eventKinds = setOf("StepStarted")),
+        )
+
+        h.feed(stage("build"), step("echo"))
+
+        assertEquals(listOf("[PipelineK] [step: build] echo"), h.emitted,
+            "the selected step line must name the stage declared by a filtered-out event")
     }
 }

@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.output.OutputRefusal
 import dev.rubentxu.pipeline.v2.output.store.SegmentOutputStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfig
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.TRANSCRIPT_LIVE_WINDOW_BYTES
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -36,39 +37,34 @@ import kotlinx.coroutines.runBlocking
  * fix. This file answers it, so the fix is sized by evidence instead of by the shape of the
  * architecture one would have liked.
  *
- * ## The two defects, and they are different defects
+ * ## What this file used to characterise, and what it asserts now
  *
- * **D1 — the producer is late, always.** `ShExecution` ingests `console.log` into the Output Plane
- * *after* the step returns. The store is not at fault: `OutputStreamHandle.appendFrom` is
- * documented as "a full reserve → write → commit cycle [...] a reader tailing the stream sees the
- * transcript in order as it is produced". Nothing feeds it progressively. Measured at 15 B and at
- * 32 KiB: **empty both times**, so no payload size escapes this one.
- *
- * **D2 — the staging file withholds until a copy buffer fills.** The pump drains the child's PIPE
- * with `redacted.copyTo(sink, 8192)`. `RedactingInputStream.read` returns only once it has emitted
- * `len` bytes or reached EOF, so **the copy buffer size IS the flush granularity of the entire live
- * transcript path** — not the `BufferedOutputStream`, and not the redactor's lookahead window.
- *
- * That last attribution was measured, not assumed, and two earlier guesses were wrong:
+ * As CHARACTERISATIONS, every row asserted a defect. OBS-B2 landed and each one is INVERTED:
  *
  * ```text
- * MUTATION unbuffered sink            → no row changes
- * MUTATION redactor lookahead → 1     → no row changes (and a broken redactor: maxLiteral=1 makes
- *                                                 `read` spin, because it tests ringCount == 1
- *                                                 and a pipe read overshoots in one step)
- * MUTATION redactor lookahead → 4
- *            + unbuffered sink        → no row changes
- * MUTATION copyTo(sink, 8192) → 8     → the staging row flips RED with exactly 8 bytes
+ * D1  the producer was late, unconditionally     -> the store is written WHILE the step runs
+ * D2  the staging file withheld a short tail     -> the staging file does not exist at all
  * ```
  *
- * The 8 is the mutation value. That is the attribution.
+ * The attribution of D2 was measured, not assumed, and two earlier guesses were wrong. With
+ * `DurableShellExecutor`'s pump at `redacted.copyTo(sink, 8192)`:
  *
- * The practical consequence for OBS-B2: a flush discipline alone does **not** make the transcript
- * live for short output, and fixing D1 does not fix D2. They are two edits in two places.
+ * ```text
+ * MUTATION unbuffered sink                    -> no row changes
+ * MUTATION redactor lookahead -> 1            -> no row changes (and a broken redactor)
+ * MUTATION redactor lookahead -> 4 + unbuffered-> no row changes
+ * MUTATION copyTo(sink, 8192) -> copyTo(sink, 8)-> the staging row flips RED with exactly 8 bytes
+ * ```
  *
- * The second row of each test is the **non-vacuity witness**: a payload that crosses the buffer
- * size DOES appear mid-step. Without it, "nothing arrived" would be indistinguishable from "the
- * harness observed the wrong thing".
+ * The 8 is the mutation value, and that is what attributed it: `RedactingInputStream.read` returns
+ * only at `len` bytes or EOF, so the copy buffer WAS the flush granularity of the whole path.
+ *
+ * Two properties are deliberately NOT asserted, because they are false:
+ *
+ * - a short payload is NOT visible mid-step — the redactor withholds its tail until EOF, which is
+ *   redaction correctness rather than latency;
+ * - the staging file is not "eventually visible" — it is absent in both windows, because a file
+ *   that reappears at the end is the shape this change exists to remove.
  *
  * ## Why barriers and not durations
  *
@@ -83,7 +79,7 @@ import kotlinx.coroutines.runBlocking
  * reimplements the thing under test. `@TempDir`, no ambient cwd/env/network.
  */
 @Timeout(value = 240, unit = TimeUnit.SECONDS)
-class ObsBLiveOutputIngressCharacterisationTest {
+class ObsBLiveOutputIngressTest {
 
     @TempDir
     lateinit var root: Path
@@ -108,6 +104,7 @@ class ObsBLiveOutputIngressCharacterisationTest {
         val storeDuringBlock: StoreView,
         val storeAfter: StoreView,
         val consoleLogBytesDuringBlock: Long,
+        val consoleLogBytesAfterRelease: Long,
         val terminal: ShellInvocationResult?,
     )
 
@@ -204,6 +201,7 @@ class ObsBLiveOutputIngressCharacterisationTest {
             storeDuringBlock = duringBlock,
             storeAfter = readAll(store, stream),
             consoleLogBytesDuringBlock = consoleDuringBlock,
+            consoleLogBytesAfterRelease = consoleLogSize(),
             terminal = terminal[0],
         )
     }
@@ -298,136 +296,131 @@ class ObsBLiveOutputIngressCharacterisationTest {
      * Closed by: OBS-B2. Invert then — assert the marker IS in the mid-step bytes — and do not
      * delete the row.
      */
+    /**
+     * A short transcript still lands completely, and lands ONCE.
+     *
+     * This row was a characterisation asserting the store held nothing here until the step ended,
+     * and OBS-B2 inverted half of it. The half that did not invert is the important part: a
+     * payload smaller than the redactor's lookahead window **cannot** be visible mid-step, because
+     * the redactor withholds its tail until it can rule out a secret spanning the boundary. That is
+     * redaction correctness, not the defect, and asserting liveness for a 15-byte payload would be
+     * asserting something false.
+     *
+     * So the property pinned here is the one that matters for a short output: it is durable, and
+     * it is byte-exact, whether or not anybody saw it live.
+     */
     @Test
-    fun `CHAR a small transcript reaches the Output Plane only after the step ends`() {
+    fun `a short transcript is committed in full exactly once`() {
         val runId = "r-obsb-d1-small"
+        assertTrue(
+            SMALL_PAYLOAD_BYTES < TRANSCRIPT_LIVE_WINDOW_BYTES,
+            "premise broken: the short payload is no longer below the live window, so this row no " +
+                "longer covers the withheld-tail case it was written for",
+        )
         val observation = observeBlockedStep(runId, smallEmitter())
 
-        val during = observation.storeDuringBlock.bytesOrEmpty("mid-step read")
-        assertEquals(
-            0,
-            during.size,
-            "CHARACTERISED: the store already held ${during.size} bytes while the step was " +
-                "provably alive. OBS-B2 has landed and this row must be INVERTED into a " +
-                "non-regression test, not deleted.",
-        )
-        val after = observation.storeAfter.bytesOrEmpty("post-step read").toString(Charsets.UTF_8)
+        val after = observation.storeAfter.bytesOrEmpty("post-step read")
         assertEquals(
             SMALL_PAYLOAD,
-            after,
-            "sanity: the bytes DO arrive once the step ends, and byte-exactly, so the absence " +
-                "above is about timing and not about a lossy or redaction-damaged pipeline.",
+            after.toString(Charsets.UTF_8),
+            "the whole short transcript must be durable and byte-exact once the step ends",
+        )
+        val during = observation.storeDuringBlock.bytesOrEmpty("mid-step read")
+        assertTrue(
+            during.size < SMALL_PAYLOAD_BYTES,
+            "a $SMALL_PAYLOAD_BYTES byte payload was already fully committed mid-step. That is not " +
+                "wrong, but this row no longer distinguishes the withheld-tail case and the next " +
+                "row is not measuring liveness.",
         )
     }
 
     /**
-     * NON-VACUITY WITNESS — the store's lateness is **unconditional**, unlike the staging file's.
+     * The payload-size contrast that used to separate the two defects.
      *
-     * This row was first written asserting the opposite — that a payload past the 8 KiB staging
-     * buffer *does* reach the store mid-step. It failed, and the failure is the finding that makes
-     * the file worth having: the store was empty for the large payload too.
-     *
-     * So the two defects are not two sizes of one defect:
-     *
-     * ```text
-     * console.log  late only while the transcript is under 8 KiB   (buffer overflow flushes it)
-     * Output Plane late for every payload, however large          (the producer runs after the step)
-     * ```
-     *
-     * Only the first would be fixed by a flush discipline. Asserting them together would let a
-     * flush-only fix look like a complete one, which is the mistake this row exists to prevent.
-     *
-     * Closed by: OBS-B2 — then it inverts, and the store must be non-empty mid-step for BOTH sizes.
+     * It kept its value after the fix, inverted: a payload that crosses many copy windows must be
+     * visible mid-step AND must not be truncated. Before OBS-B2 this row asserted the store was
+     * empty even for 32 KiB, which is how D1 was shown to be unconditional rather than a
+     * consequence of the copy granularity.
      */
     @Test
-    fun `WITNESS the store is empty mid-step for a large payload too`() {
+    fun `a large transcript is committed mid-step and is complete`() {
         val runId = "r-obsb-d1-large"
-        assertTrue(
-            LARGE_PAYLOAD_BYTES > 8 * 1024,
-            "premise broken: the 'large' payload is only $LARGE_PAYLOAD_BYTES bytes, so it proves " +
-                "nothing about crossing the staging buffer.",
-        )
         val observation = observeBlockedStep(runId, largeEmitter())
 
         val during = observation.storeDuringBlock.bytesOrEmpty("mid-step read")
-        assertEquals(
-            0,
-            during.size,
-            "the witness failed: the store held ${during.size} bytes mid-step for a $LARGE_PAYLOAD_BYTES " +
-                "byte payload. If this is OBS-B2 landing, invert this row. If it is not, the store's " +
-                "lateness is no longer unconditional and the two defects in this file have merged " +
-                "into one — which would change the fix.",
+        assertTrue(
+            during.isNotEmpty(),
+            "the store held nothing mid-step for a $LARGE_PAYLOAD_BYTES byte payload",
         )
         assertTrue(
-            observation.consoleLogBytesDuringBlock > 0,
-            "sanity: for the SAME payload and the SAME barriers, console.log WAS mid-write " +
-                "(${observation.consoleLogBytesDuringBlock} bytes) while the store held nothing. " +
-                "Without this contrast the two CHAR rows could both be explained by one defect, " +
-                "and this file would claim two where there is one.",
+            during.size < LARGE_PAYLOAD_BYTES,
+            "the whole $LARGE_PAYLOAD_BYTES byte payload was already committed mid-step, so this " +
+                "row is no longer distinguishing anything",
         )
         assertEquals(
             LARGE_PAYLOAD_BYTES.toLong(),
             observation.storeAfter.bytesOrEmpty("post-step read").size.toLong(),
-            "sanity: the whole payload is durable once the step ends, so the mid-step emptiness " +
-                "above is a timing property and not a payload that never arrived.",
+            "the complete payload must be durable once the step ends",
         )
     }
 
-    // ------------------------------------------------------------ D2: the staging buffer
+    // ------------------------------------------------------------ D2: the staging file is gone
 
     /**
-     * CHARACTERISATION — `console.log` is itself invisible mid-step for a small payload.
+     * The canonical path does not write `console.log` at all.
      *
-     * The holder is the pump's copy granularity (`DurableShellExecutor`: `redacted.copyTo(sink,
-     * 8192)`), because `RedactingInputStream.read` returns only at `len` bytes or EOF. Shrinking
-     * that call to 8 bytes makes this row report exactly 8 bytes, which is what attributes it.
+     * This was a characterisation: the staging file was invisible mid-step for a small payload
+     * because the pump's copy granularity was the flush granularity of the whole path. OBS-B2 did
+     * not fix that latency — it removed the file, which is what made fixing the latency possible
+     * without two authorities.
      *
-     * Closed by: OBS-B2, which stops writing `console.log` at all.
+     * The row now asserts absence in both windows, because a file that appears only at the end is
+     * exactly the shape this change exists to remove.
      */
     @Test
-    fun `CHAR the staging transcript is empty mid-step for a small payload`() {
+    fun `the canonical path writes no staging transcript`() {
         val runId = "r-obsb-d2-small"
         val observation = observeBlockedStep(runId, smallEmitter())
 
         assertEquals(
-            0L,
+            -1L,
             observation.consoleLogBytesDuringBlock,
-            "CHARACTERISED: console.log already held ${observation.consoleLogBytesDuringBlock} bytes " +
-                "mid-step, for a $SMALL_PAYLOAD_BYTES byte payload. OBS-B2 has landed and this row " +
-                "must be INVERTED, not deleted.",
+            "console.log was recreated mid-step. OBS-B2 removed it as a write target because a " +
+                "second durable copy of the transcript is a second byte authority.",
+        )
+        assertEquals(
+            -1L,
+            observation.consoleLogBytesAfterRelease,
+            "console.log was recreated after the step. Whatever holds the transcript must be the " +
+                "Output Plane, which is also where post-mortem retention comes from.",
         )
     }
 
     /**
-     * DISCRIMINATOR — the staging file fills once a copy buffer is satisfied; the store never does.
+     * The successor to the copy-granularity discriminator.
      *
-     * Same script shape as the row above, same settle window, only the byte count moves. This is
-     * the measurement that separates the two defects: if the staging file appears for the large
-     * payload while the store stays empty (the WITNESS row), then the copy granularity is the
-     * staging file's holder and the producer's timing is the store's, and no single edit covers both.
-     *
-     * The first version of this file emitted exactly 8 KiB here and the row failed. A payload that
-     * exactly fills the copy buffer still does not appear, because `read` returns on `len` only if
-     * it can emit `len` bytes — and 8 KiB of payload minus the redactor's retained lookahead is
-     * short of 8 KiB. The size is now asserted rather than assumed.
+     * The live-visibility bound is now [TRANSCRIPT_LIVE_WINDOW_BYTES] instead of 8 KiB, and the
+     * row that pins it is a payload sized to sit either side of it.
      */
     @Test
-    fun `DISCRIMINATOR the staging transcript fills once past the copy granularity`() {
-        val runId = "r-obsb-d2-large"
+    fun `live visibility is bounded by the window, not by the payload size`() {
+        val runId = "r-obsb-d2-window"
+        assertTrue(
+            SMALL_PAYLOAD_BYTES < TRANSCRIPT_LIVE_WINDOW_BYTES,
+            "premise broken: the small payload is no longer smaller than the window",
+        )
         val observation = observeBlockedStep(runId, largeEmitter())
 
+        val during = observation.storeDuringBlock.bytesOrEmpty("mid-step read")
         assertTrue(
-            observation.consoleLogBytesDuringBlock > 0,
-            "the discriminator failed: console.log held ${observation.consoleLogBytesDuringBlock} " +
-                "bytes mid-step for a $LARGE_PAYLOAD_BYTES byte payload. Either the copy granularity " +
-                "is gone — in which case OBS-B2 landed and this row inverts — or this harness is " +
-                "blind, in which case the CHAR row above proved nothing.",
+            during.isNotEmpty(),
+            "a payload far past the live window produced no committed bytes mid-step",
         )
         assertTrue(
-            observation.consoleLogBytesDuringBlock < LARGE_PAYLOAD_BYTES,
-            "the staging file held the whole $LARGE_PAYLOAD_BYTES byte payload mid-step, so nothing " +
-                "is withheld at all and the CHAR row above is measuring something other than a " +
-                "withheld tail.",
+            during.size >= TRANSCRIPT_LIVE_WINDOW_BYTES,
+            "only ${during.size} bytes were committed mid-step for a $LARGE_PAYLOAD_BYTES byte " +
+                "payload, which is less than one ${TRANSCRIPT_LIVE_WINDOW_BYTES}-byte window. The " +
+                "pump is not reaching the store at the granularity it claims.",
         )
     }
 }

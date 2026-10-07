@@ -104,18 +104,25 @@ sealed interface DurableTaskSnapshot {
 /**
  * Reference to durable output retained by the task substrate.
  *
- * [capturedStdout] is the explicit typed VALUE requested by a capture mode (returnStdout); it is NOT
- * the console transcript. [consoleTranscript] is the durable console output destined for the
- * observable event/console substrate (in plain mode it is the merged stdout+stderr transcript; in
- * capture mode it is stderr only, because stdout went to the typed value). These two channels are
- * deliberately distinct and MUST NOT be conflated. Both are carried in-memory only; neither changes
- * the persisted control-dir file protocol.
+ * ## This type carries a VALUE, never a transcript
+ *
+ * [capturedStdout] is the explicit typed VALUE requested by a capture mode (`returnStdout`). It is
+ * present only when somebody asked for stdout, and it is the process's stdout, exact.
+ *
+ * The console transcript is deliberately **absent from this type**. Process output has exactly one
+ * durable authority — the Output Plane, read through `OutputReadPort` — and a terminal that also
+ * carried the transcript would be a second copy of an observable authority, held in memory, that
+ * nothing could keep consistent with the store. A field like that does not stay unused: the next
+ * consumer reaches for it, and the single-byte-authority law has quietly become two authorities.
+ *
+ * The consequence for callers is a real change of shape, not a nullability detail: an empty
+ * transcript is `capturedStdout == null`, and the observable transcript must be read from the read
+ * port rather than found on the terminal.
  */
 @Serializable
 data class DurableTaskOutput(
     val controlDir: String,
     val capturedStdout: String? = null,
-    val consoleTranscript: String? = null,
 ) {
     init {
         require(controlDir.isNotBlank()) { "DurableTaskOutput.controlDir must not be blank" }

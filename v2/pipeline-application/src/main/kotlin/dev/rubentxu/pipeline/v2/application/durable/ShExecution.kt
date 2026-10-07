@@ -57,69 +57,6 @@ import java.util.UUID
  */
 object ShExecution {
 
-    /**
-     * Stream a process transcript into the Output Plane, redacting on the way in.
-     *
-     * M1-P2. This replaces the pair of emitters that used to exist here, and the replacement is not
-     * a refactor: those emitters were the **second** rendering of the same bytes. The wrapper
-     * writes `console.log`, and then the JVM re-rendered its content into an
-     * `EchoOutputCaptured` event built from in-memory buffers. Two sources, one redactor in two
-     * overloads, and no property saying they agreed — so a parity test built on this path would
-     * have compared two implementations rather than one writer against what it wrote. The event is
-     * gone; the store is the authority. See ADR-M1 D2.
-     *
-     * Redaction happens **here**, on the way to persistence, not on the way out. A store that
-     * redacted at read time would already have written the secret to disk, and the byte count a
-     * reader sees would depend on how many secrets happened to be in the stream.
-     *
-     * Streaming, never materialised: the producer is consumed in bounded windows by
-     * [dev.rubentxu.pipeline.v2.output.store.OutputStreamHandle.appendFrom], so the resident set is one
-     * window plus redactor lookahead regardless of transcript size.
-     */
-    internal fun ingestTranscriptIntoOutputPlane(
-        controlDirRoot: Path,
-        runId: String,
-        opId: String,
-        source: () -> InputStream?,
-        secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry?,
-    ) {
-        val input = source() ?: return
-        val redacted = if (secretPatternRegistry != null) {
-            // Each StreamingRedactor carries independent boundary state, so a secret split across
-            // window edges is still scrubbed.
-            dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor(secretPatternRegistry).wrap(input)
-        } else {
-            input
-        }
-        val store = OutputPlaneProvider.storeFor(controlDirRoot)
-        store.open(OutputPlaneProvider.streamId(runId, opId))
-            .appendFrom(redacted)
-    }
-
-    /**
-     * Reads the durable console transcript (console.log, with legacy jenkins-log.txt read-compat)
-     * for the observable console output. In capture mode this file holds stderr only; in plain mode
-     * it holds the merged stdout+stderr transcript.
-     */
-    private fun readConsoleTranscript(
-        controlDir: Path,
-        secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry?,
-    ): String = try {
-        val consoleLog = dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellFiles
-            .resolveConsoleLog(controlDir)
-        // WU-LPR-011 secret-redaction slice: chunk-boundary-safe redaction at the
-        // transcript seam. The registry flows from the runtime context via the
-        // shell-operations adapter; null registry = unredacted (legacy/test
-        // composition only; the production wire-up always supplies it).
-        if (secretPatternRegistry != null) {
-            dev.rubentxu.pipeline.v2.credentials.api.TranscriptRedactor(secretPatternRegistry)
-                .redactFile(consoleLog) ?: ""
-        } else {
-            if (Files.exists(consoleLog)) Files.readString(consoleLog) else ""
-        }
-    } catch (_: Exception) {
-        ""
-    }
 
     /**
      * WU-LPR-011: redacts observable transcript content when a secret registry
@@ -246,6 +183,18 @@ object ShExecution {
                 captureStdout = command.returnMode == ShellReturnMode.STDOUT,
             )
 
+            // OBS-B: the composed destination for the child's bytes. This is the whole change — the
+            // transcript is handed to the Output Plane by the pump WHILE the step runs, instead of
+            // being written to a control-dir file and ingested once the step has returned. The
+            // stream id is the same one the previous post-step ingestion used, so a reader holding a
+            // cursor from an earlier run of this operation still addresses the same stream.
+            val ingress: RedactingOutputIngress? = controlDirRoot?.let { root ->
+                RedactingOutputIngress(
+                    OutputPlaneProvider.storeFor(root)
+                        .open(OutputPlaneProvider.streamId(runId, opId.format())),
+                )
+            }
+
             // Execute with tee-gated wrapper if captureStdout is enabled
             // P2: env injected via pb.environment().putAll (not argv) in DurableShellExecutor.launch()
             // Timeout threaded via timeoutMs parameter (TMO-S-013: 0 = no timeout)
@@ -255,12 +204,15 @@ object ShExecution {
                 scriptContent = command.script,
                 opId = opId.format(),
                 shOptions = envOptions,
-                // WU-LPR-011R2 (Gate-1 at-rest closure): console.log receives ONLY
+                // WU-LPR-011R2 (Gate-1 at-rest closure): the durable authority receives ONLY
                 // already-redacted bytes. The wrap factory is built per launch; each
                 // StreamingRedactor instance carries independent boundary state.
                 transcriptRedactor = secretPatternRegistry?.let { registry ->
                     { raw -> dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor(registry).wrap(raw) }
                 },
+                // OBS-B: live destination. Null only when there is no control-dir root, which is
+                // the non-durable fallback handled above.
+                transcriptSink = ingress,
             )
 
             // Project the durable console transcript and the typed value separately.
@@ -269,54 +221,23 @@ object ShExecution {
             //   captureStdout (returnMode == STDOUT): stdout is the captured typed VALUE (output.txt,
             //     read as terminal.capturedStdout); console.log holds only stderr and is the
             //     observable transcript. The stdout value must NOT be re-emitted as a console event.
-            val terminalExited = terminal as? DurableTaskTerminal.Exited
-            // M1-P2: the transcript enters the Output Plane exactly once, and NO console event is
-            // emitted for it. Before this, the product rendered these bytes twice and
-            // independently — whole-file via redactFile, and a separate EchoOutputCaptured built
-            // from in-memory buffers via redactStream. Same redactor, two overloads, two sources,
-            // and no property asserting they agree, so there was no oracle to compare against.
-            // See ADR-M1 D2.
+            // OBS-B: there is nothing left to ingest here, and that is the point.
             //
-            // WU-RP-044 (M5 RSS debt) still holds: the transcript is streamed, never materialised
-            // as one in-memory copy. Plain mode: console.log holds stdout+stderr merged. Capture
-            // mode: stdout went to output.txt as the typed VALUE, so console.log holds only stderr.
-            val consoleSource: () -> InputStream? = {
-                dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellFiles.resolveConsoleLog(controlDir).takeIf { Files.exists(it) }
-                    ?.let { java.io.BufferedInputStream(java.io.FileInputStream(it.toFile())) }
-                    ?: terminalExited?.output?.consoleTranscript?.byteInputStream()
-                    ?: terminalExited?.output?.capturedStdout?.byteInputStream()
-            }
-            // WU-RP-044 (M5 RSS debt): in plain (JENKINS_LOG) projection the
-            // terminal retains console.log (cleanup deleted the rest of the
-            // control dir). This finally is the single owner of that retained
-            // file's deletion after streaming. Deletion applies ONLY to a
-            // successful exit: LPR-011r2 retention requires the transcript to
-            // survive failed and timeout-killed operations for post-mortem.
-            val deleteRetainedLog = (terminal as? DurableTaskTerminal.Exited)?.exitCode == 0
-            val controlDirRootNonNull = controlDirRoot
-            try {
-                ingestTranscriptIntoOutputPlane(
-                    controlDirRoot = controlDirRootNonNull,
-                    runId = runId,
-                    opId = opId.format(),
-                    source = consoleSource,
-                    secretPatternRegistry = secretPatternRegistry,
-                )
-            } finally {
-                if (deleteRetainedLog) {
-                    kotlin.runCatching {
-                        java.nio.file.Files.deleteIfExists(
-                            dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellFiles
-                                .resolveConsoleLog(controlDir)
-                        )
-                    }
-                    kotlin.runCatching {
-                        // remove the emptied control dir (console.log was its last entry)
-                        java.nio.file.Files.deleteIfExists(controlDir)
-                    }
-                }
-            }
-
+            // M1-P2 established that the transcript enters the Output Plane exactly once and that
+            // no console event carries it. Before this it entered by a whole-file read AFTER the
+            // step returned, which meant the store was authoritative but never live: a reader
+            // tailing the stream saw nothing until the step ended, however long it ran.
+            //
+            // The pump now writes each sanitized chunk straight into the stream above, so:
+            //   - `console.log` is not written, not read, and not deleted. It was a staging buffer
+            //     whose lifetime was the reason the store could not be live.
+            //   - post-mortem retention is no longer the existence of a file that a `finally`
+            //     block happens to leave behind. It is the Output Plane's retention policy, which
+            //     is where the other durable authorities already keep it.
+            //
+            // What did NOT change, and is checked above and by OutputSingleAuthorityFitnessTest:
+            // redaction happens before persistence, the bytes land in one authority, and no
+            // console event is emitted for them.
             classifyShellTerminal(terminal, command.returnMode)
         } catch (e: dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException) {
             // Non-durable fallback for non-Linux platforms

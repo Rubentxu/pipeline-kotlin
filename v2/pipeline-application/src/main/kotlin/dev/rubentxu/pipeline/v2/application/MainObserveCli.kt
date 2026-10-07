@@ -46,7 +46,8 @@ object MainObserveCli {
     const val USAGE: String =
         "Usage: pipelinek observe <runId> [--control-root <dir>] [--db <path>] " +
             "[--view normal|events|console|quiet] [--format text|jsonl|json] " +
-            "[--stage S] [--step S] [--kind K] [--channel stdout|stderr] [--grep TEXT]"
+            "[--stage S] [--step S] [--kind K] [--channel stdout|stderr] [--grep TEXT] " +
+            "[--limit N] [--tail-bytes N] [--follow]"
 
     /**
      * Frames read per round trip.
@@ -166,10 +167,39 @@ object MainObserveCli {
 
         val presentation = LiveOutputPresentation(parsed.format, PrintStream(out), diagnostics)
         val selected = mutableListOf<dev.rubentxu.pipeline.v2.application.observation.ObservationRecord.Output>()
-        var afterOrdinal = -1L
+        // The tail is READ ONCE and its records are printed; only its position carries on. Keeping
+        // just the position was the first version of this and it printed NOTHING, because every
+        // record the tail had already fetched was thrown away and the next read started after it.
+        val tail = when (val bytes = parsed.tailBytes) {
+            null -> null
+            else -> when (val start = lanes.tailOf(runId, bytes)) {
+                null -> return ObserveOutcome.Refused(ObserveRefusal.NoOutputPlane)
+                is ObservationOutputRead.Refused ->
+                    return ObserveOutcome.Refused(ObserveRefusal.PlaneRefused(start.reason))
+
+                is ObservationOutputRead.Page -> start.page
+            }
+        }
+        var afterOrdinal = tail?.lastOrdinal ?: -1L
         // Counted HERE and not inside the presentation because this loop also has to know WHEN the
         // budget ran out, in order to stop reading rather than keep paging a run it will not print.
         var emitted = 0
+        // A local function rather than a lambda so the two early exits read as `return` instead of a
+        // label the reader has to look up: the record is dropped either because the query rejected
+        // it or because the budget is spent, and neither is an error.
+        fun print(record: dev.rubentxu.pipeline.v2.application.observation.ObservationRecord.Output) {
+            if (!parsed.compiled.accepts(record)) return
+            if (!parsed.budget.allows(emitted)) return
+            emitted++
+            if (parsed.format == ObservationFormat.JSON) {
+                // An array is only complete when its `]` arrives, so records are held rather than
+                // streamed; that is what `documentFor` is for.
+                selected += record
+            } else {
+                presentation.render(record)?.let { out.print(it) }
+            }
+        }
+        tail?.records?.forEach { print(it) }
         while (parsed.budget.allows(emitted)) {
             when (val read = lanes.outputOf(runId, afterOrdinal, FRAMES_PER_READ)) {
                 null -> return ObserveOutcome.Refused(ObserveRefusal.NoOutputPlane)
@@ -178,17 +208,7 @@ object MainObserveCli {
 
                 is ObservationOutputRead.Page -> {
                     val page = read.page
-                    page.records.filter { parsed.compiled.accepts(it) }.forEach { record ->
-                        if (!parsed.budget.allows(emitted)) return@forEach
-                        emitted++
-                        if (parsed.format == ObservationFormat.JSON) {
-                            // An array is only complete when its `]` arrives, so records are held
-                            // rather than streamed; that is what `documentFor` is for.
-                            selected += record
-                        } else {
-                            presentation.render(record)?.let { out.print(it) }
-                        }
-                    }
+                    page.records.forEach { print(it) }
                     afterOrdinal = page.lastOrdinal
                     if (!page.moreFrames) break
                 }
@@ -294,8 +314,26 @@ object MainObserveCli {
     ): ObserveOutcome {
         if (!lanes.hasOutputPlane) return ObserveOutcome.Refused(ObserveRefusal.NoOutputPlane)
         val presentation = LiveOutputPresentation(parsed.format, PrintStream(out), diagnostics)
-        var afterOrdinal = -1L
+        // Resolved once, and PRINTED — a follow that kept only the position would emit the tail's
+        // records to nowhere and then wait for output that had already been committed.
+        val tail = when (val bytes = parsed.tailBytes) {
+            null -> null
+            else -> when (val start = lanes.tailOf(runId, bytes)) {
+                null -> return ObserveOutcome.Refused(ObserveRefusal.NoOutputPlane)
+                is ObservationOutputRead.Refused ->
+                    return ObserveOutcome.Refused(ObserveRefusal.PlaneRefused(start.reason))
+
+                is ObservationOutputRead.Page -> start.page
+            }
+        }
+        var afterOrdinal = tail?.lastOrdinal ?: -1L
         var emitted = 0
+        tail?.records?.forEach { record ->
+            if (!parsed.compiled.accepts(record)) return@forEach
+            if (!parsed.budget.allows(emitted)) return@forEach
+            emitted++
+            presentation.emit(record)
+        }
         while (true) {
             var moreFrames = false
             when (val read = lanes.outputOf(runId, afterOrdinal, FRAMES_PER_READ)) {
@@ -397,6 +435,14 @@ interface ObserveLanes : AutoCloseable {
      * three are different answers and collapsing them is how a hole becomes a clean finish.
      */
     fun outputOf(runId: String, afterOrdinal: Long, frameLimit: Int): ObservationOutputRead?
+
+    /**
+     * Where `--tail-bytes` starts the output lane.
+     *
+     * `null` for the same reason [outputOf] returns `null`: this lane is absent. It never means
+     * "the tail is empty", which is an ordinary page with no records.
+     */
+    fun tailOf(runId: String, tailBytes: Long): ObservationOutputRead?
 
     /**
      * One bounded page of the event lane, resumed strictly after [after].
@@ -506,6 +552,8 @@ internal object ComposeLanes {
                 eventStore?.eventsFor(runId) ?: emptySequence()
             override fun outputOf(runId: String, afterOrdinal: Long, frameLimit: Int) =
                 reader?.readOutput(runId, afterOrdinal, frameLimit)
+
+            override fun tailOf(runId: String, tailBytes: Long) = reader?.readTail(runId, tailBytes)
 
             override fun eventSliceOf(
                 runId: String,

@@ -112,6 +112,14 @@ class ObsE5ObserveReplayTest {
                 ),
             )
         }
+        /**
+        * This fake does not model a tail, and says so by answering that the lane is absent.
+        *
+        * Returning a page it did not compute would be a fabricated read; returning `null` is a refusal,
+        * which is loud: a caller that asked for `--tail-bytes` against this fake gets `NoOutputPlane`
+        * rather than plausible bytes that were never read.
+        */
+        override fun tailOf(runId: String, tailBytes: Long): ObservationOutputRead? = null
     }
 
     private fun parsed(vararg args: String): ObservationParseResult.Parsed {

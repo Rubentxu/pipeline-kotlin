@@ -74,6 +74,40 @@ interface ObservationOutputReader {
      * yet, and a follower must not treat "not there yet" as "finished".
      */
     fun tailStatesOf(runId: String): List<OutputTailState?>
+
+    /**
+     * The last [tailBytes] bytes of [runId]'s output, as one bounded page.
+     *
+     * ## What "the last" means here, and why it is the run's order and not the wall clock
+     *
+     * Ordered by [OutputFrame.ordinal], which is the order PipelineK OBSERVED the chunks — not the
+     * order the kernel wrote them, and not a timestamp. That is the only order this plane has, and
+     * it is enough for a tail: "the most recently observed bytes" is exactly what a reader wants
+     * when it cannot afford the whole transcript. It is deliberately not compared with an event
+     * sequence, for the reason [ObservationRecord] refuses [dev.rubentxu.pipeline.v2.application.observation.ObservationView.FULL].
+     *
+     * ## Per STREAM would be the other reading, and it is not this one
+     *
+     * The obvious alternative — the last N bytes of each stream — is what `failure-context` already
+     * does per channel, and it is what `kubectl logs --tail-bytes` means per container. It is not
+     * what this can answer cheaply, and the reason is structural rather than incidental: the frame
+     * index is organised PER RUN, so the last frames of a stream that finished early sit near the
+     * beginning of the run's ordinals. Bounding by stream would make finding the tail of an early
+     * step cost a scan of everything the run did afterwards — the exact "200 MB instead of 30 KiB"
+     * this flag exists to avoid. Bounding by the run's own order costs what it reads.
+     *
+     * The trade is named rather than hidden: with this reading, a run with one enormous early step
+     * and a quiet late one returns bytes only from the late one.
+     *
+     * ## The oldest frame included is NARROWED, never dropped and never invented
+     *
+     * The byte budget usually lands in the middle of a frame, so that frame is re-issued with its
+     * `from` moved forward and its `ordinal` KEPT. The ordinal is not reassigned: it is still that
+     * frame's position in the run, and a reader resuming from [ObservationOutputPage.lastOrdinal]
+     * continues exactly where the tail ended. Nothing is dropped, and no range is claimed that was
+     * not read.
+     */
+    fun readTail(runId: String, tailBytes: Long): ObservationOutputRead
 }
 
 /** One bounded page of the output lane, or the reason there isn't one. */
@@ -165,6 +199,88 @@ class FrameIndexedObservationOutputReader(
         )
     }
 
+    override fun readTail(runId: String, tailBytes: Long): ObservationOutputRead {
+        require(tailBytes > 0) { "tailBytes must be positive, got $tailBytes" }
+
+        val last = index.lastOrdinal(runId)
+            // Nothing was ever committed for this run. Distinct from "committed nothing readable":
+            // there is no position to resume from, and a caller that invented one would be told to
+            // continue from an ordinal that never existed.
+            ?: return ObservationOutputRead.Page(ObservationOutputPage(emptyList(), -1L, moreFrames = false))
+
+        val tail = tailFrames(runId, last, tailBytes)
+        val records = ArrayList<ObservationRecord.Output>(tail.size)
+        for (frame in tail) {
+            when (val read = readFrameBytes(frame)) {
+                is ReadOutcome.Refused -> return ObservationOutputRead.Refused(read.reason)
+                is ReadOutcome.Bytes -> records += ObservationRecord.Output(frame, read.bytes, read.text)
+            }
+        }
+        return ObservationOutputRead.Page(
+            ObservationOutputPage(
+                records = records,
+                lastOrdinal = records.lastOrNull()?.frame?.ordinal ?: -1L,
+                // Frames exist after the last one RETURNED only if the byte budget cut the tail
+                // short of the end — which it did not: the walk consumed the newest frames first.
+                // The frames before the window were skipped on purpose, and "skipped by the caller"
+                // is not what this field claims.
+                moreFrames = false,
+            ),
+        )
+    }
+
+    /**
+     * The trailing frames of [runId] whose bytes cover [tailBytes], oldest first, with the oldest
+     * one narrowed to the exact boundary.
+     *
+     * Walks BACKWARDS in batches that double, so the cost is proportional to the bytes asked for
+     * rather than to the length of the run: a 64 KiB tail of 4 KiB frames examines a few dozen
+     * frames, and a run that never wrote more than 64 KiB stops at the beginning instead of
+     * rescanning. Ordinals are dense per run — the index assigns them from a per-run counter — so
+     * the last `n` ordinals really are the last `n` frames.
+     */
+    private fun tailFrames(runId: String, last: Long, tailBytes: Long): List<OutputFrame> {
+        var requested = INITIAL_TAIL_BATCH
+        while (true) {
+            val after = maxOf(-1L, last - requested)
+            val window = index.framesOfRun(runId, after, requested)
+
+            var covered = 0L
+            var keep = window.size
+            while (keep > 0 && covered + window[keep - 1].length <= tailBytes) {
+                covered += window[keep - 1].length
+                keep--
+            }
+            val reachedFirstFrame = after <= -1L || window.size < requested
+
+            // The budget landed EXACTLY on a frame edge. Nothing is half-included, and `window[keep]`
+            // — the frame the loop refused to consume — is NOT part of the answer, so it must not
+            // be narrowed either: doing so produced `from == to` and the frame's own `init` refused
+            // it. That is the shape a "tail that ended neatly" bug takes.
+            if (covered >= tailBytes) return window.drop(keep)
+
+            // The window is exhausted and the budget is not met. Everything in it is included whole.
+            if (keep == 0) {
+                if (reachedFirstFrame) return window
+                requested *= 2
+                continue
+            }
+
+            // The budget lands INSIDE `window[keep - 1]`, so that frame is narrowed and the rest of
+            // the window is whole. Narrowing it is what makes the tail return the bytes that were
+            // asked for instead of a whole frame more or a whole frame less.
+            if (reachedFirstFrame) {
+                val includeFrom = keep - 1
+                val overhang = covered + window[includeFrom].length - tailBytes
+                return window.drop(includeFrom).mapIndexed { position, frame ->
+                    // Strictly less than the frame's length, because the loop stopped on the frame
+                    // that would overshoot — so `to > from` still holds.
+                    if (position == 0) frame.copy(from = frame.from + overhang) else frame
+                }
+            }
+        }
+    }
+
     private sealed interface ReadOutcome {
         /** The frame's raw bytes, and their decoded view. Both are bounded by the frame's range. */
         data class Bytes(val bytes: ByteArray, val text: String) : ReadOutcome
@@ -199,3 +315,6 @@ class FrameIndexedObservationOutputReader(
      */
     private fun decodeWindow(bytes: ByteArray): String = String(bytes, Charsets.UTF_8)
 }
+
+/** Frames examined on the first backward batch. Doubles from here; small enough to be cheap. */
+private const val INITIAL_TAIL_BATCH = 8

@@ -259,6 +259,25 @@ sealed interface CliError {
      * `--limit abc` used to read as 100, so a typo silently became a different query than the one
      * the caller believed they were making.
      */
+    /**
+     * `--tail-bytes` on a view that carries no process bytes.
+     *
+     * Refused rather than ignored for the reason `--follow` on `run` is: a flag that changes nothing
+     * observable is a parameter the caller believed in. `console` is the only view whose records are
+     * bytes, so it is the only one where a byte budget has anything to bound.
+     */
+    data class TailNeedsTheOutputLane(val view: String) : CliError {
+        override fun toString(): String =
+            "TailNeedsTheOutputLane: --tail-bytes bounds committed process bytes, and --view $view " +
+                "shows none, so it would bound nothing. Use --view console."
+    }
+
+    data class InvalidTailBytes(val value: String) : CliError {
+        override fun toString(): String =
+            "InvalidTailBytes: --tail-bytes needs a positive whole number of bytes, got '$value'. " +
+                "Omit it to read the whole plane."
+    }
+
     data class InvalidLimit(val value: String) : CliError {
         override fun toString(): String =
             "InvalidLimit: --limit needs a positive whole number of records, got '$value'. " +
@@ -316,6 +335,8 @@ sealed interface ObservationParseResult {
         val follow: Boolean,
         /** How many selected records this read may emit. A budget, never a filter. */
         val budget: RecordBudget,
+        /** Where the output lane starts, in bytes of the run's observation order. Null means the start. */
+        val tailBytes: Long?,
         /** Where the event lane is. Null means no durable event store was named. */
         val dbPath: String?,
         /** Where the Output Plane is. Null means it was not named. */
@@ -377,6 +398,13 @@ private class ParseState(
      * `--limit N`. A read-side budget over SELECTED records, never a filter: see [RecordBudget].
      */
     var budget: RecordBudget = RecordBudget.All,
+    /**
+     * `--tail-bytes N`. Where the output lane STARTS, not what it prints.
+     *
+     * A start position and a budget are different things and compose: read the last N bytes, then
+     * print at most `--limit` of what that yields.
+     */
+    var tailBytes: Long? = null,
     /**
      * `--follow`. Read-only and therefore legal here and on `observe`, unlike the execution options.
      *
@@ -462,6 +490,9 @@ object CliParser {
         }
         if (state.budget !is RecordBudget.All) {
             return CliParseResult.Rejected(CliError.OptionBelongsToObserve("--limit"))
+        }
+        if (state.tailBytes != null) {
+            return CliParseResult.Rejected(CliError.OptionBelongsToObserve("--tail-bytes"))
         }
 
         // `--grep-invert` negates a group; with no group there is nothing to
@@ -551,6 +582,13 @@ object CliParser {
         }
         // Before any store is opened. `RunObservationOutput.isIncremental` is the decision; this is
         // only its first of two refusals, so that the follow itself does not have to trust it.
+        // After admission, not before: `--view` is parsed in the same pass, and a caller who writes
+        // the flag before the view is not making a mistake worth a diagnostic.
+        if (state.tailBytes != null && state.view != ObservationView.CONSOLE) {
+            return ObservationParseResult.Rejected(
+                CliError.TailNeedsTheOutputLane(state.view.name.lowercase()),
+            )
+        }
         if (state.follow && !RunObservationOutput.isIncremental(state.format)) {
             return ObservationParseResult.Rejected(
                 CliError.FollowNeedsAnIncrementalFormat(state.format.wire),
@@ -572,6 +610,7 @@ object CliParser {
                 format = state.format,
                 follow = state.follow,
                 budget = state.budget,
+                tailBytes = state.tailBytes,
                 dbPath = state.dbPath,
                 controlRoot = state.controlRoot,
             )
@@ -756,6 +795,16 @@ object CliParser {
             "--follow" -> {
                 state.follow = true
                 ApplyOutcome.Applied(index + 1)
+            }
+            "--tail-bytes" -> {
+                val value = args.getOrNull(index + 1)
+                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
+                val bytes = value.toLongOrNull()
+                if (bytes == null || bytes <= 0L) {
+                    return ApplyOutcome.Rejected(CliError.InvalidTailBytes(value))
+                }
+                state.tailBytes = bytes
+                ApplyOutcome.Applied(index + 2)
             }
             "--limit" -> {
                 val value = args.getOrNull(index + 1)

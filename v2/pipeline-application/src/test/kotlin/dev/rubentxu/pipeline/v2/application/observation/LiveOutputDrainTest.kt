@@ -268,6 +268,11 @@ class LiveOutputDrainTest {
                 ObservationOutputRead.Refused(OutputRefusal.RecoveryNotCompleted)
 
             override fun tailStatesOf(runId: String) = emptyList<dev.rubentxu.pipeline.v2.output.OutputTailState?>()
+
+            // A reader that refuses everything refuses a tail too. Answering a page here would be a
+            // fabricated read; the drain never asks for one, so this stays a refusal.
+            override fun readTail(runId: String, tailBytes: Long): ObservationOutputRead =
+                ObservationOutputRead.Refused(OutputRefusal.RecoveryNotCompleted)
         }
 
         val drain = LiveOutputDrain(refusing, frameLimit = 4, pollIntervalMs = 5)

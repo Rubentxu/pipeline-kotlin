@@ -134,6 +134,14 @@ class ObsE5ObserveFollowTest {
                 ),
             )
         }
+        /**
+        * This fake does not model a tail, and says so by answering that the lane is absent.
+        *
+        * Returning a page it did not compute would be a fabricated read; returning `null` is a refusal,
+        * which is loud: a caller that asked for `--tail-bytes` against this fake gets `NoOutputPlane`
+        * rather than plausible bytes that were never read.
+        */
+        override fun tailOf(runId: String, tailBytes: Long): ObservationOutputRead? = null
 
         override fun eventSliceOf(runId: String, after: EventCursor?, limit: Int): EventSlice? {
             rounds++
@@ -214,6 +222,14 @@ class ObsE5ObserveFollowTest {
                     if (round == 1) pages.single() else ObservationOutputPage(emptyList(), 0, false),
                 )
             }
+            /**
+            * This fake does not model a tail, and says so by answering that the lane is absent.
+            *
+            * Returning a page it did not compute would be a fabricated read; returning `null` is a refusal,
+            * which is loud: a caller that asked for `--tail-bytes` against this fake gets `NoOutputPlane`
+            * rather than plausible bytes that were never read.
+            */
+            override fun tailOf(runId: String, tailBytes: Long): ObservationOutputRead? = null
 
             override fun eventSliceOf(runId: String, after: EventCursor?, limit: Int): EventSlice? = null
             override fun outputTailsOf(runId: String): List<OutputTailState?> =
@@ -272,6 +288,15 @@ class ObsE5ObserveFollowTest {
 
             // A stream this store cannot answer for. `null` is NOT sealed.
             override fun outputTailsOf(runId: String): List<OutputTailState?> = listOf(null)
+
+            /**
+             * This fake does not model a tail, and says so by answering that the lane is absent.
+             *
+             * Returning a page it did not compute would be a fabricated read; returning `null` is a
+             * refusal, which is loud: a caller that asked for `--tail-bytes` against this fake gets
+             * `NoOutputPlane` rather than plausible bytes that were never read.
+             */
+            override fun tailOf(runId: String, tailBytes: Long): ObservationOutputRead? = null
         }
         val sink = Sink()
 

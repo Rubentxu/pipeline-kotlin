@@ -76,6 +76,14 @@ class ObsE5LimitTest {
             val next = slices.indexOfFirst { it.nextCursor.lastSequence > (after?.lastSequence ?: 0L) }
             return if (next < 0) EventSlice(emptyList(), after ?: EventCursor(runId, 0), false) else slices[next]
         }
+        /**
+        * This fake does not model a tail, and says so by answering that the lane is absent.
+        *
+        * Returning a page it did not compute would be a fabricated read; returning `null` is a refusal,
+        * which is loud: a caller that asked for `--tail-bytes` against this fake gets `NoOutputPlane`
+        * rather than plausible bytes that were never read.
+        */
+        override fun tailOf(runId: String, tailBytes: Long): ObservationOutputRead? = null
 
         override fun outputTailsOf(runId: String): List<OutputTailState?>? = null
     }
@@ -201,6 +209,14 @@ class ObsE5LimitTest {
                     ObservationOutputPage(page, page.last().frame.ordinal, from + frameLimit < records.size),
                 )
             }
+            /**
+            * This fake does not model a tail, and says so by answering that the lane is absent.
+            *
+            * Returning a page it did not compute would be a fabricated read; returning `null` is a refusal,
+            * which is loud: a caller that asked for `--tail-bytes` against this fake gets `NoOutputPlane`
+            * rather than plausible bytes that were never read.
+            */
+            override fun tailOf(runId: String, tailBytes: Long): ObservationOutputRead? = null
 
             override fun eventSliceOf(runId: String, after: EventCursor?, limit: Int): EventSlice? = null
             override fun outputTailsOf(runId: String): List<OutputTailState?> = listOf(OutputTailState.Sealed(40))

@@ -26,6 +26,9 @@ import java.nio.file.Path
 import java.nio.file.Paths
 
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+import dev.rubentxu.pipeline.v2.application.support.CliRun
+import dev.rubentxu.pipeline.v2.application.support.OwnedSubprocess
+import java.time.Duration
 
 /**
  * UAT-DSL-001: Jenkins Familiarity — full grammar DSL exercising
@@ -49,13 +52,20 @@ class UatDsl001JenkinsFamiliarityTest {
 
     @Test
     fun `full grammar script compiles and emits parseable JSON`() {
-        val result = ProcessBuilder(appBin.toString(), "run", grammarFullScript.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-            .start()
-            .also { it.waitFor() }
+        // S6-PRE: this was `.also { it.waitFor() }` and only then a stdout read, which is the
+        // deadlock `fixture12-error-handling` proved — this script emits the same full event log
+        // through Main.kt:431, so the pipe filled and the class-level `@Timeout(120)` fired.
+        val result = OwnedSubprocess.run(
+            command = listOf(appBin.toString(), "run", grammarFullScript.toString()),
+            timeout = GRAMMAR_DEADLINE,
+        )
+        assertTrue(result is CliRun.Completed) {
+            "the grammar script did not finish within ${GRAMMAR_DEADLINE.seconds}s; pid=" +
+                "${(result as? CliRun.TimedOut)?.diagnostics?.pid}. That is an ENVIRONMENT signal, " +
+                "not a verdict about the script."
+        }
 
-        val stdout = result.inputStream.bufferedReader().readText().trim()
+        val stdout = (result as CliRun.Completed).stdout.trim()
         assertTrue(stdout.isNotEmpty(), "stdout must not be empty")
         assertTrue(stdout.startsWith("["), "stdout must start with '['")
         assertTrue(stdout.endsWith("]"), "stdout must end with ']'")
@@ -162,17 +172,30 @@ class UatDsl001JenkinsFamiliarityTest {
     }
 
     private fun runAndDecode(script: Path): Pair<String, List<DomainEvent>> {
-        val pb = ProcessBuilder(appBin.toString(), "run", script.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
-        if (exitCode != 0) {
-            val stderr = process.errorStream.bufferedReader().readText()
-            throw IllegalStateException("CLI exited with $exitCode. stderr: $stderr")
+        // S6-PRE: same migration as the grammar test. This helper read stderr ONLY on the failure
+        // path, so a run that failed loudly was the one most likely to hang on a full stdout pipe.
+        val result = OwnedSubprocess.run(
+            command = listOf(appBin.toString(), "run", script.toString()),
+            timeout = GRAMMAR_DEADLINE,
+        )
+        assertTrue(result is CliRun.Completed) {
+            "the CLI did not finish within ${GRAMMAR_DEADLINE.seconds}s; pid=" +
+                "${(result as? CliRun.TimedOut)?.diagnostics?.pid}. That is an ENVIRONMENT signal, " +
+                "not a verdict about the script."
         }
-        val events = JsonEventLog.decode(stdout)
-        return stdout to events
+        val completed = result as CliRun.Completed
+        if (completed.exitCode != 0) {
+            throw IllegalStateException("CLI exited with ${completed.exitCode}. stderr: ${completed.stderr}")
+        }
+        val events = JsonEventLog.decode(completed.stdout.trim())
+        return completed.stdout.trim() to events
+    }
+
+    /**
+     * S6-PRE: the SUBPROCESS's contract, separate from the class-level `@Timeout(120)`. A grammar
+     * run takes seconds on an idle box, so 120 s is a wide margin that cannot be tripped by load.
+     */
+    private companion object {
+        val GRAMMAR_DEADLINE: Duration = Duration.ofSeconds(120)
     }
 }

@@ -15,6 +15,9 @@ import java.nio.file.Path
 import java.sql.Connection
 import java.time.Instant
 import java.util.concurrent.TimeUnit
+import dev.rubentxu.pipeline.v2.application.support.CliRun
+import dev.rubentxu.pipeline.v2.application.support.OwnedSubprocess
+import java.time.Duration
 
 /**
  * S5.4 / R6 / R7 — C3, the external-process vertical: two OS processes, one durable cursor.
@@ -49,9 +52,17 @@ import java.util.concurrent.TimeUnit
  * `UndecodableEventRecordException` instead of emitting a continuation, and part 1's resume cannot
  * start because there is no token to resume from.
  */
-@Timeout(10, unit = TimeUnit.MINUTES)
 @DisplayName("S5.4 — dos procesos externos, un cursor durable, y el rechazo cruza el frontera")
+@Timeout(10, unit = TimeUnit.MINUTES)
 class S54ExternalVerticalRestartUatTest {
+
+    private companion object {
+        /**
+         * S6-PRE: the SUBPROCESS's own contract, well below the class-level `@Timeout(10 min)` so
+         * this one fires first and can attach a thread dump to the failure.
+         */
+        val SUBPROCESS_DEADLINE: Duration = Duration.ofMinutes(4)
+    }
 
     private val binary: File = AppBinSupport.discover().toFile()
     private val fixtureRunId = "run-c3-external-vertical"
@@ -73,26 +84,43 @@ class S54ExternalVerticalRestartUatTest {
             ?.trim()
     }
 
-    /** A real OS process running the installed binary. Nothing here is shared with this JVM. */
-    private fun events(vararg args: String): CliResult {
-        val proc = ProcessBuilder(binary.absolutePath, "events", *args).start()
-        assertTrue(proc.waitFor(5, TimeUnit.MINUTES), "events CLI hung on ${args.toList()}")
-        return CliResult(
-            proc.exitValue(),
-            proc.inputStream.bufferedReader().readText(),
-            proc.errorStream.bufferedReader().readText(),
+    /**
+     * Wait for a forked CLI, with a bound chosen so that a LOADED machine cannot fail the build.
+     *
+     * Raising this from 5 to 8 minutes was the wrong fix and it did not work: the test still timed
+     * out at 8 min in the full gate of 2026-10-07. The timeout was never the defect — waiting before
+     * draining was, and this harness still did it. [OwnedSubprocess] owns the child instead: it
+     * drains both pipes from the start, has its own deadline, and on expiry hands back the partial
+     * output plus a thread dump so the hang can be CLASSIFIED rather than guessed at.
+     */
+    private fun cli(vararg args: String): CliResult {
+        val result = OwnedSubprocess.run(
+            command = listOf(binary.absolutePath) + args,
+            timeout = SUBPROCESS_DEADLINE,
         )
+        return when (result) {
+            is CliRun.Completed -> CliResult(result.exitCode, result.stdout, result.stderr)
+
+            is CliRun.TimedOut -> {
+                val dump = result.diagnostics.threadDump ?: "<no thread dump obtainable>"
+                throw AssertionError(
+                    "the CLI did not finish within ${SUBPROCESS_DEADLINE.toMinutes()} min on " +
+                        "${args.toList()}; pid=${result.diagnostics.pid}. That is an ENVIRONMENT " +
+                        "signal, not a product verdict — but the dump says WHY it was still alive, " +
+                        "so read it before re-running:\n$dump",
+                )
+            }
+
+            is CliRun.LaunchFailed -> throw AssertionError(
+                "the CLI could not be launched: ${result.cause}",
+            )
+        }
     }
 
-    private fun run(vararg args: String): CliResult {
-        val proc = ProcessBuilder(binary.absolutePath, *args).start()
-        assertTrue(proc.waitFor(5, TimeUnit.MINUTES), "pipeline hung on ${args.toList()}")
-        return CliResult(
-            proc.exitValue(),
-            proc.inputStream.bufferedReader().readText(),
-            proc.errorStream.bufferedReader().readText(),
-        )
-    }
+    /** A real OS process running the installed binary. Nothing here is shared with this JVM. */
+    private fun events(vararg args: String): CliResult = cli("events", *args)
+
+    private fun run(vararg args: String): CliResult = cli(*args)
 
     private fun insertUnreadable(dbPath: String, sequence: Long, kind: String, payload: String) {
         SqliteEventStore(dbPath).use { store ->

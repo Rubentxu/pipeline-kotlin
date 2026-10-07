@@ -12,6 +12,9 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
+import dev.rubentxu.pipeline.v2.application.support.CliRun
+import dev.rubentxu.pipeline.v2.application.support.OwnedSubprocess
+import java.time.Duration
 
 /**
  * UAT-COMPAT-001: Compatibility corpus smoke-run.
@@ -38,6 +41,18 @@ import java.util.concurrent.TimeUnit
 @Tag("release-scale")
 class UatCompat001CorpusSmokeRunTest {
 
+    private companion object {
+        /**
+         * S6-PRE: the SUBPROCESS's own contract, separate from the `@Timeout(600)` on the methods.
+         *
+         * The sweep runs 31 sequential CLI spawns in ~180 s on an idle box, so 120 s PER FIXTURE is
+         * a wide margin: it catches a wedged CLI and cannot be tripped by a loaded machine. The two
+         * budgets must stay distinct — a class watchdog that fires first reports the wrong thing
+         * and, because it does not own the process, leaves the child alive.
+         */
+        val FIXTURE_DEADLINE: Duration = Duration.ofSeconds(120)
+    }
+
     // Fixtures that currently fail at runtime (exit non-zero).
     // After v0.33.1 (corpus-closure cycle): fixtures 02 (withEnv canonical), 13 (pwd/isUnix/timestamps
     // synchronous + canonical), 14 (withCredentials pluginId fix) now PASS. Fixture 10 exercises
@@ -61,6 +76,53 @@ class UatCompat001CorpusSmokeRunTest {
      * (PIPELINE_CREDENTIALS_STORE / PIPELINE_STORE_PASSPHRASE) to every fixture process.
      */
     private val corpusPassphrase = "corpus-passphrase-0.36.0"
+
+    /**
+     * S6-PRE: the SUBPROCESS's own contract, separate from the `@Timeout(600)` on the methods.
+     *
+     * The sweep takes ~180 s for 31 sequential CLI spawns on an idle box, so 120 s PER FIXTURE is a
+     * wide margin: it catches a wedged CLI and cannot be tripped by a loaded machine. The two
+     * budgets must stay distinct — a class watchdog that fires first reports the wrong thing and,
+     * because it does not own the process, leaves the child alive.
+     */
+    private fun sweepFixture(
+        fixture: Path,
+        workspace: Path,
+        storePath: Path,
+    ): CliRun.Completed {
+        val appBin = AppBinSupport.discover()
+        val name = fixture.fileName.toString()
+        // The fixture is STAGED into the workspace, which is part of the contract and not
+        // incidental: the corpus was written against a run whose script lives in the attached
+        // directory, and the very first migration of this sweep dropped the staging call and
+        // silently changed which file was being run.
+        val staged = stageFixture(name, workspace)
+        val command = if (fixturesWithIsolatedWorkspace.contains(name)) {
+            listOf(appBin.toString(), "run", "--isolated", staged.toString())
+        } else {
+            listOf(appBin.toString(), "run", "--workspace", workspace.toString(), staged.toString())
+        }
+
+        // S6-PRE: this used to `waitFor()` and only THEN read stdout, with stderr read lazily
+        // inside a failure branch. `12-error-handling` emits more than 64 KiB through
+        // Main.kt:431, so the pipe filled, the CLI's `main` blocked in writeBytes, and this sweep
+        // hung until @Timeout fired — 600 s per fixture, and it left the child running.
+        val result = OwnedSubprocess.run(
+            command = command,
+            timeout = FIXTURE_DEADLINE,
+            environment = mapOf(
+                "PIPELINE_CREDENTIALS_STORE" to storePath.toString(),
+                "PIPELINE_STORE_PASSPHRASE" to corpusPassphrase,
+            ),
+        )
+
+        assertTrue(result is CliRun.Completed) {
+            "Fixture $name did not finish within ${FIXTURE_DEADLINE.seconds}s; pid=" +
+                "${(result as? CliRun.TimedOut)?.diagnostics?.pid}. That is an ENVIRONMENT signal, " +
+                "not a verdict about the fixture: re-run it alone before reading it as a defect."
+        }
+        return result as CliRun.Completed
+    }
 
     /**
      * Fixtures that must run in a PipelineK-managed scratch rather than in the
@@ -178,39 +240,25 @@ class UatCompat001CorpusSmokeRunTest {
         val storePath = seedCorpusCredentialsStore(controlRoot)
 
         fixtures.forEach { fixture ->
-            val staged = stageFixture(fixture.fileName.toString(), workspace)
+            val runResult = sweepFixture(fixture, workspace, storePath)
             val name = fixture.fileName.toString()
-            val pb = if (fixturesWithIsolatedWorkspace.contains(name)) {
-                ProcessBuilder(appBin.toString(), "run", "--isolated", staged.toString())
-            } else {
-                ProcessBuilder(appBin.toString(), "run", "--workspace", workspace.toString(), staged.toString())
-            }
-                .redirectOutput(ProcessBuilder.Redirect.PIPE)
-                .redirectError(ProcessBuilder.Redirect.PIPE)
-                .apply {
-                    environment()["PIPELINE_CREDENTIALS_STORE"] = storePath.toString()
-                    environment()["PIPELINE_STORE_PASSPHRASE"] = corpusPassphrase
-                }
+            val exitCode = runResult.exitCode
+            val stdout = runResult.stdout.trim()
 
-            val process = pb.start()
-            val exitCode = process.waitFor()
-            val stdout = process.inputStream.bufferedReader().readText().trim()
-
-            val isBroken = brokenFixtures.contains(fixture.fileName.toString())
+            val isBroken = brokenFixtures.contains(name)
 
             if (isBroken) {
                 if (exitCode == 0) {
-                    failures.add("${fixture.fileName}: expected non-zero exit but got 0")
+                    failures.add("$name: expected non-zero exit but got 0")
                 }
             } else {
                 // Other fixtures must exit 0
                 if (exitCode != 0) {
-                    val stderr = process.errorStream.bufferedReader().readText()
-                    failures.add("${fixture.fileName}: exit $exitCode, stderr: $stderr")
+                    failures.add("$name: exit $exitCode, stderr: ${runResult.stderr}")
                 } else {
                     val events = JsonEventLog.decode(stdout)
                     if (events.isEmpty()) {
-                        failures.add("${fixture.fileName}: no events produced")
+                        failures.add("$name: no events produced")
                     }
                 }
             }
@@ -231,30 +279,16 @@ class UatCompat001CorpusSmokeRunTest {
         val storePath = seedCorpusCredentialsStore(controlRoot)
 
         fixtures.forEach { fixture ->
-            val staged = stageFixture(fixture.fileName.toString(), workspace)
+            val runResult = sweepFixture(fixture, workspace, storePath)
             val name = fixture.fileName.toString()
-            val pb = if (fixturesWithIsolatedWorkspace.contains(name)) {
-                ProcessBuilder(appBin.toString(), "run", "--isolated", staged.toString())
-            } else {
-                ProcessBuilder(appBin.toString(), "run", "--workspace", workspace.toString(), staged.toString())
-            }
-                .redirectOutput(ProcessBuilder.Redirect.PIPE)
-                .redirectError(ProcessBuilder.Redirect.PIPE)
-                .apply {
-                    environment()["PIPELINE_CREDENTIALS_STORE"] = storePath.toString()
-                    environment()["PIPELINE_STORE_PASSPHRASE"] = corpusPassphrase
-                }
+            val stdout = runResult.stdout.trim()
 
-            val process = pb.start()
-            process.waitFor()
-            val stdout = process.inputStream.bufferedReader().readText().trim()
-
-            val isBroken = brokenFixtures.contains(fixture.fileName.toString())
+            val isBroken = brokenFixtures.contains(name)
 
             if (isBroken) {
             } else {
                 val events = JsonEventLog.decode(stdout)
-                assertTrue(events.isNotEmpty(), "${fixture.fileName} must produce events")
+                assertTrue(events.isNotEmpty(), "$name must produce events")
             }
         }
     }

@@ -1,7 +1,9 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+import dev.rubentxu.pipeline.v2.application.support.CliRun
 import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
+import dev.rubentxu.pipeline.v2.application.support.OwnedSubprocess
 import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.credentials.Certificate
@@ -31,6 +33,7 @@ import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 /**
@@ -53,6 +56,19 @@ import java.util.concurrent.TimeUnit
 @Timeout(value = 600, unit = TimeUnit.SECONDS)
 @Tag("release-scale")
 class CompatibilityCorpusTest {
+
+    /**
+     * S6-PRE: the SUBPROCESS's own contract, deliberately separate from the class-level
+     * `@Timeout(600)`.
+     *
+     * A fixture takes ~5.5 s on an idle machine, so 120 s is a ~20x margin: it exists to catch a
+     * genuinely wedged CLI, and it cannot be tripped by a loaded box. The class-level `@Timeout`
+     * stays as the outer watchdog for "this whole test is broken", and the two must not be
+     * confused — a watchdog that fires first reports the wrong thing and orphans the child.
+     */
+    private companion object {
+        val FIXTURE_DEADLINE: Duration = Duration.ofSeconds(120)
+    }
 
     private fun fixtureDir(): File =
         generateSequence(File(System.getProperty("user.dir"))) { it.parentFile }
@@ -110,15 +126,34 @@ class CompatibilityCorpusTest {
         val path = fixture(name)
         val appBin = AppBinSupport.discover()
 
-        val pb = ProcessBuilder(appBin.toString(), "run", "--isolated", path.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
+        // S6-PRE: this used to be `waitFor()` and only THEN read stdout, with stderr read lazily
+        // inside a failure message. That is the deadlock the class KDoc names: `fixture12-error-
+        // handling` emits more than 64 KiB of events through Main.kt:431, the pipe filled, the CLI's
+        // `main` blocked in FileOutputStream.writeBytes and never exited, and the test hung until
+        // @Timeout fired — leaving the child alive. OwnedSubprocess drains BOTH pipes from the
+        // start and owns the tree, so a fixture that cannot cross the buffer is a Completed with a
+        // non-zero exit code, which is an assertion this method can actually make.
+        val result = OwnedSubprocess.run(
+            command = listOf(appBin.toString(), "run", "--isolated", path.toString()),
+            timeout = FIXTURE_DEADLINE,
+        )
 
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
+        assertTrue(result is CliRun.Completed) {
+            "Fixture $name did not finish within ${FIXTURE_DEADLINE.seconds}s. " +
+                "That is an ENVIRONMENT signal, not a verdict about the fixture: pid=" +
+                "${(result as? CliRun.TimedOut)?.diagnostics?.pid}. Re-run it alone before reading " +
+                "it as a defect."
+        }
+        val completed = result as CliRun.Completed
+        assertEquals(0, completed.exitCode) { "Fixture $name exited with code ${completed.exitCode}. stderr: ${completed.stderr}" }
 
-        assertEquals(0, exitCode) { "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()}" }
+        // The trim is not cosmetic and dropping it broke 19 of 30 fixtures. `Main.kt:431` writes the
+        // event log with `println`, so stdout ends in a newline, and these two assertions read the
+        // raw first/last character. The migration to OwnedSubprocess initially dropped the trim and
+        // the corpus reported "stdout must end with ']'" on fixtures that were perfectly green —
+        // which is what a migration that does not preserve every observable the old code produced
+        // looks like from the outside.
+        val stdout = completed.stdout.trim()
         assertTrue(stdout.startsWith("[")) { "Fixture $name stdout must start with '['" }
         assertTrue(stdout.endsWith("]")) { "Fixture $name stdout must end with ']'" }
 
@@ -329,15 +364,23 @@ class CompatibilityCorpusTest {
         val path = fixture(name)
         val appBin = AppBinSupport.discover()
 
-        val pb = ProcessBuilder(appBin.toString(), "run", path.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
+        // S6-PRE: same migration as runFixturePass. This one read only stderr and only after
+        // waitFor, which is the mirror image of the same deadlock: a child blocked writing stdout
+        // never exits, so a fixture that fails LOUDLY was exactly the one that hung.
+        val result = OwnedSubprocess.run(
+            command = listOf(appBin.toString(), "run", path.toString()),
+            timeout = FIXTURE_DEADLINE,
+        )
 
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stderr = process.errorStream.bufferedReader().readText().trim()
-
-        assertNotEquals(0, exitCode) { "Fixture $name should exit non-zero but got 0. stderr: $stderr" }
+        assertTrue(result is CliRun.Completed) {
+            "Fixture $name did not finish within ${FIXTURE_DEADLINE.seconds}s; pid=" +
+                "${(result as? CliRun.TimedOut)?.diagnostics?.pid}. That is an ENVIRONMENT signal, " +
+                "not a verdict about the fixture."
+        }
+        val completed = result as CliRun.Completed
+        assertNotEquals(0, completed.exitCode) {
+            "Fixture $name should exit non-zero but got 0. stderr: ${completed.stderr}"
+        }
     }
 
     @Test fun fixture01Basic() = runFixturePass("01-basic.pipeline.kts")

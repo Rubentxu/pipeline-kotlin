@@ -73,7 +73,7 @@ class ConsolePrintingEventSink(
         // the durable store.
         val line = stream.accept(event)
         delegate.append(event)
-        if (line != null && query.accepts(event)) emit(line)
+        if (line != null && query.accepts(ObservationRecord.Event(event))) emit(line)
     }
 
     override fun eventsFor(runId: String): Sequence<DomainEvent> = delegate.eventsFor(runId)

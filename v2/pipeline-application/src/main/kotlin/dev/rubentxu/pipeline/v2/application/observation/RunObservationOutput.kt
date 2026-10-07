@@ -73,10 +73,10 @@ object RunObservationOutput {
             }
 
             ObservationFormat.JSON ->
-                JsonEventLog.encodeTo(events.filter(query::accepts), out)
+                JsonEventLog.encodeTo(events.asRecords().filter(query::accepts).toEvents(), out)
 
             ObservationFormat.JSON_LINES ->
-                events.filter(query::accepts).forEach { event ->
+                events.asRecords().filter(query::accepts).toEvents().forEach { event ->
                     out.write(JsonEventLog.encodeOne(event))
                     out.write("\n")
                 }
@@ -87,4 +87,15 @@ object RunObservationOutput {
         if (events.isEmpty()) "" else events.joinToString(separator = "\n", postfix = "\n") {
             JsonEventLog.encodeOne(it)
         }
+
+    /**
+     * The compiled query speaks records; these two hops carry an event-only stream across that
+     * boundary without teaching [CompiledObservationQuery] a second entry point that could drift from
+     * the first. Streaming stays lazy: the query runs per element, not over a materialised list.
+     */
+    private fun Sequence<DomainEvent>.asRecords(): Sequence<ObservationRecord> =
+        map { ObservationRecord.Event(it) }
+
+    private fun Sequence<ObservationRecord>.toEvents(): Sequence<DomainEvent> =
+        map { (it as ObservationRecord.Event).event }
 }

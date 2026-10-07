@@ -28,12 +28,12 @@ import org.junit.jupiter.api.Test
  *
  * ## Why the allowlist is the point and not a concession
  *
- * The 26 names below are the current debt, written out. A law that permitted them silently would be
+ * The 25 names below are the current debt, written out. A law that permitted them silently would be
  * the same defect shape as a prohibition over a file that no longer exists: a green produced by the
  * absence of a subject. Instead each one is a visible entry that a migration deletes, and the
  * assertion is that the set of NEW offenders is empty — so the debt can only shrink, never grow.
  *
- * The count fell 32 -> 29 -> 28 -> 27 -> 26 as harnesses adopted [OwnedSubprocess]. `CompatibilityCorpusTest` is
+ * The count fell 32 -> 29 -> 28 -> 27 -> 26 -> 25 as harnesses adopted [OwnedSubprocess]. `CompatibilityCorpusTest` is
  * deliberately absent: it was the first migration and it is the file that carried the measured hang.
  */
 @DisplayName("S6-PRE — todo harness de la distribucion instalada pasa por OwnedSubprocess")
@@ -113,7 +113,7 @@ class InstalledDistributionHarnessFitnessTest {
 
         /**
          * The measured debt on the day this law was written: 32 harnesses that fork the installed
-         * distribution directly, now 26. Each is a RED waiting to be migrated, and the count is
+         * distribution directly, now 25. Each is a RED waiting to be migrated, and the count is
          * expected to fall with every commit that adopts the primitive.
          */
         val KNOWN_DEBT: Set<String> = setOf(
@@ -132,7 +132,6 @@ class InstalledDistributionHarnessFitnessTest {
             "dev/rubentxu/pipeline/v2/application/SelfHostedPipelineScriptHonestyTest.kt",
             "dev/rubentxu/pipeline/v2/application/support/PureBuilderProbe.kt",
             "dev/rubentxu/pipeline/v2/application/TrapFormNegativeFixtureTest.kt",
-            "dev/rubentxu/pipeline/v2/application/UatDsl003ParallelTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatDsl005TimeoutGrammarTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatDsl006BodyExecutionTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatEvt001ReplayTest.kt",

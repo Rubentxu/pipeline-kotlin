@@ -16,10 +16,14 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.time.Duration
 
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+import dev.rubentxu.pipeline.v2.application.support.CliRun
+import dev.rubentxu.pipeline.v2.application.support.OwnedSubprocess
 
 /**
  * UAT-DSL-003: Parallel — canonical parallel branch execution.
@@ -161,15 +165,9 @@ class UatDsl003ParallelTest {
 
     @Test
     fun `G2 - stage mixing parallel body with sibling step is rejected fail-closed`() {
-        val stdoutFile = java.nio.file.Files.createTempFile("uat", ".stdout")
-        val process = ProcessBuilder(appBin.toString(), "run", mixedBodySiblingScript.toString())
-            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-            .redirectErrorStream(true)
-            .start()
-        val exit = process.waitFor()
+        val (exit, output) = runBinary("run", mixedBodySiblingScript.toString())
 
         assertEquals(1, exit, "Mixed parallel+sibling stage must fail closed")
-        val output = java.nio.file.Files.readString(stdoutFile)
         assertTrue(
             "cannot mix a parallel body with sibling steps" in output,
             "Rejection must name the G2 contract: $output",
@@ -198,14 +196,53 @@ class UatDsl003ParallelTest {
     private fun resource(name: String): Path =
         Paths.get(javaClass.getResource(name)!!.toURI())
 
+    /**
+     * S6-PRE. The ONE way this class runs the installed binary.
+     *
+     * All three launch sites used to fork it by hand, redirect BOTH streams into a
+     * `Files.createTempFile("uat", ".stdout")` in `java.io.tmpdir`, wait for the process with no
+     * deadline at all, and only then read the file back. Three separate defects in four lines each:
+     *
+     * - `waitFor()` with no deadline means a child that hangs hangs the TEST, and the class-level
+     *   `@Timeout(180)` is what finally cuts it — leaving a `pipelinek` JVM alive behind it.
+     * - `createTempFile` with no parent lands in `java.io.tmpdir` and leaks one file per row per run,
+     *   which Harness Fidelity 4 calls out by name.
+     * - Three copies of the same shape is the same duplication S6-PRE removed elsewhere: one owner
+     *   for the child, and nobody else touching `Process`.
+     *
+     * The temp file disappears entirely rather than gaining a parent, because [OwnedSubprocess]
+     * already captures both streams in memory. `output` is stdout followed by stderr, which is what
+     * `redirectErrorStream(true)` produced: the old sites asserted on a merged file and this class
+     * only ever uses `contains`, so nothing depended on interleaving.
+     *
+     * stderr and stdout stay SEPARATE on the way in, so a JVM crash no longer hides behind a
+     * half-flushed stdout: the `TimedOut` case carries a thread dump, which the old `waitFor()` had
+     * no way to produce.
+     */
+    private fun runBinary(vararg args: String): Pair<Int, String> {
+        val outcome = OwnedSubprocess.run(
+            command = listOf(appBin.toString()) + args,
+            timeout = CLI_DEADLINE,
+        )
+        return when (outcome) {
+            is CliRun.Completed -> outcome.exitCode to (outcome.stdout + outcome.stderr)
+            is CliRun.TimedOut -> error(
+                "the installed binary hung on ${args.toList()} after ${CLI_DEADLINE.seconds}s; " +
+                    "pid=${outcome.diagnostics.pid} descendants=${outcome.diagnostics.descendantPids}. " +
+                    "This is an ENVIRONMENT signal and it is what previously left a JVM alive: the " +
+                    "old waitFor() had no deadline, so the class @Timeout cut the test instead and " +
+                    "the failure never said why. Partial output: " +
+                    (outcome.stdout + outcome.stderr).takeLast(800),
+            )
+            is CliRun.LaunchFailed -> error(
+                "the installed binary could not be launched on ${args.toList()}: ${outcome.cause}",
+            )
+        }
+    }
+
     private fun runAndDecode(script: Path, expectedExit: Int): Pair<String, List<DomainEvent>> {
-        val stdoutFile = java.nio.file.Files.createTempFile("uat", ".stdout")
-        val process = ProcessBuilder(appBin.toString(), "run", script.toString())
-            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-            .redirectErrorStream(true)
-            .start()
-        val exitCode = process.waitFor()
-        val stdout = java.nio.file.Files.readString(stdoutFile).trim()
+        val (exitCode, stdout) = runBinary("run", script.toString())
+        val trimmed = stdout.trim()
         if (exitCode != expectedExit) {
             throw IllegalStateException("CLI exited with $exitCode, expected $expectedExit. output: $stdout")
         }
@@ -234,8 +271,14 @@ class UatDsl003ParallelTest {
     // ---- P6 (PAR-D): durable rerun reuses the terminal aggregate ----
 
     @Test
-    fun `P6 - second durable run reuses terminal aggregate with zero child executions and zero fabricated branch events`() {
-        val db = java.nio.file.Files.createTempFile("par-p6", ".db")
+    fun `P6 - second durable run reuses terminal aggregate with zero child executions and zero fabricated branch events`(
+        @TempDir tempDir: Path,
+    ) {
+        // @TempDir and not createTempFile: this one was a REAL leak, not a captured stdout. It
+        // landed in java.io.tmpdir and survived the JVM, so every run of this class left a database
+        // behind. The sqlite file is the SUBJECT here, so it must outlive the call — which is
+        // exactly what @TempDir guarantees and createTempFile did not.
+        val db = tempDir.resolve("par-p6.db")
         val stdout1 = runWithDb(parallelScript, db)
         val events1 = JsonEventLog.decode(stdout1)
         assertEquals(2, events1.filterIsInstance<ParallelBranchStarted>().count(), "fresh run must execute both branches")
@@ -256,16 +299,27 @@ class UatDsl003ParallelTest {
     }
 
     private fun runWithDb(script: Path, db: Path): String {
-        val stdoutFile = java.nio.file.Files.createTempFile("uat", ".stdout")
-        val process = ProcessBuilder(appBin.toString(), "run", "--db", db.toString(), script.toString())
-            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-            .redirectErrorStream(true)
-            .start()
-        val exitCode = process.waitFor()
-        val stdout = java.nio.file.Files.readString(stdoutFile).trim()
+        val (exitCode, stdout) = runBinary("run", "--db", db.toString(), script.toString())
+        val trimmed = stdout.trim()
         if (exitCode != 0) {
-            throw IllegalStateException("CLI exited with $exitCode. output: $stdout")
+            throw IllegalStateException("CLI exited with $exitCode. output: $trimmed")
         }
-        return stdout
+        return trimmed
+    }
+
+    private companion object {
+        /**
+         * The subprocess's own deadline, and deliberately BELOW the class `@Timeout`.
+         *
+         * The ordering is the point. `@Timeout(180)` is the watchdog for "this test is broken":
+         * it cuts the test and leaves the child alive, and it cannot say why. This deadline fires
+         * first, produces a `TimedOut` carrying a thread dump and the partial output, and still
+         * reaps the tree. A hang is then a classified fact instead of a bare timeout.
+         *
+         * One run of this class compiles a Kotlin script from a cold JVM. Measured in isolation the
+         * whole class is ~75 s for nine launches, so ~8 s each; 120 s leaves room for a loaded box
+         * without approaching the outer watchdog.
+         */
+        val CLI_DEADLINE: Duration = Duration.ofMinutes(2)
     }
 }

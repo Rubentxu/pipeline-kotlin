@@ -588,3 +588,205 @@ implementa su mitad estructural — el orden: leer, validar, admitir, y solo ent
 código — y **no** su mitad de identidad por bytes, que el propio ADR exige y que S6 no puede
 sostener. Esa frontera queda nombrada en el KDoc de `MeasuredArtifactIdentity` para que nadie
 la lea como cerrada.
+---
+
+## BLOCK 1-I — un solo JAR externo con las cuatro familias, y el cross-check que era verde sin mirar nada
+
+### El cross-check de Directives y Events no se ejecutaba
+
+`PluginAdmissionGate.admitThenLoad` recogía **sólo** definiciones de Step y pasaba el resto a
+`admitContributions` con sus defaults. `directiveKeys` y `eventKinds` llegaban siempre como
+`emptySet()`.
+
+La consecuencia medida, no la temida: `missingDirectives` y `missingEvents` eran exactamente lo
+declarado, así que **un plugin que declarase una Directive o un Event no podía ser admitido**,
+por fiel que fuera su implementación.
+
+Y no lo detectó nadie porque nadie lo ejercitó. Los cuatro plugins oficiales no declaran ninguna de
+las dos familias, así que `emptySet() - emptySet()` es vacío y la fila pasaba. Es el mismo defecto
+de forma que la prohibición sobre un fichero inexistente en BLOCK 1-H: **un verde producido por la
+ausencia del sujeto no es un verde, es la ausencia de una medición.**
+
+### El sujeto: por fin un artefacto con Directive y Event
+
+El plugin externo `example.uppercase` tenía Step y Event, pero **no tenía manifest**. No era un
+plugin más pequeño: era un plugin **no admitido**, porque `PluginAdmissionGate` rechaza cualquier
+contribuidor cuyo artefacto carezca de `META-INF/pipelinek/plugin-manifest.json`. Funcionaba
+porque `PluginComposition.resolve` descubre por una ruta que no consulta la puerta. Dos rutas, una
+guardada. Nombrarlo importa más que el código de abajo.
+
+### Lo que aporta el JAR único
+
+| | qué | por qué existe |
+|---|---|---|
+| Step | `example.uppercase` | pide **nada** al host y corre igual: la referencia de no-privilegio |
+| Step | `example.uppercase.observed` | pide **exactamente un** seam ajeno y recibe sólo ese |
+| Step | `example.uppercase.cased` | pide un seam que **este mismo JAR aporta** |
+| Directive | `example.uppercase.casedOn` | `Evaluate`, para que lo interprete el host y no el plugin |
+| Event | `example.uppercase.applied` | observación propia, ya existente |
+| Capability | `example.uppercase.case-table` | tabla de mayúsculas que el plugin suministra |
+
+El tercer Step es **nuevo y separado** a propósito: añadir la dependencia a cualquiera de los dos
+primeros no habría ampliado la demostración, la habría borrado. Los dos son referencias vivas, y una
+referencia que ha ganado una dependencia ya no es una referencia.
+
+La capability no se cuelga de ningún Step existente porque la ley vigente —el set de capabilities
+declarado debe **igualar** lo que exigen los contratos— sólo admite una capability que alguien
+consume. `http` funciona exactamente así.
+
+### La cuarta familia NO se comprueba en la puerta, y queda registrado como hueco medido
+
+Este es el punto donde **cambié de opinión midiendo**, y la primera versión de esta sección afirmaba
+lo contrario.
+
+Escribí una fila, `unbackedTopLevelCapabilityIsRefused`, que añade al manifest una capability que
+ningún Step exige. Salió **verde donde debía salir roja**: el mutante fue **ADMITIDO**.
+
+Razón: la puerta nunca miró el set de capabilities. Sólo lo hacía `PluginManifestValidator`, que es
+una comprobación **opcional** a la que cada plugin decide si llamar — los cuatro oficiales la llaman,
+el externo no, y nadie falló. **Una familia cuyo cross-check es optativo no está cross-checkeada.**
+
+Lo cerré, y el gate pasó a comparar el set de capabilities con una función pura compartida
+(`capabilityDiscrepancy`). Entonces el gate completo se puso rojo en una fila **preexistente**:
+
+```text
+PluginAdmissionPreLoadOrderingTest :: NON-VACUITY: admitted -> the plugin is initialised
+  top-level capabilities no Step contract requires: [test.sentinel]
+```
+
+Investigué, y el resultado invierte la decisión:
+
+- `SentinelPluginArtifact` es una **clase marcador**: compila un `static {}` que escribe un fichero
+  y no implementa ningún SPI. Su manifest declara `test.sentinel` **sólo** para que
+  `PluginManifest` pase su `require(!contributions.isEmpty)`. No aporta nada.
+- Su loader tiene **padre platform**, así que su clase no puede implementar interfaces de
+  PipelineK, y en Java no puede construirse un `StepContract` porque `PluginStepId`, `StepCapability`
+  y `EncodedStepValue` son `@JvmInline` (su constructor es `constructor-impl`, no válido en Java).
+
+O sea: **ese fixture no puede ser un plugin lícito**, con esta arquitectura. Forzar la fila
+requería rediseñar el sentinel, que es trabajo sobre otro sujeto y otro bloque.
+
+La alternativa era dejar el cross-check de capabilities en la puerta **fuera del alcance de 1-I**,
+que es lo que se ha hecho. El motivo es de alcance, no de comodidad:
+
+- El mandato de 1-I es el cross-check de **Directives y Events**, que es el defecto medido de la
+  puerta. Lo de capabilities no lo era.
+- Forzarlo arrastraba un conflicto preexistente del sentinel que este bloque no puede resolver sin
+  inventarse un redesign.
+- Y encima **no hacía falta**: con el cross-check de capabilities fuera de la puerta, queda un único
+  sitio que lo calcula (`PluginManifestValidator`), así que no se crea duplicación — que era el
+  riesgo real de tocar las dos capas.
+
+Consecuencia aceptada, y por eso se revierte también la ruptura de ABI de `pipeline-domain`: el
+commit queda **sin excepción BCV que registrar** y `PluginManifestValidator` intacto.
+
+**Lo que queda abierto, dicho sin adornos:** un plugin puede declarar una capability que ningún Step
+exige y ser admitido, porque la comprobación es optativa por plugin. Quien lo tome debe decidir
+primero **qué capa es la dueña** de esa comparación —la puerta o el validador— y arreglar después
+`SentinelPluginArtifact`. El hueco está medido, no supuesto: la fila
+`unbackedTopLevelCapabilityIsCurrentlyAdmitted` locharacteriza **a propósito**, y su mensaje de
+fallo anuncia el arreglo el día que la puerta lo asuma, para que no aparezca más tarde como una
+ruptura inexplicada.
+
+### Una fila preexistente que afirmaba inventario en vez de descubrimiento
+
+`DirectivePluginContractSuiteTest.registryFrom` afirmaba
+`assertEquals(listOf("example.lock.LockContributor"), contributed)`. Es una afirmación de
+**inventario** vestida de afirmación de **descubrimiento**: decía «el contributor de lock se
+encuentra» por medio de «lock es el único contributor que existe».
+
+Dar una directive al plugin uppercase —justo el tipo de cambio que la suite debe poder absorber— la
+tumbó por el contributor añadido y no por el que nombra. La transición a pertenencia está escrita
+en el propio mensaje de aserción, nunca como reescritura silenciosa de lo esperado.
+
+
+### No-vacuidad por mutación, atribuida fila a fila
+
+Revertir la puerta a `admitContributions(definitions = definitions)` tumba **exactamente 3 de 7**:
+
+```text
+CONTROL: the unmutated four-family plugin is admitted                    FAILED
+a Directive the plugin contributes and the manifest does NOT declare     FAILED
+an Event the plugin contributes and the manifest does NOT declare        FAILED
+7 tests completed, 3 failed
+```
+
+Las otras cuatro siguen verdes **a propósito**: las dos de declarado-pero-ausente se rechazan
+también con el conjunto vacío, la de los descriptores es independiente, y la de la capability la
+cierra otra parte del arreglo. Una mutación que tumba de más no prueba el arreglo; prueba que la
+prueba era frágil. Restaurado y verificado por hash:
+
+```text
+sha antes de la mutación : 797aa181eae17eaa7dc0d9712256546831e78424e51d6e06d12765e7fa47b388
+sha tras restaurar       : 797aa181eae17eaa7dc0d9712256546831e78424e51d6e06d12765e7fa47b388
+```
+
+### Dos fallos reales que encontró el build, no la lectura
+
+1. **`NoClassDefFoundError: PluginManifestCodec`** en el emisor de build. Todas las dependencias del
+   plugin son `compileOnly` por diseño —el host las aporta—, así que `runtimeClasspath` está vacío
+   para el `main()`. Resuelto con una configuración propia para el emisor. La alternativa, ampliar
+   el runtime del plugin para que una tarea de build funcionara, habría metido los contratos de
+   PipelineK **dentro** del artefacto cuya propiedad definitoria es llevar sólo sus propias clases.
+2. **`Type mismatch: inferred type is List<Any!> but FileCollection! was expected`**: mezclar un
+   `FileCollection` con un `NamedDomainObjectProvider` resuelve a `List` en tiempo de compilación del
+   script. Compuesto con `files(...)`.
+
+### El coste, dicho en voz alta
+
+`buildExamplePlugin` pasa a ser dependencia de `:pipeline-application:test`. Eso significa que cada
+`check` publica a `sdk-repo` y bifurca un segundo Gradle contra el árbol de trabajo — exactamente lo
+que los otros tres builds externos evitaban manteniendo fuera de `check`. Se paga porque los otros
+producen artefactos que nada bajo `check` inspecciona, y éste produce el artefacto que decide si
+BLOCK 1-I es real. Un test cuyo sujeto es opcional es un test que pasa por omisión.
+
+### Un KDoc obsoleto que sobrevivió a 1-F
+
+`StepDefinitionContributor` —el SPI que lee **primero** un autor de plugin externo— seguía
+documentando `[StepRegistry.register]`, un método que BLOCK 1-F borró al hacer el registry
+inmutable. Sobrevivió porque **ningún test compila una frase**. Anotado en el propio KDoc para que
+el coste de esa verdad sea visible la próxima vez.
+
+### Evidencia ejecutada sobre el SHA
+
+```text
+cd v2 && PIPELINEK_SPIKE_HOME=/var/home/rubentxu/.local/state/pipelinek-bundles/e4c-4700f23d \
+  ./gradlew -p . --no-daemon --offline check --rerun-tasks
+```
+
+```text
+BUILD SUCCESSFUL in 29m 16s
+318 actionable tasks: 318 executed
+```
+
+**774 clases · 5143 tests · 0 fallos · 0 errores · 140 skips**. Recuento leído de los XML de
+`test-results` acotados por `mtime` desde el arranque, no acumulado del árbol.
+
+Obsérvese que este bloque **construye** el plugin externo como parte de `check`, y que la corrida
+no puede verse verde sin él: `ExternalPluginFourFamilyAdmissionTest` falla con
+`no built example-uppercase-plugin JAR` si el artefacto no está. Eso es lo contrario de un test que
+pasa por omisión.
+
+Las tres clases que este bloque toca, una a una:
+
+```text
+ExternalPluginFourFamilyAdmissionTest   7 tests  0 fallos  0 errores
+DirectivePluginContractSuiteTest        8 tests  0 fallos  0 errores
+PluginAdmissionPreLoadOrderingTest      5 tests  0 fallos  0 errores
+```
+
+Y una confirmación de que el seam funciona de verdad, salida del propio log del gate:
+
+```text
+Discovered external directive plugins: example.uppercase.UppercaseDirectiveContributor, example.lock.LockContributor
+Discovered external event definitions: example.uppercase.applied
+```
+
+### Lo que este bloque NO demuestra
+
+- **No** es el no-core-change proof: eso es BLOCK 1-J, y aquí el core cambió (la puerta recogió tres
+  familias y comparó la cuarta). Lo que este bloque prueba es que **el seam ya existía** y que el
+  plugin lo ejercita entero.
+- **No** hay prueba sobre la distribución instalada: eso es BLOCK 2.
+- **No** toca identidad por bytes. `trust` sigue `unverified` y el digest sigue declarado, no medido
+  en runtime. Es la misma frontera de ADR-EVO-003 que 1-H dejó nombrada.

@@ -538,6 +538,25 @@ val buildExamplePlugin by tasks.registering(Exec::class) {
     )
 }
 
+// S6/I: the external plugin is now the SUBJECT of a test in :pipeline-application, and a test
+// whose subject is optional is a test that passes by omission. `the artifact really carries a
+// manifest and all four ServiceLoader descriptors` would report the absence of every family as a
+// clean sheet rather than as a missing build.
+//
+// The cost is real and is stated rather than discovered later: every `check` now publishes to
+// sdk-repo and forks a second Gradle against the working tree, which is exactly what the three
+// external builds below were kept out of `check` to avoid. It is paid here because the other
+// tasks produce artifacts nothing under `check` inspects, while this one produces the artifact
+// that decides whether BLOCK 1-I is real.
+// `withPlugin` and not a bare `tasks.named("test")`: this root script is evaluated BEFORE the
+// Kotlin JVM plugin has created the task in the subproject, so naming it directly fails the
+// configuration of every build. The BCV block below hooks the same way for the same reason.
+project(":pipeline-application").pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
+    project(":pipeline-application").tasks.named("test") {
+        dependsOn(buildExamplePlugin)
+    }
+}
+
 // S1-D: the directive analogue of buildExamplePlugin. The external directive
 // plugin proves the directive kernel is open by key from outside the build.
 val buildExternalDirectivePlugin by tasks.registering(Exec::class) {

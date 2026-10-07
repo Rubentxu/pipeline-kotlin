@@ -91,9 +91,20 @@ class UppercaseContributor : StepDefinitionContributor {
     override val id: String = "example.uppercase"
 
     /**
-     * Two Steps, one of which asks for nothing and one of which asks for exactly one seam.
-     * See [UppercaseObservedStepDefinition] for why the observing one is separate.
+     * THREE Steps, and each one is a different claim.
+     *
+     *  - `uppercase` demands nothing at all and still runs;
+     *  - `uppercaseObserved` demands exactly one host seam and gets only that seam;
+     *  - `uppercase.cased` demands a seam THIS plugin supplies, which closes the loop where the
+     *    artifact hands the host a value and the host hands it back.
+     *
+     * See [UppercaseObservedStepDefinition] and [UppercaseCasedStepDefinition] for why none of
+     * the three could have been folded into another.
      */
     override fun definitions(): Iterable<StepDefinition<*, *>> =
-        listOf(UppercaseStepDefinition, UppercaseObservedStepDefinition)
+        listOf(
+            UppercaseStepDefinition,
+            UppercaseObservedStepDefinition,
+            UppercaseCasedStepDefinition,
+        )
 }

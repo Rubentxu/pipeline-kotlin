@@ -36,12 +36,21 @@ import java.util.zip.ZipInputStream
  */
 object PluginArtifactFixture {
 
-    /** The four official plugin packages, hidden from the parent so the JAR under test wins. */
+    /**
+     * The four official plugin packages, hidden from the parent so the JAR under test wins.
+     *
+     * `example.uppercase` joins them for S6/I and not because it leaks: the external plugin is an
+     * INDEPENDENT Gradle build whose classes are never on the test classpath, so there is nothing
+     * to leak today. It is hidden so that the guarantee does not depend on that remaining true —
+     * the moment someone wires the plugin into this build for convenience, the fixture's isolation
+     * would silently stop isolating and the strict check would start passing for the wrong reason.
+     */
     private val HIDDEN_PACKAGES = listOf(
         "dev.rubentxu.pipeline.v2.sdk.http",
         "dev.rubentxu.pipeline.v2.sdk.scm",
         "dev.rubentxu.pipeline.v2.sdk.junit",
         "dev.rubentxu.pipeline.v2.sdk.utilities",
+        "example.uppercase",
     )
 
     private val MANIFEST_PATH = dev.rubentxu.pipeline.v2.domain.step.PluginManifestCodec.RESOURCE_PATH
@@ -67,25 +76,59 @@ object PluginArtifactFixture {
     }
 
     /** The built JAR of an official plugin. Fails loudly when absent — a skip proves nothing. */
-    fun builtJar(module: String): Path {
-        val libsDir = Paths.get("..", "pipeline-step-sdk", module, "build", "libs")
+    fun builtJar(module: String): Path = newestJarIn(
+        Paths.get("..", "pipeline-step-sdk", module, "build", "libs"),
+        module,
+        "this proof can mean anything; skipping here would be a green that proves nothing.",
+    )
+
+    /**
+     * The most recently built matching JAR, never simply the first.
+     *
+     * "First" is not wrong so much as unstable: a re-run that leaves an older artifact beside a
+     * newer one makes the choice depend on directory order, and a mutant test that silently
+     * loaded the previous build's JAR is worse than one that failed. Recency is also what makes a
+     * just-rebuilt plugin the subject, which is the whole point of building it first.
+     */
+    private fun newestJarIn(
+        libsDir: Path,
+        prefix: String,
+        onMissing: String = "this proof can mean anything; skipping here would be a green that proves nothing.",
+    ): Path {
         val jars = if (Files.isDirectory(libsDir)) {
             Files.list(libsDir).use { stream ->
                 stream.filter {
-                    it.fileName.toString().startsWith(module + "-") &&
+                    it.fileName.toString().startsWith(prefix + "-") &&
                         it.toString().endsWith(".jar") &&
-                        !it.fileName.toString().endsWith("-sources.jar")
+                        !it.fileName.toString().endsWith("-sources.jar") &&
+                        // A mutant written by an earlier row in the same class is a JAR too, and
+                        // it carries a rewritten manifest. Admitting it would make one row's
+                        // fixture another row's subject.
+                        !it.fileName.toString().startsWith("mutant-")
                 }.toList()
             }
         } else {
             emptyList()
         }
         require(jars.isNotEmpty()) {
-            "no built $module JAR under $libsDir. The build must produce the artifact before " +
-                "this proof can mean anything; skipping here would be a green that proves nothing."
+            "no built $prefix JAR under $libsDir. The build must produce the artifact before " +
+                onMissing
         }
-        return jars.first()
+        return jars.maxByOrNull { Files.getLastModifiedTime(it) }!!
     }
+
+    /**
+     * The built JAR of the INDEPENDENT external plugin (S6/I).
+     *
+     * A different path because it is a different build: it has its own settings file and produces
+     * into `examples/`, not into `v2/`. Fails loudly when absent for the same reason the official
+     * one does — this is the artifact BLOCK 1-I and 1-J are about, and a skip would be a green
+     * that proves nothing.
+     */
+    fun builtExternalPluginJar(): Path = newestJarIn(
+        Paths.get("..", "..", "examples", "example-uppercase-plugin", "build", "libs"),
+        "example-uppercase-plugin",
+    )
 
     /**
      * Copy a built plugin JAR and rewrite its manifest.
@@ -94,9 +137,15 @@ object PluginArtifactFixture {
      * contributor — the refusal it produces comes from the cross-check, not from `strict`
      * refusing a substitution the harness created.
      */
-    fun jarWithRewrittenManifest(module: String, transform: (String) -> String): Path {
-        val source = builtJar(module)
-        val target = source.resolveSibling("mutant-$module-${System.nanoTime()}.jar")
+    fun jarWithRewrittenManifest(module: String, transform: (String) -> String): Path =
+        jarWithRewrittenManifestOf(builtJar(module), transform)
+
+    /** Same, for an artifact that is not one of the four official modules. */
+    fun externalJarWithRewrittenManifest(transform: (String) -> String): Path =
+        jarWithRewrittenManifestOf(builtExternalPluginJar(), transform)
+
+    private fun jarWithRewrittenManifestOf(source: Path, transform: (String) -> String): Path {
+        val target = source.resolveSibling("mutant-${source.fileName}-${System.nanoTime()}.jar")
 
         ZipInputStream(Files.newInputStream(source)).use { input ->
             JarOutputStream(Files.newOutputStream(target)).use { out ->

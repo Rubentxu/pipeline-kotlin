@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
@@ -123,21 +125,19 @@ class UatLocal008CredentialsTest {
     @Test
     fun `UAT-L8-IMP-001 no experimental script imports in credentials modules`() {
         // INV-CR-CR12: No kotlin.script.experimental.* in credentials modules
-        val result = ProcessBuilder()
-            .command(listOf(
+        // WAITFOR-3: read before waiting, so no deadlock -- but the wait was unbounded.
+        val cliRun = Subprocess.run(
+            command = listOf(
                 "grep", "-rE", "kotlin\\.script\\.experimental\\..*",
                 "v2/pipeline-credentials-api/src/main/",
-                "v2/pipeline-credentials-local/src/main/"
-            ))
-            .directory(TestProjectRoot.dir)
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-            .start()
-        val output = result.inputStream.bufferedReader().readText()
-        result.waitFor()
+                "v2/pipeline-credentials-local/src/main/",
+            ),
+            workingDirectory = TestProjectRoot.dir.toPath(),
+        ).requireExited()
+        val output = cliRun.stdout
 
         // grep returns 1 when no matches found (matches our expectation)
-        assertEquals(1, result.exitValue(),
+        assertEquals(1, cliRun.exitCode,
             "grep should return 1 (no matches). Output: $output")
     }
 

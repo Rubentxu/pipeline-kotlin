@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
@@ -71,23 +73,25 @@ class S0SemanticWitnessMatrixTest {
         // inherited CWD pointed `sh` at the module source root and the W-stash
         // witness deposited `stashme.txt` into `v2/pipeline-application/`. The
         // scratch directory is the workspace for the whole run instead.
-        val process = ProcessBuilder(
-            appBin.toString(),
-            "run", "--format", "json",
-            // Options must precede the script path: CliParser stops consuming flags at the first
-            // non-flag argument, so a trailing `--control-root` would be dropped in silence and
-            // the Output Plane would be read from the default location instead.
-            "--control-root",
-            controlDir.toAbsolutePath().toString(),
-            scriptPath.toAbsolutePath().toString(),
-        )
-            .directory(dir.toFile())
-            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-            .start()
-        val exitCode = process.waitFor()
-        val stdout = Files.readString(stdoutFile).trim()
-        val stderr = process.errorStream.bufferedReader().readText()
+        // WAITFOR-3: stdout went to a file but stderr was still a PIPE read after the wait -- the
+        // same deadlock one stream away. The harness drains it while the child runs.
+        val cliRun = Subprocess.run(
+            command = listOf(
+                appBin.toString(),
+                "run", "--format", "json",
+                // Options must precede the script path: CliParser stops consuming flags at the first
+                // non-flag argument, so a trailing `--control-root` would be dropped in silence and
+                // the Output Plane would be read from the default location instead.
+                "--control-root",
+                controlDir.toAbsolutePath().toString(),
+                scriptPath.toAbsolutePath().toString(),
+            ),
+            workingDirectory = dir,
+            stdoutFile = stdoutFile,
+        ).requireExited()
+        val exitCode = cliRun.exitCode
+        val stdout = cliRun.stdout.trim()
+        val stderr = cliRun.stderr
         assertTrue(stdout.startsWith("[") && stdout.endsWith("]"), "event log must be a JSON array: $stdout$stderr")
         return Triple(exitCode, JsonEventLog.decode(stdout), controlDir)
     }
@@ -115,13 +119,14 @@ class S0SemanticWitnessMatrixTest {
         val stdoutFile = Files.createTempFile("s0replay", ".json")
         // RP034-Ic: same isolation as `run` — the script's own directory is the
         // workspace, never the inherited JVM CWD.
-        val process = ProcessBuilder(appBin.toString(), "run", "--format", "json", scriptPath.toAbsolutePath().toString())
-            .directory(scriptPath.parent.toFile())
-            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-            .start()
-        assertEquals(0, process.waitFor())
-        return Files.readString(stdoutFile).trim()
+        // WAITFOR-3: as above -- stderr was a pipe read after an unbounded wait.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", scriptPath.toAbsolutePath().toString()),
+            workingDirectory = scriptPath.parent,
+            stdoutFile = stdoutFile,
+        ).requireExited()
+        assertEquals(0, cliRun.exitCode)
+        return cliRun.stdout.trim()
     }
 
     /** Removes run-unique fields so two timelines compare structurally. */
@@ -472,12 +477,12 @@ class S0SemanticWitnessMatrixTest {
             }
             """.trimIndent(),
         )
-        val process = ProcessBuilder(appBin.toString(), "run", "--format", "json", scriptPath.toAbsolutePath().toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-            .start()
-        val exit = process.waitFor()
-        val stderr = process.errorStream.bufferedReader().readText()
+        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", scriptPath.toAbsolutePath().toString()),
+        ).requireExited()
+        val exit = cliRun.exitCode
+        val stderr = cliRun.stderr
         assertEquals(2, exit, "git() must be rejected fail-closed by the canonical bridge")
         assertTrue(stderr.contains("non-canonical plugins"), "rejection must name the gate: $stderr")
         assertTrue(stderr.contains("core.checkout"), "rejection must name the offending key: $stderr")

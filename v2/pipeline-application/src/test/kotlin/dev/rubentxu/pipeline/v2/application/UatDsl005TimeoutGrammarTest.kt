@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.DomainEvent
@@ -44,13 +46,12 @@ class UatDsl005TimeoutGrammarTest {
     @Test
     fun `timeout-retry script compiles and emits parseable JSON`() {
         val stdoutFile = java.nio.file.Files.createTempFile("uat", ".stdout")
-        val result = ProcessBuilder(appBin.toString(), "run", "--format", "json", timeoutRetryScript.toString())
-            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-            .start()
-            .also { it.waitFor() }
-
-        val stdout = java.nio.file.Files.readString(stdoutFile).trim()
+        // WAITFOR-3: stdout went to a file but stderr was still a PIPE read after the wait, which
+        // is the same deadlock one stream away. The harness drains it while the child runs.
+        val stdout = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", timeoutRetryScript.toString()),
+            stdoutFile = stdoutFile,
+        ).requireExited().stdout.trim()
         assertTrue(stdout.isNotEmpty(), "stdout must not be empty")
         assertTrue(stdout.startsWith("["), "stdout must start with '['")
         assertTrue(stdout.endsWith("]"), "stdout must end with ']'")
@@ -97,12 +98,13 @@ class UatDsl005TimeoutGrammarTest {
         java.io.File("/tmp/t21-marker").delete()
 
         val stdoutFile = java.nio.file.Files.createTempFile("t21", ".stdout")
-        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", fixture.absolutePath)
-            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val process = pb.start()
-        assertEquals(0, process.waitFor(), "fail-then-succeed retry must end green")
-        val events = JsonEventLog.decode(java.nio.file.Files.readString(stdoutFile).trim())
+        // WAITFOR-3: as above -- stderr was a pipe read after an unbounded wait.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", fixture.absolutePath),
+            stdoutFile = stdoutFile,
+        ).requireExited()
+        assertEquals(0, cliRun.exitCode, "fail-then-succeed retry must end green")
+        val events = JsonEventLog.decode(cliRun.stdout.trim())
 
         val started = events.filterIsInstance<RetryAttemptStarted>()
         val finished = events.filterIsInstance<RetryAttemptFinished>()
@@ -169,12 +171,13 @@ class UatDsl005TimeoutGrammarTest {
         fixture.deleteOnExit()
 
         val stdoutFile = java.nio.file.Files.createTempFile("t22", ".stdout")
-        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", fixture.absolutePath)
-            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val process = pb.start()
-        assertEquals(0, process.waitFor(), "valid timeout with fast child must succeed")
-        val events = JsonEventLog.decode(java.nio.file.Files.readString(stdoutFile).trim())
+        // WAITFOR-3: as above -- stderr was a pipe read after an unbounded wait.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", fixture.absolutePath),
+            stdoutFile = stdoutFile,
+        ).requireExited()
+        assertEquals(0, cliRun.exitCode, "valid timeout with fast child must succeed")
+        val events = JsonEventLog.decode(cliRun.stdout.trim())
 
         val scheduled = events.filterIsInstance<TimeoutScheduled>()
         assertEquals(1, scheduled.size, "TimeoutScheduled must be emitted exactly once: $scheduled")
@@ -223,15 +226,15 @@ class UatDsl005TimeoutGrammarTest {
 
     private fun runAndDecode(): Pair<String, List<DomainEvent>> {
         val stdoutFile = java.nio.file.Files.createTempFile("uat", ".stdout")
-        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", timeoutRetryScript.toString())
-            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = java.nio.file.Files.readString(stdoutFile).trim()
+        // WAITFOR-3: as above -- stderr was a pipe read after an unbounded wait.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", timeoutRetryScript.toString()),
+            stdoutFile = stdoutFile,
+        ).requireExited()
+        val exitCode = cliRun.exitCode
+        val stdout = cliRun.stdout.trim()
         if (exitCode != 0) {
-            val stderr = process.errorStream.bufferedReader().readText()
-            throw IllegalStateException("CLI exited with $exitCode. stderr: $stderr")
+            throw IllegalStateException("CLI exited with $exitCode. stderr: ${cliRun.stderr}")
         }
         val events = JsonEventLog.decode(stdout)
         return stdout to events

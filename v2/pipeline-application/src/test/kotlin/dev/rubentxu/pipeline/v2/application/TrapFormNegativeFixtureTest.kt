@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -50,22 +52,19 @@ class TrapFormNegativeFixtureTest {
         // authority — it is not an event, and it is not the CLI's stdout (that is the event log).
         // The control dir is named so the plane is read where it was actually written.
         val controlDir = java.nio.file.Files.createTempDirectory("trapform-control")
-        val pb = ProcessBuilder(
-            appBin.toString(),
+        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(),
             "run", "--format", "json",
             // Options before the script path: CliParser stops consuming flags at the first
             // non-flag argument, so a trailing `--control-root` is dropped in silence.
             "--control-root",
             controlDir.toAbsolutePath().toString(),
-            fixture.toString(),
-        )
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
-        val stderr = process.errorStream.bufferedReader().readText().trim()
+            fixture.toString(),),
+        ).requireExited()
+        val exitCode = cliRun.exitCode
+        val stdout = cliRun.stdout.trim()
+        val stderr = cliRun.stderr.trim()
 
         // 1. Exit code must be non-zero (bash rejected the trap form).
         assertTrue(exitCode != 0,

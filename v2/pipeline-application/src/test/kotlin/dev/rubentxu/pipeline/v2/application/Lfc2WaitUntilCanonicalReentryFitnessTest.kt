@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
@@ -189,22 +191,19 @@ class Lfc2WaitUntilCanonicalReentryFitnessTest {
         dbDir.deleteOnExit()
         ctrlDir.deleteOnExit()
 
-        val pb = ProcessBuilder(
-            appBin.toString(), "run", "--format", "json",
+        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json",
             "--db", dbDir.absolutePath,
             "--control-root", ctrlDir.absolutePath,
-            fixture.absolutePath,
-        )
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText()
+            fixture.absolutePath,),
+        ).requireExited()
+        val exitCode = cliRun.exitCode
+        val stdout = cliRun.stdout
 
         assertEquals(
             0, exitCode,
-            "CLI must exit 0 on successful waitUntil. stderr: ${process.errorStream.bufferedReader().readText()}",
+            "CLI must exit 0 on successful waitUntil. stderr: ${cliRun.stderr}",
         )
 
         // Parse events from stdout

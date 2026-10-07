@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
@@ -395,9 +397,12 @@ class F5_1_ScmGitStepContractTest {
     }
 
     private fun runShellSha256(path: Path): String {
-        val process = ProcessBuilder("sha256sum", path.toString()).redirectErrorStream(true).start()
-        val out = process.inputStream.bufferedReader().readText().trim()
-        process.waitFor()
+        // WAITFOR-3: merged streams in one pipe, read before the wait -- so it could not
+        // deadlock, but the wait itself had no bound. The harness drains the pipe while the child
+        // runs, which is what makes the bound safe to add here.
+        val out = Subprocess.run(
+            command = listOf("sha256sum", path.toString()),
+        ).requireExited().stdout.trim()
         return out.split(Regex("\\s+")).first()
     }
 

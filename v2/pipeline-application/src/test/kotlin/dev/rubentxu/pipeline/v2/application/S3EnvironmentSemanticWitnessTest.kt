@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import dev.rubentxu.pipeline.v2.events.DomainEvent
@@ -67,25 +69,27 @@ class S3EnvironmentSemanticWitnessTest {
         val scriptPath = dir.resolve("witness.pipeline.kts")
         Files.writeString(scriptPath, script.trimIndent())
         val stdoutFile = dir.resolve("events.json")
-        val process = ProcessBuilder(
-            appBin.toString(),
-            "run", "--format", "json",
-            // ORDER IS LOAD-BEARING: CliParser stops consuming options at the first argument
-            // that is not a flag, so anything after the script path is ignored in silence. A
-            // `--control-root` written after the script reads as if the plane were redirected
-            // when it was not, and every read then fails for a reason that has nothing to do
-            // with the pipeline under test.
-            "--control-root",
-            controlDir.toAbsolutePath().toString(),
-            scriptPath.toAbsolutePath().toString(),
-        )
-            .directory(dir.toFile())
-            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-            .start()
-        val exitCode = process.waitFor()
-        val stdout = Files.readString(stdoutFile).trim()
-        val stderr = process.errorStream.bufferedReader().readText()
+        // WAITFOR-3: stdout goes to a file on purpose, but stderr was still a PIPE read after the
+        // wait -- the same deadlock, one stream away. The harness drains it while the child runs.
+        val cliRun = Subprocess.run(
+            command = listOf(
+                appBin.toString(),
+                "run", "--format", "json",
+                // ORDER IS LOAD-BEARING: CliParser stops consuming options at the first argument
+                // that is not a flag, so anything after the script path is ignored in silence. A
+                // `--control-root` written after the script reads as if the plane were redirected
+                // when it was not, and every read then fails for a reason that has nothing to do
+                // with the pipeline under test.
+                "--control-root",
+                controlDir.toAbsolutePath().toString(),
+                scriptPath.toAbsolutePath().toString(),
+            ),
+            workingDirectory = dir,
+            stdoutFile = stdoutFile,
+        ).requireExited()
+        val exitCode = cliRun.exitCode
+        val stdout = cliRun.stdout.trim()
+        val stderr = cliRun.stderr
         assertTrue(stdout.startsWith("[") && stdout.endsWith("]"), "event log must be a JSON array: $stdout$stderr")
         return Triple(exitCode, JsonEventLog.decode(stdout), controlDir)
     }
@@ -340,14 +344,15 @@ class S3EnvironmentSemanticWitnessTest {
                 """.trimIndent(),
             )
             val out = dir.resolve("out.txt")
-            val process = ProcessBuilder(appBin.toString(), "run", "--format", "json", scriptPath.toAbsolutePath().toString())
-                .directory(dir.toFile())
-                .redirectOutput(ProcessBuilder.Redirect.to(out.toFile()))
-                .redirectError(ProcessBuilder.Redirect.PIPE)
-                .start()
-            val exit = process.waitFor()
-            val stdout = Files.readString(out).trim()
-            val stderr = process.errorStream.bufferedReader().readText()
+            // WAITFOR-3: same one-stream-away deadlock, now drained while the child runs.
+            val cliRun = Subprocess.run(
+                command = listOf(appBin.toString(), "run", "--format", "json", scriptPath.toAbsolutePath().toString()),
+                workingDirectory = dir,
+                stdoutFile = out,
+            ).requireExited()
+            val exit = cliRun.exitCode
+            val stdout = cliRun.stdout.trim()
+            val stderr = cliRun.stderr
 
             assertTrue(
                 exit != 0,

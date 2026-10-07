@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.DomainEvent
@@ -47,14 +49,13 @@ class CliCompileErrorExitsOneTest {
         val appBin = AppBinSupport.discover()
         val fixture = brokenFixture()
 
-        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", fixture.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
-        val stderr = process.errorStream.bufferedReader().readText().trim()
+        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", fixture.toString()),
+        ).requireExited()
+        val exitCode = cliRun.exitCode
+        val stdout = cliRun.stdout.trim()
+        val stderr = cliRun.stderr.trim()
 
         // Exit code must be 1
         assertEquals(1, exitCode, "run with broken compilation must exit 1, but got $exitCode. stderr: $stderr")
@@ -101,13 +102,12 @@ class CliCompileErrorExitsOneTest {
         val appBin = AppBinSupport.discover()
         val fixture = brokenFixture()
 
-        val pb = ProcessBuilder(appBin.toString(), "validate", "--format", "json", fixture.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stderr = process.errorStream.bufferedReader().readText().trim()
+        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "validate", "--format", "json", fixture.toString()),
+        ).requireExited()
+        val exitCode = cliRun.exitCode
+        val stderr = cliRun.stderr.trim()
 
         // Exit code must be 2 (canonical admission/compile contract)
         assertEquals(2, exitCode, "validate with broken compilation must exit 2, but got $exitCode. stderr: $stderr")
@@ -133,14 +133,13 @@ class CliCompileErrorExitsOneTest {
             ?: error("Cannot locate v2/compatibility/ via directory walk")
         val fixture = candidate.resolve("01-basic.pipeline.kts").toPath()
 
-        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", fixture.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stderr = process.errorStream.bufferedReader().readText().trim()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
+        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", fixture.toString()),
+        ).requireExited()
+        val exitCode = cliRun.exitCode
+        val stderr = cliRun.stderr.trim()
+        val stdout = cliRun.stdout.trim()
 
         // Valid script should exit 0
         assertEquals(0, exitCode, "Valid script must exit 0, but got $exitCode. stderr: $stderr")

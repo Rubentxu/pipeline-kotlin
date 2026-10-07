@@ -85,6 +85,11 @@ object Subprocess {
      *   to avoid draining: stderr is captured and drained either way, so handing stdout to a file
      *   does not make the run deadlock-proof. What made a run deadlock-proof was never "stdout goes
      *   to a file" — it was "no stream is left in a pipe nobody reads while the child runs".
+     * @param stderrFile sends stderr to a file instead of capturing it. Point it at the **same**
+     *   path as [stdoutFile] to reproduce what `redirectErrorStream(true)` did: one interleaved
+     *   file with both channels in it. That is the one case where a run is deadlock-proof without
+     *   draining, because no stream is in a pipe at all — which is why this parameter exists rather
+     *   than having those tests quietly lose the stderr they were reading from the file.
      * @param timeout bounds the whole run, reading included; there is deliberately no way to pass
      *   "unbounded", so an unbounded wait cannot be reintroduced by accident
      */
@@ -96,6 +101,7 @@ object Subprocess {
         captureStdout: Boolean = true,
         captureStderr: Boolean = true,
         stdoutFile: Path? = null,
+        stderrFile: Path? = null,
         stdin: InputStream? = null,
     ): SubprocessOutcome {
         require(command.isNotEmpty()) { "command must not be empty" }
@@ -107,17 +113,8 @@ object Subprocess {
         // A stream that is not wanted is DISCARDED at the OS level, never left as an unread pipe.
         // Leaving it as a pipe would be the very defect this class exists to remove: the child
         // would block once the pipe filled, and the test would hang for a reason of its own making.
-        when {
-            stdoutFile != null -> {
-                stdoutFile.parent?.let { Files.createDirectories(it) }
-                builder.redirectOutput(ProcessBuilder.Redirect.appendTo(stdoutFile.toFile()))
-            }
-            captureStdout -> builder.redirectOutput(ProcessBuilder.Redirect.PIPE)
-            else -> builder.redirectOutput(ProcessBuilder.Redirect.DISCARD)
-        }
-        builder.redirectError(
-            if (captureStderr) ProcessBuilder.Redirect.PIPE else ProcessBuilder.Redirect.DISCARD,
-        )
+        redirectTo(builder, stdoutFile, captureStdout, isStdout = true)
+        redirectTo(builder, stderrFile, captureStderr, isStdout = false)
 
         val process = try {
             builder.start()
@@ -237,6 +234,30 @@ object Subprocess {
     private fun stdoutFromFileOr(piped: String, file: Path?): String {
         if (file == null || !Files.isRegularFile(file)) return piped
         return runCatching { Files.readString(file) }.getOrElse { piped }
+    }
+
+    /**
+ * One stream's destination, in the order that matters: a file first, then capture, then discard.
+ *
+ * Order is the whole point. A file beats capture because a caller that asked for a file asked for
+ * the bytes on disk; capture beats discard because an unread pipe is the defect and a discarded
+ * stream is merely unused.
+ */
+    private fun redirectTo(
+        builder: ProcessBuilder,
+        file: Path?,
+        capture: Boolean,
+        isStdout: Boolean,
+    ) {
+        val redirect = when {
+            file != null -> {
+                file.parent?.let { Files.createDirectories(it) }
+                ProcessBuilder.Redirect.appendTo(file.toFile())
+            }
+            capture -> ProcessBuilder.Redirect.PIPE
+            else -> ProcessBuilder.Redirect.DISCARD
+        }
+        if (isStdout) builder.redirectOutput(redirect) else builder.redirectError(redirect)
     }
 
     /**

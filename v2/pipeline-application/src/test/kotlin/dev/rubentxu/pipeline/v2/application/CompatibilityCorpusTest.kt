@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
@@ -110,15 +112,14 @@ class CompatibilityCorpusTest {
         val path = fixture(name)
         val appBin = AppBinSupport.discover()
 
-        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", "--isolated", path.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
+        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", "--isolated", path.toString()),
+        ).requireExited()
+        val exitCode = cliRun.exitCode
+        val stdout = cliRun.stdout.trim()
 
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
-
-        assertEquals(0, exitCode) { "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()}" }
+        assertEquals(0, exitCode) { "Fixture $name exited with code $exitCode. stderr: ${cliRun.stderr}" }
         assertTrue(stdout.startsWith("[")) { "Fixture $name stdout must start with '['" }
         assertTrue(stdout.endsWith("]")) { "Fixture $name stdout must end with ']'" }
 
@@ -167,22 +168,22 @@ class CompatibilityCorpusTest {
     ): FixtureRun {
         val appBin = AppBinSupport.discover()
 
-        val pb = ProcessBuilder(
-            appBin.toString(),
-            "run", "--format", "json",
-            "--workspace", workspace,
-            "--control-root", controlDir.toString(),
-            script.toString(),
-        )
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
+        // WAITFOR-3: this read both pipes BEFORE waiting, so it never deadlocked -- but it had no
+        // bound, so a child that wrote nothing and never exited hung here forever with nothing to
+        // report. The bound is what this site was missing.
+        val cliRun = Subprocess.run(
+            command = listOf(
+                appBin.toString(),
+                "run", "--format", "json",
+                "--workspace", workspace,
+                "--control-root", controlDir.toString(),
+                script.toString(),
+            ),
+        ).requireExited()
+        val stdout = cliRun.stdout.trim()
+        val stderr = cliRun.stderr
 
-        val process = pb.start()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
-        val stderr = process.errorStream.bufferedReader().readText()
-        val exitCode = process.waitFor()
-
-        return FixtureRun(exitCode, stdout, stderr, JsonEventLog.decode(stdout))
+        return FixtureRun(cliRun.exitCode, stdout, stderr, JsonEventLog.decode(stdout))
     }
 
     /**
@@ -205,22 +206,21 @@ class CompatibilityCorpusTest {
         // default the no-flag invocation attached that directory and the
         // fixture wrote lpr104-readme.txt into the repository.
         val workspace = Files.createTempDirectory("corpus-fixture23-ws")
-        val pb = ProcessBuilder(
-            appBin.toString(),
-            "run", "--format", "json",
-            "--db", Files.createTempFile("corpus-fixture23-", ".db").toString(),
-            "--control-root", Files.createTempDirectory("corpus-fixture23-ctl").toString(),
-            "--workspace", workspace.toString(),
-            path.toString(),
-        )
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
+        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
+        val cliRun = Subprocess.run(
+            command = listOf(
+                appBin.toString(),
+                "run", "--format", "json",
+                "--db", Files.createTempFile("corpus-fixture23-", ".db").toString(),
+                "--control-root", Files.createTempDirectory("corpus-fixture23-ctl").toString(),
+                "--workspace", workspace.toString(),
+                path.toString(),
+            ),
+        ).requireExited()
+        val exitCode = cliRun.exitCode
+        val stdout = cliRun.stdout.trim()
 
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
-
-        assertEquals(0, exitCode) { "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()}" }
+        assertEquals(0, exitCode) { "Fixture $name exited with code $exitCode. stderr: ${cliRun.stderr}" }
         val events = JsonEventLog.decode(stdout)
         assertTrue(events.isNotEmpty()) { "Fixture $name produced no events" }
 
@@ -329,13 +329,12 @@ class CompatibilityCorpusTest {
         val path = fixture(name)
         val appBin = AppBinSupport.discover()
 
-        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", path.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stderr = process.errorStream.bufferedReader().readText().trim()
+        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", path.toString()),
+        ).requireExited()
+        val exitCode = cliRun.exitCode
+        val stderr = cliRun.stderr.trim()
 
         assertNotEquals(0, exitCode) { "Fixture $name should exit non-zero but got 0. stderr: $stderr" }
     }
@@ -401,17 +400,18 @@ class CompatibilityCorpusTest {
             val appBin = AppBinSupport.discover()
             println("DEBUG-LPR103 store=$storePath exists=${storePath.toFile().exists()} size=${if (storePath.toFile().exists()) java.nio.file.Files.size(storePath) else -1}")
 
-            val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", path.toString())
-                .redirectOutput(ProcessBuilder.Redirect.PIPE)
-                .redirectError(ProcessBuilder.Redirect.PIPE)
-            pb.environment()["PIPELINE_CREDENTIALS_STORE"] = storePath.toString()
-            pb.environment()["PIPELINE_STORE_PASSPHRASE"] = passphrase
+            // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
+            val cliRun = Subprocess.run(
+                command = listOf(appBin.toString(), "run", "--format", "json", path.toString()),
+                environment = mapOf(
+                    "PIPELINE_CREDENTIALS_STORE" to storePath.toString(),
+                    "PIPELINE_STORE_PASSPHRASE" to passphrase,
+                ),
+            ).requireExited()
+            val exitCode = cliRun.exitCode
+            val stdout = cliRun.stdout.trim()
 
-            val process = pb.start()
-            val exitCode = process.waitFor()
-            val stdout = process.inputStream.bufferedReader().readText().trim()
-
-            assertEquals(0, exitCode) { "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()} stdout tail: ${stdout.takeLast(1200)}" }
+            assertEquals(0, exitCode) { "Fixture $name exited with code $exitCode. stderr: ${cliRun.stderr} stdout tail: ${stdout.takeLast(1200)}" }
             val events = JsonEventLog.decode(stdout)
             assertTrue(events.isNotEmpty()) { "Fixture $name produced no events" }
         } finally {
@@ -430,13 +430,12 @@ class CompatibilityCorpusTest {
         val path = fixture("14-credentials-bindings.pipeline.kts")
         val appBin = AppBinSupport.discover()
 
-        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", path.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
+        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", path.toString()),
+        ).requireExited()
+        val exitCode = cliRun.exitCode
+        val stdout = cliRun.stdout.trim()
 
         assertEquals(1, exitCode) { "Fixture 14 without store should exit 1 but got $exitCode" }
         val events = JsonEventLog.decode(stdout)
@@ -592,12 +591,15 @@ class CompatibilityCorpusTest {
         val name = "28-zip-slip-defense.pipeline.kts"
         val path = fixture(name)
         val appBin = AppBinSupport.discover()
-        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", "--workspace", path.parent.toString(), path.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
+        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
+        val cliRun = Subprocess.run(
+            command = listOf(
+                appBin.toString(), "run", "--format", "json",
+                "--workspace", path.parent.toString(), path.toString(),
+            ),
+        ).requireExited()
+        val exitCode = cliRun.exitCode
+        val stdout = cliRun.stdout.trim()
         assertNotEquals(0, exitCode) {
             "Fixture $name must exit non-zero (typed USER failure on Zip Slip). Got exit=$exitCode"
         }

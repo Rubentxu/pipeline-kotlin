@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.RunFinished
@@ -276,23 +278,21 @@ pipeline {
         controlRoot: Path,
         scriptPath: Path,
     ): String {
-        val pb = ProcessBuilder(
-            javaHome + "/bin/java",
-            "-cp", classpath,
-            "dev.rubentxu.pipeline.v2.application.MainKt",
-            "run", "--format", "json",
-            "--db", dbPath.toString(),
-            "--control-root", controlRoot.toString(),
-            scriptPath.toString()
-        )
-            .directory(scriptPath.parent.toFile())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-
-        val process = pb.start()
-        val stdout = process.inputStream.bufferedReader().readText()
-        process.waitFor()
-        return stdout
+        // WAITFOR-3: this read stdout BEFORE waiting, so it never deadlocked -- but the wait had no
+        // bound, so a child that printed nothing and never exited hung here with nothing to report.
+        val cliRun = Subprocess.run(
+            command = listOf(
+                javaHome + "/bin/java",
+                "-cp", classpath,
+                "dev.rubentxu.pipeline.v2.application.MainKt",
+                "run", "--format", "json",
+                "--db", dbPath.toString(),
+                "--control-root", controlRoot.toString(),
+                scriptPath.toString(),
+            ),
+            workingDirectory = scriptPath.parent,
+        ).requireExited()
+        return cliRun.stdout
     }
 
     /**

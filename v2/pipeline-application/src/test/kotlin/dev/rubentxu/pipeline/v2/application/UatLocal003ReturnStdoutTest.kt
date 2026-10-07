@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import java.nio.file.Files
 import java.nio.file.Path
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -62,8 +64,13 @@ pipeline {
         Files.writeString(scriptPath, scriptContent)
 
         // Run pipeline
-        val result = ProcessBuilder(
-            javaHome + "/bin/java",
+        // WAITFOR-3: inheritIO() put the child's output on the test's own streams and
+        // left the wait unbounded. The harness captures instead: these tests assert on
+        // files, not on the console, and a child writing into the test log is noise that
+        // makes a real failure harder to find. stdin becomes a closed pipe, so a child
+        // reading it sees EOF instead of the test JVM's console.
+        val cliRun = Subprocess.run(
+            command = listOf(javaHome + "/bin/java",
             "-cp", classpath,
             "dev.rubentxu.pipeline.v2.application.MainKt",
             "run",
@@ -76,8 +83,9 @@ pipeline {
             // which is the module source tree — and the file lands in the
             // repository instead of a disposable workspace.
             "--isolated",
-            scriptPath.toString()
-        ).inheritIO().start().waitFor()
+            scriptPath.toString()),
+        ).requireExited()
+        val result = cliRun.exitCode
 
         assertEquals(0, result, "Pipeline should complete successfully")
 
@@ -110,8 +118,13 @@ pipeline {
         val scriptPath = tempDir.resolve("test.pipeline.kts")
         Files.writeString(scriptPath, scriptContent)
 
-        val result = ProcessBuilder(
-            javaHome + "/bin/java",
+        // WAITFOR-3: inheritIO() put the child's output on the test's own streams and
+        // left the wait unbounded. The harness captures instead: these tests assert on
+        // files, not on the console, and a child writing into the test log is noise that
+        // makes a real failure harder to find. stdin becomes a closed pipe, so a child
+        // reading it sees EOF instead of the test JVM's console.
+        val cliRun = Subprocess.run(
+            command = listOf(javaHome + "/bin/java",
             "-cp", classpath,
             "dev.rubentxu.pipeline.v2.application.MainKt",
             "run",
@@ -124,8 +137,9 @@ pipeline {
             // which is the module source tree — and the file lands in the
             // repository instead of a disposable workspace.
             "--isolated",
-            scriptPath.toString()
-        ).inheritIO().start().waitFor()
+            scriptPath.toString()),
+        ).requireExited()
+        val result = cliRun.exitCode
 
         assertEquals(0, result, "Pipeline should complete successfully")
     }

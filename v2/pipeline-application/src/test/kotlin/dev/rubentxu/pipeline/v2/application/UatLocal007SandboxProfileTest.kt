@@ -5,6 +5,9 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.durable.SqliteOperationJournalImpl
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
+import dev.rubentxu.pipeline.v2.application.support.requireKilled
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -451,7 +454,13 @@ pipeline {
         )
 
         // Kill JVM1 mid-step (during sleep 8)
-        jvm1.destroyForcibly().waitFor()
+        //
+        // WAITFOR-3a: `destroyForcibly().waitFor()` killed the JVM AND blocked forever if the
+        // kill did not land. `killAlone` is the right mode here, not `kill`: this scenario's
+        // subject is precisely the DETACHED script surviving the JVM's death, and the tree-killing
+        // `kill` would take that subject down with the JVM and make the very assertion below pass
+        // for the wrong reason.
+        Subprocess.killAlone(jvm1).requireKilled()
 
         // Wait for the DETACHED script to complete (durable pattern: script survives JVM kill)
         val doneDeadline = System.currentTimeMillis() + 30_000
@@ -467,29 +476,32 @@ pipeline {
         )
 
         // JVM2: resume with the SAME profile — classification happens HERE
-        val jvm2 = ProcessBuilder(
-            javaHome + "/bin/java",
-            "-cp", classpath,
-            "dev.rubentxu.pipeline.v2.application.MainKt",
-            "run", "--format", "json",
-            "--db", dbPath.toString(),
-            "--control-root", controlRoot.toString(),
-            // RP034-H / ADR-0101: these cases assert the ADR-0048 contract that the
-            // shell CWD is the per-stage workspace. Under the local-first default the
-            // workspace is the attached invocation directory, so the managed scratch
-            // this suite is about must now be requested explicitly with --isolated.
-            "--isolated",
-            "--sandbox-profile", "local",
-            "--resume",
-            scriptPath.toString()
-        )
-            .directory(tempDir.toFile())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-            .start()
-        processes.add(jvm2)
-        val jvm2Out = jvm2.inputStream.bufferedReader().readText()
-        jvm2.waitFor()
+        //
+        // WAITFOR-3b: this was `waitFor()` with no bound, and stderr was a PIPE nobody drained
+        // while the JVM ran — so a resume that printed more than a pipe's worth to stderr would
+        // have blocked the JVM forever and hung the test on a full pipe rather than on the product.
+        // Subprocess.run owns the process, drains BOTH channels concurrently, and bounds the wait;
+        // there is deliberately no unbounded overload to fall back to.
+        val jvm2 = Subprocess.run(
+            command = listOf(
+                javaHome + "/bin/java",
+                "-cp", classpath,
+                "dev.rubentxu.pipeline.v2.application.MainKt",
+                "run", "--format", "json",
+                "--db", dbPath.toString(),
+                "--control-root", controlRoot.toString(),
+                // RP034-H / ADR-0101: these cases assert the ADR-0048 contract that the
+                // shell CWD is the per-stage workspace. Under the local-first default the
+                // workspace is the attached invocation directory, so the managed scratch
+                // this suite is about must now be requested explicitly with --isolated.
+                "--isolated",
+                "--sandbox-profile", "local",
+                "--resume",
+                scriptPath.toString(),
+            ),
+            workingDirectory = tempDir,
+        ).requireExited()
+        val jvm2Out = jvm2.stdout
 
         val runFinished = findRunFinished(jvm2Out)
         assertEquals("success", runFinished, "Resume under LOCAL should re-attach and succeed. stdout=$jvm2Out")
@@ -698,7 +710,11 @@ pipeline {
         )
 
         // Kill JVM1
-        jvm1.destroyForcibly().waitFor()
+        //
+        // WAITFOR-3a: `killAlone`, not `kill`, because the detached `sh` this scenario waits for
+        // below must survive the JVM's death — that survival IS the assertion, and a tree kill
+        // would remove the subject instead of observing it.
+        Subprocess.killAlone(jvm1).requireKilled()
 
         // Wait for detached script to complete
         val doneDeadline = System.currentTimeMillis() + 30_000
@@ -710,30 +726,31 @@ pipeline {
         }
 
         // JVM2: resume with --sandbox-profile local (profile change)
-        val jvm2 = ProcessBuilder(
-            javaHome + "/bin/java",
-            "-cp", classpath,
-            "dev.rubentxu.pipeline.v2.application.MainKt",
-            "run", "--format", "json",
-            "--db", dbPath.toString(),
-            "--control-root", controlRoot.toString(),
-            // RP034-H / ADR-0101: these cases assert the ADR-0048 contract that the
-            // shell CWD is the per-stage workspace. Under the local-first default the
-            // workspace is the attached invocation directory, so the managed scratch
-            // this suite is about must now be requested explicitly with --isolated.
-            "--isolated",
-            "--sandbox-profile", "local",
-            "--resume",
-            scriptPath.toString()
-        )
-            .directory(tempDir.toFile())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-            .start()
-        processes.add(jvm2)
+        //
+        // WAITFOR-3b: same shape as the LOCAL resume above — unbounded wait plus an undrained
+        // stderr pipe. This resume is EXPECTED to fail closed, so its stderr is exactly the output
+        // most likely to grow; draining it is what makes that a normal red instead of a hang.
+        val jvm2 = Subprocess.run(
+            command = listOf(
+                javaHome + "/bin/java",
+                "-cp", classpath,
+                "dev.rubentxu.pipeline.v2.application.MainKt",
+                "run", "--format", "json",
+                "--db", dbPath.toString(),
+                "--control-root", controlRoot.toString(),
+                // RP034-H / ADR-0101: these cases assert the ADR-0048 contract that the
+                // shell CWD is the per-stage workspace. Under the local-first default the
+                // workspace is the attached invocation directory, so the managed scratch
+                // this suite is about must now be requested explicitly with --isolated.
+                "--isolated",
+                "--sandbox-profile", "local",
+                "--resume",
+                scriptPath.toString(),
+            ),
+            workingDirectory = tempDir,
+        ).requireExited()
 
-        val jvm2Out = jvm2.inputStream.bufferedReader().readText()
-        jvm2.waitFor()
+        val jvm2Out = jvm2.stdout
 
         // SB-S-010 (semantics corrected per D4): LOCAL enters the operation fingerprint,
         // so a resume with a CHANGED profile must FAIL CLOSED (DivergenceException) —
@@ -953,19 +970,14 @@ pipeline {
         args.addAll(extraArgs)
         args.add(scriptPath.toString())
 
-        val pb = ProcessBuilder(args)
-            .directory(scriptPath.parent.toFile())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        if (env.isNotEmpty()) {
-            pb.environment().putAll(env)
-        }
-
-        val process = pb.start()
-        processes.add(process)
-        val stdout = process.inputStream.bufferedReader().readText()
-        process.waitFor()
-        return stdout
+        // WAITFOR-3b: `readText()` then an unbounded `waitFor()`, with stderr piped and never drained.
+        // Every caller of this helper gets concurrent drainage and a bounded wait instead; the
+        // process is gone by the time this returns, so it needs no teardown registration either.
+        return Subprocess.run(
+            command = args,
+            workingDirectory = scriptPath.parent,
+            environment = env,
+        ).requireExited().stdout
     }
 
     private fun findRunFinished(jsonText: String): String {

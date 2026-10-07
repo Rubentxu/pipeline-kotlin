@@ -72,13 +72,16 @@ object PureBuilderProbe {
         val scriptPath = dir.resolve("probe.pipeline.kts")
         Files.writeString(scriptPath, script.trimIndent())
         val stdoutFile = dir.resolve("events.json")
-        val process = ProcessBuilder(appBin.toString(), "run", "--format", "json", scriptPath.toAbsolutePath().toString())
-            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-            .start()
-        val exitCode = process.waitFor()
-        val stdout = Files.readString(stdoutFile).trim()
-        val stderr = runCatching { process.errorStream.bufferedReader().readText() }.getOrDefault("")
+        // WAITFOR-3: stdout went to a file but stderr was a PIPE read after an unbounded wait --
+        // the same deadlock one stream away. The harness drains it while the child runs, so the
+        // runCatching that swallowed a read failure here is no longer load-bearing.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", scriptPath.toAbsolutePath().toString()),
+            stdoutFile = stdoutFile,
+        ).requireExited()
+        val exitCode = cliRun.exitCode
+        val stdout = cliRun.stdout.trim()
+        val stderr = cliRun.stderr
 
         val events: List<DomainEvent> = if (
             stdout.startsWith("[") && stdout.endsWith("]")

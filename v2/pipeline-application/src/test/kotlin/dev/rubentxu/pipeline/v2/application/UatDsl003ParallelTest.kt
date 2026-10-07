@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.DomainEvent
@@ -162,11 +164,16 @@ class UatDsl003ParallelTest {
     @Test
     fun `G2 - stage mixing parallel body with sibling step is rejected fail-closed`() {
         val stdoutFile = java.nio.file.Files.createTempFile("uat", ".stdout")
-        val process = ProcessBuilder(appBin.toString(), "run", "--format", "json", mixedBodySiblingScript.toString())
-            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-            .redirectErrorStream(true)
-            .start()
-        val exit = process.waitFor()
+        // WAITFOR-3: redirectErrorStream(true) sent BOTH channels into the one file, so nothing
+        // was in a pipe and this could not deadlock -- but the wait was unbounded. stderrFile
+        // points at the same path to keep that interleaving, rather than quietly emptying the
+        // file of the stderr these assertions read.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", mixedBodySiblingScript.toString()),
+            stdoutFile = stdoutFile,
+            stderrFile = stdoutFile,
+        ).requireExited()
+        val exit = cliRun.exitCode
 
         assertEquals(1, exit, "Mixed parallel+sibling stage must fail closed")
         val output = java.nio.file.Files.readString(stdoutFile)
@@ -200,11 +207,13 @@ class UatDsl003ParallelTest {
 
     private fun runAndDecode(script: Path, expectedExit: Int): Pair<String, List<DomainEvent>> {
         val stdoutFile = java.nio.file.Files.createTempFile("uat", ".stdout")
-        val process = ProcessBuilder(appBin.toString(), "run", "--format", "json", script.toString())
-            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-            .redirectErrorStream(true)
-            .start()
-        val exitCode = process.waitFor()
+        // WAITFOR-3: as above -- unbounded wait, both channels into one file.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", script.toString()),
+            stdoutFile = stdoutFile,
+            stderrFile = stdoutFile,
+        ).requireExited()
+        val exitCode = cliRun.exitCode
         val stdout = java.nio.file.Files.readString(stdoutFile).trim()
         if (exitCode != expectedExit) {
             throw IllegalStateException("CLI exited with $exitCode, expected $expectedExit. output: $stdout")
@@ -257,11 +266,13 @@ class UatDsl003ParallelTest {
 
     private fun runWithDb(script: Path, db: Path): String {
         val stdoutFile = java.nio.file.Files.createTempFile("uat", ".stdout")
-        val process = ProcessBuilder(appBin.toString(), "run", "--format", "json", "--db", db.toString(), script.toString())
-            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-            .redirectErrorStream(true)
-            .start()
-        val exitCode = process.waitFor()
+        // WAITFOR-3: as above -- unbounded wait, both channels into one file.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", "--db", db.toString(), script.toString()),
+            stdoutFile = stdoutFile,
+            stderrFile = stdoutFile,
+        ).requireExited()
+        val exitCode = cliRun.exitCode
         val stdout = java.nio.file.Files.readString(stdoutFile).trim()
         if (exitCode != 0) {
             throw IllegalStateException("CLI exited with $exitCode. output: $stdout")

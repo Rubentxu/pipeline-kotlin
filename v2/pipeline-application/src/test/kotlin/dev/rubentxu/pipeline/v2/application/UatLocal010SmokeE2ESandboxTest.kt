@@ -9,6 +9,8 @@ import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -373,26 +375,27 @@ class UatLocal010SmokeE2ESandboxTest {
         scriptFiles.forEach { name ->
             val scriptPath = sandboxDir.resolve(name)
             if (Files.exists(scriptPath)) {
-                val pb = ProcessBuilder("bash", "-n", scriptPath.toString())
-                    .redirectError(ProcessBuilder.Redirect.PIPE)
-                    .redirectOutput(ProcessBuilder.Redirect.PIPE)
-                val proc = pb.start()
-                val rc = proc.waitFor()
-                val stderr = proc.errorStream.bufferedReader().readText()
-                assertEquals(0, rc,
-                    "bash -n $name must exit 0 (valid syntax). stderr: $stderr")
+                // WAITFOR-3b: was `waitFor()` with no bound followed by reading stderr — the
+                // exact pipe-then-read shape that deadlocks once a child's output exceeds the pipe.
+                val syntax = Subprocess.run(listOf("bash", "-n", scriptPath.toString()))
+                    .requireExited()
+                assertEquals(0, syntax.exitCode,
+                    "bash -n $name must exit 0 (valid syntax). stderr: ${syntax.stderr}")
             }
         }
 
         // just doctor must exit 0 (devbox.lock exists in repo)
-        val justDoctor = ProcessBuilder("just", "doctor")
-            .directory(repoRoot().toFile())
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-        val doctorProc = justDoctor.start()
-        val doctorRc = doctorProc.waitFor()
-        assertEquals(0, doctorRc,
-            "just doctor must exit 0 when all tools present and devbox.lock exists")
+        //
+        // WAITFOR-3b: unbounded wait on a piped child. `just doctor` shells out to several tools,
+        // so its stderr is not guaranteed small; the previous shape could hang here on a full pipe
+        // and report nothing about which script or tool had failed.
+        val doctor = Subprocess.run(
+            command = listOf("just", "doctor"),
+            workingDirectory = repoRoot(),
+        ).requireExited()
+        assertEquals(0, doctor.exitCode,
+            "just doctor must exit 0 when all tools present and devbox.lock exists. " +
+                "stderr: ${doctor.stderr}")
     }
 
     // ─── SC-010-10: parallel run-smoke.sh → distinct SANDBOX_RUN_ID ───────────────

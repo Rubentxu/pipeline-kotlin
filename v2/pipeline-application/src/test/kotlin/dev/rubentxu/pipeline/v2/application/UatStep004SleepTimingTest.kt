@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.StepFinished
@@ -50,14 +52,14 @@ class UatStep004SleepTimingTest {
     }
 
     private fun runAndDecode(): Pair<String, List<DomainEvent>> {
-        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", sleepTimingScript.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
+        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", sleepTimingScript.toString()),
+        ).requireExited()
+        val exitCode = cliRun.exitCode
+        val stdout = cliRun.stdout.trim()
         if (exitCode != 0) {
-            val stderr = process.errorStream.bufferedReader().readText()
+            val stderr = cliRun.stderr
             throw IllegalStateException("CLI exited with $exitCode. stderr: $stderr")
         }
         val events = JsonEventLog.decode(stdout)

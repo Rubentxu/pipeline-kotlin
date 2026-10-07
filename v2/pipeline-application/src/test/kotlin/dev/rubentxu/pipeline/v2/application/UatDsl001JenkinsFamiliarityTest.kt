@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.DomainEvent
@@ -49,13 +51,12 @@ class UatDsl001JenkinsFamiliarityTest {
 
     @Test
     fun `full grammar script compiles and emits parseable JSON`() {
-        val result = ProcessBuilder(appBin.toString(), "run", "--format", "json", grammarFullScript.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-            .start()
-            .also { it.waitFor() }
-
-        val stdout = result.inputStream.bufferedReader().readText().trim()
+        // WAITFOR-3: this waited before draining, so a script printing past the pipe buffer wedged
+        // the child in write and the test in waitFor. The full grammar script is large enough to do
+        // exactly that, which is why this class was one of the two that hung.
+        val stdout = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", grammarFullScript.toString()),
+        ).requireExited().stdout.trim()
         assertTrue(stdout.isNotEmpty(), "stdout must not be empty")
         assertTrue(stdout.startsWith("["), "stdout must start with '['")
         assertTrue(stdout.endsWith("]"), "stdout must end with ']'")
@@ -162,16 +163,13 @@ class UatDsl001JenkinsFamiliarityTest {
     }
 
     private fun runAndDecode(script: Path): Pair<String, List<DomainEvent>> {
-        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", script.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
-        if (exitCode != 0) {
-            val stderr = process.errorStream.bufferedReader().readText()
-            throw IllegalStateException("CLI exited with $exitCode. stderr: $stderr")
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", script.toString()),
+        ).requireExited()
+        if (cliRun.exitCode != 0) {
+            throw IllegalStateException("CLI exited with ${cliRun.exitCode}. stderr: ${cliRun.stderr}")
         }
+        val stdout = cliRun.stdout.trim()
         val events = JsonEventLog.decode(stdout)
         return stdout to events
     }

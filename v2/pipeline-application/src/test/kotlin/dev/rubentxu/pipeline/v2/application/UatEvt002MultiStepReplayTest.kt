@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
@@ -167,23 +169,22 @@ class UatEvt002MultiStepReplayTest {
         // S4/M1: the control dir is named, not inferred from the invocation CWD, because the
         // assertions below read process output and process output is the Output Plane's.
         val controlDir = Files.createTempDirectory("uat-evt002-control")
-        val pb = ProcessBuilder(
-            appBin.toString(),
-            "run", "--format", "json",
-            // Options before the script path: CliParser stops consuming flags at the first
-            // non-flag argument, so a trailing `--control-root` is dropped in silence.
-            "--control-root",
-            controlDir.toAbsolutePath().toString(),
-            multiStepScript.toString(),
-        )
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
+        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
+        val cliRun = Subprocess.run(
+            command = listOf(
+                appBin.toString(),
+                "run", "--format", "json",
+                // Options before the script path: CliParser stops consuming flags at the first
+                // non-flag argument, so a trailing `--control-root` is dropped in silence.
+                "--control-root",
+                controlDir.toAbsolutePath().toString(),
+                multiStepScript.toString(),
+            ),
+        ).requireExited()
+        val exitCode = cliRun.exitCode
+        val stdout = cliRun.stdout
         if (exitCode != 0) {
-            val stderr = process.errorStream.bufferedReader().readText()
-            throw IllegalStateException("CLI exited with $exitCode. stderr: $stderr")
+            throw IllegalStateException("CLI exited with $exitCode. stderr: ${cliRun.stderr}")
         }
         val events = JsonEventLog.decode(stdout)
         return Triple(stdout, events, controlDir)

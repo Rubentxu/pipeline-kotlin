@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -180,21 +182,28 @@ class UatCompat001CorpusSmokeRunTest {
         fixtures.forEach { fixture ->
             val staged = stageFixture(fixture.fileName.toString(), workspace)
             val name = fixture.fileName.toString()
-            val pb = if (fixturesWithIsolatedWorkspace.contains(name)) {
-                ProcessBuilder(appBin.toString(), "run", "--format", "json", "--isolated", staged.toString())
+            val command = if (fixturesWithIsolatedWorkspace.contains(name)) {
+                listOf(appBin.toString(), "run", "--format", "json", "--isolated", staged.toString())
             } else {
-                ProcessBuilder(appBin.toString(), "run", "--format", "json", "--workspace", workspace.toString(), staged.toString())
+                listOf(
+                    appBin.toString(), "run", "--format", "json",
+                    "--workspace", workspace.toString(), staged.toString(),
+                )
             }
-                .redirectOutput(ProcessBuilder.Redirect.PIPE)
-                .redirectError(ProcessBuilder.Redirect.PIPE)
-                .apply {
-                    environment()["PIPELINE_CREDENTIALS_STORE"] = storePath.toString()
-                    environment()["PIPELINE_STORE_PASSPHRASE"] = corpusPassphrase
-                }
 
-            val process = pb.start()
-            val exitCode = process.waitFor()
-            val stdout = process.inputStream.bufferedReader().readText().trim()
+            // WAITFOR-3: this pair used to be `waitFor()` then `readText()`. A pipeline printing
+            // past the pipe buffer wedged the child in write and the test in waitFor, so the corpus
+            // run STOPPED rather than failing. The drain now happens while the child runs, and a
+            // fixture that never finishes is an assertion naming the command.
+            val cliRun = Subprocess.run(
+                command = command,
+                environment = mapOf(
+                    "PIPELINE_CREDENTIALS_STORE" to storePath.toString(),
+                    "PIPELINE_STORE_PASSPHRASE" to corpusPassphrase,
+                ),
+            ).requireExited()
+            val exitCode = cliRun.exitCode
+            val stdout = cliRun.stdout.trim()
 
             val isBroken = brokenFixtures.contains(fixture.fileName.toString())
 
@@ -205,7 +214,7 @@ class UatCompat001CorpusSmokeRunTest {
             } else {
                 // Other fixtures must exit 0
                 if (exitCode != 0) {
-                    val stderr = process.errorStream.bufferedReader().readText()
+                    val stderr = cliRun.stderr
                     failures.add("${fixture.fileName}: exit $exitCode, stderr: $stderr")
                 } else {
                     val events = JsonEventLog.decode(stdout)
@@ -233,21 +242,23 @@ class UatCompat001CorpusSmokeRunTest {
         fixtures.forEach { fixture ->
             val staged = stageFixture(fixture.fileName.toString(), workspace)
             val name = fixture.fileName.toString()
-            val pb = if (fixturesWithIsolatedWorkspace.contains(name)) {
-                ProcessBuilder(appBin.toString(), "run", "--format", "json", "--isolated", staged.toString())
+            val command = if (fixturesWithIsolatedWorkspace.contains(name)) {
+                listOf(appBin.toString(), "run", "--format", "json", "--isolated", staged.toString())
             } else {
-                ProcessBuilder(appBin.toString(), "run", "--format", "json", "--workspace", workspace.toString(), staged.toString())
+                listOf(
+                    appBin.toString(), "run", "--format", "json",
+                    "--workspace", workspace.toString(), staged.toString(),
+                )
             }
-                .redirectOutput(ProcessBuilder.Redirect.PIPE)
-                .redirectError(ProcessBuilder.Redirect.PIPE)
-                .apply {
-                    environment()["PIPELINE_CREDENTIALS_STORE"] = storePath.toString()
-                    environment()["PIPELINE_STORE_PASSPHRASE"] = corpusPassphrase
-                }
 
-            val process = pb.start()
-            process.waitFor()
-            val stdout = process.inputStream.bufferedReader().readText().trim()
+            // WAITFOR-3: see the note in the sibling test above. Same shape, same reason.
+            val stdout = Subprocess.run(
+                command = command,
+                environment = mapOf(
+                    "PIPELINE_CREDENTIALS_STORE" to storePath.toString(),
+                    "PIPELINE_STORE_PASSPHRASE" to corpusPassphrase,
+                ),
+            ).requireExited().stdout.trim()
 
             val isBroken = brokenFixtures.contains(fixture.fileName.toString())
 

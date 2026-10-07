@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.StepFinished
@@ -55,12 +57,12 @@ class UatDsl006BodyExecutionTest {
      * Runs the CLI and returns stdout + exit code.
      */
     private fun runCli(script: Path): Pair<String, Int> {
-        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", script.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
+        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", script.toString()),
+        ).requireExited()
+        val exitCode = cliRun.exitCode
+        val stdout = cliRun.stdout
         return stdout to exitCode
     }
 

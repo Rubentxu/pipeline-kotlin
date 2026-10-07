@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
@@ -83,12 +85,12 @@ class UatStep003ErrorAbortTest {
      * under the durable spine a failing run legitimately exits 1.
      */
     private fun runAndDecodeExpectingFailure(): Pair<String, List<DomainEvent>> {
-        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", errorAbortScript.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
+        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
+        val cliRun = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", errorAbortScript.toString()),
+        ).requireExited()
+        val exitCode = cliRun.exitCode
+        val stdout = cliRun.stdout.trim()
         // A failing run exits 1 by design (D5 outcome propagation).
         assertEquals(1, exitCode, "failing pipeline must exit 1")
         val events = JsonEventLog.decode(stdout)

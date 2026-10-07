@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.application.observation.ObservationView
 import dev.rubentxu.pipeline.v2.application.observation.ViewParseResult
 import dev.rubentxu.pipeline.v2.application.observation.resolveView
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.output.OutputChannel
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 
 const val NON_CANONICAL_CANONICAL_BRIDGE_ERROR: String =
@@ -68,8 +69,19 @@ data class CliFlags(
     /**
      * Normalized read-side selection (ADR-0088). Identity by default.
      *
-     * `channel` is deliberately absent: no durable carrier exists for stdout vs
-     * stderr, so offering the dimension would be a filter that cannot filter.
+     * ## The KDoc that used to say `channel` could not exist
+     *
+     * This field once carried the line "channel is deliberately absent: no durable carrier exists
+     * for stdout vs stderr, so offering the dimension would be a filter that cannot filter."
+     *
+     * That claim became false at OBS-C2.3, when the merge was removed and two independent pumps
+     * began attributing every committed range to its channel, durably. What was left behind was the
+     * worse half: [ObservationQuery.channels] had been implemented and consumed all along, so the
+     * dimension was REAL and UNREACHABLE — a filter nobody could type. The correction is not a new
+     * field here, it is the removal of a sentence that had stopped being true.
+     *
+     * [ObservationQuery] carries the same history and what it means for a record that has no
+     * channel to carry.
      */
     val query: ObservationQuery = ObservationQuery(),
 )
@@ -170,6 +182,21 @@ sealed interface CliError {
     }
 
     /**
+     * `--channel` named no channel.
+     *
+     * Refused rather than dropped, for the same reason [EmptyTextFilter] is: a token that matches
+     * nothing would silently become a filter that keeps everything, and the next run would look
+     * like a data problem instead of a typo. [OutputChannel.fromToken] answers `null` rather than
+     * throwing because a durable store may name a channel this build does not know, and that is a
+     * fact a reader can act on — but a human typing a flag is not reading a store, and gets a name.
+     */
+    data class InvalidChannel(val value: String) : CliError {
+        override fun toString(): String =
+            "InvalidChannel: --channel '$value' is not a channel. Known: " +
+                OutputChannel.entries.joinToString(", ") { it.token }
+    }
+
+    /**
      * The assembled query is not usable — most often an uncompilable
      * `--grep-regex`. Caught here so no process, store or journal is created
      * for a run that could never be filtered as asked.
@@ -193,10 +220,12 @@ fun buildObservationQuery(
     stageNames: Set<String>,
     stepNames: Set<String>,
     eventKinds: Set<String>,
+    channels: Set<OutputChannel> = emptySet(),
 ): ObservationQuery = ObservationQuery(
     stageNames = stageNames.toSet(),
     stepNames = stepNames.toSet(),
     eventKinds = eventKinds.toSet(),
+    channels = channels.toSet(),
     lines = when {
         grepSelectors.isEmpty() -> LineSelector.All
         grepInvert -> LineSelector.Except(grepSelectors.toList())
@@ -264,6 +293,15 @@ private class ParseState(
     val stageNames: MutableSet<String> = sortedSetOf(),
     val stepNames: MutableSet<String> = sortedSetOf(),
     val eventKinds: MutableSet<String> = sortedSetOf(),
+    /**
+     * Collected as the parsed [OutputChannel], never as the raw token.
+     *
+     * The parser is the boundary where a human's string becomes a domain value, so this is where an
+     * unknown token is refused. Storing `stdout` as a `String` and letting [ObservationQuery] decide
+     * would push the vocabulary check downstream, where a miss reads as "no stderr in this run"
+     * instead of "that was not a channel".
+     */
+    val channels: MutableSet<OutputChannel> = sortedSetOf(),
 )
 
 /** Pure parser for the application CLI. */
@@ -321,6 +359,7 @@ object CliParser {
             stageNames = state.stageNames,
             stepNames = state.stepNames,
             eventKinds = state.eventKinds,
+            channels = state.channels,
         )
 
         // Compile here, before any effect: an uncompilable regex is refused
@@ -350,6 +389,7 @@ object CliParser {
                     stageNames = state.stageNames,
                     stepNames = state.stepNames,
                     eventKinds = state.eventKinds,
+            channels = state.channels,
                 ),
             ),
         )
@@ -497,6 +537,16 @@ object CliParser {
                     return ApplyOutcome.Rejected(CliError.EmptyTextFilter(option))
                 }
                 state.eventKinds += value
+                ApplyOutcome.Applied(index + 2)
+            }
+            "--channel" -> {
+                val value = args.getOrNull(index + 1)
+                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
+                // Resolved HERE, at the boundary, so nothing downstream has to decide whether a
+                // token names a channel. Repeating the flag unions, per the AND-across/OR-within rule.
+                val channel = OutputChannel.fromToken(value)
+                    ?: return ApplyOutcome.Rejected(CliError.InvalidChannel(value))
+                state.channels += channel
                 ApplyOutcome.Applied(index + 2)
             }
             else -> ApplyOutcome.Rejected(CliError.UnknownOption(option))

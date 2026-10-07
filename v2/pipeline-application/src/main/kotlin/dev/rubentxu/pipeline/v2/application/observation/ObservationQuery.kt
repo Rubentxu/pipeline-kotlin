@@ -61,7 +61,7 @@ data class ObservationQuery(
     val stageNames: Set<String> = emptySet(),
     val stepNames: Set<String> = emptySet(),
     val eventKinds: Set<String> = emptySet(),
-    val outcomes: Set<String> = emptySet(),
+    val outcomes: Set<ObservedOutcome> = emptySet(),
     val channels: Set<OutputChannel> = emptySet(),
     val lines: LineSelector = LineSelector.All,
 ) {
@@ -84,16 +84,6 @@ data class ObservationQuery(
  */
 fun textCarriedBy(event: DomainEvent): String? = when (event) {
     is EchoOutputCaptured -> event.content
-    else -> null
-}
-
-/** Outcome carried by a record, or `null` when the record reports none. */
-fun outcomeCarriedBy(event: DomainEvent): String? = when (event) {
-    is RunFinished -> event.outcome
-    is StageFinished -> event.outcome
-    is StageSkipped -> "SKIPPED"
-    is StageMarkedUnstable -> "UNSTABLE"
-    is StepFailed -> "FAILURE"
     else -> null
 }
 
@@ -136,7 +126,7 @@ data class CompiledObservationQuery(
             if (kind !in query.eventKinds) return false
         }
         if (query.outcomes.isNotEmpty()) {
-            val outcome = event?.let { outcomeCarriedBy(it) } ?: return false
+            val outcome = event?.let { outcomeOf(it) } ?: return false
             if (outcome !in query.outcomes) return false
         }
         if (query.channels.isNotEmpty()) {

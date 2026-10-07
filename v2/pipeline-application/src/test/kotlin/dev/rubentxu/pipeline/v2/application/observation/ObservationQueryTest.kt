@@ -179,11 +179,17 @@ class ObservationQueryTest {
 
     @Test
     fun `OUTCOME-1 the outcome dimension reads the record that carries one`() {
-        val events = listOf(finished("FAILURE"), finished("SUCCESS"))
+        // The vocabulary is `ObservedOutcome` since OBS-E5f: three producers spelled the same
+        // outcome three ways, so a filter over the raw strings could only ever ask which producer
+        // wrote it. `finished` writes whatever token it is given, so both rows here still exercise
+        // the selector — one through a named outcome and one through an unnamed spelling.
+        val events = listOf(finished("failure"), finished("something-else"))
 
-        val kept = select(events, ObservationQuery(outcomes = setOf("FAILURE")))
+        val kept = select(events, ObservationQuery(outcomes = setOf(ObservedOutcome.Failure)))
+        val unnamed = select(events, ObservationQuery(outcomes = setOf(ObservedOutcome.Other("something-else"))))
 
-        assertEquals(1, kept.size)
+        assertEquals(listOf("failure"), kept.map { (outcomeOf(it) as? ObservedOutcome.Other)?.token ?: outcomeOf(it)?.wireToken })
+        assertEquals(listOf("something-else"), unnamed.map { (outcomeOf(it) as? ObservedOutcome.Other)?.token ?: outcomeOf(it)?.wireToken })
     }
 
     @Test

@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.application.observation.LineSelector
 import dev.rubentxu.pipeline.v2.application.observation.compileQuery
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.application.observation.ObservationQuery
+import dev.rubentxu.pipeline.v2.application.observation.ObservedOutcome
 import dev.rubentxu.pipeline.v2.application.observation.RecordBudget
 import dev.rubentxu.pipeline.v2.application.observation.RunObservationOutput
 import dev.rubentxu.pipeline.v2.application.observation.TextSelector
@@ -278,6 +279,19 @@ sealed interface CliError {
                 "Omit it to read the whole plane."
     }
 
+    /**
+     * `--outcome` that names no outcome.
+     *
+     * Refused rather than treated as a wildcard, because the whole point of typing the vocabulary
+     * was that `--outcome` stops answering "which spelling did this producer use". A typo that
+     * silently matched everything would hand the caller the opposite of what they asked for.
+     */
+    data class InvalidOutcome(val value: String) : CliError {
+        override fun toString(): String =
+            "InvalidOutcome: --outcome names how something ended. Known: " +
+                ObservedOutcome.tokens.joinToString(", ") + ". Got '$value'."
+    }
+
     data class InvalidLimit(val value: String) : CliError {
         override fun toString(): String =
             "InvalidLimit: --limit needs a positive whole number of records, got '$value'. " +
@@ -300,10 +314,12 @@ fun buildObservationQuery(
     stepNames: Set<String>,
     eventKinds: Set<String>,
     channels: Set<OutputChannel> = emptySet(),
+    outcomes: Set<ObservedOutcome> = emptySet(),
 ): ObservationQuery = ObservationQuery(
     stageNames = stageNames.toSet(),
     stepNames = stepNames.toSet(),
     eventKinds = eventKinds.toSet(),
+    outcomes = outcomes.toSet(),
     channels = channels.toSet(),
     lines = when {
         grepSelectors.isEmpty() -> LineSelector.All
@@ -398,6 +414,14 @@ private class ParseState(
      * `--limit N`. A read-side budget over SELECTED records, never a filter: see [RecordBudget].
      */
     var budget: RecordBudget = RecordBudget.All,
+    /**
+     * `--outcome`. A closed vocabulary, so unknown names are refused rather than carried.
+     *
+     * A plain `mutableSetOf` and not `sortedSetOf` like `channels`: the order a set of outcomes is
+     * collected in is not information, and the ADT is not `Comparable` because nothing needs it to
+     * be. Asking for it anyway would have put a phantom requirement in the parser.
+     */
+    var outcomes: MutableSet<ObservedOutcome> = mutableSetOf(),
     /**
      * `--tail-bytes N`. Where the output lane STARTS, not what it prints.
      *
@@ -494,6 +518,9 @@ object CliParser {
         if (state.tailBytes != null) {
             return CliParseResult.Rejected(CliError.OptionBelongsToObserve("--tail-bytes"))
         }
+        if (state.outcomes.isNotEmpty()) {
+            return CliParseResult.Rejected(CliError.OptionBelongsToObserve("--outcome"))
+        }
 
         // `--grep-invert` negates a group; with no group there is nothing to
         // negate. Rejected rather than defaulted to "exclude everything".
@@ -508,6 +535,7 @@ object CliParser {
             stepNames = state.stepNames,
             eventKinds = state.eventKinds,
             channels = state.channels,
+            outcomes = state.outcomes,
         )
 
         // Compile here, before any effect: an uncompilable regex is refused
@@ -538,6 +566,7 @@ object CliParser {
                     stepNames = state.stepNames,
                     eventKinds = state.eventKinds,
                     channels = state.channels,
+                    outcomes = state.outcomes,
                 ),
             ),
         )
@@ -601,6 +630,7 @@ object CliParser {
             stepNames = state.stepNames,
             eventKinds = state.eventKinds,
             channels = state.channels,
+            outcomes = state.outcomes,
         )
         return when (val compiled = compileQuery(query)) {
             is SelectorCompileResult.Ok -> ObservationParseResult.Parsed(
@@ -790,6 +820,14 @@ object CliParser {
                     return ApplyOutcome.Rejected(CliError.EmptyTextFilter(option))
                 }
                 state.eventKinds += value
+                ApplyOutcome.Applied(index + 2)
+            }
+            "--outcome" -> {
+                val value = args.getOrNull(index + 1)
+                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
+                val outcome = ObservedOutcome.fromToken(value)
+                    ?: return ApplyOutcome.Rejected(CliError.InvalidOutcome(value))
+                state.outcomes += outcome
                 ApplyOutcome.Applied(index + 2)
             }
             "--follow" -> {

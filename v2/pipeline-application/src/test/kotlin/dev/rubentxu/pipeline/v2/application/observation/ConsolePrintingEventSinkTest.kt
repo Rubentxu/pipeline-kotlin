@@ -61,7 +61,7 @@ class ConsolePrintingEventSinkTest {
     private companion object {
         /** The CLI compiles the query once before any effect; a bad one never reaches the sink. */
         fun compileOk(query: ObservationQuery): CompiledObservationQuery =
-            (compileQuery(query) as CompileResult.Ok).value
+            (compileQuery(query) as SelectorCompileResult.Ok).value
     }
 
     @Test

@@ -30,7 +30,7 @@ import dev.rubentxu.pipeline.v2.credentials.local.MainCredentialsCli
 import dev.rubentxu.pipeline.v2.credentials.local.PassphraseResolver
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
-import dev.rubentxu.pipeline.v2.application.observation.CompileResult
+import dev.rubentxu.pipeline.v2.application.observation.SelectorCompileResult
 import dev.rubentxu.pipeline.v2.application.observation.ConsolePrintingEventSink
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.application.observation.RunObservationOutput
@@ -164,7 +164,7 @@ fun main(args: Array<String>) {
     // regex, `--grep-invert` with nothing to negate), so this is the
     // interpretation step and not a second validation. Compiling once here means
     // the query is built a single time for every output path below.
-    val compiledQuery = (compileQuery(config.query) as CompileResult.Ok).value
+    val compiledQuery = (compileQuery(config.query) as SelectorCompileResult.Ok).value
 
     // Shared secret pattern registry for redaction (T6)
     // Both InMemoryEventStore and SqliteEventStore are wrapped at construction time

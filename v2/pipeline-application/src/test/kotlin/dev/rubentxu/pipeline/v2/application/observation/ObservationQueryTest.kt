@@ -50,8 +50,8 @@ class ObservationQueryTest {
 
     private fun select(events: List<DomainEvent>, query: ObservationQuery): List<DomainEvent> {
         val compiled = compileQuery(query)
-        assertTrue(compiled is CompileResult.Ok, "query must compile: $compiled")
-        return selectObservations(events, (compiled as CompileResult.Ok).value)
+        assertTrue(compiled is SelectorCompileResult.Ok, "query must compile: $compiled")
+        return selectObservations(events, (compiled as SelectorCompileResult.Ok).value)
     }
 
     @Test
@@ -122,24 +122,24 @@ class ObservationQueryTest {
     fun `EMPTY-1 an empty selector list is REFUSED, not guessed`() {
         val compiled = compileLineSelector(LineSelector.Only(emptyList()))
 
-        assertTrue(compiled is CompileResult.Invalid, "got $compiled")
+        assertTrue(compiled is SelectorCompileResult.Invalid, "got $compiled")
         assertTrue(
-            (compiled as CompileResult.Invalid).reason.contains("refusing to guess"),
+            (compiled as SelectorCompileResult.Invalid).reason.contains("refusing to guess"),
             "reason must name the ambiguity",
         )
     }
 
     @Test
     fun `EMPTY-2 an empty Except is refused too, not read as match-all`() {
-        assertTrue(compileLineSelector(LineSelector.Except(emptyList())) is CompileResult.Invalid)
+        assertTrue(compileLineSelector(LineSelector.Except(emptyList())) is SelectorCompileResult.Invalid)
     }
 
     @Test
     fun `REGEX-1 an invalid pattern is a typed failure, not a crash`() {
         val compiled = compileTextSelector(TextSelector.Pattern("([unclosed"))
 
-        assertTrue(compiled is CompileResult.Invalid, "got $compiled")
-        assertTrue((compiled as CompileResult.Invalid).reason.contains("invalid regular expression"))
+        assertTrue(compiled is SelectorCompileResult.Invalid, "got $compiled")
+        assertTrue((compiled as SelectorCompileResult.Invalid).reason.contains("invalid regular expression"))
     }
 
     @Test
@@ -148,8 +148,8 @@ class ObservationQueryTest {
             LineSelector.Only(listOf(TextSelector.Pattern("err(or)?"))),
         )
 
-        assertTrue(compiled is CompileResult.Ok)
-        val selector = (compiled as CompileResult.Ok).value
+        assertTrue(compiled is SelectorCompileResult.Ok)
+        val selector = (compiled as SelectorCompileResult.Ok).value
         assertTrue(selector.accepts("an error happened"))
         assertFalse(selector.accepts("all fine"))
     }
@@ -173,8 +173,8 @@ class ObservationQueryTest {
             LineSelector.Only(listOf(TextSelector.Literal("ERROR", ignoreCase = true))),
         )
 
-        assertFalse((sensitive as CompileResult.Ok).value.accepts("an error happened"))
-        assertTrue((insensitive as CompileResult.Ok).value.accepts("an error happened"))
+        assertFalse((sensitive as SelectorCompileResult.Ok).value.accepts("an error happened"))
+        assertTrue((insensitive as SelectorCompileResult.Ok).value.accepts("an error happened"))
     }
 
     @Test

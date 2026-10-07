@@ -132,10 +132,10 @@ data class CompiledObservationQuery(
  * Pure. A bad pattern or an empty selector list is returned as a value so the
  * CLI can reject it before any effect.
  */
-fun compileQuery(query: ObservationQuery): CompileResult<CompiledObservationQuery> =
+fun compileQuery(query: ObservationQuery): SelectorCompileResult<CompiledObservationQuery> =
     when (val compiledLines = compileLineSelector(query.lines)) {
-        is CompileResult.Invalid -> compiledLines
-        is CompileResult.Ok -> CompileResult.Ok(CompiledObservationQuery(query, compiledLines.value))
+        is SelectorCompileResult.Invalid -> compiledLines
+        is SelectorCompileResult.Ok -> SelectorCompileResult.Ok(CompiledObservationQuery(query, compiledLines.value))
     }
 
 /**

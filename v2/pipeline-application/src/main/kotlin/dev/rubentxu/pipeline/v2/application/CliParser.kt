@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.application.observation.CompileResult
+import dev.rubentxu.pipeline.v2.application.observation.SelectorCompileResult
 import dev.rubentxu.pipeline.v2.application.observation.LineSelector
 import dev.rubentxu.pipeline.v2.application.observation.compileQuery
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
@@ -326,7 +326,7 @@ object CliParser {
         // Compile here, before any effect: an uncompilable regex is refused
         // rather than discovered at the moment output is being produced.
         val compiledQuery = compileQuery(assembledQuery)
-        if (compiledQuery is CompileResult.Invalid) {
+        if (compiledQuery is SelectorCompileResult.Invalid) {
             return CliParseResult.Rejected(CliError.InvalidQuery(compiledQuery.reason))
         }
 

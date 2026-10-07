@@ -56,18 +56,33 @@ fun interface CompiledLineSelector {
     fun accepts(text: String): Boolean
 }
 
-/** Typed compile outcome — a bad pattern is a value, not an exception at the CLI. */
-sealed interface CompileResult<out T> {
-    data class Ok<T>(val value: T) : CompileResult<T>
-    data class Invalid(val reason: String) : CompileResult<Nothing>
+/**
+ * Typed compile outcome — a bad pattern is a value, not an exception at the CLI.
+ *
+ * ## Why it is NOT called `CompileResult`
+ *
+ * `dev.rubentxu.pipeline.v2.domain.CompileResult` is a canonical M2 compiler symbol, and
+ * `FArchM2CanonicalPipelineCompilerTest` resolves symbols by name across modules: a second
+ * `CompileResult` in `pipeline-application` maps the same name to two files and fails the
+ * architecture gate. That is not a cosmetic allowlist complaint — two same-named types with
+ * different meanings, one in the domain and one at the presentation edge, is exactly the shape
+ * that lets a reader believe the observation layer compiles through the domain's algebra when it
+ * does not.
+ *
+ * The name therefore carries its scope: this one compiles SELECTORS, and the allowlist that caught
+ * the collision is the evidence that the constraint is real rather than theoretical.
+ */
+sealed interface SelectorCompileResult<out T> {
+    data class Ok<T>(val value: T) : SelectorCompileResult<T>
+    data class Invalid(val reason: String) : SelectorCompileResult<Nothing>
 }
 
 /**
  * Compiles one selector. Pure in the sense that it reads no ambient state; it
  * allocates a compiled matcher, which is why it is the boundary and not the type.
  */
-fun compileTextSelector(selector: TextSelector): CompileResult<CompiledTextSelector> = when (selector) {
-    is TextSelector.Literal -> CompileResult.Ok(
+fun compileTextSelector(selector: TextSelector): SelectorCompileResult<CompiledTextSelector> = when (selector) {
+    is TextSelector.Literal -> SelectorCompileResult.Ok(
         object : CompiledTextSelector {
             override fun matches(text: String): Boolean =
                 if (selector.ignoreCase) text.contains(selector.value, ignoreCase = true)
@@ -83,13 +98,13 @@ fun compileTextSelector(selector: TextSelector): CompileResult<CompiledTextSelec
         }
         val compiled = runCatching { Regex(selector.pattern, options) }
         if (compiled.isSuccess) {
-            CompileResult.Ok(
+            SelectorCompileResult.Ok(
                 object : CompiledTextSelector {
                     override fun matches(text: String): Boolean = compiled.getOrThrow().containsMatchIn(text)
                 },
             )
         } else {
-            CompileResult.Invalid("invalid regular expression '${selector.pattern}': ${compiled.exceptionOrNull()?.message}")
+            SelectorCompileResult.Invalid("invalid regular expression '${selector.pattern}': ${compiled.exceptionOrNull()?.message}")
         }
     }
 }
@@ -103,8 +118,8 @@ fun compileTextSelector(selector: TextSelector): CompileResult<CompiledTextSelec
  * result — and reading it as "match none" would silently empty the output. Both
  * readings are wrong, so the input is refused.
  */
-fun compileLineSelector(selector: LineSelector): CompileResult<CompiledLineSelector> = when (selector) {
-    LineSelector.All -> CompileResult.Ok(acceptAll)
+fun compileLineSelector(selector: LineSelector): SelectorCompileResult<CompiledLineSelector> = when (selector) {
+    LineSelector.All -> SelectorCompileResult.Ok(acceptAll)
 
     is LineSelector.Only -> compileGroup(selector.selectors) { matchers ->
         CompiledLineSelector { text -> matchers.any { it.matches(text) } }
@@ -120,16 +135,16 @@ private val acceptAll = CompiledLineSelector { true }
 private inline fun compileGroup(
     selectors: List<TextSelector>,
     build: (List<CompiledTextSelector>) -> CompiledLineSelector,
-): CompileResult<CompiledLineSelector> {
+): SelectorCompileResult<CompiledLineSelector> {
     if (selectors.isEmpty()) {
-        return CompileResult.Invalid("empty selector list: refusing to guess between 'match all' and 'match none'")
+        return SelectorCompileResult.Invalid("empty selector list: refusing to guess between 'match all' and 'match none'")
     }
     val compiled = ArrayList<CompiledTextSelector>(selectors.size)
     for (selector in selectors) {
         when (val result = compileTextSelector(selector)) {
-            is CompileResult.Invalid -> return result
-            is CompileResult.Ok -> compiled += result.value
+            is SelectorCompileResult.Invalid -> return result
+            is SelectorCompileResult.Ok -> compiled += result.value
         }
     }
-    return CompileResult.Ok(build(compiled))
+    return SelectorCompileResult.Ok(build(compiled))
 }

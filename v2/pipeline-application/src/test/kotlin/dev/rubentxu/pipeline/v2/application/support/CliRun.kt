@@ -21,9 +21,15 @@ import kotlin.concurrent.thread
  * ```
  *
  * and the KDoc of `CompatibilityCorpusTest` already names the consequence — "waiting first can
- * deadlock when a child fills the 64 KiB pipe buffer". A harness that can deadlock is not a
- * harness worth having, so the correct fix was never a seventh variant of the same shape: it is
- * one owner for the child, and nobody else touches `Process` directly.
+ * deadlock when a child fills the pipe buffer". A harness that can deadlock is not a harness worth
+ * having, so the correct fix was never a seventh variant of the same shape: it is one owner for the
+ * child, and nobody else touches `Process` directly.
+ *
+ * The threshold that figure was given as — 64 KiB — is **not what this host does**. Measured with
+ * `F_GETPIPE_SZ` on 20 of 20 fresh pipes, the default pipe buffer here is 8192 bytes;
+ * `fs.pipe-max-size = 1048576` is the ceiling a process may request, not the default it receives.
+ * The direction of the argument is unchanged and if anything sharper at 8 KiB, but the number that
+ * used to sit in this paragraph was 8x the reality and read as safe margin that did not exist.
  *
  * ## The three properties this makes structural
  *
@@ -104,7 +110,7 @@ data class CliDiagnostics(
  *
  *   The ordering is load-bearing and not stylistic. `HttpInstalledUatTest` spends several seconds
  *   inside this callback polling for the JVM to appear under the launcher; if the drainers were not
- *   already running, a child that filled a 64 KiB pipe during those seconds would block with nobody
+ *   already running, a child that filled the pipe during those seconds would block with nobody
  *   reading, and this function would reintroduce the very deadlock it exists to remove. Drain
  *   first, then observe.
  */

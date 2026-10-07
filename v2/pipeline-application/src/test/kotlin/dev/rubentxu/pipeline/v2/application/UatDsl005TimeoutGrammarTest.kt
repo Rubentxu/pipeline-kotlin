@@ -9,7 +9,6 @@ import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.StageStarted
-import dev.rubentxu.pipeline.v2.events.StageFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.TimeoutScheduled
@@ -18,10 +17,15 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.io.TempDir
+import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.time.Duration
 
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+import dev.rubentxu.pipeline.v2.application.support.CliRun
+import dev.rubentxu.pipeline.v2.application.support.OwnedSubprocess
 
 /**
  * UAT-DSL-005: Timeout Grammar — retry and timeout configuration test.
@@ -33,6 +37,14 @@ import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 @Timeout(120)
 class UatDsl005TimeoutGrammarTest {
 
+    /**
+     * The subprocess's own contract, and it sits BELOW the class watchdog on purpose.
+     *
+     * `@Timeout(120)` is a watchdog for "this test is broken"; it cannot own a process, and when it
+     * fires the child survives. The child gets its own deadline so a hang is classified and reaped.
+     */
+    private val cliDeadline: Duration = Duration.ofSeconds(90)
+
     // WU-LPR-072: shared AppBinSupport handles the pipelinek (post-WU-LPR-070)
     // and pipeline-application (legacy) install locations.
     private val appBin: Path by lazy { AppBinSupport.discover() }
@@ -43,19 +55,14 @@ class UatDsl005TimeoutGrammarTest {
 
     @Test
     fun `timeout-retry script compiles and emits parseable JSON`() {
-        val stdoutFile = java.nio.file.Files.createTempFile("uat", ".stdout")
-        val result = ProcessBuilder(appBin.toString(), "run", timeoutRetryScript.toString())
-            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-            .start()
-            .also { it.waitFor() }
+        val (_, rawOutput) = runBinary("run", timeoutRetryScript.toString())
+        val output = rawOutput.trim()
 
-        val stdout = java.nio.file.Files.readString(stdoutFile).trim()
-        assertTrue(stdout.isNotEmpty(), "stdout must not be empty")
-        assertTrue(stdout.startsWith("["), "stdout must start with '['")
-        assertTrue(stdout.endsWith("]"), "stdout must end with ']'")
+        assertTrue(output.isNotEmpty(), "stdout must not be empty")
+        assertTrue(output.startsWith("["), "stdout must start with '['")
+        assertTrue(output.endsWith("]"), "stdout must end with ']'")
 
-        val events = JsonEventLog.decode(stdout)
+        val events = JsonEventLog.decode(output)
         assertNotNull(events)
     }
 
@@ -78,31 +85,30 @@ class UatDsl005TimeoutGrammarTest {
     }
 
     @Test
-    fun `T21 retry terminal transitions project exactly one RetryAttemptFinished per attempt`() {
-        val fixture = java.nio.file.Files.createTempFile("t21", ".pipeline.kts").toFile()
-        fixture.writeText(
+    fun `T21 retry terminal transitions project exactly one RetryAttemptFinished per attempt`(
+        @TempDir tempDir: Path,
+    ) {
+        // The marker is the state T21 exists to observe: attempt 1 must fail because the marker is
+        // absent, attempt 2 must succeed because attempt 1 created it. It used to be a hardcoded
+        // `/tmp/t21-marker`, which made a fixed global name part of the fixture's meaning.
+        val marker = tempDir.resolve("t21-marker").toAbsolutePath().toString()
+        val fixture = tempDir.resolve("t21.pipeline.kts")
+        Files.writeString(
+            fixture,
             """
             pipeline {
                 stages {
                     stage("t21") {
                         retry(2) {
-                            sh("test -f /tmp/t21-marker && exit 0 || { touch /tmp/t21-marker; exit 1; }")
+                            sh("test -f '$marker' && exit 0 || { touch '$marker'; exit 1; }")
                         }
                     }
                 }
             }
             """.trimIndent(),
         )
-        fixture.deleteOnExit()
-        java.io.File("/tmp/t21-marker").delete()
 
-        val stdoutFile = java.nio.file.Files.createTempFile("t21", ".stdout")
-        val pb = ProcessBuilder(appBin.toString(), "run", fixture.absolutePath)
-            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val process = pb.start()
-        assertEquals(0, process.waitFor(), "fail-then-succeed retry must end green")
-        val events = JsonEventLog.decode(java.nio.file.Files.readString(stdoutFile).trim())
+        val events = decodeOrThrow(runBinary("run", fixture.toString()))
 
         val started = events.filterIsInstance<RetryAttemptStarted>()
         val finished = events.filterIsInstance<RetryAttemptFinished>()
@@ -151,9 +157,10 @@ class UatDsl005TimeoutGrammarTest {
     }
 
     @Test
-    fun `T22 valid timeout schedules exactly once before child`() {
-        val fixture = java.nio.file.Files.createTempFile("t22", ".pipeline.kts").toFile()
-        fixture.writeText(
+    fun `T22 valid timeout schedules exactly once before child`(@TempDir tempDir: Path) {
+        val fixture = tempDir.resolve("t22.pipeline.kts")
+        Files.writeString(
+            fixture,
             """
             pipeline {
                 stages {
@@ -166,15 +173,8 @@ class UatDsl005TimeoutGrammarTest {
             }
             """.trimIndent(),
         )
-        fixture.deleteOnExit()
 
-        val stdoutFile = java.nio.file.Files.createTempFile("t22", ".stdout")
-        val pb = ProcessBuilder(appBin.toString(), "run", fixture.absolutePath)
-            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val process = pb.start()
-        assertEquals(0, process.waitFor(), "valid timeout with fast child must succeed")
-        val events = JsonEventLog.decode(java.nio.file.Files.readString(stdoutFile).trim())
+        val events = decodeOrThrow(runBinary("run", fixture.toString()))
 
         val scheduled = events.filterIsInstance<TimeoutScheduled>()
         assertEquals(1, scheduled.size, "TimeoutScheduled must be emitted exactly once: $scheduled")
@@ -221,19 +221,66 @@ class UatDsl005TimeoutGrammarTest {
             "Must have error-handling step type (catchError or error): $stepTypes")
     }
 
-    private fun runAndDecode(): Pair<String, List<DomainEvent>> {
-        val stdoutFile = java.nio.file.Files.createTempFile("uat", ".stdout")
-        val pb = ProcessBuilder(appBin.toString(), "run", timeoutRetryScript.toString())
-            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = java.nio.file.Files.readString(stdoutFile).trim()
-        if (exitCode != 0) {
-            val stderr = process.errorStream.bufferedReader().readText()
-            throw IllegalStateException("CLI exited with $exitCode. stderr: $stderr")
+    /**
+     * S6-PRE. The ONE way this class runs the installed binary.
+     *
+     * Four launch sites, and all four had the same three defects:
+     *
+     * - `waitFor()` with no deadline. A child that hangs hangs the TEST, and the class `@Timeout(120)`
+     *   is what finally cuts it, leaving a `pipelinek` JVM alive behind it and never saying why.
+     * - `.redirectError(ProcessBuilder.Redirect.PIPE)` with the stream read only AFTER `waitFor()`.
+     *   That is the pipe-buffer hazard. **Measured, not assumed:** on this host a fresh pipe is
+     *   8192 bytes (`F_GETPIPE_SZ` on 20 of 20 pipes; `fs.pipe-max-size = 1048576` is the ceiling a
+     *   process may request, not the default), and this fixture's child writes 653 bytes of stderr.
+     *   So the hazard is LATENT today with 12x headroom — the class is not currently hanging, and
+     *   "it has not hung yet" is not the property that protects it. [OwnedSubprocess] drains both
+     *   pipes from the instant the child starts, so the question stops mattering.
+     * - `Files.createTempFile` with no parent, six sites, landing in `java.io.tmpdir`. Measured on
+     *   the BLOCK 3.3 gate: 8 files per run from this class alone, and 142 more accumulated by
+     *   earlier runs that nobody had inventoried.
+     *
+     * A fourth defect was not about the process at all: `/tmp/t21-marker` was a hardcoded global
+     * path, and it is the state the T21 row exists to observe. A fixed name outside the test's own
+     * directory is shared mutable state, which Harness Fidelity 4 forbids; it is now inside the
+     * row's `@TempDir` and interpolated into the script.
+     *
+     * stderr used to be read only on the failure path, so a green run discarded it and a red run
+     * got it for the first time. Both streams are now always in hand, and both go into the message.
+     */
+    private fun runBinary(vararg args: String): Triple<Int, String, String> {
+        val outcome = OwnedSubprocess.run(
+            command = listOf(appBin.toString()) + args,
+            timeout = cliDeadline,
+        )
+        return when (outcome) {
+            is CliRun.Completed -> Triple(outcome.exitCode, outcome.stdout, outcome.stderr)
+            is CliRun.TimedOut -> error(
+                "the installed binary hung on ${args.toList()} after ${cliDeadline.seconds}s; " +
+                    "pid=${outcome.diagnostics.pid} descendants=${outcome.diagnostics.descendantPids}. " +
+                    "This is an ENVIRONMENT signal, and it is what previously left a JVM alive: the " +
+                    "old waitFor() had no deadline, so the class @Timeout cut the test instead and " +
+                    "the failure never said why. Partial output: " +
+                    (outcome.stdout + outcome.stderr).takeLast(800),
+            )
+            is CliRun.LaunchFailed -> error(
+                "the installed binary could not be launched on ${args.toList()}: ${outcome.cause}",
+            )
         }
-        val events = JsonEventLog.decode(stdout)
-        return stdout to events
+    }
+
+    private fun runAndDecode(): Pair<String, List<DomainEvent>> {
+        val (exitCode, stdout, stderr) = runBinary("run", timeoutRetryScript.toString())
+        if (exitCode != 0) {
+            throw IllegalStateException("CLI exited with $exitCode. stdout: $stdout. stderr: $stderr")
+        }
+        return stdout.trim() to JsonEventLog.decode(stdout)
+    }
+
+    private fun decodeOrThrow(result: Triple<Int, String, String>): List<DomainEvent> {
+        val (exitCode, stdout, stderr) = result
+        if (exitCode != 0) {
+            throw IllegalStateException("CLI exited with $exitCode. stdout: $stdout. stderr: $stderr")
+        }
+        return JsonEventLog.decode(stdout)
     }
 }

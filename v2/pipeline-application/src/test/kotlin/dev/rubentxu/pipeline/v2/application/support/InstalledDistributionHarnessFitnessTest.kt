@@ -22,19 +22,33 @@ import org.junit.jupiter.api.Test
  * > A harness that forks the INSTALLED DISTRIBUTION must go through [OwnedSubprocess].
  *
  * Only that binary has the shape that kills: `Main.kt:431` writes the entire run event log in one
- * `println`, so any run can exceed the 64 KiB pipe buffer, and a harness that waits before it drains
- * will hang forever and leave the child alive. [AppBinSupport] is what marks a file as one of
- * those harnesses, which is why the scan keys on it rather than on the test class name.
+ * `println`, so any run can exceed the pipe buffer, and a harness that waits before it drains will
+ * hang forever and leave the child alive. [AppBinSupport] is what marks a file as one of those
+ * harnesses, which is why the scan keys on it rather than on the test class name.
+ *
+ * ## The buffer size, measured rather than remembered
+ *
+ * This file used to state 64 KiB, and so do eight other Kotlin files and five receipts. **On this
+ * host that number is wrong.** Measured with `F_GETPIPE_SZ` on 20 of 20 freshly created pipes: the
+ * default pipe buffer is **8192 bytes**. `fs.pipe-max-size = 1048576` is the ceiling a process may
+ * *request* with `F_SETPIPE_SZ`, not the size it gets for free.
+ *
+ * The law is unaffected in direction — any buffer can be exceeded, and 8 KiB is easier to exceed
+ * than 64 KiB, so waiting before draining is still wrong — but a threshold stated as 8x larger than
+ * reality is a threshold that reads as safe. The historical receipts keep their original figure:
+ * a receipt is evidence for the belief held at its SHA, and rewriting one silently would be a
+ * falsification. This KDoc, which is read as current documentation, carries the measured value.
  *
  * ## Why the allowlist is the point and not a concession
  *
- * The 25 names below are the current debt, written out. A law that permitted them silently would be
+ * The 24 names below are the current debt, written out. A law that permitted them silently would be
  * the same defect shape as a prohibition over a file that no longer exists: a green produced by the
  * absence of a subject. Instead each one is a visible entry that a migration deletes, and the
  * assertion is that the set of NEW offenders is empty — so the debt can only shrink, never grow.
  *
- * The count fell 32 -> 29 -> 28 -> 27 -> 26 -> 25 as harnesses adopted [OwnedSubprocess]. `CompatibilityCorpusTest` is
- * deliberately absent: it was the first migration and it is the file that carried the measured hang.
+ * The count fell 32 -> 29 -> 28 -> 27 -> 26 -> 25 -> 24 as harnesses adopted [OwnedSubprocess].
+ * `CompatibilityCorpusTest` is deliberately absent: it was the first migration and it is the file
+ * that carried the measured hang.
  */
 @DisplayName("S6-PRE — todo harness de la distribucion instalada pasa por OwnedSubprocess")
 class InstalledDistributionHarnessFitnessTest {
@@ -113,7 +127,7 @@ class InstalledDistributionHarnessFitnessTest {
 
         /**
          * The measured debt on the day this law was written: 32 harnesses that fork the installed
-         * distribution directly, now 25. Each is a RED waiting to be migrated, and the count is
+         * distribution directly, now 24. Each is a RED waiting to be migrated, and the count is
          * expected to fall with every commit that adopts the primitive.
          */
         val KNOWN_DEBT: Set<String> = setOf(
@@ -132,7 +146,6 @@ class InstalledDistributionHarnessFitnessTest {
             "dev/rubentxu/pipeline/v2/application/SelfHostedPipelineScriptHonestyTest.kt",
             "dev/rubentxu/pipeline/v2/application/support/PureBuilderProbe.kt",
             "dev/rubentxu/pipeline/v2/application/TrapFormNegativeFixtureTest.kt",
-            "dev/rubentxu/pipeline/v2/application/UatDsl005TimeoutGrammarTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatDsl006BodyExecutionTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatEvt001ReplayTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatEvt002MultiStepReplayTest.kt",

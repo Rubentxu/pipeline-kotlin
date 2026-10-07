@@ -59,13 +59,10 @@ class UatEvt002MultiStepReplayTest {
 
     @Test
     fun `cli run with multi-step script emits parseable JSON array`() {
-        val result = ProcessBuilder(appBin.toString(), "run", "--format", "json", multiStepScript.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-            .start()
-            .also { it.waitFor() }
-
-        val stdout = result.inputStream.bufferedReader().readText().trim()
+        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
+        val stdout = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", multiStepScript.toString()),
+        ).requireExited().stdout.trim()
         assertTrue(stdout.isNotEmpty(), "stdout must not be empty")
         assertTrue(stdout.startsWith("["), "stdout must start with '['")
         assertTrue(stdout.endsWith("]"), "stdout must end with ']'")

@@ -38,6 +38,34 @@ sealed interface SubprocessOutcome {
     ) : SubprocessOutcome
 
     /**
+     * The child was killed, and the kill was the point.
+     *
+     * ## Why this is not [TimedOut] and not [Exited]
+     *
+     * A kill-versus-timeout test asks for a process to die, so its `destroyForcibly().waitFor()`
+     * returns **whether the kill landed**, not an exit code. Reporting it as a timeout would be a
+     * lie about what happened — nothing ran out of time — and reporting it as an exit would be a
+     * lie about what the number means, since a SIGKILLed process has an exit code of its own that
+     * says nothing about the work it was doing.
+     *
+     * The case exists so that a caller who kills a process on purpose is forced to decide what a
+     * kill means for its assertion, which is usually "did the thing I was watching survive it".
+     *
+     * @property hadAlreadyExited true when the process finished on its own between the decision to
+     *   kill it and the kill landing. A test that kills a process it expected to be alive needs to
+     *   know which of the two happened, or it passes for the wrong reason
+     * @property exitCode the code the process finished with, or `null` when the kill ended it and
+     *   there was therefore no code of its own to report
+     */
+    data class Killed(
+        override val command: List<String>,
+        val pid: Long,
+        val descendantsTerminated: Int,
+        val hadAlreadyExited: Boolean,
+        val exitCode: Int?,
+    ) : SubprocessOutcome
+
+    /**
      * The child outlived its bound and was killed.
      *
      * @property stillAliveBeforeKill whether the process was alive when the bound expired, recorded
@@ -79,6 +107,8 @@ sealed interface SubprocessOutcome {
     val description: String
         get() = when (this) {
             is Exited -> "$command exited ${exitCode}"
+            is Killed -> "$command (pid $pid) killed with $descendantsTerminated descendant(s); " +
+                "had already exited=$hadAlreadyExited, exitCode=$exitCode"
             is TimedOut -> "$command (pid $pid) exceeded $timeout while still alive; killed with " +
                 "$descendantsTerminated descendant(s). Last stdout: ${stdout.takeLast(DIAGNOSTIC_TAIL_CHARS).trim()}. " +
                 "Last stderr: ${stderr.takeLast(DIAGNOSTIC_TAIL_CHARS).trim()}"
@@ -109,5 +139,32 @@ fun SubprocessOutcome.requireExited(): SubprocessOutcome.Exited = when (this) {
     )
     is SubprocessOutcome.Interrupted -> throw AssertionError(
         "expected the command to finish, but $description",
+    )
+    is SubprocessOutcome.Killed -> throw AssertionError(
+        "expected the command to finish on its own, but it was killed: $description",
+    )
+}
+
+/**
+ * The kill that was asked for, with a failure saying what happened instead.
+ *
+ * The mirror of [requireExited] for a test whose subject is a process dying. Forgetting to handle
+ * the other four outcomes is a compile error here too, which is the whole reason it exists: the
+ * interesting question in a kill test is usually not "did it exit 0" but "was it still alive when
+ * we killed it", and that is [SubprocessOutcome.Killed.hadAlreadyExited].
+ */
+fun SubprocessOutcome.requireKilled(): SubprocessOutcome.Killed = when (this) {
+    is SubprocessOutcome.Killed -> this
+    is SubprocessOutcome.Exited -> throw AssertionError(
+        "expected to kill a running process, but $description",
+    )
+    is SubprocessOutcome.TimedOut -> throw AssertionError(
+        "expected to kill a running process, but it ran out of time first: $description",
+    )
+    is SubprocessOutcome.NotStarted -> throw AssertionError(
+        "expected to kill a running process, but $description",
+    )
+    is SubprocessOutcome.Interrupted -> throw AssertionError(
+        "expected to kill a running process, but $description",
     )
 }

@@ -1,7 +1,10 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireKilled
 import java.nio.file.Files
 import java.nio.file.Path
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -92,7 +95,17 @@ class UatLocal002ResumeAfterKillTest {
         )
 
         // Kill JVM1 while sh step is running (during sleep 8)
-        jvm1.destroyForcibly().waitFor()
+        //
+        // WAITFOR-3: same shape as UatLocal001, including killAlone: the assertion below is that
+        // the DETACHED SHELL finishes on its own afterwards, so the tree must not be taken down
+        // with the JVM. hadAlreadyExited is asserted because a JVM that finished on its own would
+        // let the rest of the test pass for entirely the wrong reason.
+        val killed = Subprocess.killAlone(jvm1).requireKilled()
+        assertFalse(
+            killed.hadAlreadyExited,
+            "JVM1 had already exited before the kill, so the resume below would not be resuming " +
+                "from a killed run",
+        )
 
         // ---- Wait for detached script to complete alone ----
         // The detached shell should finish: sleep 8 completes, writes 'done', exits 0

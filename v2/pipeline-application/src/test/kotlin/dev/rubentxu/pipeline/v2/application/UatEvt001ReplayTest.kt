@@ -41,13 +41,10 @@ class UatEvt001ReplayTest {
 
     @Test
     fun `cli run emits parseable JSON array`() {
-        val result = ProcessBuilder(appBin.toString(), "run", "--format", "json", helloScript.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-            .start()
-            .also { it.waitFor() }
-
-        val stdout = result.inputStream.bufferedReader().readText().trim()
+        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
+        val stdout = Subprocess.run(
+            command = listOf(appBin.toString(), "run", "--format", "json", helloScript.toString()),
+        ).requireExited().stdout.trim()
         assertTrue(stdout.isNotEmpty(), "stdout must not be empty")
         assertEquals("[", stdout.first().toString(), "stdout must start with '['")
         assertEquals("]", stdout.last().toString(), "stdout must end with ']'")

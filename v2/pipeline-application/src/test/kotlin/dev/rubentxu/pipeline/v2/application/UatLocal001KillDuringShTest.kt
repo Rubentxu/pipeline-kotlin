@@ -1,7 +1,10 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.Subprocess
+import dev.rubentxu.pipeline.v2.application.support.requireKilled
 import java.nio.file.Files
 import java.nio.file.Path
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
@@ -102,8 +105,21 @@ class UatLocal001KillDuringShTest {
         Thread.sleep(1000)
 
         // Kill the forked JVM (but the detached sh should survive)
-        val destroyed = launchProcess.destroyForcibly()
-        destroyed.waitFor()
+        //
+        // WAITFOR-3: this waited without a bound and said nothing about what it killed. The whole
+        // point of this test is the kill landing on a LIVE JVM, so the outcome is asked for
+        // explicitly: hadAlreadyExited must be false, or the test would go on to "prove" that the
+        // detached sh survived a kill that never happened.
+        //
+        // killAlone, not kill: the surviving `sh` IS the subject here. Killing the tree would
+        // remove exactly the thing this test exists to observe, and the red test would be the
+        // harness being right about something this test is not asking about.
+        val killed = Subprocess.killAlone(launchProcess).requireKilled()
+        assertFalse(
+            killed.hadAlreadyExited,
+            "the forked JVM had already exited before the kill, so this run does not test a " +
+                "kill mid-step",
+        )
 
         // Give the shell a moment to settle
         Thread.sleep(500)

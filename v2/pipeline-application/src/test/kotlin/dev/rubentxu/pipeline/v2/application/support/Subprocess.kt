@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application.support
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
 import java.util.concurrent.TimeUnit
@@ -71,7 +72,7 @@ object Subprocess {
     /**
      * Runs [command] and returns what happened.
      *
-     * Both streams are captured unless [captureStdout] / [captureStderr] say otherwise. Capture is
+     * Both streams are captured unless [stdoutFile] or the capture flags say otherwise. Capture is
      * not a pipe handed to the caller: this class owns the reading, so a caller can never be the
      * reason the child blocks.
      *
@@ -79,6 +80,11 @@ object Subprocess {
      * means for its assertion, which is the whole point — the previous shape returned an `Int` and
      * a hang was indistinguishable from a slow success.
      *
+     * @param stdoutFile sends stdout to this file instead of a pipe, and reads it back once the
+     *   child is gone. It exists for tests that genuinely want a file on disk, and **not** as a way
+     *   to avoid draining: stderr is captured and drained either way, so handing stdout to a file
+     *   does not make the run deadlock-proof. What made a run deadlock-proof was never "stdout goes
+     *   to a file" — it was "no stream is left in a pipe nobody reads while the child runs".
      * @param timeout bounds the whole run, reading included; there is deliberately no way to pass
      *   "unbounded", so an unbounded wait cannot be reintroduced by accident
      */
@@ -89,6 +95,7 @@ object Subprocess {
         timeout: Duration = DEFAULT_TIMEOUT,
         captureStdout: Boolean = true,
         captureStderr: Boolean = true,
+        stdoutFile: Path? = null,
         stdin: InputStream? = null,
     ): SubprocessOutcome {
         require(command.isNotEmpty()) { "command must not be empty" }
@@ -100,9 +107,14 @@ object Subprocess {
         // A stream that is not wanted is DISCARDED at the OS level, never left as an unread pipe.
         // Leaving it as a pipe would be the very defect this class exists to remove: the child
         // would block once the pipe filled, and the test would hang for a reason of its own making.
-        builder.redirectOutput(
-            if (captureStdout) ProcessBuilder.Redirect.PIPE else ProcessBuilder.Redirect.DISCARD,
-        )
+        when {
+            stdoutFile != null -> {
+                stdoutFile.parent?.let { Files.createDirectories(it) }
+                builder.redirectOutput(ProcessBuilder.Redirect.appendTo(stdoutFile.toFile()))
+            }
+            captureStdout -> builder.redirectOutput(ProcessBuilder.Redirect.PIPE)
+            else -> builder.redirectOutput(ProcessBuilder.Redirect.DISCARD)
+        }
         builder.redirectError(
             if (captureStderr) ProcessBuilder.Redirect.PIPE else ProcessBuilder.Redirect.DISCARD,
         )
@@ -145,7 +157,7 @@ object Subprocess {
                 timeout = timeout,
                 stillAliveBeforeKill = aliveBefore,
                 descendantsTerminated = tree.descendantsTerminated,
-                stdout = stdout.text(),
+                stdout = stdoutFromFileOr(stdout.text(), stdoutFile),
                 stderr = stderr.text(),
             )
         }
@@ -157,8 +169,126 @@ object Subprocess {
         return SubprocessOutcome.Exited(
             command = command,
             exitCode = process.exitValue(),
-            stdout = stdout.text(),
+            stdout = stdoutFromFileOr(stdout.text(), stdoutFile),
             stderr = stderr.text(),
+        )
+    }
+
+    /**
+     * Kills [process] and waits for it to actually die, returning what happened.
+     *
+     * ## Why this exists rather than `destroyForcibly().waitFor()`
+     *
+     * Because killing is the *subject* of a whole family of tests — "kill the JVM mid-`sh` and
+     * assert the detached process survives", "kill during a heartbeat window", "kill and resume" —
+     * and in all of them the unbounded wait is exactly the wrong shape. It blocks forever if the
+     * kill somehow does not land, it reports nothing about descendants, and it cannot distinguish
+     * "we killed it" from "it had already finished", which is the one thing those tests need to
+     * know before they can assert the wrong thing correctly.
+     *
+     * [SubprocessOutcome.Killed] carries all three. Its bound is a liveness bound on the *kill*,
+     * not on the work the process was doing, and it is never satisfied by the process finishing on
+     * its own — [SubprocessOutcome.Killed.hadAlreadyExited] says so explicitly.
+     */
+    fun kill(
+        process: Process,
+        timeout: Duration = DEFAULT_TIMEOUT,
+    ): SubprocessOutcome.Killed {
+        require(!timeout.isNegative && !timeout.isZero) { "timeout must be positive, got $timeout" }
+
+        val command = process.commandLine()
+        val pid = process.pid()
+        // Read BEFORE the kill: afterwards the process is gone and so is the answer.
+        val wasAlive = process.isAlive
+        val tree = destroyTree(process)
+
+        val died = try {
+            process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw AssertionError(
+                "the thread was interrupted while waiting for pid $pid to die; it was killed " +
+                    "first, so nothing is left running",
+            )
+        }
+        check(died) {
+            "pid $pid survived destroyForcibly() and $timeout. The kill did not land, and leaving " +
+                "it running is what poisons whatever test runs next."
+        }
+
+        return SubprocessOutcome.Killed(
+            command = command,
+            pid = pid,
+            descendantsTerminated = tree.descendantsTerminated,
+            hadAlreadyExited = !wasAlive,
+            // An exit code exists only if the process finished by itself. A killed one has none of
+            // its own, and inventing one here would be the same lie as reporting it as Exited.
+            exitCode = if (!wasAlive) process.exitValue() else null,
+        )
+    }
+
+    /**
+     * The child's stdout, from [file] when it was redirected there and from the pipe otherwise.
+     *
+     * Reading the file back rather than returning an empty string keeps one shape for callers: a
+     * test that redirected stdout to a file to look at it on disk still gets the bytes, so it does
+     * not need a second code path just to assert on the same content.
+     */
+    private fun stdoutFromFileOr(piped: String, file: Path?): String {
+        if (file == null || !Files.isRegularFile(file)) return piped
+        return runCatching { Files.readString(file) }.getOrElse { piped }
+    }
+
+    /**
+     * Kills **only** [process], leaving its descendants running, and waits for it to die.
+     *
+     * ## Why the tree-killing default is wrong for some tests
+     *
+     * [kill] takes the descendants with it, because a surviving grandchild is what makes an
+     * unrelated later test fail for a reason that looks like a product defect. That is right almost
+     * always, and it is **wrong exactly when the orphan is the subject**.
+     *
+     * `UatLocal001KillDuringShTest` kills the JVM mid-`sh` and asserts the detached `sh` SURVIVES,
+     * because surviving is the property durable `sh` claims. Under [kill] the assertion fails, and
+     * the failure is not a bug in either: the harness did its job and removed precisely the thing
+     * the test exists to observe.
+     *
+     * So there are two modes, both bounded, and choosing between them is the caller's claim about
+     * what the test is about:
+     *
+     * ```text
+     * kill(process)      kill the tree; use when leaking orphans would poison other tests
+     * killAlone(process) kill only the parent; use when the surviving child IS the assertion
+     * ```
+     *
+     * A caller that picks the wrong one gets a red test with a message saying so, rather than a
+     * green one that quietly observed something else.
+     */
+    fun killAlone(
+        process: Process,
+        timeout: Duration = DEFAULT_TIMEOUT,
+    ): SubprocessOutcome.Killed {
+        require(!timeout.isNegative && !timeout.isZero) { "timeout must be positive, got $timeout" }
+
+        val command = process.commandLine()
+        val pid = process.pid()
+        val wasAlive = process.isAlive
+        process.destroyForcibly()
+
+        val died = try {
+            process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw AssertionError("the thread was interrupted while waiting for pid $pid to die")
+        }
+        check(died) { "pid $pid survived destroyForcibly() and $timeout" }
+
+        return SubprocessOutcome.Killed(
+            command = command,
+            pid = pid,
+            descendantsTerminated = 0,
+            hadAlreadyExited = !wasAlive,
+            exitCode = if (!wasAlive) process.exitValue() else null,
         )
     }
 
@@ -244,6 +374,18 @@ object Subprocess {
 
         fun readFailure(): Throwable? = failure
     }
+
+    /**
+     * The command line [process] was started with, as far as the OS still knows.
+     *
+     * Best-effort on purpose. A killed process can have an unreadable `ProcessHandle.Info` on some
+     * platforms, and a diagnosis that cannot name the command is still worth far more than an
+     * exception thrown while building it.
+     */
+    private fun Process.commandLine(): List<String> =
+        runCatching {
+            info().arguments().orElse(emptyArray()).toList()
+        }.getOrElse { listOf("<command unavailable>", "pid=${this@commandLine.pid()}") }
 
     /** How many descendants were found and destroyed with the child. */
     data class DestroyedTree(val descendantsTerminated: Int)

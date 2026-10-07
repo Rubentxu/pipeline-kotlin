@@ -1,7 +1,9 @@
 package dev.rubentxu.pipeline.v2.application.support
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -43,6 +45,21 @@ import java.time.Duration
  * a discarded stream has no pipe to fill. That is what makes the classification behind this work
  * credible — the deadlock belongs to the "pipe plus read afterwards" class and to no other, so the
  * migration can be aimed instead of sprayed.
+ *
+ * ## The kill cases, and two mutations that pull in opposite directions
+ *
+ * `hadAlreadyExited` is the field a kill-versus-timeout test actually needs, so it had to be shown
+ * to vary rather than sit at a convenient constant. Two mutations do that from opposite ends:
+ *
+ * ```text
+ * M11  read process.isAlive AFTER the kill instead of before   -> 1/11 red
+ *      the live-process row says it was already finished
+ * M12  hadAlreadyExited = false, a constant                     -> 1/11 red
+ *      the already-finished row says it was alive
+ * ```
+ *
+ * Each flips exactly one row, and the two rows are the two directions. Green under the real harness
+ * therefore means the field reflects the case rather than being a value that always passes.
  */
 @Timeout(value = 300, unit = java.util.concurrent.TimeUnit.SECONDS)
 class SubprocessHarnessTest {
@@ -175,6 +192,113 @@ class SubprocessHarnessTest {
             timedOut.descendantsTerminated >= 1,
             "the harness killed the parent and reported ${timedOut.descendantsTerminated} " +
                 "descendants, so a grandchild was left running",
+        )
+    }
+
+    // ------------------------------------------------------------ the kill
+
+    /**
+     * Killing a process that was alive reports a kill, with no exit code of its own.
+     *
+     * The absence of [SubprocessOutcome.Killed.exitCode] is the assertion. A SIGKILLed process does
+     * have a status the OS records, and reporting it as if the process had exited with it would let
+     * a test read "killed, exactly as intended" while a number sits there looking like an outcome.
+     */
+    @Test
+    fun `killing a live process reports a kill and invents no exit code`() {
+        val process = ProcessBuilder("sh", "-c", "sleep 600").start()
+        val killed = Subprocess.kill(process, timeout = Duration.ofSeconds(30)).requireKilled()
+
+        assertFalse(
+            killed.hadAlreadyExited,
+            "the process was already gone before the kill, so this row is not covering a live kill",
+        )
+        assertNull(killed.exitCode, "a killed process was given an exit code of its own")
+        assertFalse(process.isAlive, "the process is still alive after kill() returned")
+    }
+
+    /**
+     * Killing a process that already finished says so, and keeps its real exit code.
+     *
+     * This is the row that makes [SubprocessOutcome.Killed.hadAlreadyExited] worth having. A test
+     * that kills a process it expected to be alive must be able to tell "I killed it mid-flight"
+     * from "it finished a moment before I got there", or it passes for the wrong reason — which is
+     * the failure mode of every kill-versus-timeout test that only asserts "it is not running
+     * now".
+     *
+     * The non-zero exit is deliberate: a zero would be indistinguishable from a clean finish by
+     * accident rather than by construction.
+     */
+    @Test
+    fun `killing a process that already finished says so and keeps its exit code`() {
+        val process = ProcessBuilder("sh", "-c", "exit 3").start()
+        val exited = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)
+        assertTrue(exited, "premise broken: the child did not finish, so this row proves nothing")
+
+        val killed = Subprocess.kill(process, timeout = Duration.ofSeconds(30)).requireKilled()
+
+        assertTrue(
+            killed.hadAlreadyExited,
+            "the process was already finished and the outcome still says it was alive, so a " +
+                "kill-test cannot tell its subject from one that merely finished",
+        )
+        assertEquals(3, killed.exitCode, "the real exit code was lost, so a test cannot tell a " +
+            "clean finish from a coincidence")
+    }
+
+    /**
+     * `kill()` takes the tree with it, the same way the timeout path does.
+     *
+     * Without this, a kill test leaves the very orphans it was studying running into the next test.
+     */
+    @Test
+    fun `kill takes the descendants with it`() {
+        val sentinel = root.resolve("kill-grandchild-ran")
+        val process = ProcessBuilder(
+            "sh", "-c",
+            "( sh -c 'touch ${sentinel.toAbsolutePath()}; sleep 600' ) & sleep 600",
+        ).start()
+
+        val deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
+        while (!Files.exists(sentinel) && System.nanoTime() < deadline) Thread.sleep(50)
+        assertTrue(Files.exists(sentinel), "premise broken: the grandchild never ran")
+
+        val killed = Subprocess.kill(process, timeout = Duration.ofSeconds(30)).requireKilled()
+        assertTrue(
+            killed.descendantsTerminated >= 1,
+            "kill() took down the parent and reported ${killed.descendantsTerminated} " +
+                "descendants, so a grandchild was left running",
+        )
+    }
+
+    /**
+     * The two accessors refuse each other's outcomes.
+     *
+     * Without this the ADT would be decorative: a caller could quietly ask for an exit code from a
+     * killed process and be handed the kill's own status.
+     */
+    @Test
+    fun `each accessor refuses the other outcomes`() {
+        val live = ProcessBuilder("sh", "-c", "sleep 600").start()
+        val killed = Subprocess.run(listOf("sh", "-c", "sleep 600"), timeout = Duration.ofMillis(400))
+        assertInstanceOf(SubprocessOutcome.TimedOut::class.java, killed)
+        Subprocess.kill(live, timeout = Duration.ofSeconds(30))
+
+        val exited = Subprocess.run(listOf("sh", "-c", "exit 0"), timeout = Duration.ofSeconds(30))
+        val thrownFromKilled = runCatching { exited.requireKilled() }.exceptionOrNull()
+        assertTrue(
+            thrownFromKilled is AssertionError,
+            "requireKilled() accepted a process that exited normally, which would hand a caller " +
+                "an exit code from something it thought it killed",
+        )
+
+        val killedByHand = ProcessBuilder("sh", "-c", "sleep 600").start()
+        val killOutcome = Subprocess.kill(killedByHand, timeout = Duration.ofSeconds(30))
+        val thrownFromExited = runCatching { killOutcome.requireExited() }.exceptionOrNull()
+        assertTrue(
+            thrownFromExited is AssertionError,
+            "requireExited() accepted a kill, so 'expected the command to finish' would quietly " +
+                "include a process that was terminated",
         )
     }
 

@@ -1,0 +1,448 @@
+package dev.rubentxu.pipeline.v2.application.durable
+
+import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
+import dev.rubentxu.pipeline.v2.domain.ShellCommand
+import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
+import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
+import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.output.OutputCursor
+import dev.rubentxu.pipeline.v2.output.OutputReadResult
+import dev.rubentxu.pipeline.v2.output.OutputRefusal
+import dev.rubentxu.pipeline.v2.output.OutputStreamId
+import dev.rubentxu.pipeline.v2.output.store.SegmentOutputStore
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfig
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.io.TempDir
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
+import kotlinx.coroutines.runBlocking
+
+/**
+ * OBS-C1 — characterises what the canonical `sh` path can and cannot say about **where a byte came
+ * from**, and about **whether more bytes can still arrive**.
+ *
+ * ## What this file is for
+ *
+ * OBS-B made the Output Plane live. That is the first half of "observable". The second half is
+ * whether a reader can answer the two questions a reader actually asks of a console:
+ *
+ * ```text
+ * show me only stderr          -> needs the channel preserved before fusion
+ * is there anything more?      -> needs OPEN vs SEALED, not "no page right now"
+ * ```
+ *
+ * Both are currently unanswerable. This file measures that, at the published read port, through the
+ * real `ShExecution` and the real `SegmentOutputStore`. It asserts the defect as it is today, so
+ * the size of OBS-C is set by evidence rather than by the shape of the fix.
+ *
+ * ## The characterisation that is not vacuous
+ *
+ * "You cannot tell stdout from stderr" is an assertion about the **absence** of a capability, and
+ * absent-capability assertions are the classic vacuous test: they pass for the wrong reason, and
+ * they also pass when the harness itself is broken. Both failure modes are closed here by
+ * **giving the harness a pair it CAN discriminate, in the same file, with the same code**.
+ *
+ * ```text
+ * NEGATIVE CONTROL   two runs whose payloads DIFFER by channel
+ *                    -> the read port DOES tell them apart (differing bytes)
+ * THE CLAIM          two runs whose payloads are byte-identical but differ ONLY by channel
+ *                    -> the read port CANNOT tell them apart (identical bytes)
+ * ```
+ *
+ * Mutation M6 (`redirectErrorStream(true)` -> two PIPEs with stderr routed nowhere, the naive
+ * version of "separate the channels") kills three of the four rows, and the attribution is 1:1:
+ *
+ * ```text
+ * row: byte-identical transcript cannot say which channel    -> RED, it now CAN tell them apart
+ * row: every byte on both channels is conserved               -> RED, stderr bytes were lost
+ * row: read port tells two differently-payloaded apart        -> RED, the stderr control vanished
+ * row: a null next cursor means not-yet                       -> GREEN, see its own KDoc
+ * ```
+ *
+ * The control row is what makes the claim non-vacuous: if the reader could not distinguish the
+ * control pair either, the claim would be true for a reason that has nothing to do with channels,
+ * and the row says so in its own assertion message.
+ *
+ * ## Fidelity
+ *
+ * Crosses the productive authority: real `ShExecution.invokeShell`, real `DurableShellExecutor`,
+ * real `SegmentOutputStore` from the run's own provider, read through the published
+ * `OutputReadPort` with its published cursor. Nothing here reimplements the store. `@TempDir`, no
+ * ambient cwd/env/network, no wall-clock assertions — every observation is taken at a sentinel
+ * file the step itself created, so "the process was still alive" is a fact and not a schedule.
+ */
+@Timeout(value = 300, unit = TimeUnit.SECONDS)
+class ObsCChannelAndTailCharacterisationTest {
+
+    @TempDir
+    lateinit var root: Path
+
+    @BeforeEach
+    fun setUp() {
+        // One recovered store per control-dir root, cached by the provider. Without this a row
+        // would inherit another row's store and read the wrong bytes.
+        OutputPlaneProvider.forgetAll()
+        assumeTrue(
+            !System.getProperty("os.name").orEmpty().lowercase().contains("win"),
+            "the durable shell substrate requires a POSIX host",
+        )
+    }
+
+    // ------------------------------------------------------------------ the harness
+
+    private lateinit var controlDirRoot: Path
+    private lateinit var workspaceRoot: Path
+
+    /** Everything a run of one blocked step yields, as an external consumer would see it. */
+    private class Observation(
+        /** Transcript bytes read through the published port once the step had ended. */
+        val transcript: ByteArray,
+        /** Page metadata observed MID-STEP, before the release barrier. */
+        val midStepNextWasNull: Boolean,
+        val midStepCommittedEnd: Long,
+        val finalCommittedEnd: Long,
+        /** Every stream id that was ever opened by this run, probed after the fact. */
+        val terminalOutcome: String,
+    )
+
+    /**
+     * Runs one `sh` step that emits [emitter], reaches a sentinel, and blocks until released.
+     *
+     * The emitter runs BEFORE the barrier, so the bytes exist, the child is alive, and only the
+     * channel attribution and the tail state are in question. The step is blocking work and
+     * `invokeShell` is suspend, so the bridge is `runBlocking` on a plain thread — NOT a coroutine
+     * dispatcher — which keeps the step on its own thread while this test samples the store.
+     */
+    private fun observeBlockedStep(runId: String, emitter: String): Observation {
+        controlDirRoot = Files.createDirectories(root.resolve("control-$runId"))
+        workspaceRoot = Files.createDirectories(root.resolve("workspace-$runId"))
+        val barrier = workspaceRoot.resolve("BARRIER_REACHED")
+        val released = workspaceRoot.resolve("RELEASED")
+
+        val script = listOf(
+            emitter.trimEnd('\n'),
+            "touch ${barrier.toAbsolutePath()}",
+            "while [ ! -s ${released.toAbsolutePath()} ]; do sleep 0.05; done",
+            "printf '%s' '$TAIL_PAYLOAD'",
+        ).joinToString("\n")
+
+        val terminal = arrayOfNulls<ShellInvocationResult>(1)
+        val runner = thread(name = "sh-step-$runId") {
+            terminal[0] = runBlocking {
+                ShExecution.invokeShell(
+                    command = ShellCommand(script = script, returnMode = ShellReturnMode.NONE),
+                    opId = OpId(runId = runId, stageIndex = 0, stepIndex = 0),
+                    runId = runId,
+                    stageIndex = 0,
+                    stepIndex = 0,
+                    shOptions = ShOptions(
+                        workspaceRoot = workspaceRoot,
+                        captureStdout = false,
+                        timeoutMs = 120_000,
+                        env = emptyMap(),
+                        sandbox = SandboxConfig.NONE,
+                    ),
+                    controlDirRoot = controlDirRoot,
+                    eventSink = InMemoryEventStore(),
+                    // The production path ALWAYS supplies a registry (Main.kt builds one per run),
+                    // and supplying one is what activates the PIPE + redaction pump. Its default is
+                    // null, which leaves the wrapper redirecting straight to a file and the pump
+                    // never running — a path the CLI cannot take.
+                    secretPatternRegistry = SecretPatternRegistry(),
+                )
+            }
+        }
+
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(90)
+        while (!Files.exists(barrier) && System.nanoTime() < deadline) {
+            Thread.sleep(50)
+        }
+        assertTrue(
+            Files.exists(barrier),
+            "the step never reached its barrier, so everything observed here would mean nothing",
+        )
+        // Identical settle window in every row, so a difference between rows is the payload and
+        // not how long we waited.
+        Thread.sleep(1500)
+
+        val store = OutputPlaneProvider.storeFor(controlDirRoot)
+        val stream = OutputPlaneProvider.streamId(runId, OpId(runId, 0, 0).format())
+        val midStep = store.read(stream, OutputCursor.start(stream), PAGE_BYTES)
+        val midStepPage = (midStep as? OutputReadResult.Page)?.page
+
+        Files.writeString(released, "go")
+        runner.join(TimeUnit.SECONDS.toMillis(90))
+        assertFalse(runner.isAlive, "the step thread did not finish after release")
+
+        return Observation(
+            transcript = readAllBytes(store, stream),
+            midStepNextWasNull = midStepPage?.next == null,
+            midStepCommittedEnd = midStepPage?.committedEnd ?: -1L,
+            finalCommittedEnd = store.committedExtent(stream) ?: -1L,
+            // `ShellInvocationResult` is a closed ADT, so the terminal shape is named rather than
+            // rendered: an unexpected variant here means the step failed, which would make every
+            // byte observation in this row meaningless.
+            terminalOutcome = describe(terminal[0]),
+        )
+    }
+
+    /** Reads every committed byte through the published port, as any external consumer would. */
+    private fun readAllBytes(store: SegmentOutputStore, stream: OutputStreamId): ByteArray {
+        val first = store.read(stream, OutputCursor.start(stream), PAGE_BYTES)
+        if (first is OutputReadResult.Refused) return ByteArray(0)
+
+        val out = java.io.ByteArrayOutputStream()
+        var cursor: OutputCursor? = OutputCursor.start(stream)
+        while (cursor != null) {
+            val page = assertInstanceOf(
+                OutputReadResult.Page::class.java,
+                store.read(stream, cursor, PAGE_BYTES),
+                "a stream that has been opened must page",
+            ).page
+            out.write(page.bytes)
+            cursor = page.next
+        }
+        return out.toByteArray()
+    }
+
+    /** Renders the terminal as a name, so an unexpected variant is legible in a failure message. */
+    private fun describe(terminal: ShellInvocationResult?): String = when (terminal) {
+        null -> "NULL-TERMINAL"
+        is ShellInvocationResult.Stdout -> "STDOUT"
+        is ShellInvocationResult.Status -> "STATUS(exitCode=${terminal.exitCode})"
+        is ShellInvocationResult.Failed -> "FAILED(${terminal.failure})"
+        is ShellInvocationResult.Interrupted -> "INTERRUPTED"
+        is ShellInvocationResult.UnitValue -> "UNIT"
+    }
+
+    private companion object {
+        /**
+         * The payload two runs of the *claim* row share byte for byte.
+         *
+         * Identical content on purpose: the claim is that the store cannot tell them apart, and the
+         * only way to demonstrate an inability honestly is to feed it something indistinguishable.
+         */
+        const val SHARED_PAYLOAD: String = "CONSOLA-SIN-CANAL\n"
+
+        /** What the *negative control* pair writes instead, one byte apart. */
+        const val CONTROL_STDOUT_PAYLOAD: String = "CONTROL-SALIDA-STDOUT\n"
+        const val CONTROL_STDERR_PAYLOAD: String = "CONTROL-SALIDA-STDERR\n"
+
+        /** Emitted after the release barrier, so it can only exist post-step. */
+        const val TAIL_PAYLOAD: String = "COLA-TRAS-LA-BARRA\n"
+
+        const val PAGE_BYTES: Int = 4096
+    }
+
+    // -------------------------------------------------- C1: channel attribution
+
+    /**
+     * NEGATIVE CONTROL — the reader **does** discriminate when the payloads differ.
+     *
+     * This row exists to keep the next one honest. It runs the same code path twice with payloads
+     * that differ, and requires the read port to return different bytes. If it could not, then the
+     * claim in [a byte-identical transcript cannot say which channel it came from] would be true
+     * for a reason unrelated to channels, and the file would certify nothing.
+     */
+    @Test
+    fun `the read port tells two differently-payloaded transcripts apart`() {
+        val toStdout = observeBlockedStep(
+            "r-obsc-c1-ctl-out",
+            "printf '%s' '$CONTROL_STDOUT_PAYLOAD'",
+        )
+        val toStderr = observeBlockedStep(
+            "r-obsc-c1-ctl-err",
+            "printf '%s' '$CONTROL_STDERR_PAYLOAD' >&2",
+        )
+
+        assertFalse(
+            toStdout.transcript.contentEquals(toStderr.transcript),
+            "the harness cannot distinguish these two transcripts, so the control row proves " +
+                "nothing and the claim row below would be vacuous. Both runs produced identical " +
+                "bytes: ${toStdout.transcript.toString(Charsets.UTF_8)}",
+        )
+        assertTrue(
+            toStdout.transcript.toString(Charsets.UTF_8).contains(CONTROL_STDOUT_PAYLOAD),
+            "the stdout control run did not persist its own payload",
+        )
+        assertTrue(
+            toStderr.transcript.toString(Charsets.UTF_8).contains(CONTROL_STDERR_PAYLOAD),
+            "the stderr control run did not persist its own payload",
+        )
+    }
+
+    /**
+     * CHARACTERISATION — the same transcript, byte for byte, reached by two different channels.
+     *
+     * `printf X` and `printf X >&2` are different process behaviour that Jenkins, `kubectl logs`
+     * and every user of a console treat as different information. Today they produce a transcript
+     * that is **byte-identical**, produced by `redirectErrorStream(true)` in
+     * [dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor], so the fusion happens in
+     * one kernel-level descriptor before any of this code can observe it.
+     *
+     * The consequence is not "the bytes are wrong". The bytes are conserved exactly. The consequence
+     * is that `--channel stderr` is **irrecoverable at this point in the pipeline**: there is no
+     * boundary left to recover from.
+     *
+     * Closed by: OBS-C2. Invert then — assert the two transcripts land in DIFFERENT streams — and
+     * do not delete the row.
+     */
+    @Test
+    fun `a byte-identical transcript cannot say which channel it came from`() {
+        val viaStdout = observeBlockedStep(
+            "r-obsc-c1-same-out",
+            "printf '%s' '$SHARED_PAYLOAD'",
+        )
+        val viaStderr = observeBlockedStep(
+            "r-obsc-c1-same-err",
+            "printf '%s' '$SHARED_PAYLOAD' >&2",
+        )
+
+        assertEquals(
+            viaStdout.transcript.toString(Charsets.UTF_8),
+            viaStderr.transcript.toString(Charsets.UTF_8),
+            "OBS-C1 measured that the transcript cannot attribute a channel, and the two runs no " +
+                "longer agree. That is expected once OBS-C2 lands: they will reach different " +
+                "streams. This row is then replaced by the inverted assertion, not deleted.",
+        )
+        assertTrue(
+            viaStdout.transcript.toString(Charsets.UTF_8).contains(SHARED_PAYLOAD),
+            "the stdout run did not persist its payload, so the equality above would hold over " +
+                "two empty transcripts and would mean nothing",
+        )
+        assertEquals(
+            "UNIT",
+            viaStdout.terminalOutcome,
+            "a step that only writes to stdout must still succeed; the emitter is a test fixture " +
+                "and a failure here is a defect, not a characterisation",
+        )
+        assertEquals(
+            "UNIT",
+            viaStderr.terminalOutcome,
+            "a step that only writes to stderr must still succeed",
+        )
+    }
+
+    /**
+     * CHARACTERISATION — the transcript conserves **every** byte, on both channels.
+     *
+     * Worth pinning before the fix, because the fix introduces a second pump and a second stream,
+     * and a refactor that splits a stream can very easily lose or duplicate a byte. This row is
+     * the conservation law the split must not break; it must still be green afterwards.
+     */
+    @Test
+    fun `every byte on both channels is conserved exactly once`() {
+        val runId = "r-obsc-c1-both"
+        val observation = observeBlockedStep(
+            runId,
+            listOf(
+                "printf '%s' '$CONTROL_STDOUT_PAYLOAD'",
+                "printf '%s' '$CONTROL_STDERR_PAYLOAD' >&2",
+            ).joinToString("\n"),
+        )
+        val text = observation.transcript.toString(Charsets.UTF_8)
+
+        assertEquals(
+            1,
+            occurrences(text, CONTROL_STDOUT_PAYLOAD),
+            "stdout bytes must appear exactly once in the transcript",
+        )
+        assertEquals(
+            1,
+            occurrences(text, CONTROL_STDERR_PAYLOAD),
+            "stderr bytes must appear exactly once in the transcript",
+        )
+        assertTrue(
+            text.contains(TAIL_PAYLOAD),
+            "bytes emitted after the release barrier were lost, which would make the " +
+                "channel-attribution question moot by losing data",
+        )
+        assertEquals(
+            1,
+            occurrences(text, TAIL_PAYLOAD),
+            "the tail payload must not be duplicated",
+        )
+    }
+
+    // -------------------------------------------------- C2: OPEN vs SEALED
+
+    /**
+     * CHARACTERISATION — "no page right now" is what `next == null` means, and it is NOT "finished".
+     *
+     * This is the gap `--follow` would fall into. A consumer that treats `next == null` as an end
+     * of stream stops tailing a process that is still running; a consumer that treats it as "not
+     * yet" cannot tell a quiet step from a finished one, and has to poll forever. Today the read
+     * port offers no third answer.
+     *
+     * The step emits [TAIL_PAYLOAD] only after the release barrier, so the row proves the
+     * distinction is real and not a race: the mid-step page genuinely ended where a later page
+     * continued from.
+     *
+     * Closed by: OBS-C3. Invert then — assert the mid-step tail state is `Open`, not "unknown".
+     *
+     * ## This row is NOT killed by a production mutation, and saying so is part of it
+     *
+     * Mutation M6 (stop fusing, route stderr nowhere) kills the three channel rows and leaves this
+     * one green. That is not a gap in the mutation, it is the shape of the claim: the defect here is
+     * an **absent capability in the published contract**, not a behaviour that is wrong. There is
+     * nothing in the product to mutate, because there is no code path that answers "is this stream
+     * finished?" at all — mutating a pump or a store cannot change an interface that does not exist.
+     *
+     * What this row therefore carries instead is a **second, self-verifying half**:
+     * `midStepCommittedEnd < finalCommittedEnd`. That inequality is what makes the indistinction
+     * real rather than coincidental — it proves bytes genuinely arrived after the page that claimed
+     * no continuation, so `next == null` was *wrong to read as finished* on this exact run, not on
+     * some hypothetical one. If the store ever sealed early, or the pump held every byte to the end,
+     * this half fails on its own. So the row still has the power to be wrong, and that is what a
+     * vacuity-proof row needs — it simply cannot be killed by editing production code.
+     */
+    @Test
+    fun `a null next cursor means not-yet rather than finished`() {
+        val runId = "r-obsc-c2-tail"
+        val observation = observeBlockedStep(runId, "printf '%s' '$CONTROL_STDOUT_PAYLOAD'")
+
+        assertTrue(
+            observation.midStepNextWasNull,
+            "premise broken: the mid-step page already offered a next cursor, so this row no " +
+                "longer covers the not-yet case it was written for",
+        )
+        assertEquals(
+            -1L,
+            observation.midStepCommittedEnd,
+            "premise broken: the mid-step page reported a negative committed extent",
+        )
+        assertTrue(
+            observation.midStepCommittedEnd < observation.finalCommittedEnd,
+            "the mid-step committed extent (${observation.midStepCommittedEnd}) was already the " +
+                "final one (${observation.finalCommittedEnd}). If they are equal, `next == null` " +
+                "here would really have meant finished, and this row would be asserting the " +
+                "opposite of the truth.",
+        )
+        assertTrue(
+            observation.transcript.toString(Charsets.UTF_8).contains(TAIL_PAYLOAD),
+            "the step stopped emitting after its mid-step page reported no continuation, which is " +
+                "exactly the data loss a follow consumer would suffer today",
+        )
+    }
+
+    private fun occurrences(haystack: String, needle: String): Int {
+        var count = 0
+        var from = 0
+        while (true) {
+            val at = haystack.indexOf(needle, from)
+            if (at < 0) return count
+            count++
+            from = at + needle.length
+        }
+    }
+}

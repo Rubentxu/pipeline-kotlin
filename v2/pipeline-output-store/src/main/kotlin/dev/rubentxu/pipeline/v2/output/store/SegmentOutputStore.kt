@@ -92,6 +92,19 @@ class SegmentOutputStore(
     @Volatile private var recovered = false
     private val perStream = HashMap<OutputStreamId, ReentrantLock>()
 
+    @Volatile private var frameIndex: SegmentFrameIndex? = null
+
+    /**
+     * The frame index for this store, sharing its root so the index sits beside the bytes.
+     *
+     * Created once and held, for the same reason the store itself is held per control-dir root by
+     * its provider: recovery has to be a property of the durable layout rather than of whichever
+     * object a caller happened to construct. The returned index is the same instance every time, so
+     * its ordinal counter cannot be split across two writers.
+     */
+    fun frameIndex(): SegmentFrameIndex =
+        frameIndex ?: synchronized(this) { frameIndex ?: SegmentFrameIndex(this, root).also { frameIndex = it } }
+
     // ------------------------------------------------------------------ ports
 
     override fun open(stream: OutputStreamId): OutputStreamHandle {
@@ -683,6 +696,19 @@ class SegmentOutputStore(
         const val DEFAULT_RESERVATION_BYTES = 64L * 1024L
         const val SEGMENT_MAX_BYTES = 8L * 1024L * 1024L
 
-        fun safe(name: String): String = name.replace(Regex("[^A-Za-z0-9._-]"), "_")
+        fun safe(name: String): String = safeStreamName(name)
     }
 }
+
+/**
+ * The on-disk name for a stream or run identifier.
+ *
+ * **Lossy and deliberately never undone.** Every character outside `[A-Za-z0-9._-]` folds onto `_`,
+ * so `a/b` and `a_b` produce the same name. Nothing decodes these names back into identifiers:
+ * [SegmentFrameIndex] writes the whole identifier into its own files and reads it back from
+ * there, which is the only place the round trip is safe.
+ *
+ * Shared rather than duplicated so the byte store and the frame index cannot drift into naming the
+ * same run differently.
+ */
+internal fun safeStreamName(name: String): String = name.replace(Regex("[^A-Za-z0-9._-]"), "_")

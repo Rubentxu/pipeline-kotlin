@@ -407,7 +407,28 @@ class DurableShellExecutor : DurableShellLaunching {
                         val window = ByteArray(TRANSCRIPT_LIVE_WINDOW_BYTES)
                         try {
                             while (true) {
-                                val n = redacted.read(window)
+                                // Ask for what is READY, not for a whole window.
+                                //
+                                // `RedactingInputStream.read` returns only at `len` bytes or EOF, so
+                                // asking for a full window made the window a LATENCY FLOOR measured
+                                // in bytes: a step that printed 20 bytes and then kept running showed
+                                // nothing at all until it ended, because 20 < 1024. Measured against
+                                // the installed distribution, 4 KiB appeared live and 20 bytes did
+                                // not, which is a quantised console rather than a live one.
+                                //
+                                // What remains after this is the redactor's lookahead — `maxLiteral`
+                                // bytes, which is at least MIN_SECRET_WINDOW and grows with the
+                                // longest registered secret. That floor is redaction correctness
+                                // rather than tuning: a byte inside the lookahead could still turn
+                                // out to begin a secret, so emitting it early is a leak.
+                                //
+                                // The floor of 1 keeps the read BLOCKING rather than polling. An
+                                // empty `available()` means "nothing decided yet", and the read
+                                // returns as soon as one byte is emittable; a `Thread.sleep` here
+                                // would add a latency the product does not owe anyone, and a busy
+                                // loop would burn a core on every silent step.
+                                val ready = maxOf(1, minOf(window.size, redacted.available()))
+                                val n = redacted.read(window, 0, ready)
                                 if (n < 0) break
                                 target.write(window, 0, n)
                             }

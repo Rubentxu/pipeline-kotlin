@@ -32,7 +32,11 @@ import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.application.observation.SelectorCompileResult
 import dev.rubentxu.pipeline.v2.application.observation.ConsolePrintingEventSink
+import dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader
+import dev.rubentxu.pipeline.v2.application.observation.LiveOutputDrain
+import dev.rubentxu.pipeline.v2.application.observation.LiveOutputPresentation
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead
 import dev.rubentxu.pipeline.v2.application.observation.RunObservationOutput
 import dev.rubentxu.pipeline.v2.application.observation.compileQuery
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
@@ -171,17 +175,32 @@ fun main(args: Array<String>) {
     // so all downstream consumers receive already-sanitized events.
     val secretPatternRegistry = SecretPatternRegistry()
 
-    // CR-RD-008 canary: synthetic secret registered at engine startup for round-gate verification.
-    // The canary value GHS6_CANARY_7f3a9c2e1b4d5e6f is never used in any real credential.
-    secretPatternRegistry.addSecret(SecretHandle.plain("GHS6_CANARY_7f3a9c2e1b4d5e6f"))
+    // CR-RD-008 / CR-RD-021 / ARC-CANARY-001 canaries, registered ONLY when a round-gate asks for
+    // them. They used to be unconditional, and they were not free.
+    //
+    // `SecretPatternRegistry.maxLiteralByteLength()` is the redactor's LOOKAHEAD, and the lookahead
+    // is the floor below which no live output is observable at all: a byte inside it could still
+    // turn out to begin a secret, so the redactor must hold it until more input rules it out.
+    // `generateEncodedVariants` includes a hex form, so the 28-character canary below claims a
+    // 56-byte window. Measured against the installed distribution, with the canaries registered a
+    // step that printed 32 bytes committed NOTHING to the Output Plane until it exited — not
+    // because the pump was late, but because 32 < 56. Every real run was paying 49 bytes of
+    // observability latency for test material.
+    //
+    // Gating them removes no protection. These values are synthetic and appear in no real
+    // credential; what protects a real credential is the secrets registered from the credential
+    // store, which are added independently. And the round-gate that needs them now says so
+    // explicitly, so the proof is opt-in and visible instead of ambient.
+    if (System.getProperty(REDACTION_CANARY_PROPERTY) == "true") {
+        // CR-RD-008 canary: synthetic secret for round-gate verification.
+        secretPatternRegistry.addSecret(SecretHandle.plain("GHS6_CANARY_7f3a9c2e1b4d5e6f"))
 
-    // CR-RD-021 ssh canary: synthetic secret for SSH channel round-gate verification.
-    // The canary value __ssh_canary__ is never used in any real SSH credential.
-    secretPatternRegistry.addSecret(SecretHandle.plain("__ssh_canary__"))
+        // CR-RD-021 ssh canary: synthetic secret for SSH channel round-gate verification.
+        secretPatternRegistry.addSecret(SecretHandle.plain("__ssh_canary__"))
 
-    // ARC-CANARY-001 / CR-RD-022 artefact canary: synthetic secret for artefact step round-gate.
-    // The canary value __artefact_canary__ is never used in any real artefact.
-    secretPatternRegistry.addSecret(SecretHandle.plain("__artefact_canary__"))
+        // ARC-CANARY-001 / CR-RD-022 artefact canary: synthetic secret for artefact step round-gate.
+        secretPatternRegistry.addSecret(SecretHandle.plain("__artefact_canary__"))
+    }
 
     val scriptPath = Paths.get(config.scriptPath)
 
@@ -387,7 +406,15 @@ fun main(args: Array<String>) {
         val workspaceTransport = WorkspaceIntent.resolveRuntimeTransport(
             config, Path.of("").toAbsolutePath().normalize(), controlDirRoot,
         )
-        val runOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = when {
+        // OBS-E4: the process output of a step lives in the Output Plane, not on the event spine,
+        // so the event sink above never saw it. This observer follows the plane while the run is in
+        // flight, which is what makes a build's progress visible while the build runs. It is
+        // started BEFORE the pipeline (there is nothing to observe until a step produces bytes) and
+        // closed after it returns, so the last committed bytes are flushed.
+        val outputObserver = startLiveOutputObserver(runId, controlDirRoot, config.format)
+
+        val runOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = try {
+            when {
             // Compilation must be checked FIRST. If the script failed to compile there is no
             // compiled pipeline to run; jumping to runCanonicalPipeline would NPE on `!!`. This
             // regression was introduced when the per-step canonical gate was added (v0.33.1 P2
@@ -451,6 +478,12 @@ fun main(args: Array<String>) {
                 System.exit(2)
                 null // unreachable
             }
+            }
+        } finally {
+            // The observer stops here, not before: everything the pipeline committed is already in
+            // the plane, and stopping first would drop the final frames of the last step. `finally`
+            // rather than a plain call so a throwing pipeline still releases the thread.
+            outputObserver.close()
         }
 
         val events = eventStore.eventsFor(runId).toList()
@@ -959,3 +992,102 @@ private fun reportRunFailure(failure: PipelineFailure) {
     failure.cause?.let { System.err.println("  origin: $it") }
 }
 
+
+/**
+ * OBS-E4: the run-time output observer, started before the pipeline and stopped after it.
+ *
+ * ## What this is for
+ *
+ * `ConsolePrintingEventSink` mirrors the EVENT spine as events are appended. Process output is not
+ * on that spine — it lives in the Output Plane — so before this the bytes a step printed were
+ * durable and unobservable until someone ran `pipeline console` against the control directory, which
+ * is not a public verb. A build's progress was therefore invisible while the build ran.
+ *
+ * ## Why a thread, and why the run never waits for it
+ *
+ * The observer polls, so it cannot run on the thread that is executing the pipeline. That makes the
+ * backpressure law the reason for its existence as much as the convenience: the run does not wait on
+ * it, so a wedged terminal, a closed pipe or a slow reader can delay only its own output. The
+ * consumer-backpressure law says no observation consumer may reach the execution path, and a
+ * terminal that can block the run is exactly that.
+ *
+ * ## Why the owner stops it, not the plane
+ *
+ * `ShExecution` seals a step's streams from INSIDE `invoke`, while the run continues, so there is a
+ * window in which every stream the run has is sealed and the run is not over. An observer that
+ * treated "all sealed" as "done" would end inside that window and drop the output of every later
+ * step. `runFinished` is therefore the terminator, and the tail states only classify how it ended.
+ *
+ * ## `json` is the one format that does not stream
+ *
+ * A JSON array is a document, and a document cannot be streamed. So for `--format json` this starts
+ * NO thread and collects nothing; the end-of-run document already renders every event, and adding
+ * output to it is the job of a later block rather than of a half-measure here.
+ */
+private fun startLiveOutputObserver(
+    runId: String,
+    controlDirRoot: java.nio.file.Path,
+    format: ObservationFormat,
+): AutoCloseable {
+    if (format == ObservationFormat.JSON) {
+        return AutoCloseable { }
+    }
+
+    val presentation = LiveOutputPresentation(format, System.out, System.err)
+    val store = dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider.storeFor(controlDirRoot)
+    val reader = FrameIndexedObservationOutputReader(store.frameIndex(), store, store)
+    val drain = LiveOutputDrain(reader, frameLimit = 64, pollIntervalMs = 10)
+    val runFinished = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    val thread = Thread(
+        {
+            when (val result = drain.drain(runId, { runFinished.get() }) { record ->
+                presentation.emit(record)
+            }) {
+                is dev.rubentxu.pipeline.v2.application.observation.LiveOutputDrainResult.Refused ->
+                    presentation.reportRefusal(result.reason)
+
+                else -> Unit
+            }
+        },
+        "pipelinek-output-observer",
+    ).apply {
+        // A daemon, so an observer that is somehow never stopped cannot keep the JVM alive past the
+        // run that owns it. The run does not depend on this thread existing.
+        isDaemon = true
+    }
+    thread.start()
+
+    return AutoCloseable {
+        runFinished.set(true)
+        // Bounded, because a run that has ended must not be held hostage by a reader that is wedged.
+        // The bytes stay committed either way: this is an observer, not the authority.
+        thread.join(OBSERVER_JOIN_TIMEOUT_MS)
+    }
+}
+
+/**
+ * How long a finished run waits for its observer to notice and flush.
+ *
+ * Bounded because the run has already produced its result and holding the terminal for an unbounded
+ * wait would turn a slow reader into a hung command. What is lost by stopping early is nothing the
+ * run owns: the bytes are committed and `observe` can read them afterwards.
+ */
+private const val OBSERVER_JOIN_TIMEOUT_MS = 5_000L
+
+/**
+ * Opt-in system property that registers the redaction canaries.
+ *
+ * ## Why it exists rather than the canaries being unconditional
+ *
+ * A registered secret is not only something to scrub: its encoded length IS the redactor's
+ * lookahead, and the lookahead is the number of bytes that must be seen before the first byte can
+ * be published. Registering a 28-character canary therefore claims a 56-byte window (its hex form)
+ * and withholds up to 56 bytes of live output on EVERY run — including the runs that have no
+ * credentials at all and could not leak anything.
+ *
+ * So the canaries are test material and are requested by tests. The round-gates that need them set
+ * this property, which makes the proof explicit and keeps the default run's latency at
+ * `MIN_SECRET_WINDOW`.
+ */
+private const val REDACTION_CANARY_PROPERTY = "pipelinek.redaction.canaries"

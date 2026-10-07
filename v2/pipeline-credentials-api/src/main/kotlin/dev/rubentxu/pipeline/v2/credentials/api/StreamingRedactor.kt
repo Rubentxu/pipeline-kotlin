@@ -257,6 +257,44 @@ class StreamingRedactor(
             return written
         }
 
+        /**
+         * How many sanitized bytes can be emitted RIGHT NOW without reading more from the source.
+         *
+         * ## Why this override exists
+         *
+         * `InputStream.available()` is part of the contract every stream is expected to honour, and
+         * the base implementation returns 0. A caller that obeyed it would conclude "nothing is
+         * ready" about a redacted stream however much is buffered, and the natural reaction — ask for
+         * a full window — turns the window into a **latency floor measured in bytes**. That is how a
+         * 1 KiB window withheld a 20-byte transcript until the process exited.
+         *
+         * ## Why it is counted from this state machine rather than a second rule
+         *
+         * A byte leaves the lookahead ring only once [maxLiteral] bytes have ruled out every seam
+         * literal, so "how much is ready" is exactly "how much the read loop could emit without
+         * touching the source". Re-deriving that from a separate rule would make a second authority
+         * for the redaction decision, and two authorities for one decision drift. So this counts the
+         * bytes already decided ([outputCount]) plus the bytes still buffered from the source, less
+         * the lookahead the emitter is still withholding.
+         *
+         * ## Which way it is allowed to be wrong
+         *
+         * A matched literal expands to the scrub marker, so the true count can exceed this estimate;
+         * a caller given too few asks [read] for a little more and blocks, which is the safe
+         * direction — it waits rather than acting on bytes that do not exist. The direction that
+         * would be a security defect is the other one, and it cannot happen: the withheld lookahead
+         * is subtracted here rather than assumed away.
+         */
+        override fun available(): Int {
+            if (closed) return 0
+            // `inputLimit` is -1 after EOF, so the subtraction is floored rather than trusted.
+            val bufferedFromSource = maxOf(0, inputLimit - inputOffset)
+            val pending = ringCount + bufferedFromSource
+            // At EOF the lookahead has no future left to protect, so every pending byte is decidable.
+            val decidable = if (sourceExhausted) pending else maxOf(0, pending - maxLiteral)
+            return outputCount + decidable
+        }
+
         override fun close() {
             if (closed) return
             closed = true

@@ -237,6 +237,10 @@ pipeline {
     ): String {
         val args = listOf(
             javaHome + "/bin/java",
+            // The redaction canaries are opt-in (see Main.kt): a registered secret claims a
+            // lookahead window, and this suite asserts the canary never reaches a durable
+            // authority, so it must ask for the canary rather than assume it.
+            "-Dpipelinek.redaction.canaries=true",
             "-cp", classpath,
             "dev.rubentxu.pipeline.v2.application.MainKt",
             "run", "--format", "json",

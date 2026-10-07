@@ -147,23 +147,25 @@ data class ProcessOutputSinks(
 }
 
 /**
- * How many sanitized bytes the pump asks for per read — and therefore how much transcript a reader
- * waits for before it can see any of it.
+ * The most sanitized bytes the pump moves per write into the composed sink.
  *
- * ## Why this number is a liveness bound and not a buffer size
+ * ## What it bounds, and what it no longer does
  *
- * `RedactingInputStream.read` returns only once it has produced `len` bytes or reached EOF. The
- * requested length is therefore not merely an allocation hint: **it is the delay between the child
- * writing a byte and a reader being able to observe it.** At 8 KiB — the value this call site used
- * before OBS-B — a step emitting 100 B/s would withhold its first visible byte for over a minute,
- * which is the defect `ObsBLiveOutputIngressCharacterisationTest` pins.
+ * It bounds the store's per-chunk bookkeeping: every write here is one reserve/write/commit cycle,
+ * so this is the transaction size, and OBS-F measures the throughput/RSS trade-off against data
+ * rather than by taste. It is deliberately not a public contract, so changing it is not a breaking
+ * change for a consumer of the read side.
  *
- * ## Why not smaller
+ * It used to ALSO be the liveness bound, because the pump asked `redacted.read(window)` for a whole
+ * window and `RedactingInputStream.read` returns only at `len` bytes or EOF. That made the console
+ * quantised in 1024-byte steps: at 8 KiB — the value before OBS-B — a step emitting 100 B/s
+ * withheld its first visible byte for over a minute, and even at 1 KiB a 20-byte transcript stayed
+ * invisible until the step ended. Both were measured, not argued.
  *
- * Every chunk is one reserve/write/commit cycle in the composed sink, so the window is also the
- * store's per-chunk bookkeeping. OBS-F measures the throughput/RSS trade-off and tunes this against
- * data rather than by taste; it is deliberately not a public contract, so changing it is not a
- * breaking change for a consumer of the read side.
+ * The pump now asks for `min(this, available())`, so this is a CEILING and the visible latency comes
+ * from the redactor's lookahead instead — at most `MIN_SECRET_WINDOW` bytes. That is the floor that
+ * cannot be tuned away: a byte inside the lookahead could still begin a secret, so emitting it early
+ * would be a leak rather than a latency.
  */
 const val TRANSCRIPT_LIVE_WINDOW_BYTES: Int = 1024
 

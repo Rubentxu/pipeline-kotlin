@@ -59,10 +59,29 @@ import kotlinx.coroutines.runBlocking
  * The 8 is the mutation value, and that is what attributed it: `RedactingInputStream.read` returns
  * only at `len` bytes or EOF, so the copy buffer WAS the flush granularity of the whole path.
  *
- * Two properties are deliberately NOT asserted, because they are false:
+ * ## The same defect survived OBS-B2, at a smaller size, and this file said so wrongly
  *
- * - a short payload is NOT visible mid-step — the redactor withholds its tail until EOF, which is
- *   redaction correctness rather than latency;
+ * The pump stopped being `copyTo` and became an explicit read loop, but it kept asking for a whole
+ * `TRANSCRIPT_LIVE_WINDOW_BYTES`, so the flush granularity did not go away — it just shrank from
+ * 8 KiB to 1 KiB. This file then claimed the residual latency was the redactor's lookahead, and
+ * asserted the consequence: a short payload is NOT visible mid-step.
+ *
+ * Both halves of that were wrong, and the rows were written so that neither could be noticed:
+ * `SMALL_PAYLOAD_BYTES` (15) is larger than `MIN_SECRET_WINDOW` (7), so there were always bytes the
+ * redactor could emit, and the row asserted only `during.size < payload` — a condition that held for
+ * "nothing was committed" and for "all but the lookahead were committed" alike.
+ *
+ * Measured against the installed distribution, with the step provably blocked: 4 KiB appeared live,
+ * 20 bytes did not, and the Output Plane held zero segments until the step ended. That is a console
+ * quantised in 1024-byte steps, not a live one. The pump now asks for `min(window, available())`,
+ * which moves the floor from 1024 bytes to the 7 bytes that redaction genuinely requires, and the
+ * rows below assert that tight bound instead of a loose one that passed either way.
+ *
+ * What is still deliberately NOT asserted:
+ *
+ * - the whole tail is NOT visible mid-step — the redactor withholds up to `MIN_SECRET_WINDOW` bytes
+ *   because a byte inside them could still begin a secret. Emitting them early would be a leak, so
+ *   that floor is a property to certify, not a latency to tune;
  * - the staging file is not "eventually visible" — it is absent in both windows, because a file
  *   that reappears at the end is the shape this change exists to remove.
  *
@@ -303,40 +322,56 @@ class ObsBLiveOutputIngressTest {
      * delete the row.
      */
     /**
-     * A short transcript still lands completely, and lands ONCE.
+     * NON-REGRESSION (was CHARACTERISATION) — a short transcript is visible mid-step, minus the
+     * redaction lookahead.
      *
-     * This row was a characterisation asserting the store held nothing here until the step ended,
-     * and OBS-B2 inverted half of it. The half that did not invert is the important part: a
-     * payload smaller than the redactor's lookahead window **cannot** be visible mid-step, because
-     * the redactor withholds its tail until it can rule out a secret spanning the boundary. That is
-     * redaction correctness, not the defect, and asserting liveness for a 15-byte payload would be
-     * asserting something false.
+     * ## What changed and what did not
      *
-     * So the property pinned here is the one that matters for a short output: it is durable, and
-     * it is byte-exact, whether or not anybody saw it live.
+     * This row used to assert that a 15-byte payload committed NOTHING until the step ended, and
+     * blamed the redactor's lookahead for it. That explanation was half right and half wrong, and
+     * the wrong half is what hid the defect: the real reason nothing was committed was the pump
+     * asking `redacted.read(window)` for a whole 1024-byte window, and `read` returns only at `len`
+     * bytes or EOF. Fifteen bytes is not 1024, so the payload waited for the step to end.
+     *
+     * The redactor's lookahead was never the binding constraint here, because
+     * `SMALL_PAYLOAD_BYTES > MIN_SECRET_WINDOW`: there were always bytes it COULD have emitted. It
+     * only ever withheld the last seven.
+     *
+     * So the row is INVERTED, and what it now pins is the honest post-fix property: the payload is
+     * committed live, minus a tail the redactor is still holding because a byte inside that tail
+     * could turn out to begin a secret. That tail is not a latency to be tuned away — emitting it
+     * early would be a leak.
+     *
+     * The mutation that kills this row is the pump reverting to a full-window read, which takes
+     * `during` back to zero bytes and nothing else.
      */
     @Test
-    fun `a short transcript is committed in full exactly once`() {
+    fun `a short transcript is visible mid-step, minus the redaction lookahead`() {
         val runId = "r-obsb-d1-small"
         assertTrue(
-            SMALL_PAYLOAD_BYTES < TRANSCRIPT_LIVE_WINDOW_BYTES,
-            "premise broken: the short payload is no longer below the live window, so this row no " +
-                "longer covers the withheld-tail case it was written for",
+            SMALL_PAYLOAD_BYTES > SecretPatternRegistry.MIN_SECRET_WINDOW,
+            "premise broken: the payload is not longer than the redaction lookahead, so there is no " +
+                "part of it that COULD be emitted early and this row measures nothing",
         )
         val observation = observeBlockedStep(runId, smallEmitter())
 
-        val after = observation.storeAfter.bytesOrEmpty("post-step read")
-        assertEquals(
-            SMALL_PAYLOAD,
-            after.toString(Charsets.UTF_8),
-            "the whole short transcript must be durable and byte-exact once the step ends",
-        )
         val during = observation.storeDuringBlock.bytesOrEmpty("mid-step read")
         assertTrue(
+            during.isNotEmpty(),
+            "a $SMALL_PAYLOAD_BYTES byte payload committed nothing mid-step. The lookahead withholds " +
+                "at most ${SecretPatternRegistry.MIN_SECRET_WINDOW} bytes, so there were bytes " +
+                "available to emit and the pump did not ask for them.",
+        )
+        assertTrue(
             during.size < SMALL_PAYLOAD_BYTES,
-            "a $SMALL_PAYLOAD_BYTES byte payload was already fully committed mid-step. That is not " +
-                "wrong, but this row no longer distinguishes the withheld-tail case and the next " +
-                "row is not measuring liveness.",
+            "the whole payload was already committed mid-step. The redactor must hold back its tail " +
+                "until the lookahead can rule out a secret spanning it, so emitting all " +
+                "$SMALL_PAYLOAD_BYTES bytes before the step ends is the defect, not the fix.",
+        )
+        assertEquals(
+            SMALL_PAYLOAD,
+            observation.storeAfter.bytesOrEmpty("post-step read").toString(Charsets.UTF_8),
+            "and the whole short transcript must be durable and byte-exact once the step ends",
         )
     }
 
@@ -403,30 +438,37 @@ class ObsBLiveOutputIngressTest {
     }
 
     /**
-     * The successor to the copy-granularity discriminator.
+     * NON-REGRESSION (was CHARACTERISATION, and then inverted once) — live visibility is bounded by
+     * the REDACTION lookahead, not by the copy window.
      *
-     * The live-visibility bound is now [TRANSCRIPT_LIVE_WINDOW_BYTES] instead of 8 KiB, and the
-     * row that pins it is a payload sized to sit either side of it.
+     * The window it used to name was real, and it WAS the defect: the pump asked for a whole
+     * `TRANSCRIPT_LIVE_WINDOW_BYTES` and `read` returns only at `len` bytes or EOF, so a payload had
+     * to cross an entire window before one byte was visible. What is left after the pump asks for
+     * what is ready is the redactor's tail — at most `MIN_SECRET_WINDOW` bytes — and that one is not
+     * tunable without leaking.
+     *
+     * So the discriminator inverts. The old row asked for "at least one window committed", which the
+     * new behaviour satisfies trivially and which would therefore have passed against a pump that
+     * had been broken in a dozen other ways. The claim worth pinning is the tight one: everything
+     * except the lookahead is committed while the step is still alive.
      */
     @Test
-    fun `live visibility is bounded by the window, not by the payload size`() {
+    fun `live visibility is bounded by the redaction lookahead, not by the window`() {
         val runId = "r-obsb-d2-window"
         assertTrue(
-            SMALL_PAYLOAD_BYTES < TRANSCRIPT_LIVE_WINDOW_BYTES,
-            "premise broken: the small payload is no longer smaller than the window",
+            LARGE_PAYLOAD_BYTES > TRANSCRIPT_LIVE_WINDOW_BYTES,
+            "premise broken: the payload no longer crosses a copy window, so the contrast this row " +
+                "draws between a tuned pump and an untuned one is gone",
         )
         val observation = observeBlockedStep(runId, largeEmitter())
 
         val during = observation.storeDuringBlock.bytesOrEmpty("mid-step read")
         assertTrue(
-            during.isNotEmpty(),
-            "a payload far past the live window produced no committed bytes mid-step",
-        )
-        assertTrue(
-            during.size >= TRANSCRIPT_LIVE_WINDOW_BYTES,
-            "only ${during.size} bytes were committed mid-step for a $LARGE_PAYLOAD_BYTES byte " +
-                "payload, which is less than one ${TRANSCRIPT_LIVE_WINDOW_BYTES}-byte window. The " +
-                "pump is not reaching the store at the granularity it claims.",
+            during.size >= LARGE_PAYLOAD_BYTES - SecretPatternRegistry.MIN_SECRET_WINDOW,
+            "only ${during.size} of $LARGE_PAYLOAD_BYTES bytes were committed mid-step. Once the " +
+                "pump asks for what is ready rather than for a whole window, everything except the " +
+                "redactor's ${SecretPatternRegistry.MIN_SECRET_WINDOW}-byte lookahead must be " +
+                "committed while the step is still alive.",
         )
     }
 }

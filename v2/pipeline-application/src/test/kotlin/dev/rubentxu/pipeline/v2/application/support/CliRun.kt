@@ -97,6 +97,16 @@ data class CliDiagnostics(
  *
  * @param timeout the subprocess's own contract. Callers pick it from what the command is FOR, not
  *   from how long the enclosing test is allowed to take.
+ * @param onStart invoked with the child's pid once the child exists AND both drainers are already
+ *   running. It exists to let a caller OBSERVE the child — start a peak-RSS poller, read
+ *   `/proc/<pid>/cmdline` — and it deliberately does not hand the [Process] back, so ownership
+ *   stays here.
+ *
+ *   The ordering is load-bearing and not stylistic. `HttpInstalledUatTest` spends several seconds
+ *   inside this callback polling for the JVM to appear under the launcher; if the drainers were not
+ *   already running, a child that filled a 64 KiB pipe during those seconds would block with nobody
+ *   reading, and this function would reintroduce the very deadlock it exists to remove. Drain
+ *   first, then observe.
  */
 object OwnedSubprocess {
 
@@ -105,6 +115,7 @@ object OwnedSubprocess {
         timeout: Duration,
         workingDirectory: java.io.File? = null,
         environment: Map<String, String> = emptyMap(),
+        onStart: (Long) -> Unit = {},
     ): CliRun {
         require(command.isNotEmpty()) { "a subprocess needs a command; an empty one cannot be launched" }
 
@@ -129,6 +140,17 @@ object OwnedSubprocess {
 
         val diagnostics = AtomicReference<CliDiagnostics?>(null)
         val finished = try {
+            // Only now: both pipes have a reader, which is why this cannot come earlier — see the
+            // @param onStart note.
+            //
+            // And it lives INSIDE this try on purpose. The ownership guarantee below is a
+            // `finally`, so anything raised by the caller's observer must still reach it: a
+            // `ProcessPeakRss.poll` that threw, or a `/proc` read that failed, would otherwise
+            // escape this function with the child still running and turn one harness bug into a
+            // leaked JVM plus whatever the next test measures on a degraded machine. The
+            // falsification row `anObserverThatThrowsStillLeavesNoChild` exists for exactly this.
+            onStart(process.pid())
+
             val exited = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)
             if (!exited) {
                 // Capture BEFORE the kill: once the process is destroyed its dump is gone, and the

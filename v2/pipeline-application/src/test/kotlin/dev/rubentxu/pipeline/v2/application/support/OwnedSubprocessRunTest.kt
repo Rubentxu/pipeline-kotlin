@@ -27,10 +27,15 @@ import org.junit.jupiter.api.Timeout
  * | both pipes drain, so back-pressure cannot deadlock | `saturate` — writes 4 MiB to EACH pipe |
  * | the deadline is the child's, not JUnit's | `hang` — never exits |
  * | nothing outlives the call | `grandchild` — leaves a detached JVM behind |
+ * | nothing outlives the call even when the caller FAILS | observer throws inside `onStart` |
  *
  * The saturation row is the one that used to be missed. Draining stdout and ignoring stderr still
  * deadlocks, because they are two independent pipes and the child blocks on whichever it fills
  * first.
+ *
+ * The fourth row was added after `onStart` itself introduced the hole it covers, which is the
+ * ordinary way this class grows: not by planning a row in advance, but by shipping an extension
+ * and then finding the way it breaks the guarantee it was meant to serve.
  */
 @DisplayName("S6-PRE — la primitiva de subproceso drena, caduca y no deja huerfanos")
 @Timeout(value = 5, unit = TimeUnit.MINUTES)
@@ -130,6 +135,44 @@ class OwnedSubprocessRunTest {
                 describe(result),
         )
     }
+
+    @Test
+    @DisplayName("un observador que lanza no deja el hijo vivo")
+    fun anObserverThatThrowsStillLeavesNoChild() {
+        // `onStart` exists so a caller can OBSERVE the child — start a peak-RSS poller, read
+        // `/proc/<pid>/cmdline` — and the moment it was added it opened a hole: it was invoked
+        // OUTSIDE the `try` whose `finally` is this primitive's ownership guarantee. An observer
+        // that threw would escape `run()` with the child still running, which is the one outcome
+        // every other row here is written to prevent. This row is the hole, named.
+        var escapedPid: Long? = null
+        val thrown = runCatching {
+            OwnedSubprocess.run(
+                command = child("grandchild"),
+                timeout = Duration.ofSeconds(60),
+                onStart = { pid ->
+                    escapedPid = pid
+                    throw IllegalStateException("the observer failed, on purpose")
+                },
+            )
+        }.exceptionOrNull()
+
+        assertTrue(
+            thrown is IllegalStateException,
+            "the observer's failure must PROPAGATE; swallowing it would report a result for a run " +
+                "nobody observed. Observed: ${describe(thrown)}",
+        )
+        val pid = requireNotNull(escapedPid) {
+            "the observer never saw a pid, so this row proved nothing: the subject was absent"
+        }
+        assertFalse(
+            ProcessHandle.of(pid).map { it.isAlive }.orElse(false),
+            "the child must be dead even though the caller's observer blew up on start; a leaked " +
+                "JVM degrades every measurement that follows it",
+        )
+    }
+
+    private fun describe(throwable: Throwable?): String =
+        throwable?.let { "${it::class.simpleName}: ${it.message}" } ?: "no exception"
 
     private fun describe(result: CliRun): String = when (result) {
         is CliRun.Completed -> "Completed(exit=${result.exitCode}, ${result.stdout.length}+${result.stderr.length} chars)"

@@ -1,7 +1,9 @@
 package dev.rubentxu.pipeline.v2.application.cli
 
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+import dev.rubentxu.pipeline.v2.application.support.CliRun
 import dev.rubentxu.pipeline.v2.application.support.HermeticHttpServer
+import dev.rubentxu.pipeline.v2.application.support.OwnedSubprocess
 import dev.rubentxu.pipeline.v2.application.support.ProcessPeakRss
 import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
@@ -19,6 +21,7 @@ import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 /**
@@ -145,30 +148,49 @@ class HttpInstalledUatTest {
         env: Map<String, String> = emptyMap(),
         onStart: (Long) -> Unit = {},
     ): CliResult {
-        val builder = ProcessBuilder(binary.absolutePath, *args).redirectErrorStream(true)
-        // `environment()` ADDS to the inherited environment rather than replacing it, so
-        // a scenario that passes one variable does not silently strip PATH from the
-        // launcher it is trying to exercise.
-        builder.environment().putAll(env)
-        val proc = builder.start()
-        val poller = ProcessPeakRss.poll(proc.pid())
-        onStart(proc.pid())
-        if (!proc.waitFor(timeoutMinutes, TimeUnit.MINUTES)) {
-            proc.destroyForcibly()
-            poller.stop()
-            error("the installed binary hung on ${args.toList()} after $timeoutMinutes min")
-        }
-        poller.stop()
-        return CliResult(
-            exitCode = proc.exitValue(),
-            output = proc.inputStream.bufferedReader().readText() +
-                " PEAK_RSS=" + (poller.peakBytes ?: -1L),
-            // Carried on the result rather than parsed back out of the text, so a
-            // memory scenario that forgets to assert on it still prints it in the
-            // failure. Re-collecting evidence for a regression is a tax nobody pays
-            // twice.
-            peakRssBytes = poller.peakBytes,
+        // S6-PRE. This used to fork the binary by hand with its pipes merged into one, wait for
+        // it, and only THEN read that single pipe — the shape the deadlock investigation removed.
+        // It was not hypothetical in this file either: `Main.kt:431` prints a run's whole event log in
+        // one `println`, and this suite runs 512 MiB bodies, so the single pipe was well past its
+        // 64 KiB capacity. The class `@Timeout` would then cut the TEST and leave a `pipelinek`
+        // JVM alive behind it.
+        //
+        // `output` is now `stdout` followed by `stderr` rather than one interleaved stream. Every
+        // assertion in this file is either a substring check or a `takeLast(...)` used to build a
+        // failure message, so neither depends on interleaving; the trade is stated here because it
+        // is a change, not because it is free.
+        var poller: ProcessPeakRss.Poller? = null
+        val outcome = OwnedSubprocess.run(
+            command = listOf(binary.absolutePath) + args,
+            timeout = Duration.ofMinutes(timeoutMinutes),
+            environment = env,
+            onStart = { pid ->
+                poller = ProcessPeakRss.poll(pid)
+                onStart(pid)
+            },
         )
+        poller?.stop()
+
+        return when (outcome) {
+            is CliRun.Completed -> CliResult(
+                exitCode = outcome.exitCode,
+                // Carried on the result rather than parsed back out of the text, so a memory
+                // scenario that forgets to assert on it still prints it in the failure.
+                output = outcome.stdout + outcome.stderr +
+                    " PEAK_RSS=" + (poller?.peakBytes ?: -1L),
+                peakRssBytes = poller?.peakBytes,
+                journal = null,
+            )
+            // An environment signal, and it says so. `OwnedSubprocess` has already reaped the tree
+            // and captured a thread dump, which is more than the old `error(...)` could offer.
+            is CliRun.TimedOut -> error(
+                "the installed binary hung on ${args.toList()} after $timeoutMinutes min; " +
+                    "pid=${outcome.diagnostics.pid} descendants=${outcome.diagnostics.descendantPids}",
+            )
+            is CliRun.LaunchFailed -> error(
+                "the installed binary could not be launched on ${args.toList()}: ${outcome.cause}",
+            )
+        }
     }
 
     private fun runFresh(

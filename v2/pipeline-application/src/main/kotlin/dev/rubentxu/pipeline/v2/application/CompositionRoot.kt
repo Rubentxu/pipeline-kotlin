@@ -106,56 +106,27 @@ internal fun runCanonicalPipeline(
             dev.rubentxu.pipeline.v2.credentials.executor.BasicCredentialsCapabilityContributor(
                 credentialProvider,
             ),
-    // LB-02 / EP-6: caller-composed registry (core + discovered external contributions).
-    // Composition happens ONCE in the composition root, BEFORE the canonical-eligibility
-    // gate, so contributed keys participate in the gate (eligibility is registry-derived).
-    stepRegistry: StepRegistry = CoreStepRegistryFactory.registry(),
     secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
-    // S1-D: plugin classloader hosting external plugin JARs. When present, directive
-    // contributions are discovered under this loader's TCCL and folded into the
-    // registry handed to the coordinator. Absent/null => no directive registry
-    // (legacy behaviour: a stage with directives denies; no directives runs as before).
-    pluginClassLoader: ClassLoader? = null,
-    // P3-B / S6.4: the composed open event registry. Null means "discover it under
-    // [pluginClassLoader]", which is the ordinary production path; an explicit value exists so a
-    // caller that already composed one (or a test that wants an empty one) is not made to re-run
-    // discovery. Composition happens in the BODY, under the same classloader swap the directive
-    // discovery below already performs, so the contributor and the Step that emits come from the
-    // same loader — a registry naming codecs the executing side cannot load would otherwise fail
-    // as a ClassCastException at emission rather than a refusal at composition.
-    eventRegistry: dev.rubentxu.pipeline.v2.events.registry.EventRegistry? = null,
-): RunOutcome = runBlocking {
-    // P3-B / S6.4: ONE composition of the open event registry for this run, done here and nowhere
-    // else. Under the plugin classloader when there is one, so a contributor and the Step that
-    // emits come from the same loader.
+    // S6/G: the pre-resolved composition. REQUIRED, with no default, and that is the point.
     //
-    // A broken contributor or a colliding kind aborts the run by throwing out of `compose`. That
-    // is the intended outcome: a registry that admitted three of a plugin's four event kinds would
-    // look like a working feature that quietly drops one of its own observations.
-    val composedEventRegistry: dev.rubentxu.pipeline.v2.events.registry.EventRegistry =
-        eventRegistry ?: if (pluginClassLoader != null) {
-            val previousTccl = Thread.currentThread().contextClassLoader
-            Thread.currentThread().contextClassLoader = pluginClassLoader
-            try {
-                ExternalEventDefinitionDiscovery.compose().also { composed ->
-                    if (composed.size() > 0) {
-                        System.err.println(
-                            "Discovered external event definitions: " +
-                                composed.registeredKinds().joinToString(", ")
-                        )
-                    }
-                }
-            } finally {
-                Thread.currentThread().contextClassLoader = previousTccl
-            }
-        } else {
-            dev.rubentxu.pipeline.v2.events.registry.EventRegistry.create()
-        }
-
+    // It used to default to `CoreStepRegistryFactory.registry()` while the event and directive
+    // registries were composed here in the body. A caller who omitted the argument therefore got
+    // a silent CORE-ONLY step registry — external contributions dropped with no error — which is
+    // a fail-open path through the admission guarantee BLOCK 1-D/1-E exists to provide. Removing
+    // the default makes "you did not compose" a compile error instead of a running pipeline that
+    // quietly ignores every plugin in the installation.
+    //
+    // `pluginClassLoader` is gone from this signature for the same reason. Its KDoc claimed it
+    // governed directive discovery, and after the composition moved out, nothing here read it.
+    // A parameter that documents a role it no longer has is a smaller lie than a default that
+    // drops plugins, and it is removed rather than left with a stale comment.
+    composition: PreResolvedComposition,
+): RunOutcome = runBlocking {
     CanonicalDurableRunCoordinator(
         // P3-B/P3-C: the ONE registry this run resolves plugin event kinds against, on the write
-        // side and on the read-back side.
-        eventRegistry = composedEventRegistry,
+        // side and on the read-back side. S6/G: resolved in PluginComposition, before this
+        // function was called, and already cross-checked against what the plugins emit.
+        eventRegistry = composition.events,
         // H2b: ONE composite, consulted by both admission and execution. The
         // contributors are composed here and nowhere else; a plugin that needs a
         // seam adds one element to this list and changes nothing in the engine,
@@ -199,8 +170,9 @@ internal fun runCanonicalPipeline(
             // the admission check.
             networkEgress = if (allowNetwork) AllowAll else DenyAll,
         ),
-        // B1.2c3-S2.3 + LB-02/EP-6: core Steps first, then external plugin contributions.
-        stepRegistry = stepRegistry,
+        // B1.2c3-S2.3 + LB-02/EP-6: core Steps first, then external plugin contributions,
+        // frozen by PluginComposition before this call.
+        stepRegistry = composition.steps,
         secretPatternRegistry = secretPatternRegistry,
         // RETRY-D (ADR-0075): production wire-up. The retry aggregate is reconciled against
         // the on-disk control journal so a `run` invocation with the same --db and
@@ -233,46 +205,14 @@ internal fun runCanonicalPipeline(
             retention = { OutputPlaneProvider.storeFor(controlDirRoot) },
             policy = RetainUntil.ExplicitReleaseOnly,
         ),
-        // S1-D: fold external directive contributions discovered under the plugin
-        // classloader's TCCL. Null loader => null registry => legacy behaviour.
+        // S6/G: resolved in PluginComposition, under the same classloader swap that produced
+        // the step registry and the event registry, and frozen before this call.
         //
-        // S2-A: `core.when` is a CORE definition, so it is registered here
-        // unconditionally rather than through the plugin classpath. It enters
-        // through the same open registry as any vendor directive, which is what
-        // keeps "open by key" honest: if it needed a special case, the seam
-        // would not be open.
-        directiveRegistry = run {
-            val builder = dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry.Builder()
-            builder.add(
-                dev.rubentxu.pipeline.v2.domain.directive.ErasedDirectiveDefinition(
-                    WhenDirectiveDefinition()
-                )
-            )
-            // S3.1: `core.agent` enters through the SAME open registry as every other
-            // directive. If resolving an execution target had needed its own
-            // registration path, the seam would not be open, and the whole point of
-            // the Resource policy is that the engine reads the policy rather than the key.
-            builder.add(
-                dev.rubentxu.pipeline.v2.domain.directive.ErasedDirectiveDefinition(
-                    AgentDirectiveDefinition()
-                )
-            )
-            if (pluginClassLoader != null) {
-                val previousTccl = Thread.currentThread().contextClassLoader
-                Thread.currentThread().contextClassLoader = pluginClassLoader
-                try {
-                    val contributed = ExternalDirectivePluginDiscovery.registerInto(builder)
-                    if (contributed.isNotEmpty()) {
-                        System.err.println(
-                            "Discovered external directive plugins: " + contributed.joinToString(", ")
-                        )
-                    }
-                } finally {
-                    Thread.currentThread().contextClassLoader = previousTccl
-                }
-            }
-            builder.build()
-        },
+        // S2-A / S3.1 are preserved there rather than lost: `core.when` and `core.agent` are
+        // CORE definitions that enter through the SAME open registry as any vendor directive,
+        // which is what keeps "open by key" honest. If either had needed its own registration
+        // path, the seam would not be open.
+        directiveRegistry = composition.directives,
         // S2-A: gates read the environment the STAGE actually declares, plus
         // the process environment for names the stage names explicitly.
         //

@@ -339,23 +339,12 @@ fun main(args: Array<String>) {
 
         // LB-02 / EP-6: compose registry BEFORE the gate so contributed keys are eligible.
         val pluginClassLoader = pluginClassLoaderFor(config.pluginJars)
-        val composedStepRegistryBuilder = CoreStepRegistryFactory.builder()
-        if (pluginClassLoader != null) {
-            val previousTccl = Thread.currentThread().contextClassLoader
-            Thread.currentThread().contextClassLoader = pluginClassLoader
-            try {
-                val contributed = ExternalStepPluginDiscovery.registerInto(composedStepRegistryBuilder)
-                if (contributed.isNotEmpty()) {
-                    System.err.println("Discovered external Step plugins: " + contributed.joinToString(", "))
-                }
-            } finally {
-                Thread.currentThread().contextClassLoader = previousTccl
-            }
-        }
-        // S6/F: composition is over — freeze it. Everything below (canonical eligibility,
-        // coordinator, dispatcher) reads the frozen registry; there is no registration path
-        // left to take after this line, because the registry type has none.
-        val composedStepRegistry = composedStepRegistryBuilder.build()
+        // S6/G: ONE resolution for the whole run, before anything is analysed or executed.
+        // Steps, Directives and Event kinds come from the same classloader window and are frozen
+        // together, so a plugin can never be half-present.
+        val composition = PluginComposition.resolve(pluginClassLoader)
+        composition.reportTo { line -> System.err.println(line) }
+        val composedStepRegistry = composition.steps
         val nonCanonicalSteps = compiledPipeline
             ?.analyzeCanonicalDurableExecution(composedStepRegistry).orEmpty()
         // WU-LPR-103: the default `pipeline run <script>` (in-memory) branch composes
@@ -406,7 +395,10 @@ fun main(args: Array<String>) {
                 // `--workspace <path>` stays authoritative.
                 workspaceBase = workspaceTransport.base,
                 workspaceOwnership = workspaceTransport.ownership,
-                stepRegistry = composedStepRegistry,
+                // S6/G: the frozen composition, not a step registry plus a classloader.
+                // There is no path here that can reach a registry without a directive registry
+                // having been resolved under the same loader.
+                composition = composition,
                 secretPatternRegistry = secretPatternRegistry,
                 withCredentialsExecutor = withCredentialsExecutor,
                 // H5-B: NO credentialProvider on this path, deliberately. It composes
@@ -417,7 +409,6 @@ fun main(args: Array<String>) {
                 // when the operator configured no store. Passing a provider here
                 // would mean opening a secret store for a path that has no use for
                 // one.
-                pluginClassLoader = pluginClassLoader,
                 // H8-D1: this path composes its own coordinator and had the same
                 // omission as the durable one. `--allow-network` is a per-RUN
                 // permission; a run whose flag is ignored is a run where the
@@ -756,23 +747,13 @@ fun main(args: Array<String>) {
     // visible to the gate or a contributed key would be wrongly rejected as
     // non-canonical. Same composed registry is handed to the coordinator below.
     val pluginClassLoader = pluginClassLoaderFor(config.pluginJars)
-    val composedStepRegistryBuilder = CoreStepRegistryFactory.builder()
-    val contributedPlugins = if (pluginClassLoader != null) {
-        val previousTccl = Thread.currentThread().contextClassLoader
-        Thread.currentThread().contextClassLoader = pluginClassLoader
-        try {
-            ExternalStepPluginDiscovery.registerInto(composedStepRegistryBuilder)
-        } finally {
-            Thread.currentThread().contextClassLoader = previousTccl
-        }
-    } else emptyList()
-    if (contributedPlugins.isNotEmpty()) {
-        System.err.println("Discovered external Step plugins: " + contributedPlugins.joinToString(", "))
-    }
-    // S6/F: freeze the composition exactly once, here at the boundary. The coordinator below
-    // receives an immutable registry; a plugin that had not been admitted by this point cannot
-    // join the run, which is what makes the canonical-eligibility gate trustworthy.
-    val composedStepRegistry = composedStepRegistryBuilder.build()
+    // S6/G: ONE resolution for the whole run, before eligibility is checked and before the
+    // coordinator is built. This branch previously composed the Step registry a SECOND time,
+    // with the same code the in-memory branch above already ran: two answers to one question,
+    // one per branch.
+    val composition = PluginComposition.resolve(pluginClassLoader)
+    composition.reportTo { line -> System.err.println(line) }
+    val composedStepRegistry = composition.steps
     // RP034-H / ADR-0101 clause 3.1 + RP034-Id: the workspace origin is decided
     // ONCE, here at the boundary, and both facts cross into the runtime — the
     // shared directory and its owner. `--isolated` keeps the historical
@@ -827,9 +808,9 @@ fun main(args: Array<String>) {
             // admitted Step is a Step whose behaviour depends on which branch the CLI
             // happened to take.
             credentialProvider = credentialProvider,
-            stepRegistry = composedStepRegistry,
+            // S6/G: the frozen composition, not a step registry plus a classloader.
+            composition = composition,
             secretPatternRegistry = secretPatternRegistry,
-            pluginClassLoader = pluginClassLoader,
             allowNetwork = config.allowNetwork,
         )
         pipelineSpec != null -> {

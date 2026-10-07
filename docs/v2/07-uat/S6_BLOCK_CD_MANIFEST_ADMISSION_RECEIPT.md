@@ -307,6 +307,69 @@ la forma que este bloque elimina.
 querían un registry vacío siguen funcionando, y ahora reciben un valor que no puede crecer
 después.
 
+## BLOCK 1-G — una sola autoridad de composición
+
+Con los registries congelados, la pregunta «qué contribuye esta instalación» tenía **tres
+respuestas en tres ficheros**, resueltas en tres momentos distintos y bajo tres swaps de
+classloader distintos:
+
+| Qué | Dónde se componía |
+|---|---|
+| Steps | `Main.kt`, **dos veces** — una por rama, con el mismo bloque copiado |
+| Events | dentro del cuerpo de `CompositionRoot` |
+| Directives | dentro del cuerpo de `CompositionRoot`, más abajo |
+
+Y `runCanonicalPipeline` **tenía un valor por defecto**: `stepRegistry =
+CoreStepRegistryFactory.registry()`. Un llamante que olvidara el argumento obtenía un registry
+sólo-core, sin error, ejecutando un pipeline que ignoraba en silencio todos los plugins de la
+instalación. Eso es una vía *fail-open* justo por el hueco que 1-D y 1-E existen para cerrar.
+
+### La forma
+
+`PluginComposition.resolve(pluginClassLoader)` es ahora la única autoridad. Devuelve
+`PreResolvedComposition`, que lleva los tres registries congelados, y su constructor interno hace
+que **no exista el estado parcial**: si una composición falla, el valor no llega a construirse.
+Fail-closed es una propiedad de la construcción, no una comprobación que alguien recuerde hacer.
+
+`runCanonicalPipeline` recibe `composition: PreResolvedComposition` **sin valor por defecto**, y
+`pluginClassLoader` desaparece de su firma: su KDoc afirmaba gobernar el descubrimiento de
+directives, y tras mover la composición nada en ese fichero lo leía. Un parámetro que documenta
+un papel que ya no tiene es una mentira más pequeña que un default que descarta plugins.
+
+`ExternalCapabilityContributorDiscovery` **queda fuera** de este bloque y es una asimetría
+medida, no supuesta: usa `ServiceLoader` sin cambiar el TCCL y se evalúa como valor por defecto
+*después* de que la composición restaurase el loader. Su propia KDoc justifica que no hace
+falta porque «un JAR de plugin ya está en el classpath de la distribución»
+(`BundledPluginClasspathPlan`), lo cual es cierto en la distribución instalada pero **no** en el
+camino `--plugin-jars`, que usa un loader acotado. Queda anotado como trabajo pendiente en vez
+de darse por resuelto: moverlo exige además el `credentialProvider`, que es estado por run, y no
+se ha medido todavía si esa vía está rota.
+
+### La ley, probada por mutación
+
+Cinco filas en `PreResolvedCompositionTest` cruzan `PluginComposition.resolve` sin sustituto
+(HF1, in-process): el camino CORE-only, el diagnóstico que no miente cuando no hubo
+descubrimiento, un **JAR real** con un `META-INF/services` que nombra una clase inexistente, y
+el TCCL restaurado incluso cuando la composición falla.
+
+Siete filas en `FArchPreResolvedCompositionAuthorityTest` fijan la parte estructural, que desde
+dentro de un módulo no se puede observar: cada uno de los tres puntos de descubrimiento tiene
+**exactamente un** llamante en producción, `CompositionRoot` no compone nada, y el parámetro
+`composition` no tiene valor por defecto. La primera de esas siete es de no-vacuidad: sin ella,
+«exactamente uno» lo satisface un escaneo vacío.
+
+Mutaciones ejecutadas, con atribución 1:1:
+
+- reintroducir un segundo `ExternalEventDefinitionDiscovery.compose()` en `Main.kt` tumba
+  **exactamente 1 de 7** filas y deja las otras 6 verdes;
+- quitar el `finally` que restaura el TCCL rompe la fila que lo afirma, y sólo esa.
+
+### Lo que este bloque NO hace
+
+No sustituye a BLOCK 2: esto es caracterización de la decisión de composición **en proceso**, no
+certificación de comportamiento sobre la distribución instalada.
+
+
 
 
 Se declara aquí para que no se lea como hecho:

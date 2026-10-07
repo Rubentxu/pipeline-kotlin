@@ -5,6 +5,8 @@ import dev.rubentxu.pipeline.v2.output.OutputPage
 import dev.rubentxu.pipeline.v2.output.OutputPruneIntent
 import dev.rubentxu.pipeline.v2.output.OutputPruneReport
 import dev.rubentxu.pipeline.v2.output.OutputReadPort
+import dev.rubentxu.pipeline.v2.output.OutputTailPort
+import dev.rubentxu.pipeline.v2.output.OutputTailState
 import dev.rubentxu.pipeline.v2.output.OutputReadResult
 import dev.rubentxu.pipeline.v2.output.OutputRefusal
 import dev.rubentxu.pipeline.v2.output.OutputRetentionPort
@@ -75,7 +77,8 @@ import kotlin.concurrent.withLock
  */
 class SegmentOutputStore(
     private val root: Path,
-) : OutputAppendPort, OutputReadPort, OutputRecoveryPort, OutputRetentionPort {
+) : OutputAppendPort, OutputReadPort, OutputRecoveryPort, OutputRetentionPort, OutputSealPort,
+    OutputTailPort {
 
     private data class Layout(
         val streamDir: Path,
@@ -83,6 +86,14 @@ class SegmentOutputStore(
         val commitFile: Path,
         val reservationFile: Path,
         val sealedDir: Path,
+        /**
+         * The marker saying "no further bytes will be written to this stream".
+         *
+         * Deliberately NOT named `sealed`: [sealedDir] holds ROTATED SEGMENTS (`$base-$length.sealed`),
+         * which is an unrelated fact about storage geometry. Two meanings of "sealed" in one layout is
+         * how a reader ends up trusting the wrong file, so the stream-level marker says what it is.
+         */
+        val streamSealMarker: Path,
     )
 
     private data class SealedSegment(val base: Long, val length: Long, val file: Path)
@@ -105,10 +116,71 @@ class SegmentOutputStore(
     fun frameIndex(): SegmentFrameIndex =
         frameIndex ?: synchronized(this) { frameIndex ?: SegmentFrameIndex(this, root).also { frameIndex = it } }
 
+    // ------------------------------------------------------------------ the tail
+
+    /**
+     * Records that [stream] will receive no further bytes, and returns the sealed end.
+     *
+     * The marker is written with the stream's committed extent AT THE MOMENT of sealing, not at the
+     * moment it is read. That is what makes it a fact rather than a view: a reader in a fresh JVM
+     * after a crash sees the same end the writer saw, instead of inferring it from whatever bytes
+     * happen to be present.
+     *
+     * Idempotent by construction — if the marker exists it is left alone. Rewriting it with a later
+     * extent would make a resumed run's seal depend on WHEN it happened to run, which is exactly the
+     * non-determinism recovery must not have.
+     */
+    override fun seal(stream: OutputStreamId): Long {
+        requireRecovered()
+        val layout = layout(stream)
+        return withStreamLockFor(stream) {
+            // Sealing a stream nobody ever opened would mint an authority for bytes that were never
+            // written, and a reader would then be told "finished" about output that does not exist.
+            check(Files.isDirectory(layout.streamDir)) {
+                "cannot seal unknown stream ${stream.value}: no writer ever opened it"
+            }
+            if (Files.exists(layout.streamSealMarker)) return@withStreamLockFor sealedEnd(layout)
+
+            val end = committedLocked(layout)
+            Files.createDirectories(layout.streamDir)
+            Files.writeString(layout.streamSealMarker, "$end\n")
+            end
+        }
+    }
+
+    /**
+     * The tail state of [stream], or `null` when this store does not know the stream.
+     *
+     * Read under the stream lock, so a reader cannot observe `Open` for a stream a concurrent writer
+     * has just sealed: the answer is always about one moment rather than two.
+     */
+    override fun tailState(stream: OutputStreamId): OutputTailState? {
+        if (!recovered) return null
+        val layout = layout(stream)
+        if (!Files.isDirectory(layout.streamDir)) return null
+        return withStreamLockFor(stream) {
+            if (Files.exists(layout.streamSealMarker)) {
+                OutputTailState.Sealed(sealedEnd(layout))
+            } else {
+                OutputTailState.Open(committedLocked(layout))
+            }
+        }
+    }
+
+    /** The end recorded by the marker, falling back to the live extent when it cannot be parsed. */
+    private fun sealedEnd(layout: Layout): Long =
+        runCatching { Files.readString(layout.streamSealMarker).trim().toLong() }
+            .getOrElse { committedLocked(layout) }
+
     // ------------------------------------------------------------------ ports
 
     override fun open(stream: OutputStreamId): OutputStreamHandle {
         requireRecovered()
+        // Opening DURABLY declares the stream, which is what makes `Open(0)` a reachable state rather
+        // than a guess. `ShExecution` declares both channels to the frame index before the first byte,
+        // and a stream that is known to exist but holds nothing must answer the tail question
+        // truthfully instead of looking like one this store has never heard of.
+        Files.createDirectories(layout(stream).streamDir)
         return Handle(stream)
     }
 
@@ -190,6 +262,7 @@ class SegmentOutputStore(
                     commitFile = entry.resolve("cur.cmt"),
                     reservationFile = entry.resolve("cur.res"),
                     sealedDir = entry.resolve(SEALED_DIR),
+                streamSealMarker = entry.resolve(STREAM_SEAL_MARKER),
                 )
                 releasedBytes += reconcile(layout)
                 if (Files.deleteIfExists(layout.reservationFile)) releasedReservations++
@@ -326,6 +399,7 @@ class SegmentOutputStore(
         commitFile = dir.resolve("cur.cmt"),
         reservationFile = dir.resolve("cur.res"),
         sealedDir = dir.resolve(SEALED_DIR),
+        streamSealMarker = dir.resolve(STREAM_SEAL_MARKER),
     )
 
     private fun withStreamLock(stream: OutputStreamId, block: () -> OutputReadResult): OutputReadResult =
@@ -527,7 +601,17 @@ class SegmentOutputStore(
 
         override fun reserve(minBytes: Int): OutputReservation {
             require(minBytes > 0) { "reservation must be positive, got $minBytes" }
-            return withStreamLockFor(streamId) { Reserve(streamId, layout(streamId), minBytes) }
+            return withStreamLockFor(streamId) {
+                val layout = layout(streamId)
+                // A sealed stream declared that no further bytes will arrive. Accepting a write now
+                // would make OutputTailState.Sealed a promise the store had already broken, and a
+                // reader that stopped tailing on that promise would silently lose the new bytes.
+                check(!Files.exists(layout.streamSealMarker)) {
+                    "stream ${streamId.value} is sealed at ${sealedEnd(layout)} bytes and cannot " +
+                        "accept more; sealing means the tail is final, not merely current"
+                }
+                Reserve(streamId, layout, minBytes)
+            }
         }
 
         /**
@@ -692,6 +776,12 @@ class SegmentOutputStore(
     private companion object {
         const val STREAMS_DIR = "streams"
         const val SEALED_DIR = "segments"
+
+        /**
+         * Per-stream marker recording that no further bytes will be written. Distinct from
+         * [SEALED_DIR], which names ROTATED SEGMENTS — see `Layout.streamSealMarker`.
+         */
+        const val STREAM_SEAL_MARKER = "stream.seal"
         const val SEALED_SUFFIX = ".seg"
         const val DEFAULT_RESERVATION_BYTES = 64L * 1024L
         const val SEGMENT_MAX_BYTES = 8L * 1024L * 1024L

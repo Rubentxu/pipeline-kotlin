@@ -266,7 +266,31 @@ object ShExecution {
             // What did NOT change, and is checked above and by OutputSingleAuthorityFitnessTest:
             // redaction happens before persistence, the bytes land in one authority, and no
             // console event is emitted for them.
-            classifyShellTerminal(terminal, command.returnMode)
+            // OBS-C3: the terminal is the only place that knows the operation is over, so it is the
+            // only place a tail may be sealed. The pump ending is NOT that fact: when the JVM dies
+            // mid-`sh`, the pump ends while the operation continues, and a resumed run re-attaches to
+            // the same operation id and appends to these very streams. Sealing on pump close would
+            // seal a stream that is legitimately about to grow again.
+            //
+            // Both channels are sealed because OBS-C2.3 gave the operation one stream per channel,
+            // and a consumer that merged them must be able to see both reach their end.
+            val terminalResult = classifyShellTerminal(terminal, command.returnMode)
+            if (controlDirRoot != null) {
+                runCatching {
+                    val store = OutputPlaneProvider.storeFor(controlDirRoot)
+                    val streams = OutputPlaneProvider.streamsOf(runId, opId.format())
+                    streams.all.forEach { address -> store.seal(address.stream) }
+                }.onFailure { failure ->
+                    // A failure to seal does not invalidate the bytes already committed: the tail stays
+                    // Open, which is the SAFE direction — a consumer keeps polling rather than
+                    // declaring a finished run finished. Reporting it would be worse than the gap.
+                    System.err.println(
+                        "[ShExecution] could not seal the output tail of $runId/${opId.format()}: " +
+                            "${failure.message}",
+                    )
+                }
+            }
+            terminalResult
         } catch (e: dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException) {
             // Non-durable fallback for non-Linux platforms
             // P2: script via temp file; env via pb.environment().putAll (WS-S-005)

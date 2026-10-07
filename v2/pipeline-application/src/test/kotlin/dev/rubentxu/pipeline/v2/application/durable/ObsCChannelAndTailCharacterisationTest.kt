@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.output.OutputCursor
 import dev.rubentxu.pipeline.v2.output.OutputReadResult
 import dev.rubentxu.pipeline.v2.output.OutputRefusal
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
+import dev.rubentxu.pipeline.v2.output.OutputTailState
 import dev.rubentxu.pipeline.v2.output.store.SegmentOutputStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfig
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
@@ -122,6 +123,10 @@ class ObsCChannelAndTailCharacterisationTest {
         val midStepNextWasNull: Boolean,
         val midStepCommittedEnd: Long,
         val finalCommittedEnd: Long,
+        /** OBS-C3: the tail state sampled MID-STEP, while the child is provably alive. */
+        val midStepTailState: dev.rubentxu.pipeline.v2.output.OutputTailState?,
+        /** OBS-C3: the same tail state after the step reached its terminal. */
+        val finalTailState: dev.rubentxu.pipeline.v2.output.OutputTailState?,
         /** Every stream id that was ever opened by this run, probed after the fact. */
         val terminalOutcome: String,
     )
@@ -191,6 +196,9 @@ class ObsCChannelAndTailCharacterisationTest {
         val stream = streams.stdout.stream
         val midStep = store.read(stream, OutputCursor.start(stream), PAGE_BYTES)
         val midStepPage = (midStep as? OutputReadResult.Page)?.page
+        // Sampled while the barrier holds the step alive, so an Open here is a fact about a running
+        // process rather than a race with its termination.
+        val midStepTailState = store.tailState(streams.stdout.stream)
 
         Files.writeString(released, "go")
         runner.join(TimeUnit.SECONDS.toMillis(90))
@@ -209,6 +217,8 @@ class ObsCChannelAndTailCharacterisationTest {
             midStepNextWasNull = midStepPage?.next == null,
             midStepCommittedEnd = midStepPage?.committedEnd ?: -1L,
             finalCommittedEnd = store.committedExtent(stream) ?: -1L,
+            midStepTailState = midStepTailState,
+            finalTailState = store.tailState(streams.stdout.stream),
             // `ShellInvocationResult` is a closed ADT, so the terminal shape is named rather than
             // rendered: an unexpected variant here means the step failed, which would make every
             // byte observation in this row meaningless.
@@ -425,37 +435,27 @@ class ObsCChannelAndTailCharacterisationTest {
     // -------------------------------------------------- C2: OPEN vs SEALED
 
     /**
-     * CHARACTERISATION — "no page right now" is what `next == null` means, and it is NOT "finished".
+     * INVERTED BY OBS-C3 — the tail state is `Open` mid-step and `Sealed` once it ends.
      *
-     * This is the gap `--follow` would fall into. A consumer that treats `next == null` as an end
-     * of stream stops tailing a process that is still running; a consumer that treats it as "not
-     * yet" cannot tell a quiet step from a finished one, and has to poll forever. Today the read
-     * port offers no third answer.
+     * This row used to characterise the ABSENCE of the capability: `next == null` could not be told
+     * apart from "finished", so a `--follow` consumer had to choose between stopping too early and
+     * polling forever. The defect was an absent interface, which is why the original row carried a
+     * self-verifying inequality instead of a mutation that could kill it.
      *
-     * The step emits [TAIL_PAYLOAD] only after the release barrier, so the row proves the
-     * distinction is real and not a race: the mid-step page genuinely ended where a later page
-     * continued from.
+     * Now the capability exists ([dev.rubentxu.pipeline.v2.output.OutputTailState]), so this row can
+     * assert it directly, and it IS killable by production code. Both halves are kept:
      *
-     * Closed by: OBS-C3. Invert then — assert the mid-step tail state is `Open`, not "unknown".
+     * ```text
+     * mid-step   Open    the step is provably alive and more bytes will come
+     * after      Sealed  the operation reached its terminal and the tail is final
+     * ```
      *
-     * ## This row is NOT killed by a production mutation, and saying so is part of it
-     *
-     * Mutation M6 (stop fusing, route stderr nowhere) kills the three channel rows and leaves this
-     * one green. That is not a gap in the mutation, it is the shape of the claim: the defect here is
-     * an **absent capability in the published contract**, not a behaviour that is wrong. There is
-     * nothing in the product to mutate, because there is no code path that answers "is this stream
-     * finished?" at all — mutating a pump or a store cannot change an interface that does not exist.
-     *
-     * What this row therefore carries instead is a **second, self-verifying half**:
-     * `midStepCommittedEnd < finalCommittedEnd`. That inequality is what makes the indistinction
-     * real rather than coincidental — it proves bytes genuinely arrived after the page that claimed
-     * no continuation, so `next == null` was *wrong to read as finished* on this exact run, not on
-     * some hypothetical one. If the store ever sealed early, or the pump held every byte to the end,
-     * this half fails on its own. So the row still has the power to be wrong, and that is what a
-     * vacuity-proof row needs — it simply cannot be killed by editing production code.
+     * The inequality the old row carried is still asserted, because it is what makes `Open` mean
+     * something: a state that said Open while nothing further arrived would be as useless as the
+     * missing interface it replaced.
      */
     @Test
-    fun `a null next cursor means not-yet rather than finished`() {
+    fun `a running step reports an Open tail and a finished one a Sealed tail`() {
         val runId = "r-obsc-c2-tail"
         val observation = observeBlockedStep(runId, "printf '%s' '$CONTROL_STDOUT_PAYLOAD'")
 
@@ -464,22 +464,38 @@ class ObsCChannelAndTailCharacterisationTest {
             "premise broken: the mid-step page already offered a next cursor, so this row no " +
                 "longer covers the not-yet case it was written for",
         )
-        assertEquals(
-            -1L,
-            observation.midStepCommittedEnd,
-            "premise broken: the mid-step page reported a negative committed extent",
+        assertTrue(
+            observation.midStepCommittedEnd >= 0,
+            "premise broken: the mid-step page reported a negative committed extent " +
+                "(${observation.midStepCommittedEnd}), so the store refused rather than paging. " +
+                "OBS-C3 declares the stream at open time, so a step that has written nothing yet " +
+                "pages with committedEnd 0 — an empty page, not an absent stream.",
+        )
+
+        // The step is provably alive here (the barrier exists and the release has not happened), so
+        // anything other than Open would be a lie about the future.
+        assertInstanceOf(
+            OutputTailState.Open::class.java,
+            observation.midStepTailState,
+            "while the step is running its tail must be OPEN: a consumer told Sealed here would stop " +
+                "tailing a process that is still running. Observed: ${observation.midStepTailState}",
         )
         assertTrue(
             observation.midStepCommittedEnd < observation.finalCommittedEnd,
             "the mid-step committed extent (${observation.midStepCommittedEnd}) was already the " +
-                "final one (${observation.finalCommittedEnd}). If they are equal, `next == null` " +
-                "here would really have meant finished, and this row would be asserting the " +
-                "opposite of the truth.",
+                "final one (${observation.finalCommittedEnd}). If they are equal, Open here would " +
+                "have been asserting the opposite of the truth.",
+        )
+
+        assertEquals(
+            OutputTailState.Sealed(observation.finalCommittedEnd),
+            observation.finalTailState,
+            "once the step has reached its terminal the tail must be SEALED, or a --follow consumer " +
+                "would poll a finished run forever",
         )
         assertTrue(
             observation.transcript.toString(Charsets.UTF_8).contains(TAIL_PAYLOAD),
-            "the step stopped emitting after its mid-step page reported no continuation, which is " +
-                "exactly the data loss a follow consumer would suffer today",
+            "the bytes emitted after the release were lost, which would make the tail question moot",
         )
     }
 

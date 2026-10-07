@@ -176,6 +176,48 @@ interface OutputRecoveryPort {
 }
 
 /**
+ * Recording that a stream will receive no further bytes.
+ *
+ * ## Why sealing is a separate concern from writing
+ *
+ * `OutputAppendPort` answers "what did the producer just write". This one answers "is there
+ * anything left to write", which is a different question with a different owner: the writer knows
+ * when it is done, and only the writer does. Keeping them apart means the byte path never has to
+ * carry a flag that only matters at the very end.
+ *
+ * ## Why the execution layer decides, and not the pump
+ *
+ * A pump ending is **not** the same fact as a stream being finished. When a JVM dies mid-`sh`, the
+ * pump ends while the operation continues: a resumed run re-attaches to the same operation id and
+ * appends more bytes to the very same stream. Sealing on pump close would therefore seal a stream
+ * that is legitimately about to grow again, and the re-attached bytes would be refused by a stream
+ * that had already declared itself finished.
+ *
+ * So the seal is recorded where the terminal outcome is known — the execution layer, which has
+ * decided the operation is over — and only then. A killed operation is never sealed, which is
+ * exactly what leaves room for recovery.
+ *
+ * ## Idempotence
+ *
+ * [seal] must be callable more than once and must not move a sealed stream's end. A resumed run that
+ * re-observes the same terminal must produce the same durable state, not a second, later end.
+ */
+interface OutputSealPort {
+
+    /**
+     * Records that no further bytes will be written to [stream], and returns the resulting tail end.
+     *
+     * Idempotent: sealing an already-sealed stream returns the same [end] and changes nothing.
+     * Refuses an append after a seal rather than accepting it, because a sealed stream that grows
+     * would make [dev.rubentxu.pipeline.v2.output.OutputTailState.Sealed] a promise the store had
+     * already broken.
+     *
+     * @return the sealed end, which is the stream's committed extent at the moment of sealing
+     */
+    fun seal(stream: OutputStreamId): Long
+}
+
+/**
  * What a recovery pass found and repaired.
  *
  * [committedBytes] is the **stable** part: it is the same however many times recovery runs, so a

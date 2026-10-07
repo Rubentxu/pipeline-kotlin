@@ -468,8 +468,13 @@ class ObsE5ObserveFollowTest {
         val result = CliParser.parse(arrayOf("run", "--follow", "pipeline.kts"))
 
         assertTrue(
-            result is CliParseResult.Rejected && result.error is CliError.FollowBelongsToObserve,
+            result is CliParseResult.Rejected && result.error is CliError.OptionBelongsToObserve,
             "run already reads its run as it happens; there is nothing left to follow. got: $result",
+        )
+        assertTrue(
+            CliParser.parse(arrayOf("run", "--limit", "5", "pipeline.kts")) is CliParseResult.Rejected,
+            "a truncated live transcript that cannot say it was truncated is the one output shape " +
+                "this refuses to produce",
         )
     }
 }

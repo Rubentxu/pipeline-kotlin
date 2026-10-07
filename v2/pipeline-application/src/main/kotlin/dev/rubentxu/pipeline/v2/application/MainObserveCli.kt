@@ -142,7 +142,15 @@ object MainObserveCli {
     ): ObserveOutcome {
         if (!lanes.hasEventStore) return ObserveOutcome.Refused(ObserveRefusal.NoDurableEventStore)
         val events = lanes.eventsOf(runId)
-        out.print(RunObservationOutput.encode(events.toList(), parsed.view, parsed.format, parsed.compiled))
+        out.print(
+            RunObservationOutput.encode(
+                events.toList(),
+                parsed.view,
+                parsed.format,
+                parsed.compiled,
+                parsed.budget,
+            ),
+        )
         out.flush()
         return ObserveOutcome.Replayed
     }
@@ -159,7 +167,10 @@ object MainObserveCli {
         val presentation = LiveOutputPresentation(parsed.format, PrintStream(out), diagnostics)
         val selected = mutableListOf<dev.rubentxu.pipeline.v2.application.observation.ObservationRecord.Output>()
         var afterOrdinal = -1L
-        while (true) {
+        // Counted HERE and not inside the presentation because this loop also has to know WHEN the
+        // budget ran out, in order to stop reading rather than keep paging a run it will not print.
+        var emitted = 0
+        while (parsed.budget.allows(emitted)) {
             when (val read = lanes.outputOf(runId, afterOrdinal, FRAMES_PER_READ)) {
                 null -> return ObserveOutcome.Refused(ObserveRefusal.NoOutputPlane)
                 is ObservationOutputRead.Refused ->
@@ -168,6 +179,8 @@ object MainObserveCli {
                 is ObservationOutputRead.Page -> {
                     val page = read.page
                     page.records.filter { parsed.compiled.accepts(it) }.forEach { record ->
+                        if (!parsed.budget.allows(emitted)) return@forEach
+                        emitted++
                         if (parsed.format == ObservationFormat.JSON) {
                             // An array is only complete when its `]` arrives, so records are held
                             // rather than streamed; that is what `documentFor` is for.
@@ -251,7 +264,7 @@ object MainObserveCli {
         // rendering is stateful, and a per-round renderer forgets the stage that names a later step.
         val writer = OutputStreamWriter(out, Charsets.UTF_8)
         val presentation =
-            RunObservationOutput.Stream(parsed.view, parsed.format, parsed.compiled, writer)
+            RunObservationOutput.Stream(parsed.view, parsed.format, parsed.compiled, parsed.budget, writer)
         while (true) {
             val slice = lanes.eventSliceOf(runId, cursor, EVENTS_PER_READ)
                 ?: return ObserveOutcome.Refused(ObserveRefusal.NoDurableEventStore)
@@ -265,6 +278,7 @@ object MainObserveCli {
             if (slice.events.any { it is dev.rubentxu.pipeline.v2.events.RunFinished } && !slice.hasMore) {
                 return FollowOutcome.ReachedRunFinish.asOutcome()
             }
+            if (presentation.isSpent) return FollowOutcome.ReachedRecordBudget.asOutcome()
             if (control.shouldStop()) return FollowOutcome.StoppedByConsumer.asOutcome()
             if (slice.events.isEmpty()) control.idle()
         }
@@ -281,6 +295,7 @@ object MainObserveCli {
         if (!lanes.hasOutputPlane) return ObserveOutcome.Refused(ObserveRefusal.NoOutputPlane)
         val presentation = LiveOutputPresentation(parsed.format, PrintStream(out), diagnostics)
         var afterOrdinal = -1L
+        var emitted = 0
         while (true) {
             var moreFrames = false
             when (val read = lanes.outputOf(runId, afterOrdinal, FRAMES_PER_READ)) {
@@ -292,11 +307,14 @@ object MainObserveCli {
                     val page = read.page
                     moreFrames = page.moreFrames
                     page.records.filter { parsed.compiled.accepts(it) }.forEach { record ->
+                        if (!parsed.budget.allows(emitted)) return@forEach
+                        emitted++
                         presentation.emit(record)
                     }
                     afterOrdinal = page.lastOrdinal
                 }
             }
+            if (!parsed.budget.allows(emitted)) return FollowOutcome.ReachedRecordBudget.asOutcome()
             val tails = lanes.outputTailsOf(runId).orEmpty()
             when (followDecision(moreFrames, tails)) {
                 FollowDecision.ReadAgain -> {
@@ -315,6 +333,15 @@ sealed interface FollowOutcome {
     data object ReachedRunFinish : FollowOutcome
     data object ReachedSealedOutput : FollowOutcome
     data object StoppedByConsumer : FollowOutcome
+
+    /**
+     * The read spent `--limit`.
+     *
+     * Its own case because none of the others happened. The run did not commit a terminal fact, and
+     * the consumer did not ask to stop — so reporting either would be a caller being told the run
+     * finished, or that we gave up, when in fact we were told exactly how much to show.
+     */
+    data object ReachedRecordBudget : FollowOutcome
 
     fun asOutcome(): ObserveOutcome = ObserveOutcome.Followed(this)
 }

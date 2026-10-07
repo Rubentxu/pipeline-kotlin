@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.application.observation.LineSelector
 import dev.rubentxu.pipeline.v2.application.observation.compileQuery
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.application.observation.ObservationQuery
+import dev.rubentxu.pipeline.v2.application.observation.RecordBudget
 import dev.rubentxu.pipeline.v2.application.observation.RunObservationOutput
 import dev.rubentxu.pipeline.v2.application.observation.TextSelector
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
@@ -236,16 +237,32 @@ sealed interface CliError {
     }
 
     /**
-     * `--follow` on `run`.
+     * A reader's option reached `run`.
      *
-     * The inverse of [OptionNotReadable], and refused for the same reason. `run` already reads its
-     * run as it happens, so the flag asks for nothing; accepting it anyway would leave a parameter
-     * that is parsed, remembered and never read.
+     * The inverse of [OptionNotReadable], and refused for a sharper reason than symmetry. A flag that
+     * is parsed, remembered and never read is a dead semantic parameter; `--follow` on `run` is
+     * exactly that, because `run` already reads its run as it happens. `--limit` is worse than dead:
+     * it would truncate the live transcript and `run` has no way to say the transcript was
+     * truncated, which is the failure a reader that reports itself complete already causes elsewhere.
      */
-    data object FollowBelongsToObserve : CliError {
+    data class OptionBelongsToObserve(val option: String) : CliError {
         override fun toString(): String =
-            "FollowBelongsToObserve: --follow is what a READER does, and 'run' already reads its run " +
-                "as it happens — there is nothing left to follow. Use 'pipelinek observe <runId> --follow'."
+            "OptionBelongsToObserve: '$option' is what a READER does, and 'run' cannot report that it " +
+                "showed you only part of what happened. Read the run after it finishes instead: " +
+                "'pipelinek observe <runId> $option'."
+    }
+
+    /**
+     * `--limit` that is not a count.
+     *
+     * Refused rather than defaulted, and the legacy `events` verb already learned this the hard way:
+     * `--limit abc` used to read as 100, so a typo silently became a different query than the one
+     * the caller believed they were making.
+     */
+    data class InvalidLimit(val value: String) : CliError {
+        override fun toString(): String =
+            "InvalidLimit: --limit needs a positive whole number of records, got '$value'. " +
+                "Omit it to show everything."
     }
 }
 
@@ -297,6 +314,8 @@ sealed interface ObservationParseResult {
         val format: ObservationFormat,
         /** Keep reading after the durable authority is exhausted. */
         val follow: Boolean,
+        /** How many selected records this read may emit. A budget, never a filter. */
+        val budget: RecordBudget,
         /** Where the event lane is. Null means no durable event store was named. */
         val dbPath: String?,
         /** Where the Output Plane is. Null means it was not named. */
@@ -354,6 +373,10 @@ private class ParseState(
      * where a flag's meaning is decided, which is how one flag ends up meaning two things.
      */
     var deliverableViews: Set<ObservationView> = ObservationView.EVENT_LANE_VIEWS,
+    /**
+     * `--limit N`. A read-side budget over SELECTED records, never a filter: see [RecordBudget].
+     */
+    var budget: RecordBudget = RecordBudget.All,
     /**
      * `--follow`. Read-only and therefore legal here and on `observe`, unlike the execution options.
      *
@@ -430,11 +453,15 @@ object CliParser {
             }
         }
 
-        // `applyOption` is shared with `parseObservation`, so `--follow` lands here too — into a
-        // `CliFlags` that has no field for it. Refused by name rather than dropped, for the same
-        // reason the execution options are refused on the other verb.
+        // `applyOption` is shared with `parseObservation`, so the reader's options land here too —
+        // into a `CliFlags` that has no field for them. Refused by name rather than dropped: a
+        // truncated live transcript that cannot say it was truncated is the one output shape this
+        // repository refuses to produce.
         if (state.follow) {
-            return CliParseResult.Rejected(CliError.FollowBelongsToObserve)
+            return CliParseResult.Rejected(CliError.OptionBelongsToObserve("--follow"))
+        }
+        if (state.budget !is RecordBudget.All) {
+            return CliParseResult.Rejected(CliError.OptionBelongsToObserve("--limit"))
         }
 
         // `--grep-invert` negates a group; with no group there is nothing to
@@ -544,6 +571,7 @@ object CliParser {
                 view = state.view,
                 format = state.format,
                 follow = state.follow,
+                budget = state.budget,
                 dbPath = state.dbPath,
                 controlRoot = state.controlRoot,
             )
@@ -728,6 +756,18 @@ object CliParser {
             "--follow" -> {
                 state.follow = true
                 ApplyOutcome.Applied(index + 1)
+            }
+            "--limit" -> {
+                val value = args.getOrNull(index + 1)
+                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
+                // Read as a count or refused. Never clamped: `--limit 0` and `--limit -3` are callers
+                // whose budget came out empty, and answering either with silence hides the mistake.
+                val records = value.toIntOrNull()
+                if (records == null || records <= 0) {
+                    return ApplyOutcome.Rejected(CliError.InvalidLimit(value))
+                }
+                state.budget = RecordBudget.UpTo(records)
+                ApplyOutcome.Applied(index + 2)
             }
             "--channel" -> {
                 val value = args.getOrNull(index + 1)

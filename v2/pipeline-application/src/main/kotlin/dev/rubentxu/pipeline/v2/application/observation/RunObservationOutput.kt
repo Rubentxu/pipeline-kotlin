@@ -83,10 +83,13 @@ object RunObservationOutput {
         view: ObservationView,
         format: ObservationFormat,
         query: CompiledObservationQuery,
+        budget: RecordBudget = RecordBudget.All,
     ): String {
-        if (!isIncremental(format)) return JsonEventLog.encode(selectObservations(events, query))
+        if (!isIncremental(format)) {
+            return JsonEventLog.encode(budget.bounded(selectObservations(events, query)))
+        }
         val sink = StringWriter()
-        Stream(view, format, query, sink).write(events.asSequence())
+        Stream(view, format, query, budget, sink).write(events.asSequence())
         return sink.toString()
     }
 
@@ -106,12 +109,14 @@ object RunObservationOutput {
         view: ObservationView,
         format: ObservationFormat,
         query: CompiledObservationQuery,
+        budget: RecordBudget = RecordBudget.All,
     ) {
         if (!isIncremental(format)) {
-            JsonEventLog.encodeTo(events.asRecords().filter(query::accepts).toEvents(), out)
+            val selected = events.asRecords().filter(query::accepts).toEvents().toList()
+            JsonEventLog.encodeTo(budget.bounded(selected).asSequence(), out)
             return
         }
-        Stream(view, format, query, out).write(events)
+        Stream(view, format, query, budget, out).write(events)
     }
 
     /**
@@ -126,10 +131,20 @@ object RunObservationOutput {
         view: ObservationView,
         private val format: ObservationFormat,
         private val query: CompiledObservationQuery,
+        private val budget: RecordBudget,
         private val out: Writer,
     ) {
         private val console: HumanConsoleRenderer.ConsoleStream? =
             if (format == ObservationFormat.TEXT) HumanConsoleRenderer.stream(view) else null
+
+        /**
+         * How many selected records this stream has already emitted.
+         *
+         * Lives here rather than in the caller's loop because this is the only place that knows what
+         * a "record" was: a line the VIEW excluded was never a record, and spending the budget on it
+         * would make `--limit` a second filter hiding behind the first.
+         */
+        private var emitted = 0
 
         init {
             // A document has no incremental form. Reachable only by a caller that skipped both
@@ -141,20 +156,21 @@ object RunObservationOutput {
         }
 
         fun write(events: Sequence<DomainEvent>) {
+            // Folded and counted separately: an event that is not going to be printed still has to
+            // reach the console renderer, because that is what carries the stage scope the LATER
+            // lines resolve against. Stopping before the fold would trade a presentation state for a
+            // saved cycle, and the state is the whole reason the renderer exists.
             for (event in events) {
                 when (format) {
                     ObservationFormat.TEXT -> {
-                        // Fold FIRST, decide what to print AFTER — the rule
-                        // `ConsolePrintingEventSink` documents. Skipping the fold for an event the
-                        // query rejects would degrade the rendering of the events it keeps.
                         val line = console!!.accept(event)
-                        if (line != null && query.accepts(ObservationRecord.Event(event))) {
+                        if (line != null && accepts(event)) {
                             out.write(line)
                             out.write("\n")
                         }
                     }
 
-                    ObservationFormat.JSON_LINES -> if (query.accepts(ObservationRecord.Event(event))) {
+                    ObservationFormat.JSON_LINES -> if (accepts(event)) {
                         out.write(JsonEventLog.encodeOne(event))
                         out.write("\n")
                     }
@@ -163,6 +179,24 @@ object RunObservationOutput {
                     ObservationFormat.JSON -> Unit
                 }
             }
+        }
+
+        /**
+         * Whether this stream has emitted everything its budget paid for.
+         *
+         * Asked by a FOLLOWER that has to decide whether to keep reading. It cannot answer by itself:
+         * the budget is spent inside the emitter, because the emitter is the only place that knows
+         * which events were records and which were folded-and-dropped.
+         */
+        val isSpent: Boolean
+            get() = !budget.allows(emitted)
+
+        /** Whether [event] is selected AND still within budget. The one place either test is made. */
+        private fun accepts(event: DomainEvent): Boolean {
+            if (!query.accepts(ObservationRecord.Event(event))) return false
+            if (!budget.allows(emitted)) return false
+            emitted++
+            return true
         }
     }
 

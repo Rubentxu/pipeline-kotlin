@@ -336,14 +336,45 @@ Fail-closed es una propiedad de la construcción, no una comprobación que algui
 directives, y tras mover la composición nada en ese fichero lo leía. Un parámetro que documenta
 un papel que ya no tiene es una mentira más pequeña que un default que descarta plugins.
 
-`ExternalCapabilityContributorDiscovery` **queda fuera** de este bloque y es una asimetría
-medida, no supuesta: usa `ServiceLoader` sin cambiar el TCCL y se evalúa como valor por defecto
-*después* de que la composición restaurase el loader. Su propia KDoc justifica que no hace
-falta porque «un JAR de plugin ya está en el classpath de la distribución»
-(`BundledPluginClasspathPlan`), lo cual es cierto en la distribución instalada pero **no** en el
-camino `--plugin-jars`, que usa un loader acotado. Queda anotado como trabajo pendiente en vez
-de darse por resuelto: moverlo exige además el `credentialProvider`, que es estado por run, y no
-se ha medido todavía si esa vía está rota.
+### La cuarta autoridad, medida y cerrada
+
+`ExternalCapabilityContributorDiscovery` era la cuarta autoridad: usaba `ServiceLoader` **sin**
+cambiar el TCCL y se evaluaba como valor por defecto *después* de que la composición restaurase
+el loader. Su propia KDoc justifica que no hace falta porque «un JAR de plugin ya está en el
+classpath de la distribución» (`BundledPluginClasspathPlan`), lo cual es cierto en la
+distribución instalada pero **no** en el camino `--plugin-jars`, que usa un loader acotado.
+
+**La sonda obvia habría mentido.** Preguntar por el plugin `http` da un verde cómodo:
+`pipeline-application` tiene `implementation(project(":pipeline-step-sdk:http"))`, así que el
+classpath de la app ya lleva el contributor *y* su fichero de servicios, y el descubrimiento
+funciona sea cual sea el loader. Eso oculta el defecto en vez de refutarlo.
+
+La sonda real usa un plugin que la app **no** tiene: sus clases vienen del padre —el classloader
+del propio test— y sólo sus *declaraciones* de servicio viven en un JAR hijo. Eso aísla una
+variable: ¿ve `ServiceLoader` una declaración que sólo existe por debajo del TCCL?
+
+Medido, antes de arreglar:
+
+- el Step `probe.scoped.step` **sí** se registraba, porque `resolve` cambia el TCCL;
+- la capability `probe.scoped.transport` **no** la aportaba ningún contributor.
+
+Es exactamente el fallo que la KDoc de `ExternalCapabilityContributorDiscovery` registra para
+`http.request`: «descubierto por `ServiceLoader`, aparece en la lista de plugins que imprime la
+CLI, y aun así no puede ejecutarse». Por eso se reconoció en vez de redescubrirse desde cero.
+
+El arreglo es que `PreResolvedComposition` lleva ahora `capabilityContributors`, descubiertas
+**dentro de la misma ventana**. El lado de credenciales se queda en `CompositionRoot` porque es
+estado por run: envuelve el almacén que abrió *esta* invocación, así que no puede venir de un
+descubrimiento por classpath. El default de `capabilityContributors` pasa a significar «lo que
+la composición resolvió, más el seam de credenciales»; sigue siendo un default, pero ahora cierra
+sobre un valor que la run ya resolvió en lugar de redescubrir bajo lo que el TCCL sea por entonces.
+
+La fila de la sonda **invirtió su expectativa**, y la transición está escrita en el mensaje de
+la aserción, no borrada en silencio: pasó de `assertFalse` con «MEASURED DEFECT» a `assertTrue`
+con «REGRESSION». La fila de no-vacuidad que la acompaña afirma que el loader de la app **sigue**
+sin ver ese contributor — si algún día lo viera, la fila anterior dejaría de probar que la ventana
+de composición es lo que funciona.
+
 
 ### La ley, probada por mutación
 
@@ -353,15 +384,17 @@ descubrimiento, un **JAR real** con un `META-INF/services` que nombra una clase 
 el TCCL restaurado incluso cuando la composición falla.
 
 Siete filas en `FArchPreResolvedCompositionAuthorityTest` fijan la parte estructural, que desde
-dentro de un módulo no se puede observar: cada uno de los tres puntos de descubrimiento tiene
-**exactamente un** llamante en producción, `CompositionRoot` no compone nada, y el parámetro
-`composition` no tiene valor por defecto. La primera de esas siete es de no-vacuidad: sin ella,
-«exactamente uno» lo satisface un escaneo vacío.
+dentro de un módulo no se puede observar: cada uno de los **cuatro** puntos de descubrimiento
+tiene **exactamente un** llamante en producción, `CompositionRoot` no compone nada, y el
+parámetro `composition` no tiene valor por defecto. La primera de esas ocho es de no-vacuidad:
+sin ella, «exactamente uno» lo satisface un escaneo vacío.
 
 Mutaciones ejecutadas, con atribución 1:1:
 
 - reintroducir un segundo `ExternalEventDefinitionDiscovery.compose()` en `Main.kt` tumba
   **exactamente 1 de 7** filas y deja las otras 6 verdes;
+- devolver `ExternalCapabilityContributorDiscovery.discover()` al default de `CompositionRoot`
+  tumba **exactamente 1 de 8** y deja las otras 7 verdes;
 - quitar el `finally` que restaura el TCCL rompe la fila que lo afirma, y sólo esa.
 
 ### Lo que este bloque NO hace

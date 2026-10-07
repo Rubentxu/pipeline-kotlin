@@ -102,6 +102,21 @@ class FArchPreResolvedCompositionAuthorityTest {
     }
 
     /**
+     * The capability seam was the FOURTH authority: `ServiceLoader` with no classloader swap,
+     * evaluated as a default argument after the swap was undone.
+     *
+     * MUTATION THAT KILLS THIS: calling `ExternalCapabilityContributorDiscovery.discover()`
+     * anywhere else — including re-instating it as a default in `CompositionRoot`, which is
+     * exactly the shape it had. `PluginCapabilityLoaderAlignmentTest` is the behavioural row;
+     * this is the structural one, and it fires even when no test happens to install a plugin
+     * that lives below the TCCL.
+     */
+    @Test
+    fun `capability discovery has exactly one production caller, and it is the authority`() {
+        assertEquals(listOf(authority), callersOf("ExternalCapabilityContributorDiscovery.discover()"))
+    }
+
+    /**
      * MUTATION THAT KILLS THIS: reintroducing any composition call into `CompositionRoot.kt`.
      * This is the file that previously composed events and directives in its own body, under its
      * own classloader swap, after the Step registry had already been handed to it.

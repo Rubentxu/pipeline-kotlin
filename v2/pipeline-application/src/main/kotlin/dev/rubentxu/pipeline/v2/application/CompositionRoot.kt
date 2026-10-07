@@ -96,16 +96,14 @@ internal fun runCanonicalPipeline(
      * asserting a specific capability set) is unaffected and no discovery happens
      * on its behalf.
      */
-    capabilityContributors: List<dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor> =
-        ExternalCapabilityContributorDiscovery.discover() +
-            // H5-B: the credential seam is per-run state — it wraps the store THIS
-            // invocation opened — so it cannot come from classpath discovery the way
-            // a plugin's own transport does. Discovery supplies the plugin side; this
-            // supplies the runtime side, and the two never collide because the plugin
-            // deliberately contributes only its transport.
-            dev.rubentxu.pipeline.v2.credentials.executor.BasicCredentialsCapabilityContributor(
-                credentialProvider,
-            ),
+    //
+    // S6/G: `null` now means "whatever the composition resolved, plus the credential seam". It
+    // used to mean "discover again, under whatever the TCCL happens to be by now" — a fourth
+    // authority resolved outside the composition window, which is how a plugin whose classes
+    // live below the TCCL contributed its Step and kept its capability. The default is still a
+    // default, but this one closes over the value the run already resolved.
+    capabilityContributors: List<dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor>? =
+        null,
     secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
     // S6/G: the pre-resolved composition. REQUIRED, with no default, and that is the point.
     //
@@ -127,11 +125,19 @@ internal fun runCanonicalPipeline(
         // side and on the read-back side. S6/G: resolved in PluginComposition, before this
         // function was called, and already cross-checked against what the plugins emit.
         eventRegistry = composition.events,
-        // H2b: ONE composite, consulted by both admission and execution. The
-        // contributors are composed here and nowhere else; a plugin that needs a
-        // seam adds one element to this list and changes nothing in the engine,
-        // the boundary or the coordinator.
-        capabilityContributor = CompositeCapabilityContributor(capabilityContributors),
+        // H2b: ONE composite, consulted by both admission and execution.
+        //
+        // S6/G: the plugin side now comes from the composition, resolved under the same classloader
+        // swap as the Steps these capabilities back. The credential side stays here because it is
+        // PER-RUN state — it wraps the store THIS invocation opened, so it cannot come from
+        // classpath discovery. The two never collide: a plugin deliberately contributes only its
+        // own transport.
+        capabilityContributor = CompositeCapabilityContributor(
+            (capabilityContributors ?: composition.capabilityContributors) +
+                dev.rubentxu.pipeline.v2.credentials.executor.BasicCredentialsCapabilityContributor(
+                    credentialProvider,
+                ),
+        ),
         dispatcher = CanonicalNodeDispatcher(),
         journal = journal,
         cursorStore = cursorStore,

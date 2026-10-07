@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry
 import dev.rubentxu.pipeline.v2.domain.directive.ErasedDirectiveDefinition
+import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.events.registry.EventRegistry
 
@@ -49,6 +50,21 @@ data class PreResolvedComposition internal constructor(
     val discoveredStepPlugins: List<String>,
     /** Plugin ids that contributed Directives, in discovery order. Diagnostics, not authority. */
     val discoveredDirectivePlugins: List<String>,
+    /**
+     * Every [RuntimeCapabilityContributor] the plugins declared.
+     *
+     * This was the FOURTH authority, and it was resolved outside this window. Discovery ran
+     * `ServiceLoader` without swapping the TCCL, as a default argument evaluated AFTER the swap
+     * was undone — so a plugin whose classes live below the TCCL contributed its Step and kept
+     * its capability. `PluginCapabilityLoaderAlignmentTest` measured exactly that with a plugin
+     * the application does not depend on, and it is the same failure
+     * `ExternalCapabilityContributorDiscovery` records in its own KDoc for `http.request`.
+     *
+     * It belongs here because a capability is only meaningful alongside the Step that requires
+     * it: resolving the two under different loaders produces a registry that admits a Step and a
+     * runtime that cannot supply what the Step needs.
+     */
+    val capabilityContributors: List<RuntimeCapabilityContributor>,
 ) {
     /**
      * What the installation actually contributed, in the words an operator already reads.
@@ -104,6 +120,7 @@ object PluginComposition {
                 events = EventRegistry.create(),
                 discoveredStepPlugins = emptyList(),
                 discoveredDirectivePlugins = emptyList(),
+                capabilityContributors = emptyList(),
             )
         }
 
@@ -123,12 +140,18 @@ object PluginComposition {
             // before the run exists rather than observed as a missing event later.
             val events = ExternalEventDefinitionDiscovery.compose()
 
+            // Inside the same window, for the same reason: a capability that is resolved under a
+            // different loader than the Step that requires it is a Step that is admitted and then
+            // refused for something its own plugin never got to provide.
+            val capabilities = ExternalCapabilityContributorDiscovery.discover()
+
             return PreResolvedComposition(
                 steps = stepBuilder.build(),
                 directives = directiveBuilder.build(),
                 events = events,
                 discoveredStepPlugins = discoveredSteps,
                 discoveredDirectivePlugins = discoveredDirectives,
+                capabilityContributors = capabilities,
             )
         } finally {
             Thread.currentThread().contextClassLoader = previousTccl

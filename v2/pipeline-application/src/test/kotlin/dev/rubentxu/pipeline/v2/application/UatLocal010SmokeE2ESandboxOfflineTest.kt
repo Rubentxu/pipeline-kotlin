@@ -98,7 +98,7 @@ class UatLocal010SmokeE2ESandboxOfflineTest {
             javaHome + "/bin/java",
             "-cp", classpath,
             "dev.rubentxu.pipeline.v2.application.MainKt",
-            "run",
+            "run", "--format", "json",
             "--db", dbPath.toString(),
             "--control-root", controlRoot.toString()
         )

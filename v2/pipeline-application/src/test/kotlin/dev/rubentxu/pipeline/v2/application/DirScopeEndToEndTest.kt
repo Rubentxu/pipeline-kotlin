@@ -65,7 +65,7 @@ class DirScopeEndToEndTest {
         val result = runCli(
             project,
             listOf(
-                "run",
+                "run", "--format", "json",
                 "--db", tempDir.resolve("durable.db").toString(),
                 "--control-root", tempDir.resolve("control").toString(),
                 "--workspace", workspace.toString(),

@@ -57,7 +57,7 @@ class UatEvt002MultiStepReplayTest {
 
     @Test
     fun `cli run with multi-step script emits parseable JSON array`() {
-        val result = ProcessBuilder(appBin.toString(), "run", multiStepScript.toString())
+        val result = ProcessBuilder(appBin.toString(), "run", "--format", "json", multiStepScript.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
             .start()
@@ -169,7 +169,7 @@ class UatEvt002MultiStepReplayTest {
         val controlDir = Files.createTempDirectory("uat-evt002-control")
         val pb = ProcessBuilder(
             appBin.toString(),
-            "run",
+            "run", "--format", "json",
             // Options before the script path: CliParser stops consuming flags at the first
             // non-flag argument, so a trailing `--control-root` is dropped in silence.
             "--control-root",

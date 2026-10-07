@@ -83,7 +83,7 @@ class UatStep003ErrorAbortTest {
      * under the durable spine a failing run legitimately exits 1.
      */
     private fun runAndDecodeExpectingFailure(): Pair<String, List<DomainEvent>> {
-        val pb = ProcessBuilder(appBin.toString(), "run", errorAbortScript.toString())
+        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", errorAbortScript.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
         val process = pb.start()

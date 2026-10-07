@@ -181,9 +181,9 @@ class UatCompat001CorpusSmokeRunTest {
             val staged = stageFixture(fixture.fileName.toString(), workspace)
             val name = fixture.fileName.toString()
             val pb = if (fixturesWithIsolatedWorkspace.contains(name)) {
-                ProcessBuilder(appBin.toString(), "run", "--isolated", staged.toString())
+                ProcessBuilder(appBin.toString(), "run", "--format", "json", "--isolated", staged.toString())
             } else {
-                ProcessBuilder(appBin.toString(), "run", "--workspace", workspace.toString(), staged.toString())
+                ProcessBuilder(appBin.toString(), "run", "--format", "json", "--workspace", workspace.toString(), staged.toString())
             }
                 .redirectOutput(ProcessBuilder.Redirect.PIPE)
                 .redirectError(ProcessBuilder.Redirect.PIPE)
@@ -234,9 +234,9 @@ class UatCompat001CorpusSmokeRunTest {
             val staged = stageFixture(fixture.fileName.toString(), workspace)
             val name = fixture.fileName.toString()
             val pb = if (fixturesWithIsolatedWorkspace.contains(name)) {
-                ProcessBuilder(appBin.toString(), "run", "--isolated", staged.toString())
+                ProcessBuilder(appBin.toString(), "run", "--format", "json", "--isolated", staged.toString())
             } else {
-                ProcessBuilder(appBin.toString(), "run", "--workspace", workspace.toString(), staged.toString())
+                ProcessBuilder(appBin.toString(), "run", "--format", "json", "--workspace", workspace.toString(), staged.toString())
             }
                 .redirectOutput(ProcessBuilder.Redirect.PIPE)
                 .redirectError(ProcessBuilder.Redirect.PIPE)

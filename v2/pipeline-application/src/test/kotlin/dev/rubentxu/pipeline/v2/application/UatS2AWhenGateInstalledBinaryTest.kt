@@ -46,7 +46,7 @@ class UatS2AWhenGateInstalledBinaryTest {
     private fun runScript(dir: Path, script: String, body: String): RunObservation {
         val file = dir.resolve(script)
         Files.writeString(file, body)
-        val process = ProcessBuilder(installedLauncher().toString(), "run", file.fileName.toString())
+        val process = ProcessBuilder(installedLauncher().toString(), "run", "--format", "json", file.fileName.toString())
             .directory(dir.toFile())
             .redirectErrorStream(true)
             .start()

@@ -419,7 +419,7 @@ pipeline {
             javaHome + "/bin/java",
             "-cp", classpath,
             "dev.rubentxu.pipeline.v2.application.MainKt",
-            "run",
+            "run", "--format", "json",
             "--db", dbPath.toString(),
             "--control-root", controlRoot.toString(),
             // RP034-H / ADR-0101: these cases assert the ADR-0048 contract that the
@@ -471,7 +471,7 @@ pipeline {
             javaHome + "/bin/java",
             "-cp", classpath,
             "dev.rubentxu.pipeline.v2.application.MainKt",
-            "run",
+            "run", "--format", "json",
             "--db", dbPath.toString(),
             "--control-root", controlRoot.toString(),
             // RP034-H / ADR-0101: these cases assert the ADR-0048 contract that the
@@ -666,7 +666,7 @@ pipeline {
             javaHome + "/bin/java",
             "-cp", classpath,
             "dev.rubentxu.pipeline.v2.application.MainKt",
-            "run",
+            "run", "--format", "json",
             "--db", dbPath.toString(),
             "--control-root", controlRoot.toString(),
             // RP034-H / ADR-0101: these cases assert the ADR-0048 contract that the
@@ -714,7 +714,7 @@ pipeline {
             javaHome + "/bin/java",
             "-cp", classpath,
             "dev.rubentxu.pipeline.v2.application.MainKt",
-            "run",
+            "run", "--format", "json",
             "--db", dbPath.toString(),
             "--control-root", controlRoot.toString(),
             // RP034-H / ADR-0101: these cases assert the ADR-0048 contract that the
@@ -823,7 +823,7 @@ pipeline {
             "$javaHome/bin/java",
             "-cp", classpath,
             "dev.rubentxu.pipeline.v2.application.MainKt",
-            "run",
+            "run", "--format", "json",
             "--sandbox-profile", "os",
             script.toString(),
         )
@@ -939,7 +939,7 @@ pipeline {
             javaHome + "/bin/java",
             "-cp", classpath,
             "dev.rubentxu.pipeline.v2.application.MainKt",
-            "run",
+            "run", "--format", "json",
             "--db", dbPath.toString(),
             "--control-root", controlRoot.toString(),
             // RP034-H / ADR-0101: this suite certifies the ADR-0048 contract that

@@ -30,6 +30,11 @@ import dev.rubentxu.pipeline.v2.credentials.local.MainCredentialsCli
 import dev.rubentxu.pipeline.v2.credentials.local.PassphraseResolver
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.application.observation.CompileResult
+import dev.rubentxu.pipeline.v2.application.observation.ConsolePrintingEventSink
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.observation.RunObservationOutput
+import dev.rubentxu.pipeline.v2.application.observation.compileQuery
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -155,6 +160,12 @@ fun main(args: Array<String>) {
 
     val command = config.command
 
+    // The parser already refused an unusable query (empty pattern, uncompilable
+    // regex, `--grep-invert` with nothing to negate), so this is the
+    // interpretation step and not a second validation. Compiling once here means
+    // the query is built a single time for every output path below.
+    val compiledQuery = (compileQuery(config.query) as CompileResult.Ok).value
+
     // Shared secret pattern registry for redaction (T6)
     // Both InMemoryEventStore and SqliteEventStore are wrapped at construction time
     // so all downstream consumers receive already-sanitized events.
@@ -206,7 +217,7 @@ fun main(args: Array<String>) {
             dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.clear()
         }
         val events = store.eventsFor(validateRunId).toList()
-        println(JsonEventLog.encode(events))
+        print(RunObservationOutput.encode(events, config.view, config.format, compiledQuery))
         // TRAIN-DSL-HONESTY: a script that compiles but throws while building
         // its IR reaches here with isSuccess == true and no usable spec.
         // Reporting SUCCESS for it was the same DEFAULT_SUCCESS the run path
@@ -242,7 +253,18 @@ fun main(args: Array<String>) {
             return
         }
         val rawEventStore = InMemoryEventStore()
-        val eventStore = RedactingEventSink(rawEventStore, secretPatternRegistry)
+        val redactedStore = RedactingEventSink(rawEventStore, secretPatternRegistry)
+        // ADR-0088: in TEXT the run is mirrored live as events are appended, so
+        // the end-of-run dump is suppressed below. Machine formats keep stdout
+        // untouched and are written once, at the end, exactly as before.
+        val eventStore: dev.rubentxu.pipeline.v2.events.EventSink =
+            if (config.format == ObservationFormat.TEXT) {
+                ConsolePrintingEventSink(redactedStore, config.view) { line ->
+                    System.out.println(line)
+                }
+            } else {
+                redactedStore
+            }
 
         val scriptContent = scriptPath.toFile().readText()
         val definitionId = dev.rubentxu.pipeline.v2.domain.DeterministicIdGenerator.definitionId(
@@ -437,7 +459,11 @@ fun main(args: Array<String>) {
         }
 
         val events = eventStore.eventsFor(runId).toList()
-        println(JsonEventLog.encode(events))
+        // ADR-0088: human text was already streamed live by ConsolePrintingEventSink.
+        // Only the machine formats still need a document at the end.
+        if (config.format != ObservationFormat.TEXT) {
+            print(RunObservationOutput.encode(events, config.view, config.format, compiledQuery))
+        }
         val exitFailure: Boolean = if (runOutcome != null) {
             when (runOutcome) {
                 is dev.rubentxu.pipeline.v2.domain.RunOutcome.Success -> {
@@ -859,10 +885,16 @@ fun main(args: Array<String>) {
     val stdout = System.out
     val writer = java.io.BufferedWriter(java.io.OutputStreamWriter(stdout, Charsets.UTF_8), 1 shl 16)
     val lastEventRef = { event: dev.rubentxu.pipeline.v2.events.DomainEvent -> lastEventCaptured = event }
-    JsonEventLog.encodeTo(eventSequence.map { event ->
-        lastEventRef(event)
-        event
-    }, writer)
+    RunObservationOutput.writeTo(
+        eventSequence.map { event ->
+            lastEventRef(event)
+            event
+        },
+        writer,
+        config.view,
+        config.format,
+        compiledQuery,
+    )
     writer.flush()
     rawEventStore.close()
     Pair(outcome, lastEventCaptured)

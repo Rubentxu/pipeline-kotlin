@@ -47,7 +47,7 @@ class CliCompileErrorExitsOneTest {
         val appBin = AppBinSupport.discover()
         val fixture = brokenFixture()
 
-        val pb = ProcessBuilder(appBin.toString(), "run", fixture.toString())
+        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", fixture.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
 
@@ -101,7 +101,7 @@ class CliCompileErrorExitsOneTest {
         val appBin = AppBinSupport.discover()
         val fixture = brokenFixture()
 
-        val pb = ProcessBuilder(appBin.toString(), "validate", fixture.toString())
+        val pb = ProcessBuilder(appBin.toString(), "validate", "--format", "json", fixture.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
 
@@ -133,7 +133,7 @@ class CliCompileErrorExitsOneTest {
             ?: error("Cannot locate v2/compatibility/ via directory walk")
         val fixture = candidate.resolve("01-basic.pipeline.kts").toPath()
 
-        val pb = ProcessBuilder(appBin.toString(), "run", fixture.toString())
+        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", fixture.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
 

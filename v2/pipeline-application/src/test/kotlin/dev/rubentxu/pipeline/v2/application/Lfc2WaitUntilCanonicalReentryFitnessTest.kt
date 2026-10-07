@@ -190,7 +190,7 @@ class Lfc2WaitUntilCanonicalReentryFitnessTest {
         ctrlDir.deleteOnExit()
 
         val pb = ProcessBuilder(
-            appBin.toString(), "run",
+            appBin.toString(), "run", "--format", "json",
             "--db", dbDir.absolutePath,
             "--control-root", ctrlDir.absolutePath,
             fixture.absolutePath,

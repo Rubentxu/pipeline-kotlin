@@ -104,7 +104,7 @@ class WULpr010CliCharacterizationTest {
         val ctlDir = Files.createTempDirectory("lpr010-ctl-").toFile()
         try {
             val r = run(
-                "run",
+                "run", "--format", "json",
                 "--db", File(dbDir, "db.sqlite").absolutePath,
                 "--control-root", ctlDir.absolutePath,
                 script.absolutePath,
@@ -138,7 +138,7 @@ class WULpr010CliCharacterizationTest {
         val ctlDir = Files.createTempDirectory("lpr010-ctl-").toFile()
         try {
             val r = run(
-                "run",
+                "run", "--format", "json",
                 "--db", File(dbDir, "db.sqlite").absolutePath,
                 "--control-root", ctlDir.absolutePath,
                 script.absolutePath,
@@ -171,7 +171,7 @@ class WULpr010CliCharacterizationTest {
             """.trimIndent(),
         )
         try {
-            val r = run("validate", script.absolutePath)
+            val r = run("validate", "--format", "json", script.absolutePath)
             assertEquals(0, r.exitCode, "validate success must exit 0; output:\n${r.output.takeLast(500)}")
             assertTrue(
                 r.output.contains("VALIDATION SUCCESSFUL"),
@@ -193,7 +193,7 @@ class WULpr010CliCharacterizationTest {
         // Compile failure is an admission error, not a pipeline failure.
         val script = writePipeline("not kotlin syntax {{{")
         try {
-            val r = run("validate", script.absolutePath)
+            val r = run("validate", "--format", "json", script.absolutePath)
             assertEquals(
                 2,
                 r.exitCode,
@@ -220,7 +220,7 @@ class WULpr010CliCharacterizationTest {
         // 2 invocation + compile errors. A missing script is an invocation error,
         // so exit 2 is the contract-correct value and the stacktrace is now gone.
         // The characterisation is re-pinned to the corrected, intentional behaviour.
-        val r = run("validate", "/tmp/lpr010-no-such-${System.nanoTime()}.pipeline.kts")
+        val r = run("validate", "--format", "json", "/tmp/lpr010-no-such-${System.nanoTime()}.pipeline.kts")
         assertEquals(2, r.exitCode, "missing script must exit 2 (invocation error); output:\n${r.output.takeLast(500)}")
         assertTrue(
             "not found or not readable" in r.output,
@@ -313,7 +313,7 @@ class WULpr010CliCharacterizationTest {
             val db = File(dbDir, "db.sqlite").absolutePath
             val ctl = ctlDir.absolutePath
 
-            val first = run("run", "--db", db, "--control-root", ctl, script.absolutePath)
+            val first = run("run", "--format", "json", "--db", db, "--control-root", ctl, script.absolutePath)
             assertEquals(0, first.exitCode, "first run must succeed")
             assertEquals(
                 1,
@@ -326,7 +326,7 @@ class WULpr010CliCharacterizationTest {
             // journaled history; the reuse guarantees are: run succeeds, and
             // exactly one journaled EchoOutputCaptured (no child re-execution
             // produces a second capture).
-            val second = run("run", "--db", db, "--control-root", ctl, "--resume", script.absolutePath)
+            val second = run("run", "--format", "json", "--db", db, "--control-root", ctl, "--resume", script.absolutePath)
             assertEquals(0, second.exitCode, "resume of a terminal run must succeed; output:\n${second.output.takeLast(500)}")
             assertEquals(
                 1,
@@ -371,7 +371,7 @@ class WULpr010CliCharacterizationTest {
         val ctlDir = Files.createTempDirectory("lpr010-bare-resume-ctl-").toFile()
         try {
             val r = run(
-                "run",
+                "run", "--format", "json",
                 "--db", File(dbDir, "db.sqlite").absolutePath,
                 "--control-root", ctlDir.absolutePath,
                 "--resume",

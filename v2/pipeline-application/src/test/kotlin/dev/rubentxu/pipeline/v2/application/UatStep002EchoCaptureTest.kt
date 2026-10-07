@@ -42,7 +42,7 @@ class UatStep002EchoCaptureTest {
     }
 
     private fun runAndDecode(): Pair<String, List<DomainEvent>> {
-        val pb = ProcessBuilder(appBin.toString(), "run", echoCaptureScript.toString())
+        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", echoCaptureScript.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
         val process = pb.start()

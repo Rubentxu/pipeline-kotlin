@@ -545,10 +545,14 @@ class DurableShellExecutor : DurableShellLaunching {
         if (exitCode == 0) {
             // WU-RP-044 (M5 RSS debt): in plain (JENKINS_LOG) projection the
             // terminal does not materialise the transcript, so the production
-            // consumer (ShExecution.emitTranscriptStreaming) streams it from
-            // console.log AFTER this method returns. Deleting console.log here
+            // consumer (ShExecution.ingestTranscriptIntoOutputPlane) streams it
+            // from console.log AFTER this method returns. Deleting console.log here
             // would race the consumer and silently drop observability. The
             // consumer deletes it in its finally once streaming completes.
+            //
+            // The method used to be named `emitTranscriptStreaming` here, which
+            // never existed: a grep for it found only this comment, so the
+            // rationale for keeping console.log pointed at a phantom consumer.
             if (keepTranscriptLog) {
                 Files.walk(controlDir)
                     .sorted(Comparator.reverseOrder())

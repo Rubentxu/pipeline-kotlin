@@ -39,7 +39,7 @@ class UatEvt001ReplayTest {
 
     @Test
     fun `cli run emits parseable JSON array`() {
-        val result = ProcessBuilder(appBin.toString(), "run", helloScript.toString())
+        val result = ProcessBuilder(appBin.toString(), "run", "--format", "json", helloScript.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
             .start()
@@ -137,7 +137,7 @@ class UatEvt001ReplayTest {
     }
 
     private fun runAndDecode(): Pair<String, List<DomainEvent>> {
-        val pb = ProcessBuilder(appBin.toString(), "run", helloScript.toString())
+        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", helloScript.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
         val process = pb.start()

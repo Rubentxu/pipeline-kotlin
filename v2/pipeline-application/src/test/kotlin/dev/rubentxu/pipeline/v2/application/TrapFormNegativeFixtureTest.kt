@@ -52,7 +52,7 @@ class TrapFormNegativeFixtureTest {
         val controlDir = java.nio.file.Files.createTempDirectory("trapform-control")
         val pb = ProcessBuilder(
             appBin.toString(),
-            "run",
+            "run", "--format", "json",
             // Options before the script path: CliParser stops consuming flags at the first
             // non-flag argument, so a trailing `--control-root` is dropped in silence.
             "--control-root",

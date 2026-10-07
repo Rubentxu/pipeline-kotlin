@@ -62,7 +62,7 @@ class WorkspaceOriginEndToEndTest {
             """.trimIndent(),
         )
 
-        val result = runCli(tempDir, listOf("run", sub.resolve("p.pipeline.kts").toString()))
+        val result = runCli(tempDir, listOf("run", "--format", "json", sub.resolve("p.pipeline.kts").toString()))
 
         assertEquals(0, result.exitCode, result.output)
         assertTrue(
@@ -94,7 +94,7 @@ class WorkspaceOriginEndToEndTest {
 
         val result = runCli(
             tempDir,
-            listOf("run", "--workspace", other.toString(), sub.resolve("p.pipeline.kts").toString()),
+            listOf("run", "--format", "json", "--workspace", other.toString(), sub.resolve("p.pipeline.kts").toString()),
         )
 
         assertEquals(0, result.exitCode, result.output)
@@ -125,7 +125,7 @@ class WorkspaceOriginEndToEndTest {
             """.trimIndent(),
         )
 
-        val result = runCli(tempDir, listOf("run", "p.pipeline.kts"))
+        val result = runCli(tempDir, listOf("run", "--format", "json", "p.pipeline.kts"))
 
         assertEquals(0, result.exitCode, result.output)
 

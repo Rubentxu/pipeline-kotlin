@@ -89,7 +89,7 @@ class UatInputBlockDurableTest {
         startRun(workdir, args).await()
 
     private fun invocation(tempDir: Path, script: Path) = listOf(
-        "run",
+        "run", "--format", "json",
         "--db", tempDir.resolve("journal.db").toString(),
         "--control-root", tempDir.resolve("control").toString(),
         script.toString(),

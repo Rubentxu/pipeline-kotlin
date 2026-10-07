@@ -90,7 +90,7 @@ class WURp023ObservationModesUatTest {
             val db = File(dbDir, "db.sqlite").absolutePath
 
             // 1. Run: stdout is a JSON array of envelopes; outcome on stderr.
-            val run1 = run("run", "--db", db, script.absolutePath)
+            val run1 = run("run", "--format", "json", "--db", db, script.absolutePath)
             assertEquals(0, run1.exitCode, "run must succeed; stderr:\n${run1.stderr.takeLast(300)}")
             assertTrue(run1.stderr.contains("Pipeline finished with SUCCESS"))
             assertTrue(run1.stdout.trimStart().startsWith("["), "run stdout must be a JSON array of envelopes")

@@ -67,7 +67,7 @@ class UatStep001ShExecutionTest {
     }
 
     private fun runAndDecode(): Pair<String, List<DomainEvent>> {
-        val pb = ProcessBuilder(appBin.toString(), "run", shExecScript.toString())
+        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", shExecScript.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
         val process = pb.start()

@@ -153,7 +153,7 @@ class S54ExternalVerticalRestartUatTest {
         )
         val db = dir.resolve("real.sqlite").toString()
 
-        val runResult = run("run", "--db", db, script.toString())
+        val runResult = run("run", "--format", "json", "--db", db, script.toString())
         assertEquals(0, runResult.exitCode, "run must succeed; stderr:\n${runResult.stderr.takeLast(300)}")
         val runId = Regex("\"runId\":\"([^\"]+)\"").find(runResult.stdout)!!.groupValues[1]
 

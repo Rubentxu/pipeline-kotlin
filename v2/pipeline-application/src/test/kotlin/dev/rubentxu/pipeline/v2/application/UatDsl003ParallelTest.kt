@@ -162,7 +162,7 @@ class UatDsl003ParallelTest {
     @Test
     fun `G2 - stage mixing parallel body with sibling step is rejected fail-closed`() {
         val stdoutFile = java.nio.file.Files.createTempFile("uat", ".stdout")
-        val process = ProcessBuilder(appBin.toString(), "run", mixedBodySiblingScript.toString())
+        val process = ProcessBuilder(appBin.toString(), "run", "--format", "json", mixedBodySiblingScript.toString())
             .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
             .redirectErrorStream(true)
             .start()
@@ -200,7 +200,7 @@ class UatDsl003ParallelTest {
 
     private fun runAndDecode(script: Path, expectedExit: Int): Pair<String, List<DomainEvent>> {
         val stdoutFile = java.nio.file.Files.createTempFile("uat", ".stdout")
-        val process = ProcessBuilder(appBin.toString(), "run", script.toString())
+        val process = ProcessBuilder(appBin.toString(), "run", "--format", "json", script.toString())
             .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
             .redirectErrorStream(true)
             .start()
@@ -257,7 +257,7 @@ class UatDsl003ParallelTest {
 
     private fun runWithDb(script: Path, db: Path): String {
         val stdoutFile = java.nio.file.Files.createTempFile("uat", ".stdout")
-        val process = ProcessBuilder(appBin.toString(), "run", "--db", db.toString(), script.toString())
+        val process = ProcessBuilder(appBin.toString(), "run", "--format", "json", "--db", db.toString(), script.toString())
             .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
             .redirectErrorStream(true)
             .start()

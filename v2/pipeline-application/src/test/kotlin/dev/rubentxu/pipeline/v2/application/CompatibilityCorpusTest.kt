@@ -110,7 +110,7 @@ class CompatibilityCorpusTest {
         val path = fixture(name)
         val appBin = AppBinSupport.discover()
 
-        val pb = ProcessBuilder(appBin.toString(), "run", "--isolated", path.toString())
+        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", "--isolated", path.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
 
@@ -169,7 +169,7 @@ class CompatibilityCorpusTest {
 
         val pb = ProcessBuilder(
             appBin.toString(),
-            "run",
+            "run", "--format", "json",
             "--workspace", workspace,
             "--control-root", controlDir.toString(),
             script.toString(),
@@ -207,7 +207,7 @@ class CompatibilityCorpusTest {
         val workspace = Files.createTempDirectory("corpus-fixture23-ws")
         val pb = ProcessBuilder(
             appBin.toString(),
-            "run",
+            "run", "--format", "json",
             "--db", Files.createTempFile("corpus-fixture23-", ".db").toString(),
             "--control-root", Files.createTempDirectory("corpus-fixture23-ctl").toString(),
             "--workspace", workspace.toString(),
@@ -329,7 +329,7 @@ class CompatibilityCorpusTest {
         val path = fixture(name)
         val appBin = AppBinSupport.discover()
 
-        val pb = ProcessBuilder(appBin.toString(), "run", path.toString())
+        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", path.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
 
@@ -401,7 +401,7 @@ class CompatibilityCorpusTest {
             val appBin = AppBinSupport.discover()
             println("DEBUG-LPR103 store=$storePath exists=${storePath.toFile().exists()} size=${if (storePath.toFile().exists()) java.nio.file.Files.size(storePath) else -1}")
 
-            val pb = ProcessBuilder(appBin.toString(), "run", path.toString())
+            val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", path.toString())
                 .redirectOutput(ProcessBuilder.Redirect.PIPE)
                 .redirectError(ProcessBuilder.Redirect.PIPE)
             pb.environment()["PIPELINE_CREDENTIALS_STORE"] = storePath.toString()
@@ -430,7 +430,7 @@ class CompatibilityCorpusTest {
         val path = fixture("14-credentials-bindings.pipeline.kts")
         val appBin = AppBinSupport.discover()
 
-        val pb = ProcessBuilder(appBin.toString(), "run", path.toString())
+        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", path.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
 
@@ -592,7 +592,7 @@ class CompatibilityCorpusTest {
         val name = "28-zip-slip-defense.pipeline.kts"
         val path = fixture(name)
         val appBin = AppBinSupport.discover()
-        val pb = ProcessBuilder(appBin.toString(), "run", "--workspace", path.parent.toString(), path.toString())
+        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", "--workspace", path.parent.toString(), path.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
         val process = pb.start()

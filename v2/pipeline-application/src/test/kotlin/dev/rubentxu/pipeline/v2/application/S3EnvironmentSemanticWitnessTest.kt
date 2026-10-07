@@ -69,7 +69,7 @@ class S3EnvironmentSemanticWitnessTest {
         val stdoutFile = dir.resolve("events.json")
         val process = ProcessBuilder(
             appBin.toString(),
-            "run",
+            "run", "--format", "json",
             // ORDER IS LOAD-BEARING: CliParser stops consuming options at the first argument
             // that is not a flag, so anything after the script path is ignored in silence. A
             // `--control-root` written after the script reads as if the plane were redirected
@@ -340,7 +340,7 @@ class S3EnvironmentSemanticWitnessTest {
                 """.trimIndent(),
             )
             val out = dir.resolve("out.txt")
-            val process = ProcessBuilder(appBin.toString(), "run", scriptPath.toAbsolutePath().toString())
+            val process = ProcessBuilder(appBin.toString(), "run", "--format", "json", scriptPath.toAbsolutePath().toString())
                 .directory(dir.toFile())
                 .redirectOutput(ProcessBuilder.Redirect.to(out.toFile()))
                 .redirectError(ProcessBuilder.Redirect.PIPE)

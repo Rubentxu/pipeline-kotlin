@@ -103,7 +103,7 @@ class UatLocal010SmokeE2ESandboxTest {
             javaHome + "/bin/java",
             "-cp", classpath,
             "dev.rubentxu.pipeline.v2.application.MainKt",
-            "run",
+            "run", "--format", "json",
             "--db", dbPath.toString(),
             "--control-root", controlRoot.toString()
         )
@@ -225,7 +225,7 @@ class UatLocal010SmokeE2ESandboxTest {
 
         val args = listOf(
             javaHome + "/bin/java", "-cp", classpath,
-            "dev.rubentxu.pipeline.v2.application.MainKt", "run",
+            "dev.rubentxu.pipeline.v2.application.MainKt", "run", "--format", "json",
             "--db", dbPath.toString(),
             "--control-root", controlRoot.toString(),
             script.toAbsolutePath().toString()

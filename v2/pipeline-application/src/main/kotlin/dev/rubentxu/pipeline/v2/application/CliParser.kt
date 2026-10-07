@@ -1,5 +1,14 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.CompileResult
+import dev.rubentxu.pipeline.v2.application.observation.LineSelector
+import dev.rubentxu.pipeline.v2.application.observation.compileQuery
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.observation.ObservationQuery
+import dev.rubentxu.pipeline.v2.application.observation.TextSelector
+import dev.rubentxu.pipeline.v2.application.observation.ObservationView
+import dev.rubentxu.pipeline.v2.application.observation.ViewParseResult
+import dev.rubentxu.pipeline.v2.application.observation.resolveView
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 
@@ -45,6 +54,24 @@ data class CliFlags(
     val allowNetwork: Boolean = false,
     /** External plugin JARs: one list feeds compilation and runtime discovery. */
     val pluginJars: List<String> = emptyList(),
+    /**
+     * ADR-0088 / `CLI_OBSERVABILITY_SPEC.md` §1: which families of observation
+     * reach the reader. Orthogonal to [format]; neither changes execution.
+     */
+    val view: ObservationView = ObservationView.NORMAL,
+    /**
+     * ADR-0088: wire encoding. `TEXT` is human and the default; JSON and JSONL
+     * are opt-in, so a machine consumer must ask for them explicitly instead of
+     * discovering them by accident.
+     */
+    val format: ObservationFormat = ObservationFormat.TEXT,
+    /**
+     * Normalized read-side selection (ADR-0088). Identity by default.
+     *
+     * `channel` is deliberately absent: no durable carrier exists for stdout vs
+     * stderr, so offering the dimension would be a filter that cannot filter.
+     */
+    val query: ObservationQuery = ObservationQuery(),
 )
 
 /** Typed failures for CLI admission. */
@@ -80,7 +107,102 @@ sealed interface CliError {
     }
     data class UnknownOption(val value: String) : CliError
     data object MissingScriptPath : CliError
+
+    /**
+     * An option appeared AFTER the script path.
+     *
+     * The scan used to stop at the first non-`--` argument, so
+     * `pipeline run s.kts --format text` discarded everything after the script
+     * and still ran, producing the default output. A flag the user believed was
+     * applied was silently ignored — the fail-open shape the observation work
+     * exists to remove. Trailing options are now rejected before any effect.
+     */
+    data class TrailingOption(val value: String) : CliError {
+        override fun toString(): String =
+            "TrailingOption($value): options must appear BEFORE the script path. " +
+                "Got '$value' after the script, which used to be discarded silently."
+    }
+
+    /** `--view` named a value that is not a view. */
+    data class InvalidView(val value: String) : CliError {
+        override fun toString(): String =
+            "InvalidView($value): expected one of " +
+                ObservationView.entries.joinToString(", ") { it.name.lowercase() }
+    }
+
+    /**
+     * `--view` named a real view this build cannot deliver.
+     *
+     * Refused rather than downgraded: silently substituting another view tells
+     * the operator they observed something they did not observe.
+     */
+    data class UnavailableView(val view: ObservationView) : CliError {
+        override fun toString(): String =
+            "UnavailableView($view): this build cannot deliver the '$view' view. " +
+                "Process transcript belongs to `pipeline console`; `full` interleaving " +
+                "has no decided rule yet (CLI_OBSERVABILITY_SPEC §11)."
+    }
+
+    /** `--format` named a value that is not a format. */
+    data class InvalidFormat(val value: String) : CliError {
+        override fun toString(): String =
+            "InvalidFormat($value): expected one of " +
+                ObservationFormat.entries.joinToString(", ") { it.wire }
+    }
+
+    /**
+     * `--grep` or `--grep-regex` was given an empty value.
+     *
+     * Refused rather than resolved: under substring semantics an empty literal
+     * matches EVERY line, so accepting it would turn a typo into a filter that
+     * silently keeps everything.
+     */
+    data class EmptyTextFilter(val option: String) : CliError {
+        override fun toString(): String =
+            "EmptyTextFilter($option): an empty pattern matches every line under " +
+                "substring semantics; refusing it rather than returning everything."
+    }
+
+    /** `--grep-invert` with no `--grep` to invert. There is no group to negate. */
+    data object InvertWithoutGrep : CliError {
+        override fun toString(): String =
+            "InvertWithoutGrep: --grep-invert needs at least one --grep/--grep-regex to negate."
+    }
+
+    /**
+     * The assembled query is not usable — most often an uncompilable
+     * `--grep-regex`. Caught here so no process, store or journal is created
+     * for a run that could never be filtered as asked.
+     */
+    data class InvalidQuery(val reason: String) : CliError {
+        override fun toString(): String = "InvalidQuery: $reason"
+    }
 }
+
+/**
+ * Normalizes collected query values into the typed [ObservationQuery].
+ *
+ * Pure. The parser may offer convenience flags, but what reaches the runtime is
+ * an ADT — never a bag of flags whose meaning is reconstructed downstream.
+ * `Only` and `Except` are distinct cases rather than a `negate` boolean, so the
+ * blacklist reading of `--grep-invert` is visible in the type.
+ */
+fun buildObservationQuery(
+    grepSelectors: List<TextSelector>,
+    grepInvert: Boolean,
+    stageNames: Set<String>,
+    stepNames: Set<String>,
+    eventKinds: Set<String>,
+): ObservationQuery = ObservationQuery(
+    stageNames = stageNames.toSet(),
+    stepNames = stepNames.toSet(),
+    eventKinds = eventKinds.toSet(),
+    lines = when {
+        grepSelectors.isEmpty() -> LineSelector.All
+        grepInvert -> LineSelector.Except(grepSelectors.toList())
+        else -> LineSelector.Only(grepSelectors.toList())
+    },
+)
 
 /** Closed result of pure CLI decoding. */
 sealed interface CliParseResult {
@@ -125,6 +247,23 @@ private class ParseState(
      */
     var allowNetwork: Boolean = false,
     val pluginJars: MutableList<String> = mutableListOf(),
+    /** ADR-0088 `--view`. Resolved to a DELIVERABLE view at parse time. */
+    var view: ObservationView = ObservationView.NORMAL,
+    /** ADR-0088 `--format`. JSON/JSONL are opt-in; text is the default. */
+    var format: ObservationFormat = ObservationFormat.TEXT,
+    /**
+     * ADR-0088 query dimensions. AND across dimensions, OR within each one.
+     *
+     * [grepSelectors] accumulates repeated `--grep`/`--grep-regex` into an OR
+     * group; [grepInvert] turns that whole group into a blacklist at build time.
+     * No [LineSelector] is stored here: the parser collects raw values and the
+     * normalized ADT is produced once, by [buildObservationQuery].
+     */
+    val grepSelectors: MutableList<TextSelector> = mutableListOf(),
+    var grepInvert: Boolean = false,
+    val stageNames: MutableSet<String> = sortedSetOf(),
+    val stepNames: MutableSet<String> = sortedSetOf(),
+    val eventKinds: MutableSet<String> = sortedSetOf(),
 )
 
 /** Pure parser for the application CLI. */
@@ -151,11 +290,44 @@ object CliParser {
         val scriptPath = args.getOrNull(index)
             ?: return CliParseResult.Rejected(CliError.MissingScriptPath)
 
+        // Fail closed on trailing options. The scan above stops at the first
+        // non-`--` argument, so before this check `run s.kts --format text`
+        // discarded everything after the script and still ran, producing the
+        // default output. The operator believed a flag was applied; it was not.
+        // Options must precede the script path, and an unknown one anywhere is
+        // an error rather than a silent no-op.
+        for (tail in args.drop(index + 1)) {
+            if (tail.startsWith("--")) {
+                return CliParseResult.Rejected(CliError.TrailingOption(tail))
+            }
+        }
+
         // RP034-H / ADR-0101 clause 3.4: fail closed on the incompatible pair.
         state.workspace?.let { explicit ->
             if (state.isolated) {
                 return CliParseResult.Rejected(CliError.ConflictingWorkspaceModes(explicit))
             }
+        }
+
+        // `--grep-invert` negates a group; with no group there is nothing to
+        // negate. Rejected rather than defaulted to "exclude everything".
+        if (state.grepInvert && state.grepSelectors.isEmpty()) {
+            return CliParseResult.Rejected(CliError.InvertWithoutGrep)
+        }
+
+        val assembledQuery = buildObservationQuery(
+            grepSelectors = state.grepSelectors,
+            grepInvert = state.grepInvert,
+            stageNames = state.stageNames,
+            stepNames = state.stepNames,
+            eventKinds = state.eventKinds,
+        )
+
+        // Compile here, before any effect: an uncompilable regex is refused
+        // rather than discovered at the moment output is being produced.
+        val compiledQuery = compileQuery(assembledQuery)
+        if (compiledQuery is CompileResult.Invalid) {
+            return CliParseResult.Rejected(CliError.InvalidQuery(compiledQuery.reason))
         }
 
         return CliParseResult.Parsed(
@@ -170,6 +342,15 @@ object CliParser {
                 sandboxProfile = state.sandboxProfile,
                 allowNetwork = state.allowNetwork,
                 pluginJars = state.pluginJars.toList(),
+                view = state.view,
+                format = state.format,
+                query = buildObservationQuery(
+                    grepSelectors = state.grepSelectors,
+                    grepInvert = state.grepInvert,
+                    stageNames = state.stageNames,
+                    stepNames = state.stepNames,
+                    eventKinds = state.eventKinds,
+                ),
             ),
         )
     }
@@ -237,6 +418,85 @@ object CliParser {
                     "os" -> return ApplyOutcome.Rejected(CliError.UnsupportedSandboxProfile(value))
                     else -> return ApplyOutcome.Rejected(CliError.InvalidSandboxProfile(value))
                 }
+                ApplyOutcome.Applied(index + 2)
+            }
+            "--view" -> {
+                val requested = args.getOrNull(index + 1)
+                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
+                // Resolved HERE, not at the effect boundary: an unusable view is
+                // rejected before a process, a store or a journal is created.
+                when (val resolved = resolveView(requested)) {
+                    is ViewParseResult.Parsed -> {
+                        state.view = resolved.view
+                        ApplyOutcome.Applied(index + 2)
+                    }
+                    is ViewParseResult.Invalid ->
+                        ApplyOutcome.Rejected(CliError.InvalidView(resolved.value))
+                    is ViewParseResult.Unavailable ->
+                        ApplyOutcome.Rejected(CliError.UnavailableView(resolved.view))
+                }
+            }
+            "--format" -> {
+                val requested = args.getOrNull(index + 1)
+                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
+                when (val resolved = ObservationFormat.parseFormat(requested)) {
+                    is dev.rubentxu.pipeline.v2.application.observation.FormatParseResult.Parsed -> {
+                        state.format = resolved.format
+                        ApplyOutcome.Applied(index + 2)
+                    }
+                    is dev.rubentxu.pipeline.v2.application.observation.FormatParseResult.Invalid ->
+                        ApplyOutcome.Rejected(CliError.InvalidFormat(resolved.value))
+                }
+            }
+            "--grep" -> {
+                val value = args.getOrNull(index + 1)
+                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
+                if (value.isEmpty()) {
+                    return ApplyOutcome.Rejected(CliError.EmptyTextFilter(option))
+                }
+                // Repeated flags OR together into one group; the group's sense
+                // (whitelist or blacklist) is decided once, at normalization.
+                state.grepSelectors += TextSelector.Literal(value)
+                ApplyOutcome.Applied(index + 2)
+            }
+            "--grep-regex" -> {
+                val value = args.getOrNull(index + 1)
+                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
+                if (value.isEmpty()) {
+                    return ApplyOutcome.Rejected(CliError.EmptyTextFilter(option))
+                }
+                state.grepSelectors += TextSelector.Pattern(value)
+                ApplyOutcome.Applied(index + 2)
+            }
+            "--grep-invert" -> {
+                state.grepInvert = true
+                ApplyOutcome.Applied(index + 1)
+            }
+            "--stage" -> {
+                val value = args.getOrNull(index + 1)
+                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
+                if (value.isEmpty()) {
+                    return ApplyOutcome.Rejected(CliError.EmptyTextFilter(option))
+                }
+                state.stageNames += value
+                ApplyOutcome.Applied(index + 2)
+            }
+            "--step" -> {
+                val value = args.getOrNull(index + 1)
+                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
+                if (value.isEmpty()) {
+                    return ApplyOutcome.Rejected(CliError.EmptyTextFilter(option))
+                }
+                state.stepNames += value
+                ApplyOutcome.Applied(index + 2)
+            }
+            "--kind" -> {
+                val value = args.getOrNull(index + 1)
+                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
+                if (value.isEmpty()) {
+                    return ApplyOutcome.Rejected(CliError.EmptyTextFilter(option))
+                }
+                state.eventKinds += value
                 ApplyOutcome.Applied(index + 2)
             }
             else -> ApplyOutcome.Rejected(CliError.UnknownOption(option))

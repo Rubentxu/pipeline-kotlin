@@ -71,7 +71,7 @@ class WULpr011ResumeLifecycleUatTest {
             val ctl = ctlDir.absolutePath
 
             // 1. Fresh run: one lifecycle cycle, exit 0.
-            val first = run("run", "--db", db, "--control-root", ctl, script.absolutePath)
+            val first = run("run", "--format", "json", "--db", db, "--control-root", ctl, script.absolutePath)
             assertEquals(0, first.exitCode, "fresh run must succeed; output:\n${first.output.takeLast(400)}")
             assertEquals(1, first.output.countOf("\"kind\":\"RunStarted\""), "fresh run: one RunStarted")
             assertEquals(1, first.output.countOf("\"kind\":\"RunFinished\""), "fresh run: one RunFinished")
@@ -85,7 +85,7 @@ class WULpr011ResumeLifecycleUatTest {
             //    (the journaled copy plus the SKIP bookends never re-run the
             //    handler). stdout counts include journaled + fresh bookends,
             //    so assert only the child-execution invariants here.
-            val second = run("run", "--db", db, "--control-root", ctl, "--resume", script.absolutePath)
+            val second = run("run", "--format", "json", "--db", db, "--control-root", ctl, "--resume", script.absolutePath)
             assertEquals(0, second.exitCode, "terminal resume must succeed; output:\n${second.output.takeLast(400)}")
             assertEquals(1, second.output.countOf("\"kind\":\"StepStarted\""), "terminal resume: handler must not re-execute")
             assertEquals(1, second.output.countOf("\"kind\":\"EchoOutputCaptured\""), "terminal resume: journaled echo only")
@@ -98,7 +98,7 @@ class WULpr011ResumeLifecycleUatTest {
             //    no stack trace.
             val emptyDb = File(dbDir, "empty.sqlite").absolutePath
             val emptyCtl = Files.createTempDirectory("lpr011-ctl-empty-").toFile().absolutePath
-            val bare = run("run", "--db", emptyDb, "--control-root", emptyCtl, "--resume", script.absolutePath)
+            val bare = run("run", "--format", "json", "--db", emptyDb, "--control-root", emptyCtl, "--resume", script.absolutePath)
             assertEquals(2, bare.exitCode, "bare resume must exit 2; output:\n${bare.output.takeLast(400)}")
             assertTrue(bare.output.contains("No prior run recorded"), "bare resume must give the typed message")
             assertTrue(

@@ -100,6 +100,17 @@ object JsonEventLog {
     }
 
     /**
+     * Single-event wire form: one JSON document per line (JSONL).
+     *
+     * [EventJsonWriter] is module-internal, so `pipeline-application` had no
+     * access to a per-event encoder and a `--format jsonl` run had nowhere to
+     * go. Exposing it here keeps ONE authority for the wire form: the bytes are
+     * produced by the same writer [encode] uses, so a JSONL document and the
+     * corresponding array document cannot drift apart.
+     */
+    fun encodeOne(event: DomainEvent): String = EventJsonWriter.encodeEvent(event)
+
+    /**
      * WU-RP-044 (M5 RSS debt): streams the same JSON array as [encode] to
      * [out] one event at a time so the full document is never materialised as
      * a single in-memory String. Byte-for-byte identical output.

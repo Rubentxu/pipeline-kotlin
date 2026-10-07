@@ -55,7 +55,7 @@ class UatDsl006BodyExecutionTest {
      * Runs the CLI and returns stdout + exit code.
      */
     private fun runCli(script: Path): Pair<String, Int> {
-        val pb = ProcessBuilder(appBin.toString(), "run", script.toString())
+        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", script.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
         val process = pb.start()

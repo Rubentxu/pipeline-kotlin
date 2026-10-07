@@ -49,7 +49,7 @@ class UatDsl001JenkinsFamiliarityTest {
 
     @Test
     fun `full grammar script compiles and emits parseable JSON`() {
-        val result = ProcessBuilder(appBin.toString(), "run", grammarFullScript.toString())
+        val result = ProcessBuilder(appBin.toString(), "run", "--format", "json", grammarFullScript.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
             .start()
@@ -162,7 +162,7 @@ class UatDsl001JenkinsFamiliarityTest {
     }
 
     private fun runAndDecode(script: Path): Pair<String, List<DomainEvent>> {
-        val pb = ProcessBuilder(appBin.toString(), "run", script.toString())
+        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", script.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
         val process = pb.start()

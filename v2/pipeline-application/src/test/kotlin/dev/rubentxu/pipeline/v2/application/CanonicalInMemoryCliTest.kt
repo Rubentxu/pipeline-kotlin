@@ -108,7 +108,7 @@ class CanonicalInMemoryCliTest {
             "-cp",
             System.getProperty("java.class.path"),
             "dev.rubentxu.pipeline.v2.application.MainKt",
-            "run",
+            "run", "--format", "json",
             *options,
             script.toString(),
         )

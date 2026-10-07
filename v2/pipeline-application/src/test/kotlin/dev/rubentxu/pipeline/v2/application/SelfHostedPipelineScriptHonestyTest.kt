@@ -178,7 +178,7 @@ class SelfHostedPipelineScriptHonestyTest {
 
         val result = ProcessBuilder(
             appBin.toString(),
-            "validate",
+            "validate", "--format", "json",
             "--workspace", root.toString(),
             root.resolve("pipeline.kts").toString(),
         )

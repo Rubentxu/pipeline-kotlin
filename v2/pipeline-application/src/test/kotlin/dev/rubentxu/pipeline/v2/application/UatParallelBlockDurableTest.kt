@@ -66,7 +66,7 @@ class UatParallelBlockDurableTest {
         if (Files.exists(marker)) Files.readAllLines(marker).filter { it.isNotBlank() } else emptyList()
 
     private fun invocation(tempDir: Path, script: Path) = listOf(
-        "run",
+        "run", "--format", "json",
         "--db", tempDir.resolve("journal.db").toString(),
         "--control-root", tempDir.resolve("control").toString(),
         script.toString(),

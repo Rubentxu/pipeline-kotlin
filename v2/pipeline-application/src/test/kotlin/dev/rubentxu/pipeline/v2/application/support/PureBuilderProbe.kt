@@ -72,7 +72,7 @@ object PureBuilderProbe {
         val scriptPath = dir.resolve("probe.pipeline.kts")
         Files.writeString(scriptPath, script.trimIndent())
         val stdoutFile = dir.resolve("events.json")
-        val process = ProcessBuilder(appBin.toString(), "run", scriptPath.toAbsolutePath().toString())
+        val process = ProcessBuilder(appBin.toString(), "run", "--format", "json", scriptPath.toAbsolutePath().toString())
             .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
             .redirectError(ProcessBuilder.Redirect.PIPE)
             .start()

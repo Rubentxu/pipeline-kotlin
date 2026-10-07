@@ -73,7 +73,7 @@ class S0SemanticWitnessMatrixTest {
         // scratch directory is the workspace for the whole run instead.
         val process = ProcessBuilder(
             appBin.toString(),
-            "run",
+            "run", "--format", "json",
             // Options must precede the script path: CliParser stops consuming flags at the first
             // non-flag argument, so a trailing `--control-root` would be dropped in silence and
             // the Output Plane would be read from the default location instead.
@@ -115,7 +115,7 @@ class S0SemanticWitnessMatrixTest {
         val stdoutFile = Files.createTempFile("s0replay", ".json")
         // RP034-Ic: same isolation as `run` — the script's own directory is the
         // workspace, never the inherited JVM CWD.
-        val process = ProcessBuilder(appBin.toString(), "run", scriptPath.toAbsolutePath().toString())
+        val process = ProcessBuilder(appBin.toString(), "run", "--format", "json", scriptPath.toAbsolutePath().toString())
             .directory(scriptPath.parent.toFile())
             .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
             .redirectError(ProcessBuilder.Redirect.PIPE)
@@ -472,7 +472,7 @@ class S0SemanticWitnessMatrixTest {
             }
             """.trimIndent(),
         )
-        val process = ProcessBuilder(appBin.toString(), "run", scriptPath.toAbsolutePath().toString())
+        val process = ProcessBuilder(appBin.toString(), "run", "--format", "json", scriptPath.toAbsolutePath().toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
             .start()

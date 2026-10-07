@@ -97,7 +97,7 @@ class P3DPluginEventInstalledDistributionUatTest {
         val db = tempDir.resolve("db.sqlite").toString()
 
         // 1. A REAL run of the installed binary, with the external JAR on the classpath.
-        val run1 = run("run", "--db", db, "--plugin-jar", pluginJar.toAbsolutePath().toString(), script.toString())
+        val run1 = run("run", "--format", "json", "--db", db, "--plugin-jar", pluginJar.toAbsolutePath().toString(), script.toString())
         assertEquals(0, run1.exitCode, "run must succeed; stderr:\n${run1.stderr.takeLast(600)}")
 
         val runId = Regex("\"runId\":\"([^\"]+)\"").find(run1.stdout)!!.groupValues[1]
@@ -190,7 +190,7 @@ class P3DPluginEventInstalledDistributionUatTest {
             }
             """.trimIndent(),
         )
-        val run1 = run("run", "--db", db, "--plugin-jar", locatePluginJar().toAbsolutePath().toString(), script.toString())
+        val run1 = run("run", "--format", "json", "--db", db, "--plugin-jar", locatePluginJar().toAbsolutePath().toString(), script.toString())
         assertEquals(0, run1.exitCode, "run must succeed; stderr:\n${run1.stderr.takeLast(600)}")
         val runId = Regex("\"runId\":\"([^\"]+)\"").find(run1.stdout)!!.groupValues[1]
 

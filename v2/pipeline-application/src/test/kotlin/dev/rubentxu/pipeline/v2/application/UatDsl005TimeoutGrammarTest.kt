@@ -44,7 +44,7 @@ class UatDsl005TimeoutGrammarTest {
     @Test
     fun `timeout-retry script compiles and emits parseable JSON`() {
         val stdoutFile = java.nio.file.Files.createTempFile("uat", ".stdout")
-        val result = ProcessBuilder(appBin.toString(), "run", timeoutRetryScript.toString())
+        val result = ProcessBuilder(appBin.toString(), "run", "--format", "json", timeoutRetryScript.toString())
             .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
             .redirectError(ProcessBuilder.Redirect.PIPE)
             .start()
@@ -97,7 +97,7 @@ class UatDsl005TimeoutGrammarTest {
         java.io.File("/tmp/t21-marker").delete()
 
         val stdoutFile = java.nio.file.Files.createTempFile("t21", ".stdout")
-        val pb = ProcessBuilder(appBin.toString(), "run", fixture.absolutePath)
+        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", fixture.absolutePath)
             .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
             .redirectError(ProcessBuilder.Redirect.PIPE)
         val process = pb.start()
@@ -169,7 +169,7 @@ class UatDsl005TimeoutGrammarTest {
         fixture.deleteOnExit()
 
         val stdoutFile = java.nio.file.Files.createTempFile("t22", ".stdout")
-        val pb = ProcessBuilder(appBin.toString(), "run", fixture.absolutePath)
+        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", fixture.absolutePath)
             .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
             .redirectError(ProcessBuilder.Redirect.PIPE)
         val process = pb.start()
@@ -223,7 +223,7 @@ class UatDsl005TimeoutGrammarTest {
 
     private fun runAndDecode(): Pair<String, List<DomainEvent>> {
         val stdoutFile = java.nio.file.Files.createTempFile("uat", ".stdout")
-        val pb = ProcessBuilder(appBin.toString(), "run", timeoutRetryScript.toString())
+        val pb = ProcessBuilder(appBin.toString(), "run", "--format", "json", timeoutRetryScript.toString())
             .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
             .redirectError(ProcessBuilder.Redirect.PIPE)
         val process = pb.start()

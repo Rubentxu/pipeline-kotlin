@@ -466,9 +466,104 @@ La lección general: cuando la mutación de una ley no puede aplicarse porque el
 no es un fallo del experimento. Es un dato sobre la fuerza de la ley, y se registra como tal en
 lugar de forzar una versión débil de la prueba.
 
+### BCV: aquí NO procede la excepción, y el fitness tenía razón
 
+`apiCheck` de `:pipeline-step-sdk:api` sí falló, con la ruptura medida: `Step` y `JenkinsSurface`
+desaparecen del ABI, 15 líneas del dump. La primera reacción fue registrar una excepción BCV
+como se hizo en 1-F con `pipeline-domain` y `pipeline-events`.
 
+**Esa reacción era incorrecta, y el fitness la detectó.** Al añadir la entrada,
+`P3EPublishedContractMaturityFitnessTest` falló con dos filas:
 
+```text
+excepciones que nombran modulos no publicados: [pipeline-step-sdk:api]
+modulos clasificados que ya no se publican: [pipeline-step-sdk:api]
+```
+
+Es decir: una excepción sobre algo que no se publica es ruido que esconde las que sí importan.
+
+#### La medición que decide, y que yo no había hecho
+
+La pregunta que faltaba era **quién consume esto**. Medida, no asumida:
+
+| | Evidencia medida |
+|---|---|
+| ¿Se publica como artefacto? | **No.** `pipeline-step-sdk/api/build.gradle.kts` no aplica `maven-publish` ni declara publicación `sdk`. No resuelve como coordenada Maven. |
+| ¿Lo consume el plugin externo? | **No.** `examples/example-uppercase-plugin` compila contra `pipeline-domain`, `pipeline-scripting-api` y `pipeline-events`. Cero coincidencias de `pipeline.v2.sdk` en todo `examples/`. |
+
+Y el precedente ya estaba escrito en el propio build: `pipeline-credentials-api` estaba en
+`bcvModules` y **no** en `publishedContractModules`, sin excepción alguna.
+
+#### Dos listas, dos preguntas
+
+```text
+bcvModules                -> que ABI interno quiero ver cuando cambia
+publishedContractModules  -> que artefacto resuelve un consumidor externo
+```
+
+La primera es una petición de revisión. La segunda es una promesa a un consumidor. Un módulo BCV
+puro no tiene programa de consumidores, así que no se clasifica ni recibe recibo de excepción: su
+ruptura no puede ser silenciosa, porque sus llamadores están **dentro de este build** y un tipo
+público eliminado revienta `compileKotlin` de inmediato. Lo que aporta el dump es el diff —
+que alguien tiene que mirar —, no la detección.
+
+Añadirlo a `publishedContractModules` habría sido la salida fácil, y habría sido una mentira por
+tres vías: el módulo no se publica, `PublishedContractBoundaryFitnessTest` fija las mismas cuatro
+entradas y falla ante la deriva, y no se cumple ninguna de las tres condiciones que el propio
+comentario del build exige para entrar en esa lista.
+
+Así que **la edición de gobernanza se revierte**. El registro de la ruptura es el diff del dump
+commiteado, que es lo que corresponde a un módulo sin consumidores.
+
+#### El comentario que mentía, y era el mismo defecto otra vez
+
+Al medir salió que `build.gradle.kts` describía el módulo como «SDK contract for external plugin
+authors». Falso por las dos filas de la tabla de arriba. Es **el mismo defecto que pagaríamos con
+el KSP**: una afirmación escrita que ningún dato sostiene, apuntando al futuro lector a un programa
+de consumidores que no existe. Y el mismo comentario contaba la lista como de cuatro módulos
+cuando llevaba seis desde BLOCK 2.
+
+Corregido, con la medición y su consecuencia al lado para que la próxima vez no haya que
+redescubrirla.
+
+### Evidencia ejecutada sobre el SHA
+
+```text
+cd v2 && PIPELINEK_SPIKE_HOME=/var/home/rubentxu/.local/state/pipelinek-bundles/e4c-4700f23d \
+  ./gradlew -p . --no-daemon --offline check --rerun-tasks
+```
+
+```text
+BUILD SUCCESSFUL in 32m 41s
+318 actionable tasks: 318 executed
+```
+
+**773 clases · 5136 tests · 0 fallos · 0 errores · 140 skips**, en 19 módulos. Recuento leído de
+los XML de `test-results` acotados por `mtime` desde el arranque de esta corrida, no por un total
+acumulado del árbol.
+
+Se corrió **dos veces** y esto merece registrarse. La primera, sin `--rerun-tasks`, dio verde en
+32m 1s con el desglose `318 actionable tasks: 93 executed, 2 from cache, 223 up-to-date` y 505
+clases en la ventana. Era verde, pero era **verde por omisión**: 223 tareas no se ejecutaron, y los
+recibos de 1-F y 1-G registran 773 y 774 clases. Cerrar 1-H con 505 sería publicar una evidencia
+más débil que la de los bloques anteriores sin decirlo, así que se repitió con el gate que fija la
+política. La segunda corrida es la que cierra el bloque: `318 executed`, cero `up-to-date`.
+
+Los tres fitness de gobernanza, uno a uno:
+
+```text
+P3EPublishedContractMaturityFitnessTest   16 tests  0 fallos  0 errores
+NoSecondStepMetadataAuthorityFitnessTest   5 tests  0 fallos  0 errores
+PublishedContractBoundaryFitnessTest        6 tests  0 fallos  0 errores
+```
+
+Las dos filas que fallaban —«excepciones que nombran modulos no publicados» y «modulos
+clasificados que ya no se publican»— están verdes por la vía que corresponde: **el módulo no se
+declara publicado**, en vez de declarar la publicación para que la excepción dejara de doler.
+
+### Lo que este bloque NO hace
+
+Se declara aquí para que no se lea como hecho:
 
 Se declara aquí para que no se lea como hecho:
 

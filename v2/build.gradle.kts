@@ -403,8 +403,24 @@ subprojects {
 // The chosen modules have the largest stable JVM ABI surfaces:
 //   - pipeline-domain: 248 top-level types (Step contract, ReplayPolicy, durable).
 //   - pipeline-events: 96 types (event algebra, sink interfaces).
-//   - pipeline-step-sdk:api: SDK contract for external plugin authors.
 //   - pipeline-credentials-api: credentials SDK (SecretPatternRegistry, etc.).
+//
+// BCV guards MORE modules than are published, and the two questions are different. `bcvModules`
+// answers "which internal ABI do I want to see reviewed when it changes"; `publishedContractModules`
+// below answers "which artifact can an external consumer resolve". `pipeline-step-sdk:api` and
+// `pipeline-credentials-api` are in the first list and not the second, and that is measured, not
+// assumed: neither applies `maven-publish`, so neither resolves as a Maven coordinate, and
+// `examples/` imports nothing from `dev.rubentxu.pipeline.v2.sdk`.
+//
+// This comment used to read "pipeline-step-sdk:api: SDK contract for external plugin authors". That
+// was false, and it was the same defect this session already paid for once in the KSP: a written
+// claim that no evidence backs, pointing a future reader at a consumer program that does not exist.
+// It also called this a four-module list while the set below has carried six since BLOCK 2.
+//
+// The consequence for a break: a BCV-only module gets no maturity classification and no exception
+// receipt, because it has no consumer program that could break silently. Its internal callers are
+// inside this build, so a removed public type fails `compileKotlin` immediately and loudly. What
+// the dump buys is the review — a diff nobody has to be shown.
 //
 // Adding a new module to BCV requires two steps: (1) append its name to
 // `bcvModules` below; (2) run `:pipeline-<x>:apiDump` to materialise the

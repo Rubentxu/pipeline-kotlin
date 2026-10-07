@@ -50,11 +50,32 @@ enum class OutputChannel(val token: String) {
  * {runId}/{operationId}/{channel.token}
  * ```
  *
+ * ## What the operation id actually is
+ *
+ * It is an **operation identity**, not a step identity. Production mints it with `OpId.format()` in
+ * `pipeline-application`, whose shape is:
+ *
+ * ```text
+ * {runId}-s{stageIndex}-{stepIndex}[-b{branchIndex}][-bp{N}-{childIndex}:{pluginStepId}...]
+ * ```
+ *
+ * So the stdout stream of an `sh` in stage 0, step 0 of run `run-7` is `run-7/run-7-s0-0/stdout` —
+ * **three** segments, and the run id appears twice, once as the run and once inside the operation.
+ *
+ * The two identities are easy to confuse because both are derived from a step, and they are not
+ * interchangeable. `build/sh-0` is a **StepId**: the definition-local node id, and the value that
+ * reaches the journal as `OperationInput.stepId`. It is not the operation id and never appears as the
+ * middle of a stream id. A reader that builds that StepId from a step event and looks for the stream
+ * finds nothing, and finds nothing for every step in the run — which reads like an empty transcript
+ * rather than like the mistake it is.
+ *
  * ## Read it from the ends, never from a segment count
  *
- * An operation id is **not** a single path segment. The canonical one is `build/sh-0` — stage and
- * step — so the id of its stdout stream is `run-7/build/sh-0/stdout`, with four segments. Parsing by
- * counting segments would therefore reject every real operation id while accepting synthetic ones.
+ * The middle is not required to be one segment. A `bodyPath` segment embeds a `PluginStepId`, and
+ * `PluginStepId` is only required to be non-blank — so a plugin step id carrying `/` would make a
+ * legitimate operation id span several segments. Production's plugin step ids (`core.sh`, `core.dir`)
+ * happen to carry none, so real ids are three segments today; "today" is not a property [parse] is
+ * entitled to depend on.
  *
  * The two unambiguous ends are what matter:
  *
@@ -62,7 +83,8 @@ enum class OutputChannel(val token: String) {
  * - the **last** segment is the channel token, which is a closed set.
  *
  * Everything between them is the operation id, separators and all. That is what makes
- * `{runId}/{operationId}/{channel}` injective rather than merely plausible.
+ * `{runId}/{operationId}/{channel}` injective rather than merely plausible, and it is what lets
+ * [parse] round-trip an operation id it did not mint.
  *
  * ## Why the channel rides on the stream rather than beside the bytes
  *

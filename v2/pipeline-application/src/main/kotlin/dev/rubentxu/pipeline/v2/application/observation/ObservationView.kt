@@ -66,9 +66,19 @@ enum class ObservationView {
      * availability list cannot drift apart.
      */
     val available: Boolean
-        get() = this == NORMAL || this == EVENTS || this == QUIET
+        get() = this in EVENT_LANE_VIEWS
 
     companion object {
+        /**
+         * The views a reader of the EVENT lane alone can deliver.
+         *
+         * A set rather than a per-view constant because availability is a question ABOUT A READER,
+         * not a property OF a view. [CONSOLE] is unreadable to `run` and deliverable to `observe`
+         * from the same build, so hard-coding either answer would have made one of those two true
+         * by fiat.
+         */
+        val EVENT_LANE_VIEWS: Set<ObservationView> = setOf(NORMAL, EVENTS, QUIET)
+
         fun parseView(raw: String): ViewParseResult {
             val match = entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }
             return if (match == null) ViewParseResult.Invalid(raw) else ViewParseResult.Parsed(match)
@@ -119,13 +129,19 @@ sealed interface FormatParseResult {
  * Resolves [raw] to a deliverable view, collapsing "unknown" and "not yet
  * deliverable" into distinct typed results.
  *
+ * [deliverable] is what the CALLER can read, which is why it is a parameter: `run` streams the
+ * event lane and refuses `console`, while `observe` reads both lanes and delivers it.
+ *
  * Pure: no I/O, no globals. Called by the parser before any effect is launched,
  * so an unusable view never reaches execution.
  */
-fun resolveView(raw: String): ViewParseResult {
+fun resolveView(
+    raw: String,
+    deliverable: Set<ObservationView> = ObservationView.EVENT_LANE_VIEWS,
+): ViewParseResult {
     return when (val parsed = ObservationView.parseView(raw)) {
         is ViewParseResult.Parsed ->
-            if (parsed.view.available) ViewParseResult.Parsed(parsed.view)
+            if (parsed.view in deliverable) ViewParseResult.Parsed(parsed.view)
             else ViewParseResult.Unavailable(parsed.view)
 
         is ViewParseResult.Invalid -> parsed

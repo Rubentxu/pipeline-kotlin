@@ -145,6 +145,18 @@ fun main(args: Array<String>) {
         return
     }
 
+    // Observe subcommand (OBS-E5): one public verb over both durable authorities.
+    //
+    // NOT a third universe alongside `events` and `console` — it reads the same two planes and
+    // composes them read-side. What it refuses is the thing neither of the other two can promise:
+    // a document claiming an interleaving. `Event.sequence` and `OutputFrame.ordinal` have no
+    // total order, so `--view full` stays refused here exactly as it is in `run`.
+    if (args.firstOrNull() == "observe") {
+        val exitCode = MainObserveCli.main(args.drop(1).toTypedArray())
+        System.exit(exitCode)
+        return
+    }
+
     // Credentials subcommand — delegated to MainCredentialsCli
     if (args.firstOrNull() == "credentials") {
         val exitCode = MainCredentialsCli.main(args.drop(1).toTypedArray())

@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery
 import dev.rubentxu.pipeline.v2.application.observation.SelectorCompileResult
 import dev.rubentxu.pipeline.v2.application.observation.LineSelector
 import dev.rubentxu.pipeline.v2.application.observation.compileQuery
@@ -197,6 +198,20 @@ sealed interface CliError {
     }
 
     /**
+     * A flag that changes what a run DOES was passed to a verb that only reads.
+     *
+     * Refused rather than ignored, and the wording matters: `--resume` on a reader has no meaning
+     * at all, so the user is not being denied a feature — they are being told that the verb they
+     * reached for is not the one that does this.
+     */
+    data class OptionNotReadable(val option: String) : CliError {
+        override fun toString(): String =
+            "OptionNotReadable: '$option' changes what a run DOES, and this command only reads. " +
+                "It has no meaning here, and dropping it silently would mean acting on something " +
+                "the caller did not ask for."
+    }
+
+    /**
      * The assembled query is not usable — most often an uncompilable
      * `--grep-regex`. Caught here so no process, store or journal is created
      * for a run that could never be filtered as asked.
@@ -239,6 +254,28 @@ sealed interface CliParseResult {
     data class Rejected(val error: CliError) : CliParseResult
 }
 
+/**
+ * What a read-only verb was asked for, already compiled.
+ *
+ * The query arrives COMPILED so a reader cannot re-validate it and disagree with the parser about
+ * whether a pattern was usable — the same reasoning [RunObservationOutput.encode] documents for its
+ * own parameter.
+ */
+sealed interface ObservationParseResult {
+    data class Parsed(
+        val query: ObservationQuery,
+        val compiled: CompiledObservationQuery,
+        val view: ObservationView,
+        val format: ObservationFormat,
+        /** Where the event lane is. Null means no durable event store was named. */
+        val dbPath: String?,
+        /** Where the Output Plane is. Null means it was not named. */
+        val controlRoot: String?,
+    ) : ObservationParseResult
+
+    data class Rejected(val error: CliError) : ObservationParseResult
+}
+
 sealed interface DurableRunPolicy {
     data object ReusePriorRun : DurableRunPolicy
     data object ResumePriorRun : DurableRunPolicy
@@ -278,6 +315,15 @@ private class ParseState(
     val pluginJars: MutableList<String> = mutableListOf(),
     /** ADR-0088 `--view`. Resolved to a DELIVERABLE view at parse time. */
     var view: ObservationView = ObservationView.NORMAL,
+    /**
+     * Which views THIS parse may deliver.
+     *
+     * In the state so `--view` keeps ONE handler for every verb: a reader that also reads the output
+     * lane widens this before parsing and gets `--view console`, `run` does not and keeps refusing
+     * it. Branching on the verb inside the `--view` handler instead would have been a second place
+     * where a flag's meaning is decided, which is how one flag ends up meaning two things.
+     */
+    var deliverableViews: Set<ObservationView> = ObservationView.EVENT_LANE_VIEWS,
     /** ADR-0088 `--format`. JSON/JSONL are opt-in; text is the default. */
     var format: ObservationFormat = ObservationFormat.TEXT,
     /**
@@ -396,10 +442,97 @@ object CliParser {
     }
 
     /**
+     * The OBSERVATION subset of the CLI surface, for a verb that reads rather than executes.
+     *
+     * ## Why this lives here and not in the reader
+     *
+     * `observe` selects with the same dimensions `run` does, so the meaning of `--channel` has to
+     * be decided in exactly one place. A second option parser would be a second authority for what a
+     * flag means, and the two would drift the moment one of them gains a case. So this runs the same
+     * [applyOption] over the same [ParseState] and hands back the same assembled query — a verb that
+     * reads cannot quietly accept a different `--grep` than the verb that runs.
+     *
+     * ## Why execution options are refused rather than ignored
+     *
+     * `--resume` and `--rerun` decide which run exists; `--sandbox-profile` and `--allow-network`
+     * decide what a run may do. None of them means anything to a reader, and an option that is
+     * silently dropped is an option the user believed in. They are rejected by name, so
+     * `observe --resume RUN` says so instead of replaying a different run than the one asked for.
+     */
+    fun parseObservation(args: Array<String>): ObservationParseResult {
+        val state = ParseState(deliverableViews = READS_BOTH_LANES)
+        var index = 0
+        while (index < args.size) {
+            val arg = args[index]
+            if (arg in EXECUTION_ONLY_OPTIONS) {
+                return ObservationParseResult.Rejected(CliError.OptionNotReadable(arg))
+            }
+            if (!arg.startsWith("--")) {
+                return ObservationParseResult.Rejected(CliError.TrailingOption(arg))
+            }
+            when (val outcome = applyOption(arg, args, index, state)) {
+                is ApplyOutcome.Applied -> index = outcome.nextIndex
+                is ApplyOutcome.Rejected -> return ObservationParseResult.Rejected(outcome.error)
+            }
+        }
+        if (state.grepInvert && state.grepSelectors.isEmpty()) {
+            return ObservationParseResult.Rejected(CliError.InvertWithoutGrep)
+        }
+        val query = buildObservationQuery(
+            grepSelectors = state.grepSelectors,
+            grepInvert = state.grepInvert,
+            stageNames = state.stageNames,
+            stepNames = state.stepNames,
+            eventKinds = state.eventKinds,
+            channels = state.channels,
+        )
+        return when (val compiled = compileQuery(query)) {
+            is SelectorCompileResult.Ok -> ObservationParseResult.Parsed(
+                query = query,
+                compiled = compiled.value,
+                view = state.view,
+                format = state.format,
+                dbPath = state.dbPath,
+                controlRoot = state.controlRoot,
+            )
+
+            is SelectorCompileResult.Invalid ->
+                ObservationParseResult.Rejected(CliError.InvalidQuery(compiled.reason))
+        }
+    }
+
+    /**
+     * Options that decide what a run DOES rather than what a reader sees.
+     *
+     * Listed explicitly because the alternative — accepting them and ignoring them — is how a
+     * reader ends up replaying a run the caller did not ask for.
+     */
+    /**
+     * What a reader that reads BOTH lanes can deliver, which is what `observe` parses against.
+     *
+     * Still excluding [ObservationView.FULL]: events and output have no total order, so a view
+     * claiming to be both would be claiming an interleaving this build cannot produce.
+     */
+    private val READS_BOTH_LANES: Set<ObservationView> =
+        ObservationView.EVENT_LANE_VIEWS + ObservationView.CONSOLE
+
+    private val EXECUTION_ONLY_OPTIONS = setOf(
+        "--resume",
+        "--rerun",
+        "--workspace",
+        "--isolated",
+        "--sandbox-profile",
+        "--plugin-jar",
+        "--allow-network",
+    )
+    /**
      * Process one CLI option at [index] of [args], mutating [state] and
      * returning the next index or a typed rejection. Extracted from
      * [parse] to keep the loop driver's complexity below the detekt
      * `CyclomaticComplexMethod` threshold.
+     *
+     * Shared with [parseObservation] on purpose: one table of what each option means, whatever verb
+     * is being parsed.
      */
     private fun applyOption(
         option: String,
@@ -465,7 +598,7 @@ object CliParser {
                     ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
                 // Resolved HERE, not at the effect boundary: an unusable view is
                 // rejected before a process, a store or a journal is created.
-                when (val resolved = resolveView(requested)) {
+                when (val resolved = resolveView(requested, state.deliverableViews)) {
                     is ViewParseResult.Parsed -> {
                         state.view = resolved.view
                         ApplyOutcome.Applied(index + 2)

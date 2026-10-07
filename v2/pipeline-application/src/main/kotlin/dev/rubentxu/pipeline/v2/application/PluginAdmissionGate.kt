@@ -1,11 +1,16 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.directive.DirectiveContributor
+import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
 import dev.rubentxu.pipeline.v2.domain.step.ArtifactOrigin
 import dev.rubentxu.pipeline.v2.domain.step.PluginAdmission
 import dev.rubentxu.pipeline.v2.domain.step.PluginAdmissionResult
+import dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection
 import dev.rubentxu.pipeline.v2.domain.step.SemVer
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor
+import dev.rubentxu.pipeline.v2.events.registry.EventDefinitionContributor
+import dev.rubentxu.pipeline.v2.events.registry.EventDefinitionCreation
 import java.util.ServiceLoader
 
 /**
@@ -41,6 +46,24 @@ import java.util.ServiceLoader
  * does not throw, does not skip, and does not return an empty list a caller could mistake for
  * "this plugin contributed nothing" — absence of a plugin and absence of a contribution are
  * different facts and must stay different.
+ *
+ * ## Why all THREE families are collected here, and what it cost not to
+ *
+ * The cross-check takes `definitions`, `directiveKeys` and `eventKinds`. This method used to pass
+ * only the first, which made the other two permanently `emptySet()` — and therefore made
+ * `missingDirectives` and `missingEvents` equal to whatever the manifest declared. The
+ * consequence was not subtle: **a plugin that declared a Directive or an Event could never be
+ * admitted**, however faithfully it implemented them, because the comparison had nothing to
+ * compare against and the declared side always lost.
+ *
+ * It stayed invisible for as long as it stayed true, because no plugin declared either family:
+ * with empty declarations AND empty implementations, the cross-check passed trivially. It looked
+ * like the cross-check covered four families and it covered one. That is the same shape of defect
+ * as the prohibition over a file that no longer exists — a check whose green is produced by the
+ * absence of the subject.
+ *
+ * The fix is not "trust the manifest" and not "trust the classes": both sides are now measured in
+ * the same window, from the same artifact, under the same scoping rule.
  */
 object PluginAdmissionGate {
 
@@ -119,7 +142,6 @@ object PluginAdmissionGate {
         val crossCheck = try {
             Class.forName(contributorClassName, /* initialize = */ true, classLoader)
 
-            val definitions = mutableListOf<StepDefinition<*, *>>()
             // ServiceLoader is Iterable but NOT Closeable, so `use` does not apply here.
             //
             // The filter is load-bearing and was found by a failing test. ServiceLoader returns
@@ -128,10 +150,45 @@ object PluginAdmissionGate {
             // undeclared. A plugin's cross-check is about ITS OWN contributions, so providers
             // are selected by the artifact they come from — the same scoping `strict` applies
             // to the manifest. Without it every plugin refuses and the gate admits nothing.
+            //
+            // All THREE families are scoped by that same rule, and they must be: a Step is not
+            // "this plugin's" in some looser sense that a Directive is not. They are one plugin's
+            // contributions or the cross-check is comparing a manifest against a neighbour.
+            fun fromSameArtifact(provider: Any): Boolean =
+                provider.javaClass.protectionDomain?.codeSource?.location?.toString() == codeSource
+
+            val definitions = mutableListOf<StepDefinition<*, *>>()
             for (provider in ServiceLoader.load(StepDefinitionContributor::class.java, classLoader)) {
-                val providerSource = provider.javaClass.protectionDomain?.codeSource?.location?.toString()
-                if (providerSource != codeSource) continue
+                if (!fromSameArtifact(provider)) continue
                 provider.registrations().forEach { definitions.add(it.definition) }
+            }
+
+            val directiveKeys = mutableSetOf<DirectiveKey>()
+            for (provider in ServiceLoader.load(DirectiveContributor::class.java, classLoader)) {
+                if (!fromSameArtifact(provider)) continue
+                provider.definitions().forEach { directiveKeys.add(it.key) }
+            }
+
+            val eventKinds = mutableSetOf<String>()
+            for (provider in ServiceLoader.load(EventDefinitionContributor::class.java, classLoader)) {
+                if (!fromSameArtifact(provider)) continue
+                for (creation in provider.definitions()) {
+                    // Fail closed rather than skipping: a contributor that declares a malformed
+                    // kind must abort admission, exactly as it aborts composition in
+                    // ExternalEventDefinitionDiscovery. Counting only the Valid ones here would
+                    // make a broken declaration look like a missing one and let a plugin through
+                    // on a family it got wrong.
+                    when (creation) {
+                        is EventDefinitionCreation.Invalid -> return PluginAdmissionResult.Refused(
+                            PluginManifestRejection.MalformedDocument(
+                                "contributor ${provider.id} declared a malformed event: " +
+                                    creation.problems.joinToString("; "),
+                            ),
+                        )
+
+                        is EventDefinitionCreation.Valid -> eventKinds.add(creation.definition.kind)
+                    }
+                }
             }
 
             // S6/E — the cross-check. It runs HERE, after the contributor's code has run,
@@ -139,7 +196,11 @@ object PluginAdmissionGate {
             // the contributions exist. Splitting it from phase 3 is the point: the first gate
             // is pre-load and cheap, the second is post-load and complete, and collapsing
             // them would either run code before admission or make admission incomplete.
-            admittedPlugin.admitContributions(definitions = definitions)
+            admittedPlugin.admitContributions(
+                definitions = definitions,
+                directiveKeys = directiveKeys,
+                eventKinds = eventKinds,
+            )
         } catch (e: Throwable) {
             return PluginAdmissionResult.Refused(
                 dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection.MalformedDocument(

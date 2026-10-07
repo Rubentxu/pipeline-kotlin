@@ -307,7 +307,263 @@ la forma que este bloque elimina.
 querían un registry vacío siguen funcionando, y ahora reciben un valor que no puede crecer
 después.
 
+## BLOCK 1-G — una sola autoridad de composición
 
+Con los registries congelados, la pregunta «qué contribuye esta instalación» tenía **tres
+respuestas en tres ficheros**, resueltas en tres momentos distintos y bajo tres swaps de
+classloader distintos:
+
+| Qué | Dónde se componía |
+|---|---|
+| Steps | `Main.kt`, **dos veces** — una por rama, con el mismo bloque copiado |
+| Events | dentro del cuerpo de `CompositionRoot` |
+| Directives | dentro del cuerpo de `CompositionRoot`, más abajo |
+
+Y `runCanonicalPipeline` **tenía un valor por defecto**: `stepRegistry =
+CoreStepRegistryFactory.registry()`. Un llamante que olvidara el argumento obtenía un registry
+sólo-core, sin error, ejecutando un pipeline que ignoraba en silencio todos los plugins de la
+instalación. Eso es una vía *fail-open* justo por el hueco que 1-D y 1-E existen para cerrar.
+
+### La forma
+
+`PluginComposition.resolve(pluginClassLoader)` es ahora la única autoridad. Devuelve
+`PreResolvedComposition`, que lleva los tres registries congelados, y su constructor interno hace
+que **no exista el estado parcial**: si una composición falla, el valor no llega a construirse.
+Fail-closed es una propiedad de la construcción, no una comprobación que alguien recuerde hacer.
+
+`runCanonicalPipeline` recibe `composition: PreResolvedComposition` **sin valor por defecto**, y
+`pluginClassLoader` desaparece de su firma: su KDoc afirmaba gobernar el descubrimiento de
+directives, y tras mover la composición nada en ese fichero lo leía. Un parámetro que documenta
+un papel que ya no tiene es una mentira más pequeña que un default que descarta plugins.
+
+### La cuarta autoridad, medida y cerrada
+
+`ExternalCapabilityContributorDiscovery` era la cuarta autoridad: usaba `ServiceLoader` **sin**
+cambiar el TCCL y se evaluaba como valor por defecto *después* de que la composición restaurase
+el loader. Su propia KDoc justifica que no hace falta porque «un JAR de plugin ya está en el
+classpath de la distribución» (`BundledPluginClasspathPlan`), lo cual es cierto en la
+distribución instalada pero **no** en el camino `--plugin-jars`, que usa un loader acotado.
+
+**La sonda obvia habría mentido.** Preguntar por el plugin `http` da un verde cómodo:
+`pipeline-application` tiene `implementation(project(":pipeline-step-sdk:http"))`, así que el
+classpath de la app ya lleva el contributor *y* su fichero de servicios, y el descubrimiento
+funciona sea cual sea el loader. Eso oculta el defecto en vez de refutarlo.
+
+La sonda real usa un plugin que la app **no** tiene: sus clases vienen del padre —el classloader
+del propio test— y sólo sus *declaraciones* de servicio viven en un JAR hijo. Eso aísla una
+variable: ¿ve `ServiceLoader` una declaración que sólo existe por debajo del TCCL?
+
+Medido, antes de arreglar:
+
+- el Step `probe.scoped.step` **sí** se registraba, porque `resolve` cambia el TCCL;
+- la capability `probe.scoped.transport` **no** la aportaba ningún contributor.
+
+Es exactamente el fallo que la KDoc de `ExternalCapabilityContributorDiscovery` registra para
+`http.request`: «descubierto por `ServiceLoader`, aparece en la lista de plugins que imprime la
+CLI, y aun así no puede ejecutarse». Por eso se reconoció en vez de redescubrirse desde cero.
+
+El arreglo es que `PreResolvedComposition` lleva ahora `capabilityContributors`, descubiertas
+**dentro de la misma ventana**. El lado de credenciales se queda en `CompositionRoot` porque es
+estado por run: envuelve el almacén que abrió *esta* invocación, así que no puede venir de un
+descubrimiento por classpath. El default de `capabilityContributors` pasa a significar «lo que
+la composición resolvió, más el seam de credenciales»; sigue siendo un default, pero ahora cierra
+sobre un valor que la run ya resolvió en lugar de redescubrir bajo lo que el TCCL sea por entonces.
+
+La fila de la sonda **invirtió su expectativa**, y la transición está escrita en el mensaje de
+la aserción, no borrada en silencio: pasó de `assertFalse` con «MEASURED DEFECT» a `assertTrue`
+con «REGRESSION». La fila de no-vacuidad que la acompaña afirma que el loader de la app **sigue**
+sin ver ese contributor — si algún día lo viera, la fila anterior dejaría de probar que la ventana
+de composición es lo que funciona.
+
+
+### La ley, probada por mutación
+
+Cinco filas en `PreResolvedCompositionTest` cruzan `PluginComposition.resolve` sin sustituto
+(HF1, in-process): el camino CORE-only, el diagnóstico que no miente cuando no hubo
+descubrimiento, un **JAR real** con un `META-INF/services` que nombra una clase inexistente, y
+el TCCL restaurado incluso cuando la composición falla.
+
+Siete filas en `FArchPreResolvedCompositionAuthorityTest` fijan la parte estructural, que desde
+dentro de un módulo no se puede observar: cada uno de los **cuatro** puntos de descubrimiento
+tiene **exactamente un** llamante en producción, `CompositionRoot` no compone nada, y el
+parámetro `composition` no tiene valor por defecto. La primera de esas ocho es de no-vacuidad:
+sin ella, «exactamente uno» lo satisface un escaneo vacío.
+
+Mutaciones ejecutadas, con atribución 1:1:
+
+- reintroducir un segundo `ExternalEventDefinitionDiscovery.compose()` en `Main.kt` tumba
+  **exactamente 1 de 7** filas y deja las otras 6 verdes;
+- devolver `ExternalCapabilityContributorDiscovery.discover()` al default de `CompositionRoot`
+  tumba **exactamente 1 de 8** y deja las otras 7 verdes;
+- quitar el `finally` que restaura el TCCL rompe la fila que lo afirma, y sólo esa.
+
+### Lo que este bloque NO hace
+
+No sustituye a BLOCK 2: esto es caracterización de la decisión de composición **en proceso**, no
+certificación de comportamiento sobre la distribución instalada.
+
+## BLOCK 1-H — el KSP era una segunda autoridad de metadata, y decía lo contrario
+
+BLOCK 1-A quitó del KSP los interruptores semánticos por nombre. Este bloque audita lo que quedó:
+comprobar si el generador que sobrevivió merecía sobrevivir.
+
+### Lo que se midió, no lo que se suponía
+
+| | La autoridad real | El fichero generado por el KSP |
+|---|---|---|
+| `requiredCapabilities` | `{EVENT_SINK_CAPABILITY}` | `emptyList()` |
+| `configRef` | `""` | `"core.echo.config"` (inventado) |
+| `jenkinsSurface` | `""` | `"echo\|workflow-durable-task-step\|F3"` (formato inventado) |
+| `executionLocation`, `effects`, `replayPolicy` | coinciden | coinciden |
+
+Y por encima de todo eso: **`GeneratedStepDescriptors.all` no tenía ni un consumidor** en todo el
+repositorio. Nadie leía `@Step` ni `@JenkinsSurface` en runtime; la cadena entera era
+`anotación → KSP → fichero → nada`.
+
+### El defecto real ya estaba diagnosticado, y no donde parecía
+
+`CoreShSingleAdmissionAuthorityTest` documenta, para `core.sh`, que «KSP lo convirtió en un
+descriptor con `requiredCapabilities = emptyList()` donde el descriptor canónico exige
+`SHELL_OPERATIONS_CAPABILITY`». P1 lo arregló borrando la **declaración duplicada**. El KSP que
+fabricaba el descriptor equivocado se quedó.
+
+O sea: el defecto nunca fue la declaración duplicada. Era que **el procesador emitía una lista de
+capabilities vacía sin condiciones para todos los Steps que procesaba**. Si algo hubiera leído
+ese fichero, toda decisión de admisión de capabilities habría sido errónea, en silencio.
+
+### Lo que se retira
+
+El módulo `pipeline-step-sdk:processor`, su `ksp(...)`, la declaración del plugin KSP en
+`settings.gradle.kts`, las anotaciones `@Step` y `@JenkinsSurface`, y sus usos en `StepExecutors`.
+
+`CompatibilityLevel` sobrevive: es un hecho sobre el ecosistema Jenkins, no sobre ningún Step, y
+lo fija `CompatibilityLevelEnumTest`. La Jenkins surface de esos cuatro Steps **no se pierde**,
+porque nunca se entregó: vivía en un fichero que nadie leía mientras el `StepDescriptor` real la
+tenía a `""`. Recuperarla es trabajo de BLOCK 1-I/6 sobre la autoridad que sí se usa.
+
+### La ley que sustituye a la anterior
+
+`StepDescriptorGeneratorNoNameSemanticsFitnessTest` prohibía un `when` por nombre dentro de un
+fichero que ya no existe — una prohibición satisfecha por un escaneo vacío, el verde más vacío que
+hay. Se reemplaza por `NoSecondStepMetadataAuthorityFitnessTest`, que afirma sobre **ausencia**:
+
+1. ninguna fuente de producción sintetiza una lista de `StepDescriptor`;
+2. ningún build aplica un processor KSP para metadata de Step;
+3. ninguna fuente de producción declara un Step por anotación;
+4. y la mitad positiva: `core.echo` **sigue** declarando `EVENT_SINK_CAPABILITY`.
+
+La primera fila es de no-vacuidad: sin ella, «no existe» lo satisface un árbol que nadie ha
+mirado.
+
+### No-vacuidad, y una lección sobre lo que enseña una mutación inaplicable
+
+Reintroducir `@Step(` en `StepExecutors.kt` **no llegó a ejecutarse la fila**: el árbol no compiló,
+porque la anotación ya no existe. Eso es una garantía más fuerte que un escaneo de fuentes — la
+reintroducción es imposible por el compilador — y la fila queda como segunda línea de defensa para
+el caso en que alguien reinstale la anotación *y* la use.
+
+La lección general: cuando la mutación de una ley no puede aplicarse porque el tipo desapareció, eso
+no es un fallo del experimento. Es un dato sobre la fuerza de la ley, y se registra como tal en
+lugar de forzar una versión débil de la prueba.
+
+### BCV: aquí NO procede la excepción, y el fitness tenía razón
+
+`apiCheck` de `:pipeline-step-sdk:api` sí falló, con la ruptura medida: `Step` y `JenkinsSurface`
+desaparecen del ABI, 15 líneas del dump. La primera reacción fue registrar una excepción BCV
+como se hizo en 1-F con `pipeline-domain` y `pipeline-events`.
+
+**Esa reacción era incorrecta, y el fitness la detectó.** Al añadir la entrada,
+`P3EPublishedContractMaturityFitnessTest` falló con dos filas:
+
+```text
+excepciones que nombran modulos no publicados: [pipeline-step-sdk:api]
+modulos clasificados que ya no se publican: [pipeline-step-sdk:api]
+```
+
+Es decir: una excepción sobre algo que no se publica es ruido que esconde las que sí importan.
+
+#### La medición que decide, y que yo no había hecho
+
+La pregunta que faltaba era **quién consume esto**. Medida, no asumida:
+
+| | Evidencia medida |
+|---|---|
+| ¿Se publica como artefacto? | **No.** `pipeline-step-sdk/api/build.gradle.kts` no aplica `maven-publish` ni declara publicación `sdk`. No resuelve como coordenada Maven. |
+| ¿Lo consume el plugin externo? | **No.** `examples/example-uppercase-plugin` compila contra `pipeline-domain`, `pipeline-scripting-api` y `pipeline-events`. Cero coincidencias de `pipeline.v2.sdk` en todo `examples/`. |
+
+Y el precedente ya estaba escrito en el propio build: `pipeline-credentials-api` estaba en
+`bcvModules` y **no** en `publishedContractModules`, sin excepción alguna.
+
+#### Dos listas, dos preguntas
+
+```text
+bcvModules                -> que ABI interno quiero ver cuando cambia
+publishedContractModules  -> que artefacto resuelve un consumidor externo
+```
+
+La primera es una petición de revisión. La segunda es una promesa a un consumidor. Un módulo BCV
+puro no tiene programa de consumidores, así que no se clasifica ni recibe recibo de excepción: su
+ruptura no puede ser silenciosa, porque sus llamadores están **dentro de este build** y un tipo
+público eliminado revienta `compileKotlin` de inmediato. Lo que aporta el dump es el diff —
+que alguien tiene que mirar —, no la detección.
+
+Añadirlo a `publishedContractModules` habría sido la salida fácil, y habría sido una mentira por
+tres vías: el módulo no se publica, `PublishedContractBoundaryFitnessTest` fija las mismas cuatro
+entradas y falla ante la deriva, y no se cumple ninguna de las tres condiciones que el propio
+comentario del build exige para entrar en esa lista.
+
+Así que **la edición de gobernanza se revierte**. El registro de la ruptura es el diff del dump
+commiteado, que es lo que corresponde a un módulo sin consumidores.
+
+#### El comentario que mentía, y era el mismo defecto otra vez
+
+Al medir salió que `build.gradle.kts` describía el módulo como «SDK contract for external plugin
+authors». Falso por las dos filas de la tabla de arriba. Es **el mismo defecto que pagaríamos con
+el KSP**: una afirmación escrita que ningún dato sostiene, apuntando al futuro lector a un programa
+de consumidores que no existe. Y el mismo comentario contaba la lista como de cuatro módulos
+cuando llevaba seis desde BLOCK 2.
+
+Corregido, con la medición y su consecuencia al lado para que la próxima vez no haya que
+redescubrirla.
+
+### Evidencia ejecutada sobre el SHA
+
+```text
+cd v2 && PIPELINEK_SPIKE_HOME=/var/home/rubentxu/.local/state/pipelinek-bundles/e4c-4700f23d \
+  ./gradlew -p . --no-daemon --offline check --rerun-tasks
+```
+
+```text
+BUILD SUCCESSFUL in 32m 41s
+318 actionable tasks: 318 executed
+```
+
+**773 clases · 5136 tests · 0 fallos · 0 errores · 140 skips**, en 19 módulos. Recuento leído de
+los XML de `test-results` acotados por `mtime` desde el arranque de esta corrida, no por un total
+acumulado del árbol.
+
+Se corrió **dos veces** y esto merece registrarse. La primera, sin `--rerun-tasks`, dio verde en
+32m 1s con el desglose `318 actionable tasks: 93 executed, 2 from cache, 223 up-to-date` y 505
+clases en la ventana. Era verde, pero era **verde por omisión**: 223 tareas no se ejecutaron, y los
+recibos de 1-F y 1-G registran 773 y 774 clases. Cerrar 1-H con 505 sería publicar una evidencia
+más débil que la de los bloques anteriores sin decirlo, así que se repitió con el gate que fija la
+política. La segunda corrida es la que cierra el bloque: `318 executed`, cero `up-to-date`.
+
+Los tres fitness de gobernanza, uno a uno:
+
+```text
+P3EPublishedContractMaturityFitnessTest   16 tests  0 fallos  0 errores
+NoSecondStepMetadataAuthorityFitnessTest   5 tests  0 fallos  0 errores
+PublishedContractBoundaryFitnessTest        6 tests  0 fallos  0 errores
+```
+
+Las dos filas que fallaban —«excepciones que nombran modulos no publicados» y «modulos
+clasificados que ya no se publican»— están verdes por la vía que corresponde: **el módulo no se
+declara publicado**, en vez de declarar la publicación para que la excepción dejara de doler.
+
+### Lo que este bloque NO hace
+
+Se declara aquí para que no se lea como hecho:
 
 Se declara aquí para que no se lea como hecho:
 
@@ -332,3 +588,361 @@ implementa su mitad estructural — el orden: leer, validar, admitir, y solo ent
 código — y **no** su mitad de identidad por bytes, que el propio ADR exige y que S6 no puede
 sostener. Esa frontera queda nombrada en el KDoc de `MeasuredArtifactIdentity` para que nadie
 la lea como cerrada.
+---
+
+## BLOCK 1-I — un solo JAR externo con las cuatro familias, y el cross-check que era verde sin mirar nada
+
+### El cross-check de Directives y Events no se ejecutaba
+
+`PluginAdmissionGate.admitThenLoad` recogía **sólo** definiciones de Step y pasaba el resto a
+`admitContributions` con sus defaults. `directiveKeys` y `eventKinds` llegaban siempre como
+`emptySet()`.
+
+La consecuencia medida, no la temida: `missingDirectives` y `missingEvents` eran exactamente lo
+declarado, así que **un plugin que declarase una Directive o un Event no podía ser admitido**,
+por fiel que fuera su implementación.
+
+Y no lo detectó nadie porque nadie lo ejercitó. Los cuatro plugins oficiales no declaran ninguna de
+las dos familias, así que `emptySet() - emptySet()` es vacío y la fila pasaba. Es el mismo defecto
+de forma que la prohibición sobre un fichero inexistente en BLOCK 1-H: **un verde producido por la
+ausencia del sujeto no es un verde, es la ausencia de una medición.**
+
+### El sujeto: por fin un artefacto con Directive y Event
+
+El plugin externo `example.uppercase` tenía Step y Event, pero **no tenía manifest**. No era un
+plugin más pequeño: era un plugin **no admitido**, porque `PluginAdmissionGate` rechaza cualquier
+contribuidor cuyo artefacto carezca de `META-INF/pipelinek/plugin-manifest.json`. Funcionaba
+porque `PluginComposition.resolve` descubre por una ruta que no consulta la puerta. Dos rutas, una
+guardada. Nombrarlo importa más que el código de abajo.
+
+### Lo que aporta el JAR único
+
+| | qué | por qué existe |
+|---|---|---|
+| Step | `example.uppercase` | pide **nada** al host y corre igual: la referencia de no-privilegio |
+| Step | `example.uppercase.observed` | pide **exactamente un** seam ajeno y recibe sólo ese |
+| Step | `example.uppercase.cased` | pide un seam que **este mismo JAR aporta** |
+| Directive | `example.uppercase.casedOn` | `Evaluate`, para que lo interprete el host y no el plugin |
+| Event | `example.uppercase.applied` | observación propia, ya existente |
+| Capability | `example.uppercase.case-table` | tabla de mayúsculas que el plugin suministra |
+
+El tercer Step es **nuevo y separado** a propósito: añadir la dependencia a cualquiera de los dos
+primeros no habría ampliado la demostración, la habría borrado. Los dos son referencias vivas, y una
+referencia que ha ganado una dependencia ya no es una referencia.
+
+La capability no se cuelga de ningún Step existente porque la ley vigente —el set de capabilities
+declarado debe **igualar** lo que exigen los contratos— sólo admite una capability que alguien
+consume. `http` funciona exactamente así.
+
+### La cuarta familia NO se comprueba en la puerta, y queda registrado como hueco medido
+
+Este es el punto donde **cambié de opinión midiendo**, y la primera versión de esta sección afirmaba
+lo contrario.
+
+Escribí una fila, `unbackedTopLevelCapabilityIsRefused`, que añade al manifest una capability que
+ningún Step exige. Salió **verde donde debía salir roja**: el mutante fue **ADMITIDO**.
+
+Razón: la puerta nunca miró el set de capabilities. Sólo lo hacía `PluginManifestValidator`, que es
+una comprobación **opcional** a la que cada plugin decide si llamar — los cuatro oficiales la llaman,
+el externo no, y nadie falló. **Una familia cuyo cross-check es optativo no está cross-checkeada.**
+
+Lo cerré, y el gate pasó a comparar el set de capabilities con una función pura compartida
+(`capabilityDiscrepancy`). Entonces el gate completo se puso rojo en una fila **preexistente**:
+
+```text
+PluginAdmissionPreLoadOrderingTest :: NON-VACUITY: admitted -> the plugin is initialised
+  top-level capabilities no Step contract requires: [test.sentinel]
+```
+
+Investigué, y el resultado invierte la decisión:
+
+- `SentinelPluginArtifact` es una **clase marcador**: compila un `static {}` que escribe un fichero
+  y no implementa ningún SPI. Su manifest declara `test.sentinel` **sólo** para que
+  `PluginManifest` pase su `require(!contributions.isEmpty)`. No aporta nada.
+- Su loader tiene **padre platform**, así que su clase no puede implementar interfaces de
+  PipelineK, y en Java no puede construirse un `StepContract` porque `PluginStepId`, `StepCapability`
+  y `EncodedStepValue` son `@JvmInline` (su constructor es `constructor-impl`, no válido en Java).
+
+O sea: **ese fixture no puede ser un plugin lícito**, con esta arquitectura. Forzar la fila
+requería rediseñar el sentinel, que es trabajo sobre otro sujeto y otro bloque.
+
+La alternativa era dejar el cross-check de capabilities en la puerta **fuera del alcance de 1-I**,
+que es lo que se ha hecho. El motivo es de alcance, no de comodidad:
+
+- El mandato de 1-I es el cross-check de **Directives y Events**, que es el defecto medido de la
+  puerta. Lo de capabilities no lo era.
+- Forzarlo arrastraba un conflicto preexistente del sentinel que este bloque no puede resolver sin
+  inventarse un redesign.
+- Y encima **no hacía falta**: con el cross-check de capabilities fuera de la puerta, queda un único
+  sitio que lo calcula (`PluginManifestValidator`), así que no se crea duplicación — que era el
+  riesgo real de tocar las dos capas.
+
+Consecuencia aceptada, y por eso se revierte también la ruptura de ABI de `pipeline-domain`: el
+commit queda **sin excepción BCV que registrar** y `PluginManifestValidator` intacto.
+
+**Lo que queda abierto, dicho sin adornos:** un plugin puede declarar una capability que ningún Step
+exige y ser admitido, porque la comprobación es optativa por plugin. Quien lo tome debe decidir
+primero **qué capa es la dueña** de esa comparación —la puerta o el validador— y arreglar después
+`SentinelPluginArtifact`. El hueco está medido, no supuesto: la fila
+`unbackedTopLevelCapabilityIsCurrentlyAdmitted` locharacteriza **a propósito**, y su mensaje de
+fallo anuncia el arreglo el día que la puerta lo asuma, para que no aparezca más tarde como una
+ruptura inexplicada.
+
+### Una fila preexistente que afirmaba inventario en vez de descubrimiento
+
+`DirectivePluginContractSuiteTest.registryFrom` afirmaba
+`assertEquals(listOf("example.lock.LockContributor"), contributed)`. Es una afirmación de
+**inventario** vestida de afirmación de **descubrimiento**: decía «el contributor de lock se
+encuentra» por medio de «lock es el único contributor que existe».
+
+Dar una directive al plugin uppercase —justo el tipo de cambio que la suite debe poder absorber— la
+tumbó por el contributor añadido y no por el que nombra. La transición a pertenencia está escrita
+en el propio mensaje de aserción, nunca como reescritura silenciosa de lo esperado.
+
+
+### No-vacuidad por mutación, atribuida fila a fila
+
+Revertir la puerta a `admitContributions(definitions = definitions)` tumba **exactamente 3 de 7**:
+
+```text
+CONTROL: the unmutated four-family plugin is admitted                    FAILED
+a Directive the plugin contributes and the manifest does NOT declare     FAILED
+an Event the plugin contributes and the manifest does NOT declare        FAILED
+7 tests completed, 3 failed
+```
+
+Las otras cuatro siguen verdes **a propósito**: las dos de declarado-pero-ausente se rechazan
+también con el conjunto vacío, la de los descriptores es independiente, y la de la capability la
+cierra otra parte del arreglo. Una mutación que tumba de más no prueba el arreglo; prueba que la
+prueba era frágil. Restaurado y verificado por hash:
+
+```text
+sha antes de la mutación : 797aa181eae17eaa7dc0d9712256546831e78424e51d6e06d12765e7fa47b388
+sha tras restaurar       : 797aa181eae17eaa7dc0d9712256546831e78424e51d6e06d12765e7fa47b388
+```
+
+### Dos fallos reales que encontró el build, no la lectura
+
+1. **`NoClassDefFoundError: PluginManifestCodec`** en el emisor de build. Todas las dependencias del
+   plugin son `compileOnly` por diseño —el host las aporta—, así que `runtimeClasspath` está vacío
+   para el `main()`. Resuelto con una configuración propia para el emisor. La alternativa, ampliar
+   el runtime del plugin para que una tarea de build funcionara, habría metido los contratos de
+   PipelineK **dentro** del artefacto cuya propiedad definitoria es llevar sólo sus propias clases.
+2. **`Type mismatch: inferred type is List<Any!> but FileCollection! was expected`**: mezclar un
+   `FileCollection` con un `NamedDomainObjectProvider` resuelve a `List` en tiempo de compilación del
+   script. Compuesto con `files(...)`.
+
+### El coste, dicho en voz alta
+
+`buildExamplePlugin` pasa a ser dependencia de `:pipeline-application:test`. Eso significa que cada
+`check` publica a `sdk-repo` y bifurca un segundo Gradle contra el árbol de trabajo — exactamente lo
+que los otros tres builds externos evitaban manteniendo fuera de `check`. Se paga porque los otros
+producen artefactos que nada bajo `check` inspecciona, y éste produce el artefacto que decide si
+BLOCK 1-I es real. Un test cuyo sujeto es opcional es un test que pasa por omisión.
+
+### Un KDoc obsoleto que sobrevivió a 1-F
+
+`StepDefinitionContributor` —el SPI que lee **primero** un autor de plugin externo— seguía
+documentando `[StepRegistry.register]`, un método que BLOCK 1-F borró al hacer el registry
+inmutable. Sobrevivió porque **ningún test compila una frase**. Anotado en el propio KDoc para que
+el coste de esa verdad sea visible la próxima vez.
+
+### Evidencia ejecutada sobre el SHA
+
+```text
+cd v2 && PIPELINEK_SPIKE_HOME=/var/home/rubentxu/.local/state/pipelinek-bundles/e4c-4700f23d \
+  ./gradlew -p . --no-daemon --offline check --rerun-tasks
+```
+
+```text
+BUILD SUCCESSFUL in 29m 16s
+318 actionable tasks: 318 executed
+```
+
+**774 clases · 5143 tests · 0 fallos · 0 errores · 140 skips**. Recuento leído de los XML de
+`test-results` acotados por `mtime` desde el arranque, no acumulado del árbol.
+
+Obsérvese que este bloque **construye** el plugin externo como parte de `check`, y que la corrida
+no puede verse verde sin él: `ExternalPluginFourFamilyAdmissionTest` falla con
+`no built example-uppercase-plugin JAR` si el artefacto no está. Eso es lo contrario de un test que
+pasa por omisión.
+
+Las tres clases que este bloque toca, una a una:
+
+```text
+ExternalPluginFourFamilyAdmissionTest   7 tests  0 fallos  0 errores
+DirectivePluginContractSuiteTest        8 tests  0 fallos  0 errores
+PluginAdmissionPreLoadOrderingTest      5 tests  0 fallos  0 errores
+```
+
+Y una confirmación de que el seam funciona de verdad, salida del propio log del gate:
+
+```text
+Discovered external directive plugins: example.uppercase.UppercaseDirectiveContributor, example.lock.LockContributor
+Discovered external event definitions: example.uppercase.applied
+```
+
+### Lo que este bloque NO demuestra
+
+- **No** es el no-core-change proof: eso es BLOCK 1-J, y aquí el core cambió (la puerta recogió tres
+  familias y comparó la cuarta). Lo que este bloque prueba es que **el seam ya existía** y que el
+  plugin lo ejercita entero.
+- **No** hay prueba sobre la distribución instalada: eso es BLOCK 2.
+- **No** toca identidad por bytes. `trust` sigue `unverified` y el digest sigue declarado, no medido
+  en runtime. Es la misma frontera de ADR-EVO-003 que 1-H dejó nombrada.
+
+---
+
+## BLOCK 1-J — un constructo nuevo, cero cambios en el core, y la ley que lo impide volver atrás
+
+### Lo que este bloque demuestra y lo que no
+
+`Block1AuthorityClosureTest` ya fija «ningún dispatcher ramifica sobre una StepKey concrete». Eso es
+una ley **negativa**: prohíbe una forma. No demuestra que la costura sea **suficiente**, que es la
+afirmación que importa — «un plugin nuevo no necesita tocar el core».
+
+Un escaneo sólo puede mostrar la ausencia de algo. La suficiencia se demuestra **haciendo**, y lo
+hecho aquí fue añadir un Step nuevo a un plugin externo y medir el diff.
+
+### El experimento
+
+`example.uppercase.announcedCased` — un Step que depende de **dos** capabilities a la vez, de dueños
+distintos:
+
+```text
+example.uppercase.case-table   lo SUMISTRE este mismo plugin
+plugin.event-emission          sólo lo tiene el HOST
+```
+
+No añadí un cuarto Step simple porque eso ya estaba cubierto tres veces. Este es el que de verdad
+estresa la costura: si el camino de composición fuera de dueño único, este Step es el que falla.
+
+Medición del diff, por separado y sin mezclar:
+
+```text
+git diff --stat -- 'examples/**'
+  UppercasePluginDeclaration.kt   | 4 ++++
+  UppercaseStepDefinition.kt      | 1 +
+  2 files changed, 5 insertions(+)
+
+git diff --name-only -- 'v2/**/src/main/**'
+  v2/pipeline-domain/.../StepRegistration.kt
+```
+
+La lectura correcta de esas dos líneas, que es donde es fácil engañarse:
+
+- **El Step nuevo toca sólo `examples/`. Cero cambios en producción del core.** Eso es la prueba.
+- El único fichero de producción del core que mueve 1-J es `StepRegistration.kt`, y **no** es por el
+  Step: es el arreglo del hallazgo de abajo.
+
+Un pathspec mal escrito (`v2/*/src/main`) devolvió vacío y casi reporto un diff limpio que no lo
+era. El hallazgo salía en `git status` a la vista. Medido dos veces, no una.
+
+### El hallazgo: el core conocía el espacio de nombres de un plugin
+
+```kotlin
+// antes, en producción del core:
+val families: Set<PluginFamily> = if (key.value.startsWith("scm-git.")) {
+    setOf(PluginFamily.SCM)
+} else {
+    setOf(PluginFamily.UTILITIES)
+}
+```
+
+Un plugin escribía su nombre en el core que debe no conocer ninguno, y el propio KDoc del fichero
+decía «this is metadata, not a verdict; the registry never branches on it» — mientras la calculaba
+ramificando sobre él.
+
+Medí quién lee `families` antes de tocarlo: los únicos lectores en producción son las dos
+validaciones de no-vacío y el codec que serializa las familias que declara **el propio plugin**. En
+el camino legacy no lo lee nadie. La rama compraba un nombre y no devolvía comportamiento.
+
+**Eliminado.** `legacy()` reporta `UTILITIES` para toda registration legacy, y queda escrito en el
+KDoc qué cambia exactamente y por qué, en vez de fingir que no cambia nada.
+
+### La ley, auto-mantenida
+
+`CoreKnowsNoExternalPluginNamespaceFitnessTest` forbid que producción del core nombre un namespace de
+plugin. Dos decisiones que importan:
+
+- **Los namespaces prohibidos se DERIVAN**, no se listan: se leen de los `PluginStepId("…")` que los
+  plugins declaran de verdad y se reducen a su primer segmento. Una lista fija se queda obsoleta
+  justo cuando hace falta, que es cuando aparece un plugin nuevo. Una ley que hay que actualizar
+  cuando cambia aquello que vigila es más débil que una que lee aquello.
+- **El punto es obligatorio.** `NetworkEgress` compara con el literal `"http"`, que es un esquema de
+  URL, y el namespace del plugin `http` se escribe igual. Sin el punto, la ley tumbaría código
+  correcto. Medido: sin el punto, 2 falsos positivos; con él, 0.
+
+Y `pipeline-step-sdk` queda **fuera** de «core»: esos cuatro módulos SON plugins, y un plugin que
+se nombra a sí mismo es el caso normal. Mi primera versión metió también `examples/` y la ley
+falló contra quince autorreferencias honestas — es lo que se ve una ley demasiado ancha desde
+dentro: encuentra cadenas reales y sigue contestando la pregunta equivocada.
+
+Tres filas, y dos de ellas existen para que la tercera no sea decorativa:
+
+```text
+the plugin namespace set is derived and not empty          (el derivador funciona)
+no core production source names an external plugin ...     (la ley)
+the namespace detector actually fires on a plugin-shaped   (el detector no se ha roto)
+```
+
+### No-vacuidad por mutación
+
+Reintroducir la rama `scm-git.` tumba **exactamente 1 de 3** — la fila de escaneo. Las otras dos no
+dependen del arreglo y deben seguir verdes; si se hubieran puesto rojas, la mutación habría probado
+que las filas estaban mal escritas en vez de que la ley muerde.
+
+```text
+CoreKnowsNoExternalPluginNamespaceFitnessTest > no core production source names an external plugin namespace in code() FAILED
+3 tests completed, 1 failed
+```
+
+Restaurado con hash verificado antes y después:
+
+```text
+sha antes de la mutación : 07e711a726a8c1c0617a791c25de57db243169cacf481d34d1859a62f82a1e6d
+sha tras restaurar       : 07e711a726a8c1c0617a791c25de57db243169cacf481d34d1859a62f82a1e6d
+```
+
+### Dos fallos míos que el build y el test atraparon
+
+1. **`Syntax error: Unclosed comment`**: el KDoc del Step nuevo decía `v2/*/src/main`, y ese `*/`
+   **cerraba el bloque de comentario por dentro**. El resto del fichero se lexía como código. Es un
+   recordatorio de por qué un fallo de compilación no es un RED ni un hueco.
+2. **Una aserción escrita contra una frase que inventé**: pedía «contributed Steps absent from the
+   manifest» y el texto real es «implemented Steps absent from the manifest». La fila pasó el mutante
+   correcto y falló en la palabra, que es la forma más fácil de tener un test que no prueba lo que
+   dice.
+
+### Evidencia ejecutada sobre el SHA
+
+```text
+cd v2 && PIPELINEK_SPIKE_HOME=/var/home/rubentxu/.local/state/pipelinek-bundles/e4c-4700f23d \
+  ./gradlew -p . --no-daemon --offline check --rerun-tasks
+```
+
+```text
+BUILD SUCCESSFUL in 29m 5s
+318 actionable tasks: 318 executed
+```
+
+**775 clases · 5148 tests · 0 fallos · 0 errores · 140 skips**, contados desde los XML de
+`test-results` acotados por `mtime` de esta corrida.
+
+Las dos clases que este bloque introduce o amplía:
+
+```text
+CoreKnowsNoExternalPluginNamespaceFitnessTest   3 tests  0 fallos  0 errores
+ExternalPluginFourFamilyAdmissionTest           9 tests  0 fallos  0 errores
+```
+
+Sin ruptura de ABI y sin excepción BCV que registrar: `StepRegistration.legacy()` cambió su
+cuerpo, no su firma.
+
+### Lo que este bloque NO demuestra
+
+- **No** es una prueba sobre la distribución instalada. Es BLOCK 2.
+- **No** toca identidad por bytes: `trust` sigue `unverified`, con la misma frontera de ADR-EVO-003.
+- **No** cierra el hueco de capabilities que 1-I dejó caracterizado. Esa decisión —qué capa es la
+  dueña de esa comparación, y si cerrarla exige rediseñar `SentinelPluginArtifact`— sigue abierta y
+  no se ha tomado aquí.

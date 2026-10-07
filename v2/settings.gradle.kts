@@ -9,7 +9,11 @@ pluginManagement {
         gradlePluginPortal()
     }
     plugins {
-        id("com.google.devtools.ksp") version "2.3.11"
+        // S6/H: `com.google.devtools.ksp` was declared here for the Step-descriptor generator,
+        // which synthesised a second StepDescriptor authority from @Step annotations and had
+        // zero consumers. No module applies it any more, and the declaration is removed so
+        // the plugin cannot be re-applied by accident. Reintroducing a compiler layer that
+        // writes Step metadata is pinned by NoSecondStepMetadataAuthorityFitnessTest.
         id("org.jetbrains.kotlin.plugin.serialization") version "2.4.10"
         // WU-RP-040 R4: selective mutation testing (codecs/policies only).
         id("info.solidsoft.pitest") version "1.19.0"
@@ -54,7 +58,6 @@ include(
     // Not published, and deliberately so: see its build script.
     ":pipeline-output-store",
     ":pipeline-step-sdk:api",
-    ":pipeline-step-sdk:processor",
     ":pipeline-step-sdk:runtime",
     ":pipeline-step-sdk:scm-git",
     ":pipeline-step-sdk:http",

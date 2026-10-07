@@ -8,10 +8,16 @@ package dev.rubentxu.pipeline.v2.domain.step
  * and never on application/runtime internals.
  *
  * The domain MUST NOT call [java.util.ServiceLoader] itself: discovery is a runtime-adapter concern.
- * A runtime adapter loads contributors (e.g. via `ServiceLoader`) and registers their definitions
- * into a [StepRegistry] at composition time. [StepRegistry.register] fails closed on a duplicate
- * StepKey, so a duplicate contribution (core + plugin, or plugin A + plugin B) is rejected rather
- * than first-wins/last-wins.
+ * A runtime adapter loads contributors (e.g. via `ServiceLoader`) and folds their definitions into
+ * a [StepRegistryBuilder] at composition time; [StepRegistry] itself is frozen and has no mutator.
+ * The builder's [StepRegistryBuilder.add] fails closed on a duplicate StepKey, so a duplicate
+ * contribution (core + plugin, or plugin A + plugin B) is rejected rather than first-wins/last-wins.
+ *
+ * The distinction is not cosmetic. While this paragraph still said "[StepRegistry.register]", it
+ * named a method that BLOCK 1-F deleted, and it was the file a plugin author reads FIRST to learn
+ * how to contribute — so the seam's own documentation pointed at an API that could not be called.
+ * It survived because no test compiles a sentence: KDoc correctness is not mechanical, and this is
+ * the cost of that.
  */
 interface StepDefinitionContributor {
     /** Stable contributor identity (e.g. `example.uppercase`) used in duplicate diagnostics. */

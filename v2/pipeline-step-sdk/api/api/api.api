@@ -9,12 +9,6 @@ public final class dev/rubentxu/pipeline/v2/sdk/CompatibilityLevel : java/lang/E
 	public static fun values ()[Ldev/rubentxu/pipeline/v2/sdk/CompatibilityLevel;
 }
 
-public abstract interface annotation class dev/rubentxu/pipeline/v2/sdk/JenkinsSurface : java/lang/annotation/Annotation {
-	public abstract fun compatibility ()Ldev/rubentxu/pipeline/v2/sdk/CompatibilityLevel;
-	public abstract fun plugin ()Ljava/lang/String;
-	public abstract fun step ()Ljava/lang/String;
-}
-
 public final class dev/rubentxu/pipeline/v2/sdk/JsonAccessors {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/sdk/JsonAccessors;
 	public final fun boolOrNull (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)Ljava/lang/Boolean;
@@ -36,15 +30,6 @@ public final class dev/rubentxu/pipeline/v2/sdk/PipelineJson {
 	public final fun decode-j8uo1iw (Ljava/lang/String;)Lkotlinx/serialization/json/JsonObject;
 	public final fun encode-9TXO0do (Lkotlinx/serialization/json/JsonObject;)Ljava/lang/String;
 	public final fun getJson ()Lkotlinx/serialization/json/Json;
-}
-
-public abstract interface annotation class dev/rubentxu/pipeline/v2/sdk/Step : java/lang/annotation/Annotation {
-	public abstract fun effects ()[Ldev/rubentxu/pipeline/v2/domain/durable/Effect;
-	public abstract fun execution ()Ldev/rubentxu/pipeline/v2/domain/ExecutionLocation;
-	public abstract fun id ()Ljava/lang/String;
-	public abstract fun name ()Ljava/lang/String;
-	public abstract fun plugin ()Ljava/lang/String;
-	public abstract fun replay ()Ldev/rubentxu/pipeline/v2/domain/durable/ReplayPolicy;
 }
 
 public final class dev/rubentxu/pipeline/v2/sdk/StepContext {

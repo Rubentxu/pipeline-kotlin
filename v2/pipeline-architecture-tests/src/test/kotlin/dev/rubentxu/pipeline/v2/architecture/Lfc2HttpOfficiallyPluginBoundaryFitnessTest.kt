@@ -364,7 +364,7 @@ class Lfc2HttpOfficiallyPluginBoundaryFitnessTest {
     // ── FIT-12: the seam is presented by default, not only by a test ────────
 
     @Test
-    fun `FIT-12 the composition root discovers capability contributors by default`() {
+    fun `FIT-12 the composition root never defaults capability contributors to nothing`() {
         // The H4.5 defect, in one line. `capabilityContributors` defaulted to
         // `emptyList()` and the CLI never passed the argument, so `http.request` was
         // refused at admission in the installed distribution for a missing
@@ -373,28 +373,54 @@ class Lfc2HttpOfficiallyPluginBoundaryFitnessTest {
         //
         // A default is invisible to behavioural testing from the outside: the only
         // honest way to pin it is to read it.
+        //
+        // S6/G MOVED THE DISCOVERY, NOT THE LAW. This row used to require the call to
+        // `ExternalCapabilityContributorDiscovery.discover()` to sit in `CompositionRoot`.
+        // It no longer does — capability discovery moved into `PluginComposition.resolve`,
+        // inside the same classloader window that resolves the Steps these capabilities
+        // back. Leaving a discovery call here would have re-created the fourth authority
+        // that block removed: a plugin living below the TCCL would contribute its Step
+        // and lose its capability.
+        //
+        // So what is pinned is the property, not the location: when the caller names no
+        // contributors, the effective set is the one the composition already resolved —
+        // never an empty list, and never a second discovery under whatever the TCCL
+        // happens to be at that moment. `FArchPreResolvedCompositionAuthorityTest` pins
+        // the other half structurally: discovery has exactly one production caller.
         val root = v2.resolve(
             "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CompositionRoot.kt",
         )
         val code = codeOnly(root)
+
         assertTrue(
-            code.contains("ExternalCapabilityContributorDiscovery.discover()"),
-            "CompositionRoot must default capabilityContributors to discovery. Defaulting to " +
-                "an empty list makes a Step that is present, discovered and fully contracted " +
-                "unrunnable, and no unit test notices.",
-        )
-        assertTrue(
-            !code.contains("capabilityContributors: List<dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor> = emptyList()"),
+            !code.contains("RuntimeCapabilityContributor> = emptyList()"),
             "CompositionRoot must not default the contributor list to emptyList(); that is the " +
                 "H4.5 defect verbatim.",
+        )
+        // A NON-NULL default of any kind is forbidden. `? = null` is allowed and is not a
+        // default in the sense that matters: it carries no contributor list, so the effective
+        // set still comes from the composition rather than from a value chosen at the call site.
+        assertTrue(
+            !code.contains("RuntimeCapabilityContributor> ="),
+            "CompositionRoot must not default the contributor list to a NON-NULL value. S6/G " +
+                "moved discovery into PluginComposition, so any concrete default here would be " +
+                "a second authority — and the empty-list default is how http.request became " +
+                "unrunnable in the first place.",
+        )
+        assertTrue(
+            code.contains("capabilityContributors ?: composition.capabilityContributors"),
+            "the effective contributors must fall back to the pre-resolved composition, not to a " +
+                "fresh discovery. A caller that names none must still get every plugin's " +
+                "capabilities.",
         )
     }
 
     @Test
     fun `FIT-13 the http plugin ships the capability contributor service file`() {
-        // The other half of the same repair. Without this manifest entry the discovery
-        // call in FIT-12 resolves to an empty list, which is indistinguishable from
-        // "no plugin needs a seam" at the only place anyone looks.
+        // The other half of the same repair. Without this manifest entry, the capability
+        // discovery that S6/G moved into `PluginComposition.resolve` resolves to an empty
+        // list, which is indistinguishable from "no plugin needs a seam" at the only place
+        // anyone looks.
         val serviceFile = v2.resolve(
             "pipeline-step-sdk/http/src/main/resources/META-INF/services/" +
                 "dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor",

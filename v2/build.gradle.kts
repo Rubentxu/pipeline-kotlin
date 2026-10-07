@@ -403,8 +403,24 @@ subprojects {
 // The chosen modules have the largest stable JVM ABI surfaces:
 //   - pipeline-domain: 248 top-level types (Step contract, ReplayPolicy, durable).
 //   - pipeline-events: 96 types (event algebra, sink interfaces).
-//   - pipeline-step-sdk:api: SDK contract for external plugin authors.
 //   - pipeline-credentials-api: credentials SDK (SecretPatternRegistry, etc.).
+//
+// BCV guards MORE modules than are published, and the two questions are different. `bcvModules`
+// answers "which internal ABI do I want to see reviewed when it changes"; `publishedContractModules`
+// below answers "which artifact can an external consumer resolve". `pipeline-step-sdk:api` and
+// `pipeline-credentials-api` are in the first list and not the second, and that is measured, not
+// assumed: neither applies `maven-publish`, so neither resolves as a Maven coordinate, and
+// `examples/` imports nothing from `dev.rubentxu.pipeline.v2.sdk`.
+//
+// This comment used to read "pipeline-step-sdk:api: SDK contract for external plugin authors". That
+// was false, and it was the same defect this session already paid for once in the KSP: a written
+// claim that no evidence backs, pointing a future reader at a consumer program that does not exist.
+// It also called this a four-module list while the set below has carried six since BLOCK 2.
+//
+// The consequence for a break: a BCV-only module gets no maturity classification and no exception
+// receipt, because it has no consumer program that could break silently. Its internal callers are
+// inside this build, so a removed public type fails `compileKotlin` immediately and loudly. What
+// the dump buys is the review — a diff nobody has to be shown.
 //
 // Adding a new module to BCV requires two steps: (1) append its name to
 // `bcvModules` below; (2) run `:pipeline-<x>:apiDump` to materialise the
@@ -520,6 +536,25 @@ val buildExamplePlugin by tasks.registering(Exec::class) {
         "-PsdkVersion=" + rootProject.version.toString(),
         "jar",
     )
+}
+
+// S6/I: the external plugin is now the SUBJECT of a test in :pipeline-application, and a test
+// whose subject is optional is a test that passes by omission. `the artifact really carries a
+// manifest and all four ServiceLoader descriptors` would report the absence of every family as a
+// clean sheet rather than as a missing build.
+//
+// The cost is real and is stated rather than discovered later: every `check` now publishes to
+// sdk-repo and forks a second Gradle against the working tree, which is exactly what the three
+// external builds below were kept out of `check` to avoid. It is paid here because the other
+// tasks produce artifacts nothing under `check` inspects, while this one produces the artifact
+// that decides whether BLOCK 1-I is real.
+// `withPlugin` and not a bare `tasks.named("test")`: this root script is evaluated BEFORE the
+// Kotlin JVM plugin has created the task in the subproject, so naming it directly fails the
+// configuration of every build. The BCV block below hooks the same way for the same reason.
+project(":pipeline-application").pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
+    project(":pipeline-application").tasks.named("test") {
+        dependsOn(buildExamplePlugin)
+    }
 }
 
 // S1-D: the directive analogue of buildExamplePlugin. The external directive

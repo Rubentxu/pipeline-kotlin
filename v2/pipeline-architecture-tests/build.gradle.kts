@@ -211,7 +211,6 @@ val v2Modules = listOf(
     "pipeline-testkit",
     "pipeline-events",
     "pipeline-step-sdk:api",
-    "pipeline-step-sdk:processor",
     "pipeline-step-sdk:runtime",
     "pipeline-binding-factory",
 )
@@ -225,7 +224,6 @@ val v2ModulePaths = mapOf(
     "pipeline-testkit" to ":pipeline-testkit",
     "pipeline-events" to ":pipeline-events",
     "pipeline-step-sdk:api" to ":pipeline-step-sdk:api",
-    "pipeline-step-sdk:processor" to ":pipeline-step-sdk:processor",
     "pipeline-step-sdk:runtime" to ":pipeline-step-sdk:runtime",
     "pipeline-binding-factory" to ":pipeline-binding-factory",
 )

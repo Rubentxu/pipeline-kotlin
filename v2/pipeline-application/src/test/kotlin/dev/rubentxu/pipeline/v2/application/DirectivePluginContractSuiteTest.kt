@@ -140,10 +140,20 @@ class DirectivePluginContractSuiteTest {
         try {
             val builder = DirectiveRegistry.Builder()
             val contributed = ExternalDirectivePluginDiscovery.registerInto(builder)
-            assertEquals(
-                listOf("example.lock.LockContributor"),
-                contributed,
-                "discovery must find the plugin contributor through ServiceLoader",
+
+            // TRANSITION, stated here because it must never be a silent rewrite: this used to be
+            // assertEquals(listOf("example.lock.LockContributor"), contributed). It was an INVENTORY
+            // assertion wearing the clothes of a DISCOVERY assertion — it claimed "the lock
+            // contributor is found" by way of "lock is the only contributor that exists".
+            //
+            // BLOCK 1-I gave the uppercase plugin a directive, which is exactly the kind of change
+            // the suite is meant to be able to absorb, and the assertion failed on the added
+            // contributor rather than on the one it names. The claim it was making did not change.
+            assertTrue(
+                contributed.contains("example.lock.LockContributor"),
+                "discovery must find the plugin contributor through ServiceLoader; discovered " +
+                    "$contributed. If lock is genuinely absent that is a real defect — but a second " +
+                    "external directive plugin is not one, so this asserts membership, not inventory.",
             )
             return builder.build()
         } finally {

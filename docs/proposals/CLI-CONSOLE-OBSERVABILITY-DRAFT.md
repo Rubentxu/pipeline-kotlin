@@ -287,11 +287,24 @@ El arreglo pasa la query al decorador y la usa **solo para suprimir la impresió
 todos los eventos sin excepción. Un filtro que escribiera sería peor que un filtro muerto, porque
 convertiría una preferencia de presentación en una decisión de durabilidad.
 
-**Límite conocido que este defecto deja al descubierto:** `--stage build` elimina las líneas de
-`[step: …]`, porque `StepStarted` no porta `stageName` y `stageCarriedBy` devuelve `null` para él, que
-la query trata como "no pertenece a la etapa". Filtrar por etapa deja hoy la estructura y borra los
-pasos. Corregirlo exige que la query resuelva el nombre de etapa vía el scope del stream, que es
-trabajo propio y no se disimula aquí.
+**Límite conocido que este defecto deja al descubierto, medido el 2026-10-07:** `--stage build`
+elimina las líneas de `[step: …]`, porque `StepStarted` no porta `stageName` y `stageCarriedBy`
+devuelve `null` para él, que la query trata como «no pertenece a la etapa».
+
+Medido, no inferido. Sobre la secuencia `[StageStarted, StepStarted, EchoOutputCaptured,
+RunFinished]` con `stageNames = setOf("build")`, `selectObservations` devuelve **solo
+`[StageStarted]`**: se pierden el step, el mensaje y el cierre de la ejecución. Y **no es solo del
+camino vivo**: `selectObservations` filtra con `accepts` evento a evento, así que `--stage build
+--format json` pierde lo mismo.
+
+Por qué no lo detectaron los tests: `ObservationQueryTest` usa `stage()` como único fixture de la
+dimensión stage, y `stage()` sí porta nombre. El caso que rompe —un evento de step bajo filtro de
+etapa— no aparece en ninguna fixture, y por eso la suite de la query daba verde sobre un
+comportamiento que ningún usuario querría.
+
+Corregirlo exige que la query resuelva la etapa vía el scope `stageIndex → stageName` que el stream
+ya construye, lo que convierte la query en un fold con estado y no en un predicado por evento. Es
+trabajo propio con su propio diseño, y no se disimula aquí.
 
 ## 6. Restricciones ya vigentes que este borrador no relaja
 
@@ -337,3 +350,19 @@ trabajo propio y no se disimula aquí.
 
 Externo, consultado 2026-10-06: Jenkins Log File Filter (RegexpPair = regex/reemplazo, **no**
 regex/estilo), Timestamper, AnsiColor, Blue Ocean LogResource.
+
+## 9. Estado de la suite completa del módulo (2026-10-07, sobre `fde785b7`)
+
+`2479 tests completed, 2 failed, 121 skipped` con `--rerun-tasks` real (81 tareas ejecutadas, 29 min).
+Los dos fallos **no** pertenecen a este trabajo:
+
+| Fallo | Diagnóstico | Atribución |
+|---|---|---|
+| `DirectivePluginContractSuiteTest` — pin del JAR certificado | El JAR es un artefacto **no versionado** (`.gitignore: build/`), con fecha anterior a la rama, cuyo SHA-256 (`cbc3279d…`) no coincide con el pin (`3d244dea…`). El propio KDoc admite que el digest de `--rerun-tasks` es propiedad del toolchain. | Deriva ambiental preexistente |
+| `CompatibilityCorpusTest.fixture10SmokeE2E` | **Intermitente**: `30/30` verde al re-ejecutar esa clase aislada. El fixture hace `git init`/`git clone` sobre `/tmp/smoke-repo`, estado compartido. Además el corpus invoca siempre `--format json`, donde el decorador vivo —lo único que cambió— no se instala. | Intermitencia ambiental |
+
+Que el corpus pase con `--format json` es la descartación definitiva de una regresión propia: el
+cambio de este trabajo solo actúa con `--format text`.
+
+Lo que sí queda por verificar cuando E1 llegue: la consola en vivo del proceso y el presupuesto de
+memoria bajo lectura acotada, porque ambas dependen del write path del Output Plane.

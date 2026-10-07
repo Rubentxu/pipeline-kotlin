@@ -82,29 +82,32 @@ class DirectivePluginContractSuiteTest {
      * silently regenerates the plugin, this pin turns "no rebuild" into a failing
      * test instead of an unverifiable sentence in a receipt.
      *
-     * ## Re-certified 2026-10-05, SHA a555f123 (owner decision)
+     * ## Re-certified 2026-10-07, SHA c424a9b2 (S6-COMPOSITION)
      *
-     * The value moved from `33ec2c3e…` to `3d244dea…`. Nothing about the claim was
-     * relaxed, and here is the evidence for the move, because "just update the
-     * constant" is exactly the sentence a digest pin exists to make unnecessary.
+     * The value moved from `3d244dea…` to `c424a9b2…`, and this time the plugin's SOURCE
+     * **did** change, so the earlier justification ("source unchanged since b6e1b28b") does not
+     * apply and is not reused. What changed, and why it was unavoidable:
      *
-     *  - The plugin's SOURCE has not changed since `b6e1b28b`, the build S1-EF
-     *    certified. `git log -- examples/example-directive-plugin` returns that commit
-     *    and nothing since.
-     *  - The new bytes are REPRODUCIBLE, not flaky. `buildExternalDirectivePlugin
-     *    --rerun-tasks` was run twice and produced the identical digest, so the
-     *    drift is a property of the toolchain, not of a dirty tree. A pin that
-     *    flapped per run could not be compared with a pin that moved once.
-     *  - The compatibility claim itself is re-verified on EVERY run by the seven
-     *    sibling rows in this class, which load this very jar in a classloader,
-     *    resolve the contributor through `ServiceLoader` and execute a real
-     *    pipeline with it. The constant pins the bytes; the siblings prove the
-     *    bytes still work.
+     *  - S6-COMPOSITION broadened `BundledPluginClasspathPlan`'s discriminator from
+     *    `StepDefinitionContributor` alone to all four contributor SPIs. This plugin contributes
+     *    ONLY a Directive, so before that change it was never admitted — it reached the run
+     *    instantiated and composed, having declared nothing. That was measured, not suspected.
+     *  - Once discovered, admission refuses any artifact without
+     *    `META-INF/pipelinek/plugin-manifest.json`. `LockPluginDeclaration` plus the
+     *    `computeDirectiveRelease` / `emitDirectiveManifest` tasks therefore became mandatory,
+     *    not optional: the alternative was leaving a known hole in the admission chain open.
+     *  - The new bytes are REPRODUCIBLE, measured by building twice with `--rerun-tasks` and
+     *    comparing digests: `c424a9b240ba03da70887a2678368120c0416075d7b7c6ecab7e58284560dca2`
+     *    both times. A pin that flapped per run could not be compared with a pin that moved once.
+     *  - The compatibility claim is re-verified on EVERY run by the seven sibling rows in this
+     *    class, which load this jar in a classloader, resolve `LockContributor` through
+     *    `ServiceLoader` and execute a real pipeline with it. Measured on this build: 7 of 7
+     *    green, including `real discovery - ServiceLoader finds LockContributor in the real JAR`
+     *    and `with plugin - stage admits, emits DirectiveAdmitted, and body runs`.
      *
-     * What this pin cannot do, and never could: prove compatibility. It proves the
-     * jar is the one this revision certified. Compatibility is the other seven rows.
-     * Treating one number as both is how a stale toolchain quietly becomes a
-     * permanent exemption.
+     * What this pin cannot do, and never could: prove compatibility. It proves the jar is the one
+     * this revision certified. Compatibility is the other seven rows. Treating one number as both
+     * is how a stale toolchain quietly becomes a permanent exemption.
      */
     @Test
     fun `plugin jar is the certified build and was not rebuilt for this core`() {
@@ -113,10 +116,12 @@ class DirectivePluginContractSuiteTest {
             .joinToString("") { "%02x".format(it) }
 
         assertEquals(
-            "3d244dea279e8dc434627aaea6f62bfdab2f771640181e8f6339570e8c131b58",
+            "c424a9b240ba03da70887a2678368120c0416075d7b7c6ecab7e58284560dca2",
             digest,
             "external directive plugin JAR drifted from the certified bytes; a rebuild " +
-                "invalidates the S2-D compatibility claim — restore the certified JAR instead",
+                "invalidates the S2-D compatibility claim — restore the certified JAR instead. " +
+                "If the plugin legitimately changed, re-certify with evidence, do not just " +
+                "update this constant.",
         )
     }
 

@@ -1,6 +1,9 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.directive.DirectiveContributor
+import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor
+import dev.rubentxu.pipeline.v2.events.registry.EventDefinitionContributor
 import java.io.File
 import java.util.jar.JarFile
 
@@ -171,21 +174,53 @@ object BundledPluginClasspathPlan {
     }
 
     /**
-     * True iff the JAR carries a `META-INF/services/<StepDefinitionContributor FQN>`
-     * file. This is the **single** discriminator: it is the same manifest the
-     * JRE's ServiceLoader uses at runtime, so the script compiler sees exactly
-     * the set the runtime will discover via TCCL.
+     * True iff the JAR carries a `META-INF/services/<X>` descriptor for ANY of the four public
+     * contributor SPIs. This is the discriminator, and it is the same manifests the JRE's
+     * `ServiceLoader` uses at runtime, so the set admitted here is exactly the set the runtime
+     * will instantiate.
+     *
+     * ## Why all four, and not only Steps
+     *
+     * This used to test for [StepDefinitionContributor] alone, and that was a hole straight through
+     * the admission guarantee. Pass 2 composes Steps, Directives, Events and Capabilities through
+     * four separate `ServiceLoader` passes, but pass 1 admitted only the artifacts declaring the
+     * Step SPI. A plugin contributing **only** a Directive was therefore never admitted, and
+     * reached the run already instantiated and composed.
+     *
+     * Measured, not predicted: run output listed a directive contributor while that plugin's JAR
+     * carried no manifest at all. An artifact that declares nothing was running, and admission
+     * never saw it because it was never a subject. Broadening the discriminator is what closes it:
+     * an artifact is admitted if it claims to contribute anything, which is the rule the whole
+     * admission chain rests on.
+     *
+     * Deliberately described without naming any example plugin: this is a production source, and
+     * `FArchS1DirectiveKernelFitnessTest` fails a production file that mentions one by name. A
+     * comment had to be rewritten to satisfy it, which is the law working rather than a rule to
+     * work around — the defect class is general and does not need an instance to be legible.
      */
     private fun isPluginJar(file: File): Boolean = runCatching {
         JarFile(file).use { jar ->
-            val contributorEntry = jar.getJarEntry(
-                "META-INF/services/" + StepDefinitionContributor::class.java.name
-            ) ?: return false
-            // Entry must be a real file (not a directory) and non-empty.
-            val size = contributorEntry.size
-            size > 0L
+            CONTRIBUTOR_SPIS.any { spi ->
+                val entry = jar.getJarEntry("META-INF/services/" + spi)
+                // Entry must be a real file (not a directory) and non-empty.
+                entry != null && entry.size > 0L
+            }
         }
     }.getOrDefault(false)
+
+    /**
+     * Every public contributor SPI a plugin may register through.
+     *
+     * Named rather than reflected over: a list that silently grew or shrank with the SPI inventory
+     * would be a discovery rule nobody could review, and a plugin declaring only a family this list
+     * forgot would escape admission exactly as it did before.
+     */
+    private val CONTRIBUTOR_SPIS: List<String> = listOf(
+        StepDefinitionContributor::class.java.name,
+        DirectiveContributor::class.java.name,
+        EventDefinitionContributor::class.java.name,
+        RuntimeCapabilityContributor::class.java.name,
+    )
 
     private fun parseIdentity(file: File, canonical: String): ArtifactIdentity {
         val (base, version) = splitBaseAndVersion(file.nameWithoutExtension)

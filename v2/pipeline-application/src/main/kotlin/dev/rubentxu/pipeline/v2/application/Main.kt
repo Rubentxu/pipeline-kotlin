@@ -61,21 +61,28 @@ import java.nio.file.Paths
 import java.nio.file.Files
 
 fun main(args: Array<String>) {
-    // WU-LPR-011 F1: `version` is a real subcommand. Reports the CLI version
-    // from the jar manifest (authoritative source = the build artifact) and exits 0.
-    // WU-LPR-071: the version MUST come from the jar manifest populated by Gradle from
-    // project.version (which is sourced from the git tag at release time). The legacy
-    // "0.1.0-SNAPSHOT" sentinel is removed: if the manifest is missing the
-    // Implementation-Version attribute, that is a packaging defect, NOT a fallback case.
+    // WU-LPR-011 F1: `version` is a real subcommand. Reports the CLI version from the build-generated
+    // version resource (authoritative source = project.version) and exits 0.
+    // WU-LPR-071: the version MUST be produced by the build from project.version. The legacy
+    // "0.1.0-SNAPSHOT" sentinel is removed: if the generated resource is missing, that is a packaging
+    // defect, NOT a fallback case.
     // Fail-closed: print an explicit error and exit non-zero so CI cannot ship an
     // unversioned artifact.
     if (args.firstOrNull() == "version") {
-        val manifestVersion = object {}.javaClass.getPackage().implementationVersion
+        // S6-COMPOSITION: ONE authority for "what version is this". Admission reads the same value
+        // through RuntimeApiVersion, so the number a plugin is judged against and the number the
+        // CLI reports cannot come from two readers free to disagree.
+        //
+        // S6-COMPOSITION: the source moved from the jar manifest to a generated RESOURCE, because
+        // 34 harnesses run the CLI from a classes directory where Package.getImplementationVersion()
+        // is null. The manifest attribute is still populated for pipeline-release and external
+        // inspection, and RuntimeApiVersionDriftTest fails if the two ever diverge.
+        val manifestVersion = RuntimeApiVersion.readImplementationVersion()
         if (manifestVersion.isNullOrBlank()) {
             System.err.println(
-                "pipeline: FATAL — jar manifest is missing Implementation-Version. " +
+                "pipeline: FATAL — the generated version resource is missing. " +
                     "Refusing to report a version derived from a hard-coded sentinel. " +
-                    "Rebuild via Gradle so the manifest is populated from project.version."
+                    "Rebuild via Gradle so it is generated from project.version."
             )
             System.exit(3)
             return
@@ -338,12 +345,10 @@ fun main(args: Array<String>) {
         }
 
         // LB-02 / EP-6: compose registry BEFORE the gate so contributed keys are eligible.
-        val pluginClassLoader = pluginClassLoaderFor(config.pluginJars)
-        // S6/G: ONE resolution for the whole run, before anything is analysed or executed.
-        // Steps, Directives and Event kinds come from the same classloader window and are frozen
-        // together, so a plugin can never be half-present.
-        val composition = PluginComposition.resolve(pluginClassLoader)
-        composition.reportTo { line -> System.err.println(line) }
+        // S6-COMPOSITION: admission happens FIRST and inside the same function, so the in-memory and
+        // durable branches cannot admit differently. S6/G's "one resolution for the whole run" now
+        // also covers the decision about WHICH artifacts are allowed to resolve at all.
+        val composition = admitThenComposeOrExit(config.pluginJars)
         val composedStepRegistry = composition.steps
         val nonCanonicalSteps = compiledPipeline
             ?.analyzeCanonicalDurableExecution(composedStepRegistry).orEmpty()
@@ -746,13 +751,10 @@ fun main(args: Array<String>) {
     // eligibility is registry-derived, so external plugin contributions must be
     // visible to the gate or a contributed key would be wrongly rejected as
     // non-canonical. Same composed registry is handed to the coordinator below.
-    val pluginClassLoader = pluginClassLoaderFor(config.pluginJars)
-    // S6/G: ONE resolution for the whole run, before eligibility is checked and before the
-    // coordinator is built. This branch previously composed the Step registry a SECOND time,
-    // with the same code the in-memory branch above already ran: two answers to one question,
-    // one per branch.
-    val composition = PluginComposition.resolve(pluginClassLoader)
-    composition.reportTo { line -> System.err.println(line) }
+    // S6-COMPOSITION: same single entry point as the in-memory branch above. Writing the admission
+    // wiring out a second time here would let the two branches disagree about which plugins were
+    // admitted, which is precisely the defect S6/G removed once already.
+    val composition = admitThenComposeOrExit(config.pluginJars)
     val composedStepRegistry = composition.steps
     // RP034-H / ADR-0101 clause 3.1 + RP034-Id: the workspace origin is decided
     // ONCE, here at the boundary, and both facts cross into the runtime — the

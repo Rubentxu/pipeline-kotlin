@@ -1270,3 +1270,278 @@ como decision, no como algo que se cierre dentro de un bloque de verificacion.
 a mano con la distribucion instalada da **EXIT=0** y `Pipeline finished with SUCCESS`, luego no es un
 defecto del producto; el mensaje real con la salida del CLI no se extrajo porque el run se detuvo
 antes de volcar el XML. Queda **sin clasificar** y no se afirma nada sobre el.
+
+---
+
+## S6-COMPOSITION — las dos pasadas, y dos defectos que sólo aparecieron al cerrarlas
+
+Esta sección cierra el cableado de la admisión en el producto. Todo lo de arriba sobre el
+cross-check era cierto **sobre el papel**: `AdmittedPlugin.admitContributions` comparaba la
+declaración contra las contribuciones, y ningún camino de producción lo llamaba.
+
+### El hueco, medido antes de cerrarlo
+
+`PluginComposition.resolve` componía por `ServiceLoader` sin admitir nada. El único PRODUCTO de la
+admisión era `PluginAdmissionGate.admitThenLoad`, y BLOCK 1 terminó con ocho llamantes suyos, **todos
+en `src/test`**. Medido sobre la distribución instalada, con un artefacto de manifiesto bien formado
+que declara un Step que no implementa:
+
+```text
+antes:  EXIT=0   Pipeline finished with SUCCESS        <- admitido
+```
+
+El mutante es el plugin de ejemplo con una entrada añadida al manifiesto:
+
+```json
+}, {"stepKey": "example.uppercase.ghost", "declaredCapabilities": []}],
+  "directives"
+```
+
+La spliced se valida con `PluginManifestCodec.decode(...) is Accepted` **en el propio test**, porque
+una versión anterior de esa fila tomaba `text.indexOf("]")`, que caía en el array de
+`declaredCapabilities` del primer Step y producía JSON **malformado**: la fila pasaba por la razón
+incorrecta —probando que el códec rechaza la gramática, no que el cross-check detecte una mentira—.
+
+### La pasada 2: `PluginContributionVerifier`
+
+`PluginContributionVerifier` (antes mal nombrado `PluginContributionCrossCheck`, chocando con el
+`PluginContributionCrossCheck` **del dominio**, que es el resultado de la comparación, en el mismo
+paquete) se invoca desde `PluginComposition.resolve` **dentro de la ventana de classloader**, con la
+misma `ClassLoader` que produjo los registries.
+
+Las contribuciones se agrupan **por artefacto**: `ServiceLoader` devuelve todos los contribuidores
+del classpath, y una comparación sin acotar compararía el manifiesto de un plugin contra los Steps
+de todos sus vecinos. `originOf(provider)` normaliza el `codeSource` a `Path` para emparejarlo con
+la ruta del artefacto admitido. Las **tres** familias se acotan por la misma regla.
+
+Sobre la distribución instalada, tras el cableado:
+
+```text
+despues: EXIT=2
+Plugin admission refused for .../mutant-ghost.jar:
+  InvalidManifest(identity=v1:plugin:example-uppercase-plugin/plugin/uppercase,
+  detail=...: declared Steps with no implementation:
+            [PluginStepId(value=example.uppercase.ghost)]. )
+```
+
+### El control: el cross-check no es verde por vacuidad
+
+Plugin sano contra el binario instalado, con el cross-check activo:
+
+```text
+EXIT=0
+Discovered external Step plugins: scm-git, http, junit, utilities, example.uppercase
+Discovered external directive plugins: example.uppercase.UppercaseDirectiveContributor
+Discovered external event definitions: example.uppercase.applied
+Pipeline finished with SUCCESS
+```
+
+Los **cinco** plugins incluidos pasan la coincidencia exacta en ambas direcciones sobre Steps,
+Directives y Events. Y el verde **no puede** venir de comparar contra contribución vacía: si
+`originOf` devolviera `null` para todos los proveedores, cada artefacto se compararía contra
+conjuntos vacíos y sería **rechazado** (`declared - empty = missing`), no admitido.
+
+### No-vacuidad por mutación
+
+Una línea: `return` al principio de `PluginContributionVerifier.verify`.
+
+```text
+con el cross-check:      2 tests, 0 failures
+sin el cross-check:      2 tests, 1 failure   <- solo la fila 2
+```
+
+Atribución 1:1 desde el XML: la fila 1 (sin manifiesto) sigue verde, la fila 2 (manifiesto que
+miente) cae. Restaurado y verificado por hash:
+`b09ebf4b00fb14ab5a667112d902d7a3627a7cb51299d8f1f556c098182e03e3` idéntico antes y después.
+
+### DEFECTO PROPIO (1): la versión se leía del manifiesto del jar
+
+`RuntimeApiVersion.readImplementationVersion()` usaba
+`object {}.javaClass.getPackage().implementationVersion`. Eso responde **sólo** cuando el código se
+cargó desde un jar con manifiesto. Hay **34** ficheros de test que lanzan el CLI con
+`java -cp <test classpath>`, donde este módulo es un **directorio de clases** y la respuesta es
+`null`. La admisión, fail-closed, mataba cada uno de esos runs:
+
+```text
+FATAL - jar manifest is missing Implementation-Version. Refusing to decide plugin
+compatibility against a version that did not come from the build artifact.
+==> expected: <0> but was: <3>
+```
+
+Medido: **143 tests fallidos en 29 clases**, todas clases que pasaban antes de que la comprobación
+de versión entrara en el camino de producto.
+
+La regla fail-closed era correcta; **la fuente** era incorrecta, porque confundía *"no hay
+manifiesto"* con *"esto no es un artefacto de build"*. La versión pasa ahora a un **recurso
+generado** desde `project.version`, que existe en un jar y en un directorio de clases. El atributo
+del manifiesto se sigue poblando porque `pipeline-release` certifica la identidad de candidata desde
+ahí, y `RuntimeApiVersionDriftTest` falla si las dos vías divergen.
+
+### HALLAZGO (2): un plugin del repositorio se declaraba sin declarar
+
+Con la admisión viva, `example-block-plugin` fue rechazado:
+
+```text
+Plugin admission refused for .../example-block-plugin-0.1.0.jar:
+  MalformedDocument(detail=no manifest at META-INF/pipelinek/plugin-manifest.json inside ...)
+```
+
+El artefacto **sí** se declaraba contribuidor (`META-INF/services/...StepDefinitionContributor`) y
+**no** traía manifiesto. Es exactamente el defecto que tenía el plugin de ejemplo atómico antes de
+S6/I: un descriptor `ServiceLoader` afirma que el artefacto **contribuye**; el manifiesto afirma
+**qué** contribuye, y aquí faltaba la segunda mitad sin que nada en el repositorio lo dijera,
+porque el único control de admisión no tenía llamantes en producción.
+
+La corrección es el plugin, no la admisión: `RepeatPluginDeclaration` más las tareas
+`computeBlockRelease` / `emitBlockManifest`, calcadas del patrón atómico. El manifiesto se **deriva**
+del contrato real (`RepeatBodyStepDefinition.contract.requiredCapabilities`), no se teclea al lado,
+para que el cross-check no pueda rechazar al plugin por una diferencia que nadie introdujo a
+propósito.
+
+### Un error de compilación, no un RED
+
+`require(text.count(anchor) == 1)` no compila: `String.count` toma un predicado `(Char) -> Boolean`,
+no un `String`. Las ocurrencias se cuentan con `text.split(anchor).size - 1`. Recordatorio de
+Harness Fidelity §6: un fallo de compilación no es evidencia de nada, ni a favor ni en contra.
+
+### Higiene del harness en el mismo fichero
+
+`PluginAdmissionInstalledDistributionUatTest` usaba `waitFor()` y sólo después leía stdout y stderr
+— el patrón exacto que causó el cuelgue investigado en S6-PRE. Migrado a `OwnedSubprocess` y fuera
+de `KNOWN_DEBT`, que baja de 29 a 28.
+
+### HALLAZGO (3): la pasada 1 no cubría plugins que no aportan Steps
+
+`BundledPluginClasspathPlan.collectCandidates` decidía qué artefactos son plugins mirando **sólo**
+`META-INF/services/<StepDefinitionContributor>`. Pero la pasada 2 compone Steps, Directives, Events
+y Capabilities por **cuatro** pasadas de `ServiceLoader` separadas. Un artefacto que aporta **sólo**
+una Directive nunca entraba en el conjunto admitido, y llegaba al run ya instanciado y compuesto.
+
+Medido, no supuesto. Con la admisión viva, la salida del run mostraba:
+
+```text
+Discovered external directive plugins: example.uppercase.UppercaseDirectiveContributor,
+example.lock.LockContributor
+```
+
+mientras `example-directive-plugin` **no tenía manifiesto en absoluto**. Un artefacto que no declara
+nada estaba ejecutándose, y la cadena de admisión no lo vio porque nunca fue sujeto de ella.
+
+El discriminador cubre ahora las cuatro familias de contribuidor. Falsificado con un mutante real
+—el plugin de directivas con el manifiesto eliminado—:
+
+```text
+discriminador Steps-only (antes):   EXIT=0   SUCCESS      <- ESCAPA de la admision
+discriminador de 4 familias (ahora): EXIT=2  Plugin admission refused ... no manifest
+```
+
+Atribución 1:1 sobre el mismo mutante y la misma distribución, y restaurado por hash
+(`8e1ed13f...`, idéntico antes y después).
+
+Un aviso sobre el método: la primera medición dio EXIT=0 **con el arreglo puesto**, porque el
+classpath usaba un `installDist` anterior al cambio. Conclusiónado sobre una distribución obsoleta
+habría producido un "el arreglo no sirve" falso.
+
+### HALLAZGO (4): el corpus tenía cuatro `waitFor()` sin lector, no uno
+
+`fixture14CredentialsBindings` era el único fallo del módulo, con `TimeoutException` a 600 s. La causa
+es la de S6-PRE exacta: `runFixturePassWithCredentialsStore` hacía
+
+```kotlin
+val process = pb.start()
+val exitCode = process.waitFor()          // nadie esta leyendo el pipe
+val stdout = process.inputStream.bufferedReader().readText()
+```
+
+El fixture 14 vuelca su registro de eventos entero por `Main.kt:431`, llena el buffer de 64 KiB y
+`waitFor()` no vuelve nunca. Tras migrarlo:
+
+```text
+antes:  TimeoutException a 600 s
+ahora:  fixture14CredentialsBindings() en 6,994 s     (mismo fichero, mismos asserts)
+```
+
+Y el hallazgo mayor es que **no era un call site sino cuatro**: S6-PRE migró `runFixturePass` y
+`runFixtureFail` y dejó detrás `runFixturePassWithCredentialsStore`, `runFixtureIntoOutputPlane`,
+`fixture23ReadFile`, `fixture14WithoutStoreFailsTyped` y `fixture28ZipSlipDefense`.
+
+### La ley que no los veía, y por qué
+
+`InstalledDistributionHarnessFitnessTest` exoneraba un fichero si contenía `OwnedSubprocess` en
+**cualquier** parte. La exención era **por fichero** y el defecto es **por punto de llamada**: un
+fichero que adopta la primitiva una vez queda exento para siempre de los sitios que dejó atrás.
+
+La ley ahora exige que un fichero **no contenga ningún lanzamiento crudo** de la distribución
+instalada. No-vacuidad probada por mutación: reintroducir **un** `ProcessBuilder(` en
+`CompatibilityCorpusTest` — que sí usa `OwnedSubprocess` en otros sitios — pone la ley roja nombrando
+ese fichero, y la ley anterior lo habría dejado pasar.
+
+```
+antes:  2 de 6 call sites migrados, ley verde, fixture14 colgando 600 s
+ahora:  0 ProcessBuilder( en el fichero, ley verde, fixture14 en 7 s
+```
+
+`KNOWN_DEBT` baja de 29 a **28** (`PluginAdmissionInstalledDistributionUatTest` migrado en este
+bloque).
+
+### HALLAZGO (5): un pin de artefacto certificado que este bloque movió
+
+`DirectivePluginContractSuiteTest` fija el SHA-256 **exacto** del jar del plugin de directivas
+(`3d244dea…`) y afirma que ese artefacto es la build certificada. Añadir el manifiesto obligatorio
+cambia esos bytes, y el pin se puso rojo.
+
+Lo que **no** se hizo: actualizar la constante y seguir. Antes se midió lo que la propia ley del test
+exige.
+
+```text
+reproducibilidad:  dos construcciones con --rerun-tasks, mismo digest
+                   c424a9b240ba03da70887a2678368120c0416075d7b7c6ecab7e58284560dca2
+compatibilidad:   7 de 7 filas hermanas verdes, incluido el descubrimiento real por
+                   ServiceLoader y la ejecucion real de la directive con su JAR
+```
+
+El KDoc del pin se reescribio para decir la verdad: esta vez el **fuente del plugin si cambio**, asi
+que la justificacion anterior ("source unchanged since b6e1b28b") no aplica y no se reutiliza. La
+razon del cambio es que el discriminador ampliado hace **obligatorio** el manifiesto; la alternativa
+era dejar abierto un agujero conocido de la cadena de admision.
+
+### HALLAZGO (6): el fitness de fuga atrapó mi propio comentario
+
+`FArchS1DirectiveKernelFitnessTest` falla un fuente de produccion que nombre un plugin de ejemplo.
+Lo que atrapo fue el KDoc de `BundledPluginClasspathPlan.kt`, que ilustraba el defecto del
+discriminador nombrando `example-directive-plugin`.
+
+El comentario se reescribio describiendo la clase de defecto sin nombrar el artefacto. La ley
+funcionando, no una regla que esquivar: un fuente de produccion no debe depender del conocimiento de
+un plugin concreto, ni para explicarse.
+
+### Gate completo del mismo arbol
+
+```text
+cd v2 && ./gradlew -p . --no-daemon --offline check --rerun-tasks
+BUILD SUCCESSFUL in 35m 25s
+320 actionable tasks: 320 executed        <- cero up-to-date
+779 clases | 5156 tests | 0 fallos | 0 errores | 140 skips
+0 procesos pipelinek supervivientes del worktree
+```
+
+Recuento leido de los XML de `test-results`, acotado por el `mtime` del arranque. Frente a los 5154
+tests del gate anterior, el delta es **+2**, exactamente `RuntimeApiVersionDriftTest`.
+
+Nota de entorno: la maquina estaba disputada por otros proyectos ajenos a este repositorio durante
+la corrida (load average 22-25). Afecta al tiempo, no al veredicto: el gate afirma sobre codigos de
+salida y sobre tipos, nunca sobre duraciones.
+
+### Estado al cerrar esta seccion
+
+Cadena de admision en dos pasadas **operativa y medida sobre la distribucion instalada**:
+
+| caso | antes | ahora |
+|---|---|---|
+| artefacto sin manifest | EXIT=0, SUCCESS | **EXIT=2**, rechazo nombrado |
+| manifest bien formado que miente | EXIT=0, SUCCESS | **EXIT=2** nombrando `example.uppercase.ghost` |
+| plugin solo-directiva sin manifest | escapaba, EXIT=0 SUCCESS | **EXIT=2** rechazo nombrado |
+| plugin sano (control) | EXIT=0, SUCCESS | EXIT=0, SUCCESS, cross-check exacto superado |
+
+Las cinco filas que hacian falta estan verdes, el gate completo esta verde, y el pin de bytes
+certificados esta re-emitido con evidencia en lugar de actualizado.

@@ -28,13 +28,13 @@ import org.junit.jupiter.api.Test
  *
  * ## Why the allowlist is the point and not a concession
  *
- * The 32 names below are the current debt, written out. A law that permitted them silently would be
+ * The 28 names below are the current debt, written out. A law that permitted them silently would be
  * the same defect shape as a prohibition over a file that no longer exists: a green produced by the
  * absence of a subject. Instead each one is a visible entry that a migration deletes, and the
  * assertion is that the set of NEW offenders is empty — so the debt can only shrink, never grow.
  *
- * `CompatibilityCorpusTest` is deliberately absent: it was the first migration and it is the file
- * that carried the measured hang.
+ * The count fell 32 -> 29 -> 28 as harnesses adopted [OwnedSubprocess]. `CompatibilityCorpusTest` is
+ * deliberately absent: it was the first migration and it is the file that carried the measured hang.
  */
 @DisplayName("S6-PRE — todo harness de la distribucion instalada pasa por OwnedSubprocess")
 class InstalledDistributionHarnessFitnessTest {
@@ -42,13 +42,23 @@ class InstalledDistributionHarnessFitnessTest {
     @Test
     fun `no hay ningún harness nuevo que lance la distribucion instalada por su cuenta`() {
         val root = testSourcesRoot()
+        // S6-PRE, second correction: the exemption used to be `!text.contains(OwnedSubprocess)`,
+        // i.e. PER FILE. That is the wrong granularity, and it was found by a real failure rather
+        // than by inspection: `CompatibilityCorpusTest` had six launch sites, S6-PRE migrated two,
+        // and the remaining four were exempt forever because the file mentioned the primitive
+        // somewhere else. `fixture14CredentialsBindings` then sat on `waitFor()` with no reader on
+        // the pipe and died on the 600 s JUnit timeout with a live `pipelinek` behind it.
+        //
+        // A file now counts as migrated only when it contains NO raw launch of the installed
+        // distribution at all. Adopting the primitive once buys nothing for the call sites that
+        // were left behind, which is exactly the property the previous rule failed to state.
         val offenders = Files.walk(root).use { paths ->
             paths.filter { it.toString().endsWith(".kt") }
+                .filter { path -> !path.fileName.toString().equals(FITNESS_FILE_NAME) }
                 .map { it to Files.readString(it) }
                 .filter { (_, text) ->
                     text.contains(INSTALLED_DISTRIBUTION_MARKER) &&
-                        (text.contains("ProcessBuilder(") || text.contains(RUNTIME_EXEC)) &&
-                        !text.contains(PRIMITIVE)
+                        (text.contains("ProcessBuilder(") || text.contains(RUNTIME_EXEC))
                 }
                 .map { (path, _) -> relative(root, path) }
                 .sorted()
@@ -94,9 +104,17 @@ class InstalledDistributionHarnessFitnessTest {
         const val PRIMITIVE = "OwnedSubprocess"
 
         /**
+         * This file names `ProcessBuilder(` and `OwnedSubprocess` because it READS them out of other
+         * files as text. It is the law, not a harness, so excluding it by name is what keeps the
+         * rule from convicting its own detector. Named rather than pattern-matched so the exemption
+         * cannot quietly widen to a second file.
+         */
+        const val FITNESS_FILE_NAME = "InstalledDistributionHarnessFitnessTest.kt"
+
+        /**
          * The measured debt on the day this law was written: 32 harnesses that fork the installed
-         * distribution directly. Each is a RED waiting to be migrated, and the count is expected to
-         * fall with every commit that adopts the primitive.
+         * distribution directly, now 28. Each is a RED waiting to be migrated, and the count is
+         * expected to fall with every commit that adopts the primitive.
          */
         val KNOWN_DEBT: Set<String> = setOf(
             "dev/rubentxu/pipeline/v2/application/CliCompileErrorExitsOneTest.kt",
@@ -104,7 +122,6 @@ class InstalledDistributionHarnessFitnessTest {
             "dev/rubentxu/pipeline/v2/application/cli/HttpInstalledUatTest.kt",
             "dev/rubentxu/pipeline/v2/application/CliNonCanonicalInMemoryExitsTwoTest.kt",
             "dev/rubentxu/pipeline/v2/application/cli/P3DPluginEventInstalledDistributionUatTest.kt",
-            "dev/rubentxu/pipeline/v2/application/cli/PluginAdmissionInstalledDistributionUatTest.kt",
             "dev/rubentxu/pipeline/v2/application/cli/WULpr010CliCharacterizationTest.kt",
             "dev/rubentxu/pipeline/v2/application/cli/WULpr011ResumeLifecycleUatTest.kt",
             "dev/rubentxu/pipeline/v2/application/cli/WURp019GradleRealUatTest.kt",

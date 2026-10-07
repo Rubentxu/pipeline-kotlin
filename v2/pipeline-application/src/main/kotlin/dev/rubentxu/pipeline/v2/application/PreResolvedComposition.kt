@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.directive.ErasedDirectiveDefinition
 import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.events.registry.EventRegistry
+import java.nio.file.Path
 
 /**
  * S6/G — everything a plugin contributes, resolved ONCE, before the run exists.
@@ -89,6 +90,110 @@ data class PreResolvedComposition internal constructor(
 }
 
 /**
+ * S6-COMPOSITION — the product's ONE path from "these artifacts are on the classpath" to "a frozen
+ * composition exists".
+ *
+ * ## Why this is a single function and not two call sites
+ *
+ * `Main` reaches composition from two branches, the in-memory default and the durable one. Before
+ * this function each one wrote its own `pluginClassLoaderFor(...)` followed by its own
+ * `PluginComposition.resolve(...)` — and BLOCK 1-G already had to delete a duplicated Step-registry
+ * composition for exactly that reason. Adding admission to both would have re-created the same
+ * defect with a worse consequence: one branch could admit what the other refused.
+ *
+ * ## The ordering, and why it is the whole point
+ *
+ * ```text
+ * enumerate artifacts   (BundledPluginClasspathPlan, by service-file TEXT, no class loading)
+ *      -> pass 1        (PreLoadPluginAdmission: read manifest, admit, refuse named)
+ *      -> pass 2        (ServiceLoader over ONLY admitted artifacts, then freeze)
+ * ```
+ *
+ * A refusal means pass 2 never starts. That is not a policy choice bolted on: `ServiceLoader`
+ * instantiates providers while iterating, so composing first and admitting after would run plugin
+ * code before the decision that is supposed to precede it, and would be worse than the current
+ * no-admission-at-all state because it would read as compliant.
+ */
+object PluginCompositionAdmitter {
+
+    /**
+     * @param pluginJars the `--plugin-jar` entries. Bundled plugins are discovered from the
+     *   runtime classpath, so passing only these is correct and passing a list that omits them
+     *   would under-admit.
+     */
+    fun admitThenCompose(pluginJars: List<String>): CompositionOutcome {
+        // `distinct()` because a user may name a bundled JAR again on --plugin-jar. Admitting the
+        // same artifact twice would refuse it as a duplicate identity, which is the correct verdict
+        // for two DIFFERENT artifacts and a bug report for the same path listed twice.
+        val artifacts = (computeBundledPlugins() + pluginJars)
+            .distinct()
+            .map { Path.of(it) }
+
+        if (artifacts.isEmpty()) {
+            // Not a degraded case: an installation with no plugin JARs still composes, it just
+            // composes core only. Written out rather than defaulted so "no plugins" stays a
+            // decision rather than an accident.
+            return CompositionOutcome.Composed(
+                composition = PluginComposition.resolve(null),
+                admitted = emptyList(),
+            )
+        }
+
+        val runtimeVersion = try {
+            RuntimeApiVersion.current()
+        } catch (e: IllegalStateException) {
+            // A packaging defect, reported as its own case rather than as a plugin rejection: no
+            // plugin is at fault and naming one would be a lie.
+            return CompositionOutcome.RuntimeVersionUnavailable(e.message ?: "unknown version defect")
+        }
+
+        return when (val admission = PreLoadPluginAdmission.admitAll(artifacts, runtimeVersion)) {
+            is AdmittedArtifacts.Refused -> CompositionOutcome.Refused(
+                artifact = admission.artifact,
+                rejection = admission.rejection,
+            )
+
+            is AdmittedArtifacts.Admitted -> {
+                val loader = pluginClassLoaderFor(admission.artifacts.map { it.path.toString() })
+                try {
+                    CompositionOutcome.Composed(
+                        // Pass 2 sees ONLY admitted artifacts. The parent loader still exposes the
+                        // bundled JARs, and every one of them is in `admission.artifacts`, so nothing
+                        // reachable through ServiceLoader escaped pass 1. The same list is handed to
+                        // the cross-check so a plugin is verified against its OWN contributions.
+                        composition = PluginComposition.resolve(loader, admission.artifacts),
+                        admitted = admission.artifacts,
+                    )
+                } catch (e: PluginContributionRefusal) {
+                    // Pass 1 admitted the artifact; pass 2 caught the artifact LYING about what it
+                    // provides. Turn it back into the same typed refusal a pass-1 rejection produces,
+                    // so the CLI exits 2 naming the artifact and the drift, uniformly.
+                    CompositionOutcome.Refused(e.artifact, e.rejection)
+                }
+            }
+        }
+    }
+}
+
+/** Closed outcome of admitting then composing. Pass 2 does not run on a refusal. */
+sealed interface CompositionOutcome {
+
+    data class Composed(
+        val composition: PreResolvedComposition,
+        val admitted: List<AdmittedArtifact>,
+    ) : CompositionOutcome
+
+    /** One named artifact, one typed reason. Never "some plugin could not be admitted". */
+    data class Refused(
+        val artifact: Path,
+        val rejection: dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection,
+    ) : CompositionOutcome
+
+    /** The running artifact carries no usable version, so no plugin could be judged. */
+    data class RuntimeVersionUnavailable(val detail: String) : CompositionOutcome
+}
+
+/**
  * The ONE composition authority. Nothing else in the codebase may build a Step, Directive or
  * Event registry for a run.
  */
@@ -107,12 +212,22 @@ object PluginComposition {
      * registries on purpose, and it is written out rather than defaulted so that "no plugins"
      * is a decision somebody made instead of a value nobody supplied.
      *
+     * @param admittedArtifacts the artifacts pass 1 admitted, so the contribution cross-check can
+     *   verify each manifest against what its OWN code contributes. Defaults to empty, which skips
+     *   the cross-check entirely — correct for the CORE-ONLY case and for tests that exercise
+     *   composition in isolation, and the reason the existing composition tests are unaffected.
+     *
      * @throws IllegalStateException if any contributor is broken or any key collides. There is
      *   no partial composition and no partial-success mode: a registry that admitted three of a
      *   plugin's four event kinds would look like a working feature that quietly drops one of
      *   its own observations.
+     * @throws PluginContributionRefusal if an admitted artifact's contributions drift
+     *   from its manifest. Distinct from the above: the plugin WORKED and still lied about itself.
      */
-    fun resolve(pluginClassLoader: ClassLoader?): PreResolvedComposition {
+    fun resolve(
+        pluginClassLoader: ClassLoader?,
+        admittedArtifacts: List<AdmittedArtifact> = emptyList(),
+    ): PreResolvedComposition {
         if (pluginClassLoader == null) {
             return PreResolvedComposition(
                 steps = CoreStepRegistryFactory.registry(),
@@ -144,6 +259,14 @@ object PluginComposition {
             // different loader than the Step that requires it is a Step that is admitted and then
             // refused for something its own plugin never got to provide.
             val capabilities = ExternalCapabilityContributorDiscovery.discover()
+
+            // S6-COMPOSITION pass 2: with every registry now built under this one loader, verify
+            // that each admitted artifact's manifest matches what it actually contributed. It runs
+            // HERE, and not after the window closes, so both sides of the comparison are resolved
+            // against the same loader that will run the Steps. A refusal throws
+            // PluginContributionRefusal, which PluginCompositionAdmitter converts back
+            // into a typed CompositionOutcome.Refused.
+            PluginContributionVerifier.verify(admittedArtifacts, pluginClassLoader)
 
             return PreResolvedComposition(
                 steps = stepBuilder.build(),

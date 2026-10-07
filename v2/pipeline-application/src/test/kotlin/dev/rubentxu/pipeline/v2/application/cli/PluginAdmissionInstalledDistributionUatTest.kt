@@ -1,11 +1,17 @@
 package dev.rubentxu.pipeline.v2.application.cli
 
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+import dev.rubentxu.pipeline.v2.application.support.CliRun
+import dev.rubentxu.pipeline.v2.application.support.OwnedSubprocess
+import dev.rubentxu.pipeline.v2.domain.step.PluginManifestCodec
+import dev.rubentxu.pipeline.v2.domain.step.PluginManifestDecodeResult
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 import java.util.jar.JarFile
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -13,7 +19,8 @@ import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
 
 /**
- * BLOCK 2 — the product proof of the admission chain, and the gap it found.
+ * BLOCK 2 — the product proof of the admission chain: the gap it found, and the two refusals that
+ * closed it.
  *
  * ## Why this class exists at all, given that a gate already covers admission
  *
@@ -26,17 +33,29 @@ import org.junit.jupiter.api.io.TempDir
  * installed `pipelinek` reaches plugins through `PluginComposition.resolve`, a different path, so the
  * whole of S6/B..E is unreachable from the product.
  *
- * ## What this class asserts, and why it asserts the WRONG thing on purpose
+ * ## What this class asserts, and how it got here
  *
- * Both rows below are CHARACTERISATION of a known defect, deliberately. Each says what the installed
- * binary does **today** with an artifact the admission chain would refuse, and its failure message
- * says what to change it to.
+ * Both rows below were CHARACTERISATION when they were written: each said what the installed binary
+ * did **today** with an artifact the admission chain would refuse, and each failure message said
+ * what to change. They then became REFUSAL ASSERTIONS as the two passes were wired, one row at a
+ * time.
  *
- * That is not a way to make a defect acceptable. It is the difference between an invisible hole and
- * a tracked one: a hole nobody can see is closed by accident or never, while a row that names itself
- * when the behaviour changes announces its own fix.
+ * That transition is the point of the class and is recorded rather than rewritten quietly:
  *
- * ## Why these two mutants and not others
+ * ```text
+ * row 1 (no manifest)     RED — executed an artifact that declared nothing
+ *                        -> GREEN — refused with exit 2 before composition   [pass 1]
+ * row 2 (lying manifest) RED — admitted a VALID manifest declaring a Step it does not implement
+ *                        -> GREEN — refused by the pass-2 cross-check       [pass 2]
+ * ```
+ *
+ * Row 2 is why the class exists in its current form. A valid manifest that lies is the one case a
+ * pre-load pass cannot catch, because reading the document proves nothing about the code: both a
+ * truthful and a lying manifest satisfy the grammar. Catching it requires comparing the declaration
+ * against real contributions, so it is necessarily pass 2 and necessarily after admission of the
+ * artifact — and it was measured as EXIT=0 SUCCESS until that comparison was wired.
+ *
+ * Each row also names the mutant it uses, so a reader can tell WHICH hole it covers:
  *
  * - **no manifest**: the weakest possible artifact. The gate refuses it, and refusing it is the
  *   property `PluginAdmissionPreLoadOrderingTest.artifactWithoutManifestIsRefused` already pins.
@@ -60,16 +79,24 @@ class PluginAdmissionInstalledDistributionUatTest {
 
     private val pluginJar: Path = locatePluginJar()
 
-    private data class CliResult(val exitCode: Int, val stdout: String, val stderr: String)
-
-    private fun run(vararg args: String): CliResult {
-        val process = ProcessBuilder(binary.absolutePath, *args).start()
-        assertTrue(process.waitFor(5, TimeUnit.MINUTES)) { "the installed binary hung on ${args.toList()}" }
-        return CliResult(
-            process.exitValue(),
-            process.inputStream.bufferedReader().readText(),
-            process.errorStream.bufferedReader().readText(),
+    /**
+     * S6-PRE: this was `waitFor()` and only then a stdout read and a stderr read — the exact shape
+     * the deadlock investigation found, where a child filling the 64 KiB pipe buffer blocked
+     * forever and the class-level `@Timeout` cut the TEST while leaving the `pipelinek` JVM alive.
+     * [OwnedSubprocess] drains BOTH pipes from the instant the child starts, gives the child its
+     * own deadline, and reaps the process tree on every path.
+     */
+    private fun run(vararg args: String): CliRun.Completed {
+        val result = OwnedSubprocess.run(
+            command = listOf(binary.absolutePath) + args,
+            timeout = CLI_DEADLINE,
         )
+        assertTrue(result is CliRun.Completed) {
+            "the installed binary did not finish within ${CLI_DEADLINE.seconds}s on ${args.toList()}; " +
+                "pid=${(result as? CliRun.TimedOut)?.diagnostics?.pid}. That is an ENVIRONMENT signal, " +
+                "not a verdict about admission."
+        }
+        return result as CliRun.Completed
     }
 
     /** Write a script whose only Step comes from the external plugin. */
@@ -122,57 +149,113 @@ class PluginAdmissionInstalledDistributionUatTest {
         return target
     }
 
-    private fun runPlugin(dir: Path, jar: Path): CliResult {
+    private fun runPlugin(dir: Path, jar: Path): CliRun.Completed {
         val script = writeScript(dir)
         return run("run", "--db", dir.resolve("db.sqlite").toString(), "--plugin-jar", jar.toString(), script.toString())
     }
 
     @Test
-    @DisplayName("KNOWN GAP: an artifact with NO manifest is executed by the installed product")
-    fun anArtifactWithoutAManifestIsStillExecuted(@TempDir tempDir: Path) {
+    @DisplayName("un artefacto SIN manifest es rechazado antes de componer")
+    fun anArtifactWithoutAManifestIsRefusedBeforeComposition(@TempDir tempDir: Path) {
         val jar = repack(tempDir) { null }
         val result = runPlugin(tempDir, jar)
 
+        // S6-COMPOSITION: this row USED to assert the opposite. It characterised the gap BLOCK 2
+        // found — the installed product executed an artifact that declared nothing, because
+        // PluginAdmissionGate had no production caller. Pass 1 now reads each artifact's manifest by
+        // name, with no classloader, before composition starts.
         assertTrue(
-            result.exitCode == 0 && result.stderr.contains("Pipeline finished with SUCCESS"),
-            "The installed product USED to admit an artifact with no manifest and no longer does. " +
-                "PluginAdmissionGate refuses exactly this artifact, and " +
-                "PluginAdmissionPreLoadOrderingTest.artifactWithoutManifestIsRefused pins that refusal — " +
-                "but no shipped command calls the gate. Change this row to assert a refusal once the " +
-                "product admits before composing. Observed: exit=${result.exitCode}, " +
+            result.exitCode == 2,
+            "an artifact carrying no manifest must be REFUSED with exit 2 before any composition " +
+                "runs. Observed: exit=${result.exitCode}, stderr tail=${result.stderr.takeLast(300)}",
+        )
+        assertTrue(
+            result.stderr.contains("Plugin admission refused"),
+            "and the refusal must say so on stderr, not merely exit non-zero. " +
+                "stderr tail=${result.stderr.takeLast(300)}",
+        )
+        assertFalse(
+            result.stderr.contains("Pipeline finished with SUCCESS"),
+            "a refused plugin must not also report a finished run. " +
                 "stderr tail=${result.stderr.takeLast(300)}",
         )
     }
 
     @Test
-    @DisplayName("KNOWN GAP: a manifest declaring a Step the plugin does not implement is executed")
-    fun aManifestThatLiesAboutItsStepsIsStillExecuted(@TempDir tempDir: Path) {
+    @DisplayName("un manifest bien formado que miente sobre sus Steps es rechazado en la pasada 2")
+    fun aManifestThatLiesAboutItsStepsIsRefusedByTheCrossCheck(@TempDir tempDir: Path) {
         val jar = repack(tempDir) { text ->
-            val stepsStart = text.indexOf("\"steps\"")
-            val stepsEnd = text.indexOf("]", stepsStart)
-            require(stepsStart > 0 && stepsEnd > stepsStart) {
-                "the plugin manifest no longer has the steps array this mutant assumes: $text"
+            // The anchor must close the LAST step object and the array that follows it. An earlier
+            // version of this row took `text.indexOf("]", after "steps")`, which lands on the first
+            // step's `declaredCapabilities` array and produced MALFORMED JSON — so the row was green
+            // for the wrong reason: the codec refused bad grammar, not the cross-check a lie.
+            val anchor = "}],\n  \"directives\""
+            // `String.count` takes a (Char) -> Boolean predicate, not a String; the literal
+            // occurrences are counted via split. Exactly one occurrence is required because the
+            // splice must be unambiguous — two anchors would mean this row is editing a document
+            // shape it has not actually looked at.
+            require(text.split(anchor).size - 1 == 1) {
+                "the plugin manifest no longer has exactly one anchor this mutant assumes: $text"
             }
-            // Splice a ghost Step into the array without disturbing anything else, so the ONLY thing
-            // wrong with this artifact is the claim it makes about itself.
-            text.substring(0, stepsEnd) +
-                ", {\"stepKey\": \"example.uppercase.ghost\", \"declaredCapabilities\": []}" +
-                text.substring(stepsEnd)
+            val spliced = text.replace(
+                anchor,
+                "}, {\"stepKey\": \"example.uppercase.ghost\", \"declaredCapabilities\": []}]," +
+                    "\n  \"directives\"",
+            )
+            require(spliced.contains("example.uppercase.ghost")) { "the splice did not land" }
+
+            // THE property this mutant must have, checked by the SAME authority that admits real
+            // plugins rather than by a generic JSON parser. If the splice did not produce a
+            // well-formed manifest, the row below would be asserting a refusal produced by the
+            // grammar check, and the whole point — that a LYING but VALID manifest is caught — would
+            // be untested while the row reported itself green.
+            require(PluginManifestCodec.decode(spliced) is PluginManifestDecodeResult.Accepted) {
+                "the mutant must be a VALID manifest that merely lies; if it does not decode, this " +
+                    "row would pass for the wrong reason. Rejected document: $spliced"
+            }
+            spliced
         }
         val result = runPlugin(tempDir, jar)
 
+        // S6-COMPOSITION pass 2. This row USED to assert the OPPOSITE: it characterised the gap that
+        // pass 1 alone cannot close. Pass 1 reads a manifest and cannot tell a truthful document
+        // from a lying one — both are valid JSON matching the grammar. Catching the lie requires
+        // comparing the declaration against what the contributor ACTUALLY contributes, which needs
+        // the contributor instantiated, so it is necessarily pass 2 and necessarily after admission
+        // of the artifact.
         assertTrue(
-            result.exitCode == 0 && result.stderr.contains("Pipeline finished with SUCCESS"),
-            "The installed product USED to execute a plugin whose manifest declares a Step it does " +
-                "not implement and no longer does. That claim is what admitContributions exists to " +
-                "catch, and it is the one link of the chain a manifest read alone cannot reach. " +
-                "Change this row to assert a refusal naming the ghost Step once the product crosses " +
-                "the gate. Observed: exit=${result.exitCode}, stderr tail=${result.stderr.takeLast(300)}",
+            result.exitCode == 2,
+            "a manifest declaring a Step the plugin does not implement must be REFUSED with exit 2 " +
+                "by the pass-2 cross-check. Observed: exit=${result.exitCode}, " +
+                "stderr tail=${result.stderr.takeLast(400)}",
+        )
+        assertTrue(
+            result.stderr.contains("Plugin admission refused"),
+            "and the refusal must say so on stderr, not merely exit non-zero. " +
+                "stderr tail=${result.stderr.takeLast(400)}",
+        )
+        assertTrue(
+            result.stderr.contains("example.uppercase.ghost"),
+            "the refusal must NAME the step that was declared without being implemented; a bare " +
+                "exit code proves only that something failed. " +
+                "stderr tail=${result.stderr.takeLast(400)}",
+        )
+        assertFalse(
+            result.stderr.contains("Pipeline finished with SUCCESS"),
+            "a refused plugin must not also report a finished run. " +
+                "stderr tail=${result.stderr.takeLast(400)}",
         )
     }
 
     private companion object {
         const val MANIFEST_RESOURCE = "META-INF/pipelinek/plugin-manifest.json"
+
+        /**
+         * The subprocess's own contract. Composition of five bundled plugins plus one mutant, from
+         * a cold JVM, is slow but bounded; the class-level `@Timeout` stays as the outer watchdog
+         * for "the whole test is broken" and is deliberately NOT what bounds a normal run.
+         */
+        val CLI_DEADLINE: Duration = Duration.ofMinutes(5)
 
         /** The real plugin JAR produced by `:buildExamplePlugin` from THIS revision's SDK. */
         fun locatePluginJar(): Path {

@@ -202,22 +202,31 @@ class CompatibilityCorpusTest {
     ): FixtureRun {
         val appBin = AppBinSupport.discover()
 
-        val pb = ProcessBuilder(
-            appBin.toString(),
-            "run",
-            "--workspace", workspace,
-            "--control-root", controlDir.toString(),
-            script.toString(),
+        // S6-PRE: this read stdout and stderr and only THEN called waitFor(). Fixture 23 emits a
+        // FileRead plus a FileExistsChecked per path, and anything larger than the 64 KiB buffer
+        // blocks the child's write end forever. OwnedSubprocess drains both pipes from the start
+        // and owns the tree, so a run that cannot cross the buffer arrives as a TimedOut with the
+        // pid rather than as a hung suite with an orphaned CLI behind it.
+        val result = OwnedSubprocess.run(
+            command = listOf(
+                appBin.toString(),
+                "run",
+                "--workspace", workspace,
+                "--control-root", controlDir.toString(),
+                script.toString(),
+            ),
+            timeout = FIXTURE_DEADLINE,
         )
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
 
-        val process = pb.start()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
-        val stderr = process.errorStream.bufferedReader().readText()
-        val exitCode = process.waitFor()
+        assertTrue(result is CliRun.Completed) {
+            "fixture did not finish within ${FIXTURE_DEADLINE.seconds}s; " +
+                "pid=${(result as? CliRun.TimedOut)?.diagnostics?.pid}. That is an ENVIRONMENT " +
+                "signal, not a verdict about the fixture."
+        }
+        val completed = result as CliRun.Completed
+        val stdout = completed.stdout.trim()
 
-        return FixtureRun(exitCode, stdout, stderr, JsonEventLog.decode(stdout))
+        return FixtureRun(completed.exitCode, stdout, completed.stderr, JsonEventLog.decode(stdout))
     }
 
     /**
@@ -240,22 +249,30 @@ class CompatibilityCorpusTest {
         // default the no-flag invocation attached that directory and the
         // fixture wrote lpr104-readme.txt into the repository.
         val workspace = Files.createTempDirectory("corpus-fixture23-ws")
-        val pb = ProcessBuilder(
-            appBin.toString(),
-            "run",
-            "--db", Files.createTempFile("corpus-fixture23-", ".db").toString(),
-            "--control-root", Files.createTempDirectory("corpus-fixture23-ctl").toString(),
-            "--workspace", workspace.toString(),
-            path.toString(),
+
+        // S6-PRE: `waitFor()` before reading stdout is the deadlock, not the fixture. Migrated.
+        val result = OwnedSubprocess.run(
+            command = listOf(
+                appBin.toString(),
+                "run",
+                "--db", Files.createTempFile("corpus-fixture23-", ".db").toString(),
+                "--control-root", Files.createTempDirectory("corpus-fixture23-ctl").toString(),
+                "--workspace", workspace.toString(),
+                path.toString(),
+            ),
+            timeout = FIXTURE_DEADLINE,
         )
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
 
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
+        assertTrue(result is CliRun.Completed) {
+            "Fixture $name did not finish within ${FIXTURE_DEADLINE.seconds}s; " +
+                "pid=${(result as? CliRun.TimedOut)?.diagnostics?.pid}."
+        }
+        val completed = result as CliRun.Completed
 
-        assertEquals(0, exitCode) { "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()}" }
+        assertEquals(0, completed.exitCode) {
+            "Fixture $name exited with code ${completed.exitCode}. stderr: ${completed.stderr}"
+        }
+        val stdout = completed.stdout.trim()
         val events = JsonEventLog.decode(stdout)
         assertTrue(events.isNotEmpty()) { "Fixture $name produced no events" }
 
@@ -444,18 +461,38 @@ class CompatibilityCorpusTest {
             val appBin = AppBinSupport.discover()
             println("DEBUG-LPR103 store=$storePath exists=${storePath.toFile().exists()} size=${if (storePath.toFile().exists()) java.nio.file.Files.size(storePath) else -1}")
 
-            val pb = ProcessBuilder(appBin.toString(), "run", path.toString())
-                .redirectOutput(ProcessBuilder.Redirect.PIPE)
-                .redirectError(ProcessBuilder.Redirect.PIPE)
-            pb.environment()["PIPELINE_CREDENTIALS_STORE"] = storePath.toString()
-            pb.environment()["PIPELINE_STORE_PASSPHRASE"] = passphrase
+            // S6-PRE, second round. `runFixturePass` and `runFixtureFail` were migrated to
+            // OwnedSubprocess; THIS call site was left behind, and it is the one that still
+            // deadlocked: `waitFor()` with no reader on the pipe, then a stdout read afterwards.
+            // Fixture 14 emits its whole event log through Main.kt:431, so the child filled the
+            // 64 KiB pipe buffer and `waitFor()` never returned — the test died on the 600 s
+            // JUnit timeout with a live `pipelinek` behind it, which is exactly the defect class
+            // S6-PRE existed to end. Migrating two of three call sites in one file is the same
+            // mistake as fixing one site and calling the property fixed.
+            //
+            // Note the environment map is passed explicitly rather than mutated on `ProcessBuilder`:
+            // OwnedSubprocess owns the child, so it owns how the child is configured too.
+            val result = OwnedSubprocess.run(
+                command = listOf(appBin.toString(), "run", path.toString()),
+                timeout = FIXTURE_DEADLINE,
+                environment = mapOf(
+                    "PIPELINE_CREDENTIALS_STORE" to storePath.toString(),
+                    "PIPELINE_STORE_PASSPHRASE" to passphrase,
+                ),
+            )
 
-            val process = pb.start()
-            val exitCode = process.waitFor()
-            val stdout = process.inputStream.bufferedReader().readText().trim()
+            assertTrue(result is CliRun.Completed) {
+                "Fixture $name did not finish within ${FIXTURE_DEADLINE.seconds}s. That is an " +
+                    "ENVIRONMENT signal, not a verdict about the fixture: pid=" +
+                    "${(result as? CliRun.TimedOut)?.diagnostics?.pid}."
+            }
+            val completed = result as CliRun.Completed
 
-            assertEquals(0, exitCode) { "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()} stdout tail: ${stdout.takeLast(1200)}" }
-            val events = JsonEventLog.decode(stdout)
+            assertEquals(0, completed.exitCode) {
+                "Fixture $name exited with code ${completed.exitCode}. stderr: ${completed.stderr} " +
+                    "stdout tail: ${completed.stdout.takeLast(1200)}"
+            }
+            val events = JsonEventLog.decode(completed.stdout.trim())
             assertTrue(events.isNotEmpty()) { "Fixture $name produced no events" }
         } finally {
             storePath.toFile().delete()
@@ -473,13 +510,19 @@ class CompatibilityCorpusTest {
         val path = fixture("14-credentials-bindings.pipeline.kts")
         val appBin = AppBinSupport.discover()
 
-        val pb = ProcessBuilder(appBin.toString(), "run", path.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
+        // S6-PRE: `waitFor()` before the stdout read is the deadlock this file stopped doing.
+        val result = OwnedSubprocess.run(
+            command = listOf(appBin.toString(), "run", path.toString()),
+            timeout = FIXTURE_DEADLINE,
+        )
 
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
+        assertTrue(result is CliRun.Completed) {
+            "fixture14-without-store did not finish within ${FIXTURE_DEADLINE.seconds}s; " +
+                "pid=${(result as? CliRun.TimedOut)?.diagnostics?.pid}."
+        }
+        val completed = result as CliRun.Completed
+        val exitCode = completed.exitCode
+        val stdout = completed.stdout.trim()
 
         assertEquals(1, exitCode) { "Fixture 14 without store should exit 1 but got $exitCode" }
         val events = JsonEventLog.decode(stdout)
@@ -635,12 +678,20 @@ class CompatibilityCorpusTest {
         val name = "28-zip-slip-defense.pipeline.kts"
         val path = fixture(name)
         val appBin = AppBinSupport.discover()
-        val pb = ProcessBuilder(appBin.toString(), "run", "--workspace", path.parent.toString(), path.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
+        // S6-PRE: last raw ProcessBuilder in this file. `waitFor()` before the stdout
+        // read is the deadlock; OwnedSubprocess drains both pipes and owns the tree.
+        val result = OwnedSubprocess.run(
+            command = listOf(appBin.toString(), "run", "--workspace", path.parent.toString(), path.toString()),
+            timeout = FIXTURE_DEADLINE,
+        )
+
+        assertTrue(result is CliRun.Completed) {
+            "Fixture $name did not finish within ${FIXTURE_DEADLINE.seconds}s; " +
+                "pid=${(result as? CliRun.TimedOut)?.diagnostics?.pid}."
+        }
+        val completed = result as CliRun.Completed
+        val exitCode = completed.exitCode
+        val stdout = completed.stdout.trim()
         assertNotEquals(0, exitCode) {
             "Fixture $name must exit non-zero (typed USER failure on Zip Slip). Got exit=$exitCode"
         }

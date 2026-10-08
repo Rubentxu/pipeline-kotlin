@@ -106,7 +106,9 @@ internal object EventJsonDecoder {
         val sha256 = EventJsonFields.stringField(s, "sha256") ?: return null
         val size = EventJsonFields.longField(s, "size") ?: return null
         val archivedAtStr = EventJsonFields.stringField(s, "archivedAt") ?: return null
-        val archivedAt = try { Instant.parse(archivedAtStr) } catch (_: Exception) { Instant.now() }
+        // Same rule as occurredAt in decodeEvent: an unreadable timestamp is refused
+        // rather than stamped with the time of reading.
+        val archivedAt = try { Instant.parse(archivedAtStr) } catch (_: Exception) { return null }
         return ArtifactEntry(runId, stageName, relPath, sha256, size, archivedAt)
     }
 
@@ -155,41 +157,66 @@ internal object EventJsonDecoder {
     }
 
     fun parseDiagnostic(s: String): ScriptingDiagnostic? {
-        val severityStr = EventJsonFields.stringField(s, "severity")
-        val message = EventJsonFields.stringField(s, "message") ?: ""
-        // `line` and `column` are written by encodeDiagnostics as bare JSON numbers,
-        // so they must be read with the numeric reader. Reading them as strings
-        // silently produced 0/0 for every diagnostic, losing the source position
-        // of every scripting warning and error that had ever been replayed.
-        val line = EventJsonFields.intField(s, "line") ?: 0
-        val column = EventJsonFields.intField(s, "column") ?: 0
-        val path = EventJsonFields.stringField(s, "path") ?: ""
-        val severity = severityStr?.let {
-            try { ScriptDiagnosticSeverity.valueOf(it) } catch (_: Exception) { ScriptDiagnosticSeverity.INFO }
-        } ?: ScriptDiagnosticSeverity.INFO
+        // Every field of ScriptingDiagnostic is required by its type and always
+        // written by encodeDiagnostics. An absent or malformed one is a refusal,
+        // not an invitation to substitute a plausible value: a diagnostic whose
+        // severity is unknown must not be reported as INFO, and one whose position
+        // is unknown must not point at line 0.
+        val severityStr = EventJsonFields.stringField(s, "severity") ?: return null
+        val message = EventJsonFields.stringField(s, "message") ?: return null
+        val line = EventJsonFields.intField(s, "line") ?: return null
+        val column = EventJsonFields.intField(s, "column") ?: return null
+        val path = EventJsonFields.stringField(s, "path") ?: return null
+        val severity = try {
+            ScriptDiagnosticSeverity.valueOf(severityStr)
+        } catch (_: Exception) {
+            // Outside the vocabulary. Downgrading an unreadable ERROR to INFO is the
+            // same defect class as parsing an unknown purpose as API_KEY.
+            return null
+        }
         return ScriptingDiagnostic(severity, message, line, column, path)
     }
 
     // WU-LPR-089 — Stash helpers (compact JSON arrays).
     // parseJsonArrayObjects (which the ArtifactArchiveFailed-family already uses).
-    fun decodeStashedEntries(s: String): List<StashedEntry> {
+    /**
+     * Decodes an entry list, distinguishing "the field is absent or empty" from
+     * "the field is present and at least one entry is unreadable".
+     *
+     * The distinction matters because the caller must fail closed on the second
+     * and accept the first. Before this existed, an unreadable entry was dropped by
+     * `mapNotNull`, so an event decoded successfully carrying a SHORT list: a
+     * stash of five files with one corrupt came back as a stash of four, and
+     * nothing anywhere reported the difference.
+     */
+    fun decodeStashedEntriesOrRefuse(s: String): List<StashedEntry>? {
         val arr = extractJsonArray(s, "files") ?: return emptyList()
-        return arr.mapNotNull { obj ->
-            val relPath = EventJsonFields.stringField(obj, "relPath") ?: return@mapNotNull null
-            val sha256 = EventJsonFields.stringField(obj, "sha256") ?: return@mapNotNull null
-            val sizeBytes = EventJsonFields.longField(obj, "sizeBytes") ?: 0L
+        val entries = arr.map { obj ->
+            val relPath = EventJsonFields.stringField(obj, "relPath") ?: return null
+            val sha256 = EventJsonFields.stringField(obj, "sha256") ?: return null
+            val sizeBytes = EventJsonFields.longField(obj, "sizeBytes") ?: return null
             StashedEntry(relPath = relPath, sha256 = sha256, sizeBytes = sizeBytes)
         }
+        return if (entries.size == arr.size) entries else null
     }
 
-    fun decodeRestoredEntries(s: String): List<RestoredEntry> {
+    /** Same contract as [decodeStashedEntriesOrRefuse], for restored entries. */
+    fun decodeRestoredEntriesOrRefuse(s: String): List<RestoredEntry>? {
         val arr = extractJsonArray(s, "entries") ?: return emptyList()
-        return arr.mapNotNull { obj ->
-            val relPath = EventJsonFields.stringField(obj, "relPath") ?: return@mapNotNull null
-            val sha256 = EventJsonFields.stringField(obj, "sha256") ?: return@mapNotNull null
-            val sizeBytes = EventJsonFields.longField(obj, "sizeBytes") ?: 0L
+        val entries = arr.map { obj ->
+            val relPath = EventJsonFields.stringField(obj, "relPath") ?: return null
+            val sha256 = EventJsonFields.stringField(obj, "sha256") ?: return null
+            val sizeBytes = EventJsonFields.longField(obj, "sizeBytes") ?: return null
             RestoredEntry(relPath = relPath, sha256 = sha256, sizeBytes = sizeBytes)
         }
+        return if (entries.size == arr.size) entries else null
+    }
+
+    /** Same contract as [decodeStashedEntriesOrRefuse], for artifact entries. */
+    fun decodeArtifactEntriesOrRefuse(s: String): List<ArtifactEntry>? {
+        val arr = extractJsonArray(s, "files") ?: return emptyList()
+        val entries = arr.map { obj -> parseArtifactEntry(obj) ?: return null }
+        return if (entries.size == arr.size) entries else null
     }
 
     // WU-LPR-090 — HtmlReport helpers (compact JSON arrays, same shape as Stash).
@@ -199,7 +226,9 @@ internal object EventJsonDecoder {
         return arr.mapNotNull { obj ->
             val relPath = EventJsonFields.stringField(obj, "relPath") ?: return@mapNotNull null
             val sha256 = EventJsonFields.stringField(obj, "sha256") ?: return@mapNotNull null
-            val sizeBytes = EventJsonFields.longField(obj, "sizeBytes") ?: 0L
+            // An entry of unknown size is not an empty file. sizeBytes is required
+            // by its type and always written, so absent is a refusal.
+            val sizeBytes = EventJsonFields.longField(obj, "sizeBytes") ?: return@mapNotNull null
             HtmlReportEntry(relPath = relPath, sha256 = sha256, sizeBytes = sizeBytes)
         }
     }

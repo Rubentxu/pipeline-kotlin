@@ -406,7 +406,15 @@ object JsonEventLog {
         val kind = EventJsonFields.stringField(s, "kind") ?: return absent("kind")
         val occurredAtStr = EventJsonFields.stringField(s, "occurredAt")
             ?: return absent("occurredAt")
-        val occurredAt = try { Instant.parse(occurredAtStr) } catch (_: Exception) { Instant.now() }
+        // An occurredAt that is present but unparseable is refused. Falling back to
+        // Instant.now() stamped every replayed row with the time of READING it, so
+        // an event from months ago claimed to have happened during the replay, and
+        // two reads of the same row produced two different events.
+        val occurredAt = try {
+            Instant.parse(occurredAtStr)
+        } catch (_: Exception) {
+            return unreadable("occurredAt", occurredAtStr)
+        }
 
         val event = when (kind) {
             "RunStarted" -> {
@@ -757,7 +765,8 @@ object JsonEventLog {
                 )
             }
             "ArtifactArchived" -> {
-                val files = EventJsonDecoder.decodeArtifactEntries(s)
+                val files = EventJsonDecoder.decodeArtifactEntriesOrRefuse(s)
+                    ?: return unreadable("files", "ArtifactArchived")
                 ArtifactArchived(
                     eventId = eventId,
                     runId = runId,
@@ -778,9 +787,12 @@ object JsonEventLog {
             }
             // WU-LPR-089 — core.stash/core.unstash durable cross-stage data movement
             "StashCreated" -> {
-                val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
-                val name = EventJsonFields.stringField(s, "name") ?: ""
-                val files = EventJsonDecoder.decodeStashedEntries(s)
+                val stageName = EventJsonFields.stringField(s, "stageName")
+                    ?: return absent("stageName")
+                val name = EventJsonFields.stringField(s, "name")
+                    ?: return absent("name")
+                val files = EventJsonDecoder.decodeStashedEntriesOrRefuse(s)
+                    ?: return unreadable("files", "StashCreated")
                 StashCreated(
                     eventId = eventId,
                     runId = runId,
@@ -792,9 +804,12 @@ object JsonEventLog {
                 )
             }
             "StashRestored" -> {
-                val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
-                val name = EventJsonFields.stringField(s, "name") ?: ""
-                val entries = EventJsonDecoder.decodeRestoredEntries(s)
+                val stageName = EventJsonFields.stringField(s, "stageName")
+                    ?: return absent("stageName")
+                val name = EventJsonFields.stringField(s, "name")
+                    ?: return absent("name")
+                val entries = EventJsonDecoder.decodeRestoredEntriesOrRefuse(s)
+                    ?: return unreadable("entries", "StashRestored")
                 StashRestored(
                     eventId = eventId,
                     runId = runId,

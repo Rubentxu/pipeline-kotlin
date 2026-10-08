@@ -521,8 +521,41 @@ refactorizar a ciegas.
 (`DomainEventExhaustiveRoundTripTest`); el split sigue diferido como decisión propia, y ahora tiene
 la condición satisfecha para hacerla sin riesgo ciego.
 
-**Lo que la red NO cubre aún, y sí es deuda real:** `decodeEvent` sigue usando
-`Instant.now()` como fallback de `occurredAt` no parseable (línea ~409) — reloj ambiental dentro
-de un decoder que debería ser puro. No se ha tocado en este slice. Mismo patrón
-`?: <default>` en `path`/`message` de `parseDiagnostic` y en `longField(...) ?: 0` de
-`decodeStashedEntries`/`decodeRestoredEntries`.
+**Lo que la red NO cubría, y sí era deuda real (cerrado en el slice siguiente):**
+`decodeEvent` usaba `Instant.now()` como fallback de `occurredAt` no parseable — reloj ambiental
+dentro de un decoder que debería ser puro. Junto con él, cinco `?: <default>` más del mismo
+patrón. Todo cerrado y registrado en la sección siguiente.
+
+## El decoder inventaba valores en 8 sitios (P1, CLOSED 2026-10-08)
+
+**Una familia, no ocho casos.** `DurableDecodeInventsNoValueTest` cerró seis filas que
+comparten una sola causa: un campo **presente pero ilegible** se convertía en un valor
+plausible en vez de un rechazo. Es la misma clase que ya cerró `purpose` → `API_KEY` y que
+Semantic Conservation §2 prohíbe.
+
+| Sitio | Defecto | Efecto silencioso |
+|---|---|---|
+| `decodeEvent.occurredAt` | `catch { Instant.now() }` | una fila vieja quedaba sellada con la hora de **lectura**; dos lecturas de la misma fila daban dos eventos distintos |
+| `parseArtifactEntry.archivedAt` | `catch { Instant.now() }` | misma pérdida de tiempo, en archivados |
+| `parseDiagnostic.severity` | `catch { INFO }` | un ERROR o WARNING ilegible se reportaba como información rutinaria |
+| `decode{Stashed,Restored,HtmlReport}Entries.sizeBytes` | `?: 0L` | una entrada de tamaño desconocido se declaraba fichero vacío |
+| `parseDiagnostic.line/column` | `?: 0` | posición desconocida apuntando al inicio del fichero |
+| `StashCreated/StashRestored.stageName,name` | `?: ""` | un stash sin nombre decodificaba con nombre vacío |
+
+**El peor de todos, y el que no era un simple default.** Cuando una entrada de una lista era
+ilegible, `mapNotNull` la **descartaba** y el evento decodificaba bien con una lista **más
+corta**. Un stash de cinco ficheros con uno corrupto volvía como un stash de cuatro, y nada
+en ninguna parte reportaba la diferencia. Por eso `decode*Entries` ahora tienen una variante
+`…OrRefuse` que distingue "el campo no está o está vacío" (legítimo) de "el campo está y una
+entrada es ilegible" (rechazo), y el refusal sube hasta el evento.
+
+**Nota de detekt:** añadir esas tres variantes llevó el objeto a 13 funciones y disparó
+`TooManyFunctions`. No se subió el límite ni se generó baseline: las dos variantes antiguas
+`decodeStashedEntries`/`decodeRestoredEntries` ya no tenían ningún llamador tras el cambio, así
+que eran código muerto y se eliminaron. El objeto queda en 11, el límite exacto.
+
+**Lo que NO se tocó y sigue siendo deuda real:** `decodeArtifactEntries` y
+`decodeHtmlReportEntries` (y cualquier otro consumidor del mismo patrón) no están
+auditados; el `?: ""` en `parseDiagnostic.message`/`path` se eliminó al hacerlos
+requeridos, pero la política general de "campo ausente en un tipo sin defaults" no está
+fitness-eada todavía.

@@ -444,12 +444,47 @@ externo legítimo se documenta y se conserva: **nunca se convierte en PASS**.
 
 ```text
 - No implementar Jenkins, Kubernetes, control plane ni workers remotos aquí (son de pipelinek-fabric).
-- No publicar ni promocionar releases desde este repositorio: la autoridad es el harness externo.
+- No certificar ni promocionar *estabilidad*: la autoridad del veredicto y de la promoción estable es el
+  harness externo (ADR-0105). ADR-0099 D6 mantiene aquí la construcción de la candidata, la verificación
+  local, la integración en `main`, el tag/publicación del prerelease y sus recibos. La prohibición que
+  sobrevive es la de NO declarar CERTIFIED ni STABLE_PROMOTED sin veredicto externo, y la de no publicar
+  el artefacto Maven definitivo como efecto lateral de publicar el prerelease (ADR-0099, ROADMAP A P2.4).
 - No reintroducir GitHub Actions para cerrar G10 (ADR-0105 D3).
 - No mantener tests que dependan del binario instalado o del corpus externo: eso vive en el harness.
 - No crear estado operativo nuevo dentro del repositorio.
 - No eliminar V1 antes de demostrar equivalencia o sustitución de sus capacidades necesarias.
 ```
+
+**Reconciliación 2026-10-08 (P0.3).** La redacción anterior de esta sección decía
+"No publicar ni promocionar releases desde este repositorio: la autoridad es el harness
+externo", lo que contradecía a la vez ADR-0099 D3/D4/D6 y el propio objetivo de este plan. La
+ambigüedad era real y ya estaba reconocida: **ADR-0099 y ADR-0105 no chocan entre sí**, reparten
+cosas distintas.
+
+```text
+                      producto (este repositorio)         harness externo
+construcción candidata      SI (ADR-0099 D6)                     no
+verificación local         SI (ADR-0099 D6)                     no
+integración en main        SI (ADR-0099 D3, sin squash)          no
+tag + prerelease           SI (ADR-0099 D4)                      no
+publicación Maven rc       SI (ROADMAP A P2)                     no
+publicación Maven GA       NO — exige autorización + G10         no
+check de admisión G10      no — no hay superficie de CI          SI (ADR-0105 D3)
+veredicto CERTIFIED        no                                   SI (ADR-0105)
+promoción STABLE           no                                   SI (ADR-0099 D5)
+```
+
+Los cuatro estados que este plan debe distinguir sin ambigüedad:
+
+| Estado | Qué lo autoriza | Dónde se declara |
+|---|---|---|
+| `CANDIDATE_PUBLISHED` | integración en `main` + tag alcanzable + artefactos con digest | recibo local de candidatas |
+| `CERTIFIED` | veredicto externo sobre el `CandidateId` exacto | harness, este repositorio solo lo cita |
+| `STABLE_PROMOTED` | `CERTIFIED` + gates de producto + G10 + autorización | este repositorio tras el veredicto |
+| `BLOCKED_EXTERNAL` | cualquier estado cuyo veredicto externo aún no existe | se declara, nunca se convierte en `PASS` |
+
+Ningún resultado local — `./gradlew check`, una UAT verde, un digest coincidente — simula un
+veredicto del harness. Un `STEP-CERT` local nunca se escribe como `PRODUCT-GATE`.
 
 ### 13.6 GATE de integración local y su alcance
 

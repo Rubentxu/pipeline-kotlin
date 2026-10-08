@@ -32,20 +32,25 @@ import java.nio.file.Path
  * 2. **No production code may read a token to decide something.** A line that names `outcome` and
  *    a token is a *read* unless it is an assignment, and a read is the shape of an authority. An
  *    assignment is an *emission* and is counted separately in the baseline below rather than
- *    forbidden, because three emission sites outside the durable engine are real and unfinished —
+ *    forbidden, because emission sites outside the durable engine are real and unfinished —
  *    see the pinned baseline.
  *
- * ## The three remaining emissions are pinned, not excused
+ * ## The remaining emissions are pinned, not excused
  *
- * `CoreWaitUntilStep.kt` and `BodyExecutionEngine.kt` still construct `WaitUntilCompleted` with a
- * literal. They are the non-durable waitUntil path, and §5.3 of
- * `P3E_EVENT_SEMANTIC_STRING_INVENTORY.md` already flags `CoreWaitUntilStep` as a non-routed
- * candidate. Asserting the count rather than asserting an empty set is the honest form here: the
- * claim "the projection did not reintroduce a String" is true for the durable engine and **false**
- * for the tree, and a test that only asserted the true half would be the defect it is checking for.
- * When those sites are migrated, this count changes and whoever changes it has to say why.
+ * `BodyExecutionEngine.kt` still constructs `WaitUntilCompleted` with a literal. It is the
+ * non-durable waitUntil path, and §5.3 of `P3E_EVENT_SEMANTIC_STRING_INVENTORY.md` already flags
+ * `CoreWaitUntilStep` as a non-routed candidate. Asserting the count rather than asserting an
+ * empty set is the honest form here: the claim "the projection did not reintroduce a String" is
+ * true for the durable engine and **false** for the tree, and a test that only asserted the true
+ * half would be the defect it is checking for. When those sites are migrated, this count changes
+ * and whoever changes it has to say why.
  *
- * ## Why `CoreWaitUntilStep` is allowlisted for *reading*, and why that is not a pardon
+ * The baseline was **three** until B1.2 (2026-10-08). Migrating `WaitUntilOutput` to carry
+ * `WaitUntilCompletion` removed one of them and closed the allowlisted read below, so it is now
+ * **two**, both in `BodyExecutionEngine.kt`. A baseline that could only ever be *lowered* by
+ * deleting an exemption and by making the engine honest is a baseline that rewards the fix.
+ *
+ * ## Why the read allowlist is now EMPTY, and why that is the point
  *
  * This law was written after the refactor and it **failed on the first run** against
  * `CoreWaitUntilStep.kt:69`:
@@ -55,18 +60,22 @@ import java.nio.file.Path
  *     get() = if (resultOutcome == "completed") StepOutcome.Success else …
  * ```
  *
- * which is the defect verbatim: a `StepOutcome` reconstructed by matching the wire token. The fix
- * was *not* to rewrite that line, because the honest fix is not reachable inside E4b.4:
- * `WaitUntilOutput.resultOutcome` is a **published scripting surface** — three contract tests
- * construct it by named argument and its `StepCodec` round-trips it through a JSON `outcome` field
- * — so replacing it with a `WaitUntilCompletion` is a step-contract change with its own gate, and
- * deriving the outcome from a token parsed back out of JSON would re-create the parse this whole
- * ADT exists to remove.
+ * which is the defect verbatim: a `StepOutcome` reconstructed by matching the wire token. It was
+ * then allowlisted by **file and line**, with the reason in the list, on the stated ground that
+ * `WaitUntilOutput.resultOutcome` was published scripting surface and replacing it was a
+ * step-contract change with its own gate.
  *
- * So the read is allowlisted by **file and line**, with the reason in the list, and the object is
- * a stub that structural routing does not select (§5.3). A package-level exemption is the wrong
- * shape and would re-admit every future line in the file; one file, one line, one stated reason is
- * the shape that can be re-read. Migrating it is tracked, not forgotten.
+ * B1.2 is that gate, and it turned out the exemption was not needed: the contract change kept the
+ * **encoded payload byte-identical** (`{"kind":"waitUntil","outcome":"completed",…}` is still what
+ * scripting reads and what an older journal holds), so nothing published moved while the in-memory
+ * type stopped being a `String`. The list is therefore empty. An empty allowlist is the strongest
+ * form this law can take: any new read anywhere fails, with no per-file pardon to hide behind.
+ *
+ * The old reason text claimed the object "is a stub that structural routing does not select",
+ * which was **false** — `core.waitUntil` has been REGISTRY_PRIMARY with `LEGACY_PLUGIN_IDS` empty
+ * since WU-LPR-301 / G5 (2026-09-18). The exemption was granted on a premise the code had already
+ * outgrown. It is kept here because a wrong reason is worth remembering: an allowlist entry is an
+ * argument, and arguments decay.
  *
  * ## Known bound of the reader
  *
@@ -78,30 +87,28 @@ import java.nio.file.Path
  *
  * RED: AssertionError naming the file and line that reads or re-hand-writes a token.
  * GREEN: The durable engine projects all five terminals and nothing else reads a token back.
+ *
+ * ## A note on the decoder, since this law does not see it
+ *
+ * `CoreWaitUntilStep`'s output codec reads a token back — it is the one place that has to, to turn
+ * a journal value into a terminal — and it does not appear in [ALLOWED_READS] because the shape is
+ * different: it *refuses* every value it cannot name (`completionFromWireOutcome`), so a read that
+ * cannot resolve is a failure, not a decision. A token read that falls back to a default is the
+ * authority this law bans; a token read that fails closed is a parser. The distinction is in the
+ * `else` branch, and `WaitUntilOutputCodecFailClosedTest` is what holds it there.
  */
 /**
- * One site where a wire token is still read back, named so the exemption is visible
- * in the diff rather than implied by the absence of a failure.
+ * Wire tokens still read back as an authority, named so an exemption is visible in the diff.
+ *
+ * **Empty as of B1.2 (2026-10-08).** The single entry that used to pardon
+ * `CoreWaitUntilStep.kt` is gone because the site it pardoned no longer reads a token: the typed
+ * output carries `WaitUntilCompletion` and derives both `resultOutcome` and `StepOutcome` from it.
+ * It is kept as a named type rather than deleted so the next entry arrives with a file, a line
+ * and a reason, which is the shape that can be re-read by whoever inherits it.
  */
 private data class AllowedRead(val relativePath: String, val line: Int, val reason: String)
 
-private val ALLOWED_READS: List<AllowedRead> = listOf(
-    AllowedRead(
-        relativePath =
-            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilStep.kt",
-        line = 70,
-        reason = "WaitUntilOutput.outcome derives Success/Failure by matching " +
-            "resultOutcome == \"completed\". This is a published scripting surface: three " +
-            "contract tests construct WaitUntilOutput by named argument and its StepCodec " +
-            "round-trips the value through a JSON `outcome` field, so replacing it with a " +
-            "WaitUntilCompletion is a step-contract change with its own gate, not part of " +
-            "E4b.4. The handler is a non-routed registry candidate (§5.3). Migrating it is " +
-            "tracked; this entry exists so that ANY second read in this file fails the law. " +
-            "S6/F moved the line from 69 to 70 by adding one import for StepRegistryBuilder; the " +
-            "defect is unchanged and stays assigned to S7, so the entry moved with the line rather " +
-            "than being widened to a file-level exemption.",
-    ),
-)
+private val ALLOWED_READS: List<AllowedRead> = emptyList()
 
 class FArchE4b4WaitUntilTerminalAuthorityTest {
 
@@ -211,13 +218,15 @@ class FArchE4b4WaitUntilTerminalAuthorityTest {
         }
 
         assertEquals(
-            3,
+            2,
             emissions.size,
-            "Three production sites outside the durable engine still construct WaitUntilCompleted " +
+            "Two production sites outside the durable engine still construct WaitUntilCompleted " +
                 "with a literal token: $emissions. That count is the unfinished half of E4b.4 " +
-                "(the non-durable path, §5.3) and it is pinned so it cannot grow unnoticed. If it " +
-                "dropped, the sites were migrated and this baseline needs rewriting; if it rose, a " +
-                "new terminal was decided by a literal instead of by the ADT.",
+                "(the non-durable path, §5.3) and it is pinned so it cannot grow unnoticed. It was " +
+                "three until B1.2 (2026-10-08) migrated WaitUntilOutput to carry " +
+                "WaitUntilCompletion, which removed the CoreWaitUntilStep emission. If it dropped " +
+                "again, the remaining sites were migrated and this baseline needs rewriting; if " +
+                "it rose, a new terminal was decided by a literal instead of by the ADT.",
         )
     }
 }

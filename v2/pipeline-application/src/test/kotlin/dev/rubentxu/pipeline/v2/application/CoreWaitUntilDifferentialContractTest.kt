@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilCompletion
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
@@ -96,13 +97,14 @@ class CoreWaitUntilDifferentialContractTest {
     @Test
     fun `output codec — WaitUntilOutput round-trips correctly`() {
         val original = WaitUntilOutput(
-            resultOutcome = "completed",
+            completion = WaitUntilCompletion.Satisfied,
             totalAttempts = 3,
             totalDurationMs = 1500L,
         )
         val encoded = CoreWaitUntilStep.definition.contract.outputCodec.encode(original)
         val decoded = CoreWaitUntilStep.definition.contract.outputCodec.decode(encoded)
 
+        assertEquals(original.completion, decoded.completion)
         assertEquals(original.resultOutcome, decoded.resultOutcome)
         assertEquals(original.totalAttempts, decoded.totalAttempts)
         assertEquals(original.totalDurationMs, decoded.totalDurationMs)
@@ -117,6 +119,7 @@ class CoreWaitUntilDifferentialContractTest {
 
         val output = CoreWaitUntilStep.definition.handler.execute(WaitUntilInput(), ctx)
 
+        assertEquals(WaitUntilCompletion.Satisfied, output.completion)
         assertEquals("completed", output.resultOutcome)
         assertEquals(1, output.totalAttempts)
         assertEquals(0L, output.totalDurationMs)

@@ -15,6 +15,9 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
+import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilAbortCause
+import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilCompletion
+import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilCompletionWireOutcomes
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
@@ -60,19 +63,47 @@ data class WaitUntilInput(
  *
  * The handler emits WaitUntilPolled and WaitUntilCompleted events as the observable
  * runtime output. The typed output carries the final outcome for scriptability.
+ *
+ * ## Why the terminal is a [WaitUntilCompletion] and not a `String`
+ *
+ * This used to carry `resultOutcome: String`, and [outcome] was reconstructed by matching one
+ * literal — `if (resultOutcome == "completed") Success else Failure(TIMEOUT)`. A `String` cannot
+ * fail closed: a typo, a terminal a future version adds, or a corrupted journal all take the
+ * `else` branch and produce a run that ended in a deadline it never reached, reported with a
+ * message about a wait it never exceeded. Nothing in the type said "these three are all of them".
+ *
+ * The closed ADT [WaitUntilCompletion] already existed in `pipeline-domain` with exactly the
+ * three terminals the domain has, and `WaitUntilEngine` already projected all five of its
+ * emission sites from it. This value was the last string authority, and it now derives from the
+ * same ADT as the durable engine: there is no field a caller could set to a token inconsistent
+ * with the terminal it claims to report.
+ *
+ * ## The wire token is a projection, and it does not move
+ *
+ * [resultOutcome] remains available to scripting because the encoded `outcome` field is a
+ * **published, frozen** surface (S8 freezes event schemas against these three tokens, and an
+ * older journal has to keep decoding). It is derived from [completion] on every read, so it
+ * cannot drift from the terminal — and the codec is the only place that parses it back, where an
+ * unrecognised value is refused instead of interpreted. Direction of authority: ADT → token,
+ * never token → decision.
+ *
+ * @see WaitUntilCompletion for the three terminals and what each one owns.
  */
 data class WaitUntilOutput(
-    val resultOutcome: String, // "completed" or "deadline-exceeded"
+    val completion: WaitUntilCompletion,
     val totalAttempts: Int,
     val totalDurationMs: Long,
 ) : TypedStepOutput {
-    override val outcome: StepOutcome
-        get() = if (resultOutcome == "completed") StepOutcome.Success else StepOutcome.Failure(
-            dev.rubentxu.pipeline.v2.domain.PipelineFailure(
-                kind = dev.rubentxu.pipeline.v2.domain.FailureKind.TIMEOUT,
-                message = "waitUntil deadline exceeded after $totalAttempts attempts and ${totalDurationMs}ms"
-            )
-        )
+
+    /**
+     * The historical wire token, derived rather than stored.
+     *
+     * Kept as a property because it is published scripting surface; it is not a field because a
+     * stored token is a second source of truth that could disagree with [completion].
+     */
+    val resultOutcome: String get() = completion.wireOutcome
+
+    override val outcome: StepOutcome get() = completion.toStepOutcome()
 }
 
 /**
@@ -140,13 +171,41 @@ object CoreWaitUntilStep {
             require(obj["kind"]?.jsonPrimitive?.content == "waitUntil") {
                 "core.waitUntil output payload kind must be 'waitUntil'"
             }
+            val wireOutcome = obj.getValue("outcome").jsonPrimitive.content
             return WaitUntilOutput(
-                resultOutcome = obj.getValue("outcome").jsonPrimitive.content,
+                completion = completionFromWireOutcome(wireOutcome),
                 totalAttempts = obj.getValue("totalAttempts").jsonPrimitive.content.toInt(),
                 totalDurationMs = obj.getValue("totalDurationMs").jsonPrimitive.content.toLong(),
             )
         }
     }
+
+    /**
+     * Parses a historical wire token back into the closed ADT, failing closed on anything else.
+     *
+     * This is the one place where a token becomes a terminal again, and it is deliberately the
+     * *only* place: the token is a projection of [WaitUntilCompletion], and a reader of it that
+     * cannot name the terminal it corresponds to has no authority to produce one. Coercing an
+     * unknown value into a deadline (the old `else` branch) reported a timeout the run never
+     * reached; refusing it reports a corrupt or newer journal, which is diagnosable and true.
+     *
+     * The mapping is total over the frozen set and undefined outside it, so a terminal whose wire
+     * representation nobody decided is refused here rather than silently accepted.
+     */
+    private fun completionFromWireOutcome(wireOutcome: String): WaitUntilCompletion =
+        when (wireOutcome) {
+            WaitUntilCompletion.Satisfied.wireOutcome -> WaitUntilCompletion.Satisfied
+            WaitUntilCompletion.DeadlineExceeded(attempt = 0, ceilingMs = 0).wireOutcome ->
+                WaitUntilCompletion.DeadlineExceeded(attempt = 0, ceilingMs = 0)
+            WaitUntilCompletion.Aborted(WaitUntilAbortCause.DurableRowAlreadyAborted).wireOutcome ->
+                WaitUntilCompletion.Aborted(WaitUntilAbortCause.DurableRowAlreadyAborted)
+            else -> throw IllegalArgumentException(
+                "core.waitUntil output outcome '$wireOutcome' is not one of the frozen terminals " +
+                    "${WaitUntilCompletionWireOutcomes.sorted()}. Refusing it rather than reading it " +
+                    "as a deadline: an unknown value is a corrupt or newer journal, not a timeout " +
+                    "the run reached.",
+            )
+        }
 
     // WU-LPR-301: waitUntil declares its execution shape structurally via the
     // waitUntil sub-shape of BodyExecutionPolicy.Retrying. The coordinator dispatches
@@ -190,6 +249,7 @@ object CoreWaitUntilStep {
             )
 
             // Emit WaitUntilCompleted with "completed" outcome
+            val completion = WaitUntilCompletion.Satisfied
             sink.append(
                 WaitUntilCompleted(
                     eventId = UUID.randomUUID().toString(),
@@ -198,12 +258,12 @@ object CoreWaitUntilStep {
                     occurredAt = Instant.now(),
                     totalAttempts = 1,
                     totalDurationMs = 0L,
-                    outcome = "completed",
+                    outcome = completion.wireOutcome,
                 ),
             )
 
             WaitUntilOutput(
-                resultOutcome = "completed",
+                completion = completion,
                 totalAttempts = 1,
                 totalDurationMs = 0L,
             )

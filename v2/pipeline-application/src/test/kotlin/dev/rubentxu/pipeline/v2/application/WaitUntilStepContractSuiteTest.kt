@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilCompletion
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
@@ -224,7 +225,11 @@ class WaitUntilStepContractSuiteTest {
 
     @Test
     fun `codec output — WaitUntilOutput round-trips byte-identically`() {
-        val value = WaitUntilOutput(resultOutcome = "completed", totalAttempts = 3, totalDurationMs = 1500L)
+        val value = WaitUntilOutput(
+            completion = WaitUntilCompletion.Satisfied,
+            totalAttempts = 3,
+            totalDurationMs = 1500L,
+        )
         val encoded = CoreWaitUntilStep.definition.contract.outputCodec.encode(value)
         assertEquals(
             """{"kind":"waitUntil","outcome":"completed","totalAttempts":3,"totalDurationMs":1500}""",

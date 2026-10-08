@@ -71,9 +71,22 @@ observación a la primera.
 ## 4. Qué queda de ASX-000
 
 ```text
-HECHO   payload de credenciales (1.ª rebanada) · payload de core.sh (esta rebanada)
-PENDIENTE  eventos de core.sh y replay
+HECHO      payload de credenciales (1.ª rebanada) · payload de core.sh (esta rebanada)
+           replay: KDoc de ReplayPolicy alineado con su autoridad (3.ª rebanada)
+MEDIDO     eventos de core.sh: YA CUBIERTO, no se anaden tests. 50 ficheros de test referencian
+           EchoOutputCaptured, la familia que el sustrato ShExecution emite por EventSink, y la
+           parte de transcript durable + redaccion la caracterice yo en B1a. El sustrato documenta
+           que sustituyo a "the pair of emitters that used to exist here", que eran "the SECOND
+           rendering of the same bytes": eso es la ley de emision unica (§8.3) ya aplicada, no un
+           hueco de ASX-000.
 ```
+
+ASX-000 queda **agotado en lo ejecutable sin ADR**: lo que resta del bloque no es caracterizacion.
+
+**Lo que este negativo NO autoriza a concluir:** que la familia de eventos este *ejercitada* no
+demuestra que el contrato observable del Step este *declarado* como tal (Semantic Constitution §8.2:
+"every supported Step/directive declares its observable event contract"). Esa pregunta es distinta, no
+la he medido, y no la doy por buena por este negativo.
 
 ## 5. Lo que este hallazgo NO es
 

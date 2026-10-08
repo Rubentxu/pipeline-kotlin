@@ -311,6 +311,20 @@ class RunOutputRetentionTest {
 
     // ------------------------------------------------- 2. the release is real
 
+    /**
+     * One pass at the run terminal, not one per stage.
+     *
+     * The instrument is `recording.intents`: a per-stage policy would have produced two intents,
+     * one per stage terminal, and this asserts there is exactly one. The `streamsRemoved` count
+     * below is a second, independent witness that the single pass covered the WHOLE run rather
+     * than stopping at the first stage.
+     *
+     * **Why this count is 4 and was written as 2.** OBS-C2.3 gave every `sh` step one stream per
+     * channel, so a two-stage run writes `2 stages x 2 channels = 4` streams. A per-stage prune
+     * would release only the first two, which is what makes 4 the number that carries the claim.
+     * The row was left asserting 2 when that change landed and went red for a reason that had
+     * nothing to do with retention: it failed on a stale expectation, not on a defect.
+     */
     @Test
     fun `a finished run releases every stream its stages wrote in one pass`(@TempDir root: Path) = runBlocking {
         linuxOnly()
@@ -334,9 +348,10 @@ class RunOutputRetentionTest {
         assertEquals(1, recording.intents.size, "one pass, at the run terminal: ${recording.intents}")
         val report = recording.reports.single()
         assertEquals(
-            2,
+            4,
             report.streamsRemoved,
-            "BOTH stages' output is released in the run's single pass; a per-stage prune would report 1",
+            "BOTH stages' output is released in the run's single pass, on both channels: " +
+                "2 stages x 2 channels is 4, and a per-stage prune would report 2",
         )
         assertTrue(report.bytesReleased > 0, "the release must account for real committed bytes")
         assertEquals(0, report.streamsRetained, "nothing resisted the release on a healthy filesystem")

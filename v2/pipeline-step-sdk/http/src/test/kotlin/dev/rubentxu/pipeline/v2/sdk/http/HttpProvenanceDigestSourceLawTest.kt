@@ -8,112 +8,107 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 
 /**
- * AUD-01 — the plugin provenance digest must be computed over NORMALISED RELATIVE paths.
+ * B0.2 — the plugin provenance digest is computed by ONE shared implementation, not three copies.
  *
- * ## Why a fitness test, when the sibling unit test was supposed to carry this
+ * ## Why this law changed shape
  *
- * `HttpProvenanceDigestPathIndependenceTest` proves that the two FORMULATIONS differ: hashing
- * absolute paths is path-dependent, hashing relative paths is not. That is a true and useful
- * claim, and it is **not enough**.
+ * AUD-01 fixed the absolute-path defect in three near-identical copies of the digest walk. That
+ * left the copies as three authorities: the next fix could land in one and miss two. B0.2 moves the
+ * walk + framing + exclusion logic into `buildSrc` (`dev.rubentxu.pipeline.build.ProvenanceDigest`)
+ * and reduces each build script to its module-specific wiring.
  *
- * Measured here, not assumed: with the build script MUTATED back to absolute paths —
- * `"${file.absolutePath}"` in place of the relativised form — the sibling test still reported
- * `tests="4" failures="0"`. It stayed green while the defect it was written to prevent was back in
- * the build.
- *
- * The reason is structural, not an oversight: the digest is computed inside a Gradle `doLast`, and
- * that closure is not on this module's test classpath. A unit test of the FORMULA cannot observe
- * which formula the TASK uses. Shipping only that test would have produced a green that certified
- * nothing about the artefact whose provenance it claims to protect.
- *
- * So this law reads the build scripts as text and refuses the shape that caused the defect. It is
- * the same trade the S6 runtime law made — keying on the property "no plugin digest reads an
- * absolute path" — and it fails in the direction that matters.
+ * The previous version of this law keyed on the literal token `endsWith("plugin-manifest.json")`
+ * being PRESENT in each build script. After B0.2 that shape is exactly what must be ABSENT (a broad
+ * suffix exclusion also drops `unrelated-plugin-manifest.json`), so the law is retargeted: the
+ * scripts must DELEGATE, must declare the manifest exclusion by EXACT relative path and must never
+ * re-derive the hashing.
  *
  * ## What this law does NOT do
  *
- * It does not compute a digest, and it does not run Gradle. It pins the SOURCE. A build script that
- * became path-dependent without containing any of these tokens would evade it, which is the honest
- * bound of a text law and is stated here rather than hidden.
+ * It does not compute a digest and it does not run Gradle. It pins the SOURCE of the wiring. The
+ * behaviour of the shared class is proven by `buildSrc` tests that execute the same production
+ * class (`ProvenanceDigestTest`, and a real Gradle task in `ProvenanceDigestGradleFixtureTest`).
+ * A build script that became path-dependent without containing any of these tokens would evade
+ * this law, which is the honest bound of a text law and is stated here rather than hidden.
  *
  * ## How to run this law without being lied to
  *
  * `gradlew :pipeline-step-sdk:http:test --tests 'HttpProvenanceDigestSourceLawTest'` can print
- * BUILD SUCCESSFUL and produce NO verdict about the current tree. Measured here: with
- * `classesDir.absolutePath` reintroduced into `utilities`, deleting the result XML and re-running
- * gave `test FROM-CACHE` — Gradle restored the cached PASS from the previous, correct tree. Two
- * consecutive "GREEN" verdicts in this slice were that artefact and nothing else.
- *
- * Deleting the result XML is not enough, because the cache lives above the module. Run with
- * `--rerun-tasks`, or read `Task :…:test` in the log and refuse to believe a result whose line says
- * FROM-CACHE. This is the harness-fidelity rule about result truth, arriving here by measurement.
+ * BUILD SUCCESSFUL and produce NO verdict about the current tree when the result is served
+ * FROM-CACHE. Run with `--rerun-tasks`, or read the `Task :…:test` line and refuse a result whose
+ * line says FROM-CACHE.
  */
-@DisplayName("AUD-01 — ningún digest de procedencia de plugin se calcula sobre rutas absolutas")
+@DisplayName("B0.2 — los plugins delegan el digest de procedencia en la clase compartida")
 class HttpProvenanceDigestSourceLawTest {
 
     @Test
-    fun `ningún build script de plugin hashea rutas absolutas en su digest de procedencia`() {
-        // The subject must not be empty. A law over zero files is a law over nothing, and it would
-        // pass for the rest of its life.
+    fun `los build scripts delegan en la clase compartida y no llevan copia privada del algoritmo`() {
         assertTrue(
             PLUGIN_BUILD_SCRIPTS.isNotEmpty(),
             "no plugin build script was found from ${System.getProperty("user.dir")}: this law has " +
                 "no subject and every green it produces would be vacuous",
         )
+        assertTrue(
+            Files.isRegularFile(SHARED_CLASS),
+            "the shared implementation was not found at $SHARED_CLASS: the law has no subject",
+        )
 
         val offenders = PLUGIN_BUILD_SCRIPTS.mapNotNull { script ->
             val text = stripComments(Files.readString(script))
-            val hits = FORBIDDEN.mapNotNull { (token, why) ->
-                token.takeIf { text.contains(it) }?.let { "$it ($why)" }
+            val problems = mutableListOf<String>()
+            if (!text.contains("dev.rubentxu.pipeline.build.ProvenanceDigest")) {
+                problems += "no delega en dev.rubentxu.pipeline.build.ProvenanceDigest " +
+                    "(parece conservar una copia privada del algoritmo)"
             }
-            if (hits.isEmpty()) null else "${script.parent.fileName} -> " + hits.joinToString("; ")
+            FORBIDDEN_IN_SCRIPT.forEach { (token, why) ->
+                if (text.contains(token)) problems += "$token ($why)"
+            }
+            if (problems.isEmpty()) null else "${script.parent.fileName} -> " + problems.joinToString("; ")
         }
 
         assertTrue(
             offenders.isEmpty(),
-            "these plugin build scripts compute their provenance digest from absolute paths, " +
-                "so the same bytes hash differently in two checkouts and a receipt bound to a SHA " +
-                "cannot prove the artefact it names:\n" +
-                offenders.joinToString("\n") { "  - $it" } +
-                "\n\nHash sorted (relative path, content) pairs with MessageDigest instead. " +
-                "See AUD-01 in computeHttpDigest for the measured before/after.",
+            "the plugin build scripts must delegate the provenance digest to the shared class and " +
+                "must not re-derive hashing material from absolute paths:\n" +
+                offenders.joinToString("\n") { "  - $it" },
         )
     }
 
-    /**
-     * The second half of the law, and it is a separate half because it failed separately.
-     *
-     * Path-independence was already true when the digest still moved on a manifest change. The
-     * manifest carries `releaseDigest`, so hashing it is a fixed-point loop: emit manifest -> it
-     * states the digest -> re-hash changes the manifest -> the digest moves. AUD-01 excluded the
-     * `.properties` file and not the manifest, so the digest was stable only while the manifest
-     * happened to be byte-identical.
-     *
-     * Measured: appending one byte to `plugin-manifest.json` moved utilities 6c035f25 -> 5efa299f,
-     * and RESTORING that byte did not bring 6c035f25 back, because the manifest had by then been
-     * regenerated into the hashed tree. The property was luck, not code.
-     *
-     * The mutation that kills this: drop `!it.name.endsWith("plugin-manifest.json")` from the
-     * walk filter. Verified that the mutation is detectable by re-appending the byte and observing
-     * the digest move.
-     */
     @Test
-    fun `el digest de procedencia excluye el manifest que lo transporta`() {
+    fun `la exclusion del manifest es por ruta relativa EXACTA, nunca por sufijo`() {
         val offenders = PLUGIN_BUILD_SCRIPTS.mapNotNull { script ->
             val text = stripComments(Files.readString(script))
-            if (text.contains("endsWith(\"plugin-manifest.json\")")) {
-                null
-            } else {
-                "${script.parent.fileName} -> the walk does not exclude plugin-manifest.json"
+            val problems = mutableListOf<String>()
+            if (!text.contains("META-INF/pipelinek/plugin-manifest.json")) {
+                problems += "no declara la exclusión exacta META-INF/pipelinek/plugin-manifest.json"
             }
+            if (text.contains("endsWith(\"plugin-manifest.json\")")) {
+                problems += "exclusión amplia por sufijo: excluiría también unrelated-plugin-manifest.json"
+            }
+            if (problems.isEmpty()) null else "${script.parent.fileName} -> " + problems.joinToString("; ")
         }
 
         assertTrue(
             offenders.isEmpty(),
-            "these plugin digest tasks hash the plugin manifest, which carries `releaseDigest`. " +
-                "That is a fixed-point loop: the digest depends on the manifest, the manifest " +
-                "states the digest, and neither settles. Exclude the manifest from the walk:\n" +
+            "each plugin digest task must exclude its own generated documents by EXACT relative " +
+                "path. A broad *plugin-manifest.json suffix silently drops unrelated manifests " +
+                "from the identity:\n" +
                 offenders.joinToString("\n") { "  - $it" },
+        )
+    }
+
+    @Test
+    fun `la clase compartida no hashea rutas absolutas ni excluye por sufijo`() {
+        val text = stripComments(Files.readString(SHARED_CLASS))
+        val problems = FORBIDDEN_IN_SHARED.mapNotNull { (token, why) ->
+            token.takeIf { text.contains(it) }?.let { "$it ($why)" }
+        }
+
+        assertTrue(
+            problems.isEmpty(),
+            "the shared ProvenanceDigest must not build its hashed material from absolute paths, " +
+                "and must exclude only by exact relative path:\n" +
+                problems.joinToString("\n") { "  - $it" },
         )
     }
 
@@ -128,6 +123,9 @@ class HttpProvenanceDigestSourceLawTest {
             moduleDir("utilities"),
         ).map { it.resolve("build.gradle.kts") }.filter { Files.isRegularFile(it) }
 
+        val SHARED_CLASS: Path = sdkRoot().parent
+            .resolve("buildSrc/src/main/java/dev/rubentxu/pipeline/build/ProvenanceDigest.java")
+
         /**
          * Resolves the SDK root by WALKING UP until the three module directories are all present.
          *
@@ -138,7 +136,7 @@ class HttpProvenanceDigestSourceLawTest {
          * passed over an EMPTY subject — a green with no subject at all, which is the worst shape a
          * fitness test can take.
          *
-         * `require` is therefore not defensive noise: without it, this exact failure returns.
+         * `error` is therefore not defensive noise: without it, this exact failure returns.
          */
         fun sdkRoot(): Path {
             var candidate: Path? = Paths.get(System.getProperty("user.dir")).toAbsolutePath()
@@ -157,25 +155,27 @@ class HttpProvenanceDigestSourceLawTest {
         fun moduleDir(name: String): Path = sdkRoot().resolve(name)
 
         /**
-         * Tokens, not the whole property, and the token set was widened by MEASUREMENT rather
-         * than by taste.
-         *
-         * The first version of this law listed only `it.absolutePath` / `file.absolutePath`, and
-         * the mutation `listOf(classesDir to classesDir.absolutePath)` SURVIVED it: a real
-         * absolute path reintroduced into the hashed material, green. A law that can only be
-         * defeated by typing its tokens verbatim is not a law, it is a grep. The widened set
-         * kills that mutation because it names the operation, not the receiver.
-         *
-         * `sha256sum $all` is kept as the original crime; the other three entries cover the same
-         * defect re-expressed in Kotlin. They are matched against comment-stripped source, so the
-         * explanatory comments that MUST remain for readers cannot mask or trigger the law.
+         * Tokens that mean the build script is re-deriving the hashing instead of delegating, or is
+         * feeding absolute paths into the hashed material. Matched against comment-stripped source,
+         * so the explanatory comments that MUST remain for readers cannot mask or trigger the law.
          */
-        val FORBIDDEN: List<Pair<String, String>> = listOf(
-            "sha256sum \$all" to "la forma original: sha256sum imprime el nombre de fichero que recibe",
+        val FORBIDDEN_IN_SCRIPT: List<Pair<String, String>> = listOf(
+            "sha256sum" to "vuelve a invocar sha256sum, que imprime el nombre de fichero que recibe",
+            "MessageDigest" to "reimplementa el hashing en el script en vez de delegar",
+            ".walkTopDown()" to "reimplementa el recorrido del árbol en el script en vez de delegar",
             ".absolutePath" to "ruta absoluta introducida en el material hasheado",
             ".getAbsolutePath" to "ruta absoluta introducida en el material hasheado",
             ".toAbsolutePath" to "ruta absoluta introducida en el material hasheado",
             "canonicalize" to "ruta absoluta canonizada introducida en el material hasheado",
+        )
+
+        val FORBIDDEN_IN_SHARED: List<Pair<String, String>> = listOf(
+            ".absolutePath" to "ruta absoluta introducida en el material hasheado",
+            ".getAbsolutePath" to "ruta absoluta introducida en el material hasheado",
+            ".toAbsolutePath" to "ruta absoluta introducida en el material hasheado",
+            "canonicalize" to "ruta absoluta canonizada introducida en el material hasheado",
+            "sha256sum" to "vuelve a invocar sha256sum, que imprime el nombre de fichero que recibe",
+            "endsWith(\"plugin-manifest.json\")" to "exclusión amplia por sufijo en vez de ruta exacta",
         )
 
         val BLOCK_COMMENT = Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL)
@@ -187,4 +187,3 @@ class HttpProvenanceDigestSourceLawTest {
             LINE_COMMENT_TAIL.replace(BLOCK_COMMENT.replace(text, ""), "")
     }
 }
-

@@ -1,4 +1,47 @@
-# Active Change — S2-D P0 shell working-directory fix (2026-10-01, HEAD `8e838e6d`)
+# Active Change — B0.2 shared plugin provenance digest (2026-10-08, HEAD `acd12111`)
+
+```text
+Cycle: p-733fb505b5a6bd2d/rp7-sem-s6-plugin-sdk (OPEN/explore; no lease)
+WorkItem: f8fc07e6-6f98-4b4a-81c0-3f5b717bd146 — B0.2 digest
+Base SHA: acd121117a9f6a4a1389462342b0f0bf4e92590c   Branch: s6-plugin-sdk
+Delivery: B-direct bounded repair; LOCAL diff only, no commit (root closes out)
+```
+
+Changed:
+- `v2/buildSrc/` NEW: `build.gradle.kts` (java-library + junit + gradleTestKit) and
+  `src/main/java/dev/rubentxu/pipeline/build/ProvenanceDigest.java` — the ONE shared
+  walk + framing + exact-exclusion digest primitive (build-only, no Gradle API).
+- `v2/pipeline-step-sdk/{http,scm-git,utilities}/build.gradle.kts` — delete the three
+  private copies of the algorithm; delegate to `ProvenanceDigest`; declare real
+  `inputs` (classes + resources fileTrees with `PathSensitivity.RELATIVE`, plus
+  publisher/namespace/version/module); exclude own metadata by EXACT relative path.
+- `HttpProvenanceDigestSourceLawTest.kt` — retargeted to the new architecture.
+- `HttpProvenanceDigestPathIndependenceTest.kt` — DELETED (reimplemented the
+  algorithm; its claims now live in buildSrc tests that execute the production class).
+
+Affected SUT: the three plugin digest tasks + the shared buildSrc class.
+
+Verification executed (all `timeout 600`, logs in `$JCODE_SCRATCH_DIR`):
+- `./gradlew -p v2/buildSrc test --rerun-tasks` → 10 tests, 0 failed (9 unit + 1 Gradle TestKit fixture).
+- `:pipeline-step-sdk:http:test --tests '*HttpProvenanceDigestSourceLawTest' --rerun-tasks` → 3/3.
+- Real tasks + `jar --rerun-tasks` on http/scm-git/utilities → digests identical to the
+  pre-change implementation: `5f39373e…`, `81b99440…`, `9d0e3c10…`; properties == manifest in all 3.
+- Incremental: UP-TO-DATE unchanged; adding a real resource input → task executed + digest moved;
+  removing it → digest restored; changing publisher → task executed + output changed.
+
+Mutations (fresh XML each, restored + hash-verified):
+- `dir.relativize(file)` → `file.toAbsolutePath()`: buildSrc 3 failed; law test 1 failed.
+- exact-path exclusion → `endsWith("plugin-manifest.json")`: buildSrc 1 failed; law test 1 failed.
+
+Evidence reused: none (new SUT).
+Not executed: full `check`; external harness; `detekt` on buildSrc (not configured there).
+
+Result: PASS (scoped). Full verification required now: NO.
+Unknown impact: none identified; the three real jars are byte-concordant and digests unchanged.
+
+---
+
+# Historical — S2-D P0 shell working-directory fix (2026-10-01, HEAD `8e838e6d`)
 
 ```text
 Cycle: p-1f3622e11c093341/train-s2-directive-plugin (OPEN, Verify; no lease)

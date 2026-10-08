@@ -4,6 +4,22 @@
 **Baseline de código auditado:** main @ a554fd5544f74f580bbd531c9b394cff1e073621 (2026-09-21).
 **Estado de esta entrega:** SOLO DOCUMENTACIÓN; NO se ha recompilado ni recertificado HEAD.
 **Estado de producto publicado:** v0.39.0, GitHub Release de 2026-09-19; su certificación NO se transmite a commits posteriores.
+
+**Actualización de hechos 2026-10-08 (observada, no inferida). Supersede las tres líneas anteriores como referencia de estado; se conservan por trazabilidad.**
+
+```text
+origin/main observado      b66bf7c796db28dabf3e13df9784844e7a59aeda
+rama de trabajo            s6-plugin-sdk @ acd12111 (33 commits por delante de main, 0 por detrás)
+producto publicado         v0.47.0 (GitHub Release Latest, 2026-10-06); zip sha256:2fa2d272…d3301c
+superficie de CI           inexistente (.github/workflows/ no existe; solo Dependabot activo)
+checks requeridos en main  ninguno (required_status_checks 404, rulesets [])
+ciclos SDDK                42 OPEN, 4 BLOCKED, 82 CLOSED, 1 RELEASE_PENDING
+```
+
+Hallazgos de esa reconciliación, con evidencia y dueño, en `../07-uat/B0_RECONCILIATION_RECEIPT.md`.
+Dos son P0 y **no** están corregidos: la release estable `v0.47.0` se cortó desde `3ec99a4c`, que no
+está en `main` y vive en la PR #99 abierta (contradice ADR-0099), y `main` no tiene hoy ningún check
+requerido ni superficie que pueda producirlo (G10 sin mecanismo).
 **Autoridad operativa (TRAIN-0 cutover 2026-09-26):** SDDK + Git + ADRs + evidencia externa. `.agent/SESSION_POINTER.md` queda como proyección humana opcional / histórico (no autoridad). **Pruebas vinculantes:** ../07-uat/CERTIFICATION_PROTOCOL.md y ../07-uat/PRODUCTION_READY_UAT_MATRIX.md.
 
 ## 0. Autoridad, límites y significado de DONE
@@ -366,3 +382,81 @@ Jenkins, Kubernetes o control plane. Si aparece una, se clasifica como trabajo d
 - Cada cierre registra fecha UTC, base SHA, HEAD SHA, TRAIN/WU, decisiones, paths, test argv/exit/XML, hashes de artefactos, errores abiertos, evidencia caducada, próximo primer comando y motivo. La validación histórica no se reescribe.
 - Los porcentajes se publican sólo para cohortes cerradas con denominador verificable (p. ej. WUs 2/6); si una WU está TBD, el avance global es NO_CALCULABLE.
 - La secuencia puede evolucionar por descubrimiento respaldado por un ADR/recibo, preservando trazabilidad y gates. Ni un TODO ni un comentario de código prevalecen sobre una prueba ejecutada.
+
+## 13. Plan por bloques B0..B7 — integración 2026-10-08
+
+**Qué es esto.** La secuencia única de trabajo pasa a expresarse en bloques de entrega de valor
+`B0..B7`. **No es un segundo roadmap**: cada bloque es una agrupación con exit criteria sobre las
+secciones RP-x ya existentes, y **no revoca, ni sustituye, ni reordena** ninguna decisión técnica
+aceptada. Si un bloque y un ADR aceptado discrepan, el ADR gana y el bloque se corrige.
+
+Esta sección se registró en SDDK como WorkItem del ciclo `rp7-sem-s6-plugin-sdk`; su ejecución
+opera por la unidad de entrega del §12 (TRAIN / ciclo SDDK + WU internas).
+
+### 13.1 Trazabilidad bloque → RP existente
+
+```text
+B0  verdad del repositorio, procedencia y admisión      RP-0, RP-1, ADR-0105 (G10)
+B1  hardening de runtime y convergencia semántica       RP-3, RP-2, RP-034, AUD-02..AUD-08
+B2  S6 plugin SDK v2 y plataforma extensible           RP-6, 05-step-plugin-sdk-v2
+B3  S7 certification harness v2                        RP-4, RP-5, CERTIFICATION_PROTOCOL
+B4  S8 compatibilidad, migración y release 0.49.x      RP-4, RP-5, RP-6
+B5  agent-first y secretless (ASX-0..ASX-6)             RP-7
+B6  hardening local y seguridad de producción           RP-7, RP-4, RP-5
+B7  depuración final y retirada de V1                   MIGRATION_PLAN, IMPLEMENTATION_BACKLOG
+```
+
+### 13.2 Orden y dependencias
+
+```text
+B0 -> B1 -> B2 -> B3 -> B4 -> B5 -> B6 -> B7
+```
+
+Ningún bloque abre trabajo de otro. Los spikes sin cambio público pueden adelantarse; su
+implementación no puede adelantar el gate del que depende. `RP-8` y `RP-9` **no pertenecen a este
+repositorio** (§10.1, §11.1): son de `pipelinek-fabric`.
+
+### 13.3 Exit criteria por bloque
+
+| Bloque | Exit criteria | Estado observado 2026-10-08 |
+|---|---|---|
+| B0 | Procedencia reproducible (mismo digest para entradas idénticas en dos checkouts, un path con espacios no rompe) + autoridad de admisión inequívoca + dependencias externas registradas como bloqueo verificable | **PARCIAL**: procedencia en corrección; autoridad resuelta por ADR-0105; dos hallazgos P0 abiertos (B0-F1, B0-F2) |
+| B1 | El perfil de ejecución soportado cumple sus contratos; sin defectos críticos/altos del bloque sin disposición explícita | **OPEN**: AUD-02 (timeout/ruta no durable), AUD-03 (con dueño y ley), AUD-04, AUD-06, AUD-07 caracterizados; AUD-08 sin medir |
+| B2 | La plataforma de plugins funciona desde fuera del monorepo y está certificada al nivel Step/SDK aplicable | **PARCIAL**: existe trabajo S6 amplio en `s6-plugin-sdk` (33 commits no integrados); falta verificación externa real |
+| B3 | Testigos semánticos ejecutables, certificación externa coherente, veredictos que fallan ante mutaciones relevantes | **OPEN** |
+| B4 | Contratos clasificados y verificados, candidata `0.49.x` entregada al harness | **OPEN** |
+| B5 | Agente y herramientas ejecutan con perfiles y secretos sin vía alternativa de ejecución | **OPEN** |
+| B6 | Garantías anunciadas del perfil soportado verificadas por pruebas externas | **OPEN** |
+| B7 | V1 retirada sin regresiones; V2 es la única ruta productiva | **OPEN**, último bloque |
+
+### 13.4 Condiciones de STOP vigentes (no negociables)
+
+No se declara un bloque terminado si: existe un defecto crítico/alto sin resolver dentro del alcance;
+una UAT obligatoria está omitida; la semántica se conserva por stub o mock; un test verde no se
+ejecutó realmente; se cambió un contrato público sin autorización; un efecto corre por ruta no
+canónica; se perdió información durable; se debilitó una protección de credenciales; se cambió el
+artefacto tras certificarlo; o falta la prueba externa exigida para el nivel anunciado. Un bloqueo
+externo legítimo se documenta y se conserva: **nunca se convierte en PASS**.
+
+### 13.5 Prohibiciones de frontera que este plan hereda
+
+```text
+- No implementar Jenkins, Kubernetes, control plane ni workers remotos aquí (son de pipelinek-fabric).
+- No publicar ni promocionar releases desde este repositorio: la autoridad es el harness externo.
+- No reintroducir GitHub Actions para cerrar G10 (ADR-0105 D3).
+- No mantener tests que dependan del binario instalado o del corpus externo: eso vive en el harness.
+- No crear estado operativo nuevo dentro del repositorio.
+- No eliminar V1 antes de demostrar equivalencia o sustitución de sus capacidades necesarias.
+```
+
+### 13.6 GATE de integración local y su alcance
+
+```bash
+cd v2 && ./gradlew check --rerun-tasks   # presupuesto derivado según AGENTS.md rule 4
+```
+
+Es necesario para el cierre local cuando aplique y **no sustituye** la certificación externa ni
+demuestra por sí solo el PRODUCT-GATE. Cada gate registra SHA y tree SHA, comando exacto, exit code,
+tests/fallos/errores/skipped, tareas ejecutadas y `UP-TO-DATE`, detekt y API check, cobertura cuando
+aplique, artefacto y SHA-256, UAT, mutaciones probadas, restricciones de plataforma, deuda abierta y
+resultado `PASS`/`FAIL`/`BLOCKED`/`NOT_RUN`.

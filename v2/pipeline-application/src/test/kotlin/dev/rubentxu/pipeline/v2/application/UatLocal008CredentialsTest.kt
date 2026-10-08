@@ -1,6 +1,9 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.support.CliRun
 import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
+import dev.rubentxu.pipeline.v2.application.support.OwnedSubprocess
+import dev.rubentxu.pipeline.v2.application.support.StrictCliRun
 import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
@@ -22,6 +25,7 @@ import dev.rubentxu.pipeline.v2.events.RunFinished
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -81,19 +85,23 @@ class UatLocal008CredentialsTest {
 
         // AGENTS.md §8: kill whole process group (setsid children survive parent kill)
         val selfPid = ProcessHandle.current().pid()
-        try {
-            val pb = ProcessBuilder("pgrep", "-P", selfPid.toString())
-                .redirectError(ProcessBuilder.Redirect.DISCARD)
-                .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            val childProcs = pb.start().inputStream.bufferedReader().readText()
-            if (childProcs.isNotBlank()) {
-                childProcs.lines().filter { it.isNotBlank() }.forEach { pid ->
-                    try {
-                        ProcessHandle.of(pid.toLong()).ifPresent { it.destroyForcibly() }
-                    } catch (_: Exception) { }
-                }
+        // BLOCK 3.7: `OwnedSubprocess.run` directly, NOT `StrictCliRun.text`. This sweep is best-effort by
+        // nature and lives in a `catch (_: Exception)`, which does not catch the `AssertionError`
+        // that `runOwned` raises — routing it through the asserting helper would let a teardown
+        // failure escape the very handler meant to contain it. The outcome is ignored on purpose:
+        // there is nothing useful to assert about a sweep, only something to not hang on.
+        val sweep = OwnedSubprocess.run(
+            command = listOf("pgrep", "-P", selfPid.toString()),
+            timeout = SWEEP_RUN,
+        )
+        val childProcs = (sweep as? CliRun.Completed)?.stdout.orEmpty()
+        if (childProcs.isNotBlank()) {
+            childProcs.lines().filter { it.isNotBlank() }.forEach { pid ->
+                try {
+                    ProcessHandle.of(pid.toLong()).ifPresent { it.destroyForcibly() }
+                } catch (_: Exception) { }
             }
-        } catch (_: Exception) { }
+        }
     }
 
     // ─── TC-001/002 — infrastructure ───────────────────────────────────────
@@ -123,22 +131,22 @@ class UatLocal008CredentialsTest {
     @Test
     fun `UAT-L8-IMP-001 no experimental script imports in credentials modules`() {
         // INV-CR-CR12: No kotlin.script.experimental.* in credentials modules
-        val result = ProcessBuilder()
-            .command(listOf(
+        // BLOCK 3.7: the deadline was absent entirely — `waitFor()` with no timeout and a blocking read to
+        // EOF before it. A grep that wedged had no owner to kill it.
+        val run = StrictCliRun.text(
+            label = "banned-imports grep",
+            command = listOf(
                 "grep", "-rE", "kotlin\\.script\\.experimental\\..*",
                 "v2/pipeline-credentials-api/src/main/",
                 "v2/pipeline-credentials-local/src/main/"
-            ))
-            .directory(TestProjectRoot.dir)
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-            .start()
-        val output = result.inputStream.bufferedReader().readText()
-        result.waitFor()
+            ),
+            timeout = GREP_RUN,
+            workingDirectory = TestProjectRoot.dir,
+        )
 
         // grep returns 1 when no matches found (matches our expectation)
-        assertEquals(1, result.exitValue(),
-            "grep should return 1 (no matches). Output: $output")
+        assertEquals(1, run.exitCode,
+            "grep should return 1 (no matches). Output: ${run.stdout}")
     }
 
     // ─── CP-001 — corpus UNTOUCHABLE ──────────────────────────────────────
@@ -1335,20 +1343,24 @@ pipeline {
         args.addAll(extraArgs)
         args.add(scriptPath.toString())
 
-        val pb = ProcessBuilder(args)
-            .directory(scriptPath.parent.toFile())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-
-        val env = pb.environment()
-        env["PIPELINE_CREDENTIALS_STORE"] = credentialsStorePath.toString()
-        env["PIPELINE_STORE_PASSPHRASE"] = credentialsPassphrase
-
-        val process = pb.start()
-        processes.add(process)
-        val stdout = process.inputStream.bufferedReader().readText()
-        process.waitFor(120, TimeUnit.SECONDS)
-        val stderr = process.errorStream.bufferedReader().readText()
+        // BLOCK 3.7: the child is owned for the whole call — both pipes drained from the instant it
+        // starts, and the deadline is this method's contract rather than a discarded boolean.
+        //
+        // The EXIT CODE is deliberately not asserted. Two rows here expect
+        // `RunFinished.outcome == "failure"` on purpose, and whether the CLI maps that to a non-zero
+        // process exit was never measured on this class. Adding the assertion would be a behaviour
+        // change justified by a guess; what the callers actually judge is the event stream in
+        // stdout, and that contract is unchanged.
+        val run = StrictCliRun.text(
+            label = "pipeline with credentials store",
+            command = args,
+            timeout = PIPELINE_RUN,
+            workingDirectory = scriptPath.parent.toFile(),
+            environment = mapOf(
+                "PIPELINE_CREDENTIALS_STORE" to credentialsStorePath.toString(),
+                "PIPELINE_STORE_PASSPHRASE" to credentialsPassphrase,
+            ),
+        )
         // S6-PRE: both dumps used to go to a hardcoded `/tmp/uat008-debug/`, which nothing ever
         // cleaned. The stdout dump was UNCONDITIONAL — one file per helper call, per row, per run,
         // forever — and the accumulation had reached 2255 files and 9,0 MB on this machine. 34 of
@@ -1358,10 +1370,10 @@ pipeline {
         // caller asserts on it and puts it in its own failure message, so a file next to it added
         // nothing but bytes. The stderr dump becomes a line of test output instead of a file, for
         // the same reason: what survives a red run is what the run printed.
-        if (stderr.isNotEmpty()) {
-            System.err.println("UAT008-STDERR: $stderr")
+        if (run.stderr.isNotEmpty()) {
+            System.err.println("UAT008-STDERR: ${run.stderr}")
         }
-        return stdout
+        return run.stdout
     }
 
     /**
@@ -1428,12 +1440,21 @@ pipeline {
             "-validity", "1",
             "-storetype", "PKCS12"
         )
-        val pb = ProcessBuilder(args)
-            .directory(tempDir.toFile())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-        val proc = pb.start()
-        proc.waitFor(30, TimeUnit.SECONDS)
+        // BLOCK 3.7: this site was the unconditional one. It redirected BOTH pipes to PIPE, started
+        // keytool, called `waitFor(30, ...)` and threw the boolean away — so nobody ever drained
+        // keytool's output, and a keystore that failed to be created surfaced later as whatever
+        // test happened to need the file. Both facts are now impossible: the pipes have readers
+        // from the start, and a non-zero exit is an immediate, named failure.
+        val run = StrictCliRun.text(
+            label = "keytool -genkeypair",
+            command = args,
+            timeout = KEYTOOL_RUN,
+            workingDirectory = tempDir.toFile(),
+        )
+        check(run.exitCode == 0) {
+            "keytool exited ${run.exitCode}; the keystore at $storePath was not created.\n" +
+                "stdout:\n${run.stdout.take(2000)}\nstderr:\n${run.stderr.take(2000)}"
+        }
     }
 
     // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -1457,16 +1478,14 @@ pipeline {
         args.addAll(extraArgs)
         args.add(scriptPath.toString())
 
-        val pb = ProcessBuilder(args)
-            .directory(scriptPath.parent.toFile())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-
-        val process = pb.start()
-        processes.add(process)
-        val stdout = process.inputStream.bufferedReader().readText()
-        process.waitFor(120, TimeUnit.SECONDS)
-        return stdout
+        // BLOCK 3.7: owned child, both pipes drained, deadline is a contract not a discarded boolean.
+        // Exit code deliberately unasserted — see runPipelineWithCredentialsStore.
+        return StrictCliRun.text(
+            label = "pipeline",
+            command = args,
+            timeout = PIPELINE_RUN,
+            workingDirectory = scriptPath.parent.toFile(),
+        ).stdout
     }
 
     private fun runPipelineWithCredentials(
@@ -1490,21 +1509,19 @@ pipeline {
         args.addAll(extraArgs)
         args.add(scriptPath.toString())
 
-        val pb = ProcessBuilder(args)
-            .directory(scriptPath.parent.toFile())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-
-        // Inject credentials store environment variables
-        val env = pb.environment()
-        env["PIPELINE_CREDENTIALS_STORE"] = credentialsStorePath.toString()
-        env["PIPELINE_STORE_PASSPHRASE"] = credentialsPassphrase
-
-        val process = pb.start()
-        processes.add(process)
-        val stdout = process.inputStream.bufferedReader().readText()
-        process.waitFor(120, TimeUnit.SECONDS)
-        return stdout
+        // BLOCK 3.7: owned child. `environment` is merged into the inherited environment by
+        // OwnedSubprocess, which is what `pb.environment()` + two assignments did before.
+        // Exit code deliberately unasserted — see runPipelineWithCredentialsStore.
+        return StrictCliRun.text(
+            label = "pipeline with credentials",
+            command = args,
+            timeout = PIPELINE_RUN,
+            workingDirectory = scriptPath.parent.toFile(),
+            environment = mapOf(
+                "PIPELINE_CREDENTIALS_STORE" to credentialsStorePath.toString(),
+                "PIPELINE_STORE_PASSPHRASE" to credentialsPassphrase,
+            ),
+        ).stdout
     }
 
     private fun findRunFinished(jsonText: String): String {
@@ -1524,22 +1541,50 @@ pipeline {
     }
 
     private fun gitCatFile(commit: String, path: String, projectRoot: java.io.File): String {
-        val pb = ProcessBuilder(
-            "git", "show", "$commit:$path"
+        // BLOCK 3.7 — this site does NOT use `StrictCliRun.text`, and that is a decision, not an
+        // oversight. CP-001 claims BYTE identity: `sha256(blob de git)` against
+        // `sha256(Files.readAllBytes(fichero))`. A String return means decode-then-re-encode, which
+        // changes the hash for any blob that is not valid UTF-8, so routing it through the text
+        // entry point would have replaced a byte claim with a character one.
+        //
+        // The original also had the inverted pipe in its purest form — `waitFor(10, SECONDS)`
+        // BEFORE `inputStream.readBytes()`. A blob larger than the 8192-byte buffer would have
+        // blocked git while the parent waited: a timeout with no diagnostic and no partial data.
+        val digest = MessageDigest.getInstance("SHA-256")
+        val content = StrictCliRun.bytesRequiringSuccess(
+            label = "git show $commit:$path",
+            command = listOf("git", "show", "$commit:$path"),
+            timeout = GIT_RUN,
+            workingDirectory = projectRoot,
         )
-            .directory(projectRoot)
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
+        return digest.digest(content).joinToString("") { "%02x".format(it) }
+    }
 
-        val process = pb.start()
-        val terminated = process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
-        return if (terminated && process.exitValue() == 0) {
-            val content = process.inputStream.readBytes()
-            val digest = MessageDigest.getInstance("SHA-256")
-            val hash = digest.digest(content)
-            hash.joinToString("") { "%02x".format(it) }
-        } else {
-            throw AssertionError("Could not read $path at commit $commit from git")
-        }
+    private companion object {
+        /**
+         * Budgets, each derived from the measured baseline of this class rather than copied from
+         * the `waitFor(...)` values they replace.
+         *
+         * Baseline: 27 tests, 0 failures, 1 skipped, 145 s of row time, worst row 8,38 s; the
+         * six-launch row `CR-BD-017` takes 5,81 s, so one pipeline run here costs a second or two.
+         * [PIPELINE_RUN] is several times the worst observed single call, which is what makes it a
+         * budget rather than a hope.
+         */
+        val PIPELINE_RUN: Duration = Duration.ofSeconds(30)
+
+        /** keytool -genkeypair for a 2048-bit RSA key. Observed inside rows of 6,6-7,3 s. */
+        val KEYTOOL_RUN: Duration = Duration.ofSeconds(30)
+
+        /** `git show` of one corpus file. Observed: CP-001 as a whole takes 0,18 s. */
+        val GIT_RUN: Duration = Duration.ofSeconds(10)
+
+        /** Recursive grep over two source trees. Observed: IMP-001 takes 0,14 s. */
+        val GREP_RUN: Duration = Duration.ofSeconds(60)
+
+        /**
+         * The teardown sweep must never be the thing that hangs. It has no assertion to make and
+         * only exists to clean up after a row, so it gets the tightest budget of the five.
+         */
+        val SWEEP_RUN: Duration = Duration.ofSeconds(10)
     }
 }

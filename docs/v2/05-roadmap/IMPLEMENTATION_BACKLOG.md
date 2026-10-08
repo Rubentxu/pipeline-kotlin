@@ -399,3 +399,32 @@ seguridad de la ejecución.
 **Owner:** B1.3 follow-up. **Exit:** cada `valueOf` de salida emite una excepción declarada por su
 propio codec, con el valor y el campo en el mensaje, y cada uno tiene una fila que lo mate por
 mutación.
+
+## core.waitUntil handler stub is dead but frozen (P1, open)
+
+**Medido en B1.3 (2026-10-08), NO corregido a propósito.** `CoreWaitUntilStep.capabilityRoutedHandler`
+emite un par `WaitUntilPolled`/`WaitUntilCompleted` con `conditionResult = true` y
+`WaitUntilCompletion.Satisfied` sin evaluar la condición ni ejecutar el cuerpo. Probado contra la
+autoridad productiva que **nunca se invoca**: el descriptor declara
+`BodyExecutionOwner.CANONICAL_ENGINE`, el engine ejecuta el cuerpo (su efecto `core.sh` deja el
+fichero marcador) y los eventos salen de `WaitUntilEngine`; una sonda con reloj `1970-01-01` no
+apareció en ningún evento.
+
+**Por qué no se "arregla" aquí.** `CoreWaitUntilDifferentialContractTest` congela ese
+comportamiento en dos filas que invocan `definition.handler.execute(...)` y afirman
+`conditionResult == true` y `outcome == "completed"`:
+
+- `handler — emits WaitUntilPolled and WaitUntilCompleted events with stub pattern`
+- `handler — stub output has completed outcome with zero attempts-durations`
+
+Convertirlo en un refusal es **reescribir un Differential Contract Freeze**, no endurecer runtime.
+
+**Owner:** diseño de Step (con B1.3 como quien lo midió). **Exit criterion:** una de estas tres
+decisiones, con recibo y sin dejar el estado intermedio ambiguo:
+- (a) borrar el handler y definir qué satisfies `StepDefinition` y qué ejecuta la contract suite; o
+- (b) convertirlo en refusal explícito y reescribir las 2 filas del freeze; o
+- (c) dejarlo muerto, y entonces **borrar las 2 filas** que fijan un contrato sin valor de
+      regresión, porque un freeze de algo inalcanzable protege de nada y ocupa el hueco donde un
+      freeze de verdad debería estar.
+
+Detalle completo y evidencia: `../07-uat/B1_3_CONTROL_JOURNAL_UNKNOWN_STATUS_RECEIPT.md` §8.

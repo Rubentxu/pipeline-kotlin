@@ -294,7 +294,39 @@ durable. La guarda de reloj de B1d sigue vigente por una razón distinta a la qu
 unificar el reloj del motor exigiría un gate propio (S3–S7) que sigue sin dueño. Queda registrado
 como fila de B1.3, no como cierre.
 
-## 8.8 Verificación de la segunda rebanada
+## 8.8 Lo que sigue abierto y con dueño: el stub no se puede arreglar en una rebanada
+
+La corrección obvia —que un handler muerto deje de reportar `Satisfied`— **se midió y se descartó**,
+porque su coste no es un fichero.
+
+`CoreWaitUntilDifferentialContractTest` **congela** el comportamiento stub en dos filas, y lo hace
+con nombres que declaran la intención:
+
+- `handler — emits WaitUntilPolled and WaitUntilCompleted events with stub pattern` (línea 76)
+- `handler — stub output has completed outcome with zero attempts-durations` (línea 116)
+
+Ambas invocan `CoreWaitUntilStep.definition.handler.execute(...)` directamente y **afirman** que
+`conditionResult` es `true` y que el outcome es `"completed"`. Convertir el handler en un refusal
+—un `IllegalStateException` en vez de un `Satisfied`— no es endurecer el runtime: es **descongelar
+un contrato de regresión y reescribir sus dos aserciones**, en un fichero titulado *Differential
+Contract Freeze* que existe precisamente para que nadie cambie la semántica de `core.waitUntil`
+sin una decisión registrada.
+
+Hay además una asimetría que sólo se ve al medir: esas filas fijan el comportamiento del handler,
+mientras el camino de producción (probado en §8.3) **no lo usa**. Así que el "contrato congelado"
+describe un componente que ya no participa en la ejecución del Step que dice describir.
+
+| opción | qué cuesta | quién debería decidir |
+|---|---|---|
+| borrar el handler | `StepDefinition` exige uno; hay que decidir qué lleva la contract suite | diseño de Step |
+| refusal explícito | reescribir las 2 filas del freeze, con su recibo | diseño de Step |
+| dejarlo muerto y documentado | nada; es el estado actual | ya decidido en §8.4 |
+
+**Se queda en la tercera opción**, y la primera queda registrada como P1 en
+`IMPLEMENTATION_BACKLOG.md` con este coste medido, para que la decisión sea explícita cuando se
+tome y no porque nadie se fijó en el fichero.
+
+## 8.9 Verificación de la segunda rebanada
 
 | Nivel | Alcance | Resultado |
 |---|---|---|

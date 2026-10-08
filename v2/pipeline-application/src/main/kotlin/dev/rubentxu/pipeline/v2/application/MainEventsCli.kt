@@ -81,13 +81,30 @@ object MainEventsCli {
 
         var i = 0
         while (i < args.size) {
-            when (args[i]) {
+            val arg = args[i]
+            when (arg) {
                 "--db" -> db = args.getOrNull(++i)
                 "--kind" -> kind = args.getOrNull(++i)
                 "--subject" -> subjectCanonical = args.getOrNull(++i)
                 "--limit" -> limitArg = args.getOrNull(++i)
                 "--after-cursor" -> afterCursor = args.getOrNull(++i)
-                else -> if (!args[i].startsWith("--") && runId == null) runId = args[i]
+                else -> when {
+                    // A leading `--` that is not a known option is a typo or a newer flag from a
+                    // different build. Ignoring it would run a different command than the one the
+                    // caller typed and still exit 0, which is the failure this rejects. AUD-04.
+                    arg.startsWith("--") -> {
+                        System.err.println("Error: unknown option: $arg")
+                        return 2
+                    }
+                    // A second positional is not a second run id: the command reads ONE run. It
+                    // used to be dropped on the floor and the first positional silently kept.
+                    // AUD-04.
+                    runId != null -> {
+                        System.err.println("Error: unexpected extra argument: $arg")
+                        return 2
+                    }
+                    else -> runId = arg
+                }
             }
             i++
         }
@@ -143,7 +160,8 @@ object MainEventsCli {
                 else -> EventQuery.All
             }
 
-            when (val outcome = EventPageDrain.drain(reader, run, query, cursor, limit)) {
+            val outcome = EventPageDrain.drain(reader, run, query, cursor, limit)
+            when (outcome) {
                 is EventPageDrain.Outcome.Answered -> {
                     outcome.page.envelopes.forEach { println(EnvelopeCodec.encode(it)) }
                     reportRefusals(runId, outcome.page.refusals)
@@ -163,10 +181,44 @@ object MainEventsCli {
                     )
                 }
             }
-            return 0
+            return exitCodeFor(outcome)
         } finally {
             store.close()
         }
+    }
+
+    /**
+     * The exit-code contract, stated once and total over [EventPageDrain.Outcome].
+     *
+     * ## Why this exists rather than a bare `return 0`
+     *
+     * The command returned `0` on both [EventPageDrain.Outcome.Answered] and
+     * [EventPageDrain.Outcome.Stalled], and nothing recorded that as a decision. A `Stalled` page
+     * means the store claimed more rows existed and the continuation could not reach them; the
+     * diagnostic goes to stderr as a structured token and the status is still `0`. That is the
+     * intended contract (observation is read-only and reports what it saw), but it was an accident
+     * of the code rather than a pinned contract (AUD-05). Routing both cases through one exhaustive
+     * function makes the value a decision: adding a case to `Outcome` forces a status to be chosen,
+     * and a test asserts both cells.
+     *
+     * ## Contract
+     *
+     * ```text
+     * 0     the observation completed. Whether it carried refusals (Answered) or the store
+     *       reported more rows than were reachable (Stalled), the read did what was asked and
+     *       reported it on stderr. An unknown run and a filter that matches nothing are also 0.
+     * 2     the command was NOT run: usage/argument error. Missing --db or <runId>, an unknown
+     *       --option, an extra positional, a non-positive/non-numeric --limit, an invalid or
+     *       foreign cursor, or a db path that does not exist.
+     * other an unhandled exception escaped main; the JVM produced that status, this command did
+     *       not choose it. That is a defect, not a designed outcome.
+     * ```
+     */
+    internal fun exitCodeFor(outcome: EventPageDrain.Outcome): Int = when (outcome) {
+        is EventPageDrain.Outcome.Answered -> 0
+        // The stall is reported on stderr (evt-stalled-v1:...); the process still completed an
+        // observation and must not be read as a failure by a caller that only looks at the status.
+        is EventPageDrain.Outcome.Stalled -> 0
     }
 
     /** One line per refusal, then a count, so "were there any" is a single-token question. */

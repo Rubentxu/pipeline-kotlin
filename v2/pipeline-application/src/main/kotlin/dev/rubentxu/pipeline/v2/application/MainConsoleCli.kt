@@ -131,6 +131,7 @@ object MainConsoleCli {
         var runId: String? = null
         var opId: String? = null
         var maxBytes = ConsoleReadService.DEFAULT_PAGE_BYTES
+        var maxBytesArg: String? = null
         var afterCursor: String? = null
         var range: String? = null
 
@@ -138,7 +139,7 @@ object MainConsoleCli {
         while (i < args.size) {
             when (args[i]) {
                 "--control-dir" -> controlDir = args.getOrNull(++i)
-                "--max-bytes" -> maxBytes = args.getOrNull(++i)?.toIntOrNull() ?: ConsoleReadService.DEFAULT_PAGE_BYTES
+                "--max-bytes" -> maxBytesArg = args.getOrNull(++i)
                 "--after-cursor" -> afterCursor = args.getOrNull(++i)
                 "--range" -> range = args.getOrNull(++i)
                 else -> when {
@@ -157,14 +158,21 @@ object MainConsoleCli {
             return 2
         }
 
+        // A flag that does not parse must not become the default. `--max-bytes abc` used to read as
+        // the default page size, which is the same shape as a command that silently did something
+        // other than what was asked, and it was incoherent with the rest of this file. AUD-04.
+        if (maxBytesArg != null) {
+            val parsed = maxBytesArg.toIntOrNull()
+            if (parsed == null || parsed <= 0) {
+                System.err.println("Error: --max-bytes must be a positive integer, got: $maxBytesArg")
+                return 2
+            }
+            maxBytes = parsed
+        }
+
         val root = Path.of(controlDir)
         if (!java.nio.file.Files.isDirectory(root)) {
             System.err.println("Error: control dir not found: $controlDir")
-            return 2
-        }
-
-        if (maxBytes <= 0) {
-            System.err.println("Error: --max-bytes must be positive, got $maxBytes")
             return 2
         }
 

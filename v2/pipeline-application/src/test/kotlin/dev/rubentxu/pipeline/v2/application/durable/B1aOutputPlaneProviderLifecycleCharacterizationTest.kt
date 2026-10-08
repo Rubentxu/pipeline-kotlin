@@ -225,14 +225,18 @@ class B1aOutputPlaneProviderLifecycleCharacterizationTest {
                 "(before=$filesAfterSoak)",
         )
         assertEquals(
-            soakRuns * 2,
+            soakRuns,
             locksAfterRelease,
-            "CHARACTERISATION (AUD-08, measured): after releasing N runs the store's perStream map " +
-                "holds 2N entries, not N. The writer locks the RAW stream id (\"run/op/transcript\") " +
-                "and prune locks the on-disk directory name (safe() folds '/' onto '_'), so " +
-                "releasing a run adds a second, permanently retained lock per stream. " +
+            "NON-REGRESSION (AUD-08, was a characterisation of a defect until B1c): after releasing " +
+                "N runs the store's perStream map holds N entries, one per stream, not 2N. Until B1c " +
+                "the writer locked the RAW stream id (\"run/op/transcript\") and prune locked the " +
+                "on-disk directory name (safe() folds '/' onto '_'), so releasing a run ADDED a " +
+                "second, permanently retained lock per stream. The keying is now unified on the " +
+                "folded directory name (SegmentOutputStore.streamKey), so prune reuses the writer's " +
+                "lock. This assertion was inverted deliberately when the defect closed, per Harness " +
+                "Fidelity Law §5; it is no longer a characterisation of a defect. " +
                 "observed afterSoak=$locksAfterSoak afterRelease=$locksAfterRelease N=$soakRuns. " +
-                "If the two keyings are ever unified this row flips to N.",
+                "A value of ${soakRuns * 2} here is the AUD-08 lock-keying defect returning.",
         )
     }
 

@@ -215,9 +215,19 @@ class FArchE6OptionalFieldCodecFitnessTest {
         val readAt = branch.indexOf(read)
         val builtAt = branch.indexOf("CatchErrorTriggered(")
         // The guard that protects THIS read, not the first one in the branch: the nullable
-        // `buildResult` above carries its own `?: return null`, and matching that one would let a
+        // `buildResult` above carries its own refusal, and matching that one would let a
         // `stageResult` left unguarded pass as long as the neighbouring field stayed fail-closed.
-        val closedAt = branch.indexOf("?: return null", readAt)
+        //
+        // Matched as a REFUSAL rather than as the literal `?: return null`. The decoder now returns
+        // a typed failure — `?: return absent("stageResult")` for the missing field and
+        // `?: return unreadable("stageResult", it)` for a corrupt token — so pinning the old
+        // `null` spelling would fail this row while the behaviour it protects is intact. What the
+        // row actually asserts is that the read is CLOSED before the event is built, and that is
+        // what is matched.
+        val closeAfter = listOf("?: return absent(", "?: return unreadable(", "?: return null")
+            .map { branch.indexOf(it, readAt) }
+            .filter { it >= 0 }
+        val closedAt = closeAfter.minOrNull() ?: -1
 
         assertTrue(
             readAt in 0 until builtAt,
@@ -225,9 +235,15 @@ class FArchE6OptionalFieldCodecFitnessTest {
         )
         assertTrue(
             closedAt in (readAt + 1) until builtAt,
-            "el cierre '?: return null' de stageResult debe estar DESPUES de su lectura y ANTES de " +
-                "construir el evento; asi una ausencia o un token corrupto devuelven null en vez de " +
+            "el rechazo de stageResult debe estar DESPUES de su lectura y ANTES de construir el " +
+                "evento; asi una ausencia o un token corrupto devuelven un rechazo tipado en vez de " +
                 "un hecho fabricado. readAt=$readAt closedAt=$closedAt builtAt=$builtAt",
+        )
+        assertTrue(
+            !branch.substring(readAt, builtAt).contains("?: " + "\"UNSTABLE\""),
+            "stageResult no debe degradar a un default semantico: UNSTABLE significa que la " +
+                "ejecucion continua y FAILURE que aborta, asi que un default seria una " +
+                "afirmacion sobre el resultado del run que el registro nunca hizo.",
         )
     }
 }

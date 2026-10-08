@@ -77,6 +77,31 @@ No es un drop silencioso — falla cerrado con diagnóstico — pero un construc
 ha demostrado la superficie que anuncia. **No lo he promovido**, porque la promoción exige el trabajo
 que su propia fila describe, no un cambio de etiqueta.
 
+### 3.1 El seam exacto, ya localizado (para que la próxima sesión no lo busque)
+
+```text
+El motor se construye sin resolver, así que el conjunto concedido queda en su default vacío:
+  CanonicalDurableRunCoordinator.kt:330
+      BeforeStageDirectiveEngine(eventSink, gateContext, gateEvaluator)      <- targetResolver omitido
+  BeforeStageDirectiveEngine.kt:82
+      targetResolver: ExecutionTargetResolver = LocalExecutionTargetResolver()
+  LocalExecutionTargetResolver.kt:71-74
+      (runtimeConfig = SystemRuntimeConfig(), grantedCapabilities: Set<StepCapability> = emptySet())
+
+El conjunto GENÉRICO que la fila exige ya es un concepto del run y no hay que inventarlo:
+  `RuntimeCapabilityContributor` (un mapa capacidad -> provider) está en `CoordinatorCaps` y ya lo
+  consume la frontera de ejecución. Las CLAVES de ese mapa compuesto son, exactamente, las
+  capacidades que esa composición puede suministrar.
+
+El arreglo, por tanto, no es una tabla estática (que la fila rechaza explícitamente): es que el
+coordinador pase al motor un `LocalExecutionTargetResolver` construido con las claves del
+contribuidor que él mismo compone.
+
+Lo que falta antes de tocarlo: un testigo de que `agentWithCapabilities` (a) SUCEDE en el camino de
+producción cuando la capacidad está en el conjunto compuesto y (b) RECHAZA cuando no lo está, más su
+mutación. Y sólo entonces la fila del manifiesto sube a STABLE, con esa evidencia.
+```
+
 ## 4. Lo que B4 sigue necesitando
 
 ```text

@@ -20,7 +20,7 @@ import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
 import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
 import java.time.Instant
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
-import dev.rubentxu.pipeline.v2.domain.BoundPurpose
+import dev.rubentxu.pipeline.v2.domain.credentials.boundPurpose
 import dev.rubentxu.pipeline.v2.domain.step.BodyAggregateIdentity
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
@@ -110,12 +110,10 @@ internal class BodyExecutionEngine(
                             sequence = 0L,
                             occurredAt = clock.now(),
                             credentialsId = binding.credentialsId,
-                            purpose = when (binding.kind) {
-                                "string" -> BoundPurpose.API_KEY
-                                "usernamePassword" -> BoundPurpose.USERNAME_PASSWORD
-                                "sshUserPrivateKey" -> BoundPurpose.SSH_KEY
-                                else -> BoundPurpose.API_KEY
-                            },
+                            // AUD-07: the single domain authority. The previous local
+                            // `when` covered only 3 of 7 kinds and reported `file`,
+                            // `certificate`, `zip` and `usernameColonPassword` as API_KEY.
+                            purpose = binding.boundPurpose,
                             stepIndex = childIndex,
                         ),
                     )

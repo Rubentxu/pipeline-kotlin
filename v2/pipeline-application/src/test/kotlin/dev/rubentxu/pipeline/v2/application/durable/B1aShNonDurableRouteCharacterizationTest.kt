@@ -50,22 +50,23 @@ import org.junit.jupiter.api.io.TempDir
  *
  * ## What the assertions are, and what they are NOT
  *
- * This is a **characterisation**, not a certification. The non-durable route is documented debt
- * (triage AUD-02): it drops the caller's timeout budget and materialises the whole transcript in
- * memory. The rows below assert the *measured current behaviour* and say so in their message; the
- * two that measure a defect carry `CHARACTERISATION OF A DEFECT` with the law that is violated, so
- * that the day the defect closes the flip is deliberate rather than silent. Nothing here is a
- * blessing of the route.
+ * This started as a **characterisation** of the non-durable route (triage AUD-02). Three of its
+ * measured defects have since been CLOSED in production (the dropped timeout budget, the
+ * cancellation mis-mapped to `Failed(INFRASTRUCTURE)`, and the leaked `java.io.tmpdir` scratch
+ * directory), so rows (c), (d) and (e) have had their assertions INVERTED DELIBERATELY and now say
+ * `NON-REGRESSION (was CHARACTERISATION OF A DEFECT, ...)` in the assertion message
+ * (Harness Fidelity Law §5). Row (b) still measures an OPEN defect — the non-durable route
+ * materialises the whole transcript in memory — and remains a characterisation, marked as such.
+ * Nothing here is a blessing of the route.
  *
  * ## Hermeticity
  *
  * `@TempDir` for every scratch path; no network; no wall-clock assertion (elapsed times are recorded
- * as observations, never asserted). The one exception to "no writes outside `@TempDir`" is
- * deliberate and is itself a measurement: when `controlDirRoot == null` the production code creates
- * its own directory under `java.io.tmpdir` (`Files.createTempDirectory("pipeline-sh-non-durable")`)
- * and never removes it. The harness writes nothing there; it observes the delta, reports it, and
- * deletes what production left (teardown hygiene). `java.io.tmpdir` cannot be redirected per test:
- * the JDK caches it in a static field at `java.io.TempFileHelper` class-load time.
+ * as observations, never asserted). When `controlDirRoot == null` the production code still creates
+ * its own directory under `java.io.tmpdir` (`Files.createTempDirectory("pipeline-sh-non-durable")`),
+ * but the route now deletes it deterministically on exit, so the residual count observed here is
+ * expected to be zero on every path. `java.io.tmpdir` cannot be redirected per test: the JDK caches
+ * it in a static field at `java.io.TempFileHelper` class-load time.
  */
 @Timeout(300)
 class B1aShNonDurableRouteCharacterizationTest {
@@ -230,15 +231,17 @@ class B1aShNonDurableRouteCharacterizationTest {
     // ---------------------------------------------------------------- (c) timeout
 
     /**
-     * AUD-02 (c): does the caller's `shOptions.timeoutMs` budget survive the non-durable route?
+     * AUD-02 (c): the caller's `shOptions.timeoutMs` budget must now survive BOTH routes.
      *
-     * The durable arm is the control: it must classify the same command, with the same budget, as
-     * `Interrupted(TIMEOUT)`. The non-durable arm is the measurement. Assertions are on the closed
-     * classification, never on elapsed time; elapsed is recorded as an observation only.
+     * The durable arm is the control and must classify the same command, with the same budget, as
+     * `Interrupted(TIMEOUT)`. The non-durable arm used to DROP the budget (characterised here before
+     * the fix); the defect is closed, so this row now requires the SAME closed classification from
+     * it. Assertions are on the classification, never on elapsed time; elapsed is recorded as an
+     * observation only.
      */
     @Test
     @Timeout(120)
-    fun `c - the timeout budget is honoured by the durable route and dropped by the non-durable one`(
+    fun `c - the timeout budget is honoured by the durable route and the non-durable one`(
         @TempDir root: Path,
     ) {
         linuxOnly()
@@ -281,25 +284,23 @@ class B1aShNonDurableRouteCharacterizationTest {
             )
         }
         val elapsedMs = (System.nanoTime() - nonDurableStart) / 1_000_000
+        val residue = recordCreatedTempDirs(beforeTimeoutNonDurable)
         println("B1a(c) non-durable with timeoutMs=$budgetMs observed=$nonDurable elapsedMs=$elapsedMs")
-        println("B1a(c) non-durable control dirs left behind: ${recordCreatedTempDirs(beforeTimeoutNonDurable)}")
+        println("B1a(c) non-durable control dirs left behind: $residue")
 
         assertTrue(
-            nonDurable !is ShellInvocationResult.Interrupted,
-            "CHARACTERISATION OF A DEFECT (AUD-02 c): executeNonDurableInvocation hard-codes " +
-                "`timeoutMs = null` in its TaskExecutionRequest and never reads shOptions.timeoutMs, " +
-                "so the caller's budget disappears. Observed=$nonDurable (expected: NOT Interrupted). " +
-                "When the budget is threaded, this row flips to require Interrupted(TIMEOUT).",
-        )
-        assertEquals(
-            ShellInvocationResult.UnitValue,
-            nonDurable,
-            "the non-durable route runs the command to completion, so a droppable budget is " +
-                "indistinguishable from no budget at all",
+            nonDurable is ShellInvocationResult.Interrupted &&
+                nonDurable.interruption.kind == InterruptionKind.TIMEOUT,
+            "NON-REGRESSION (was CHARACTERISATION OF A DEFECT, AUD-02 c): the non-durable route " +
+                "used to hard-code `timeoutMs = null` in its TaskExecutionRequest and never read " +
+                "shOptions.timeoutMs, so the caller's budget disappeared and the command ran to " +
+                "completion. It must now honour the budget and classify the breach exactly as the " +
+                "durable arm does: Interrupted(TIMEOUT). Observed=$nonDurable.",
         )
         assertTrue(
-            elapsedMs >= 2_000 - 250,
-            "observation, not a law: the child slept ~2s because nothing killed it",
+            residue.isEmpty(),
+            "AUD-02 (c/d): the non-durable route must delete the scratch control directory it created " +
+                "under java.io.tmpdir, on the timeout path as on every other; leftover=$residue",
         )
     }
 
@@ -316,12 +317,13 @@ class B1aShNonDurableRouteCharacterizationTest {
      * 1. the verdict the production call itself produced, captured as a **value** outside the
      *    cancelled scope (`CompletableDeferred` completed without suspending), so "the CE escaped"
      *    and "the CE was swallowed into a typed result" cannot be confused;
-     * 2. `result.txt` inside the production control directory, which records what
-     *    `ProcessDurableTaskRuntime` itself decided (`CANCELLED`);
+     * 2. the scratch control directory the route created under `java.io.tmpdir`, which must now be
+     *    gone: deterministic cleanup runs on cancellation too;
      * 3. no living descendant process and no finished marker.
      *
      * PAR-D is the law that makes (1) load-bearing: a `CancellationException` is an execution
-     * mechanism and MUST NOT be mapped to a generic infrastructure failure.
+     * mechanism and MUST NOT be mapped to a generic infrastructure failure. The defect was
+     * characterised here first and is now closed, so the row asserts propagation.
      */
     @Test
     @Timeout(120)
@@ -370,21 +372,16 @@ class B1aShNonDurableRouteCharacterizationTest {
         runBlocking { withTimeoutOrNull(20_000) { job.join() } }
         println("B1a(d) verdict of the cancelled call = $verdict")
 
-        // (2) What the production runtime wrote down about its own run.
+        // (2) AUD-02 (d): the scratch control directory the non-durable route created under
+        // java.io.tmpdir must be gone: deterministic cleanup runs on cancellation too. The
+        // runtime's own CANCELLED record lived inside that directory and is deleted with it; the
+        // runtime's classification is covered by ProcessDurableTaskRuntimeTest, and the defect
+        // this row pins is ShExecution's mapping of the cancellation, not the runtime's record.
         val created = recordCreatedTempDirs(before)
-        assertEquals(
-            1,
-            created.size,
-            "exactly one production control dir must have been created for this invocation: $created",
-        )
-        val resultFile = created.single().resolve(opId.format()).resolve("result.txt")
-        val recorded = if (Files.exists(resultFile)) Files.readString(resultFile).trim() else "<absent>"
-        println("B1a(d) result.txt says = $recorded")
-        assertEquals(
-            "CANCELLED",
-            recorded,
-            "ProcessDurableTaskRuntime records CANCELLED when it sees the cancellation; an absent " +
-                "or different record means the runtime did not classify its own terminal state",
+        println("B1a(d) leftover production control dirs = $created")
+        assertTrue(
+            created.isEmpty(),
+            "AUD-02 (d): deterministic cleanup must run on cancellation too; leftover=$created",
         )
 
         // (3) The tree was destroyed, so the marker after the sleep can never appear.
@@ -399,18 +396,19 @@ class B1aShNonDurableRouteCharacterizationTest {
             "no descendant may still be running the non-durable script: $survivors",
         )
 
-        // (1) The verdict is the measurement, and it is the row that carries a defect.
-        assertTrue(
-            verdict.startsWith("RETURNED:Failed(kind=INFRASTRUCTURE"),
-            "CHARACTERISATION OF A DEFECT (AUD-02 d / PAR-D): executeNonDurableInvocation catches " +
-                "`Exception` around ProcessDurableTaskRuntime.execute, which rethrows the " +
-                "CancellationException after recording CANCELLED, so the cancellation is converted " +
-                "into a generic infrastructure failure: the caller cannot tell 'the run was " +
-                "cancelled' from 'the shell substrate broke'. Observed=$verdict. PAR-D: " +
-                "'CancellationException is an execution mechanism: it MUST NOT be mapped to a " +
-                "generic infrastructure failure or to a terminal durable outcome.' When that is " +
-                "fixed, this row flips to require the cancellation to propagate " +
-                "(THREW_CANCELLATION) rather than be returned as a value.",
+        // (1) The verdict is the measurement: the cancellation must propagate as a value, not be
+        // converted into a Failed(INFRASTRUCTURE) typed result.
+        assertEquals(
+            "THREW_CANCELLATION",
+            verdict,
+            "NON-REGRESSION (was CHARACTERISATION OF A DEFECT, AUD-02 d / PAR-D): " +
+                "executeNonDurableInvocation used to catch `Exception` around " +
+                "ProcessDurableTaskRuntime.execute and convert the rethrown CancellationException " +
+                "into a Failed(kind=INFRASTRUCTURE) value, so a caller could not tell 'the run was " +
+                "cancelled' from 'the shell substrate broke'. PAR-D: 'CancellationException is an " +
+                "execution mechanism: it MUST NOT be mapped to a generic infrastructure failure " +
+                "or to a terminal durable outcome.' The cancellation must now propagate unchanged. " +
+                "Observed=$verdict.",
         )
         println("B1a(d) MEASURED  = $verdict")
     }
@@ -430,10 +428,13 @@ class B1aShNonDurableRouteCharacterizationTest {
      * `os.name` report a non-Linux host for the duration of one call, restoring it in a `finally`.
      * That is a faithful way to enter the branch (`checkLinuxOrThrow` reads the property per call and
      * the value is not cached anywhere), and it is NOT a claim to have run on macOS.
+     *
+     * This row characterised the SAME dropped-budget defect as (c) through the CLI's real door. The
+     * defect is closed, so the row now requires the budget to be honoured here too.
      */
     @Test
     @Timeout(180)
-    fun `e - the non-Linux fallback enters the same non-durable function with a non-null control root`(
+    fun `e - the non-Linux fallback enters the same non-durable function and now honours the budget`(
         @TempDir root: Path,
     ) {
         linuxOnly()
@@ -485,20 +486,18 @@ class B1aShNonDurableRouteCharacterizationTest {
                 "one must have been emitted; observed=${sink.events.map { it::class.simpleName }}",
         )
         assertTrue(
-            consoleEvents.single().content.contains("BEGIN") &&
-                consoleEvents.single().content.contains("END"),
-            "the fallback must have run the script to completion",
+            consoleEvents.single().content.contains("BEGIN"),
+            "the fallback must have started the script before the budget fired (BEGIN printed; " +
+                "END must NOT be required, because the 300 ms budget now kills the 2 s sleep): " +
+                "content=${consoleEvents.single().content.length} chars",
         )
         assertTrue(
-            result !is ShellInvocationResult.Interrupted,
-            "CHARACTERISATION OF A DEFECT (AUD-02 e): the fallback enters the same function whose " +
-                "TaskExecutionRequest hard-codes `timeoutMs = null`, so a run that reached the " +
-                "CLI's control root still loses its budget on a non-Linux host. Observed=$result " +
-                "(expected: NOT Interrupted).",
-        )
-        assertTrue(
-            elapsedMs >= 2_000 - 250,
-            "observation, not a law: the child slept ~2s because nothing killed it",
+            result is ShellInvocationResult.Interrupted &&
+                result.interruption.kind == InterruptionKind.TIMEOUT,
+            "NON-REGRESSION (was CHARACTERISATION OF A DEFECT, AUD-02 e): the fallback enters the " +
+                "same non-durable function, which used to hard-code `timeoutMs = null`, so a run " +
+                "that reached the CLI's control root on a non-Linux host lost its budget. It must " +
+                "now honour it and classify Interrupted(TIMEOUT). Observed=$result.",
         )
         assertTrue(
             System.getProperty("os.name") == osName,

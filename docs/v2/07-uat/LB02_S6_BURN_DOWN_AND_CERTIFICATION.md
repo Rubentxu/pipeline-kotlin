@@ -32,7 +32,7 @@
 | successful process | ShStepContractSuite (real `echo`, exit 0) | green |
 | non-zero exit | ShStepContractSuite (`exit 42` → SCRIPT) | green |
 | stdout | ShStepContractSuite (captured file) | green |
-| **stderr** | **no dedicated public contract row** | **pending** |
+| **stderr** | ShStepContractSuite (C3 row; plain sh merged transcript) + C4 rows (returnStdout value+stderr, returnStdout empty-stderr) | **green — closed in S6.8** |
 | typed failure | ShStepContractSuite + A4_3 | green |
 | cancellation/interruption | A4_3 Interrupted→TIMEOUT; coordinator timeout | green |
 | ReplayPolicy semantics | ShStepContractSuite (RERUN) | green |
@@ -45,6 +45,16 @@
 | legacy absence | ShStepContractSuite + A5 proof | green |
 
 ## Certification result
+
+> **Stale-section marker (2026-10-08, ROADMAP A P1).** The table row above and the
+> "no dedicated public contract assertion" paragraph below described S6.7, before the
+> S6.8 blocks landed. The `stderr` row is **closed**: `e8732757` introduced the
+> single-FD merged durable transcript and `ShStepContractSuiteTest` reached 17/0 with
+> three stderr-bearing rows. The authoritative certification statement is the
+> `## CERTIFICATION` section at the end of this file, which supersedes the paragraphs
+> between this marker and it. The earlier text is kept, not deleted, because receipts
+> are immutable evidence of the state at their recorded SHA; but it is no longer the
+> current state of `core.sh`, and reading it alone would stop a reader at `pending`.
 
 Per the LB-02 certification rule, one mandatory row has no dedicated public
 contract assertion:

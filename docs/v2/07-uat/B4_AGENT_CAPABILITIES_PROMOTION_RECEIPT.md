@@ -11,17 +11,22 @@ El manifiesto de superficie llevaba `agentWithCapabilities` como **PARTIAL**, y 
 
 ## 2. Lo que se hizo, y por qué no es un cambio de etiqueta
 
+El primer intento cableó la construcción del motor **desde el coordinador**, pasando un resolver ya construido. Funcionó y no regresó nada, pero el **gate completo lo rechazó**: `CoordinatorGrowthGuardrailTest` ratchea `CanonicalDurableRunCoordinator.kt` en un techo de 579 líneas y el fichero estaba EXACTAMENTE en el techo, así que mi edición lo llevó a 594. El propio guardrail dice qué hacer: *«New responsibilities belong in named engines… If a same-commit extraction truly cannot absorb the change, raise this ceiling deliberately»*.
+
+El KDoc del motor ya decía lo mismo desde S3.1, y mejor que yo: *«The default lives HERE, on the consumer, rather than as another parameter on the coordinator's constructor… a resolver default is the engine's own dependency, and the coordinator that merely forwarded one was buying nothing but a line.»* Así que el diseño final mueve la responsabilidad a donde pertenece:
+
 ```text
-CanonicalDurableRunCoordinator (sitio de construcción del motor BEFORE_STAGE)
-  ANTES  BeforeStageDirectiveEngine(eventSink, gateContext, gateEvaluator)
-         -> el resolver conserva su default: grantedCapabilities = emptySet()
-  AHORA  targetResolver = LocalExecutionTargetResolver(
-             grantedCapabilities = capabilityContributor.capabilities().keys)
-         -> las CLAVES del RuntimeCapabilityContributor compuesto que este run ya suministra,
-            la misma autoridad que consulta la frontera de ejecución
+BeforeStageDirectiveEngine (el motor, dueño del resolver)
+  capabilityContributor: RuntimeCapabilityContributor = contribuidor vacío   <- su propia dependencia
+  targetResolver: ExecutionTargetResolver = LocalExecutionTargetResolver(
+      grantedCapabilities = capabilityContributor.capabilities().keys)       <- deriva en su default
+
+CanonicalDurableRunCoordinator
+  BeforeStageDirectiveEngine(eventSink, gateContext, gateEvaluator, capabilityContributor)
+  -> UNA línea, la que ya existía: el coordinador no crece (578 líneas, una MENOS que el techo)
 ```
 
-No se añadió ninguna lista: el conjunto genérico **ya era un concepto del run**, y lo que faltaba era que el coordinador lo pasara. Un cambio, un sitio, cuatro líneas útiles.
+No se añadió ninguna lista de capacidades: el conjunto genérico **ya era un concepto del run** (el contribuidor compuesto que la frontera de ejecución también consulta), y lo que faltaba era reenviarlo.
 
 ## 3. El testigo, y por qué sus dos filas se leen juntas
 
@@ -41,13 +46,13 @@ La única entrada que difiere entre las dos filas es el conjunto que la composic
 ## 4. Mutación: XML fresco, no `UP-TO-DATE`
 
 ```text
-M  se quita el cableado (el motor vuelve a construir el resolver por defecto)
+M  el coordinador deja de reenviar el contribuidor (el motor vuelve a su default vacío)
    RED: 1 fallo de 2  "a capability the composition supplies must be granted; outcome=Failure(...)"
    la fila NEGATIVA sigue verde
-   restauración verificada: sha256 de CanonicalDurableRunCoordinator.kt == b43a47fd… (idéntico)
+   restauración verificada: sha256 de CanonicalDurableRunCoordinator.kt == 2bed6f7b… (idéntico)
 ```
 
-Que la mutación mate **sólo** la positiva es la prueba de que el par mide el cableado y no un resolver que concede todo.
+Que la mutación mate **sólo** la positiva es la prueba de que el par mide el cableado y no un resolver que concede todo. Se repitió **después del rediseño** para que la evidencia corresponda al código entregado, no al primer intento.
 
 ## 5. Verificación ejecutada (XML fresco, canario borrado antes)
 
@@ -59,9 +64,14 @@ cd v2 && ./gradlew :pipeline-application:test --tests '*AgentCapabilitiesTargetW
             S3R1StageTimeoutBoundaryTest 11/0                      TOTAL 39 / 0 fallos
 
 cd v2 && ./gradlew :pipeline-architecture-tests:test --tests '*SurfaceManifest*' \
-        :pipeline-application:detekt --rerun-tasks
+        --tests '*CoordinatorGrowthGuardrail*' :pipeline-application:detekt --rerun-tasks
   EXIT 0    FArchS0SurfaceManifestTest 11/0     (la promoción es legal dentro del conjunto cerrado)
+            CoordinatorGrowthGuardrailTest 2/0   (el coordinador cabe: 578 <= 579)
             detekt limpio
+
+cd v2 && timeout 1800 ./gradlew check
+  BUILD SUCCESSFUL in 25m 4s   325 tareas, 64 ejecutadas, ninguna fallida
+  XML en la ventana del gate: 444 clases · 3019 tests · 0 fallos · 0 errores · 131 skipped
 ```
 
 ## 6. Contratos: qué se mantiene y qué se promueve

@@ -4,7 +4,7 @@
 aceptan variantes desconocidas / conversiones que se transforman en resultado por defecto"
 **Fecha:** 2026-10-08
 **Ciclo SDDK:** `p-733fb505b5a6bd2d/rp7-sem-s6-plugin-sdk` (OPEN/build, lease `orchestrator`)
-**Resultado:** `PASS`
+**Resultado:** `PASS` (ambas rebanadas)
 
 ---
 
@@ -182,3 +182,146 @@ Intentional deviations:              ninguno
 Security implications reviewed:      n/a — no toca credenciales ni superficie expuesta
 Tests demonstrating the contract:    ControlJournalUnknownStatusTest (3)
 ```
+
+---
+
+# 8. Segunda rebanada — el KDoc que mentía sobre `core.waitUntil`
+
+## 8.1 Qué semeasurable antes de decidir
+
+La tabla de §3-medidas dejó los sitios de reloj compartidos como "no tocados, con dueño y fila
+guarda". La fila guarda (recibo B1d, grupo (c)) dice:
+
+> El **mismo tipo de evento** lo emiten `WaitUntilEngine:168/190/392` y `CoreWaitUntilStep:185/198`
+> con `Instant.now()`. Cambiar sólo este motor pondría las dos rutas de ejecución del mismo Step en
+> fuentes de tiempo distintas.
+
+Antes de aceptar esa guarda por heredad, se comprobó si su premisa seguía siendo cierta en el
+código actual. B1.2 ya había demostrado que `core.waitUntil` es `REGISTRY_PRIMARY`, y eso obliga a
+comprobar quién emite realmente los eventos.
+
+## 8.2 El hallazgo
+
+`CoreWaitUntilStep.capabilityRoutedHandler` está comentado como *stub*: emite un par
+`WaitUntilPolled`/`WaitUntilCompleted` con `conditionResult = true` y
+`WaitUntilCompletion.Satisfied` **sin evaluar la condición ni ejecutar el cuerpo**. El KDoc del
+objeto justificaba su existencia así:
+
+```text
+G1 registers this candidate WITHOUT changing LEGACY_PLUGIN_IDS, the legacy decoder,
+the metadata row, or the legacy dispatcher. StructuralFamilyResolver therefore
+continues to route production invocations to LegacyCore until the later cutover gate.
+```
+
+Esa frase dejó de ser cierta en G5 (2026-09-18). El mismo KDoc afirmaba además que el handler
+emite los eventos observables, y el fitness `Lfc2WaitUntilCanonicalReentryFitnessTest` lo repite en
+su propiedad 4. Si el handler fuera alcanzable, `waitUntil` devolvería `Satisfied` sin haber
+evaluado nunca la condición: un **silent no-op**, que Semantic Constitution §2 prohíbe como vía de
+conservación.
+
+## 8.3 Cómo se resolvió sin asumir
+
+Nada de esto se resolvió leyendo código. Las dos afirmaciones se cruzaron con la autoridad
+productiva (`CanonicalDurableRunCoordinator.run` + `CoreStepRegistryFactory.registry()`):
+
+| afirmación | cómo se Midió | resultado |
+|---|---|---|
+| ¿el cuerpo se ejecuta de verdad? | el cuerpo escribe un fichero marcador vía `core.sh`; se comprueba su existencia | **sí**, el efecto ocurre |
+| ¿quién emite los eventos? | el handler recibió un reloj absurdo (`1970-01-01T00:00:00Z`) y se buscó esa marca en el flujo | **nadie** la llevaba → el handler no es el emisor |
+
+Con el reloj absurdo en su sitio, el flujo real de eventos fue:
+
+```text
+PROBE event kinds: [RunStarted, StageStarted, WaitUntilPolled, StepStarted,
+                     EchoOutputCaptured, StepFinished, WaitUntilPolled,
+                     WaitUntilCompleted, StageFinished, RunFinished]
+PROBE events stamped 1970: []
+```
+
+Los eventos vienen de `WaitUntilEngine` y el cuerpo lo ejecuta `StepDispatchEngine`, porque el
+descriptor declara `BodyExecutionOwner.CANONICAL_ENGINE` y ese es el short-circuit documentado en
+`StepDispatchEngine:312-332`. **El handler es código muerto en producción.**
+
+La sonda era temporal y se borró; la conclusión quedó escrita donde alguien la leerá.
+
+## 8.4 Por qué no se borró el código muerto
+
+Tres razones, todas explícitas:
+
+1. `StepDefinition` exige un handler y la contract suite resuelve la definition. Borrarlo es un
+   cambio más ancho que esta rebanada.
+2. Un muerto que dice "Satisfied" es peor que un muerto que lanza. Si alguien lo conectara sin
+   leer, reintroduciría el silent no-op.
+3. Por eso el KDoc **no** se limitó a decir "no alcanzable": dice que está muerto **y** que no debe
+   completarse "como si fuera un segundo bucle de polling", porque una versión alcanzable
+   reportaría una condición que nunca comprobó.
+
+El cambio de producción es **exclusivamente KDoc**: `git diff -U0` filtrado deja cero líneas de
+código, solo comentarios.
+
+## 8.5 Evidencia
+
+```text
+Suite dirigida (CoreWaitUntil* + *WaitUntil* + FArchE4b4*): 77 tests, 0 F, 0 E
+CoreWaitUntilBodyVsHandlerTest: 2 tests, 0 F (timestamp 18:23:17Z)
+Mutación muerta: owner CANONICAL_ENGINE -> HANDLER_CONTINUATION
+  → el cuerpo no se ejecuta y la fila muere en la ASERCIÓN DEL MARCADOR,
+    no en una precondición de "run succeeded"
+```
+
+Esa última distinción costó una iteración y es el punto de fondo: la primera versión de la fila
+aseveraba `RunOutcome.Success` **antes** del marcador, así que la mutación la mataba por el
+`SCHEMA mismatch` de la precondición — una muerte cierta pero por el motivo equivocado, que es la
+forma de un test que no prueba lo que dice probar. Se invirtió el orden: primero el marcador
+(sin condicionar al resultado), después el resultado.
+
+## 8.6 Fidelidad del arnés
+
+- **§1 autoridad productiva:** entra por `CanonicalDurableRunCoordinator.run` con el registro real.
+- **§2 no re-deriva:** no recalcula nada que producción decida; observa el fichero que el cuerpo
+  tenía que crear y la marca que el handler tenía que poner.
+- **§3 observación discreta:** presencia de un fichero y clasificación de una marca de tiempo. Cero
+  milisegundos, cero orden, cero tamaño.
+- **§4 hermético:** `@TempDir` en las dos filas, sin literal de `/tmp`, sin `cwd`/`env` ambiente, sin
+  red, sin singleton mutable.
+- **§5 mutación:** una por afirmación, atribuida, restaurada y verificada.
+
+## 8.7 Lo que sigue abierto y con dueño
+
+**No** se borró el handler y **no** se conectó el reloj de `WaitUntilEngine`/`RetryEngine` al puerto
+durable. La guarda de reloj de B1d sigue vigente por una razón distinta a la que decía: no por
+"dos rutas vivas", sino porque ahora está probado que el segundo productor es código muerto y
+unificar el reloj del motor exigiría un gate propio (S3–S7) que sigue sin dueño. Queda registrado
+como fila de B1.3, no como cierre.
+
+## 8.8 Verificación de la segunda rebanada
+
+| Nivel | Alcance | Resultado |
+|---|---|---|
+| L1/L2 | `CoreWaitUntilBodyVsHandlerTest` | 2 tests, 0 F |
+| L2 | `CoreWaitUntil*` + `*WaitUntil*` + `FArchE4b4*` | 77 tests, 0 F, 0 E |
+| ADVERSARIAL | sonda de reloj absurdo + mutación de `owner` | la sonda es lo que produjo §8.3; la mutación murió en la aserción del marcador |
+| L5 | `check` completo (`--no-daemon`) | `BUILD SUCCESSFUL in 27m 11s` |
+
+```text
+clases=795 tests=5227 failures=0 errors=0 skipped=140
+```
+
+Delta sobre el gate anterior (794 / 5225): **+1 clase / +2 tests**, exactamente
+`CoreWaitUntilBodyVsHandlerTest`. Los 140 skipped son los pre-existentes del harness externo.
+
+**Canarios** (XML borrados antes del gate; corrida 18:24:26Z → 18:51:41Z):
+
+```text
+TEST-...CoreWaitUntilBodyVsHandlerTest.xml  tests=2 failures=0  ts=18:26:02.061Z
+TEST-...ControlJournalUnknownStatusTest.xml tests=3 failures=0  ts=18:46:20.571Z
+```
+
+Ambas dentro de la corrida.
+
+**Un intento fallido que también es evidencia.** El primer `check` de esta rebanada murió en
+22s con `:pipeline-application:detekt FAILED`, `NewLineAtEndOfFile` sobre el fichero de test nuevo.
+No se registró como PASS ni se re-lanzó a ciegas: se leyó `detekt.xml`, se corrigió la causa y
+`detekt` por sí solo dio `BUILD SUCCESSFUL in 8s` antes de relanzar el gate. El `BUILD FAILED` de
+detekt no es un defecto de producto, pero un gate que se declara verde sin mirar por qué falló sí
+lo sería.

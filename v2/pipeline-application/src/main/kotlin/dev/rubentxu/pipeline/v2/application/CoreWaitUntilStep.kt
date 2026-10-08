@@ -107,16 +107,27 @@ data class WaitUntilOutput(
 }
 
 /**
- * Registry candidate for `core.waitUntil`.
+ * Registry definition for `core.waitUntil`.
  *
- * G1 registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy decoder,
- * the metadata row, or the legacy dispatcher. StructuralFamilyResolver therefore
- * continues to route production invocations to LegacyCore until the later cutover gate.
+ * `core.waitUntil` is REGISTRY_PRIMARY (retired from `LEGACY_PLUGIN_IDS` at
+ * WU-LPR-301 / G5). The descriptor declares
+ * `BodyExecutionPolicy.Retrying(waitUntil = WaitUntilShape())` with
+ * `BodyExecutionOwner.CANONICAL_ENGINE`, so [StepDispatchEngine] takes the
+ * CANONICAL_ENGINE short-circuit: the engine runs the block and
+ * [capabilityRoutedHandler] is NEVER invoked.
  *
- * waitUntil is a Block Step with a condition body. The registry candidate emits the
- * typed events (WaitUntilPolled / WaitUntilCompleted) but the actual condition
- * evaluation requires the BodyInvoker mechanism (ADR-0073). This G1 candidate
- * follows the stub pattern from the legacy dispatcher.
+ * Verified, not assumed (B1.3, 2026-10-08): the handler was given a deliberately
+ * absurd clock (1970-01-01) and no `WaitUntilPolled` carried that stamp — the
+ * polling events come from `WaitUntilEngine`, and the body's own effect does happen
+ * (asserted by `CoreWaitUntilBodyVsHandlerTest`). So the stub below is DEAD CODE on
+ * the production path. It is kept, not deleted, because the StepDefinition requires a
+ * handler and because deleting it would be a wider change than this slice allows;
+ * the KDoc previously claimed this stub is reached through the legacy dispatcher,
+ * which stopped being true at G5 and was the reason nobody questioned it.
+ *
+ * The stub must not be "completed" as if it were a second polling loop: if it were
+ * ever made reachable it would report `Satisfied` without evaluating the condition,
+ * which Semantic Constitution §2 classifies as a silent no-op.
  *
  * Capability design:
  * - [EVENT_SINK_CAPABILITY] publishes the durable observation events.
@@ -230,6 +241,14 @@ object CoreWaitUntilStep {
         ),
     )
 
+    /**
+     * NOT REACHED on the production path (see the object KDoc).
+     *
+     * Present because [StepDefinition] requires a handler, and because the contract
+     * suite resolves the definition. It emits a single satisfied poll pair without
+     * evaluating the condition. Do not wire it to a live path: a reachable version
+     * would report a condition it never checked.
+     */
     private val capabilityRoutedHandler: StepHandler<WaitUntilInput, WaitUntilOutput> =
         StepHandler { input, ctx ->
             val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY)

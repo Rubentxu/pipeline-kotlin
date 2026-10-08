@@ -390,8 +390,10 @@ Jenkins, Kubernetes o control plane. Si aparece una, se clasifica como trabajo d
 secciones RP-x ya existentes, y **no revoca, ni sustituye, ni reordena** ninguna decisión técnica
 aceptada. Si un bloque y un ADR aceptado discrepan, el ADR gana y el bloque se corrige.
 
-Esta sección se registró en SDDK como WorkItem del ciclo `rp7-sem-s6-plugin-sdk`; su ejecución
-opera por la unidad de entrega del §12 (TRAIN / ciclo SDDK + WU internas).
+El bloque activo de esta sección (B0) está registrado como WorkItem `f8fc07e6` del ciclo
+`rp7-sem-s6-plugin-sdk`; los bloques siguientes se abren como WorkItem al iniciarse, no antes. La
+ejecución opera por la unidad de entrega del §12 (TRAIN / ciclo SDDK + WU internas), y el orden
+`B0 -> B1 -> ...` no autoriza a adelantar el gate del que depende cada bloque.
 
 ### 13.1 Trazabilidad bloque → RP existente
 

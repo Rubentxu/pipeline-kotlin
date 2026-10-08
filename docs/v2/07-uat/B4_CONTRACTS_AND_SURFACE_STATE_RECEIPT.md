@@ -102,6 +102,33 @@ producción cuando la capacidad está en el conjunto compuesto y (b) RECHAZA cua
 mutación. Y sólo entonces la fila del manifiesto sube a STABLE, con esa evidencia.
 ```
 
+### 3.2 El cableado se intentó, compiló, no rompió nada, y se revirtió
+
+Para no dejar la duda abierta lo escribí y lo medí:
+
+```text
+el cambio: 4 líneas en el punto de construcción, pasando al motor un resolver con
+           `grantedCapabilities = capabilityContributor.capabilities().keys`
+compilación: BUILD SUCCESSFUL
+regresión:  26 tests verdes que tocan este seam (LocalExecutionTargetResolverTest 14,
+            S3R1ResourceMultiplicityTest 6, S3R1DirectiveDecodeBoundaryTest 6). NINGUNO asertaba
+            el rechazo del caso CapabilitySet, o sea que el estado PARTIAL describía algo que
+            ningún test ejercía por el camino de producción
+resultado:  REVERTIDO. La reversión es exacta (árbol limpio contra HEAD)
+```
+
+**Por qué se revierte en vez de quedarse.** No rompe nada, pero **su efecto buscado no está
+demostrado**: no hay testigo de que el constructo pase ahora a concederse, ni de que
+`capabilities().keys` sea exactamente el conjunto que el resolver espera. Un cambio de producción
+cuyo efecto no se ha medido es un pasivo, no una mejora: podría estar concediendo por la razón
+equivocada y nadie lo sabría. Este repositorio tiene esa regla por escrito y la he aplicado a mi
+propio trabajo.
+
+**Lo que el próximo intento ya no tiene que descubrir**: el seam (arriba), que el cambio compila y
+no regresa, que ningún test existente cubría este caso, y que el testigo tiene que cruzar el
+coordinador de producción con un `capabilityContributor` — el andamiaje de `S3R1ResourceMultiplicityTest`
+(construye el coordinador completo en ~40 líneas) es el punto de partida correcto.
+
 ## 4. Lo que B4 sigue necesitando
 
 ```text

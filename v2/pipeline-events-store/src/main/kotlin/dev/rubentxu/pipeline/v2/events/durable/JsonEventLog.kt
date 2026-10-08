@@ -475,8 +475,18 @@ object JsonEventLog {
                 content = EventJsonFields.stringField(s, "content") ?: "",
             )
             "CredentialBound" -> {
-                val purposeStr = EventJsonFields.stringField(s, "purpose") ?: "API_KEY"
-                val purpose = try { BoundPurpose.valueOf(purposeStr) } catch (_: Exception) { BoundPurpose.API_KEY }
+                // An ABSENT purpose keeps its documented `API_KEY` default: a missing optional
+                // field is a tolerated shape. A PRESENT-but-unreadable token is not the same
+                // defect and MUST NOT be folded into that default — `BoundPurpose` has no
+                // `UNKNOWN` member, so defaulting here does not degrade to a neutral value, it
+                // asserts "this credential is an API key" on a row that never said so. On a
+                // durable event that is a wrong fact with no way for an observer to tell it apart
+                // from a real API-key binding, so the row is refused instead and
+                // `decodeStoredRow` reports the refusal against this known kind.
+                val purpose = when (val purposeStr = EventJsonFields.stringField(s, "purpose")) {
+                    null -> BoundPurpose.API_KEY
+                    else -> BoundPurpose.parse(purposeStr) ?: return null
+                }
                 val credIdStr = EventJsonFields.stringField(s, "credentialsId") ?: ""
                 CredentialBound(
                     eventId = eventId,
@@ -488,8 +498,12 @@ object JsonEventLog {
                 )
             }
             "CredentialUsed" -> {
-                val purposeStr = EventJsonFields.stringField(s, "purpose") ?: "API_KEY"
-                val purpose = try { BoundPurpose.valueOf(purposeStr) } catch (_: Exception) { BoundPurpose.API_KEY }
+                // Same rule as `CredentialBound` above: absent keeps the documented default,
+                // present-but-unreadable refuses rather than inventing a binding kind.
+                val purpose = when (val purposeStr = EventJsonFields.stringField(s, "purpose")) {
+                    null -> BoundPurpose.API_KEY
+                    else -> BoundPurpose.parse(purposeStr) ?: return null
+                }
                 val credIdStr = EventJsonFields.stringField(s, "credentialsId") ?: ""
                 CredentialUsed(
                     eventId = eventId,

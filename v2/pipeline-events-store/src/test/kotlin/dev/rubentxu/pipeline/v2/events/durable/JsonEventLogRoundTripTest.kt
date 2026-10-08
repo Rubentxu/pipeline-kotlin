@@ -484,8 +484,23 @@ class JsonEventLogRoundTripTest {
 
     @Test
     fun `EVT-CR-008 forward compat - unknown kind returns null in decode`() {
-        // New kinds should be skipped gracefully (forward compat)
-        val encoded = """[{"eventId":"e1","runId":"r1","sequence":1,"kind":"CredentialBound","occurredAt":"2026-08-27T10:00:00Z","credentialsId":"github","purpose":"ENV"},{"eventId":"e2","runId":"r1","sequence":2,"kind":"FutureEventKind","occurredAt":"2026-08-27T10:00:00Z","extra":"data"}]"""
+        // New kinds should be skipped gracefully (forward compat).
+        //
+        // The purpose token here was `ENV`, which has not been a [BoundPurpose] member for some
+        // time — the enum has API_KEY, USERNAME_PASSWORD, SSH_KEY, FILE, CERTIFICATE, ZIP and
+        // USERNAME_COLON_PASSWORD. The row still decoded, and still decoded as `CredentialBound`,
+        // because the decoder caught the unknown token and fell back to API_KEY. So this test
+        // never checked forward compatibility: it asserted that an invented binding kind was
+        // accepted. It passed for the wrong reason and would have passed with any spelling.
+        //
+        // `FILE` is a real member, so the row now exercises only what the test name claims: the
+        // SECOND event carries an unknown `kind` and is skipped, while a known kind in the same
+        // document survives. Credential-purpose strictness is covered separately, by
+        // `CredentialPurposeRefusalTest`, which refuses an unknown token rather than defaulting.
+        val encoded = "[{\"eventId\":\"e1\",\"runId\":\"r1\",\"sequence\":1,\"kind\":\"CredentialBound\"," +
+            "\"occurredAt\":\"2026-08-27T10:00:00Z\",\"credentialsId\":\"github\",\"purpose\":\"FILE\"}," +
+            "{\"eventId\":\"e2\",\"runId\":\"r1\",\"sequence\":2,\"kind\":\"FutureEventKind\"," +
+            "\"occurredAt\":\"2026-08-27T10:00:00Z\",\"extra\":\"data\"}]"
         val decoded = JsonEventLog.decode(encoded)
         assertEquals(1, decoded.size)
         assertTrue(decoded[0] is CredentialBound)

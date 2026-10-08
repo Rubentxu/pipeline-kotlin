@@ -375,30 +375,60 @@ No empezar E8 por amplitud funcional antes de haber demostrado E4/E5/E6/E7 con e
 - **POL-08** Expiring waiver model (only if real operational need appears).
 - **POL-09** Pre-effect PolicyAdmission ENFORCE seam — future/M9; blocked until shadow evidence + security review.
 
-## B1.3 follow-up — enum decode without typed refusal in OUTPUT codecs (P2, open)
+## B1.3 follow-up — enum decode in output codecs (P2, RE-MEASURED 2026-10-08; BoundPurpose CLOSED)
 
-**Medido en B1.3 (2026-10-08), no corregido a propósito.** Las filas de control de `retry` y
-`waitUntil` ya rechazan en su propio vocabulario (`operationStatusOrThrow`), pero los **codecs de
-salida** conservan la misma forma:
+**The original P2 row was wrong about its own scope.** It claimed ~8 raw `Enum.valueOf` throws in
+output codecs. Measured with `grep valueOf( --include=*.kt */src/main`: **22 occurrences in 13
+files**, and most of them already refuse in the owner's own vocabulary. Re-classified by what each
+site actually does:
 
-- `CoreArchiveArtifactsStep`, `CoreArtifactQueryStep`, `CorePublishHtmlStep`, `CoreStashStep`:
-  `FailureKind.valueOf(obj.getValue("failureKind").jsonPrimitive.content)` en `decode`.
-- `CorePublishHtmlStep`: `PublishHtmlSkipReason.valueOf(it)`.
-- `CoreShellStep`: `FailureKind.valueOf(fkStr)` y `FailureOrigin.valueOf(...)` en `decode`.
+| site | what it does | verdict |
+|---|---|---|
+| `CoreShellStep:282-289` | `try { valueOf } catch (IAE) { throw CoreShellCodecException(...) }` | **already correct** — this is the pattern to copy |
+| `FailureKind` in `CoreArchiveArtifactsStep:151`, `CoreArtifactQueryStep:147`, `CorePublishHtmlStep:150`, `CoreStashStep:140/290` | raw `valueOf`, no catch | crude throw, but the content being decoded is already a `Failure`; value is diagnostic only |
+| `FailureKind.valueOf` in `JsonEventLog:453/731` | `try { } catch { FailureKind.UNKNOWN }` | **legal**: `UNKNOWN` is a declared variant of the enum, so this is a carrier, not a coercion |
+| `FailureOrigin.valueOf` in `CoreShellStep:303` | inside a `try` whose `catch (e: Exception)` rethrows `CoreShellCodecException` | already correct |
+| `PublishHtmlSkipReason.valueOf` in `CorePublishHtmlStep:158` | raw `valueOf` | crude throw, diagnostic only |
+| `BoundPurpose.valueOf` in `JsonEventLog:479` and `:492` | `try { } catch (_: Exception) { BoundPurpose.API_KEY }` | **THE REAL DEFECT — CLOSED, see below** |
+| `ScriptDiagnosticSeverity.valueOf` in `EventJsonDecoder:164` | `try { } catch (_: Exception) { INFO }` | legal default for an optional diagnostic field |
 
-**Por qué es P2 y no se hizo aquí.** Un `Enum.valueOf` que escapa como excepción cruda en un codec de
-**salida** produce un diagnóstico con el tipo equivocado. No puede re-ejecutar un efecto ni
-convertir un fallo en un éxito: el contenido que falla ya es un `Failure`. El de las filas de control
-sí podía re-ejecutar, y por eso fue el que se corrigió.
+**CLOSED (2026-10-08).** `BoundPurpose` has **seven** variants — `API_KEY`, `USERNAME_PASSWORD`,
+`SSH_KEY`, `FILE`, `CERTIFICATE`, `ZIP`, `USERNAME_COLON_PASSWORD` — and **no `UNKNOWN`**. Every
+one of them names a real binding kind, so the fallback did not degrade to a neutral value: it
+asserted "this credential is an API key" on a row that never said so. `CredentialBound` /
+`CredentialUsed` are the surface AGENTS.md forbids putting wrong information on, so an observer
+reading the durable stream could not distinguish "bound as an API key" from "the purpose field
+was unreadable".
 
-**Candidato a la misma forma.** Cada codec debería recibir su propio rechazo, del mismo modo que
-`operationStatusOrThrow(raw, file, ::XDivergenceException)`, en vez de `try`/`catch` por sitio. La
-decisión de aplicarlo debe ser deliberada: son ~8 sitios y el valor está en el diagnóstico, no en la
-seguridad de la ejecución.
+What changed: `BoundPurpose` gained `parse(token): BoundPurpose?` derived from `entries` plus
+`supportedTokens` (mirroring `FailureKind.parse`), and both credential branches now refuse a
+present-but-unreadable token instead of defaulting. An **absent** `purpose` field keeps its
+documented `API_KEY` default — a missing optional field is a tolerated shape, not a corrupt token,
+and the test asserts the pairing so the fix cannot widen into "refuse every credential event".
+Mutation `?: return null` -> `?: BoundPurpose.API_KEY` killed 3 rows; restore verified by SHA-256.
 
-**Owner:** B1.3 follow-up. **Exit:** cada `valueOf` de salida emite una excepción declarada por su
-propio codec, con el valor y el campo en el mensaje, y cada uno tiene una fila que lo mate por
-mutación.
+**The defect was masking a failing test.** `JsonEventLogRoundTripTest.EVT-CR-008` used
+`"purpose":"ENV"`, which has not been a `BoundPurpose` member for some time. It passed only because
+the fallback swallowed the bad token; the row was in fact asserting that an invented binding kind
+was accepted, and would have passed with any spelling at all. With the fallback gone the test went
+genuinely red, which is how the stale fixture surfaced. Corrected to `FILE`, a real member — the row
+now exercises only what its name claims (an unknown `kind` is skipped). Repo-wide sweep for
+`"purpose":"…"` fixtures now finds no token outside the vocabulary.
+
+**Known limitation left open (new, P2).** The refusal does NOT name the offending field.
+`decodeStoredRow` builds `MalformedPayload.detail` by echoing the payload, and the payload contains
+the field name and the bad token regardless of what actually failed — so a
+`detail.contains("purpose")` assertion is true for *every* rejection and would certify the echo,
+not the cause. That assertion was written, found vacuous and removed rather than kept as
+apparent coverage. Naming the field needs a per-field decode failure reason, which does not exist:
+`decodeEvent` returns `DomainEvent?`, so a refusal and its cause cannot travel together. Fixing it
+means giving that codec a typed decode-failure result — a real refactor of a 190-line function
+with 7 `return null` sites, deliberately NOT folded into this change.
+
+**Explicitly NOT in scope:** the raw `valueOf` in the four archive/query/publish/stash output
+codecs. There the decoded content is already a `Failure`, so a wrong type costs a confusing
+diagnostic and cannot re-run an effect or convert a failure into a success. Deciding whether they
+converge onto `FailureKind.parse` is a separate, lower-value row.
 
 ## core.waitUntil handler stub is dead but frozen (P1, open)
 

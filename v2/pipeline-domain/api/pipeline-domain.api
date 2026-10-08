@@ -144,6 +144,7 @@ public final class dev/rubentxu/pipeline/v2/domain/BodyInvocationPolicy$ZERO_OR_
 public final class dev/rubentxu/pipeline/v2/domain/BoundPurpose : java/lang/Enum {
 	public static final field API_KEY Ldev/rubentxu/pipeline/v2/domain/BoundPurpose;
 	public static final field CERTIFICATE Ldev/rubentxu/pipeline/v2/domain/BoundPurpose;
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/BoundPurpose$Companion;
 	public static final field FILE Ldev/rubentxu/pipeline/v2/domain/BoundPurpose;
 	public static final field SSH_KEY Ldev/rubentxu/pipeline/v2/domain/BoundPurpose;
 	public static final field USERNAME_COLON_PASSWORD Ldev/rubentxu/pipeline/v2/domain/BoundPurpose;
@@ -152,6 +153,11 @@ public final class dev/rubentxu/pipeline/v2/domain/BoundPurpose : java/lang/Enum
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/BoundPurpose;
 	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/BoundPurpose;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/BoundPurpose$Companion {
+	public final fun getSupportedTokens ()Ljava/util/Set;
+	public final fun parse (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/BoundPurpose;
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/domain/CatchErrorBuildResult {

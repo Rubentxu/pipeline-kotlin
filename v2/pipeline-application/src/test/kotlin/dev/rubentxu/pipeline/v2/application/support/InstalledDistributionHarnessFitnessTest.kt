@@ -41,12 +41,12 @@ import org.junit.jupiter.api.Test
  *
  * ## Why the allowlist is the point and not a concession
  *
- * The 24 names below are the current debt, written out. A law that permitted them silently would be
+ * The 23 names below are the current debt, written out. A law that permitted them silently would be
  * the same defect shape as a prohibition over a file that no longer exists: a green produced by the
  * absence of a subject. Instead each one is a visible entry that a migration deletes, and the
  * assertion is that the set of NEW offenders is empty — so the debt can only shrink, never grow.
  *
- * The count fell 32 -> 29 -> 28 -> 27 -> 26 -> 25 -> 24 as harnesses adopted [OwnedSubprocess].
+ * The count fell 32 -> 29 -> 28 -> 27 -> 26 -> 25 -> 24 -> 23 as harnesses adopted [OwnedSubprocess].
  * `CompatibilityCorpusTest` is deliberately absent: it was the first migration and it is the file
  * that carried the measured hang.
  */
@@ -127,7 +127,7 @@ class InstalledDistributionHarnessFitnessTest {
 
         /**
          * The measured debt on the day this law was written: 32 harnesses that fork the installed
-         * distribution directly, now 24. Each is a RED waiting to be migrated, and the count is
+         * distribution directly, now 23. Each is a RED waiting to be migrated, and the count is
          * expected to fall with every commit that adopts the primitive.
          */
         val KNOWN_DEBT: Set<String> = setOf(
@@ -148,7 +148,6 @@ class InstalledDistributionHarnessFitnessTest {
             "dev/rubentxu/pipeline/v2/application/TrapFormNegativeFixtureTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatDsl006BodyExecutionTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatEvt001ReplayTest.kt",
-            "dev/rubentxu/pipeline/v2/application/UatEvt002MultiStepReplayTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatS2AWhenGateInstalledBinaryTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatS2R0RunOwnershipCliTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatStep001ShExecutionTest.kt",

@@ -1349,15 +1349,18 @@ pipeline {
         val stdout = process.inputStream.bufferedReader().readText()
         process.waitFor(120, TimeUnit.SECONDS)
         val stderr = process.errorStream.bufferedReader().readText()
+        // S6-PRE: both dumps used to go to a hardcoded `/tmp/uat008-debug/`, which nothing ever
+        // cleaned. The stdout dump was UNCONDITIONAL — one file per helper call, per row, per run,
+        // forever — and the accumulation had reached 2255 files and 9,0 MB on this machine. 34 of
+        // them were written by the last gate alone.
+        //
+        // The stdout dump is gone because its content is already this method's return value: the
+        // caller asserts on it and puts it in its own failure message, so a file next to it added
+        // nothing but bytes. The stderr dump becomes a line of test output instead of a file, for
+        // the same reason: what survives a red run is what the run printed.
         if (stderr.isNotEmpty()) {
-            val errFile = java.nio.file.Paths.get("/tmp/uat008-debug/uat008-stderr-${System.nanoTime()}.log")
-            java.nio.file.Files.createDirectories(errFile.parent)
-            java.nio.file.Files.writeString(errFile, stderr)
+            System.err.println("UAT008-STDERR: $stderr")
         }
-        val debugFile = java.nio.file.Paths.get("/tmp/uat008-debug/uat008-stdout-${System.nanoTime()}.json")
-        java.nio.file.Files.createDirectories(debugFile.parent)
-        java.nio.file.Files.writeString(debugFile, stdout)
-        System.err.println("DEBUG-UAT008-STDOUT: $debugFile")
         return stdout
     }
 

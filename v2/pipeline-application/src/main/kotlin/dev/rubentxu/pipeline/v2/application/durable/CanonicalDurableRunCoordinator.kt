@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.StepMetadata
 import dev.rubentxu.pipeline.v2.application.CoreLegacyStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
+import dev.rubentxu.pipeline.v2.application.LocalExecutionTargetResolver
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyRejection
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolution
@@ -327,7 +328,22 @@ class CanonicalDurableRunCoordinator(
     // TRAIN H4 / PR-020: the BEFORE_STAGE directive seam. It admits, decodes, composes,
     // evaluates and observes, then returns a closed verdict; this class keeps the run's control
     // flow, because only the owner of the loop may decide what the run does next.
-    private val beforeStageDirectives = BeforeStageDirectiveEngine(eventSink, gateContext, gateEvaluator)
+    //
+    // B4 / `agentWithCapabilities`: the target resolver is built from the capabilities THIS run's
+    // composition actually supplies — the composed `RuntimeCapabilityContributor`'s own keys, the
+    // same authority the execution boundary consults — instead of the default empty set. So
+    // `agent { capabilities(...) }` is granted exactly when the capability is real for this run
+    // and refused otherwise. A static table of "capabilities PipelineK can provide" is deliberately
+    // NOT used: it would grant a target for a capability no composition supplies, which is the
+    // invention `LocalExecutionTargetResolver` exists to avoid.
+    private val beforeStageDirectives = BeforeStageDirectiveEngine(
+        eventSink,
+        gateContext,
+        gateEvaluator,
+        targetResolver = LocalExecutionTargetResolver(
+            grantedCapabilities = capabilityContributor.capabilities().keys,
+        ),
+    )
     // TRAIN H3 / PR-019: the INTERPRETATION of a recovery resolution. The DECISION already
     // lives in invocationResolver; this engine performs the journal write and the lifecycle
     // events that a resolution names, and reports ProceedToExecution for the one resolution

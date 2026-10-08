@@ -282,6 +282,33 @@ YAML is the **conceptual** representation; the in-memory model is the structured
 above. The loader converts YAML → typed `StepProviderMetadata` once at registration; the
 runtime then reasons over the typed model.
 
+### `release.digest` identity law (AUD-01, 2026-10-08)
+
+`release.digest` is the plugin's provenance identity, and it is only usable as one if the
+same bytes always produce the same value. The law:
+
+```text
+digest := SHA-256( sort by relative path of
+                    "<sha256(content)>  <path relative to its root>" )
+
+roots  := { classes/…, resources/… }        // module-local, NOT absolute
+paths  := normalised, '/' separated
+excluded := the provenance file itself, and any *.digest side file
+```
+
+Two properties follow, and both are load-bearing:
+
+1. **Path independence.** The hashed material contains NO absolute path. Absolute paths make
+   the digest a function of where the tree was checked out, so two copies of identical bytes
+   would disagree and a receipt bound to a SHA would prove nothing about the artefact it names.
+2. **Idempotence.** The output is excluded from its own input, so re-running the computation
+   over unchanged inputs yields the unchanged value. Without this, each run hashes the previous
+   run's output and the digest drifts on every build.
+
+Enforced by `HttpProvenanceDigestSourceLawTest` (fitness over the three plugin build scripts).
+The bound of that law is declared in its own KDoc: it pins the SOURCE, not the emitted digest.
+A functional Gradle test would be required to certify the emitted value itself.
+
 ## Step registration seam (frozen)
 
 Today:

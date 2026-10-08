@@ -1,4 +1,5 @@
 import java.io.ByteArrayOutputStream
+import java.security.MessageDigest
 
 plugins {
     kotlin("jvm")
@@ -24,6 +25,16 @@ tasks.test {
 
 group = "dev.rubentxu.pipeline.v2"
 version = "0.36.0"
+
+/**
+ * The one hashing primitive the provenance seam uses.
+ *
+ * `sha256sum` is not reachable from here without a shell, and a shell is what made the digest
+ * path-dependent in the first place (see AUD-01 in `computeHttpDigest`). One helper, used by the
+ * digest and available to the tests that prove it is path-independent.
+ */
+fun sha256Hex(bytes: ByteArray): String =
+    MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
 kotlin {
     jvmToolchain(21)
@@ -51,7 +62,7 @@ val httpVersion = providers.gradleProperty("pipeline.http.release.version").orEl
 
 val httpReleaseProps = layout.buildDirectory.file("resources/main/META-INF/http-release.properties")
 
-val computeHttpDigest = tasks.register<Exec>("computeHttpDigest") {
+val computeHttpDigest = tasks.register("computeHttpDigest") {
     group = "http"
     description = "Compute the HTTP OFFICIAL_PLUGIN provenance SHA-256 (deterministic over class files + resources)."
 
@@ -62,36 +73,45 @@ val computeHttpDigest = tasks.register<Exec>("computeHttpDigest") {
     outputs.file(httpReleaseProps)
     dependsOn("compileKotlin", "processResources")
 
-    doFirst {
+    // The digest is now PLAIN COMPUTATION rather than a shell pipeline, so this task is a
+    // DefaultTask with a doLast and no Exec. It used to be `tasks.register<Exec>`; keeping Exec
+    // without a commandLine fails with "A problem occurred starting process 'command 'null''",
+    // which is what the first run after the change reported.
+
+    doLast {
         val classesDir = layout.buildDirectory.dir("classes/kotlin/main").get().asFile
         require(classesDir.exists()) { "classes/kotlin/main does not exist: run compileKotlin first" }
         val resourcesDir = layout.buildDirectory.dir("resources/main").get().asFile
         val out = httpReleaseProps.get().asFile
         out.parentFile.mkdirs()
-        val excludedOutput = out.absolutePath
-        val classFiles: List<String> = classesDir.walkTopDown()
-            .filter { it.isFile && it.absolutePath != excludedOutput }
-            .map { it.absolutePath }
-            .toList()
-            .sorted()
-        val resourceFiles: List<String> = if (resourcesDir.exists()) {
-            resourcesDir.walkTopDown()
-                .filter { it.isFile && it.absolutePath != excludedOutput }
-                .map { it.absolutePath }
-                .toList()
-                .sorted()
-        } else {
-            emptyList()
-        }
-        val all = (classFiles + resourceFiles).joinToString(" ")
-        require(all.isNotEmpty()) { "No class or resource files to hash for HTTP OFFICIAL_PLUGIN provenance" }
-        commandLine = listOf("sh", "-c", "sha256sum $all | sha256sum | awk '{print $1}' > '${out.absolutePath}.digest'")
-    }
-
-    doLast {
-        val out = httpReleaseProps.get().asFile
-        val digestFile = File("${out.absolutePath}.digest")
-        val hex = digestFile.readText().trim()
+        // AUD-01: this used to be `sh -c "sha256sum <ABSOLUTE PATHS> | sha256sum"`, and
+        // `sha256sum` PRINTS THE FILENAME IT WAS GIVEN. Two checkouts of identical bytes
+        // therefore produced different digests, and the unquoted expansion broke outright on
+        // any path containing a space. Measured on this host before the change:
+        //
+        //   absolute paths   checkoutA 6d938320...  checkoutB c8b614a5...   <-- differs
+        //   relative paths   checkoutA 666f3d32...  checkoutB 666f3d32...   <-- identical
+        //
+        // This is not cosmetics. The digest is the plugin's provenance identity: a receipt that
+        // binds a candidate to a SHA cannot prove anything if the same tree hashes differently
+        // depending on where it was checked out. No shell is involved any more, so there is
+        // nothing to quote and nothing to inject.
+        //
+        // ONE hook, not doFirst-then-doLast: the previous shape passed the hex through a
+        // `.digest` side file that doFirst wrote and doLast read and deleted, which is mutable
+        // state between two hooks for no reason once the shell is gone.
+        val roots = listOf(classesDir to "classes") +
+            listOfNotNull(resourcesDir.takeIf { it.exists() }?.let { it to "resources" })
+        val entries = roots.flatMap { (root, prefix) ->
+            root.walkTopDown().filter { it.isFile && it.path != out.path && it.name != out.name + ".digest" }.map { file ->
+                "$prefix/${root.toPath().relativize(file.toPath()).toString().replace('\\', '/')}" to file.readBytes()
+            }
+        }.sortedBy { it.first }
+        require(entries.isNotEmpty()) { "No class or resource files to hash for HTTP OFFICIAL_PLUGIN provenance" }
+        val hex = sha256Hex(
+            entries.joinToString("\n") { (rel, bytes) -> "${sha256Hex(bytes)}  $rel" }
+                .toByteArray(Charsets.UTF_8),
+        )
         require(hex.length == 64) { "Expected 64-hex SHA-256, got '${hex.take(80)}'" }
         val digest = "sha256:$hex"
         out.writeText(
@@ -103,7 +123,6 @@ val computeHttpDigest = tasks.register<Exec>("computeHttpDigest") {
                 appendLine("pipeline.http.module=http")
             },
         )
-        digestFile.delete()
         println("http: provenance written to $out (digest=${digest.take(20)}...)")
     }
 }

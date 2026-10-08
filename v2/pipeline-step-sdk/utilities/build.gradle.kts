@@ -1,4 +1,14 @@
 import java.io.ByteArrayOutputStream
+import java.security.MessageDigest
+
+/**
+ * The one hashing primitive the provenance seam uses.
+ *
+ * `sha256sum` is not reachable from here without a shell, and a shell is what made the digest
+ * path-dependent in the first place (see AUD-01 in `computeUtilitiesDigest`).
+ */
+fun sha256Hex(bytes: ByteArray): String =
+    MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
 plugins {
     kotlin("jvm")
@@ -67,7 +77,7 @@ val utilitiesVersion = providers.gradleProperty("pipeline.utilities.release.vers
 
 val utilitiesReleaseProps = layout.buildDirectory.file("resources/main/META-INF/utilities-release.properties")
 
-val computeUtilitiesDigest = tasks.register<Exec>("computeUtilitiesDigest") {
+val computeUtilitiesDigest = tasks.register("computeUtilitiesDigest") {
     group = "utilities"
     description = "Compute the LFC-2E2 utilities OFFICIAL_PLUGIN provenance SHA-256."
 
@@ -78,36 +88,45 @@ val computeUtilitiesDigest = tasks.register<Exec>("computeUtilitiesDigest") {
     outputs.file(utilitiesReleaseProps)
     dependsOn("compileKotlin", "processResources")
 
-    doFirst {
+    // AUD-01: this used to be `sh -c "sha256sum <ABSOLUTE PATHS> | sha256sum"`, and `sha256sum`
+    // PRINTS THE FILENAME IT WAS GIVEN. Two checkouts of identical bytes therefore produced
+    // different digests, and the unquoted expansion broke outright on any path containing a space.
+    // Measured on this host before the change (same bytes, two directories):
+    //
+    //   absolute paths   checkoutA 6d938320...  checkoutB c8b614a5...   <-- differs
+    //   relative paths   checkoutA 666f3d32...  checkoutB 666f3d32...   <-- identical
+    //
+    // The digest is the plugin's provenance identity: a receipt that binds a candidate to a SHA
+    // cannot prove anything if the same tree hashes differently depending on where it was checked
+    // out. No shell is involved any more, so there is nothing to quote and nothing to inject.
+    //
+    // ONE hook, not doFirst-then-doLast: the previous shape passed the hex through a `.digest`
+    // side file that doFirst wrote and doLast read and deleted, which is mutable state between two
+    // hooks for no reason once the shell is gone.
+    doLast {
         val classesDir = layout.buildDirectory.dir("classes/kotlin/main").get().asFile
         require(classesDir.exists()) { "classes/kotlin/main does not exist: run compileKotlin first" }
         val resourcesDir = layout.buildDirectory.dir("resources/main").get().asFile
         val out = utilitiesReleaseProps.get().asFile
         out.parentFile.mkdirs()
-        val excludedOutput = out.absolutePath
-        val classFiles: List<String> = classesDir.walkTopDown()
-            .filter { it.isFile && it.absolutePath != excludedOutput }
-            .map { it.absolutePath }
-            .toList()
-            .sorted()
-        val resourceFiles: List<String> = if (resourcesDir.exists()) {
-            resourcesDir.walkTopDown()
-                .filter { it.isFile && it.absolutePath != excludedOutput }
-                .map { it.absolutePath }
-                .toList()
-                .sorted()
-        } else {
-            emptyList()
-        }
-        val all = (classFiles + resourceFiles).joinToString(" ")
-        require(all.isNotEmpty()) { "No class or resource files to hash for utilities OFFICIAL_PLUGIN provenance" }
-        commandLine = listOf("sh", "-c", "sha256sum $all | sha256sum | awk '{print $1}' > '${out.absolutePath}.digest'")
-    }
-
-    doLast {
-        val out = utilitiesReleaseProps.get().asFile
-        val digestFile = File("${out.absolutePath}.digest")
-        val hex = digestFile.readText().trim()
+        // The provenance file itself is EXCLUDED EXPLICITLY. Measured, not reasoned: leaving it
+        // in made the digest change on every run, because the previous run's own output sits
+        // under resources/main and is hashed into the next digest. The old code excluded it by
+        // comparing absolute paths; a relative-path manifest compares the RELATIVE path instead.
+        // Both the properties file and any leftover `.digest` side file from the pre-AUD-01 shell
+        // pipeline are excluded, or stale state from an earlier checkout would still move the hash.
+        val roots = listOf(classesDir to "classes") +
+            listOfNotNull(resourcesDir.takeIf { it.exists() }?.let { it to "resources" })
+        val entries = roots.flatMap { (root, prefix) ->
+            root.walkTopDown().filter { it.isFile && it.path != out.path && it.name != out.name + ".digest" }.map { file ->
+                "$prefix/${root.toPath().relativize(file.toPath()).toString().replace('\\', '/')}" to file.readBytes()
+            }
+        }.sortedBy { it.first }
+        require(entries.isNotEmpty()) { "No class or resource files to hash for utilities OFFICIAL_PLUGIN provenance" }
+        val hex = sha256Hex(
+            entries.joinToString("\n") { (rel, bytes) -> "${sha256Hex(bytes)}  $rel" }
+                .toByteArray(Charsets.UTF_8),
+        )
         require(hex.length == 64) { "Expected 64-hex SHA-256, got '${hex.take(80)}'" }
         val digest = "sha256:$hex"
         out.writeText(
@@ -119,7 +138,6 @@ val computeUtilitiesDigest = tasks.register<Exec>("computeUtilitiesDigest") {
                 appendLine("pipeline.utilities.module=utilities")
             },
         )
-        digestFile.delete()
         println("utilities: provenance written to $out (digest=${digest.take(20)}...)")
     }
 }

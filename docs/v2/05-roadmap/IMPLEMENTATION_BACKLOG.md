@@ -482,3 +482,47 @@ decisiones, con recibo y sin dejar el estado intermedio ambiguo:
       freeze de verdad debería estar.
 
 Detalle completo y evidencia: `../07-uat/B1_3_CONTROL_JOURNAL_UNKNOWN_STATUS_RECEIPT.md` §8.
+
+## `ScriptingDiagnostic.line`/`column` se perdían en cada replay (P1, CLOSED 2026-10-08)
+
+**Medido, no supuesto.** `DomainEventExhaustiveRoundTripTest` recorre las **71** variantes de
+`DomainEvent` por reflexión, las encodes con `JsonEventLog.encode` y las relee con
+`JsonEventLog.decode`. Dos de 71 no fazan round-trip:
+
+```
+original: ScriptingDiagnostic(severity=DEBUG, message=..., line=7, column=7, path=...)
+decoded:  ScriptingDiagnostic(severity=DEBUG, message=..., line=0, column=0, path=...)
+```
+
+**Causa raíz.** `EventJsonWriter.encodeDiagnostics` escribe `line`/`column` como **números JSON
+sin comillas**, y `EventJsonDecoder.parseDiagnostic` los leía con `EventJsonFields.stringField(...).
+toIntOrNull()`. El lector de cadenas no casa con `7`; devolvía `null` y el `?: 0` se comía la
+posición. El escritor y el lector llevaban años de acuerdo sobre el *nombre* del campo y
+desacuerdo sobre su *tipo*. **Todo replay de un diagnóstico de scripting ha perdido la
+posición del origen.**
+
+**Corrección:** `EventJsonFields.intField`, que ya existía para exactamente ese propósito.
+
+## Fila `RunStarted` sin `scriptPath` decodificaba con `""` (P1, CLOSED 2026-10-08)
+
+Mismo test. `scriptPath = EventJsonFields.stringField(s, "scriptPath") ?: ""` es un **default
+semántico inventado**: una fila sin `scriptPath` decodificaba como si el run hubiera arrancado
+sin nombrar nunca el script. Viola Semantic Conservation §2 (unrecognized token → valor plausible
+en vez de fail-closed). Ahora devuelve `EventDecodeFailure.UnreadableField("scriptPath", …)`.
+
+## La red que faltaba, y por qué el split de `decodeEvent` sigue diferido (P2, DEFERRED)
+
+Antes de partir `decodeEvent` (931 líneas, complejidad 277, entrada de detekt baseline) medí su
+cobertura: decodifica **71** kinds, y `DomainEventRoundTripTest` nombraba **10**. No existía
+round-trip exhaustivo en ningún módulo. Partir 975 líneas tocando **61 brazos sin red** es
+refactorizar a ciegas.
+
+**Orden correcto: red primero, split después.** La red ya existe
+(`DomainEventExhaustiveRoundTripTest`); el split sigue diferido como decisión propia, y ahora tiene
+la condición satisfecha para hacerla sin riesgo ciego.
+
+**Lo que la red NO cubre aún, y sí es deuda real:** `decodeEvent` sigue usando
+`Instant.now()` como fallback de `occurredAt` no parseable (línea ~409) — reloj ambiental dentro
+de un decoder que debería ser puro. No se ha tocado en este slice. Mismo patrón
+`?: <default>` en `path`/`message` de `parseDiagnostic` y en `longField(...) ?: 0` de
+`decodeStashedEntries`/`decodeRestoredEntries`.

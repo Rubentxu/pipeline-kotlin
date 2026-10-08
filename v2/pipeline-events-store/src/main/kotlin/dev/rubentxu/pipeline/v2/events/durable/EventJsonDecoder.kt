@@ -157,8 +157,12 @@ internal object EventJsonDecoder {
     fun parseDiagnostic(s: String): ScriptingDiagnostic? {
         val severityStr = EventJsonFields.stringField(s, "severity")
         val message = EventJsonFields.stringField(s, "message") ?: ""
-        val line = EventJsonFields.stringField(s, "line")?.toIntOrNull() ?: 0
-        val column = EventJsonFields.stringField(s, "column")?.toIntOrNull() ?: 0
+        // `line` and `column` are written by encodeDiagnostics as bare JSON numbers,
+        // so they must be read with the numeric reader. Reading them as strings
+        // silently produced 0/0 for every diagnostic, losing the source position
+        // of every scripting warning and error that had ever been replayed.
+        val line = EventJsonFields.intField(s, "line") ?: 0
+        val column = EventJsonFields.intField(s, "column") ?: 0
         val path = EventJsonFields.stringField(s, "path") ?: ""
         val severity = severityStr?.let {
             try { ScriptDiagnosticSeverity.valueOf(it) } catch (_: Exception) { ScriptDiagnosticSeverity.INFO }

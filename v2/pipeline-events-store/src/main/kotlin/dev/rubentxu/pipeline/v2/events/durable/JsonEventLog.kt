@@ -409,13 +409,19 @@ object JsonEventLog {
         val occurredAt = try { Instant.parse(occurredAtStr) } catch (_: Exception) { Instant.now() }
 
         val event = when (kind) {
-            "RunStarted" -> RunStarted(
-                eventId = eventId,
-                runId = runId,
-                sequence = sequence,
-                occurredAt = occurredAt,
-                scriptPath = EventJsonFields.stringField(s, "scriptPath") ?: "",
-            )
+            "RunStarted" -> {
+                val scriptPath = EventJsonFields.stringField(s, "scriptPath")
+                    ?: return EventDecodeOutcome.Failed(
+                        EventDecodeFailure.UnreadableField("scriptPath", "RunStarted"),
+                    )
+                RunStarted(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    scriptPath = scriptPath,
+                )
+            }
             "CompilationStarted" -> CompilationStarted(
                 eventId = eventId,
                 runId = runId,

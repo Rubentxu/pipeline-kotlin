@@ -497,10 +497,32 @@ val publishedContractModules = listOf(
     "pipeline-output",
 )
 
+/**
+ * B2A: the SDK BOM, published alongside the four contracts and deliberately OUTSIDE
+ * [publishedContractModules].
+ *
+ * The two lists answer different questions. `publishedContractModules` is the set of artifacts whose
+ * TYPE surface a consumer compiles against and whose bytes `apiCheck` freezes — it is read by
+ * `PublishedContractBoundaryFitnessTest` and must stay exactly the four. `sdkBomModules` is the set
+ * of published RESOLUTION documents: `:pipeline-sdk-bom` carries no classes, no ABI and no tests, so
+ * adding it to the contract list would be a claim that it has a surface to guard. It does not; it
+ * has four version constraints derived from `rootProject.version`.
+ *
+ * It is published by the same task, into the same `sdk-repo`, from the same revision, so a consumer
+ * resolving the platform and the coordinates finds a consistent set or finds nothing.
+ */
+val sdkBomModules = listOf(
+    "pipeline-sdk-bom",
+)
+
 val publishSdkForExternalPlugin by tasks.registering {
     group = "build"
     description = "Publishes the published-contract artifacts an external consumer compiles against."
     dependsOn(publishedContractModules.map { ":$it:publishSdkPublicationToSdkRepository" })
+    // B2A: the BOM is published by this same task, not by a second mechanism. Its presence here
+    // (and its absence from `publishedContractModules`) is the whole "convenience, not contract"
+    // distinction, expressed in the build rather than only in a comment.
+    dependsOn(sdkBomModules.map { ":$it:publishSdkPublicationToSdkRepository" })
 }
 
 val buildExamplePlugin by tasks.registering(Exec::class) {
@@ -651,6 +673,67 @@ val verifyFabricContractConsumer by tasks.registering(Exec::class) {
         "--console=plain",
         "-PsdkRepo=" + sdkRepoDir.get().asFile.absolutePath,
         "-PsdkVersion=" + rootProject.version.toString(),
+        "check",
+    )
+}
+
+/**
+ * B2A — the end-to-end EXTERNAL EXECUTION gate: the outside, running the product.
+ *
+ * `buildExamplePlugin` proves the plugin COMPILES against the published SDK, and the two
+ * `verify*Consumer` tasks prove a consumer can COMPILE against it. None of them runs the installed
+ * product with an externally built plugin. This task does, and it is the only place in the
+ * repository that closes that loop from outside the product build:
+ *
+ * ```text
+ * examples/sdk-external-execution   (own settings file, no project(...))
+ *   -> resolves the four contracts through pipeline-sdk-bom      (ENTREGA A)
+ *   -> builds examples/example-uppercase-plugin against that SDK (Exec, independent build)
+ *   -> runs :pipeline-application's INSTALLED binary with --plugin-jar against a .pipeline.kts
+ *   -> asserts: exit 0, "Pipeline finished with SUCCESS", and the plugin's own event in the run
+ * ```
+ *
+ * The subprocess is the PRODUCT, not a test double: same JAR the CLI installs, same `--plugin-jar`
+ * argument `CliParser` accepts. A pipeline that ended successfully without the plugin executing
+ * would still fail the assertion, which is why the event kind is asserted and not just the exit.
+ *
+ * NOT a dependency of `check`, and the cost is stated rather than discovered later: wiring it in
+ * would make every `check` publish to `sdk-repo`, run `installDist`, and fork a third Gradle (the
+ * external build forks a second one for the plugin). That cost is not paid per `check` run. This is
+ * a named closeout gate step, run explicitly as `:verifySdkExternalExecution`.
+ */
+val verifySdkExternalExecution by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Runs the installed product against an externally built plugin, resolved through the SDK BOM."
+    // Both artifacts this task reads are produced HERE, by task dependency rather than by a nested
+    // `v2` invocation: the root build already holds this checkout's build lock, so forking `v2`
+    // from inside it would fail rather than wait.
+    dependsOn(publishSdkForExternalPlugin)
+    dependsOn(":pipeline-application:installDist")
+
+    val externalDir = file("../examples/sdk-external-execution")
+    inputs.dir(externalDir.resolve("src"))
+    inputs.dir(externalDir.resolve("fixtures"))
+    inputs.files(
+        externalDir.resolve("build.gradle.kts"),
+        externalDir.resolve("settings.gradle.kts"),
+    )
+    // The installed binary is a real input: a change to the product must re-run this gate.
+    val installedBinary = project(":pipeline-application")
+        .layout
+        .buildDirectory
+        .dir("install/pipelinek/bin")
+        .map { it.file("pipelinek") }
+    inputs.file(installedBinary)
+
+    workingDir = rootDir
+    commandLine(
+        rootDir.resolve("gradlew").absolutePath,
+        "-p", externalDir.absolutePath,
+        "--console=plain",
+        "-PsdkRepo=" + sdkRepoDir.get().asFile.absolutePath,
+        "-PsdkVersion=" + rootProject.version.toString(),
+        "-PpipelinekBin=" + installedBinary.get().asFile.absolutePath,
         "check",
     )
 }

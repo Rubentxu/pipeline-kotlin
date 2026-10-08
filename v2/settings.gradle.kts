@@ -40,6 +40,12 @@ include(
     // depending on the fitness harness.
     ":pipeline-release",
     ":pipeline-scripting-api",
+    // B2A: the SDK BOM. A `java-platform` whose only content is a version constraint per published
+    // contract. It has no classes, no tests and no ABI: it is a RESOLUTION convenience, not a fifth
+    // contract, and it exists so an external consumer can name one coordinate and declare the four
+    // published contracts without repeating the version. See its build script for why that
+    // distinction is load-bearing.
+    ":pipeline-sdk-bom",
     ":pipeline-scripting-kotlin24",
     ":pipeline-testkit",
     ":pipeline-architecture-tests",

@@ -139,8 +139,32 @@ y producto publicado `v0.39.0`, cuando el trunk real es `b66bf7c7` y el producto
 `lfc4-000-execution-model-contract-freeze`, `rp-020-durable-sequence-authority`), 1
 `RELEASE_PENDING` (`retry-conditions-fail-closed`). Además, más de 10 PRs abiertas y antiguas,
 incluida la #99 que sostiene B0-F1.
-Disposición: triage explícito por ciclo (cerrar/superseder/retomar) con decisión registrada; este
-recibo no transiciona ningún ciclo por su cuenta.
+
+Triage medido (2026-10-08, `sddk plan work-item list` por ciclo + `sddk cycle next`):
+
+```text
+18 ciclos  manifiestos HUERFANOS: 0 work items, 0 artefactos, y `sddk cycle next` responde
+           "has no replayable state events" -> ningun verbo de SDDK puede cerrarlos
+           (supersede exige lease+fencing; rebuild necesita eventos que no existen)
+23 ciclos  trabajo TERMINADO y ciclo nunca cerrado: train-0 13/13 Done, train-1/2 D-018..D-032
+           1/1 Done, train-040-final 10/11, train-040-gate-recovery 2/3, detekt-burndown 1/1.
+           Todos siguen en el nodo Open/Explore con frontera `phase.explore.complete` y
+           `requires_met: false`: nunca pasaron su gate
+ 4 ciclos  con trabajo realmente pendiente: `reproducible-directive-plugin-jar` (1 Draft, es la
+           PR #99 de B0-F1), `rp7-sem-s4-scripted-runtime-v2` (1 Done + Draft),
+           `train-dsl-honesty` (9 items Draft/Superseded), y el ACTIVO `rp7-sem-s6-plugin-sdk`
+```
+
+**Por qué esto no se cierra aquí.** Cerrar los 23 exigiría emitir `exploration-report` y gate
+receipts **a posteriori** para trabajo ya hecho; eso es fabricar evidencia y es el falso verde que
+este repositorio prohíbe. Los 18 huérfanos no los puede cerrar ningún verbo existente. Así que la
+brecha queda registrada como **dependencia al proyecto propietario** (falta un verbo de mantenimiento
+para retirar ciclos huérfanos o incompletos con razón explícita), no como una tarea local pendiente.
+Decisión registrada en SDDK: `550ae52d-398d-44d5-a0f6-0386271340cf`.
+
+Nota honesta sobre el ciclo activo: `rp7-sem-s6-plugin-sdk` está en el mismo nodo `Open/Explore` con
+`requires_met: false`, mientras sus commits sí se trazan por el ledger de WorkItems. La estagnación
+de fase es previa a este trabajo y no la he movido; moverla exigiría el mismo reporte a posteriori.
 
 ---
 

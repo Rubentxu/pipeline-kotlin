@@ -161,9 +161,11 @@ class FileBasedWaitUntilControlJournal(
                 PersistedWaitUntilAttempt(
                     attempt = ao["attempt"]?.jsonPrimitive?.content?.toIntOrNull()
                         ?: throw WaitUntilControlJournalDivergenceException("attempt missing in $file"),
-                    status = ao["status"]?.jsonPrimitive?.content
-                        ?.let { OperationStatus.valueOf(it) }
-                        ?: throw WaitUntilControlJournalDivergenceException("status missing in $file"),
+                    status = operationStatusOrThrow(
+                        raw = ao["status"]?.jsonPrimitive?.content,
+                        file = file,
+                        divergence = ::WaitUntilControlJournalDivergenceException,
+                    ),
                     currentBackoffMs = ao["currentBackoffMs"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0L,
                     fingerprint = ao["fingerprint"]?.jsonPrimitive?.content ?: fingerprint,
                 )

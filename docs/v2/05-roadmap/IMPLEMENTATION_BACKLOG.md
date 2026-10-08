@@ -374,3 +374,28 @@ No empezar E8 por amplitud funcional antes de haber demostrado E4/E5/E6/E7 con e
 - **POL-07** Trust hierarchy: platform/org/project/local packs.
 - **POL-08** Expiring waiver model (only if real operational need appears).
 - **POL-09** Pre-effect PolicyAdmission ENFORCE seam — future/M9; blocked until shadow evidence + security review.
+
+## B1.3 follow-up — enum decode without typed refusal in OUTPUT codecs (P2, open)
+
+**Medido en B1.3 (2026-10-08), no corregido a propósito.** Las filas de control de `retry` y
+`waitUntil` ya rechazan en su propio vocabulario (`operationStatusOrThrow`), pero los **codecs de
+salida** conservan la misma forma:
+
+- `CoreArchiveArtifactsStep`, `CoreArtifactQueryStep`, `CorePublishHtmlStep`, `CoreStashStep`:
+  `FailureKind.valueOf(obj.getValue("failureKind").jsonPrimitive.content)` en `decode`.
+- `CorePublishHtmlStep`: `PublishHtmlSkipReason.valueOf(it)`.
+- `CoreShellStep`: `FailureKind.valueOf(fkStr)` y `FailureOrigin.valueOf(...)` en `decode`.
+
+**Por qué es P2 y no se hizo aquí.** Un `Enum.valueOf` que escapa como excepción cruda en un codec de
+**salida** produce un diagnóstico con el tipo equivocado. No puede re-ejecutar un efecto ni
+convertir un fallo en un éxito: el contenido que falla ya es un `Failure`. El de las filas de control
+sí podía re-ejecutar, y por eso fue el que se corrigió.
+
+**Candidato a la misma forma.** Cada codec debería recibir su propio rechazo, del mismo modo que
+`operationStatusOrThrow(raw, file, ::XDivergenceException)`, en vez de `try`/`catch` por sitio. La
+decisión de aplicarlo debe ser deliberada: son ~8 sitios y el valor está en el diagnóstico, no en la
+seguridad de la ejecución.
+
+**Owner:** B1.3 follow-up. **Exit:** cada `valueOf` de salida emite una excepción declarada por su
+propio codec, con el valor y el campo en el mensaje, y cada uno tiene una fila que lo mate por
+mutación.

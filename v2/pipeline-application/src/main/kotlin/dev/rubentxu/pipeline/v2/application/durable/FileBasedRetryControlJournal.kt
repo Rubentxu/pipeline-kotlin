@@ -244,9 +244,11 @@ class FileBasedRetryControlJournal(
                 PersistedAttempt(
                     attempt = ao["attempt"]?.jsonPrimitive?.intOrNull
                         ?: throw RetryControlJournalDivergenceException("attempt missing in $file"),
-                    status = ao["status"]?.jsonPrimitive?.content
-                        ?.let { OperationStatus.valueOf(it) }
-                        ?: throw RetryControlJournalDivergenceException("status missing in $file"),
+                    status = operationStatusOrThrow(
+                        raw = ao["status"]?.jsonPrimitive?.content,
+                        file = file,
+                        divergence = ::RetryControlJournalDivergenceException,
+                    ),
                     fingerprint = ao["fingerprint"]?.jsonPrimitive?.content ?: fingerprint,
                 )
             }

@@ -82,6 +82,58 @@ class MainConsoleCliArgumentContractTest {
     }
 
     @Test
+    fun `an unknown option is refused instead of being ignored`(@TempDir root: Path) {
+        val result = cli(
+            "--control-dir", root.toString(), "run-1", "op-1", "--bogus",
+        )
+        assertEquals(
+            2,
+            result.exitCode,
+            "an unknown option must be a usage error, not silently ignored; stderr:\n${result.stderr}",
+        )
+        assertTrue(
+            result.stderr.contains("--bogus"),
+            "the refusal must NAME the option; stderr:\n${result.stderr}",
+        )
+    }
+
+    @Test
+    fun `a third positional is refused instead of being dropped`(@TempDir root: Path) {
+        // The command reads ONE run and ONE op. A third positional used to be discarded while the
+        // first two were kept, so the invocation silently narrowed to something the caller did not
+        // type.
+        val result = cli(
+            "--control-dir", root.toString(), "run-1", "op-1", "op-2",
+        )
+        assertEquals(
+            2,
+            result.exitCode,
+            "an extra positional must be a usage error; stderr:\n${result.stderr}",
+        )
+        assertTrue(
+            result.stderr.contains("op-2"),
+            "the refusal must NAME the extra argument; stderr:\n${result.stderr}",
+        )
+    }
+
+    @Test
+    fun `an option whose value is missing is refused rather than defaulted`(@TempDir root: Path) {
+        val result = cli(
+            "--control-dir", root.toString(), "run-1", "op-1", "--max-bytes",
+        )
+        assertEquals(
+            2,
+            result.exitCode,
+            "a missing --max-bytes value must be a usage error, not the default page size; " +
+                "stderr:\n${result.stderr}",
+        )
+        assertTrue(
+            result.stderr.contains("--max-bytes"),
+            "the refusal must name the flag; stderr:\n${result.stderr}",
+        )
+    }
+
+    @Test
     fun `a well-formed --max-bytes is not refused by the parser`(@TempDir root: Path) {
         // Positive control: with a valid value the parser must let the command through, so the
         // rejection above cannot be "the CLI always exits 2". The run/op are unknown here, so the

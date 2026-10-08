@@ -137,14 +137,38 @@ object MainConsoleCli {
 
         var i = 0
         while (i < args.size) {
-            when (args[i]) {
-                "--control-dir" -> controlDir = args.getOrNull(++i)
-                "--max-bytes" -> maxBytesArg = args.getOrNull(++i)
-                "--after-cursor" -> afterCursor = args.getOrNull(++i)
-                "--range" -> range = args.getOrNull(++i)
+            val arg = args[i]
+            when (arg) {
+                // An option whose value is missing is a usage error, not a reason to fall back to a
+                // default: the caller gets output shaped by a value they never supplied. AUD-04 /
+                // CLI_OBSERVABILITY_SPEC section 12.
+                "--control-dir" -> {
+                    i++
+                    controlDir = args.getOrNull(i) ?: return usageError("--control-dir requires a value")
+                }
+                "--max-bytes" -> {
+                    i++
+                    maxBytesArg = args.getOrNull(i) ?: return usageError("--max-bytes requires a value")
+                }
+                "--after-cursor" -> {
+                    i++
+                    afterCursor = args.getOrNull(i) ?: return usageError("--after-cursor requires a value")
+                }
+                "--range" -> {
+                    i++
+                    range = args.getOrNull(i) ?: return usageError("--range requires a value")
+                }
                 else -> when {
-                    !args[i].startsWith("--") && runId == null -> runId = args[i]
-                    !args[i].startsWith("--") && opId == null -> opId = args[i]
+                    // A leading `--` that is not a known option is a typo or a flag from another
+                    // build. Ignoring it would run a different command than the one typed and still
+                    // exit 0, which is what this rejects. AUD-04 / section 12.
+                    arg.startsWith("--") -> return usageError("unknown option: $arg")
+                    runId == null -> runId = arg
+                    opId == null -> opId = arg
+                    // The command reads ONE run and ONE op. A third positional was dropped on the
+                    // floor while the first two were kept, so the caller's intent was silently
+                    // narrowed. AUD-04 / section 12.
+                    else -> return usageError("unexpected extra argument: $arg")
                 }
             }
             i++
@@ -199,6 +223,15 @@ object MainConsoleCli {
         }
 
         return emit(result, System.out, System.err)
+    }
+
+    /**
+     * One refusal shape for every usage error, so the exit code and the stream cannot drift apart
+     * between branches. Section 12 of `CLI_OBSERVABILITY_SPEC.md` is the contract this implements.
+     */
+    private fun usageError(detail: String): Int {
+        System.err.println("Error: $detail")
+        return 2
     }
 
     /** Emit the result. Split out so a test drives it without capturing the real process streams. */

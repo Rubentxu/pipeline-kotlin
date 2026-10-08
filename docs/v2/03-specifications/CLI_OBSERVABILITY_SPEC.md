@@ -128,8 +128,10 @@ Common vocabulary:
 - `1` — reserved for a read this command performed and that the plane refused (e.g. an unknown
   stream), when the command's own result type distinguishes "refused" from "answered".
 - `2` — the command was **not run**: a usage/argument error. This includes a missing required
-  argument, an unknown `--option`, an extra positional argument, and any option value that does not
-  parse or is outside its accepted range (`--limit`, `--max-bytes`, `--range`, cursor tokens).
+  argument, an unknown `--option`, an extra positional argument, an option whose value is missing,
+  and any option value that does not parse or is outside its accepted range (`--limit`,
+  `--max-bytes`, `--range`, cursor tokens). A missing value is deliberately in this list: falling
+  back to a default would answer with a shape the caller never asked for.
 - any other status — an unhandled exception escaped `main`; the JVM produced that status and the
   command did not choose it. A defect, never a designed outcome.
 

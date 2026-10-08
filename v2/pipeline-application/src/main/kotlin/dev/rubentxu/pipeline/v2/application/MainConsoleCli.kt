@@ -126,11 +126,61 @@ object ConsoleReadService {
  */
 object MainConsoleCli {
 
-    fun main(args: Array<String>): Int {
+    /**
+     * The pure decision: what the caller asked for, or the exact line to print and why not to run.
+     *
+     * Separating this from [main] is not cosmetic. `main` was doing argument selection, validation,
+     * filesystem access and effect execution in one body, and adding the three strictness refusals
+     * pushed its cyclomatic complexity to 29 against a limit of 25. The fix is the one the project
+     * asks for everywhere else: decide purely, interpret at the effect boundary.
+     */
+    private sealed interface Invocation {
+
+        /** A complete, valid request. `controlDir` is still a string: resolving it is [main]'s job. */
+        data class Ok(
+            val controlDir: String,
+            val runId: String,
+            val opId: String,
+            val maxBytes: Int,
+            val after: OutputCursor?,
+            val range: Pair<Long, Long>?,
+        ) : Invocation
+
+        /** The command must NOT run. `message` is printed verbatim by [usageError]. */
+        data class Usage(val message: String) : Invocation
+    }
+
+    /**
+     * What the argument scan produced: the raw strings, or the line to print and why not to run.
+     *
+     * Raw, not interpreted: this phase knows argument SHAPE (which option got which token) and
+     * nothing else. Interpreting the values is [parseInvocation]'s job, and keeping the two apart is
+     * what lets each stay under the complexity the project allows.
+     */
+    private sealed interface Scan {
+
+        data class Args(
+            val controlDir: String?,
+            val runId: String?,
+            val opId: String?,
+            val maxBytesArg: String?,
+            val afterCursor: String?,
+            val range: String?,
+        ) : Scan
+
+        data class Usage(val message: String) : Scan
+    }
+
+    /**
+     * Arguments in, typed decision out. Pure: no I/O, no console, no environment.
+     *
+     * Every refusal carries a message that NAMES the offending token, because a usage error whose
+     * text does not say which argument was wrong is a usage error the caller has to guess at.
+     */
+    private fun scanArgs(args: Array<String>): Scan {
         var controlDir: String? = null
         var runId: String? = null
         var opId: String? = null
-        var maxBytes = ConsoleReadService.DEFAULT_PAGE_BYTES
         var maxBytesArg: String? = null
         var afterCursor: String? = null
         var range: String? = null
@@ -140,97 +190,144 @@ object MainConsoleCli {
             val arg = args[i]
             when (arg) {
                 // An option whose value is missing is a usage error, not a reason to fall back to a
-                // default: the caller gets output shaped by a value they never supplied. AUD-04 /
-                // CLI_OBSERVABILITY_SPEC section 12.
+                // default: the caller gets output shaped by a value they never supplied.
                 "--control-dir" -> {
                     i++
-                    controlDir = args.getOrNull(i) ?: return usageError("--control-dir requires a value")
+                    controlDir = args.getOrNull(i) ?: return Scan.Usage("Error: --control-dir requires a value")
                 }
                 "--max-bytes" -> {
                     i++
-                    maxBytesArg = args.getOrNull(i) ?: return usageError("--max-bytes requires a value")
+                    maxBytesArg = args.getOrNull(i) ?: return Scan.Usage("Error: --max-bytes requires a value")
                 }
                 "--after-cursor" -> {
                     i++
-                    afterCursor = args.getOrNull(i) ?: return usageError("--after-cursor requires a value")
+                    afterCursor = args.getOrNull(i) ?: return Scan.Usage("Error: --after-cursor requires a value")
                 }
                 "--range" -> {
                     i++
-                    range = args.getOrNull(i) ?: return usageError("--range requires a value")
+                    range = args.getOrNull(i) ?: return Scan.Usage("Error: --range requires a value")
                 }
                 else -> when {
                     // A leading `--` that is not a known option is a typo or a flag from another
                     // build. Ignoring it would run a different command than the one typed and still
-                    // exit 0, which is what this rejects. AUD-04 / section 12.
-                    arg.startsWith("--") -> return usageError("unknown option: $arg")
+                    // exit 0, which is what this rejects.
+                    arg.startsWith("--") -> return Scan.Usage("Error: unknown option: $arg")
                     runId == null -> runId = arg
                     opId == null -> opId = arg
                     // The command reads ONE run and ONE op. A third positional was dropped on the
                     // floor while the first two were kept, so the caller's intent was silently
-                    // narrowed. AUD-04 / section 12.
-                    else -> return usageError("unexpected extra argument: $arg")
+                    // narrowed.
+                    else -> return Scan.Usage("Error: unexpected extra argument: $arg")
                 }
             }
             i++
         }
 
+        return Scan.Args(
+            controlDir = controlDir,
+            runId = runId,
+            opId = opId,
+            maxBytesArg = maxBytesArg,
+            afterCursor = afterCursor,
+            range = range,
+        )
+    }
+
+    /**
+     * Interprets a completed scan into a decision: presence of the required arguments, the page
+     * size, the cursor token and the range bounds. Pure, and separate from [scanArgs] so each stays
+     * under the complexity the project allows while the shape/semantics split stays honest.
+     */
+    private fun parseInvocation(args: Array<String>): Invocation {
+        val scan = when (val scanned = scanArgs(args)) {
+            is Scan.Usage -> return Invocation.Usage(scanned.message)
+            is Scan.Args -> scanned
+        }
+
+        val controlDir = scan.controlDir
+        val runId = scan.runId
+        val opId = scan.opId
         if (controlDir == null || runId == null || opId == null) {
-            System.err.println(
+            return Invocation.Usage(
                 "Usage: pipeline console --control-dir <path> <runId> <opId> " +
                     "[--max-bytes N] [--after-cursor TOKEN] | --range FROM:TO",
             )
-            return 2
         }
 
         // A flag that does not parse must not become the default. `--max-bytes abc` used to read as
         // the default page size, which is the same shape as a command that silently did something
         // other than what was asked, and it was incoherent with the rest of this file. AUD-04.
-        if (maxBytesArg != null) {
-            val parsed = maxBytesArg.toIntOrNull()
+        val maxBytes = if (scan.maxBytesArg == null) {
+            ConsoleReadService.DEFAULT_PAGE_BYTES
+        } else {
+            val parsed = scan.maxBytesArg.toIntOrNull()
             if (parsed == null || parsed <= 0) {
-                System.err.println("Error: --max-bytes must be a positive integer, got: $maxBytesArg")
-                return 2
+                return Invocation.Usage(
+                    "Error: --max-bytes must be a positive integer, got: ${scan.maxBytesArg}",
+                )
             }
-            maxBytes = parsed
-        }
-
-        val root = Path.of(controlDir)
-        if (!java.nio.file.Files.isDirectory(root)) {
-            System.err.println("Error: control dir not found: $controlDir")
-            return 2
+            parsed
         }
 
         // An event cursor pasted here is a decode failure, not a silent offset into the wrong
         // bytes. The distinct token prefixes are the whole reason.
-        val after = afterCursor?.let { token ->
-            OutputCursor.decode(token) ?: run {
-                System.err.println("Error: not an output cursor token: $token")
-                return 2
-            }
+        val after = scan.afterCursor?.let { token ->
+            OutputCursor.decode(token)
+                ?: return Invocation.Usage("Error: not an output cursor token: $token")
         }
 
-        val result = if (range != null) {
-            val bounds = range.split(':')
-            val from = bounds.getOrNull(0)?.toLongOrNull()
-            val to = bounds.getOrNull(1)?.toLongOrNull()
-            if (bounds.size != 2 || from == null || to == null) {
-                System.err.println("Error: --range must be FROM:TO with integers, got $range")
-                return 2
+        val bounds = scan.range?.let { value ->
+            val parts = value.split(':')
+            val from = parts.getOrNull(0)?.toLongOrNull()
+            val to = parts.getOrNull(1)?.toLongOrNull()
+            if (parts.size != 2 || from == null || to == null) {
+                return Invocation.Usage("Error: --range must be FROM:TO with integers, got $value")
             }
-            ConsoleReadService.readRange(root, runId, opId, from, to)
-        } else {
-            ConsoleReadService.read(root, runId, opId, after, maxBytes)
+            Pair(from, to)
         }
+
+        return Invocation.Ok(
+            controlDir = controlDir,
+            runId = runId,
+            opId = opId,
+            maxBytes = maxBytes,
+            after = after,
+            range = bounds,
+        )
+    }
+
+    fun main(args: Array<String>): Int {
+        val invocation = when (val decision = parseInvocation(args)) {
+            is Invocation.Usage -> return usageError(decision.message)
+            is Invocation.Ok -> decision
+        }
+
+        val root = Path.of(invocation.controlDir)
+        if (!java.nio.file.Files.isDirectory(root)) {
+            return usageError("Error: control dir not found: ${invocation.controlDir}")
+        }
+
+        val result = invocation.range?.let { (from, to) ->
+            ConsoleReadService.readRange(root, invocation.runId, invocation.opId, from, to)
+        } ?: ConsoleReadService.read(
+            root,
+            invocation.runId,
+            invocation.opId,
+            invocation.after,
+            invocation.maxBytes,
+        )
 
         return emit(result, System.out, System.err)
     }
 
     /**
      * One refusal shape for every usage error, so the exit code and the stream cannot drift apart
-     * between branches. Section 12 of `CLI_OBSERVABILITY_SPEC.md` is the contract this implements.
+     * between branches. The message is printed VERBATIM, which is what lets the missing-argument
+     * case keep its `Usage: ...` line while the others start with `Error:`. Section 12 of
+     * `CLI_OBSERVABILITY_SPEC.md` is the contract this implements.
      */
-    private fun usageError(detail: String): Int {
-        System.err.println("Error: $detail")
+    private fun usageError(message: String): Int {
+        System.err.println(message)
         return 2
     }
 

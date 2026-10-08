@@ -80,6 +80,43 @@ class HttpProvenanceDigestSourceLawTest {
         )
     }
 
+    /**
+     * The second half of the law, and it is a separate half because it failed separately.
+     *
+     * Path-independence was already true when the digest still moved on a manifest change. The
+     * manifest carries `releaseDigest`, so hashing it is a fixed-point loop: emit manifest -> it
+     * states the digest -> re-hash changes the manifest -> the digest moves. AUD-01 excluded the
+     * `.properties` file and not the manifest, so the digest was stable only while the manifest
+     * happened to be byte-identical.
+     *
+     * Measured: appending one byte to `plugin-manifest.json` moved utilities 6c035f25 -> 5efa299f,
+     * and RESTORING that byte did not bring 6c035f25 back, because the manifest had by then been
+     * regenerated into the hashed tree. The property was luck, not code.
+     *
+     * The mutation that kills this: drop `!it.name.endsWith("plugin-manifest.json")` from the
+     * walk filter. Verified that the mutation is detectable by re-appending the byte and observing
+     * the digest move.
+     */
+    @Test
+    fun `el digest de procedencia excluye el manifest que lo transporta`() {
+        val offenders = PLUGIN_BUILD_SCRIPTS.mapNotNull { script ->
+            val text = stripComments(Files.readString(script))
+            if (text.contains("endsWith(\"plugin-manifest.json\")")) {
+                null
+            } else {
+                "${script.parent.fileName} -> the walk does not exclude plugin-manifest.json"
+            }
+        }
+
+        assertTrue(
+            offenders.isEmpty(),
+            "these plugin digest tasks hash the plugin manifest, which carries `releaseDigest`. " +
+                "That is a fixed-point loop: the digest depends on the manifest, the manifest " +
+                "states the digest, and neither settles. Exclude the manifest from the walk:\n" +
+                offenders.joinToString("\n") { "  - $it" },
+        )
+    }
+
     private companion object {
         /**
          * Names, not a glob: a glob would widen silently the day a fourth plugin appears, which is
@@ -150,3 +187,4 @@ class HttpProvenanceDigestSourceLawTest {
             LINE_COMMENT_TAIL.replace(BLOCK_COMMENT.replace(text, ""), "")
     }
 }
+

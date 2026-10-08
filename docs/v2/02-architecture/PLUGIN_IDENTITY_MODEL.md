@@ -293,7 +293,7 @@ digest := SHA-256( sort by relative path of
 
 roots  := { classes/…, resources/… }        // module-local, NOT absolute
 paths  := normalised, '/' separated
-excluded := the provenance file itself, and any *.digest side file
+excluded := the provenance file, the *.digest side file, and plugin-manifest.json
 ```
 
 Two properties follow, and both are load-bearing:
@@ -304,6 +304,13 @@ Two properties follow, and both are load-bearing:
 2. **Idempotence.** The output is excluded from its own input, so re-running the computation
    over unchanged inputs yields the unchanged value. Without this, each run hashes the previous
    run's output and the digest drifts on every build.
+
+Excluding `plugin-manifest.json` is not an optimisation, it is the same law seen from the other
+side: the manifest carries `releaseDigest`, so hashing it is a fixed-point loop in which the
+digest depends on the manifest and the manifest states the digest. Measured: one manifest byte
+moved the digest, and restoring that byte did not move it back, because the manifest had been
+regenerated into the hashed tree. A digest that holds steady only while nothing moves is not a
+property of the code.
 
 Enforced by `HttpProvenanceDigestSourceLawTest` (fitness over the three plugin build scripts).
 The bound of that law is declared in its own KDoc: it pins the SOURCE, not the emitted digest.

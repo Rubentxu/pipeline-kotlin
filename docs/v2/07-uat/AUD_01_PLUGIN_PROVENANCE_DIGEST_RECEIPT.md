@@ -138,6 +138,16 @@ utilities: provenance written … (digest=sha256:6c035f25…)
 
 ## Known limits, stated rather than hidden
 
+- **CORRECTION (B0 follow-up, 2026-10-08).** The idempotence claim in this receipt was stated
+  more strongly than the code supported. It was measured to hold across four consecutive runs, but
+  only because the plugin manifest happened to be byte-identical each time. The manifest carries
+  `releaseDigest` and IS part of the hashed tree, so the computation was a fixed-point loop waiting
+  for a change. Appending one byte to `plugin-manifest.json` moved utilities `6c035f25` ->
+  `5efa299f`, and restoring that byte did NOT return it to `6c035f25`, because the manifest had
+  already been regenerated into the tree. The S6/C comment had stated the correct convention
+  ("the digest covers the artifact content EXCLUDING this document") and AUD-01 implemented only
+  half of it. Fixed in the follow-up commit, with the exclusion enforced by a fitness law of its
+  own; the mutation that removes it produces RED naming the module.
 - `HttpProvenanceDigestSourceLawTest` pins SOURCE, not behaviour. A build script that became
   path-dependent without containing any of the tokens would evade it. A functional Gradle test
   (TestKit, or asserting the emitted digest across two checkouts) would close that gap; not done.
@@ -145,9 +155,10 @@ utilities: provenance written … (digest=sha256:6c035f25…)
   manifest walk, so the two copies could be hashed in place. Per HARNESS FIDELITY §1 that is a
   `model` harness: it characterises the formulation, it does not certify the Gradle task. The
   idempotence evidence above DOES come from the real tasks.
-- The digest values themselves changed with this commit (they must: the algorithm changed). Any
-  receipt, manifest or candidate that names the previous http/scm-git/utilities digests is stale
-  and must be re-derived from this tree. Not audited here.
+- The digest values themselves changed with this commit (they must: the algorithm changed), and
+again with the B0 follow-up (excluding the manifest changes what is hashed). Any receipt, manifest
+or candidate that names the previous http/scm-git/utilities digests is stale and must be
+re-derived from this tree. Not audited here.
 - Only the three `pipeline-step-sdk` plugins were in scope. If other modules compute provenance
   digests, they were not audited.
 

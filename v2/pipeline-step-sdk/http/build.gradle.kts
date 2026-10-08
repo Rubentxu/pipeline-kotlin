@@ -100,10 +100,21 @@ val computeHttpDigest = tasks.register("computeHttpDigest") {
         // ONE hook, not doFirst-then-doLast: the previous shape passed the hex through a
         // `.digest` side file that doFirst wrote and doLast read and deleted, which is mutable
         // state between two hooks for no reason once the shell is gone.
+        //
+        // The provenance file and the PLUGIN MANIFEST are both EXCLUDED, and the second exclusion
+        // is not optional. The manifest carries `releaseDigest`, so hashing it is a fixed-point
+        // loop: emit manifest -> it states the digest -> re-hash changes the manifest -> the digest
+        // moves. The S6/C comment already stated the convention ("the digest covers the artifact
+        // content EXCLUDING this document"); AUD-01 implemented only half of it — the `.properties`
+        // file but not the manifest. The digest was stable across runs only because the manifest
+        // happened to be byte-identical each time, which is luck and not the property; measured on
+        // utilities, one manifest byte moved it 6c035f25 -> 5efa299f and it did not return to
+        // 6c035f25 when the byte was restored, because the manifest had been regenerated into the
+        // hashed tree.
         val roots = listOf(classesDir to "classes") +
             listOfNotNull(resourcesDir.takeIf { it.exists() }?.let { it to "resources" })
         val entries = roots.flatMap { (root, prefix) ->
-            root.walkTopDown().filter { it.isFile && it.path != out.path && it.name != out.name + ".digest" }.map { file ->
+            root.walkTopDown().filter { it.isFile && it.path != out.path && it.name != out.name + ".digest" && !it.name.endsWith("plugin-manifest.json") }.map { file ->
                 "$prefix/${root.toPath().relativize(file.toPath()).toString().replace('\\', '/')}" to file.readBytes()
             }
         }.sortedBy { it.first }

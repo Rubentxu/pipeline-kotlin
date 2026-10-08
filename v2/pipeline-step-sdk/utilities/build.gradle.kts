@@ -115,10 +115,22 @@ val computeUtilitiesDigest = tasks.register("computeUtilitiesDigest") {
         // comparing absolute paths; a relative-path manifest compares the RELATIVE path instead.
         // Both the properties file and any leftover `.digest` side file from the pre-AUD-01 shell
         // pipeline are excluded, or stale state from an earlier checkout would still move the hash.
+        //
+        // The PLUGIN MANIFEST is excluded too, and this one is NOT optional. The manifest carries
+        // `releaseDigest`, so hashing it is a fixed-point loop: emit manifest -> it states the
+        // digest -> re-hash changes the manifest -> the digest moves. The existing S6/C comment
+        // already stated the convention ("the digest covers the artifact content EXCLUDING this
+        // document"), and AUD-01 implemented only half of it — the `.properties` file but not the
+        // manifest. The digest was still stable across runs, but only because the manifest happened
+        // to be byte-identical each time; that is luck, not the property. It stopped being stable
+        // the moment a single manifest byte changed (measured: 6c035f25 -> 5efa299f, and it did
+        // not return to 6c035f25 after the byte was restored, because the manifest had been
+        // regenerated into the tree). The path is a fixed part of the plugin layout, so excluding
+        // it by name here is the same convention the manifest task already writes to.
         val roots = listOf(classesDir to "classes") +
             listOfNotNull(resourcesDir.takeIf { it.exists() }?.let { it to "resources" })
         val entries = roots.flatMap { (root, prefix) ->
-            root.walkTopDown().filter { it.isFile && it.path != out.path && it.name != out.name + ".digest" }.map { file ->
+            root.walkTopDown().filter { it.isFile && it.path != out.path && it.name != out.name + ".digest" && !it.name.endsWith("plugin-manifest.json") }.map { file ->
                 "$prefix/${root.toPath().relativize(file.toPath()).toString().replace('\\', '/')}" to file.readBytes()
             }
         }.sortedBy { it.first }

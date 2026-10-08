@@ -2302,6 +2302,10 @@ public final class dev/rubentxu/pipeline/v2/domain/credentials/CredentialBinding
 	public final fun zip-Bf3yznE (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/credentials/ZipBindingSpec;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/credentials/CredentialBindingSpecKt {
+	public static final fun getBoundPurpose (Ldev/rubentxu/pipeline/v2/domain/credentials/CredentialBindingSpec;)Ldev/rubentxu/pipeline/v2/domain/BoundPurpose;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/credentials/CredentialFilePermissions {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/credentials/CredentialFilePermissions;
 	public final fun getOWNER_READ_WRITE ()Ljava/util/Set;

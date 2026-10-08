@@ -50,8 +50,44 @@ object SourceScanner {
         return findings
     }
 
+    /**
+     * The law: no build file may exclude SOURCES from compilation.
+     *
+     * ## Why this is not `findBuildSubstring(root, "exclude(")`
+     *
+     * The guarantee is about hiding CODE from the compiler, not about pattern filters. A
+     * `fileTree(...) { exclude(...) }` declares which files are INPUTS to a task and never hides a
+     * source from compilation, but the old blanket token scan could not tell the two apart. Measured
+     * 2026-10-08: three legitimate `inputs.files(fileTree(...) { exclude(...) })` declarations in the
+     * plugin SDK modules failed this law while compiling nothing, which is an over-fire, not a
+     * finding.
+     *
+     * ## The rule, and why it is narrow rather than loose
+     *
+     *  - `exclude(` / `setExcludes(` on a line that also builds a `fileTree(` -> ALLOWED (an input
+     *    filter; the line says what the task reads, not what the compiler ignores).
+     *  - anything else carrying either token -> FLAGGED. Both spellings are scanned on purpose: a
+     *    scan for `exclude(` alone would miss `sourceSets { setExcludes(...) }`, which is the same
+     *    exclusion written with Gradle's setter.
+     *
+     * A multi-line `fileTree` filter is deliberately still flagged: over-firing forces the author to
+     * either keep the declaration on one line or refine this law again, whereas a lookback heuristic
+     * wide enough to allow it would also allow a compile exclude sitting under a `fileTree` line.
+     * Both directions are pinned by fixtures in [FArch011V2NoCompileExcludesTest].
+     */
     fun findExcludeCalls(root: Path): List<Finding> {
-        return findBuildSubstring(root, "exclude(")
+        val tokens = listOf("exclude(", "setExcludes(")
+        val findings = mutableListOf<Finding>()
+        for (file in FitnessPaths.walkBuildFiles(root)) {
+            for ((lineIdx, line) in Files.readAllLines(file).withIndex()) {
+                val trimmed = line.trim()
+                if (trimmed.startsWith("//")) continue
+                val token = tokens.firstOrNull { line.contains(it) } ?: continue
+                if (line.contains("fileTree(")) continue
+                findings.add(Finding(file, lineIdx + 1, token, line))
+            }
+        }
+        return findings
     }
 
     fun findUnallowedImplementation(buildFile: Path, allowed: Set<String>): List<Finding> {

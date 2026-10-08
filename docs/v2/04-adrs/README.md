@@ -55,3 +55,14 @@
 - [ADR-0092: Plugin identity provider registration (additive)](ADR-0092-plugin-identity-provider-registration-additive.md)
 - [ADR-0093: Structured DSL runtime return — suspend structured DSL](ADR-0093-structured-dsl-runtime-return.md)
 - [ADR-0094: DSL source partition without semantic change](ADR-0094-dsl-source-partition-without-semantic-change.md)
+
+## Gap known at the time of writing (2026-10-08)
+
+This index stops at ADR-0094 and does NOT list ADR-0103 or ADR-0104, both of
+which exist and are accepted. The index is stale, not the ADRs. Adding one entry
+here does not fix that, so the gap is stated rather than hidden behind a partial
+append:
+
+- ADR-0103 — one replay authority
+- ADR-0104 — S5.5 Reactor deferred
+- ADR-0105 — admission check publication authority ([ADR-0105](ADR-0105-admission-check-publication-authority.md))

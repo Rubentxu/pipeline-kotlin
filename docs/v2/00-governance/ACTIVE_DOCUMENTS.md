@@ -21,7 +21,8 @@ ROADMAP / ACTIVE_DOCUMENTS / ADR / specs / UAT
 2. docs/v2/05-roadmap/ROADMAP.md — única secuencia de trabajo y exit criteria actuales.
 3. docs/v2/07-uat/CERTIFICATION_PROTOCOL.md y PRODUCTION_READY_UAT_MATRIX.md — qué significa certificar.
 4. docs/v2/01-product/STEP_REGISTRY_PLAN.md — cola histórica/constitución técnica del ecosistema; reconciliar su inventario con el estado SDDK antes de ejecutar cualquier WU.
-5. docs/v2/03-specifications/STEP_PLUGIN_CERTIFICATION.md y ADR-0070..0099 aceptados y AGENTS.md — límites normativos que un roadmap no puede revocar. ADR-0099 fija la autoridad de `main` para candidatos y releases y supersede ADR-0091.
+5. docs/v2/03-specifications/STEP_PLUGIN_CERTIFICATION.md y ADR-0070..0099 aceptados y AGENTS.md — límites normativos que un roadmap no revocar. ADR-0099 fija la autoridad de `main` para candidatos y releases y supersede ADR-0091.
+6. ADR-0105 — la publicación del check de admisión G10 pertenece a `pipelinek-release-harness`. Sin check publicado para el SHA candidato, G10 es `NOT_RUN` y el veredicto global es `RP-5 PRODUCT_GATE_STOP`; la ausencia nunca es `PASS`, y este repositorio no reintroduce GitHub Actions para cerrar esa fila.
 
 ## Proyección humana opcional (no autoridad)
 

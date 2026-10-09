@@ -1,7 +1,5 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.application.support.Subprocess
-import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import org.junit.jupiter.api.Assertions.assertEquals

@@ -62,6 +62,8 @@ tasks.jar {
     manifest {}
     // The plugin JAR carries only its own classes. The ServiceLoader descriptor is a
     // resource; the SDK contracts come from the host at runtime.
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
 }
 
 // ----------------------------------------------------------------------------

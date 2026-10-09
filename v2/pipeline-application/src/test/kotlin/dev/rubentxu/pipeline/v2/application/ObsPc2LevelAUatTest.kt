@@ -62,22 +62,31 @@ import kotlin.concurrent.thread
  * deadline fire, so the claim is "this survives the timeout", not "this was fast enough". No wall-clock
  * assertions, `@TempDir`, no ambient state.
  *
- * ## Mutations — measured, and one of them is a lesson
+ * ## Mutations — measured, and two of them are a lesson
  *
  * - **M-A1** (mirror stdout into the console: pipe stdout AND pump it in capture mode) REDS **204**
- *   alone and leaves 206 green. 1:1, as a fitness row should be.
- * - **M-A2** (remove the EOF drain, i.e. never close the redacting stream) REDS **nothing**.
+ *   alone and leaves 205 and 206 green. 1:1, as a fitness row should be.
+ * - **M-A2** (remove the EOF drain, i.e. never close the redacting stream) REDS **nothing**, in
+ *   either scenario.
  *
- * The second result was expected to kill 206 and does not, and the reason matters: by the time the
- * deadline fires, those 400 lines were already committed in earlier live windows, so the redactor's
- * pending buffer held nothing to lose. The row therefore proves what it says — *a timeout retains the
- * prefix* — but it is **not yet demonstrated to have teeth**, and it would be a lie to record a
- * mutation for it that does not exist.
+ * Both failures are informative and neither is papered over here.
  *
- * What M-A2 actually measures is the pending-buffer drain, which is `OBS-PC-205`'s subject and not this
- * row's. `205` needs a scenario whose last bytes are still inside the redactor when the child exits.
- * `206` in turn needs a mutation aimed at the deadline path itself — one that discards committed bytes
- * when it cancels — which has not been written yet. Both are recorded as open rather than papered over.
+ * **Why M-A2 does not kill 206.** By the time the deadline fires those 400 lines were already
+ * committed in earlier live windows, so the redactor's pending buffer held nothing to lose. The row
+ * proves what it says — *a timeout retains the prefix* — but it is not demonstrated to have teeth.
+ *
+ * **Why M-A2 does not kill 205 either, and why that matters more.** `205` was written specifically to
+ * put a fragment inside that pending buffer at child exit, and removing the close still lost nothing.
+ * So the comment in `DurableShellExecutor` — *"Close the redacting stream FIRST: its pending buffer
+ * (EOF drain) is what flushes the final sanitized bytes"* — states a causal claim that **these
+ * measurements do not support**. The bytes arrive through the read loop reaching EOF, not through
+ * `close()`. That is a claim in a code comment about the mechanism protecting the last thing a process
+ * said, and it is currently unverified; it is recorded as open rather than quietly repeated.
+ *
+ * What remains true: `205` and `206` are **different properties**, which is why one row could not
+ * stand for both. Neither has a mutation that kills it yet. `206` needs one aimed at the deadline path
+ * (one that discards committed bytes when it cancels); `205` needs one that removes whatever actually
+ * flushes the tail, which this block has not identified.
  */
 @Timeout(300)
 @DisplayName("OBS-2 Nivel A — returnStdout sin duplicar y timeout que conserva el prefijo")
@@ -172,6 +181,49 @@ class ObsPc2LevelAUatTest {
             "stdout was mirrored into the console transcript while also being the typed value, so a " +
                 "user sees every byte twice. In returnStdout mode stdout is the typed value and stderr " +
                 "is the console; the transcript must never contain stdout.",
+        )
+    }
+
+    /**
+     * OBS-PC-205 — bytes still inside the pump when the child exits are committed, not dropped.
+     *
+     * This is the row that gives [M-A2] something to kill. `DurableShellExecutor` closes the redacting
+     * stream before the sink precisely so its pending buffer drains, and that buffer holds up to
+     * `maxLiteral` bytes of lookahead: the last fragment of a stream is always still inside it when the
+     * child exits. The script therefore ends with a fragment **no longer than the lookahead and with no
+     * trailing newline**, so the only thing that can release it is the EOF drain.
+     *
+     * `206` cannot be the row for this, and measuring it is what proved it: there the payload was already
+     * committed in earlier live windows when the deadline fired, so the buffer had nothing to lose. The
+     * two rows are different properties with different mutations, which is exactly what an audit that
+     * grouped them by topic would have got wrong.
+     */
+    @Test
+    fun `OBS-PC-205 bytes pending in a pump at child exit are committed`() {
+        val runId = "r-pc2-205"
+        val root = controlRoot("pc2-205")
+        val tail = "PC205-TAIL-FRAGMENT-no-newline"
+
+        runBlocking {
+            adapter(runId, root)
+                .invoke(
+                    command = ShellCommand(
+                        script = "for i in \$(seq 1 200); do printf 'line-%05d\\n' \$i; done; printf '$tail'",
+                        returnMode = ShellReturnMode.NONE,
+                    ),
+                    runId = RunId(runId),
+                    stepIndex = 0,
+                )
+        }
+
+        val console = transcriptOrNull(root, runId)
+        assertTrue(console != null, "the child emitted 200 lines, so the plane must hold a stream")
+        assertEquals(
+            (1..200).joinToString(separator = "") { "line-%05d\n".format(it) } + tail,
+            console,
+            "the tail fragment was still inside the pump's pending buffer when the child exited and was " +
+                "never committed. A step that seals its console while bytes sit in a pump loses exactly " +
+                "the bytes a human is most likely to be watching for — the last thing the process said.",
         )
     }
 

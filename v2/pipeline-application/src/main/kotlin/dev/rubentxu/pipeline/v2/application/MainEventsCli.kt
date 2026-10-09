@@ -136,7 +136,11 @@ object MainEventsCli {
         }
 
         if (db == null || runId == null) {
-            System.err.println("Usage: pipeline events --db <path> <runId> [--kind K] [--subject v1:run:ID|v1:stage:ID:N|...] [--limit N] [--after-cursor TOKEN] [--typed]")
+            System.err.println(
+                "Usage: pipeline events --db <path> <runId> [--kind K] " +
+                    "[--subject v1:run:ID|v1:stage:ID:N|...] [--limit N] " +
+                    "[--after-cursor TOKEN] [--typed]",
+            )
             return 2
         }
 
@@ -248,7 +252,14 @@ object MainEventsCli {
                     "history past this point was NOT read",
             )
         }
-        return 0
+        // Routed through [typedExitCodeFor], which states the SAME contract as [exitCodeFor] over the typed
+        // ADT. A literal `0` happened to agree with it, but it did not INHERIT it: a function that is
+        // exhaustive over an ADT is what forces a new case to choose a status, and `return 0` has no
+        // such forcing function. Two overloads rather than a conversion between them: converting a
+        // typed page into an envelope-shaped one would mean fabricating envelopes the caller never
+        // reads, which is wasted work in the exit-code path of a command whose whole point is not to
+        // lose information.
+        return typedExitCodeFor(outcome)
     }
 
     /**
@@ -283,6 +294,26 @@ object MainEventsCli {
         // The stall is reported on stderr (evt-stalled-v1:...); the process still completed an
         // observation and must not be read as a failure by a caller that only looks at the status.
         is EventPageDrain.Outcome.Stalled -> 0
+    }
+
+    /**
+     * The SAME exit-code contract as [exitCodeFor], stated over the typed outcome.
+     *
+     * It is a second statement of one rule rather than a second rule. The two ADTs differ in the
+     * payload they carry — [EventPageDrain.TypedPage] holds `DomainEvent`s where [EventPageDrain.Page]
+     * holds envelopes — and nothing else: both are `Answered` or `Stalled`, and the status depends
+     * only on which. Duplicating the two cells is the honest encoding of that. Converting one outcome
+     * into the other to reuse a single function would either fabricate envelopes nobody reads or
+     * weaken [exitCodeFor] to take a flag, and both trade a real property (exhaustiveness over a
+     * closed ADT) for a cosmetic one (a shorter file).
+     *
+     * A change to one that is not mirrored in the other is a defect in the contract, not in the code.
+     */
+    internal fun typedExitCodeFor(outcome: EventPageDrain.TypedOutcome): Int = when (outcome) {
+        is EventPageDrain.TypedOutcome.Answered -> 0
+        // Same reasoning as the envelope branch: the stall is named on stderr as `evt-stalled-v1:...`
+        // and the observation still completed, so a status-only consumer must not read it as failure.
+        is EventPageDrain.TypedOutcome.Stalled -> 0
     }
 
     /** One line per refusal, then a count, so "were there any" is a single-token question. */

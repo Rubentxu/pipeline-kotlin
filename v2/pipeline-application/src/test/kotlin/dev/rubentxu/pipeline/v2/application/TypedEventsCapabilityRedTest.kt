@@ -99,8 +99,16 @@ class TypedEventsCapabilityRedTest {
 
     private val runId = "w1-typed-red"
 
-    /** Fixed instant: no clock in the fixture, so the stored bytes are reproducible. */
-    private val TS: Instant = Instant.parse("2026-10-09T00:00:00Z")
+    /**
+     * A fixed instant for every row these rows write.
+     *
+     * It is a function rather than a `val` because detekt's `MemberNameEqualsClassName`-adjacent
+     * `VariableNaming` rule rejects an all-caps property, and because a function cannot silently
+     * become a shared mutable clock if a future row ever needs a different timestamp. The value is
+     * pinned so that a run of these rows is byte-identical between executions — HARNESS FIDELITY
+     * LAW 4 forbids ambient time, and `Instant.now()` here would make the fixtures non-hermetic.
+     */
+    private fun ts(): Instant = Instant.parse("2026-10-09T00:00:00Z")
 
     private val runRef: ResourceRef = ResourceRefs.run(runId)
 
@@ -172,9 +180,9 @@ class TypedEventsCapabilityRedTest {
         // @TempDir (HF4): no /tmp leak, no shared singleton, no network, no wall clock in the read.
         val db = dir.resolve("events.db").toString()
         SqliteEventStore(db).use { store ->
-            store.append(StageStarted("e1", runId, 1, TS, 0, "Build"))
-            store.append(StepStarted("e2", runId, 2, TS, 0, 0, "build/sh-0", "sh"))
-            store.append(StageFinished("e3", runId, 3, TS, 0, "Build", "success"))
+            store.append(StageStarted("e1", runId, 1, ts(), 0, "Build"))
+            store.append(StepStarted("e2", runId, 2, ts(), 0, 0, "build/sh-0", "sh"))
+            store.append(StageFinished("e3", runId, 3, ts(), 0, "Build", "success"))
         }
 
         val result = cli("--db", db, runId, "--limit", "10", "--typed")
@@ -292,6 +300,216 @@ class TypedEventsCapabilityRedTest {
         )
         assertFalse(
             EventQuery.ByKind("StepStarted").matches(envelopeOf("StageStarted", 1)),
+        )
+    }
+
+    /**
+     * UAT-TYPED-008 — a row this binary cannot decode reaches a `--typed` consumer as a REFUSAL.
+     *
+     * This is the row the SDDK closeout named as unproven, and it is the one that matters most.
+     * `--typed` reads records rather than envelopes, so the tempting implementation is to walk
+     * `slice.decoded` — which is exactly `mapNotNull` over the records, and it drops the unreadable
+     * row without saying so. The consumer would then be told "there was nothing at sequence 3",
+     * which is the falsehood E4c exists to prevent, and here it would be worse than usual: the
+     * observer is asking for semantics precisely because it wants to trust the stream.
+     *
+     * The row is written RAW, through the store's own connection, because that is what version skew
+     * actually is: a newer runtime wrote a `HttpRequestFinished` this binary has no decoder for.
+     * Synthesising an `Undecodable` in a fake store would prove the fake store's behaviour, not the
+     * decoder's — the very substitution HARNESS FIDELITY LAW 2 forbids.
+     *
+     * Mutation that must kill this: changing `for (record in slice.records)` to iterate
+     * `slice.decoded` instead removes the refusal line and flips this row.
+     *
+     * ## Measured: the first version of this row did NOT have that property
+     *
+     * The mutation was applied and the suite stayed 8/8. The reason is worth recording, because it
+     * is a defect in the ROW, not in the product: `refusals.addAll(slice.refusals)` sits OUTSIDE the
+     * loop, so the refusal line is emitted correctly whether the loop walks `records` or `decoded`.
+     * The row therefore proved the accumulation, not the iteration — and it would have kept passing
+     * under exactly the `mapNotNull` it claims to forbid. UAT-TYPED-009 below is the row that actually
+     * depends on the loop, by proving the unreadable row OCCUPIES a position in the page.
+     */
+    @Test
+    @DisplayName("UAT-TYPED-008 — an undecodable row is REFUSED, not dropped, end to end")
+    fun `a version-skew row is refused through the typed command`(@TempDir dir: Path) {
+        val db = dir.resolve("skew.db").toString()
+        SqliteEventStore(db).use { store ->
+            store.append(StageStarted("e1", runId, 1, ts(), 0, "Build"))
+            store.append(StepStarted("e2", runId, 2, ts(), 0, 0, "build/sh-0", "sh"))
+        }
+        // The row a NEWER runtime would have written. Same table, same columns, same run, and it
+        // occupies sequence 3 so a consumer paging past 2 must meet it.
+        SqliteEventStore(db).underlyingConnectionFactory().let { connect ->
+            connect().use { connection ->
+                connection.prepareStatement(
+                    "INSERT INTO events (event_id, run_id, sequence, kind, occurred_at, payload) " +
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                ).use { statement ->
+                    statement.setString(1, "future-3")
+                    statement.setString(2, runId)
+                    statement.setLong(3, 3L)
+                    statement.setString(4, "HttpRequestFinished")
+                    statement.setString(5, ts().toString())
+                    statement.setString(6, """{"kind":"HttpRequestFinished","url":"https://x"}""")
+                    statement.executeUpdate()
+                }
+            }
+        }
+
+        val result = cli("--db", db, runId, "--limit", "10", "--typed")
+
+        assertEquals(0, result.exitCode, "a refusal is a reported read, not a failed command")
+
+        val emitted = result.stdout.trim().lines().filter { it.isNotBlank() }
+            .map { Json.parseToJsonElement(it).jsonObject["sequence"]!!.jsonPrimitive.content }
+        assertEquals(
+            listOf("1", "2"),
+            emitted,
+            "only the two decodable rows may be printed; the unreadable one must not be invented " +
+                "and must not appear as an event",
+        )
+
+        assertTrue(
+            result.stderr.contains("evt-refusal-v1:$runId:3"),
+            "the unreadable row at sequence 3 must be reported by name. stderr:\n${result.stderr}",
+        )
+        assertTrue(
+            result.stderr.contains("evt-refusals-v1:$runId:1"),
+            "the refusal count must be reported so 'were there any' is one token. " +
+                "stderr:\n${result.stderr}",
+        )
+    }
+
+    /**
+     * UAT-TYPED-009 — an unreadable row OCCUPIES a page position and moves the continuation.
+     *
+     * This is the row that carries the mutation weight UAT-TYPED-008 could not. A refusal is a row:
+     * it takes its place in the sequence, it is counted by the store's `limit`, and the cursor has
+     * to move PAST it.
+     *
+     * ## The limit here is 2, and that number is not arbitrary
+     *
+     * The first attempt used `--limit 1` and asserted the cursor reached 2. It failed with the cursor
+     * at 1 — and the store, not the assertion, turned out to be right. `SqliteEventStore.readRecords`
+     * counts ROWS: `LIMIT ?` is `limit + 1`, and the page breaks once `page.size == limit`. So a page
+     * of 1 contains one row and its cursor is that row's sequence. Reading 2 rows needs `--limit 2`.
+     * The failure was the test being wrong about the authority, which is worth more than a green row.
+     *
+     * Mutation that must kill this: it is NOT a `slice.decoded` edit in `drainTyped` — measured, those
+     * two loops are equivalent, because the store computes `nextCursor` from `page`, which holds
+     * `Undecodable` rows too. A `mapNotNull` over the page cannot move the cursor, so it cannot be the
+     * kill here. The kill is `slice.decoded` walked in place of `slice.records` **while the cursor is
+     * recomputed from the events actually emitted**; a drain that reported only what it interpreted
+     * would leave the cursor at 1 and strand the refusal forever.
+     *
+     * The discrete observation, per HARNESS FIDELITY LAW 3: two reads, one cursor value, one refusal
+     * line. No timing, no milliseconds, no ordering by wall clock.
+     *
+     * ## The second read asserts ABSENCE of a refusal, and that is deliberate
+     *
+     * The first version expected `evt-refusal-v1:<runId>:2` on the resumed page. It failed, and it was
+     * the assertion that was wrong: page 1 already carried row 2, so the cursor resting on 2 means
+     * the resumed read starts after it. A row cannot be both delivered on one page and awaited on the
+     * next. What the second read actually pins is the no-stranding half — a cursor that restated the
+     * refusal on every page would make an unreadable row un-pageable, which is the failure mode this
+     * whole path exists to prevent.
+     */
+    @Test
+    @DisplayName("UAT-TYPED-009 — an unreadable row holds its page position and moves the cursor")
+    fun `an unreadable row holds its position`(@TempDir dir: Path) {
+        val db = dir.resolve("position.db").toString()
+        SqliteEventStore(db).use { store ->
+            store.append(StageStarted("e1", runId, 1, ts(), 0, "Build"))
+        }
+        SqliteEventStore(db).underlyingConnectionFactory().let { connect ->
+            connect().use { connection ->
+                connection.prepareStatement(
+                    "INSERT INTO events (event_id, run_id, sequence, kind, occurred_at, payload) " +
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                ).use { statement ->
+                    statement.setString(1, "future-2")
+                    statement.setString(2, runId)
+                    statement.setLong(3, 2L)
+                    statement.setString(4, "HttpRequestFinished")
+                    statement.setString(5, ts().toString())
+                    statement.setString(6, """{"kind":"HttpRequestFinished"}""")
+                    statement.executeUpdate()
+                }
+            }
+        }
+
+        // Two rows exist: the decodable one at 1 and the unreadable one at 2. The store counts ROWS,
+        // so `--limit 2` returns both and the continuation must rest on 2 — the unreadable row holds
+        // its place rather than evaporating and leaving the cursor behind on the last decoded event.
+        val first = cli("--db", db, runId, "--limit", "2", "--typed")
+        assertEquals(0, first.exitCode, "stderr=${first.stderr}")
+
+        val continuation = first.stderr.lineSequence()
+            .firstOrNull { it.startsWith("evt-cursor-v1:") }
+        assertTrue(continuation != null, "no continuation was reported. stderr:\n${first.stderr}")
+
+        val after = EventCursor.decode(continuation!!)
+        assertTrue(
+            after != null && after.lastSequence == 2L,
+            "the continuation must rest on the unreadable row at sequence 2, not on the last " +
+                "decoded sequence. Got '$continuation'",
+        )
+
+        // Resuming from that cursor must NOT re-report the refusal: the row was delivered and consumed by
+        // the page above, and a cursor that handed it back would re-read it on every page forever.
+        // The empty continuation is therefore the correct outcome, and asserting it pins the
+        // no-stranding property rather than the no-duplication one.
+        val second = cli("--db", db, runId, "--limit", "10", "--typed", "--after-cursor", continuation)
+        assertEquals(0, second.exitCode, "stderr=${second.stderr}")
+        assertTrue(
+            !second.stderr.contains("evt-refusal-v1:$runId:"),
+            "a resumed read must not re-report a row the cursor already passed. " +
+                "stderr:\n${second.stderr}",
+        )
+    }
+
+    /**
+     * UAT-TYPED-010 — the two exit-code statements are ONE contract, not two contracts.
+     *
+     * The typed branch originally returned a literal `0`. That agreed with the envelope contract by
+     * coincidence, not by inheritance, and the difference matters: a function exhaustive over a closed
+     * ADT forces a newly added case to choose a status, while `return 0` forces nothing. The row below
+     * states the two mappings must agree, so a divergence is a failing test rather than a reviewer's
+     * memory.
+     *
+     * Mutation that must kill this: give `typedExitCodeFor`'s `Stalled` cell a non-zero status while
+     * `exitCodeFor`'s stays `0`. A consumer that only reads the process status cannot tell which
+     * projection it invoked, and the two branches of one command would disagree about what a stall means.
+     */
+    @Test
+    @DisplayName("UAT-TYPED-010 — typed and envelope exit codes state one contract")
+    fun `typed and envelope exit codes cannot drift apart`() {
+        val stalledEnvelope = EventPageDrain.Outcome.Stalled(EMPTY_PAGE, null)
+        val answeredEnvelope = EventPageDrain.Outcome.Answered(EMPTY_PAGE)
+        val typed = EventPageDrain.TypedPage(emptyList(), null, false, emptyList())
+        val stalledTyped = EventPageDrain.TypedOutcome.Stalled(typed, null)
+        val answeredTyped = EventPageDrain.TypedOutcome.Answered(typed)
+
+        assertEquals(
+            MainEventsCli.exitCodeFor(stalledEnvelope),
+            MainEventsCli.typedExitCodeFor(stalledTyped),
+            "a Stalled typed read and a Stalled envelope read are the same failure and must agree " +
+                "on the status",
+        )
+        assertEquals(
+            MainEventsCli.exitCodeFor(answeredEnvelope),
+            MainEventsCli.typedExitCodeFor(answeredTyped),
+            "an Answered typed read and an Answered envelope read must agree on the status",
+        )
+    }
+
+    private companion object {
+        val EMPTY_PAGE = dev.rubentxu.pipeline.v2.events.identity.EventPage(
+            emptyList(),
+            null,
+            false,
+            emptyList(),
         )
     }
 }

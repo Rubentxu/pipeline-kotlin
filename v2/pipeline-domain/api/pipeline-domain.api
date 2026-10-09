@@ -2593,6 +2593,17 @@ public final class dev/rubentxu/pipeline/v2/domain/credentials/ZipBindingSpec : 
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/digest/Sha256 {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/digest/Sha256;
+	public final fun ofBytes ([B)Ljava/lang/String;
+	public final fun ofBytesPrefix ([BI)Ljava/lang/String;
+	public final fun ofDirectory (Ljava/nio/file/Path;Ljava/util/Set;)Ljava/lang/String;
+	public static synthetic fun ofDirectory$default (Ldev/rubentxu/pipeline/v2/domain/digest/Sha256;Ljava/nio/file/Path;Ljava/util/Set;ILjava/lang/Object;)Ljava/lang/String;
+	public final fun ofFile (Ljava/nio/file/Path;)Ljava/lang/String;
+	public final fun ofString (Ljava/lang/String;)Ljava/lang/String;
+	public final fun ofText (Ljava/lang/String;)Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/directive/AdmittedDirective {
 	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveInvocation;Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveExecutionPolicy;Ldev/rubentxu/pipeline/v2/domain/directive/DirectivePhase;)V
 	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/directive/DirectiveInvocation;

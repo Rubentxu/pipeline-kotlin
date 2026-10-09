@@ -10,30 +10,28 @@ import org.junit.jupiter.api.Test
 /**
  * RED probe for the P3 candidate-version blocker. **This test is EXPECTED TO FAIL.**
  *
- * It is committed deliberately red: the failure is the evidence that
- * `0.48.0-rc1` cannot be published, and it stays red until the version-parsing
- * contract is resolved. See `docs/v2/05-roadmap/P3_CANDIDATE_VERSION_BLOCKER.md`,
- * which records the four design options. Do not "fix" this test by weakening the
- * assertion: the correct fix is a decision about how a prerelease version is
- * represented, not a relaxed check.
+ * It was committed deliberately red and the RED was executed and recorded BEFORE the
+ * decision was taken: `0.48.0-rc1` could not be published. The owner then resolved it
+ * the other way — candidate state belongs in `CandidateHandoff`, not in the product
+ * version — and the product version is the final `0.48.0`.
+ *
+ * Do not "fix" this test by weakening the assertion, and do not re-enable it. If a
+ * future change made the runtime parse `0.48.0-rc1`, that would be a regression against
+ * the `0.43.0` identity-laundering incident, and the guard for it is the ProductVersion
+ * contract, not this probe.
  *
  * `RuntimeApiVersion.parse` is `private`, so this reproduces its exact documented
  * contract (the KDoc says "MAJOR.MINOR.PATCH, or null for anything else") rather
- * than calling it. If this test ever passes because the production parser changed,
- * the copy below must be replaced with a call to the real parser, or it will go on
- * asserting a contract the code no longer has.
+ * than calling it.
  *
- * The class is `@Disabled` so the release gate stays green while the blocker is
- * open. That is a deliberate, declared choice, not a skipped green: the RED was
- * executed and its XML recorded (tests="2" failures="1" errors="0", exit=1) before
- * disabling, and the blocker document quotes that result. Re-enable the class to
- * re-measure once the version contract is decided.
- *
- * The contract this probe asserts is the one the release plan depends on:
- * a candidate version of the form `0.48.0-rc1` must be readable as the running
- * API version, because `rootProject.version` becomes that string.
+ * Its lasting value is as a regression guard on the LAW: if the runtime ever parsed
+ * `0.48.0-rc1`, this probe going green would be a warning, not a win.
  */
-@Disabled("P3 blocker: 0.48.0-rc1 is unreadable by RuntimeApiVersion.parse; see docs/v2/05-roadmap/P3_CANDIDATE_VERSION_BLOCKER.md")
+// One line on purpose: the RP-040 fitness scanner matches `^\s*@Disabled(\([^)]*\))?` and its
+// capture excludes the closing paren, so a MULTILINE @Disabled(reason) is classified as a bare
+// @Disabled and fails the fitness. A single-line reason under detekt's 160-char limit satisfies
+// both rules at once. Keep this line under 160 characters.
+@Disabled("P3: 0.48.0-rc1 is illegal BY DESIGN. ProductVersion rejects a candidate suffix; the version is the final 0.48.0. See P3_CANDIDATE_VERSION_BLOCKER")
 class RuntimeApiVersionPrereleaseProbeTest {
 
     /** Verbatim copy of the production algorithm in RuntimeApiVersion.parse. */

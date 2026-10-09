@@ -71,8 +71,20 @@ repositories {
 //
 // TRAIN P3 identity law below: the product version is final from the moment the candidate is
 // built, and the tag is applied afterwards to exactly the certified bytes. So this line opens the
-// 0.47.0 train WITHOUT creating a tag and WITHOUT claiming certification.
-version = "0.47.0"
+// 0.48.0 train WITHOUT creating a tag and WITHOUT claiming certification.
+//
+// ROADMAP A (2026-10-09): MINOR, following the same rule the 0.46.0 -> 0.47.0 note above states.
+// `:pipeline-sdk-bom` is a new published module, which changes what a consumer can build
+// against; `:pipeline-step-sdk:processor` is retired in the same window. Nothing pre-existing
+// was removed, so the 0.x convention takes the MINOR component: 0.47.0 -> 0.48.0.
+//
+// This line carries NO candidate suffix and MUST NOT grow one. `ProductVersion` rejects a
+// candidate suffix by construction (`^(\d+)\.(\d+)\.(\d+)$`) because the v0.43.0 incident:
+// an artifact internally consistent at `0.43.0-rc1` was later presented under a GA identity.
+// Candidate state lives in `CandidateHandoff` (`candidateSequence`, `candidateId` = sha256 of
+// the distribution ZIP), never in this string. The product version is final; the candidate is
+// identified by digest.
+version = "0.48.0"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

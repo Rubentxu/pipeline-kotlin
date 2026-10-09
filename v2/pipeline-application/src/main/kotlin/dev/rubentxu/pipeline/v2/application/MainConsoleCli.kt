@@ -278,19 +278,37 @@ object MainConsoleCli {
         var runId: String? = null
         var opId: String? = null
         var maxBytes = ConsoleReadService.DEFAULT_PAGE_BYTES
+        var maxBytesArg: String? = null
         var afterCursor: String? = null
         var range: String? = null
 
         var i = 0
         while (i < args.size) {
-            when (args[i]) {
+            val arg = args[i]
+            when (arg) {
                 "--control-dir" -> controlDir = args.getOrNull(++i)
-                "--max-bytes" -> maxBytes = args.getOrNull(++i)?.toIntOrNull() ?: ConsoleReadService.DEFAULT_PAGE_BYTES
+                // Parsed as text and validated below, so a flag that does not parse becomes a refusal
+                // rather than the default. `--max-bytes abc` used to read as DEFAULT_PAGE_BYTES with
+                // exit 0 — the same shape as a command that silently did something other than what was
+                // asked. AUD-04, aligned with [MainEventsCli].
+                "--max-bytes" -> maxBytesArg = args.getOrNull(++i)
                 "--after-cursor" -> afterCursor = args.getOrNull(++i)
                 "--range" -> range = args.getOrNull(++i)
                 else -> when {
-                    !args[i].startsWith("--") && runId == null -> runId = args[i]
-                    !args[i].startsWith("--") && opId == null -> opId = args[i]
+                    // AUD-04. This arm has no `else` of its own, so an unknown `--flag` matched it,
+                    // satisfied neither condition, and completed as Unit — parsed as nothing, exit 0.
+                    // A third positional did the same: dropped while the first two were kept.
+                    arg.startsWith("--") -> {
+                        System.err.println("Error: unknown option: $arg")
+                        return 2
+                    }
+                    runId == null -> runId = arg
+                    opId == null -> opId = arg
+                    // The command reads ONE run and ONE op.
+                    else -> {
+                        System.err.println("Error: unexpected extra argument: $arg")
+                        return 2
+                    }
                 }
             }
             i++
@@ -302,6 +320,16 @@ object MainConsoleCli {
                     "[--max-bytes N] [--after-cursor TOKEN] | --range FROM:TO",
             )
             return 2
+        }
+
+        // A flag that does not parse must not become the default.
+        if (maxBytesArg != null) {
+            val parsed = maxBytesArg.toIntOrNull()
+            if (parsed == null || parsed <= 0) {
+                System.err.println("Error: --max-bytes must be a positive integer, got: $maxBytesArg")
+                return 2
+            }
+            maxBytes = parsed
         }
 
         val root = Path.of(controlDir)

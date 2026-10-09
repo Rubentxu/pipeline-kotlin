@@ -81,13 +81,36 @@ object MainEventsCli {
 
         var i = 0
         while (i < args.size) {
-            when (args[i]) {
+            val arg = args[i]
+            when (arg) {
                 "--db" -> db = args.getOrNull(++i)
                 "--kind" -> kind = args.getOrNull(++i)
                 "--subject" -> subjectCanonical = args.getOrNull(++i)
                 "--limit" -> limitArg = args.getOrNull(++i)
                 "--after-cursor" -> afterCursor = args.getOrNull(++i)
-                else -> if (!args[i].startsWith("--") && runId == null) runId = args[i]
+                else -> when {
+                    // AUD-04. This arm used to be `else -> if (!args[i].startsWith("--") && runId == null)
+                    // runId = args[i]`, so an unknown `--flag` matched `else`, failed the `startsWith`
+                    // test and fell out of the `when` — parsed as nothing, exit 0. A caller cannot tell a
+                    // refused command from a served one by status, which is the whole problem: an external
+                    // consumer asking for `--typed` received untyped envelopes with 0 and no signal that it
+                    // had asked for a different command than the one it got.
+                    //
+                    // This is already this file's neighbour convention, not a new rule imported from
+                    // elsewhere: `CliParser` refuses an unknown option with `CliError.TrailingOption`, and
+                    // `MainObserveCli` is strict for exactly that reason. This parser predates it.
+                    arg.startsWith("--") -> {
+                        System.err.println("Error: unknown option: $arg")
+                        return 2
+                    }
+                    // The command reads ONE run. A second positional used to be dropped while the first was
+                    // kept, so the caller's intent was silently narrowed to a subset they did not choose.
+                    runId != null -> {
+                        System.err.println("Error: unexpected extra argument: $arg")
+                        return 2
+                    }
+                    else -> runId = arg
+                }
             }
             i++
         }

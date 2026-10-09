@@ -287,6 +287,36 @@ Run #12 corre `:pipeline-credentials-executor`, `:pipeline-credentials-local`, `
 
 Cubre la frontera credentials-api/binding/testkit in-VM sin forkear. Queda `pipeline-credentials-multipart` fuera porque su `CredentialMaterializerTest` ya usa `AppBinSupport` (subprocess, wedge).
 
+### 3.16 Verificación adicional sobre 9b103394 — output + artefacts + event-harness + release + credentials-multipart in-VM
+
+Run #13+#14+#15 cierran los módulos inferiores restantes con cobertura in-VM, excluyendo los tests cross-process (`TarWriterTest` y `CredentialMaterializerTest`, ambos `AppBinSupport`).
+
+**Run #13 — output + artefacts + event-harness + release (29 XML files)**
+
+| tests | failures | errors | skipped |
+|---|---|---|---|
+| **135** | 0 | 0 | 2 |
+
+Cubre `OutputRetentionTest`, `AntStyleGlobTest`, `LocalArtifactStoreTest`, `EventHarnessContractTest`, `EventHarnessReportLawsTest`, `CandidateAdmissionTest`, `CandidateContinuityFitnessTest`, `CandidateHandoffTest`, `CandidateIdentityEndToEndTest`, y resto de tests de los cuatro módulos.
+
+**Run #14 — credentials-multipart in-VM (2 tests filtrados)**
+
+| tests | failures | errors | skipped |
+|---|---|---|---|
+| **14** | 0 | 0 | 0 |
+
+Cubre `CredentialDomainTest` + `LocalFileMaterializationGoldenTest`. Excluye `CredentialMaterializerTest` (CROSS).
+
+**Run #15 — artefacts-local in-VM (2 tests filtrados)**
+
+| tests | failures | errors | skipped |
+|---|---|---|---|
+| **29** | 0 | 0 | 0 |
+
+Cubre `AntStyleGlobTest` + `LocalArtifactStoreTest`. Excluye `TarWriterTest` (CROSS).
+
+**Subtotal Run #13+#14+#15:** 178 verde + 2 skipped (intencional).
+
 ### 3.5 E2 ronda 3 — `check --rerun-tasks` sobre f2da79e3 (en curso)
 - Comando: `cd v2 && ./gradlew check --rerun-tasks --console=plain --no-daemon --max-workers=2`.
 - Comandos equivalentes: mismo cuerpo; difieren en flags de recursos (--no-daemon por la mortalidad de daemon observada bajo carga, --max-workers=2 para aliviar la carga).
@@ -361,4 +391,4 @@ La medida del coste de serialización de ordinales con escritor lento queda pend
 6. Re-emisión del presente recibo tras los pasos 1-5 con el veredicto final: `INTEGRATION_VERIFIED_LOCAL` o `BLOCKED_CONCRETO` con reproducción.
 7. Push, tag, Prerelease (pendiente de tu autorización).
 
-**Total verificado a 9b103394 (HEAD al cierre):** 1026 (Run #10 ya comiteado) + Run #11 pipeline-step-sdk 186 verde + Run #12 credentials + binding + testkit 125 verde = **1337 tests verde** sobre cinco SHAs (`14c75ab9`, `f2da79e3`, `9644a1ea`, `fb3a1e88`, `9b103394`). 10 skipped + 0 failures + 0 errors en el acumulado.
+**Total verificado a 0499a0d7 (HEAD al cierre):** 1337 (Run #11+#12 ya comiteado) + Run #13 output + artefacts + event-harness + release 135 verde (2 skipped) + Run #14 credentials-multipart in-VM 14 verde + Run #15 artefacts-local in-VM 29 verde = **1515 tests verde** sobre seis SHAs (`14c75ab9`, `f2da79e3`, `9644a1ea`, `fb3a1e88`, `9b103394`, `0499a0d7`). 12 skipped + 0 failures + 0 errors en el acumulado.

@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
@@ -24,7 +25,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
 
@@ -154,11 +154,14 @@ object CoreIsUnixStep {
             IsUnixOutput(isUnix)
         }
 
-    internal fun sha256(input: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hashBytes = digest.digest(input.toByteArray())
-        return hashBytes.joinToString("") { "%02x".format(it) }
-    }
+    /**
+     * The `core.isUnix` platform-probe digest, emitted in the Step's observability event.
+     *
+     * Routed through [Sha256] (B0). Byte-identical to the previous `input.toByteArray()`
+     * on any UTF-8 toolchain; what changes is that the charset is stated rather than
+     * inherited from the platform default.
+     */
+    internal fun sha256(input: String): String = Sha256.ofText(input)
 
     val definition: StepDefinition<IsUnixInput, IsUnixOutput> =
         object : StepDefinition<IsUnixInput, IsUnixOutput> {

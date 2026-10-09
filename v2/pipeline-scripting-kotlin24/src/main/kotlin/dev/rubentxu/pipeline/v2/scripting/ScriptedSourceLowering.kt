@@ -268,10 +268,22 @@ object ScriptedSourceLowering {
         }
     """.trimIndent()
 
+    /**
+     * The scripted artifact's `sourceDigest`, and the body digest in the unlocatable rewrite.
+     *
+     * Routed through [Sha256] (B0). This is DURABLE identity, not an observability value: it
+     * participates in `ScriptedArtifactIdentity`, which DR-10 protects, so a change to the bytes
+     * hashed here would reinterpret existing history.
+     *
+     * The bytes hashed are unchanged. The previous expression used `input.toByteArray()` with
+     * no charset, which resolves to the platform default; JEP 400 made that UTF-8 in JDK 18, so
+     * on every supported toolchain this migration is byte-identical and no committed identity
+     * moves. What it removes is the dependency on that default being UTF-8 rather than an
+     * assumption about it. The assertion that pins this is
+     * `Sha256MigrationCharsetInvariantTest`.
+     */
     internal fun sha256(input: String): String =
-        java.security.MessageDigest.getInstance("SHA-256")
-            .digest(input.toByteArray())
-            .joinToString("") { "%02x".format(it) }
+        dev.rubentxu.pipeline.v2.domain.digest.Sha256.ofText(input)
 
     private const val DSL_API_VERSION = "r3-dsl-v1"
     private const val COMPILER_ADAPTER_VERSION = "r3-compiler-v1"

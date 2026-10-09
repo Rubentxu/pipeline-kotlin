@@ -2,11 +2,11 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.TempWorkspaceResult
 import dev.rubentxu.pipeline.v2.application.TemporaryWorkspaceOperations
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.PwdResolved
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
 
@@ -91,11 +91,10 @@ class TemporaryWorkspaceOperationsAdapter(
          * module that need to assert against the canonical token. NO other
          * production code path is allowed to construct the token outside
          * this adapter.
+         *
+         * Routed through [Sha256] (B0). Byte-identical on any UTF-8 toolchain; the
+         * charset is now stated rather than taken from the platform default.
          */
-        internal fun sha256Hex(input: String): String {
-            val digest = MessageDigest.getInstance("SHA-256")
-            val hashBytes = digest.digest(input.toByteArray())
-            return hashBytes.joinToString("") { byte -> "%02x".format(byte) }
-        }
+        internal fun sha256Hex(input: String): String = Sha256.ofText(input)
     }
 }

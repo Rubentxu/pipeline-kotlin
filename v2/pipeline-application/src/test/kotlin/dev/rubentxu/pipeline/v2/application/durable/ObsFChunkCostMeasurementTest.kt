@@ -175,9 +175,10 @@ class ObsFChunkCostMeasurementTest {
         val store = SegmentOutputStore(root.resolve(OutputPlaneProvider.OUTPUT_DIR))
         store.recover()
         val address = OutputStreamAddress.of("run-obs-f", "sh-0", OutputChannel.STDOUT)
-        store.frameIndex().declareStream(address.stream, address.channel)
+        // The ingress declares the stream itself, on its first write. This row measures chunk cost
+        // with real bytes, so the declaration happens here rather than up front.
         val ingress =
-            RedactingOutputIngress(store.open(address.stream), store.frameIndex(), address)
+            RedactingOutputIngress({ store.open(address.stream) }, store.frameIndex(), address)
 
         val chunk = ByteArray(windowBytes) { (it % 251).toByte() }
         val expected = MessageDigest.getInstance("SHA-256")

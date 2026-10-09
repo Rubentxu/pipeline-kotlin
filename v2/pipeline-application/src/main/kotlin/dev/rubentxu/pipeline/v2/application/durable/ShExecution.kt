@@ -194,6 +194,14 @@ object ShExecution {
             // and a cursor hand-off with nothing extra to keep in step with the bytes. Declaring
             // both streams up front is what makes a crash between the first byte commit and the
             // first frame recoverable instead of lost — see OutputFrameIndex.declareStream.
+            //
+            // The handles are NOT opened here. `RedactingOutputIngress` opens and declares on its
+            // first write of at least one byte, which keeps that recovery property (the first
+            // reserve creates the first committed byte, and the stream is declared by then) while
+            // stopping a step that printed nothing from leaving a stream behind. Declaring both
+            // channels eagerly made every `sh` look like it produced console output, and in capture
+            // mode it declared a STDOUT stream for a channel that is the typed value and must never
+            // be part of the transcript.
             val ingressSinks: Map<ProcessOutputChannel, ProcessOutputSink> = controlDirRoot?.let { root ->
                 val store = OutputPlaneProvider.storeForWriting(root)
                 val streams = OutputPlaneProvider.streamsOf(runId, opId.format())
@@ -203,11 +211,10 @@ object ShExecution {
                             ProcessOutputChannel.STDOUT -> streams.stdout
                             ProcessOutputChannel.STDERR -> streams.stderr
                         }
-                        store.frameIndex().declareStream(address.stream, address.channel)
                         put(
                             channel,
                             RedactingOutputIngress(
-                                store.open(address.stream),
+                                { store.open(address.stream) },
                                 store.frameIndex(),
                                 address,
                             ) as ProcessOutputSink,

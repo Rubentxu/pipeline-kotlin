@@ -38,15 +38,47 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputSink
  * plausible. [refusal] records the first such failure and the caller turns it into a typed step
  * failure.
  *
+ * ## Why the stream is declared on the FIRST BYTE and not up front
+ *
+ * `openStream` is called lazily, on the first write of at least one byte. Declaring both channels
+ * before the child ran — which is what `ShExecution` used to do — makes every step look like it
+ * produced console output, including `sh("true")` and a capture-mode `sh` whose stderr is silent. A
+ * reader that sees a stream cannot tell "this step was quiet" from "this step printed something I
+ * lost", and a consumer tailing a run gets a stream per step per channel that never advances.
+ *
+ * The recovery property that motivated the eager declaration is preserved exactly: the first
+ * `reserve` is what creates the first committed byte, and by then the stream HAS been declared. A
+ * crash between `commit` and `appendFrame` therefore still leaves a declared stream, which is the
+ * case recovery needs. What the change removes is declaring streams for bytes that never existed.
+ *
  * @see ProcessOutputSink
  */
 internal class RedactingOutputIngress(
-    private val handle: OutputStreamHandle,
+    private val openStream: () -> OutputStreamHandle,
     private val frameIndex: OutputFrameIndex,
     private val address: OutputStreamAddress,
 ) : ProcessOutputSink {
 
     private var refusal: ProcessOutputRefusal? = null
+
+    /**
+     * The durable handle, opened and declared exactly once, on first use.
+     *
+     * `lateinit` would work and would hide the "not opened yet" case from the type; a nullable field
+     * says it, and the accessor is the only place that has to care.
+     */
+    private var opened: OutputStreamHandle? = null
+
+    private fun handle(): OutputStreamHandle {
+        val existing = opened
+        if (existing != null) return existing
+        val fresh = openStream()
+        // Declared BEFORE the first reservation, so a crash after `commit` and before `appendFrame`
+        // still leaves a stream recovery knows about. That ordering is the contract; do not move it.
+        frameIndex.declareStream(fresh.stream, address.channel)
+        opened = fresh
+        return fresh
+    }
 
     override fun write(bytes: ByteArray, offset: Int, length: Int) {
         // Once refused, further writes cannot be honoured, and pretending otherwise would produce
@@ -55,6 +87,7 @@ internal class RedactingOutputIngress(
         require(offset >= 0 && length <= bytes.size - offset) {
             "write($offset, $length) is outside a ${bytes.size}-byte array"
         }
+        val handle = handle()
         try {
             val reservation = handle.reserve(length)
             // The zero-copy case matters: the pump hands over its own reuse buffer, and copying a

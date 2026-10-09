@@ -79,8 +79,7 @@ object ObsPc2IngestAgent {
                 ProcessOutputChannel.STDOUT -> streams.stdout
                 ProcessOutputChannel.STDERR -> streams.stderr
             }
-            frameIndex.declareStream(address.stream, address.channel)
-            RedactingOutputIngress(store.open(address.stream), frameIndex, address)
+            RedactingOutputIngress({ store.open(address.stream) }, frameIndex, address)
         }
 
         // O_RDWR on a FIFO: never blocks, and keeps this process a writer so the read side never

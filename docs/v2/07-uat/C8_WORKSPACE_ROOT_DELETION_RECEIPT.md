@@ -127,16 +127,25 @@ replace the runtime ownership check.
 | C8-M8 | traversal outside the workspace refused for **every** intent |
 | C8-M9 | a symlink inside the workspace is not followed out of it |
 | C8-M9a | a target that IS a symlink is confined; no marker lands outside |
+| C8-M10 | a legacy payload without `path` still decodes to the root |
+| C8-M10a | that decoded root is REFUSED on a `UserOwned` workspace |
+| C8-M10b | the same payload DOES wipe a `ScratchOwned` workspace |
+| C8-M10c | `DecidedElsewhere` on a legacy payload fails closed too |
 | C9-M1 | `UserOwned` + pattern-less `cleanWs` → REFUSED, no `.cleaned` marker |
 | C9-M2 | empty pattern list is a full wipe, refused like `null` |
 | C9-M3 | `ScratchOwned` keeps the pattern-less sweep contract |
 | C9-M4 | both executors take the same type, so C8 and C9 cannot drift |
 
+C8-M10 and M10a…M10c live in `pipeline-application`
+(`C8HistoricalPayloadAuthorizationTest`), because the codec under test is
+`CoreDeleteDirStep` and `pipeline-step-sdk:files` must not depend on
+`pipeline-application`.
+
 The zero-effects oracle is a **filesystem observation** (canary files survive),
 not the thrown exception — a Step that deleted everything and then threw would
 pass an `assertThrows`-only test (HARNESS FIDELITY LAW §3).
 
-### Mutations — 9, each attributed to the rows it flips
+### Mutations — 10, each attributed to the rows it flips
 
 ```text
 M1   UserOwned → permitted            killed C8-M3, C8-M7
@@ -148,6 +157,7 @@ M6   DecidedElsewhere → permitted     killed C8-M6, C8-M6a
 M7   re-add `val permitsRootWipe`     killed C8-M2
 M8   collapse the `when` to `==`      killed C8-M2a
 M9   revert the real-path anchoring   killed C8-M9a
+M10  change the decoder fallback      killed C8-M10, M10a, M10b, M10c
 ```
 
 M1, M2 and M6 were first written against the boolean-carrying enum and are now
@@ -195,6 +205,50 @@ The last row predates the enum redesign and was measured before it. It is
 reported as historical evidence for the first iteration, not as verification of
 the code committed here; the rows above are the post-redesign evidence and are
 the ones bound to the final SHA.
+
+### Historical payload without `path` — the criterion was misstated, then met
+
+This was recorded as "ASSUMED, not measured". Writing the row found that the
+*decode* half was already covered and the *authorization* half was not — a
+distinction the original criterion did not make.
+
+Already present, unremarked:
+
+```text
+CoreDeleteDirStepUnitTest
+  "input codec decodes legacy payload without path field (defaults to dot)"
+```
+
+What was missing is that a payload with no `path` decodes to the workspace
+**ROOT** — it lands exactly where C8 is about — and nothing connected that
+decoded value to the ownership check. A round-trip is self-consistent by
+construction, so a decode test cannot witness the safety claim on its own.
+
+`C8HistoricalPayloadAuthorizationTest` (pipeline-application) closes it with
+four rows:
+
+| Row | Claim |
+| --- | --- |
+| C8-M10 | the legacy payload still decodes to `.`, unchanged |
+| C8-M10a | the decoded root is REFUSED on a `UserOwned` workspace, no marker written |
+| C8-M10b | the same payload DOES wipe a `ScratchOwned` workspace |
+| C8-M10c | `DecidedElsewhere` on a legacy payload also fails closed |
+
+C8-M10b exists so M10a cannot be true for the wrong reason: confinement that
+refuses everything is not confinement. M10a also asserts no `.deleted` marker,
+because a marker on a refused run would make a later MEMOIZED replay believe
+the wipe already happened.
+
+The row had to be written in `pipeline-application`, not in the SDK matrix:
+`CoreDeleteDirStep` lives there and `pipeline-step-sdk:files` must not depend
+on it. Attempting it in the SDK produced
+`compileTestKotlin: Unresolved reference 'CoreDeleteDirStep'` — the dependency
+direction refusing the shortcut, which is the correct outcome, not a nuisance.
+
+| Mutation | Result |
+| --- | --- |
+| MUT-M10 change the decoder fallback from `"."` to a sub-path | all four rows RED: M10 `"expected: <.> but was: <subdir-not-the-root>"`, M10b `NoSuchFileException`, M10a/M10c wrong exception type |
+| restore, verified by hash | `8bd0a2a6ceab6722e7d7f218f94ed9c0531134924279c1f7f5d57ee00a9551a3` |
 
 ### Symlink confinement — found a real escape, not just missing coverage
 
@@ -309,19 +363,19 @@ Satisfied, with evidence above:
 | --- | --- |
 | API + execution satisfy every C8 criterion | MET |
 | Symlink / nested-directory confinement | MET — was PARTIAL; writing the row found a real escape (marker written through a link into a directory outside the workspace), now fixed and mutation-verified |
-| Historical payload without `path` decodes and authorizes | ASSUMED, not measured — the `path ?: "."` path is read in the decoder but has no explicit regression test |
+| Historical payload without `path` decodes and authorizes | MET — the decode half was already covered; `C8HistoricalPayloadAuthorizationTest` adds the authorization half, which was genuinely absent |
 | Installed-distribution canary | OPEN — `SC-011-14` is a real application run, not a run against the installed ZIP |
 
-The remaining two are test-coverage gaps, not known defects: the production
-behaviour on each is believed correct and nothing observed has contradicted
-that. But "believed correct" is the phrase this receipt has been burned by
-before, so the verdict stays MITIGATED until the rows exist and are bound to the
-SHA that carries them.
+The remaining one is a test-coverage gap, not a known defect: the installed
+distribution has not been exercised. But "believed correct" is the phrase this
+receipt has been burned by before, so the verdict stays MITIGATED until the row
+exists and is bound to the SHA that carries it.
 
-The symlink criterion is the reason this section exists. It was entered as
-"PARTIAL — probably fine, no row" and turned out to be a live escape that a
-survival-only conformance test would have passed. Coverage gaps are hypotheses,
-and this one paid.
+Two criteria that were entered as "probably fine, no row" both turned out
+otherwise: the symlink criterion was a live escape that a survival-only
+conformance test would have passed, and the historical-payload criterion was
+missing its entire authorization half while looking covered. Coverage gaps are
+hypotheses, and both of these paid.
 
 ## Reference implementation consulted
 

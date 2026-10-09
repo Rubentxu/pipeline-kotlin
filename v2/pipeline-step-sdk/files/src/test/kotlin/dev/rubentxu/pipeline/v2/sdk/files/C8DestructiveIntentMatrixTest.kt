@@ -233,6 +233,13 @@ class C8DestructiveIntentMatrixTest {
         )
     }
 
+    // ── historical payload: decode AND authorize ─────────────────────────
+    //
+    // These two rows live in pipeline-application, not here: the codec under
+    // test is CoreDeleteDirStep.definition.contract.inputCodec, and the SDK
+    // module must not depend on the application module. See
+    // C8HistoricalPayloadAuthorizationTest.
+
     // ── each state maps to a distinct, testable decision ─────────────────────
 
     @Test

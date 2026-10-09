@@ -102,7 +102,7 @@ class SegmentFrameIndex(
         channel: OutputChannel,
         from: Long,
         to: Long,
-    ): OutputFrame = lock.withLock {
+    ): OutputFrame {
         val address = OutputStreamAddress.parse(stream)
         require(address != null && address.channel == channel) {
             "stream $stream does not name channel $channel"
@@ -110,12 +110,14 @@ class SegmentFrameIndex(
         require(to > from) { "a frame is never empty: to ($to) must exceed from ($from)" }
 
         val runId = address.runId
-        sealTornTail(runId)
-        val ordinal = nextOrdinal(runId)
-        val frame = OutputFrame(ordinal, stream, channel, from, to)
-        appendLine(framesFile(runId), encode(frame))
-        lastOrdinalByRun[runId] = ordinal
-        frame
+        return withOrdinalAuthority(runId) {
+            sealTornTail(runId)
+            val ordinal = nextOrdinal(runId)
+            val frame = OutputFrame(ordinal, stream, channel, from, to)
+            appendLine(framesFile(runId), encode(frame))
+            lastOrdinalByRun[runId] = ordinal
+            frame
+        }
     }
 
     override fun framesOfRun(runId: String, afterOrdinal: Long, limit: Int): List<OutputFrame> {
@@ -163,6 +165,7 @@ class SegmentFrameIndex(
             loadDeclared(runId)
             loadOrdinals(runId)
 
+            withOrdinalAuthority(runId) {
             val lastIndexedEnd = HashMap<OutputStreamId, Long>()
             for (frame in readFrames(runId, sealTornTail = false)) {
                 val previous = lastIndexedEnd[frame.stream] ?: Long.MIN_VALUE
@@ -185,6 +188,7 @@ class SegmentFrameIndex(
                 lastIndexedEnd[stream] = committed
                 closed.add(frame)
             }
+            }
         }
         closed
     }
@@ -196,6 +200,57 @@ class SegmentFrameIndex(
 
     private fun framesFile(runId: String): Path =
         root.resolve(FRAMES_DIR).resolve("${safeStreamName(runId)}$FRAMES_SUFFIX")
+
+    /**
+     * The per-run ordinal authority: an OS lock file beside the frames it protects.
+     *
+     * Allocating an ordinal is a read-modify-write of "read the highest ordinal in the log, add one,
+     * append that line". Inside one JVM [lock] makes that atomic. Between processes it was atomic
+     * over nothing, and the collision was measured rather than assumed:
+     * `SegmentFrameIndexCrossProcessOrdinalTest` released six writers together from a filesystem
+     * barrier and got 4 distinct ordinals out of 6 writes, three runs in a row.
+     *
+     * A duplicate ordinal is byte loss, not untidiness: a reader paging with a limit stops after the
+     * first of two frames sharing one, and the other is committed output no console can show again.
+     */
+    private fun ordinalAuthorityFile(runId: String): Path =
+        root.resolve(FRAMES_DIR).resolve("${safeStreamName(runId)}$AUTHORITY_SUFFIX")
+
+    /**
+     * Runs [block] as the sole ordinal allocator for [runId], across every process.
+     *
+     * ## Why a lock, when re-reading already looked sufficient
+     *
+     * It is not obvious and it was believed to be broken first. [sealTornTail] re-reads the whole
+     * durable log before every allocation and folds it into [lastOrdinalByRun], so the map is a
+     * cache over the file rather than the authority — which is exactly what makes the SEQUENTIAL
+     * cross-process case safe, and why `XPROC-1` is green. Re-reading cannot help when two processes
+     * read before either writes. Only mutual exclusion closes that window, which is what `XPROC-2`
+     * measures and this closes.
+     *
+     * ## Lock order, and why this order
+     *
+     * [lock] first, OS lock second. The [lock] serialises threads inside this JVM, so only one thread
+     * at a time reaches `channel.lock()` and it cannot see an `OverlappingFileLockException` from a
+     * sibling thread. [SegmentOutputStore] handles that same-JVM case by SKIPPING the stream, and
+     * skipping is not available here: this is a write that has already committed bytes, so declining
+     * would turn a moment of contention into lost output.
+     *
+     * Blocking rather than skipping for the same reason. The wait is one file read plus one append.
+     *
+     * `FileLock` over a heartbeat, PID or mtime, per ADR-OBS-002: the kernel releases it the instant
+     * the owning process dies and refuses it to a second process while the first lives, which answers
+     * "is a writer alive?" with no clock and no staleness policy to get wrong.
+     */
+    private fun <T> withOrdinalAuthority(runId: String, block: () -> T): T = lock.withLock {
+        val file = ordinalAuthorityFile(runId)
+        Files.createDirectories(file.parent)
+        FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
+            channel.lock().use {
+                block()
+            }
+        }
+    }
 
     /** Runs that have a `.streams` file, taken from the file contents rather than their names. */
     private fun runsWithDeclaredStreams(): List<String> {
@@ -353,5 +408,8 @@ class SegmentFrameIndex(
         const val FRAMES_DIR = "frames"
         const val FRAMES_SUFFIX = ".frames"
         const val STREAMS_SUFFIX = ".streams"
+
+        /** The per-run cross-process ordinal lock. See [ordinalAuthorityFile]. */
+        const val AUTHORITY_SUFFIX = ".authority"
     }
 }

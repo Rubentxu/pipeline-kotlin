@@ -89,7 +89,7 @@ import dev.rubentxu.pipeline.v2.output.OutputStreamAddress
 class SegmentFrameIndexCrossProcessOrdinalTest {
 
     /** How many processes race in `XPROC-2`. Small enough to stay quick, large enough to try. */
-    private val RACERS = 6
+    private val racerCount = 6
 
 
     private fun javaBinary(): String = Path.of(System.getProperty("java.home"), "bin", "java").toString()
@@ -244,7 +244,7 @@ class SegmentFrameIndexCrossProcessOrdinalTest {
         val runId = "run-xproc-race"
         val gate = root.resolve("GO")
 
-        val racers = (0 until RACERS).map { i ->
+        val racers = (0 until racerCount).map { i ->
             Child(
                 ProcessBuilder(
                     javaBinary(), "-cp", childClasspath(),
@@ -264,7 +264,7 @@ class SegmentFrameIndexCrossProcessOrdinalTest {
             assertEquals(
                 handed.size,
                 distinct.size,
-                "UAT-R1-07 VIOLATED: $RACERS processes released together were handed ${handed.size} " +
+                "UAT-R1-07 VIOLATED: $racerCount processes released together were handed ${handed.size} " +
                     "writes but only ${distinct.size} distinct ordinals ($handed). A duplicate ordinal " +
                     "is not untidy: a reader paging with a limit drops one of the two frames sharing it, " +
                     "and those are committed bytes no console will ever show again. Note this row is " +

@@ -585,13 +585,31 @@ casos convertiría 42 ciclos cerrados en una afirmación falsa sobre el estado d
 
 ```text
 antes    OPEN 42 · CLOSED 82 · BLOCKED 4 · pending_human_decisions 2
-despues  OPEN  0 · CLOSED 124 · BLOCKED 4 · pending_human_decisions 0
+despues  OPEN  0 · CLOSED 127 · BLOCKED 1 · pending_human_decisions 0
 ```
 
-Lo que queda abierto no es trabajo sin hacer: son cuatro ciclos `BLOCKED` —`m0-02-compiler-
-plugin-k2-migration`, `inc-039-kdoc-fix`, `lfc4-000-execution-model-contract-freeze` y
-`rp-020-durable-sequence-authority`— y ninguno tiene un `--reason` honesto de cierre, porque
-están bloqueados por precondición externa y no por trabajo pendiente.
+De los cuatro `BLOCKED`, tres resultaron residuo y se cerraron como `external-obsolete` tras
+verificar que **no tienen eventos de estado reproducibles** (`sddk cycle next` responde
+`has no replayable state events`): `m0-02-compiler-plugin-k2-migration`, `inc-039-kdoc-fix` y
+`lfc4-000-execution-model-contract-freeze`. Su trabajo quedó superado por la línea v2 actual.
+
+### El cuarto sí es un bloqueo real, y por eso se queda
+
+`rp-020-durable-sequence-authority` sigue `BLOCKED`, y es el único cierre que este recibo se
+niega a hacer. No por el gate humano —que el operador aprobó— sino porque
+`archive.vault.complete` exige dos requisitos concretos:
+
+```text
+requirement: vault-receipt
+requirement: archive-manifest
+```
+
+y el directorio de artefactos del ciclo está **vacío**. Emitir un `vault-receipt` y un
+`archive-manifest` para satisfacer el gate sería fabricar exactamente los dos artefactos cuya
+ausencia el gate existe para detectar. El trabajo técnico sí está entregado y verificado
+(`RunExecutionLease.kt` en `pipeline-events-store/durable` es la autoridad de secuencia); lo
+que falta es el cierre documental, y ese cierre documental es precisamente lo que no puede
+inventarse. Registrado como `bl-bl-01M4GMZYDY00038919WZ695QR0` (P2).
 
 Una mecánica que costó cuatro intentos y no está en la ayuda: el evento
 `authority-approval-system-cycle_supersede-require_approval` tiene **id global fijo**.

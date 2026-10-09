@@ -1046,7 +1046,7 @@ private fun startLiveOutputObserver(
     }
 
     val presentation = LiveOutputPresentation(format, System.out, System.err)
-    val store = dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider.storeFor(controlDirRoot)
+    val store = dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider.storeForReading(controlDirRoot)
     val reader = FrameIndexedObservationOutputReader(store.frameIndex(), store, store)
     val drain = LiveOutputDrain(reader, frameLimit = 64, pollIntervalMs = 10)
     val runFinished = java.util.concurrent.atomic.AtomicBoolean(false)

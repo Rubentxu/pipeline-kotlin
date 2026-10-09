@@ -227,7 +227,16 @@ interface OutputSealPort {
  * way to check idempotence was to compare two reports that are *supposed* to differ.
  */
 data class OutputRecoveryReport(
+    /** Streams this pass actually reconciled. A stream held by a live writer is NOT one of them. */
     val streamsReconciled: Int,
+    /**
+     * Streams skipped because a live writer holds their ownership, per ADR-OBS-002.
+     *
+     * Non-zero is a normal answer, not a failure: it is the store saying "these are being written
+     * right now, so I did not touch them". It is reported rather than hidden because a recovery that
+     * silently skipped a stream would look identical to one that found nothing to do.
+     */
+    val streamsOwned: Int,
     val committedBytes: Long,
     val bytesReleased: Long,
     val reservationsReleased: Int,

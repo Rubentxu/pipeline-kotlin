@@ -81,7 +81,7 @@ object ConsoleReadService {
         after: OutputCursor?,
         maxBytes: Int = DEFAULT_PAGE_BYTES,
     ): Result {
-        val store = OutputPlaneProvider.storeFor(controlDirRoot)
+        val store = OutputPlaneProvider.storeForReading(controlDirRoot)
         val ordered = OutputPlaneProvider.streamsOf(runId, opId).all
 
         // A cursor names one stream. If it names one of THIS operation's channels, the merged read
@@ -188,7 +188,7 @@ object ConsoleReadService {
         from: Long,
         to: Long,
     ): Result {
-        val store = OutputPlaneProvider.storeFor(controlDirRoot)
+        val store = OutputPlaneProvider.storeForReading(controlDirRoot)
         val ordered = OutputPlaneProvider.streamsOf(runId, opId).all
 
         // A channel that was never opened contributes zero bytes to the merged space, which is what

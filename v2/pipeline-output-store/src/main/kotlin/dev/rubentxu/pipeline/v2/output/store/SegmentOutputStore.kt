@@ -77,6 +77,19 @@ import kotlin.concurrent.withLock
  */
 class SegmentOutputStore(
     private val root: Path,
+    /**
+     * Whether this store may reconcile durable state at all, per ADR-OBS-002.
+     *
+     * A reader answers "no". That is the whole separation the ADR makes: a read-only verb opens the
+     * plane without ever running a reconciliation, so it cannot remove or truncate a reservation even
+     * if every stream were unowned.
+     *
+     * Reads therefore do NOT require [recovered]. The invariant ADR-M1 §D4 O3 protects — a reader
+     * never observes a byte the store has not committed — is enforced by the committed-offset
+     * authority in [committedLocked], and only ever was helped along by recovery. Recovery is what
+     * makes debris disappear; it is not what makes a read honest.
+     */
+    private val recoveryPermitted: Boolean = true,
 ) : OutputAppendPort, OutputReadPort, OutputRecoveryPort, OutputRetentionPort, OutputSealPort,
     OutputTailPort {
 
@@ -94,6 +107,16 @@ class SegmentOutputStore(
          * how a reader ends up trusting the wrong file, so the stream-level marker says what it is.
          */
         val streamSealMarker: Path,
+        /**
+         * The exclusive, kernel-held ownership of this stream, per ADR-OBS-002.
+         *
+         * Held from `reserve()` until `commit()`/`abandon()`, so its presence answers the only
+         * question recovery cannot answer from file contents alone: is there a writer ALIVE right now?
+         * The kernel releases it when the owning process dies and refuses it to a second process
+         * while the first lives, which is the distinction recovery needs and which no mtime, PID or
+         * heartbeat supplies without a clock and a staleness policy.
+         */
+        val ownershipFile: Path,
     )
 
     private data class SealedSegment(val base: Long, val length: Long, val file: Path)
@@ -131,7 +154,7 @@ class SegmentOutputStore(
      * non-determinism recovery must not have.
      */
     override fun seal(stream: OutputStreamId): Long {
-        requireRecovered()
+        requireRecoveredForWriting()
         val layout = layout(stream)
         return withStreamLockFor(stream) {
             // Sealing a stream nobody ever opened would mint an authority for bytes that were never
@@ -175,7 +198,7 @@ class SegmentOutputStore(
     // ------------------------------------------------------------------ ports
 
     override fun open(stream: OutputStreamId): OutputStreamHandle {
-        requireRecovered()
+        requireRecoveredForWriting()
         // Opening DURABLY declares the stream, which is what makes `Open(0)` a reachable state rather
         // than a guess. `ShExecution` declares both channels to the frame index before the first byte,
         // and a stream that is known to exist but holds nothing must answer the tail question
@@ -185,14 +208,16 @@ class SegmentOutputStore(
     }
 
     override fun committedExtent(stream: OutputStreamId): Long? {
-        requireRecovered()
+        requireReadable()
         val layout = layout(stream)
         if (!Files.isDirectory(layout.streamDir)) return null
         return withStreamLockFor(stream) { committedLocked(layout) }
     }
 
     override fun read(stream: OutputStreamId, cursor: OutputCursor, maxBytes: Int): OutputReadResult {
-        if (!recovered) return OutputReadResult.Refused(OutputRefusal.RecoveryNotCompleted)
+        if (!recovered && recoveryPermitted) {
+            return OutputReadResult.Refused(OutputRefusal.RecoveryNotCompleted)
+        }
         if (maxBytes <= 0) {
             return OutputReadResult.Refused(
                 OutputRefusal.InvalidRange(cursor.committedOffset, cursor.committedOffset),
@@ -220,7 +245,9 @@ class SegmentOutputStore(
     }
 
     override fun readRange(stream: OutputStreamId, from: Long, to: Long): OutputReadResult {
-        if (!recovered) return OutputReadResult.Refused(OutputRefusal.RecoveryNotCompleted)
+        if (!recovered && recoveryPermitted) {
+            return OutputReadResult.Refused(OutputRefusal.RecoveryNotCompleted)
+        }
         val layout = layout(stream)
         if (!Files.isDirectory(layout.streamDir)) {
             return OutputReadResult.Refused(OutputRefusal.UnknownStream(stream))
@@ -244,10 +271,18 @@ class SegmentOutputStore(
      * cannot be recovered twice cannot be trusted after its own recovery crashes.
      */
     override fun recover(): OutputRecoveryReport = recoveryLock.withLock {
+        // ADR-OBS-002. A reader may not reconcile, and saying so loudly beats letting a read-side
+        // caller reach a destructive path by accident: the whole defect was that recovery was
+        // available to everyone and therefore performed by everyone.
+        check(recoveryPermitted) {
+            "this store was opened for READING and must not recover: a read-only verb that reconciles " +
+                "can truncate a live writer's range (ADR-OBS-002). Open a writing store instead."
+        }
         val streamRoot = root.resolve(STREAMS_DIR)
         Files.createDirectories(streamRoot)
 
         var streams = 0
+        var ownedByLiveWriter = 0
         var releasedReservations = 0
         var releasedBytes = 0L
         var committedBytes = 0L
@@ -263,17 +298,34 @@ class SegmentOutputStore(
                     reservationFile = entry.resolve("cur.res"),
                     sealedDir = entry.resolve(SEALED_DIR),
                 streamSealMarker = entry.resolve(STREAM_SEAL_MARKER),
+                    ownershipFile = entry.resolve(OWNERSHIP_FILE),
                 )
-                releasedBytes += reconcile(layout)
-                if (Files.deleteIfExists(layout.reservationFile)) releasedReservations++
+                // ADR-OBS-002. Reconciliation is only safe on a stream nobody is writing right now,
+                // and the ownership lock is what says so: it is held for the whole of a reservation and
+                // the kernel drops it the instant the owning process dies, so "held" means ALIVE rather
+                // than "recently seen". Truncating a held stream would destroy a live writer's bytes,
+                // which is the defect OBS-G measured.
+                val reconciled = tryWithStreamOwnership(layout) {
+                    releasedBytes += reconcile(layout)
+                    if (Files.deleteIfExists(layout.reservationFile)) releasedReservations++
+                }
+                if (reconciled) streams++ else ownedByLiveWriter++
+                // Counted either way: a stream being written still has committed bytes worth knowing
+                // about, and its unbacked count is a fact about it rather than about this pass.
                 unbackedBytes += maxOf(0L, committedLocked(layout) - readableEndLocked(layout))
                 committedBytes += committedLocked(layout)
-                streams++
             }
         }
 
         recovered = true
-        OutputRecoveryReport(streams, committedBytes, releasedBytes, releasedReservations, unbackedBytes)
+        OutputRecoveryReport(
+            streamsReconciled = streams,
+            streamsOwned = ownedByLiveWriter,
+            committedBytes = committedBytes,
+            bytesReleased = releasedBytes,
+            reservationsReleased = releasedReservations,
+            bytesUnbacked = unbackedBytes,
+        )
     }
 
     // -------------------------------------------------------------- retention
@@ -318,7 +370,7 @@ class SegmentOutputStore(
      * that data is really gone.
      */
     override fun prune(intent: OutputPruneIntent): OutputPruneReport {
-        requireRecovered()
+        requireRecoveredForWriting()
         val targets = runStreamDirs(intent.runId)
         if (targets.isEmpty()) return OutputPruneReport(0, 0L, 0)
 
@@ -376,10 +428,32 @@ class SegmentOutputStore(
      * So the condition has exactly one representation in each shape, and the one place where two
      * shapes could have claimed it now has one.
      */
-    private fun requireRecovered() {
+    /**
+     * Writing and destructive paths require recovery, always, whichever role this store opened with.
+     *
+     * ADR-OBS-002 splits the requirement that used to be one: reconciling before you APPEND is about
+     * not stranding a reservation behind debris, and reconciling before you DELETE is about not
+     * deleting a range you have not proved is unreferenced. Neither is a read concern.
+     */
+    private fun requireRecoveredForWriting() {
         check(recovered) {
-            "reads and appends require OutputRecoveryPort.recover() first (O3): refusing to act on " +
-                "an unreconciled state"
+            "appends, seals and prunes require OutputRecoveryPort.recover() first (O3): refusing to " +
+                "act on an unreconciled state"
+        }
+    }
+
+    /**
+     * Reads do not require recovery, and the reason is the committed-offset authority rather than a
+     * preference: [read] and [committedExtent] only ever serve bytes at or below [committedLocked],
+     * so a reader cannot observe an unacknowledged byte whether or not debris has been reconciled.
+     *
+     * O3 said "recovery is a distinct entry point that reconciles before any reader is served". This
+     * keeps the distinct entry point and drops the second clause: a reader is served committed bytes
+     * either way, and the entry point is distinct precisely so that a reader never has to invoke it.
+     */
+    private fun requireReadable() {
+        check(recovered || !recoveryPermitted) {
+            "reads require OutputRecoveryPort.recover() first (O3): refusing to serve an unreconciled state"
         }
     }
 
@@ -400,6 +474,7 @@ class SegmentOutputStore(
         reservationFile = dir.resolve("cur.res"),
         sealedDir = dir.resolve(SEALED_DIR),
         streamSealMarker = dir.resolve(STREAM_SEAL_MARKER),
+        ownershipFile = dir.resolve(OWNERSHIP_FILE),
     )
 
     private fun withStreamLock(stream: OutputStreamId, block: () -> OutputReadResult): OutputReadResult =
@@ -555,6 +630,39 @@ class SegmentOutputStore(
     }
 
     /**
+     * Runs [block] holding this stream's ownership, or answers `false` when a live writer holds it.
+     *
+     * `FileLock` rather than a heartbeat, PID or mtime, per ADR-OBS-002: the kernel releases the lock
+     * when the owning process dies and refuses it to a second process while the first lives, which is
+     * exactly the "writer alive?" question and needs no clock and no staleness policy.
+     *
+     * `OverlappingFileLockException` is the same JVM holding it, and is caught here rather than thrown
+     * because a reader sharing a JVM with a live writer must skip the stream just as a reader in
+     * another process does.
+     *
+     * An [java.io.IOException] while opening the lock file is NOT swallowed: failing to learn who owns
+     * a stream is not permission to destroy its bytes, and silently skipping would be a hole rather
+     * than a safety. It propagates, and the recovery that called it fails loudly.
+     */
+    private fun tryWithStreamOwnership(layout: Layout, block: () -> Unit): Boolean {
+        Files.createDirectories(layout.streamDir)
+        FileChannel.open(layout.ownershipFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
+            val lock = try {
+                channel.tryLock()
+            } catch (_: java.nio.channels.OverlappingFileLockException) {
+                null
+            }
+            if (lock == null) return false
+            try {
+                block()
+            } finally {
+                lock.release()
+            }
+        }
+        return true
+    }
+
+    /**
      * Shrinks [file] to [size] bytes, and does nothing when that is impossible or unnecessary.
      *
      * Two failure modes were closed here, and both were reachable from [OutputReservation.abandon]
@@ -668,6 +776,9 @@ class SegmentOutputStore(
         private var segmentBaseInternal = 0L
         private var open = true
 
+        /** Held for the whole reservation, per ADR-OBS-002. Closed by [releaseOwnership]. */
+        private var ownershipChannel: FileChannel? = null
+
         init {
             Files.createDirectories(layout.streamDir)
             if (Files.exists(layout.reservationFile)) {
@@ -706,6 +817,22 @@ class SegmentOutputStore(
 
             // O1: the reservation is durable before this returns, and before any byte is written.
             Files.writeString(layout.reservationFile, "$baseInternal|$limitInternal\n")
+
+            // ADR-OBS-002: from here until commit/abandon, this stream is OWNED, and any recovery in
+            // any process skips it. Taken last, after every failure that could throw, so a reservation
+            // that never became durable also never advertises an owner.
+            //
+            // A reservation that is abandoned without committing or abandoning leaks this channel, and
+            // a leaked channel keeps the lock for the life of the process. That failure direction is
+            // deliberate: the stream stays unreconcilable, which is the safe way to be wrong. Recovery
+            // is still possible after the process dies, because the kernel drops the lock with it.
+            val channel = FileChannel.open(
+                layout.ownershipFile,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE,
+            )
+            channel.lock()
+            ownershipChannel = channel
         }
 
         override fun write(bytes: ByteArray) {
@@ -755,6 +882,10 @@ class SegmentOutputStore(
                 StandardOpenOption.TRUNCATE_EXISTING,
             )
             Files.deleteIfExists(layout.reservationFile)
+            // Released AFTER the commit record lands: releasing first would open a window in which a
+            // recovery sees neither an owner nor the bytes, and reconciles a range that is about to be
+            // committed rather than one that was abandoned.
+            releaseOwnership()
             return position
         }
 
@@ -765,11 +896,19 @@ class SegmentOutputStore(
             // than a permanent hole. This is the release that makes the order dense.
             truncateTo(layout.segmentFile, (position - writtenInternal - segmentBaseInternal).coerceAtLeast(0L))
             Files.deleteIfExists(layout.reservationFile)
+            releaseOwnership()
             return baseInternal
         }
 
         private fun ensureOpen() {
             check(open) { "reservation on ${streamId.value} is already closed" }
+        }
+
+        /** Idempotent: a second call is a no-op rather than an error, so `finally` blocks can be free. */
+        private fun releaseOwnership() {
+            val channel = ownershipChannel ?: return
+            ownershipChannel = null
+            channel.close()
         }
     }
 
@@ -782,6 +921,12 @@ class SegmentOutputStore(
          * [SEALED_DIR], which names ROTATED SEGMENTS — see `Layout.streamSealMarker`.
          */
         const val STREAM_SEAL_MARKER = "stream.seal"
+
+        /**
+         * The exclusive, kernel-held ownership file per stream. Never read as content: it exists to
+         * be LOCKED, and its bytes are meaningless. See ADR-OBS-002.
+         */
+        const val OWNERSHIP_FILE = "cur.own"
         const val SEALED_SUFFIX = ".seg"
         const val DEFAULT_RESERVATION_BYTES = 64L * 1024L
         const val SEGMENT_MAX_BYTES = 8L * 1024L * 1024L

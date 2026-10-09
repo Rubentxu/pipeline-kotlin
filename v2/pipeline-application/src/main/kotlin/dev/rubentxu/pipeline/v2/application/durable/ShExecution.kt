@@ -195,7 +195,7 @@ object ShExecution {
             // both streams up front is what makes a crash between the first byte commit and the
             // first frame recoverable instead of lost — see OutputFrameIndex.declareStream.
             val ingressSinks: Map<ProcessOutputChannel, ProcessOutputSink> = controlDirRoot?.let { root ->
-                val store = OutputPlaneProvider.storeFor(root)
+                val store = OutputPlaneProvider.storeForWriting(root)
                 val streams = OutputPlaneProvider.streamsOf(runId, opId.format())
                 buildMap {
                     ProcessOutputChannel.all.forEach { channel ->
@@ -277,7 +277,7 @@ object ShExecution {
             val terminalResult = classifyShellTerminal(terminal, command.returnMode)
             if (controlDirRoot != null) {
                 runCatching {
-                    val store = OutputPlaneProvider.storeFor(controlDirRoot)
+                    val store = OutputPlaneProvider.storeForWriting(controlDirRoot)
                     val streams = OutputPlaneProvider.streamsOf(runId, opId.format())
                     streams.all.forEach { address -> store.seal(address.stream) }
                 }.onFailure { failure ->

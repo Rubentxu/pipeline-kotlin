@@ -34,18 +34,26 @@ import java.util.concurrent.TimeUnit
  * Both `observe` and `console` call `storeFor()` as the FIRST statement of their read path, before
  * the query has found anything. So the destructive step does not depend on the reader succeeding.
  *
- * **MEASURED: it does happen, and it costs the bytes.** A writer that committed 8192 bytes with no
- * error leaves only 4096 readable after a successful `console` query in a second process. The
- * killed-writer case is unaffected and still correct.
+ * **MEASURED, then FIXED.** Against the pre-ADR store, a writer that committed 8192 bytes with no
+ * error left only 4096 readable after a successful `console` query in a second process. That was
+ * measured, not composed, and it was recorded as a characterisation before anything was changed.
  *
- * ## What is asserted, and what is characterised
+ * ## Both rows are laws now, and that is a transition, not a detail
  *
- * - `RECOVER-2` asserts a **law**: a real `kill -9` keeps the acknowledged prefix byte for byte,
- *   releases the open reservation exactly once, and leaves the stream writable. Green, and it must
- *   stay green through any repair.
- * - `INTERFERE-1` asserts the behaviour as it is **today, which is broken**. It is a
- *   characterisation, not a law. Its assertion messages say so and name the inversion a fix
- *   requires, so closing the defect is a deliberate edit rather than a silent deletion.
+ * `INTERFERE-1` was written as a characterisation of the defect, asserting the broken value with
+ * `DEFECT OBSERVED` in its message and naming the inversion a fix required. ADR-OBS-002 closed the
+ * defect and this row was inverted deliberately: the writer's full 8192 bytes now survive and the
+ * commit record no longer outruns its payload.
+ *
+ * The message below says so explicitly. A characterisation that quietly became a passing test
+ * without anyone saying "this is now the contract" is a test that stopped being evidence.
+ *
+ * - `INTERFERE-1` asserts the **law**: a read-only verb cannot take a live writer's bytes. Green
+ *   since ADR-OBS-002.
+ * - `RECOVER-2` asserts the **law** that must survive the repair: a real `kill -9` keeps the
+ *   acknowledged prefix byte for byte, releases the reservation exactly once and leaves the stream
+ *   writable. It was green BEFORE the repair and green AFTER it, which is the whole point of running
+ *   it rather than trusting that a fix cannot regress a neighbour.
  *
  * ## Fidelity
  *
@@ -190,7 +198,7 @@ class ObsGReaderRecoveryInterferenceUatTest {
      * edit is meant to be deliberate, so each message names what must change.
      */
     @Test
-    fun `CARACTERISATION reader opening the plane truncates a live writer's written bytes`() {
+    fun `OBSG-1 a reader opening the plane cannot take a live writer's written bytes`() {
         val committedBytes = 4096
         val parkedBytes = 4096
 
@@ -233,30 +241,33 @@ class ObsGReaderRecoveryInterferenceUatTest {
                 "measuring a writer that gave up rather than a reader that took",
         )
 
-        // DEFECT OBSERVED. These two assertions pin the behaviour as it is TODAY, which is broken.
-        // They are characterisation, not a law: when the recovery stops reconciling a live writer's
-        // range, both lines must be INVERTED, and the change has to be a deliberate edit to this
-        // message rather than a quiet deletion.
+        // ADR-OBS-002 closed the defect this row characterised, and the expected values were inverted
+        // with it. Before: 4096 of 8192, bytesUnbacked 4096, no B byte observable.
         assertEquals(
-            committedBytes,
+            committedBytes + parkedBytes,
             visible.size,
-            "DEFECT OBSERVED, and this is the characterisation of it. The writer committed " +
-                "${claimedByWriter} bytes with no error, and only $committedBytes survived: the " +
-                "reader's recovery truncated the ${parkedBytes} bytes the writer had durably written " +
-                "but not yet acknowledged, treating a live writer's open range as crash debris. " +
-                "Invoking this on a fix INVERTS it to ${committedBytes + parkedBytes}.",
+            "the writer committed ${claimedByWriter} bytes with no error, so a reader must see every " +
+                "one. This row asserted ${committedBytes} while characterising the defect; the " +
+                "inversion is the fix, and reverting it silently would be how the defect returns.",
         )
         assertEquals(
-            parkedBytes.toLong(),
+            0L,
             report.bytesUnbacked,
-            "and the stream is left with a commit record that outruns its payload by exactly the bytes " +
-                "the reader destroyed — which the store reports rather than reads around, so those " +
-                "bytes are unrecoverable rather than merely late",
+            "and the stream must not be left with a commit record that outruns its payload. Before " +
+                "ADR-OBS-002 this was ${parkedBytes}L, which the store reports rather than reads " +
+                "around — the destroyed bytes were unrecoverable, not late.",
+        )
+        assertEquals(
+            parkedBytes,
+            visible.count { it == 'B'.code.toByte() },
+            "including the bytes that were written but not acknowledged when the reader opened the " +
+                "plane. Those are the exact range the pre-ADR reconciliation destroyed.",
         )
         assertEquals(
             0,
-            visible.count { it == 'B'.code.toByte() },
-            "no byte of the range the reader truncated is observable afterwards, by any reader",
+            report.streamsOwned,
+            "the reader opens WITHOUT recovering, so it never even reaches the ownership check. This " +
+                "is the separation itself, asserted rather than described.",
         )
     }
 

@@ -549,7 +549,7 @@ internal object ComposeLanes {
     fun forRequest(parsed: ObservationParseResult.Parsed): ObserveLanes {
         val eventStore = parsed.dbPath?.let { dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore(it) }
         val store = parsed.controlRoot?.let {
-            dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider.storeFor(
+            dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider.storeForReading(
                 java.nio.file.Paths.get(it),
             )
         }

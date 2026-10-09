@@ -38,7 +38,14 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object OutputPlaneProvider {
 
+    /**
+     * Two caches, deliberately. A reader and a writer over one control root are DIFFERENT stores and
+     * must not share a cache entry, or whichever opened first would silently decide the other's
+     * permissions — and a writing store recovered inside a read-only verb is precisely the defect
+     * ADR-OBS-002 removes.
+     */
     private val stores = ConcurrentHashMap<Path, SegmentOutputStore>()
+    private val readerStores = ConcurrentHashMap<Path, SegmentOutputStore>()
 
     /** Directory the Output Plane occupies inside a control-directory root. */
     const val OUTPUT_DIR: String = "output-plane"
@@ -49,10 +56,46 @@ object OutputPlaneProvider {
      * Idempotent per root: two steps in the same run share one store, which is what makes a cursor
      * handed to one step meaningful to a later one.
      */
-    fun storeFor(controlDirRoot: Path): SegmentOutputStore =
+    /**
+     * The store for [controlDirRoot], **without** recovering. The read-side opening.
+     *
+     * ADR-OBS-002: a reader must never reconcile durable state, because reconciliation truncates the
+     * uncommitted tail of a stream and an uncommitted tail is exactly what a writer that is alive
+     * right now looks like. `OBSG_READER_RECOVERY_INTERFERENCE_RECEIPT.md` measured what that cost: a
+     * successful `console` query in a second JVM destroyed 4096 bytes a live writer had written and
+     * acknowledged, and the writer was never told.
+     *
+     * Reads are still honest without recovery. A reader only ever serves bytes at or below the
+     * committed offset, so it cannot observe an unacknowledged byte; recovery is what makes debris
+     * disappear, not what makes a read true.
+     */
+    fun storeForReading(controlDirRoot: Path): SegmentOutputStore =
+        readerStores.computeIfAbsent(controlDirRoot.normalize()) { root ->
+            SegmentOutputStore(root.resolve(OUTPUT_DIR), recoveryPermitted = false)
+        }
+
+    /**
+     * The store for [controlDirRoot] on the WRITE side: recovered, and therefore permitted to
+     * reconcile.
+     *
+     * Recovery is scoped by ownership, so this pass skips every stream a live writer holds — in this
+     * process or any other — rather than deciding for them that their bytes are debris.
+     */
+    fun storeForWriting(controlDirRoot: Path): SegmentOutputStore =
         stores.computeIfAbsent(controlDirRoot.normalize()) { root ->
             SegmentOutputStore(root.resolve(OUTPUT_DIR)).also { it.recover() }
         }
+
+    /**
+     * Retained for callers that are neither purely reading nor purely writing — retention in
+     * particular, which deletes committed bytes and therefore is neither.
+     *
+     * It resolves to the writing store because retention has always recovered, and quietly changing
+     * that would change what a retention pass is allowed to do without anyone deciding it. Splitting
+     * it is a separate decision, recorded here rather than taken silently.
+     */
+    fun storeFor(controlDirRoot: Path): SegmentOutputStore = storeForWriting(controlDirRoot)
+
 
     /**
      * The stream id for one operation's transcript.
@@ -100,5 +143,6 @@ object OutputPlaneProvider {
     /** Drop every cached store. Used by tests and by anything simulating a process restart. */
     fun forgetAll() {
         stores.clear()
+        readerStores.clear()
     }
 }

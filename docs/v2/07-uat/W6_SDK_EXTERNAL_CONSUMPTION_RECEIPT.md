@@ -108,16 +108,36 @@ BUILD SUCCESSFUL in 3m 24s   (exit 0)
 0 errores de compilación · 0 tareas FAILED
 ```
 
-Agregado **run-scoped** (solo XML de esta ejecución, no el directorio completo):
+### Gate forzado completo: la duración medida que faltaba
 
-| Métrica | Valor |
-|---|---|
-| tests | **4 716** |
-| failures | **0** |
-| errors | **0** |
-| skipped | **134** |
-| clases | 756 |
-| módulos | 18 |
+La primera versión de este recibo declaraba la duración de `--rerun-tasks` como **no medida**, y
+por tanto se apoyaba en el incremental. Eso ya no es un hueco: se ejecutó después y pasó.
+
+```text
+BUILD SUCCESSFUL in 27m 7s   (exit 0)   ← línea 1554, el veredicto real
+325 actionable tasks: 325 executed       ← ninguna up-to-date
+0 errores de compilación · 0 `FAILURE: Build failed`
+```
+
+`1627 s` **no** es la nueva línea base de la regla 4 sin justificación explícita, y no lo es por
+inercia: la clase histórica de ~977 s era una Build Cache en calor y un daemon con todo caliente.
+Una corrida forzada desde cero con 325 tareas recompiladas cuesta 27 min en esta máquina. Para un
+gate incremental futuro el presupuesto derivado debe multiplicar esa cifra, no la anterior.
+
+Agregado **run-scoped** del gate forzado (mismo criterio, sólo XML de esta ejecución):
+
+| Métrica | Incremental | Forzado |
+|---|---|---|
+| tests | 4 716 | **4 716** |
+| failures | 0 | **0** |
+| errors | 0 | **0** |
+| skipped | 134 | **134** |
+| clases | 756 | **756** |
+| módulos | 18 | **18** |
+
+Los totales idénticos son la confirmación de que el incremental no estaba ocultando pruebas: el
+incremental ejecutó 51 tareas y aun así produjo exactamente el mismo conjunto de resultados que
+las 325.
 
 Los 134 skips se reparten en `pipeline-application` (123), `pipeline-architecture-tests` (10) y
 `pipeline-release` (1). La clasificación ya vive en
@@ -130,14 +150,22 @@ Se documentan porque son el tipo de falso verde que este bloque existe para evit
 1. **`check` incremental devolvió `BUILD SUCCESSFUL in 4s`** con 24 tareas de test `UP-TO-DATE` y
    **0 ejecutadas**. El canario sí se regeneró, lo que lo hacía parecer válido; 0 tests ejecutados
    no prueban nada. No cuenta como verde.
-2. **Dos intentos de `--rerun-tasks` fueron matados por el propio presupuesto.** El primero usó
-   900 s, derivados de los 3m28s del gate *incremental* de W5; `--rerun-tasks` es de la clase de
-   ~977 s. El presupuesto era incorrecto y el resultado no era un fallo del producto.
+2. **Dos intentos tempranos de `--rerun-tasks` fueron matados por el propio presupuesto.** El
+   primero usó 900 s, derivados de los 3m28s del gate *incremental* de W5. El presupuesto era
+   incorrecto y el resultado no era un fallo del producto: la corrida forzada completa posterior,
+   con 1800 s, pasó en 27m 7s.
 
 Además, `grep 'BUILD SUCCESSFUL'` devuelve líneas de builds **anidados** lanzados por tareas `Exec`
 (`BUILD SUCCESSFUL in 1s`, `5 actionable tasks: 5 up-to-date`), y la cadena `FAILURE` aparece 6
 veces dentro de tests **que pasan**, donde `StepFailed ... shell exited with code 1 ... PASSED` es el
-resultado esperado. Ambas cosas habrían hecho trivial un verde falso.
+resultado esperado. Ambas cosas habrían hecho trivial un falso verde.
+
+Y ocurrió de verdad durante la redacción de esta sección. Al esperar el fin de la corrida forzada, el
+bucle de sondeo coincidió con `BUILD SUCCESSFUL in 1s` de un build anidido, terminó al instante e
+imprimió ese "TERMINADO" con `0 fallos de tarea` — un **verde fabricado de la nada**. Si esa línea
+se hubiera aceptado como veredicto, el recibo afirmaría una duración de 1 s para una corrida que
+realmente tardó 27 minutos. El único dato fiable fue el final real del proceso y la línea 1554, que
+es la inmediatamente posterior al recuento `actionable tasks` de Gradle.
 
 ---
 

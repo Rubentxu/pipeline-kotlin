@@ -169,6 +169,13 @@ the commit process from outside this repository — the environment of whatever 
 or tooling ran `git commit`. That component is not identifiable from here and is out
 of scope for this work.
 
+The variance reproduced itself on the commit that records this finding. `cd8a670a`
+was signed `Nomeacuerdo <nomeacuerdodelputocorreo@gmail.com>` at a moment when
+`git var GIT_AUTHOR_IDENT` in the same repository resolved to
+`Rubentxu <rubentxu74@gmail.com>`, raising the branch count for that identity from
+17 to 18. That is the whole claim demonstrated in one line: the identity is decided
+between the shell and the commit, not by the repository.
+
 **History is not rewritten to normalise this.** The commits are pushed; rewriting
 published history to change an attribution field would be a larger and less honest
 intervention than recording the fact. It is logged so that an auditor reading a

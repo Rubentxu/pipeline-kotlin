@@ -89,11 +89,29 @@ data class ShOptions(
 ) {
     companion object {
         /**
+         * One directory per JVM, not per classload and not per call.
+         *
+         * This used to be `Files.createTempDirectory("shoptions-empty")` evaluated
+         * at class-initialisation time. That leaked exactly one directory into
+         * `java.io.tmpdir` per classload — one per Gradle test worker, one per
+         * application start — and nothing ever removed it. Over a long test run
+         * that is thousands of directories and the failure arrives as
+         * `ENOSPC: no space left on device` on the *filesystem*, which reads
+         * like a disk problem and is not one.
+         *
+         * The directory still has to exist: `DurableShellExecutor` passes it to
+         * `ProcessBuilder.directory(...)`, which rejects a path that is absent.
+         * So the fix is not "stop creating it" but "create it once, under one
+         * stable name, and reuse it".
+         */
+        private val sharedWorkspace: Path = java.nio.file.Files.createTempDirectory("shoptions-shared")
+
+        /**
          * Empty options for tests that don't need workspace/env.
-         * Uses /tmp as workspace root, no capture, no timeout, empty env.
+         * Uses a single shared /tmp workspace root, no capture, no timeout, empty env.
          */
         val EMPTY: ShOptions = ShOptions(
-            workspaceRoot = java.nio.file.Files.createTempDirectory("shoptions-empty"),
+            workspaceRoot = sharedWorkspace,
             captureStdout = false,
             timeoutMs = null,
             env = emptyMap(),
@@ -106,12 +124,23 @@ data class ShOptions(
          * Converts plain String values to [SecretHandle.plain] wrappers,
          * preserving the legacy call pattern while enabling the typed channel.
          *
+         * The workspace root is the same shared directory [EMPTY] uses. It used
+         * to call `createTempDirectory("shoptions-from")` per invocation, which
+         * leaked one directory per call — and this factory sits on the
+         * characterisation-test path, so it was the larger of the two leaks.
+         * A caller that needs an isolated workspace passes [workspaceRoot]
+         * explicitly; the default exists to satisfy `ProcessBuilder.directory`,
+         * not to model a real workspace.
+         *
          * @param env The legacy Map<String, String> environment.
          * @return A ShOptions with env wrapped as Map<String, SecretHandle>.
          */
-        fun from(env: Map<String, String>): ShOptions {
+        fun from(
+            env: Map<String, String>,
+            workspaceRoot: Path = sharedWorkspace,
+        ): ShOptions {
             return ShOptions(
-                workspaceRoot = java.nio.file.Files.createTempDirectory("shoptions-from"),
+                workspaceRoot = workspaceRoot,
                 captureStdout = false,
                 timeoutMs = null,
                 env = env.mapValues { SecretHandle.plain(it.value) },

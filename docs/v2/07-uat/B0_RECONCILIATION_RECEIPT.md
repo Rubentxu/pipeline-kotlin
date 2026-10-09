@@ -400,6 +400,42 @@ documento y sin entrada de seguimiento se pierde en cuanto el documento deja de 
 | B0-F2 (P0) `required_status_checks` | operador + harness | `bl-bl-01M4GKJSWZ000389177ZH5M3G0` |
 | B0-F4 (P1) publicar el check | proyecto propietario del harness | `bl-bl-01M4GKJXDX0003891754K2WQG0` |
 | B0-F6 (P2) aprobar `cycle_supersede` | propietario del ciclo de vida | `bl-bl-01M4GKJXF9000389174SGMZ0R0` |
+| 23 ciclos con trabajo entregado y sin cerrar | propietario del ciclo de vida | `bl-bl-01M4GKR18D00038917G32YQB00` |
+
+### El cuello de botella de los 23 no es el trabajo — es el gate
+
+Medido sobre los tres ciclos que B0 nombró como "con trabajo realmente pendiente":
+
+```text
+reproducible-directive-plugin-jar   node Open/Explore, frontier: phase.explore.complete
+                                      requirement: exploration-report, requires_met: false
+train-dsl-honesty                   idem
+rp7-sem-s4-scripted-runtime-v2      idem
+```
+
+Y el trabajo **está entregado**, no a medias:
+
+```text
+reproducible-directive-plugin-jar
+  3ec99a4c + 6e8e86bd en main; isPreserveFileTimestamps = false presente en los TRES
+  plugins de ejemplo (block, directive, uppercase). El objetivo del ciclo está cumplido
+  y verificado en el árbol.
+```
+
+El bloqueo es que el gate exige un artefacto (`exploration-report`) que se emite **al
+explorar**, y estos ciclos nunca llegaron a esa fase. Emitirlo ahora sería redactar un
+informe de exploración sobre una exploración que nunca ocurrió, fechada hoy: es
+fabricar evidencia con fecha retroactiva, exactamente el modo de fallo que este recibo
+prohíbe.
+
+La asimetría es instructiva. Los **18 huérfanos** se cierran con `supersede --reason`, que
+funciona y solo espera aprobación (solicitud registrada `sha256:7f762f08…`). Los **23 con
+trabajo entregado** también podrían cerrarse con `supersede`, pero el verbo cuelga en que
+`--reason` describe por qué se retira un ciclo, y aquí la respuesta honesta sería "el trabajo
+se entregó pero su gate nunca llegó a invocarse" — un hecho cierto, pero cuya evidencia
+(`exploration-report`) no existe. Cerrarlos exigiría o fabricar ese artefacto o decidir por
+convención que el trabajo entregado cierra el ciclo. Las dos son decisiones del propietario,
+no del agente.
 
 El orden entre F2 y F4 no es decorativo: **no hay contexto que exigir mientras no exista un
 check que lo produzca**. Publicar el check va antes que activar la protección; al revés, la

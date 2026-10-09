@@ -39,6 +39,32 @@ NOT_VERIFIED  no medido; se dice explícitamente
 
 ### B0-F1 (P0) — la release estable salió de un commit que no está en `main`
 
+**RESUELTO 2026-10-09.** La PR #99 se integró en `main` por merge directo, sin squash, y su
+commit conserva su SHA propio. Verificación OBSERVED:
+
+```text
+gh pr view 99 -> state: MERGED, updatedAt: 2026-10-09T13:21:31Z
+git merge-base --is-ancestor 3ec99a4c origin/main -> SI
+git log --oneline origin/main | grep byte-reproducible
+  6e8e86bd  fix(example-plugin): make all three plugin JARs byte-reproducible
+  3ec99a4c  fix(example-plugin): make the directive plugin jar byte-reproducible
+git ls-tree -r origin/main | grep pinned
+  100644 blob 6823ba59…  DirectivePluginContractSuiteTest.kt.pinned
+```
+
+Esto es exactamente lo que ADR-0099 exige: "`main` contiene la historia completa de
+candidatos y releases", con el commit original intacto y legible por su SHA. No hubo squash,
+no hubo reescritura, no hubo movimiento de tag.
+
+El commit `6e8e86bd` es posterior y **extiende** el fix a los otros dos plugins de ejemplo
+(`example-uppercase-plugin` y `example-block-plugin`); no reemplaza a `3ec99a4c`.
+
+Nota de alcance: esto cierra **la pertenencia al trunk**, que es lo que B0-F1 afirmaba. No
+cierra la certificación del artefacto ya publicado; el tag `v0.47.0` sigue apuntando a
+`3ec99a4c`, y las candidatas construidas desde `main` son reconstruibles desde ese punto en adelante.
+
+**Estado original (histórico, 2026-10-08):**
+
 ```text
 tag v0.47.0            -> 3ec99a4cb9059b1d7c7fb5902f90ac5dc1b697c4
 git branch -a --contains 3ec99a4c  -> solo origin/fix/reproducible-directive-plugin-jar
@@ -85,18 +111,32 @@ localmente (ADR-0105 D3).
 
 ### B0-F3 (P1) — la certificación del artefacto publicado existe y es real (no hay falso verde en ese punto)
 
+**Re-verificado 2026-10-09: la conclusión se sostiene**, con una corrección de precisión. B0
+citaba `decision CERTIFIED` como si fuera un campo de primer nivel de `matrix.json`; no lo es.
+Vive dentro de la salida del paso de certificación:
+
 ```text
-harness evidence/dogfood/matrix.json -> version 0.47.0, zip_sha256 2fa2d272…, decision CERTIFIED
+harness evidence/dogfood/matrix.json, fila version 0.47.0
+  claves reales: build_at, candidate_id, image_built_at, image_digest,
+                 image_tag, steps, version, zip_sha256
+  steps["certify-base"].stdout -> {"decision": "CERTIFIED", "gates": [...]}   rc: 0
+  zip_sha256: 2fa2d272e3b0ad385ef780e165028efaa83f92804a123f1836e17e0690d3
 harness evidence/promotions/v0.47.0.json
   { ga_version: v0.47.0, rc_version: v0.47.0-rc3, certified_at: 2026-10-05T21:00:42Z,
     source_result_id: 8b8d25ddac4b420a, outcome: ALREADY_PROMOTED_IDENTICAL, assets 5 }
 ```
 
-El zip estable publicado (`2fa2d272…`) coincide con el artefacto con `decision CERTIFIED` del
-harness, y la promoción quedó registrada con su recibo. Es decir: **el problema de v0.47.0 no es de
-certificación del artefacto, es de pertenencia al trunk (B0-F1) y de protección (B0-F2)**.
+El zip estable publicado (`2fa2d272…`) coincide con el artefacto certificado por el harness, y la
+promoción quedó registrada con su recibo. Es decir: **el problema de v0.47.0 no es de
+certificación del artefacto, es de pertenencia al trunk (B0-F1, ya resuelto) y de protección
+(B0-F2, sigue abierto)**.
 Nota: rc2 tiene otro zip (`02b1632e…`, `source_commit 5ea4137d`), así que hay al menos dos
 artefactos `0.47.0` distintos y solo uno fue el promovido. `INFERRED` (por recibo + tag).
+
+**Brecha que esto revela (OBSERVED):** no hay certificación del harness para `v0.48.0-rc1`.
+`evidence/` del harness llega hasta `v0.47.0`. Nuestra candidata se publicó sin veredicto
+externo, lo cual es exactamente el estado que G10 describe — y por eso su promoción estable
+sigue bloqueada, correctamente.
 
 ### B0-F4 (P1) — el harness todavía no publica el check de admisión que ADR-0105 le asigna
 
@@ -295,9 +335,19 @@ Ningún bloque se declara cerrado. `B0..B7` se integraron en el ROADMAP único (
 
 | Parte de B0 | Estado | Evidencia |
 |---|---|---|
+| B0-F1 (P0) | **RESUELTO** | PR #99 `MERGED` el 2026-10-09T13:21:31Z; `3ec99a4c` es ancestro de `origin/main` con su SHA propio (merge directo, sin squash, ADR-0099 respetado) |
+| B0-F2 (P0) | abierto | `required_status_checks` sigue ausente; sin superficie de CI (ADR-0105 D3) |
+| B0-F3 (P1) | **verificado** | certificación de 0.47.0 real; cita corregida (`decision` vive en `steps["certify-base"].stdout`, no es campo de primer nivel) |
+| B0-F4 (P1) | abierto, causa corregida | capacidad existe (53 tests) pero no llega a su remoto |
+| B0-F5 (P1) | abierto, empeorado | `ROADMAP.md` declara v0.39.0 siendo Latest v0.47.0 |
+| B0-F6 (P2) | abierto | 42 ciclos OPEN, 18 huérfanos sin verbo de cierre |
 | B0.2 — utilidad de digest única | **entregada** | `pipeline-domain/…/digest/Sha256.kt`; test funcional 8/8 con mutación 1:1 (la mutación `endsWith` no voltea ninguna fila; `contains` voltea exactamente una) |
 | B0.2 — migración de call sites | **entregada** | 29 sitios ad-hoc → 8: 4 dentro de la propia utilidad, 4 de efecto temporal (streaming) clasificados por `DigestMigrationBoundaryFitnessTest` |
-| B0.3 — autoridad de admisión | **medida** | `B0_3_HARNESS_INVESTIGATION_RECEIPT.md`; B0-F4 corregido, G10 sigue `NOT_RUN` |
+| B0.3 — autoridad de admisión | **medida** | `B0_3_HARNESS_INVESTIGATION_RECEIPT.md`; G10 sigue `NOT_RUN` |
+
+**B0-F1 era el único P0 con dueño interno, y se cerró sin intervención nuestra**: la PR se
+integró por la vía que ADR-0099 fija. Queda un P0 abierto (B0-F2) cuyo remedio es externo y
+compartido con B0-F4.
 
 Verificación de la migración: 8 módulos, **3683 tests, 0 fallos, 0 errores, 132 skipped**,
 `BUILD SUCCESSFUL in 22m 31s`.

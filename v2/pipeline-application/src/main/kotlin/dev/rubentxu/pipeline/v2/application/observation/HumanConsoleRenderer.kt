@@ -81,13 +81,22 @@ import dev.rubentxu.pipeline.v2.events.WsCleaned
  * 1. **Presentation only.** No clock, no filesystem, no process, no ambient
  *    state. The same input list always yields the same string, which is what
  *    makes this testable without a coordinator, a store or a running pipeline.
- * 2. **No `else`.** [line] matches the closed [DomainEvent] hierarchy
- *    exhaustively. A new event is a compile error here, so somebody must decide
- *    how it looks instead of it silently vanishing from the console.
- * 3. **Views select families; they do not delete records.** A family absent
+ * 2. **Closed dispatch, and it never constructs.** [line] matches the closed
+ *    [DomainEvent] hierarchy exhaustively and does nothing but name, for each
+ *    event, the family that renders it. A new event is a compile error here, so
+ *    somebody must decide how it looks instead of it silently vanishing from the
+ *    console. The construction lives in [ConsoleFamilyLines], which is what keeps
+ *    [line] readable in one screen.
+ * 3. **A family renders only its own events.** Each in [ConsoleFamilyLines] ends
+ *    in an `else` that throws rather than returning a placeholder, because the
+ *    only way to reach one is a disagreement between the routing table and a
+ *    handler — and a console that renders a plausible wrong line for an unrouted
+ *    event is worse than a console that stops. `RendererRoutePartitionTest`
+ *    proves the disagreement cannot survive.
+ * 4. **Views select families; they do not delete records.** A family absent
  *    from a view is a declared projection — the event is still in the store and
  *    still visible under [ObservationView.EVENTS].
- * 4. **Closed structural match, never a key switch.** The `when` matches event
+ * 5. **Closed structural match, never a key switch.** The `when` matches event
  *    TYPE. There is no `if (kind == "...")` anywhere.
  */
 object HumanConsoleRenderer {
@@ -204,217 +213,54 @@ object HumanConsoleRenderer {
         return out
     }
 
+    /**
+     * The routing table: every [DomainEvent] to the one family that renders it.
+     *
+     * This `when` is exhaustive and constructs nothing. Both halves of that matter: exhaustiveness
+     * is what turns a new event into a compile error rather than a line nobody wrote, and
+     * constructing nothing is what keeps the list of what exists separate from the list of what each
+     * case looks like.
+     *
+     * @see RendererRoutePartitionTest for the check that routing and rendering agree.
+     */
     @Suppress("DEPRECATION") // AgentResolved has no producer but is part of the sealed hierarchy.
     internal fun line(event: DomainEvent, scope: Scope): Line = when (event) {
+        is RunStarted, is RunFinished, is CompilationStarted, is CompilationFinished ->
+            ConsoleFamilyLines.run(event)
 
-        // ---- RUN lifecycle ------------------------------------------------
-        is RunStarted -> Line(Family.RUN, "Run started: ${event.scriptPath}")
+        is StageStarted, is StageFinished, is StageSkipped, is StepStarted, is StepFinished,
+        is ParallelBranchStarted, is ParallelBranchFinished,
+        -> ConsoleFamilyLines.structure(event, scope)
 
-        is RunFinished -> Line(
-            Family.RUN,
-            if (event.diagnostics.isEmpty()) "Finished: ${event.outcome}"
-            else "Finished: ${event.outcome} (${event.diagnostics.size} diagnostic(s))",
-        )
+        is EchoOutputCaptured -> ConsoleFamilyLines.message(event)
 
-        is CompilationStarted -> Line(Family.RUN, "Compiling pipeline")
+        is StepFailed, is GitCheckoutFailed, is ArtifactArchiveFailed, is StashFailed,
+        is HtmlReportFailed, is LockAcquireFailed, is InputAborted, is InputDenied,
+        is DirectiveDenied, is HttpRequestFailed, is HttpStatusRejected, is StageMarkedUnstable,
+        is TimeoutTriggered, is MilestoneAborted,
+        -> ConsoleFamilyLines.failure(event)
 
-        is CompilationFinished -> Line(
-            Family.RUN,
-            if (event.diagnostics.isEmpty()) "Compilation finished"
-            else "Compilation finished with ${event.diagnostics.size} diagnostic(s)",
-        )
+        is AgentResolved, is ExecutionTargetResolved, is RetryAttemptStarted,
+        is RetryAttemptFinished, is TimeoutScheduled, is CatchErrorTriggered, is WorkflowLoaded,
+        is WaitUntilPolled, is WaitUntilCompleted, is MilestoneReached, is TimestampsEntered,
+        is TimestampsExited, is StepAdmissionObserved, is DirectiveAdmitted, is GateEvaluated,
+        is PostConditionSelected,
+        -> ConsoleFamilyLines.controlNote(event)
 
-        // ---- STRUCTURE ----------------------------------------------------
-        is StageStarted -> Line(Family.STRUCTURE, "[stage: ${event.stageName}]")
+        is StashCreated, is StashRestored, is HtmlReportPublished, is HtmlReportSkipped,
+        is LockRequested, is LockAcquired, is LockReleased, is LockSkipped,
+        -> ConsoleFamilyLines.resourceNote(event)
 
-        is StageFinished ->
-            Line(Family.STRUCTURE, "[stage: ${event.stageName}] -> ${event.outcome}")
+        is InputRequested, is InputProceed,
+        is CredentialBound, is CredentialUsed, is CredentialUnbound,
+        -> ConsoleFamilyLines.interactionNote(event)
 
-        is StageSkipped ->
-            Line(Family.STRUCTURE, "[stage: ${event.stageName}] skipped: ${event.reason}")
+        is GitCheckoutStarted, is GitCheckoutCompleted, is GitPollChanged,
+        is FileWritten, is FileRead, is FileExistsChecked, is ArtifactArchived,
+        is DirEntered, is DirExited, is DirDeleted, is WsCleaned,
+        is PwdResolved, is UnixDetected, is HttpRequestStarted, is HttpResponseReceived,
+        -> ConsoleFamilyLines.ioNote(event)
 
-        is StepStarted -> Line(
-            Family.STRUCTURE,
-            "[step: ${scope.stage(event.stageIndex)}] ${event.stepName}",
-        )
-
-        is StepFinished -> Line(
-            Family.STRUCTURE,
-            "[step: ${scope.stage(event.stageIndex)}] ${event.stepName} ok",
-        )
-
-        is ParallelBranchStarted ->
-            Line(Family.NOTE, "branch ${event.branchIndex} started: ${event.branchName}")
-
-        is ParallelBranchFinished ->
-            Line(
-                Family.NOTE,
-                "branch ${event.branchIndex} finished: ${event.branchName} -> ${event.outcome}",
-            )
-
-        // ---- MESSAGE ------------------------------------------------------
-        is EchoOutputCaptured -> Line(Family.MESSAGE, event.content, verbatim = true)
-
-        // ---- FAILURE ------------------------------------------------------
-        is StepFailed -> Line(
-            Family.FAILURE,
-            "ERROR: step '${event.stepName}' failed [${event.failureKind}]: ${event.message}",
-        )
-
-        is GitCheckoutFailed ->
-            Line(Family.FAILURE, "ERROR: git checkout failed: ${event.reason} (exit ${event.exitCode})")
-
-        is ArtifactArchiveFailed ->
-            Line(Family.FAILURE, "ERROR: artifact archive failed: ${event.reason}")
-
-        is StashFailed ->
-            Line(Family.FAILURE, "ERROR: stash '${event.name}' failed: ${event.reason}")
-
-        is HtmlReportFailed ->
-            Line(Family.FAILURE, "ERROR: html report '${event.reportName}' failed: ${event.reason}")
-
-        is LockAcquireFailed ->
-            Line(Family.FAILURE, "ERROR: lock '${event.resource}' failed: ${event.reason}")
-
-        is InputAborted -> Line(Family.FAILURE, "ERROR: input aborted: ${event.message}")
-        is InputDenied -> Line(Family.FAILURE, "ERROR: input denied: ${event.reason}")
-        is DirectiveDenied ->
-            Line(Family.FAILURE, "ERROR: directive '${event.directiveKey}' denied: ${event.reason}")
-
-        is HttpRequestFailed ->
-            Line(Family.FAILURE, "ERROR: http request failed: ${event.reason} (${event.url})")
-
-        is HttpStatusRejected -> Line(
-            Family.FAILURE,
-            "ERROR: http status rejected: ${event.status} (accepted ${event.accepted})",
-        )
-
-        is StageMarkedUnstable ->
-            Line(Family.FAILURE, "UNSTABLE: stage ${event.stageName}: ${event.message}")
-
-        is TimeoutTriggered ->
-            Line(Family.FAILURE, "ERROR: timeout ${event.action} on ${event.stageOrStep}")
-
-        is MilestoneAborted ->
-            Line(Family.FAILURE, "ERROR: milestone aborted: ${event.reason}")
-
-        // ---- NOTE ---------------------------------------------------------
-        is AgentResolved -> Line(Family.NOTE, "agent resolved: ${event.agentLabel}")
-
-        is ExecutionTargetResolved -> Line(
-            Family.NOTE,
-            "execution target for '${event.directiveKey}': ${event.targetId}",
-        )
-
-        is RetryAttemptStarted -> Line(
-            Family.NOTE,
-            "retry ${event.attemptNumber}/${event.maxAttempts}: ${event.stepName}",
-        )
-
-        is RetryAttemptFinished -> Line(
-            Family.NOTE,
-            "retry ${event.attemptNumber}/${event.maxAttempts}: ${event.stepName} -> ${event.outcome}",
-        )
-
-        is TimeoutScheduled -> Line(
-            Family.NOTE,
-            "timeout ${event.timeoutSeconds}s ${event.timeoutAction}: ${event.stepName}",
-        )
-
-        is CatchErrorTriggered ->
-            Line(Family.NOTE, "catchError on ${event.stageName}: ${event.message}")
-
-        is WorkflowLoaded ->
-            Line(Family.NOTE, "workflow loaded: ${event.path} (${event.stepCount} steps)")
-
-        is WaitUntilPolled ->
-            Line(Family.NOTE, "waitUntil polled (attempt ${event.attempt}): ${event.conditionResult}")
-
-        is WaitUntilCompleted ->
-            Line(Family.NOTE, "waitUntil completed after ${event.totalAttempts}: ${event.outcome}")
-
-        is MilestoneReached -> Line(Family.NOTE, "milestone ${event.ordinal}: ${event.label}")
-
-        is TimestampsEntered -> Line(Family.NOTE, "timestamps decorator entered")
-        is TimestampsExited -> Line(Family.NOTE, "timestamps decorator exited")
-
-        is StepAdmissionObserved -> Line(
-            Family.NOTE,
-            "admission ${event.stepKey} under ${event.law} (${event.executorCalls} executor call(s))",
-        )
-
-        is StashCreated -> Line(Family.NOTE, "stash created: ${event.name}")
-        is StashRestored -> Line(Family.NOTE, "stash restored: ${event.name}")
-
-        is HtmlReportPublished ->
-            Line(Family.NOTE, "html report published: ${event.reportName} -> ${event.targetPath}")
-
-        is HtmlReportSkipped ->
-            Line(Family.NOTE, "html report skipped '${event.reportName}': ${event.reason}")
-
-        is DirectiveAdmitted ->
-            Line(Family.NOTE, "directive admitted: ${event.directiveKey} (${event.phase})")
-
-        is GateEvaluated -> Line(
-            Family.NOTE,
-            "gate on ${event.stageName}: ${if (event.satisfied) "satisfied" else "not satisfied"} " +
-                "- ${event.reason}",
-        )
-
-        is PostConditionSelected -> Line(
-            Family.NOTE,
-            "post conditions for ${event.stageName}: selected ${event.selectedConditions.size}, " +
-                "skipped ${event.skippedConditions.size}",
-        )
-
-        is LockRequested -> Line(Family.NOTE, "lock requested: ${event.resource}")
-        is LockAcquired -> Line(Family.NOTE, "lock acquired: ${event.resource}")
-        is LockReleased -> Line(Family.NOTE, "lock released: ${event.resource}")
-        is LockSkipped -> Line(Family.NOTE, "lock skipped '${event.resource}': ${event.reason}")
-
-        is InputRequested -> Line(Family.NOTE, "input requested: ${event.message}")
-        is InputProceed -> Line(Family.NOTE, "input proceeded: ${event.submitter}")
-
-        is CredentialBound ->
-            Line(Family.NOTE, "credential bound: ${event.credentialsId} (${event.purpose})")
-
-        is CredentialUsed -> Line(Family.NOTE, "credential used: ${event.credentialsId}")
-        is CredentialUnbound -> Line(Family.NOTE, "credential unbound: ${event.credentialsId}")
-
-        is GitCheckoutStarted -> Line(Family.NOTE, "git checkout: ${event.url} (${event.branch})")
-        is GitCheckoutCompleted -> Line(Family.NOTE, "git checkout completed: ${event.sha}")
-        is GitPollChanged -> Line(Family.NOTE, "git poll: ${event.previousSha} -> ${event.newSha}")
-
-        is FileWritten -> Line(Family.NOTE, "file written: ${event.path} (${event.size} bytes)")
-        is FileRead -> Line(Family.NOTE, "file read: ${event.path} (${event.size} bytes)")
-        is FileExistsChecked ->
-            Line(Family.NOTE, "file exists ${event.path}: ${if (event.exists) "yes" else "no"}")
-
-        is ArtifactArchived -> Line(Family.NOTE, "artifact archived: ${event.files.size} file(s)")
-
-        is DirEntered -> Line(Family.NOTE, "dir entered: ${event.path}")
-        is DirExited -> Line(Family.NOTE, "dir exited: ${event.path} -> ${event.restoredTo}")
-        is DirDeleted -> Line(Family.NOTE, "dir deleted: ${event.path} (${event.deletedCount} entries)")
-        is WsCleaned -> Line(Family.NOTE, "workspace cleaned: ${event.deletedFiles} file(s)")
-
-        is PwdResolved -> Line(Family.NOTE, "pwd: ${event.path}")
-        is UnixDetected -> Line(Family.NOTE, "unix detected: ${event.osName}")
-
-        is HttpRequestStarted ->
-            Line(Family.NOTE, "http ${event.method} ${event.url} (${event.headerCount} header(s))")
-
-        is HttpResponseReceived ->
-            Line(Family.NOTE, "http response ${event.status} in ${event.durationMs}ms")
-
-        // A plugin's own event. Its payload is the contributor's serialization,
-        // not ours, so the console reports WHICH contract fired rather than
-        // guessing at the contents. This branch is also the proof that the
-        // exhaustive `when` is doing its job: PluginEventEmitted lives in its own
-        // file and was absent from a grep of DomainEvent.kt. An `else` would have
-        // swallowed it.
-        is PluginEventEmitted -> Line(
-            Family.NOTE,
-            "plugin event ${event.registryKind} v${event.schemaVersion} by ${event.emittedBy}",
-        )
+        is PluginEventEmitted -> ConsoleFamilyLines.pluginNote(event)
     }
 }

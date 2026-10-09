@@ -33,8 +33,8 @@ data class DeleteDirResult(
  * - Enforces workspace-root guard: resolved path MUST start with workspace root
  * - Throws [IllegalArgumentException] if path escapes workspace
  * - Throws [IllegalArgumentException] if the target IS the workspace root while
- *   [protectWorkspaceRoot] is set (C8). With `--workspace <dir>` the workspace
- *   root is the user's own project, and the default `deleteDir()` (path ".")
+ *   [rootDestruction] does not permit it (C8). With `--workspace <dir>` the
+ *   workspace root is the user's own project, and the default `deleteDir()` (path ".")
  *   resolves to exactly that root, so the Step's own default would erase the
  *   checkout. The default per-stage workspace is disposable scratch space, so
  *   wiping it stays allowed and WCL-S-001/S-002 keep their contract.
@@ -44,11 +44,13 @@ data class DeleteDirResult(
  * - Re-execution with same marker sha = no-op (deletedCount=0)
  *
  * @param workspaceResolver Resolves stage workspace root: `(stageName, stageIndex) -> workspacePath`
- * @param protectWorkspaceRoot When true, refuse to delete the workspace root itself.
+ * @param rootDestruction Whether the root may be wiped. A closed type, not a
+ *   boolean: [RootDestruction.DecidedElsewhere] is the case the previous
+ *   `protectWorkspaceRoot: Boolean` could not express, and it fails closed.
  */
 class DeleteDirExecutor(
     private val workspaceResolver: (stageName: String, stageIndex: Int) -> Path,
-    private val protectWorkspaceRoot: Boolean = false,
+    val rootDestruction: RootDestruction = RootDestruction.DecidedElsewhere,
 ) {
 
     /**
@@ -73,8 +75,9 @@ class DeleteDirExecutor(
         // C8 interlock: a shared user workspace (--workspace) is the user's own
         // project, so the root's contents are never deletable. `deleteDir()`
         // with no argument resolves here, which would otherwise erase the
-        // checkout. Scratch workspaces are unaffected and stay wipeable.
-        require(!protectWorkspaceRoot || targetPath != workspace) {
+        // checkout. Scratch workspaces are unaffected and stay wipeable, and an
+        // unresolved ownership question fails closed alongside UserOwned.
+        require(rootDestruction.permitsRootWipe || targetPath != workspace) {
             "deleteDir refuses to delete the workspace root itself ('$workspace'); " +
                 "pass a sub-path such as deleteDir(\"build\") to remove generated content"
         }

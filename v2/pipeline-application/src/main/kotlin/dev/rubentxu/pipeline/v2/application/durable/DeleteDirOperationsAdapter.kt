@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import dev.rubentxu.pipeline.v2.events.DirDeleted
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.files.DeleteDirExecutor
+import dev.rubentxu.pipeline.v2.sdk.files.RootDestruction
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -109,10 +110,19 @@ class DeleteDirOperationsAdapter(
             // Ownership now arrives as a WorkspaceLease, so a user-owned root is
             // refused whether or not it carries .git, .hg or .svn, and PipelineK
             // scratch keeps its wipe contract regardless of its contents.
-            protectWorkspaceRoot = WorkspacePathResolver.authorizeRootDestruction(
-                executionLocation.workspace,
-                "deleteDir",
-            ) !is DestructiveAuthorization.Permitted,
+            //
+            // C8: the decision is now a value, not a bit. The adapter maps the
+            // lease verdict onto the shared RootDestruction intent so the
+            // executor cannot be handed a half-resolved question.
+            rootDestruction = when (
+                WorkspacePathResolver.authorizeRootDestruction(
+                    executionLocation.workspace,
+                    "deleteDir",
+                )
+            ) {
+                is DestructiveAuthorization.Permitted -> RootDestruction.ScratchOwned
+                is DestructiveAuthorization.Refused -> RootDestruction.UserOwned
+            },
         )
 
         val spec = StepSpec.DeleteDir(path = input.path)

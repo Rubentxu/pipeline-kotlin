@@ -139,16 +139,21 @@ sealed interface FollowDecision {
  *
  *  * empty tails, run still going  → [FollowDecision.ReadAgain]. Nothing has been observed, and
  *    nothing observed is not evidence of completion.
- *  * empty tails, run finished     → [FollowDecision.Finished]. This is `sh("true")`, and it is the
- *    OBS-R1 §1.2 defect: a silent step must terminate its follower.
+ *  * empty tails, run finished     → [FollowDecision.Finished]. This is `sh("true")`, and it is
+ *    **UAT-R1-01**: a silent step terminates and its follower knows the end.
  *
- * ## Why this has no UAT number
+ * ## Which UAT row this is
  *
- * It does not get one. `OBS-PC-101..107` (read recovery) and `OBS-PC-201..207` (live output) are the
- * published rows, and none of them asks whether a follow ends on a run that wrote nothing. So this is
- * recorded as a defect found under OBS-R1 §1.2, not as a certified UAT: naming it `UAT-…` would have
- * borrowed authority from a matrix that does not contain it. If the owner wants it as a row, it gets
- * registered as one in the roadmap first and cited here afterwards — never the other way round.
+ * **UAT-R1-01** — "`sh("true")`, sin stdout/stderr, termina y su follower conoce el fin" — from the
+ * OBS-R1 mandate §1.5. The published repo matrices (`OBS-PC-101..107`, `OBS-PC-201..207`) do not
+ * contain this row; the mandate does, and the mandate is the requirement. An earlier revision of this
+ * file claimed the row did not exist anywhere and removed the reference. That was wrong, and wrong in
+ * the expensive direction: it read as if the behaviour were optional, when the mandate makes it
+ * mandatory. The `docs/` tree was searched and came back empty; the rows were in the mandate, not in
+ * the tree.
+ *
+ * What this file discharges is the DECISION half of UAT-R1-01. The run half — an installed pipeline
+ * whose silent step terminates a real follower — is not discharged here and is tracked as such.
  *
  * ## Why it is NOT a conjunct on the sealed case
  *

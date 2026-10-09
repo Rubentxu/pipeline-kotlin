@@ -446,11 +446,11 @@ interface ObserveLanes : AutoCloseable {
     /**
      * Whether the durable EVENT authority says this run reached a terminal state.
      *
-     * Added for the OBS-R1 §1.2 console-closure defect, because the output lane provably cannot
+     * Added for **UAT-R1-01** (OBS-R1 mandate §1.5), because the output lane provably cannot
      * substitute for it. A run that finished writing nothing owns no stream and no frame, so
      * [outputTailsOf] answers an empty list for it — and so it answers the same empty list for a run
      * that has not started. A follower that read termination off that list would hang on
-     * `sh("true")` forever.
+     * `sh("true")` forever, which is precisely the UAT row.
      *
      * It is consulted ONLY when the tail list is empty. A non-empty sealed tail is the output lane's
      * own authority and needs no corroboration; requiring the run to have finished as well would make

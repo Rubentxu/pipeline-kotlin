@@ -279,7 +279,7 @@ class ObservationWakeupTest {
     }
 
     /**
-     * OBS-R1 §1.2 — `sh("true")`, and a follower that has to stop. Not a UAT number; see below.
+     * **UAT-R1-01** — `sh("true")`, sin stdout/stderr, termina y su follower conoce el fin.
      *
      * A silent step owns no stream and no frame, so the output plane answers an EMPTY tail list for
      * it. Until the run-finished fact became an argument, that empty list was the whole evidence
@@ -292,17 +292,17 @@ class ObservationWakeupTest {
      * `ADR-M1 §D2` forbids, and it is worse than hanging: it makes a step that printed nothing
      * indistinguishable from a step that printed something a reader could later look up.
      *
-     * **This row has no UAT identifier on purpose.** `OBS-PC-101..107` and `OBS-PC-201..207` are the
-     * published matrices and neither contains "a follow ends on a run that wrote nothing". It was
-     * first written as `UAT-R1-01`, which was a fabricated id: it borrowed the authority of a matrix
-     * that does not contain it, and `R1` is a release block, not a UAT prefix. The honest label is a
-     * defect found under OBS-R1 §1.2. Registering it as a row is the owner's call and happens in the
-     * roadmap, not in a test name.
+     * Source of the row: OBS-R1 mandate §1.5. An earlier revision of this file asserted the row did
+     * not exist, after a search of `docs/` came back empty. The rows were in the mandate and not in
+     * the tree, so that search could not have found them, and the conclusion drawn from it was wrong.
      *
      * HF0 Pure Contract. [followDecision] reads no clock, no filesystem and no ambient state, so
-     * driving it directly is the faithful level and not a reimplementation of the decision. What this
-     * level does NOT claim: that a real installed run reaches this verdict. `ObsE5ObserveFollowTest`
-     * covers the CLI path, and an end-to-end row over a real `sh("true")` remains NOT RUN.
+     * driving it directly is the faithful level and not a reimplementation of the decision.
+     *
+     * **Scope of this row, stated plainly:** it discharges the DECISION half of UAT-R1-01. It does
+     * NOT discharge the run half — that needs an installed pipeline whose silent step terminates a
+     * real follower, and that is tracked separately as NOT_RUN. `ObsE5ObserveFollowTest` covers the
+     * CLI path with an in-process lane; neither is a real process.
      *
      * Mutations: FOLLOW-M1 — answer `Finished` from the empty-tails arm regardless of [runFinished];
      * killed by FOLLOW-3 alone. FOLLOW-M2 — restore the old unconditional `tailStates.isEmpty()` arm;

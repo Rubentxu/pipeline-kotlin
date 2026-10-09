@@ -85,7 +85,16 @@ class CleanWsExecutor(
         // form would delete every file in it. Unlike deleteDir, this is not
         // recoverable at all: there is no pattern to narrow it by accident. An
         // unresolved ownership question fails closed here too.
-        require(rootDestruction.permitsRootWipe || !spec.patterns.isNullOrEmpty()) {
+        //
+        // Matched on the cases, for the same reason as deleteDir: a bit would
+        // let a new ownership state inherit a verdict nobody chose for it.
+        val wipesRoot = when (rootDestruction) {
+            RootDestruction.ScratchOwned -> true
+            RootDestruction.UserOwned,
+            RootDestruction.DecidedElsewhere,
+            -> false
+        }
+        require(wipesRoot || !spec.patterns.isNullOrEmpty()) {
             "cleanWs refuses to run without patterns on workspace '$workspace'; " +
                 "pass patterns such as cleanWs(patterns = listOf(\"build/**\")) " +
                 "so only generated content is removed"

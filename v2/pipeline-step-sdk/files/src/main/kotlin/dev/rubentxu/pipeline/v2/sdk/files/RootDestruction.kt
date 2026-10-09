@@ -26,30 +26,37 @@ package dev.rubentxu.pipeline.v2.sdk.files
  * cannot name "allowed", and a caller cannot express a decision on behalf of a
  * lease it did not inspect.
  *
+ * ## Why this exposes no `permitsRootWipe: Boolean`
+ *
+ * A property collapsing the three states back into one bit would reinstate the
+ * exact defect under a new name: the executors would branch on the bit, the
+ * [DecidedElsewhere] case would be indistinguishable from [UserOwned] at the
+ * call site, and adding a fourth state would mean re-deciding what the bit means.
+ * Consumers `when`-match the cases instead, so a new case is a compile error in
+ * every consumer until someone states what it does.
+ *
+ * The consequence is that [DecidedElsewhere] is not "UserOwned with extra steps":
+ * it is the case that has no verdict yet, and it is treated conservatively
+ * because an unanswered ownership question must not resolve toward destruction.
+ *
  * ## Why the DSL default is NOT changed by this
  *
  * `StepSpec.DeleteDir(path = ".")` keeps its default. `deleteDir()` with no
  * argument is a Jenkins contract, pinned by
  * `FArchL7JenkinsVerbatimSignatureReflectionTest` (WCL-S-008, FIL-ALL-001), and
  * removing it would break source compatibility for every existing pipeline for
- * no safety gain: `UserOwned` already refuses the root before any effect. The
+ * no safety gain: [UserOwned] already refuses the root before any effect. The
  * defect was never the default's existence, it was that the default's outcome
  * was decided by a bit the caller could pass wrong.
  *
  * See `docs/v2/07-uat/C8_WORKSPACE_ROOT_DELETION_RECEIPT.md`.
- *
- * @param permitsRootWipe `true` only for a directory PipelineK created.
- *   `DecidedElsewhere` is false on purpose: an unresolved ownership question
- *   must not resolve toward destruction.
  */
-enum class RootDestruction(
-    val permitsRootWipe: Boolean,
-) {
+enum class RootDestruction {
     /** PipelineK's own scratch. Wiping it is the point of the Step. */
-    ScratchOwned(permitsRootWipe = true),
+    ScratchOwned,
 
     /** A user-owned checkout pointed at by `--workspace`. Never wiped. */
-    UserOwned(permitsRootWipe = false),
+    UserOwned,
 
     /**
      * Ownership has not been resolved. Treated exactly like [UserOwned].
@@ -57,7 +64,7 @@ enum class RootDestruction(
      * This is the case the old `Boolean` could not express, and the reason it
      * is safe: the absence of a decision fails closed toward preservation.
      */
-    DecidedElsewhere(permitsRootWipe = false),
+    DecidedElsewhere,
     ;
 
     companion object {

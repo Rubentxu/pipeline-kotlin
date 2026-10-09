@@ -77,7 +77,17 @@ class DeleteDirExecutor(
         // with no argument resolves here, which would otherwise erase the
         // checkout. Scratch workspaces are unaffected and stay wipeable, and an
         // unresolved ownership question fails closed alongside UserOwned.
-        require(rootDestruction.permitsRootWipe || targetPath != workspace) {
+        //
+        // Matched on the cases rather than on a `permitsRootWipe` bit: a bit
+        // would make UserOwned and DecidedElsewhere indistinguishable here, and
+        // a fourth state would silently inherit whichever value the bit gave it.
+        val wipesRoot = when (rootDestruction) {
+            RootDestruction.ScratchOwned -> true
+            RootDestruction.UserOwned,
+            RootDestruction.DecidedElsewhere,
+            -> false
+        }
+        require(wipesRoot || targetPath != workspace) {
             "deleteDir refuses to delete the workspace root itself ('$workspace'); " +
                 "pass a sub-path such as deleteDir(\"build\") to remove generated content"
         }

@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.sdk.files
 
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
@@ -70,17 +71,70 @@ class C8DestructiveIntentMatrixTest {
     @Test
     @DisplayName("C8-M2 the type exposes no boolean accessor that re-collapses the decision")
     fun `C8-M2 RootDestruction exposes no boolean permitRoot`() {
-        // A `permitRoot: Boolean` property on the ADT would restore exactly the
-        // defect this replaces. Reflection keeps that from creeping back.
-        val booleanProperties = RootDestruction::class.java.methods
-            .filter { it.name.startsWith("permit") || it.name.startsWith("protect") }
+        // A boolean property on the ADT would restore exactly the defect this
+        // replaces, so reflection keeps it from creeping back.
+        //
+        // The first version of this row filtered on `permit`/`protect` only. A
+        // Kotlin `val permitsRootWipe: Boolean` compiles to the JVM getter
+        // `getPermitsRootWipe()`, which starts with `get`, so the filter matched
+        // nothing and the row was green while the collapse was sitting in the
+        // enum. The predicate now has to answer "is there a public no-arg
+        // getter returning boolean", which is the actual claim.
+        val booleanAccessors = RootDestruction::class.java.methods
+            .filter { method ->
+                method.parameterCount == 0 &&
+                    method.returnType == Boolean::class.javaPrimitiveType &&
+                    // Kotlin properties of a non-companion object become
+                    // getX() accessors; getDeclaringClass() is the enum itself.
+                    method.name.startsWith("get") &&
+                    method.declaringClass == RootDestruction::class.java
+            }
             .map { it.name }
             .toSet()
 
         assertTrue(
-            booleanProperties.isEmpty(),
-            "RootDestruction must not re-expose the collapse as a boolean; found $booleanProperties",
+            booleanAccessors.isEmpty(),
+            "RootDestruction must not re-expose the three-state decision as a boolean; " +
+                "found $booleanAccessors. Consumers must `when`-match the cases so a new " +
+                "state is a compile error rather than a silently inherited verdict",
         )
+    }
+
+    @Test
+    @DisplayName("C8-M2a the two executors decide by matching cases, not by reading a bit")
+    fun `C8-M2a executors branch on the cases`() {
+        // The enum being closed is not sufficient: a consumer that collapses it
+        // back to a boolean locally has reintroduced the defect one layer down.
+        // This pins the shape of both guards without reaching into the private
+        // body, because the observable behaviour is already covered by C8-M3/6/7
+        // and C9-M1/2.
+        // `Path.of("src/main/...")` relative to the module dir is the pattern used by
+        // CandidateContinuityFitnessTest; the Gradle test working directory is the
+        // project directory of the module under test.
+        val sourceRoot: Path = Path.of("src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/files")
+        val executors = listOf("DeleteDirExecutor.kt", "CleanWsExecutor.kt")
+
+        executors.forEach { name ->
+            val file = sourceRoot.resolve(name)
+            check(Files.isRegularFile(file)) {
+                "source not found for $name at ${file.toAbsolutePath()}"
+            }
+            val source = Files.readString(file)
+            val withoutComments = source
+                .lines()
+                .map { it.substringBefore("//") }
+                .joinToString("\n")
+
+            assertFalse(
+                withoutComments.contains("permitsRootWipe"),
+                "$name branches on permitsRootWipe; it must match RootDestruction cases instead",
+            )
+            assertTrue(
+                Regex("when\\s*\\(\\s*rootDestruction\\s*\\)").containsMatchIn(withoutComments),
+                "$name must decide root destruction by `when (rootDestruction)` so a new " +
+                    "ownership case is a compile error rather than an inherited verdict",
+            )
+        }
     }
 
     // ── each state maps to a distinct, testable decision ─────────────────────

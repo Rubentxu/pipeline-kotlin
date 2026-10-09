@@ -195,8 +195,15 @@ object ConsoleReadService {
         // makes one range read correct for both plain and `returnStdout` invocations.
         val bounds = ordered.map { store.committedExtent(it.stream) ?: 0L }
         val total = bounds.sum()
-        require(from >= 0 && to >= from && to <= total) {
-            "range [$from, $to) is outside this operation's committed console of $total bytes"
+        // REFUSED, not thrown. This used to be a `require`, so a span past the end of a short run let
+        // an IllegalArgumentException escape `main` — the reader crashed instead of answering, and the
+        // crash said nothing a caller could act on. Both refusals were already in [OutputRefusal];
+        // nothing in the program was reading them, which is why the hole survived the ADT being closed.
+        if (from < 0L || to < from) {
+            return Result.Refused(OutputRefusal.InvalidRange(from, to))
+        }
+        if (to > total) {
+            return Result.Refused(OutputRefusal.OffsetBeyondCommitted(requested = to, committed = total))
         }
 
         val out = java.io.ByteArrayOutputStream()
@@ -259,6 +266,93 @@ object ConsoleReadService {
 }
 
 /**
+ * What `pipeline console` was asked to read.
+ *
+ * ## Why this is a type and not a branch
+ *
+ * The two readings are not variants of one thing. A [Paged] read CONTINUES after a cursor and is
+ * bounded by a budget. A [Range] read NAMES A SPAN of the merged offset space and is not resumable,
+ * because continuation is expressed with a cursor and a span across two channel streams has no
+ * honest single cursor.
+ *
+ * `main` used to hold a `String?` for `--range`, another for `--after-cursor`, and pick between them
+ * with an `if`. Nothing in that program said the two are different requests, so `--range 0:10
+ * --max-bytes 5` was not refused — the budget was silently discarded, and `readRange`'s `require`
+ * then threw out of `main` for a span no run had committed. A third flag that cannot apply is a
+ * refusal, and refusal is a case of the request type's absence, not a branch that quietly picks a
+ * different case.
+ */
+sealed interface ConsoleReadRequest {
+    val controlDir: String
+    val runId: String
+    val opId: String
+
+    /** Continue after [after] (`null` starts at the beginning), emitting at most [maxBytes] bytes. */
+    data class Paged(
+        override val controlDir: String,
+        override val runId: String,
+        override val opId: String,
+        val after: OutputCursor?,
+        val maxBytes: Int,
+    ) : ConsoleReadRequest
+
+    /** The committed span `[from, to)` of the merged offset space. No continuation is produced. */
+    data class Range(
+        override val controlDir: String,
+        override val runId: String,
+        override val opId: String,
+        val from: Long,
+        val to: Long,
+    ) : ConsoleReadRequest
+}
+
+/**
+ * Why `pipeline console` will not do what it was asked.
+ *
+ * Every case is decided before a store is opened, except [ConsoleCliRefusal.ControlDirNotFound],
+ * which is the first thing that touches the filesystem. A refusal names the token that is wrong,
+ * because a diagnostic that does not is a diagnostic the caller has to guess from.
+ */
+sealed interface ConsoleCliRefusal {
+    data object MissingArgument : ConsoleCliRefusal
+    data class UnknownOption(val option: String) : ConsoleCliRefusal
+    data class UnexpectedArgument(val value: String) : ConsoleCliRefusal
+    data class NotAnInteger(val option: String, val value: String) : ConsoleCliRefusal
+    data class NotARange(val value: String) : ConsoleCliRefusal
+    data class NotACursorToken(val token: String) : ConsoleCliRefusal
+    data class ControlDirNotFound(val path: String) : ConsoleCliRefusal
+
+    /**
+     * A reader flag offered to a range read, or the other way round.
+     *
+     * [spansNothing] is the argument, in one token: the flag does not shrink the answer, it does not
+     * change it, and it produces no output at all. There is no documented meaning to honour it by.
+     */
+    data class IncompatibleWithRange(val option: String) : ConsoleCliRefusal {
+        override fun toString(): String =
+            "IncompatibleWithRange($option): --range names a span of the committed console, and " +
+                "'$option' has no meaning over a span. A range is not resumable, because continuation " +
+                "is expressed with a cursor and a span across two channel streams has no single one. " +
+                "Drop '$option', or read a page with --after-cursor '$option' instead."
+    }
+}
+
+/** One stable line per refusal, so a script can branch on the reason. */
+fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal) {
+    ConsoleCliRefusal.MissingArgument ->
+        "Usage: pipeline console --control-dir <path> <runId> <opId> " +
+            "[--max-bytes N] [--after-cursor TOKEN] | --range FROM:TO"
+    is ConsoleCliRefusal.UnknownOption -> "Error: unknown option: ${refusal.option}"
+    is ConsoleCliRefusal.UnexpectedArgument -> "Error: unexpected extra argument: ${refusal.value}"
+    is ConsoleCliRefusal.NotAnInteger ->
+        "Error: ${refusal.option} must be a positive integer, got: ${refusal.value}"
+    is ConsoleCliRefusal.NotARange -> "Error: --range must be FROM:TO with integers, got ${refusal.value}"
+    is ConsoleCliRefusal.NotACursorToken -> "Error: not an output cursor token: ${refusal.token}"
+    is ConsoleCliRefusal.ControlDirNotFound -> "Error: control dir not found: ${refusal.path}"
+    is ConsoleCliRefusal.IncompatibleWithRange -> "Error: ${refusal.toString()}"
+}
+
+/**
  * M1-P3 — the console reader CLI.
  *
  * ```text
@@ -269,104 +363,59 @@ object ConsoleReadService {
  * The console transcript goes to **stdout as bytes**, not as a rendered line, because a consumer
  * that has to strip a CLI's framing out of a transcript will eventually strip the wrong thing. The
  * continuation token goes to **stderr**, which is the convention [MainEventsCli] already uses and
- * keeps the two planes from colliding.
+ * keeps the two planes from colliding. A refusal is therefore also stderr-only: it must never reach
+ * stdout, because a consumer reading bytes there cannot tell a refusal from an empty transcript.
+ *
+ * ## Three steps, in that order
+ *
+ * [MainConsoleCliAdmission.parseTokens] collects argv and decides nothing. [admit] validates — and
+ * validates CONFLICTS before TYPES, so `--range 0:10 --max-bytes abc` says the budget has no meaning
+ * there rather than complaining about the number, which would send the caller to edit a token they
+ * should delete. [MainConsoleCli.execute] interprets the admitted request.
  */
 object MainConsoleCli {
 
-    fun main(args: Array<String>): Int {
-        var controlDir: String? = null
-        var runId: String? = null
-        var opId: String? = null
-        var maxBytes = ConsoleReadService.DEFAULT_PAGE_BYTES
-        var maxBytesArg: String? = null
-        var afterCursor: String? = null
-        var range: String? = null
-
-        var i = 0
-        while (i < args.size) {
-            val arg = args[i]
-            when (arg) {
-                "--control-dir" -> controlDir = args.getOrNull(++i)
-                // Parsed as text and validated below, so a flag that does not parse becomes a refusal
-                // rather than the default. `--max-bytes abc` used to read as DEFAULT_PAGE_BYTES with
-                // exit 0 — the same shape as a command that silently did something other than what was
-                // asked. AUD-04, aligned with [MainEventsCli].
-                "--max-bytes" -> maxBytesArg = args.getOrNull(++i)
-                "--after-cursor" -> afterCursor = args.getOrNull(++i)
-                "--range" -> range = args.getOrNull(++i)
-                else -> when {
-                    // AUD-04. This arm has no `else` of its own, so an unknown `--flag` matched it,
-                    // satisfied neither condition, and completed as Unit — parsed as nothing, exit 0.
-                    // A third positional did the same: dropped while the first two were kept.
-                    arg.startsWith("--") -> {
-                        System.err.println("Error: unknown option: $arg")
-                        return 2
-                    }
-                    runId == null -> runId = arg
-                    opId == null -> opId = arg
-                    // The command reads ONE run and ONE op.
-                    else -> {
-                        System.err.println("Error: unexpected extra argument: $arg")
-                        return 2
-                    }
-                }
-            }
-            i++
+    fun main(args: Array<String>): Int = when (val admitted = MainConsoleCliAdmission.admit(args)) {
+        is ConsoleCliAdmission.Rejected -> {
+            System.err.println(renderConsoleCliRefusal(admitted.refusal))
+            2
         }
 
-        if (controlDir == null || runId == null || opId == null) {
-            System.err.println(
-                "Usage: pipeline console --control-dir <path> <runId> <opId> " +
-                    "[--max-bytes N] [--after-cursor TOKEN] | --range FROM:TO",
-            )
-            return 2
-        }
-
-        // A flag that does not parse must not become the default.
-        if (maxBytesArg != null) {
-            val parsed = maxBytesArg.toIntOrNull()
-            if (parsed == null || parsed <= 0) {
-                System.err.println("Error: --max-bytes must be a positive integer, got: $maxBytesArg")
-                return 2
-            }
-            maxBytes = parsed
-        }
-
-        val root = Path.of(controlDir)
-        if (!java.nio.file.Files.isDirectory(root)) {
-            System.err.println("Error: control dir not found: $controlDir")
-            return 2
-        }
-
-        if (maxBytes <= 0) {
-            System.err.println("Error: --max-bytes must be positive, got $maxBytes")
-            return 2
-        }
-
-        // An event cursor pasted here is a decode failure, not a silent offset into the wrong
-        // bytes. The distinct token prefixes are the whole reason.
-        val after = afterCursor?.let { token ->
-            OutputCursor.decode(token) ?: run {
-                System.err.println("Error: not an output cursor token: $token")
-                return 2
+        is ConsoleCliAdmission.Admitted -> {
+            val request = admitted.request
+            val root = Path.of(request.controlDir)
+            // The first effect in the program. Everything above is a decision about the QUESTION;
+            // this is the question being put to a filesystem that may not have the answer.
+            if (!java.nio.file.Files.isDirectory(root)) {
+                System.err.println(
+                    renderConsoleCliRefusal(ConsoleCliRefusal.ControlDirNotFound(request.controlDir)),
+                )
+                2
+            } else {
+                emit(execute(request, root), System.out, System.err)
             }
         }
-
-        val result = if (range != null) {
-            val bounds = range.split(':')
-            val from = bounds.getOrNull(0)?.toLongOrNull()
-            val to = bounds.getOrNull(1)?.toLongOrNull()
-            if (bounds.size != 2 || from == null || to == null) {
-                System.err.println("Error: --range must be FROM:TO with integers, got $range")
-                return 2
-            }
-            ConsoleReadService.readRange(root, runId, opId, from, to)
-        } else {
-            ConsoleReadService.read(root, runId, opId, after, maxBytes)
-        }
-
-        return emit(result, System.out, System.err)
     }
+
+    /** Interpret one admitted request. The branch is exhaustive because the request says which. */
+    private fun execute(request: ConsoleReadRequest, root: Path): ConsoleReadService.Result =
+        when (request) {
+            is ConsoleReadRequest.Paged -> ConsoleReadService.read(
+                root,
+                request.runId,
+                request.opId,
+                request.after,
+                request.maxBytes,
+            )
+
+            is ConsoleReadRequest.Range -> ConsoleReadService.readRange(
+                root,
+                request.runId,
+                request.opId,
+                request.from,
+                request.to,
+            )
+        }
 
     /** Emit the result. Split out so a test drives it without capturing the real process streams. */
     fun emit(result: ConsoleReadService.Result, out: PrintStream, err: PrintStream): Int =
@@ -426,4 +475,141 @@ object MainConsoleCli {
         OutputPlaneProvider.streamId(runId, opId, channel)
 
     internal fun utf8(bytes: ByteArray): String = String(bytes, StandardCharsets.UTF_8)
+}
+
+
+/** argv as written, before anything has been decided. Pure: this step cannot refuse anything but shape. */
+private data class ConsoleCliTokens(
+    val controlDir: String? = null,
+    val runId: String? = null,
+    val opId: String? = null,
+    val maxBytes: String? = null,
+    val afterCursor: String? = null,
+    val range: String? = null,
+)
+
+private sealed interface ConsoleCliParse {
+    data class Collected(val tokens: ConsoleCliTokens) : ConsoleCliParse
+    data class Rejected(val refusal: ConsoleCliRefusal) : ConsoleCliParse
+}
+
+private sealed interface ConsoleCliAdmission {
+    data class Admitted(val request: ConsoleReadRequest) : ConsoleCliAdmission
+    data class Rejected(val refusal: ConsoleCliRefusal) : ConsoleCliAdmission
+}
+
+/**
+ * argv -> one admitted [ConsoleReadRequest], or one refusal.
+ *
+ * ## Conflicts are decided before types
+ *
+ * `--range 0:10 --max-bytes abc` is refused as "the budget has no meaning over a range", not as
+ * "abc is not a number". The flag is wrong whatever its value, so answering about the value sends
+ * the caller to edit a token they should delete — and if they fix the number, the run still does not
+ * do what they asked. This ordering is a decision, not an accident, and CONSOLE-RANGE-BEATS-TYPE is
+ * the row that keeps it.
+ *
+ * Nothing here opens a store. A reader flag that cannot apply is refused while it is still a
+ * question about the QUESTION.
+ */
+private object MainConsoleCliAdmission {
+
+    fun admit(args: Array<String>): ConsoleCliAdmission =
+        when (val parsed = parseTokens(args)) {
+            is ConsoleCliParse.Rejected -> ConsoleCliAdmission.Rejected(parsed.refusal)
+            is ConsoleCliParse.Collected -> validate(parsed.tokens)
+        }
+
+    private fun parseTokens(args: Array<String>): ConsoleCliParse {
+        var controlDir: String? = null
+        var runId: String? = null
+        var opId: String? = null
+        var maxBytes: String? = null
+        var afterCursor: String? = null
+        var range: String? = null
+        var index = 0
+        while (index < args.size) {
+            val arg = args[index]
+            when (arg) {
+                "--control-dir" -> controlDir = args.getOrNull(++index)
+                // Parsed as text and validated later, so a flag that does not parse becomes a refusal
+                // rather than the default. `--max-bytes abc` used to read as DEFAULT_PAGE_BYTES with
+                // exit 0 — the same shape as a command that silently did something other than what was
+                // asked. AUD-04, aligned with [MainEventsCli].
+                "--max-bytes" -> maxBytes = args.getOrNull(++index)
+                "--after-cursor" -> afterCursor = args.getOrNull(++index)
+                "--range" -> range = args.getOrNull(++index)
+                else -> {
+                    // AUD-04. This arm has no `else` of its own, so an unknown `--flag` matched it,
+                    // satisfied neither condition, and completed as Unit — parsed as nothing, exit 0.
+                    // A third positional did the same: dropped while the first two were kept.
+                    positional(arg, runId, opId)?.let { return ConsoleCliParse.Rejected(it) }
+                    if (runId == null) runId = arg else opId = arg
+                }
+            }
+            index++
+        }
+        return ConsoleCliParse.Collected(
+            ConsoleCliTokens(controlDir, runId, opId, maxBytes, afterCursor, range),
+        )
+    }
+
+    /** The command reads ONE run and ONE op, so there are exactly two positionals. */
+    private fun positional(arg: String, runId: String?, opId: String?): ConsoleCliRefusal? = when {
+        arg.startsWith("--") -> ConsoleCliRefusal.UnknownOption(arg)
+        runId != null && opId != null -> ConsoleCliRefusal.UnexpectedArgument(arg)
+        else -> null
+    }
+
+    private fun validate(tokens: ConsoleCliTokens): ConsoleCliAdmission {
+        val controlDir = tokens.controlDir ?: return rejected(ConsoleCliRefusal.MissingArgument)
+        val runId = tokens.runId ?: return rejected(ConsoleCliRefusal.MissingArgument)
+        val opId = tokens.opId ?: return rejected(ConsoleCliRefusal.MissingArgument)
+
+        val range = tokens.range
+        val incompatible = when {
+            range == null -> null
+            tokens.afterCursor != null -> "--after-cursor"
+            else -> "--max-bytes".takeIf { tokens.maxBytes != null }
+        }
+        if (range != null && incompatible != null) {
+            return rejected(ConsoleCliRefusal.IncompatibleWithRange(incompatible))
+        }
+
+        if (range != null) return admitRange(controlDir, runId, opId, range)
+        return admitPage(controlDir, runId, opId, tokens)
+    }
+
+    private fun admitRange(controlDir: String, runId: String, opId: String, range: String): ConsoleCliAdmission {
+        val bounds = range.split(':')
+        val from = bounds.getOrNull(0)?.toLongOrNull()
+        val to = bounds.getOrNull(1)?.toLongOrNull()
+        if (bounds.size != 2 || from == null || to == null) {
+            return rejected(ConsoleCliRefusal.NotARange(range))
+        }
+        return ConsoleCliAdmission.Admitted(ConsoleReadRequest.Range(controlDir, runId, opId, from, to))
+    }
+
+    private fun admitPage(
+        controlDir: String,
+        runId: String,
+        opId: String,
+        tokens: ConsoleCliTokens,
+    ): ConsoleCliAdmission {
+        val maxBytes = tokens.maxBytes?.let { value ->
+            value.toIntOrNull()?.takeIf { it > 0 }
+                ?: return rejected(ConsoleCliRefusal.NotAnInteger("--max-bytes", value))
+        } ?: ConsoleReadService.DEFAULT_PAGE_BYTES
+
+        // An event cursor pasted here is a decode failure, not a silent offset into the wrong
+        // bytes. The distinct token prefixes are the whole reason.
+        val after = tokens.afterCursor?.let { token ->
+            OutputCursor.decode(token) ?: return rejected(ConsoleCliRefusal.NotACursorToken(token))
+        }
+
+        return ConsoleCliAdmission.Admitted(ConsoleReadRequest.Paged(controlDir, runId, opId, after, maxBytes))
+    }
+
+    private fun rejected(refusal: ConsoleCliRefusal): ConsoleCliAdmission =
+        ConsoleCliAdmission.Rejected(refusal)
 }

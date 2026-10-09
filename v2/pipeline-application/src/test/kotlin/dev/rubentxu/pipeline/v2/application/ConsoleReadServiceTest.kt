@@ -260,6 +260,48 @@ class ConsoleReadServiceTest {
     }
 
     @Test
+    fun `a range past the committed end is refused rather than thrown`(@TempDir root: Path) {
+        linuxOnly()
+        val controlDirRoot = Files.createDirectories(root.resolve("control"))
+        val workspaceRoot = Files.createDirectories(root.resolve("workspace"))
+        val runId = "r-range-past-end"
+        val op = runSh(controlDirRoot, workspaceRoot, "seq 1 50", runId).format()
+
+        // `readRange` used to `require` this and let IllegalArgumentException escape `main`, so a
+        // span past the end of a short run CRASHED the reader instead of answering it. The refusal it
+        // should have returned was already in `OutputRefusal`; nothing read it.
+        val service = ConsoleReadService.readRange(controlDirRoot, runId, op, 0L, 1_000_000L)
+
+        assertTrue(
+            service is ConsoleReadService.Result.Refused &&
+                service.reason is OutputRefusal.OffsetBeyondCommitted,
+            "the service refuses a span past the committed console; got $service",
+        )
+
+        val out = ByteArrayOutputStream()
+        val err = ByteArrayOutputStream()
+        val previousOut = System.out
+        val previousErr = System.err
+        val code = try {
+            System.setOut(PrintStream(out, true, StandardCharsets.UTF_8))
+            System.setErr(PrintStream(err, true, StandardCharsets.UTF_8))
+            MainConsoleCli.main(
+                arrayOf("--control-dir", controlDirRoot.toString(), runId, op, "--range", "0:1000000"),
+            )
+        } finally {
+            System.setOut(previousOut)
+            System.setErr(previousErr)
+        }
+
+        assertEquals(1, code, "a refusal is not a success with no output")
+        assertEquals(0, out.size(), "and it prints no transcript bytes")
+        assertTrue(
+            MainConsoleCli.utf8(err.toByteArray()).contains("offset-beyond-committed"),
+            "stderr:\n${MainConsoleCli.utf8(err.toByteArray())}",
+        )
+    }
+
+    @Test
     fun `the CLI --range branch returns the same bytes the service range does`(@TempDir root: Path) {
         linuxOnly()
         val controlDirRoot = Files.createDirectories(root.resolve("control"))

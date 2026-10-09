@@ -118,55 +118,78 @@ class PluginProvenanceDigestSelfReferenceFitnessTest {
                 "if it was renamed or retyped, repoint this row instead of letting it pass on a " +
                 "task it no longer describes"
         }
+        // The task's own block is read from its registration to the END of the file.
+        //
+        // The first draft cut the region at `substringBefore("commandLine")`, because the shell
+        // pipeline that used to compute the digest ended there. AUD-01/B0.2 moved the digest to
+        // the shared ProvenanceDigest, so `commandLine` no longer exists anywhere in this script
+        // — `substringBefore` then returned the ENTIRE remainder of the file, which happened to
+        // contain the exclusion set declared above, so the row kept passing by reading a region
+        // that no longer matched the task it claimed to guard. A guard anchored on a token the
+        // subject no longer has is a guard that has silently stopped guarding.
+        //
+        // The exclusion set is now a NAMED val passed to ProvenanceDigest.computeDigestHex, so
+        // this row checks the property directly: the set names BOTH documents, and the set is
+        // the one handed to the digest. It deliberately does not grep for one variable name, so
+        // it cannot be satisfied by a differently-spelled-but-equally-correct fix.
+        // The EXCLUSION SET may be declared BEFORE the task registration (it is, today), so the
+        // set is read from the WHOLE file while the CALL is read from the registration onward.
+        // Reading both out of one region is how the previous revision of this row came to inspect
+        // an implementation it no longer described.
         val digestBlock = text.substring(registration.range.last)
-            .substringBefore("commandLine")
+        val exclusionSet = requireNotNull(
+            Regex("""val\s+(\w*[Ee]xcluded\w*)\s*:\s*Set<String>""").find(text),
+        ) {
+            "could not find the excluded-path set in ${junitBuildScript.path}; if the task was " +
+                "rewritten, repoint this row instead of letting it pass on an implementation it no " +
+                "longer describes"
+        }
+        val exclusionSetName = exclusionSet.groupValues[1]
+        val exclusionSetBody = requireNotNull(
+            Regex("""val\s+$exclusionSetName\s*:\s*Set<String>.*?setOf\((.*?)\)""", RegexOption.DOT_MATCHES_ALL)
+                .find(text),
+        ) {
+            "the excluded-path set ${exclusionSetName} was found but its setOf(...) body could not " +
+                "be read in ${junitBuildScript.path}"
+        }.groupValues[1]
 
+        // Both documents this task feeds must be outside its own input set: the properties file
+        // the digest is WRITTEN into, and the manifest that reads it back. Excluding only one of
+        // the two is the measured R-BUILD-01 defect.
         assertTrue(
-            digestBlock.isNotBlank(),
-            "the region read for the digest task is empty; the anchors are wrong",
+            exclusionSetBody.contains("junit-release.properties"),
+            "R-BUILD-01: the digest must exclude the properties file it writes ($exclusionSetName). " +
+                "Measured defect: the digest of build N became an input to the digest of build N+1 " +
+                "and two distZip builds of the same clean tree produced different archives " +
+                "(0a341cb8… vs 3d4caf89… at 076982b9). Excluded set reads: $exclusionSetBody",
         )
-
         assertTrue(
-            digestBlock.contains("junit-release.properties") || digestBlock.contains("excludedOutput"),
-            "the digest must still exclude the properties file it writes",
-        )
-        // The manifest must enter the exclusion as CODE, not as prose.
-        //
-        // Two earlier drafts failed here in opposite directions and both failures are worth
-        // recording. Asserting the literal `plugin-manifest.json` rejected a CORRECT fix, because
-        // the fix names a val (`junitManifest`) declared further down rather than spelling the
-        // path inside the task. Loosening it to "any identifier containing manifest" then matched
-        // `emitJunitManifest` — a word that appears in the task's own PRE-EXISTING comment, on
-        // the buggy file and the fixed file alike — so the row went green against the very defect
-        // it was written for. That is the false green this repository has paid for before.
-        //
-        // The check therefore strips comments first and then requires the manifest identifier to
-        // appear in the surviving code, which is the only form in which excluding it can have any
-        // effect at all.
-        val codeOnly = digestBlock
-            .lines()
-            .map { it.substringBefore("//") }
-            .joinToString("\n")
-        val manifestInCode = codeOnly.contains("plugin-manifest.json") ||
-            Regex("""\b\w*[Mm]anifest\w*\b""").containsMatchIn(codeOnly)
-        assertTrue(
-            manifestInCode,
+            exclusionSetBody.contains("plugin-manifest.json"),
             "R-BUILD-01: computeJunitDigest hashes build/resources/main, which still contains " +
                 "the plugin-manifest.json emitted by the PREVIOUS build. That manifest embeds " +
                 "the previous releaseDigest, so the digest of build N is an input to the digest " +
                 "of build N+1 and the distribution ZIP is not reproducible " +
                 "(measured: 0a341cb8… vs 3d4caf89… at 076982b9). The manifest must be in the " +
                 "excluded set as code, exactly as the task's own header comment already promises " +
-                "(a mention inside a comment does not exclude anything).",
+                "(a mention inside a comment does not exclude anything). Excluded set reads: " +
+                "$exclusionSetBody",
         )
 
         // The exclusion must actually REACH the walk, not merely be declared. A set that is
-        // built and then ignored is the same defect wearing a different hat.
+        // built and then ignored is the same defect wearing a different hat. After AUD-01/B0.2 the
+        // set is handed to ProvenanceDigest.computeDigestHex as its third argument, so "reaching
+        // the walk" means being passed to the shared primitive — either at the call site or by the
+        // name the task itself binds.
+        val setReachesDigest =
+            Regex("""ProvenanceDigest\.computeDigestHex\(.*?$exclusionSetName""", RegexOption.DOT_MATCHES_ALL)
+                .containsMatchIn(digestBlock) ||
+                Regex("""computeDigestHex\([\s\S]{0,400}?$exclusionSetName""")
+                .containsMatchIn(digestBlock)
         assertTrue(
-            Regex("""!\s*in\s+\w*[Ee]xcluded\w*|!=\s*\w*[Ee]xcluded\w*|exclude\(\s*\w*[Ee]xcluded\w*""")
-                .containsMatchIn(digestBlock),
-            "R-BUILD-01: the exclusion set is declared but the walk does not apply it; a declared " +
-                "exclusion that never reaches the filter is not an exclusion",
+            setReachesDigest,
+            "R-BUILD-01: the exclusion set $exclusionSetName is declared but is not passed to " +
+                "ProvenanceDigest.computeDigestHex; a declared exclusion that never reaches the " +
+                "digest is not an exclusion",
         )
     }
 }

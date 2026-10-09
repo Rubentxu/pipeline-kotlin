@@ -1,3 +1,4 @@
+import dev.rubentxu.pipeline.build.ProvenanceDigest
 import java.io.ByteArrayOutputStream
 
 plugins {
@@ -47,7 +48,39 @@ val junitVersion = providers.gradleProperty("pipeline.junit.release.version").or
 
 val junitReleaseProps = layout.buildDirectory.file("resources/main/META-INF/junit-release.properties")
 
-val computeJunitDigest = tasks.register<Exec>("computeJunitDigest") {
+val junitClassesDir = layout.buildDirectory.dir("classes/kotlin/main")
+val junitResourcesDir = layout.buildDirectory.dir("resources/main")
+
+// AUD-01 (B0.2): exclusions by EXACT FRAMED relative path, which is
+// `<root name>/<relative path>`, NOT an absolute filesystem path.
+//
+// Two separate defects are fixed here, and they are distinct:
+//
+// 1. ABSOLUTE PATHS IN THE MATERIAL. This script used
+//    `sha256sum $all | sha256sum` over ABSOLUTE paths, and `sha256sum` PRINTS THE
+//    FILENAME IT WAS GIVEN, so the checkout path entered the digest. Measured on
+//    6732863c: two checkouts of the same clean tree produced
+//    `pipeline.junit.release.digest` 563804512db1e747… and 3ca0fce6ae20de23…, so the
+//    shipped ZIP digests differed (ea9078de… vs ba0b1d07…) for byte-identical sources.
+//    The shared ProvenanceDigest frames only the root NAME and the RELATIVE path, so
+//    the absolute path never enters the material.
+//
+// 2. A LEAKED TEMPORARY FILE. The shell pipeline wrote `${out}.digest` inside the
+//    resources directory and deleted it afterwards. A build interrupted between the
+//    write and the delete — or simply ordered differently — left that scratch file
+//    inside `META-INF/`, where `processResources` packaged it into the jar. Measured:
+//    `http-0.48.0.jar` shipped `META-INF/http-release.properties.digest` in one checkout
+//    and not the other. A plain in-process digest has no scratch file to leak.
+//
+//    The two exclusions are the documents this task feeds: the properties file the
+//    digest is WRITTEN into, and the manifest that reads it back. Excluding both by
+//    exact framed path is what keeps the digest a fixed point.
+val junitExcludedFromDigest: Set<String> = setOf(
+    "resources/META-INF/junit-release.properties",
+    "resources/META-INF/pipelinek/plugin-manifest.json",
+)
+
+val computeJunitDigest = tasks.register("computeJunitDigest") {
     group = "junit-plugin"
     description = "Compute the JUnit OFFICIAL_PLUGIN provenance SHA-256 (deterministic over class files + resources)."
 
@@ -58,52 +91,32 @@ val computeJunitDigest = tasks.register<Exec>("computeJunitDigest") {
     outputs.file(junitReleaseProps)
     dependsOn("compileKotlin", "processResources")
 
-    doFirst {
-        val classesDir = layout.buildDirectory.dir("classes/kotlin/main").get().asFile
+    // Declared inputs with RELATIVE path sensitivity, so the task's own up-to-date key is
+    // checkout-independent too. An absolute up-to-date key would make Gradle re-run the
+    // digest in one checkout and not the other for identical trees.
+    inputs.files(fileTree(junitClassesDir)).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(fileTree(junitResourcesDir) { exclude(junitExcludedFromDigest) })
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.property("publisher", publisher)
+    inputs.property("namespace", namespace)
+    inputs.property("version", ver)
+
+    // The digest is PLAIN COMPUTATION rather than a shell pipeline. It used to be
+    // `tasks.register<Exec>`; keeping Exec without a commandLine fails with
+    // "A problem occurred starting process 'command 'null''".
+    doLast {
+        val classesDir = junitClassesDir.get().asFile
         require(classesDir.exists()) { "classes/kotlin/main does not exist: run compileKotlin first" }
-        val resourcesDir = layout.buildDirectory.dir("resources/main").get().asFile
+        val resourcesDir = junitResourcesDir.get().asFile
         val out = junitReleaseProps.get().asFile
         out.parentFile.mkdirs()
-        val excludedOutput = out.absolutePath
-        // R-BUILD-01: BOTH documents this task feeds must be outside its own input set.
-        //
-        // The properties file is where the digest is WRITTEN. The manifest is where the digest
-        // is READ back from, and `emitJunitManifest dependsOn computeJunitDigest` writes it into
-        // this very resources directory. Excluding only the properties file left the PREVIOUS
-        // run's manifest inside the hash, so the digest of build N became an input to the digest
-        // of build N+1 and two `distZip` builds of the same clean tree produced different
-        // archives: 0a341cb8… and 3d4caf89… at 076982b9.
-        //
-        // Both exclusions are by absolute path, matching how the properties file was already
-        // excluded. The relative form would be shorter and would reintroduce the exact class of
-        // bug this fixes, since the digest task runs with an unspecified working directory.
-        val excludedFromDigest: Set<String> = setOf(
-            excludedOutput,
-            junitManifest.get().asFile.absolutePath,
+        val hex = ProvenanceDigest.computeDigestHex(
+            listOf(
+                ProvenanceDigest.Root("classes", classesDir.toPath()),
+                ProvenanceDigest.Root("resources", resourcesDir.toPath()),
+            ),
+            junitExcludedFromDigest,
         )
-        val classFiles: List<String> = classesDir.walkTopDown()
-            .filter { it.isFile && it.absolutePath !in excludedFromDigest }
-            .map { it.absolutePath }
-            .toList()
-            .sorted()
-        val resourceFiles: List<String> = if (resourcesDir.exists()) {
-            resourcesDir.walkTopDown()
-                .filter { it.isFile && it.absolutePath !in excludedFromDigest }
-                .map { it.absolutePath }
-                .toList()
-                .sorted()
-        } else {
-            emptyList()
-        }
-        val all = (classFiles + resourceFiles).joinToString(" ")
-        require(all.isNotEmpty()) { "No class or resource files to hash for JUnit OFFICIAL_PLUGIN provenance" }
-        commandLine = listOf("sh", "-c", "sha256sum $all | sha256sum | awk '{print $1}' > '${out.absolutePath}.digest'")
-    }
-
-    doLast {
-        val out = junitReleaseProps.get().asFile
-        val digestFile = File("${out.absolutePath}.digest")
-        val hex = digestFile.readText().trim()
         require(hex.length == 64) { "Expected 64-hex SHA-256, got '${hex.take(80)}'" }
         val digest = "sha256:$hex"
         out.writeText(
@@ -115,7 +128,6 @@ val computeJunitDigest = tasks.register<Exec>("computeJunitDigest") {
                 appendLine("pipeline.junit.module=junit")
             },
         )
-        digestFile.delete()
         println("junit: provenance written to $out (digest=${digest.take(20)}...)")
     }
 }

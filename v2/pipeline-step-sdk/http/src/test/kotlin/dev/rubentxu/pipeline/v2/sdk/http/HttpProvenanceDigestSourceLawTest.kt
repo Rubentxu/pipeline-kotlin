@@ -121,6 +121,7 @@ class HttpProvenanceDigestSourceLawTest {
             moduleDir("http"),
             moduleDir("scm-git"),
             moduleDir("utilities"),
+            moduleDir("junit"),
         ).map { it.resolve("build.gradle.kts") }.filter { Files.isRegularFile(it) }
 
         val SHARED_CLASS: Path = sdkRoot().parent

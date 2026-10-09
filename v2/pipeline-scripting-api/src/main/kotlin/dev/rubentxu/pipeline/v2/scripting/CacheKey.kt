@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.v2.scripting
 
-import java.security.MessageDigest
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 
 /**
  * A versioned cache key for stable script compilation caching.
@@ -16,19 +16,17 @@ data class CacheKey(
         const val V1 = "v1"
         const val V2 = "v2"
 
-        private val digest = MessageDigest.getInstance("SHA-256")
-
         /**
          * Joins parts with `|`, then SHA-256s UTF-8 bytes.
+         *
+         * Routed through [Sha256] (B0), which removes a `private val digest =
+         * MessageDigest.getInstance("SHA-256")` held as static mutable state and guarded by
+         * `synchronized`. That field was correct only because every caller took the lock and
+         * called `reset()` first; the correctness depended on a discipline every future caller
+         * would have to remember. The digest value is unchanged, so existing cache entries
+         * still hit.
          */
-        fun sha256Hex(vararg parts: String): String {
-            val input = parts.joinToString("|")
-            synchronized(digest) {
-                digest.reset()
-                return digest.digest(input.toByteArray(Charsets.UTF_8))
-                    .joinToString("") { "%02x".format(it) }
-            }
-        }
+        fun sha256Hex(vararg parts: String): String = Sha256.ofText(parts.joinToString("|"))
 
         object v1 {
             fun compute(

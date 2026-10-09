@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialBindingsPayload
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
@@ -35,7 +36,6 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import java.security.MessageDigest
 
 /**
  * Transitional application adapter from the current DSL aggregate to the
@@ -934,7 +934,6 @@ object DslCompiledPipelineCompiler {
         .trim('-')
         .ifBlank { error("DSL names must contain at least one alphanumeric character: '$value'") }
 
-    private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
-        .digest(value.toByteArray(Charsets.UTF_8))
-        .joinToString("") { byte -> "%02x".format(byte) }
+    /** Shared utility (B0). Same bytes, same lowercase hex as the previous local helper. */
+    private fun sha256(value: String): String = Sha256.ofText(value)
 }

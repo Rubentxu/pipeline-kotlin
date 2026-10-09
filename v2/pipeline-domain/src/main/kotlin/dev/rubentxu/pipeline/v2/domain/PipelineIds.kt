@@ -1,9 +1,9 @@
 package dev.rubentxu.pipeline.v2.domain
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import kotlinx.serialization.Serializable
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
-import java.security.MessageDigest
 
 /** Stable identity of one pipeline definition. */
 @JvmInline
@@ -124,8 +124,10 @@ object DeterministicIdGenerator {
             bytes.toByteArray()
         }
 
-        val digest = MessageDigest.getInstance("SHA-256").digest(payload)
-        return DefinitionId(digest.toHex())
+        // The typed definition payload is a BINARY DataOutputStream, not text, so it goes
+        // through ofBytes rather than ofText. Bytes unchanged: the previous code hashed
+        // exactly this array.
+        return DefinitionId(Sha256.ofBytes(payload))
     }
 
     /**
@@ -137,10 +139,14 @@ object DeterministicIdGenerator {
         return DefinitionId(legacyDigest("$scriptPath|$scriptContent"))
     }
 
-    private fun legacyDigest(input: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        return digest.digest(input.toByteArray(Charsets.UTF_8)).toHex().take(36)
-    }
+    /**
+     * The 36-character legacy definition digest.
+     *
+     * The truncation is the compatibility contract, not a shortcut, and it is preserved here
+     * byte for byte: [Sha256] returns the same 64-character lowercase hex the local `toHex`
+     * produced, and `.take(36)` still cuts the same prefix.
+     */
+    private fun legacyDigest(input: String): String = Sha256.ofText(input).take(36)
 
     private const val TYPED_DEFINITION_FORMAT_VERSION = 1
     private val TYPED_DEFINITION_MAGIC = "pipeline-definition-identity\u0000".toByteArray(Charsets.UTF_8)
@@ -154,5 +160,3 @@ private fun DataOutputStream.writeLengthPrefixed(value: String) {
     writeInt(encoded.size)
     write(encoded)
 }
-
-private fun ByteArray.toHex(): String = joinToString("") { byte -> "%02x".format(byte) }

@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.artefacts.local
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialFilePermissions
 import dev.rubentxu.pipeline.v2.events.ArtifactEntry
 import java.io.OutputStream
@@ -141,12 +142,14 @@ class LocalArtifactStore(
         // No resources held beyond the filesystem
     }
 
-    private fun sha256(file: Path): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val content = Files.readAllBytes(file)
-        digest.update(content)
-        return digest.digest().joinToString("") { "%02x".format(it) }
-    }
+    /**
+     * SHA-256 of an existing file, streamed (shared utility, B0).
+     *
+     * The previous implementation read the whole file into a `ByteArray` before hashing it,
+     * which meant a large artifact had to be resident. The digest value is unchanged, so
+     * previously stored entries still compare equal.
+     */
+    private fun sha256(file: Path): String = Sha256.ofFile(file)
 }
 
 /**

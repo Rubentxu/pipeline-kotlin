@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilControlRowSnapshot
@@ -16,7 +17,6 @@ import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
-import java.security.MessageDigest
 
 /**
  * Single-writer durable store for waitUntil control rows.
@@ -46,8 +46,9 @@ class FileBasedWaitUntilControlJournal(
         waitUntilControlDir.resolve("${fileKey(controlOpId)}.attempts.json")
 
     private fun fileKey(controlOpId: String): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(controlOpId.toByteArray(Charsets.UTF_8))
-        return digest.joinToString("") { "%02x".format(it) }
+        // Shared utility (B0). Same bytes, same lowercase hex: existing waitUntil control rows
+        // keep their opId.
+        return Sha256.ofText(controlOpId)
     }
 
     override fun beginAttempt(

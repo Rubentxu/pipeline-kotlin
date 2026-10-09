@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.domain.step.artifact
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 
@@ -51,17 +52,15 @@ data class ArtifactHandle(
      * for determinism). The output is NOT a content hash; it is a
      * stable handle fingerprint that changes iff any file's sha256
      * changes.
+     *
+     * Sorts by `relPath`, concatenates `relPath:sha256` per line, and SHA-256s the UTF-8 bytes.
+     * The sorting and framing are the contract and are UNCHANGED; only the hex spelling now
+     * comes from the shared utility (B0), so previously computed aggregates still match.
      */
     fun aggregateSha256(): String {
         val sorted = files.sortedBy { it.relPath }
         val concat = sorted.joinToString(separator = "\n") { "${it.relPath}:${it.sha256}" }
-        return sha256Hex(concat.toByteArray(Charsets.UTF_8))
-    }
-
-    private fun sha256Hex(bytes: ByteArray): String {
-        val md = java.security.MessageDigest.getInstance("SHA-256")
-        val digest = md.digest(bytes)
-        return digest.joinToString(separator = "") { "%02x".format(it) }
+        return Sha256.ofText(concat)
     }
 }
 

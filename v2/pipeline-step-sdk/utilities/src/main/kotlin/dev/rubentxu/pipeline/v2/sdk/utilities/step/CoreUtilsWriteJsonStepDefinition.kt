@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.sdk.utilities.step
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
@@ -21,7 +22,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
 
 /**
  * `core-utils.writeJson` OFFICIAL_PLUGIN Step (LFC-2E2 utilities).
@@ -120,8 +120,8 @@ class CoreUtilsWriteJsonStepDefinition : StepDefinition<WriteJsonInput, WriteJso
             )
         }
 
-        val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
-        val hexDigest = digest.joinToString(separator = "") { "%02x".format(it) }
+        // Shared utility (B0). Same bytes, same lowercase hex.
+        val hexDigest = Sha256.ofBytes(bytes)
 
         WriteJsonOutput(
             absolutePath = target.toString(),

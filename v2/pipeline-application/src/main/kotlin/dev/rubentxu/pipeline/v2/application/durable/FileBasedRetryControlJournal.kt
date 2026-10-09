@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
@@ -20,7 +21,6 @@ import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
-import java.security.MessageDigest
 
 /**
  * Single-writer durable store for retry control rows.
@@ -75,8 +75,9 @@ class FileBasedRetryControlJournal(
 
     private fun fileKey(controlOpId: String): String {
         // SHA-256 hex of the controlOpId — safe file-name character set, fixed length.
-        val digest = MessageDigest.getInstance("SHA-256").digest(controlOpId.toByteArray(Charsets.UTF_8))
-        return digest.joinToString("") { "%02x".format(it) }
+        // Shared utility (B0). Same bytes, same lowercase hex: existing retry control rows keep
+        // their opId, which is the durable identity the reconciler plans against.
+        return Sha256.ofText(controlOpId)
     }
 
     /** Convenience: derive the canonical control opId for a retry context. */

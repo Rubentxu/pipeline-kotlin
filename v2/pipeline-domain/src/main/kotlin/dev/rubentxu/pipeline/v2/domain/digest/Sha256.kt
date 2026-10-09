@@ -87,7 +87,24 @@ object Sha256 {
     }
 
     /**
-     * Lowercase hex of the SHA-256 of [text], matching [ofBytes] for the same content.
+     * The lowercase hex of the first [byteCount] digest bytes, as a short lock discriminator.
+     *
+     * Exists because this caller needs a PREFIX of the digest, not the digest. It is a named
+     * truncation rather than a caller-side `.take(n)` on a full hex string: a local
+     * `joinToString` truncation is one more spelling of the hex form, which is what B0 exists
+     * to remove. The bytes hashed and the truncation point are unchanged from the previous
+     * implementation, so existing lock file names are unaffected.
+     *
+     * @param byteCount how many digest bytes to keep; must be positive.
+     */
+    fun ofBytesPrefix(bytes: ByteArray, byteCount: Int): String {
+        require(byteCount > 0) { "byteCount must be positive, got $byteCount" }
+        val full = MessageDigest.getInstance("SHA-256").digest(bytes)
+        return hex(full.copyOf(byteCount))
+    }
+
+    /**
+     * Lowercase hex of the SHA-256 of [bytes], matching [ofBytes] for the same content.
      *
      * Retained as a named alternative rather than removed: `ofText` is the spelling that says
      * "this was a string", and having both is one line. If a caller is migrating, prefer

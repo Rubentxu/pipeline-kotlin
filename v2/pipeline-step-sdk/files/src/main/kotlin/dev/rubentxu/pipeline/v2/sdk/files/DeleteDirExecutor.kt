@@ -1,9 +1,9 @@
 package dev.rubentxu.pipeline.v2.sdk.files
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
 
 /**
  * Result of a deleteDir operation.
@@ -136,9 +136,13 @@ class DeleteDirExecutor(
     }
 
     companion object {
-        fun sha256(bytes: ByteArray): String {
-            val digest = MessageDigest.getInstance("SHA-256")
-            return digest.digest(bytes).joinToString("") { "%02x".format(it) }
-        }
+        /**
+         * SHA-256 hex of [bytes], routed through the shared utility (B0).
+         *
+         * Byte-identical to the local implementation this replaces: same algorithm, same
+         * lowercase hex, same input. The value is emitted in the Step's observability event,
+         * so an external observer comparing digests keeps matching.
+         */
+        fun sha256(bytes: ByteArray): String = Sha256.ofBytes(bytes)
     }
 }

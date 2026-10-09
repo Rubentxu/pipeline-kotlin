@@ -72,31 +72,33 @@ import kotlin.concurrent.thread
  *   alone. 1:1.
  * - **M-A3** (cross the two pump descriptors — give the STDOUT channel the error stream and vice versa)
  *   REDS **202** alone, leaving 204, 205 and 206 green. 1:1.
- * - **M-A2** (remove the EOF drain, i.e. never close the redacting stream) REDS **nothing**, in
- *   either scenario.
+ * - **M-A4** (make the redactor's EOF drain discard its pending lookahead instead of emitting it)
+ *   REDS **205**, **204** and **206**.
+ * - **M-A2** (remove the executor's `redacted.close()`, i.e. never close the redacting stream) REDS
+ *   **nothing**.
  *
- * Both failures are informative and neither is papered over here.
+ * ### M-A2 versus M-A4: the executor's comment names the wrong line
  *
- * **Why M-A2 does not kill 206.** By the time the deadline fires those 400 lines were already
- * committed in earlier live windows, so the redactor's pending buffer held nothing to lose. The row
- * proves what it says — *a timeout retains the prefix* — but it is not demonstrated to have teeth.
+ * Taking those two together is what identifies the real mechanism, and it is not the one the code
+ * claims. `DurableShellExecutor` says:
  *
- * **Why M-A2 does not kill 205 either, and why that matters more.** `205` was written specifically to
- * put a fragment inside that pending buffer at child exit, and removing the close still lost nothing.
- * So the comment in `DurableShellExecutor` — *"Close the redacting stream FIRST: its pending buffer
- * (EOF drain) is what flushes the final sanitized bytes"* — states a causal claim that **these
- * measurements do not support**. The bytes arrive through the read loop reaching EOF, not through
- * `close()`. That is a claim in a code comment about the mechanism protecting the last thing a process
- * said, and it is currently unverified; it is recorded as open rather than quietly repeated.
+ * > "Close the redacting stream FIRST: its pending buffer (EOF drain) is what flushes the final
+ * > sanitized bytes."
  *
- * What remains true: `205` and `206` are **different properties**, which is why one row could not
- * stand for both. Neither has a mutation that kills it yet. `206` needs one aimed at the deadline path
- * (one that discards committed bytes when it cancels); `205` needs one that removes whatever actually
- * flushes the tail, which this block has not identified.
+ * M-A2 removes exactly that `close` and **nothing is lost** — not even the fragment `205` was written to
+ * leave stranded. M-A4 instead breaks the EOF drain *inside the redactor's `read`* and loses three rows.
+ * So the property is real and it is load-bearing; the flush happens because **reaching EOF makes every
+ * pending byte decidable**, which is what `StreamingRedactor`'s own contract states ("at EOF remaining
+ * pending bytes are emitted as-is"), and `close()` is redundant for byte completeness.
  *
- * `204` and `202` are the two that are demonstrably load-bearing today, and they are guarded by two
- * different mechanisms — the composition that decides which channels exist, and the mapping that decides
- * which descriptor feeds which channel. A single guard could not have covered both.
+ * The comment is therefore wrong about the mechanism and right about the risk. It has not been edited
+ * here: a correction belongs with the change that fixes it, and this block measured the mechanism rather
+ * than editing a comment to match a mutation that happened to fail.
+ *
+ * M-A4's three rows are not an over-broad kill. The EOF drain is the single point where the last
+ * `maxLiteral` bytes of a channel become decidable, so 204's stderr marker, 205's tail fragment and 206's
+ * final acknowledged line all pass through it. One guard for three rows is the correct shape here, not
+ * an attribution failure.
  */
 @Timeout(300)
 @DisplayName("OBS-2 Nivel A — returnStdout sin duplicar y timeout que conserva el prefijo")

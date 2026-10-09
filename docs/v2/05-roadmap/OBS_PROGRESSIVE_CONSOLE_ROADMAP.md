@@ -141,19 +141,23 @@ Una fila que comparte tema con una UAT no es una fila que la discharged. La audi
 | 201 líneas visibles en vivo | `IMPLEMENTED` — acotada por el lookahead de redacción, cualificación que debe viajar con el estado |
 | 202 ambos canales sin deadlock | `IMPLEMENTED` — `ObsPc2LevelAUatTest`, 20 000 líneas por canal **en la composición del Output Plane**; mutación M-A3 la tumba 1:1 |
 | 203 secretos partidos entre ventanas y canales | `IMPLEMENTED` |
-| 204 `returnStdout` exacto | `IMPLEMENTED` — `ObsPc2LevelAUatTest`; la ausencia de stdout en la transcripción queda fijada, mutación M-A1 1:1 |
-| 205 proceso termina con output pendiente | `IMPLEMENTED` — fila escrita y verde, **pero sin mutación que la tumbe** |
-| 206 timeout con retención del prefijo | `IMPLEMENTED` — fila escrita y verde, **pero sin mutación que la tumbe** |
+| 204 `returnStdout` exacto | `IMPLEMENTED` — la ausencia de stdout en la transcripción queda fijada; mutaciones M-A1 (1:1) y M-A4 |
+| 205 proceso termina con output pendiente | `IMPLEMENTED` — mutación M-A4 la tumba |
+| 206 timeout con retención del prefijo | `IMPLEMENTED` — mutación M-A4 la tumba |
 | 207 caída del observador independiente | `IMPLEMENTED` |
 
-Las siete UAT de Nivel A tienen ahora fila. Lo que **no** está resuelto es la solidez de dos de ellas:
-`205` y `206` son verdes pero no han demostrado tener dientes, y la mutación que debía hacerlo (M-A2,
-quitar el drenaje EOF) no tumba ninguna. Como efecto colateral dejó sin respaldo una afirmación causal
-del comentario de `DurableShellExecutor` sobre qué vuelca los últimos bytes.
+Las siete UAT de Nivel A tienen fila y **las cuatro nuevas tienen una mutación que las tumba**.
 
-**Pendiente antes de declarar OBS-2 Nivel A cerrado:** mutación que tumbe `205` y mutación que tumbe
-`206`, o identificación del mecanismo real en cada caso. OBS-2 Nivel A sigue **abierto** por eso, no
-por filas ausentes.
+Hallazgo de las mutaciones: el executor afirma en un comentario que cerrar el stream redactor *"es lo
+que vuelca los últimos bytes saneados"*. **M-A2 quita ese `close` y no se pierde nada**; **M-A4, que
+rompe el drenaje de EOF dentro del `read` del redactor, tumba tres filas**. La propiedad es real y es
+crítica, pero el mecanismo es que *alcanzar EOF vuelve decidible cada byte pendiente*, como dice el
+propio contrato de `StreamingRedactor`, y `close()` es redundante para la completitud. El comentario
+nombra la línea equivocada y acierta el riesgo; **no se ha editado**, porque la corrección pertenece al
+cambio que la arregle y este bloque midió el mecanismo.
+
+**Gate OBS-2 Nivel A:** las siete UAT verdes y con guarda. `STEP-CERT` y `PRODUCT-GATE` siguen
+`NOT_RUN`, así que el bloque no se declara `CERTIFIED`.
 
 ### OBS-3, OBS-4, OBS-5, OBS-6, OBS-7
 

@@ -105,10 +105,10 @@ class ObsPcReadRecoverySeamFitnessTest {
         // read-side file that does not exist yet is covered the day it is written.
         val offenders = productionSources().flatMap { file ->
             val name = file.fileName.toString()
-            if (name in RECOVERING_OPENING_ALLOWED) return@flatMap emptyList()
+            if (name in recoveringOpeningAllowed) return@flatMap emptyList()
 
             codeLines(file)
-                .filter { RECOVERING_OPENING.containsMatchIn(it.second) }
+                .filter { recoveringOpening.containsMatchIn(it.second) }
                 .map { "$name:${it.first}  ${it.second}" }
         }
 
@@ -140,9 +140,9 @@ class ObsPcReadRecoverySeamFitnessTest {
      * been pointed at the real shape of the call it forbids is a scan that has never been tested, and the
      * only thing that catches that is a mutation that is expected to fail and does not.
      */
-    private val RECOVERING_OPENING = Regex("""storeFor(Writing|)\s*\(""")
+    private val recoveringOpening = Regex("""storeFor(Writing|)\s*\(""")
 
-    private val RECOVERING_OPENING_ALLOWED = setOf(PROVIDER, WRITE_SIDE, RETENTION)
+    private val recoveringOpeningAllowed = setOf(PROVIDER, WRITE_SIDE, RETENTION)
 
     /**
      * Executable lines with their 1-based number, with prose excluded.

@@ -143,12 +143,15 @@ class ObsPc2IngestAgentPrototypeUatTest {
                 "agent stderr: ${readIfExists("agent.err.log")} | runtime log: ${readLogOrEmpty()}",
         )
 
+        val rendezvousTypes = listOf("stdout.fifo", "stderr.fifo").joinToString { name ->
+            val attrs = Files.readAttributes(fifoDir.resolve(name), PosixFileAttributes::class.java)
+            "$name=${attrs.isOther}"
+        }
         assertTrue(
             ObsPc2IngestAgent.isFifo(fifoDir.resolve("stdout.fifo")) &&
                 ObsPc2IngestAgent.isFifo(fifoDir.resolve("stderr.fifo")),
-            "the rendezvous is not a named pipe, so the child is spooling raw bytes to a regular file and " +
-                "the whole no-plaintext-spool property is void. Type: " +
-                "${listOf("stdout.fifo", "stderr.fifo").joinToString { "$it=${Files.readAttributes(fifoDir.resolve(it), PosixFileAttributes::class.java).isOther}" }}",
+            "the rendezvous is not a named pipe, so the child is spooling raw bytes to a regular file " +
+                "and the whole no-plaintext-spool property is void. Type: $rendezvousTypes",
         )
 
         val before = transcript()
@@ -173,16 +176,21 @@ class ObsPc2IngestAgentPrototypeUatTest {
                 "agent's shape does not fix the SIGPIPE and ADR-OBS-003 needs revision",
         )
 
+        // `DONE` only says the bytes are IN the FIFO. The drainer still has to read them and commit each
+        // chunk, and the child finishing is not a barrier for that. The first version sampled the
+        // plane the instant `DONE` appeared: it passed in isolation and failed under the full
+        // suite's load, which is what asserting on a race rather than on a fact looks like.
+        //
+        // Polling for the post-death bytes is the barrier, and it stays a real assertion because it
+        // is bounded — a broken drainer makes it expire and the row fails, rather than passing on a
+        // sample taken at a lucky moment.
+        val delivered = await({ transcript().contains("plain-after-") }, 60)
         val after = transcript()
         assertTrue(
-            after.length > before.length,
+            delivered && after.length > before.length,
             "the child produced $linesAfter more lines and the plane gained nothing (${before.length} -> " +
                 "${after.length}). The drainer outlived the runtime but did not deliver, which is a " +
                 "different failure from losing the child and must not be reported as success.",
-        )
-        assertTrue(
-            after.contains("plain-after-"),
-            "the post-death bytes did not reach the plane",
         )
         // The only file allowed to hold the secret is the fixture that produces it: the child's own script
         // embeds the canary as a literal. Everything else — the rendezvous, the agent's logs, the Output
@@ -216,7 +224,12 @@ class ObsPc2IngestAgentPrototypeUatTest {
                     out.write(result.page.bytes)
                     cursor = result.page.next
                 }
-                is OutputReadResult.Refused -> cursor = null
+                is OutputReadResult.Refused -> throw AssertionError(
+                    "reading the Output Plane was REFUSED at cursor=$cursor: ${result.reason}. A probe " +
+                        "that quietly stops here reports a truncated stream as if it were the whole " +
+                        "stream, which is the opposite of what this row measures. The refusal is " +
+                        "the fact; it must be named, not swallowed.",
+                )
             }
         }
         return out.toByteArray().toString(Charsets.UTF_8)

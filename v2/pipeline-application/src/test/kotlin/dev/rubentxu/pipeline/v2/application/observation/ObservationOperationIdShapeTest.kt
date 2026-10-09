@@ -58,7 +58,7 @@ class ObservationOperationIdShapeTest {
     private val runId = "run-7"
 
     /** The StepId that must never be presented as an operation id. Named so the scan can quote it. */
-    private val STEP_ID = "build/sh-0"
+    private val stepId = "build/sh-0"
 
     /**
      * The identity production writes and reads under. Kept as one named function so the mutation has a
@@ -145,14 +145,14 @@ class ObservationOperationIdShapeTest {
         // passed against the very mutation it was written to catch — see the mutation evidence.
         val offenders = contract.readLines()
             .withIndex()
-            .filter { (_, line) -> line.contains(STEP_ID) }
+            .filter { (_, line) -> line.contains(stepId) }
             .filterNot { (_, line) -> line.contains("StepId") || line.contains("step id") }
             .map { (index, line) -> "line ${index + 1}: ${line.trim()}" }
             .toList()
 
         assertTrue(
             offenders.isEmpty(),
-            "the published output contract may mention the step id $STEP_ID, but only while " +
+            "the published output contract may mention the step id $stepId, but only while " +
                 "labelling it a StepId. Naming it without that label is how it became the " +
                 "documented canonical operation id, and a reader who copies an example that is " +
                 "well-formed but names nothing that exists finds no bytes for any step in the run " +

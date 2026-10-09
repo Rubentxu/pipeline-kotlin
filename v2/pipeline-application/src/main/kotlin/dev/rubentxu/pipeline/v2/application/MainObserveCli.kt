@@ -581,5 +581,4 @@ internal object ComposeLanes {
     }
 }
 
-private fun ObservationParseResult.Parsed.dbPathOrNull(): String? = null
 private fun ObservationParseResult.Parsed.controlRootOrNull(): String? = this.controlRoot

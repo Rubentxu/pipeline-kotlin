@@ -102,7 +102,6 @@ object Subprocess {
         captureStderr: Boolean = true,
         stdoutFile: Path? = null,
         stderrFile: Path? = null,
-        stdin: InputStream? = null,
     ): SubprocessOutcome {
         require(command.isNotEmpty()) { "command must not be empty" }
         require(!timeout.isNegative && !timeout.isZero) { "timeout must be positive, got $timeout" }
@@ -127,8 +126,9 @@ object Subprocess {
         val stdout = StreamCollector(process.inputStream, "subprocess-stdout").also { it.start() }
         val stderr = StreamCollector(process.errorStream, "subprocess-stderr").also { it.start() }
 
-        // stdin stays a pipe unless given, so a child that reads stdin sees EOF rather than hanging
-        // forever on a descriptor nobody writes. Closing it is part of owning the process.
+        // stdin is closed rather than left open, so a child that reads it sees EOF instead of hanging
+        // forever on a descriptor nobody writes. This used to be gated on an unused `stdin`
+        // parameter, which made the comment describe a branch the code did not have.
         try { process.outputStream.close() } catch (_: Throwable) { /* already closed */ }
 
         val exited = try {

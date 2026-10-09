@@ -116,7 +116,7 @@ object ObsPc2IngestAgent {
                     // that cannot debug it, and this one already cost a run reading an empty log while the
                     // real cause sat in the catch block.
                     System.err.println("pc2-agent-pump-${channel.name.lowercase()}-failed: $e")
-                    e.printStackTrace()
+                    System.err.println(e.stackTraceToString())
                 }
             }, "pc2-ingest-${channel.name.lowercase()}").apply {
                 isDaemon = true

@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.ObservationOutputPage
 import dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
 import dev.rubentxu.pipeline.v2.events.DomainEvent
@@ -111,7 +112,10 @@ class ObsE5TailTest {
     }
 
     /** A lane whose only answer is a page the test scripted, so the CLI loop is not what is measured. */
-    private class Scripted(private val tail: ObservationOutputRead?, private val pages: List<dev.rubentxu.pipeline.v2.application.observation.ObservationOutputPage>) : ObserveLanes {
+    private class Scripted(
+        private val tail: ObservationOutputRead?,
+        private val pages: List<ObservationOutputPage>,
+    ) : ObserveLanes {
         var tailBytes: Long? = null
             private set
 

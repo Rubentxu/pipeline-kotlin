@@ -1,7 +1,6 @@
 package dev.rubentxu.pipeline.v2.output.store
 
 import dev.rubentxu.pipeline.v2.output.OutputCursor
-import dev.rubentxu.pipeline.v2.output.OutputPage
 import dev.rubentxu.pipeline.v2.output.OutputPruneIntent
 import dev.rubentxu.pipeline.v2.output.OutputPruneReport
 import dev.rubentxu.pipeline.v2.output.OutputReadPort
@@ -12,7 +11,6 @@ import dev.rubentxu.pipeline.v2.output.OutputRefusal
 import dev.rubentxu.pipeline.v2.output.OutputRetentionPort
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import java.io.InputStream
-import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.Path
@@ -118,8 +116,6 @@ class SegmentOutputStore(
          */
         val ownershipFile: Path,
     )
-
-    private data class SealedSegment(val base: Long, val length: Long, val file: Path)
 
     private val recoveryLock = ReentrantLock()
 
@@ -531,103 +527,35 @@ class SegmentOutputStore(
             Files.readString(layout.commitFile).trim().toLongOrNull() ?: 0L
         } else 0L
 
-    private fun sealedSegments(layout: Layout): List<SealedSegment> =
-        if (!Files.isDirectory(layout.sealedDir)) {
-            emptyList()
-        } else {
-            Files.newDirectoryStream(layout.sealedDir).use { entries ->
-                entries.mapNotNull { parseSealed(it) }
-            }
-        }
+    /**
+     * One past the last sealed segment: the global base of the current segment.
+     *
+     * Delegates instead of repeating the enumeration. A second copy of "which segments are sealed"
+     * here would be a second authority for one decision, and two authorities for one decision drift.
+     */
+    private fun currentBaseLocked(layout: Layout): Long = SegmentReader.currentBase(layout.sealedDir)
 
-    /** One past the last sealed segment: the global base of the current segment. */
-    private fun currentBaseLocked(layout: Layout): Long =
-        sealedSegments(layout).maxOfOrNull { it.base + it.length } ?: 0L
-
+    /**
+     * Serves `[from, to)` out of the merged segment set.
+     *
+     * The committed extent and the current base are read **here**, by the owner, and passed down. The
+     * reader must never form a second opinion about how far a stream is committed, so it is given the
+     * number rather than left to re-read it.
+     */
     private fun readRangeLocked(
         layout: Layout,
         stream: OutputStreamId,
         from: Long,
         to: Long,
-    ): OutputReadResult {
-        val extent = committedLocked(layout)
-        val target = ByteArray((to - from).toInt())
-        var cursor = from
-        var written = 0
-
-        val currentBase = currentBaseLocked(layout)
-        val sealed = sealedSegments(layout).sortedBy { it.base }
-
-        for (seg in sealed) {
-            if (cursor >= to) break
-            val segEnd = seg.base + seg.length
-            if (segEnd <= cursor) continue
-            val localStart = (cursor - seg.base).coerceAtLeast(0L)
-            val want = minOf(segEnd, to) - (seg.base + localStart)
-            val chunk = readChunk(seg.file, localStart, want)
-            chunk.copyInto(target, written)
-            written += chunk.size
-            cursor += chunk.size
-        }
-
-        if (cursor < to && cursor >= currentBase) {
-            val localStart = cursor - currentBase
-            val want = minOf(extent, to) - cursor
-            val chunk = readChunk(layout.segmentFile, localStart, want)
-            chunk.copyInto(target, written)
-            written += chunk.size
-            cursor += chunk.size
-        }
-
-        if (written != target.size) {
-            // A committed offset that cannot be fully served is a dangling commit (I4). A short page
-            // would be indistinguishable from a complete one, and this used to be an IOException —
-            // which was a hole in the closed ADT, since a caller handling every refusal could still
-            // be thrown out of a total function.
-            return OutputReadResult.Refused(
-                OutputRefusal.DanglingCommit(requestedEnd = to, readableBytes = written.toLong()),
-            )
-        }
-
-        return OutputReadResult.Page(
-            OutputPage(
-                bytes = target,
-                stream = stream,
-                from = from,
-                next = if (to >= extent) null else OutputCursor(stream, to),
-                committedEnd = extent,
-            ),
-        )
-    }
-
-    private fun readChunk(file: Path, offset: Long, length: Long): ByteArray {
-        if (length <= 0) return ByteArray(0)
-        if (!Files.exists(file)) return ByteArray(0)
-        val buffer = ByteArray(length.toInt())
-        FileChannel.open(file, StandardOpenOption.READ).use { channel ->
-            var position = offset
-            var read = 0
-            while (read < buffer.size) {
-                val n = channel.read(ByteBuffer.wrap(buffer, read, buffer.size - read), position)
-                if (n < 0) break
-                position += n
-                read += n
-            }
-            if (read != buffer.size) return buffer.copyOf(read)
-        }
-        return buffer
-    }
-
-    private fun parseSealed(file: Path): SealedSegment? {
-        val name = file.fileName.toString()
-        if (!name.endsWith(SEALED_SUFFIX)) return null
-        val stem = name.removeSuffix(SEALED_SUFFIX)
-        val dash = stem.indexOf('-')
-        if (dash <= 0) return null
-        val base = stem.substring(0, dash).toLongOrNull() ?: return null
-        val length = stem.substring(dash + 1).toLongOrNull() ?: return null
-        return SealedSegment(base, length, file)
-    }
+    ): OutputReadResult = SegmentReader.readRange(
+        stream = stream,
+        sealedDir = layout.sealedDir,
+        segmentFile = layout.segmentFile,
+        committedEnd = committedLocked(layout),
+        currentBase = currentBaseLocked(layout),
+        from = from,
+        to = to,
+    )
 
     /**
      * Runs [block] holding this stream's ownership, or answers `false` when a live writer holds it.
@@ -692,7 +620,7 @@ class SegmentOutputStore(
         Files.createDirectories(layout.sealedDir)
         Files.move(
             layout.segmentFile,
-            layout.sealedDir.resolve("$currentBase-$length$SEALED_SUFFIX"),
+            layout.sealedDir.resolve(SegmentReader.sealedName(currentBase, length)),
             java.nio.file.StandardCopyOption.REPLACE_EXISTING,
         )
         // The committed offset is GLOBAL and rotation does not move it. Writing `currentBase` here
@@ -927,7 +855,6 @@ class SegmentOutputStore(
          * be LOCKED, and its bytes are meaningless. See ADR-OBS-002.
          */
         const val OWNERSHIP_FILE = "cur.own"
-        const val SEALED_SUFFIX = ".seg"
         const val DEFAULT_RESERVATION_BYTES = 64L * 1024L
         const val SEGMENT_MAX_BYTES = 8L * 1024L * 1024L
 

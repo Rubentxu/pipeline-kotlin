@@ -142,17 +142,28 @@ object MainObserveCli {
         out: PrintStream,
     ): ObserveOutcome {
         if (!lanes.hasEventStore) return ObserveOutcome.Refused(ObserveRefusal.NoDurableEventStore)
-        val events = lanes.eventsOf(runId)
-        out.print(
-            RunObservationOutput.encode(
-                events.toList(),
-                parsed.view,
-                parsed.format,
-                parsed.compiled,
-                parsed.budget,
-            ),
+        // The STREAMING entry point, not [RunObservationOutput.encode]. `encode` is the same encoder
+        // behind a different door, and the difference is memory: it takes a `List` and hands back a
+        // `String`, so a replay held the run's whole history twice while it rendered it.
+        //
+        // `run`'s live path already writes through [RunObservationOutput.writeTo]; this is the replay
+        // path doing the same thing, which is what makes `ObsE5ObserveReplayTest`'s OBSERVE-1 claim —
+        // "the event lane renders through the SAME encoder `run` uses" — true rather than merely
+        // consistent-looking. It was checked by content, and content cannot tell two encoders apart.
+        //
+        // What this does NOT buy, stated rather than implied: the event sequence is still consumed to
+        // the end, because the console renderer folds every event to keep the stage scope that later
+        // lines resolve against. This is "replay without two full copies", not "bounded replay".
+        val writer = java.io.OutputStreamWriter(out, Charsets.UTF_8)
+        RunObservationOutput.writeTo(
+            lanes.eventsOf(runId),
+            writer,
+            parsed.view,
+            parsed.format,
+            parsed.compiled,
+            parsed.budget,
         )
-        out.flush()
+        writer.flush()
         return ObserveOutcome.Replayed
     }
 

@@ -34,7 +34,7 @@ import java.time.Instant
  * external consumer, which issues
  *
  * ```
- * pipeline events --db events.db RUN_ID --limit 4 --typed
+ * pipeline events --db events.db RUN_ID --limit 4 --offset 40
  * ```
  *
  * and, against this parser, receives untyped envelopes with status 0. It asked for payload it did not
@@ -42,6 +42,21 @@ import java.time.Instant
  * strict-parse convention exists to prevent — and it is already this branch's own convention:
  * [CliParser] refuses an unknown option with [CliError.TrailingOption], and [MainObserveCli] is strict
  * because it delegates there. This file was written before that convention and never updated.
+ *
+ * ## Why the example is `--offset` and not `--typed`
+ *
+ * It used to be `--typed`, because this branch did not have that option and the story was an external
+ * consumer asking for typed payload and silently getting envelopes. `main` then IMPLEMENTED `--typed`
+ * (a real, served option), which does not weaken this row — it changes only which flag demonstrates
+ * it. Pinning the row to `--typed` after the merge would have asserted that a supported feature is
+ * refused, which is the opposite of what this file exists to protect.
+ *
+ * `--offset` is chosen because it is the same KIND of request: a plausible paging option a consumer
+ * would reach for, which this build genuinely does not have (it offers `--limit` and `--after-cursor`).
+ * A row asserting "unknown option is refused" needs an option that is actually unknown, and any
+ * example is a snapshot of one build's surface. If a future change implements `--offset`, this row
+ * must move again — and that is not the row being brittle, it is the row telling the truth about
+ * which flags exist.
  *
  * ## The production entry point this crosses
  *
@@ -122,8 +137,9 @@ class MainEventsCliArgumentStrictnessTest {
         val db = dir.resolve("events.sqlite")
         appendValid(db, 8)
 
-        // The exact shape the external consumer issues. `--typed` does not exist here.
-        val result = cli("--db", db.toString(), runId, "--limit", "4", "--typed")
+        // The exact shape the external consumer issues, with a flag this build does not have.
+        // `--typed` used to serve as the example; `main` implemented it, so the example moved.
+        val result = cli("--db", db.toString(), runId, "--limit", "4", "--offset", "40")
 
         assertEquals(2, result.exitCode, "an option this build does not have is an error, not a no-op")
         assertTrue(
@@ -132,7 +148,7 @@ class MainEventsCliArgumentStrictnessTest {
                 "being refused, not a lesser version of it",
         )
         assertTrue(
-            result.stderr.contains("unknown option: --typed"),
+            result.stderr.contains("unknown option: --offset"),
             "and it names the offending option; stderr:\n${result.stderr}",
         )
     }
@@ -141,11 +157,11 @@ class MainEventsCliArgumentStrictnessTest {
     fun `UNKNOWN-2 el rechazo ocurre antes de abrir el almacen`(@TempDir dir: Path) {
         val missing = dir.resolve("does-not-exist.sqlite")
 
-        val result = cli("--db", missing.toString(), runId, "--typed")
+        val result = cli("--db", missing.toString(), runId, "--offset")
 
         assertEquals(2, result.exitCode)
         assertTrue(
-            result.stderr.contains("unknown option: --typed"),
+            result.stderr.contains("unknown option: --offset"),
             "the argument is rejected while parsing, before any filesystem or store question is asked; " +
                 "stderr:\n${result.stderr}",
         )

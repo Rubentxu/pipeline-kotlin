@@ -37,6 +37,8 @@ import java.time.Instant
  * - `VIEW-1` (normal hides NOTE) → include NOTE in the NORMAL predicate.
  * - `VIEW-2` (quiet hides everything) → return true for QUIET.
  * - `SCOPE-1` (steps name their stage) → stop recording stage names.
+ * - `SCOPE-3` (live stream equals post-hoc render) → make `Scope.after` advance only for the
+ *   batch walk, which is the exact shape the duplication allowed: two copies, one of them wrong.
  */
 class HumanConsoleRendererTest {
 
@@ -121,6 +123,38 @@ class HumanConsoleRendererTest {
 
         // The renderer must not fabricate a stage name it never observed.
         assertTrue(out.contains("[step: stage 7] echo"), "got: $out")
+    }
+
+    @Test
+    fun `SCOPE-3 the live stream and the post-hoc render agree`() {
+        // Two stages and an echo, so a scope that stops advancing produces a DIFFERENT but equally
+        // plausible stage name — which is the failure this row exists to make visible. The two walks
+        // used to carry their own copy of the StageStarted transition, so they could drift apart and
+        // neither would look wrong.
+        val events = listOf(
+            runStarted(),
+            stageStarted(index = 0, name = "compile"),
+            stepStarted(stageIndex = 0, name = "first"),
+            stepFinished(stageIndex = 0, name = "first"),
+            stageStarted(index = 1, name = "test"),
+            stepStarted(stageIndex = 1, name = "second"),
+            echo("done"),
+            stepFinished(stageIndex = 1, name = "second"),
+            runFinished(),
+        )
+
+        ObservationView.entries.filter { it != ObservationView.QUIET }.forEach { view ->
+            val live = HumanConsoleRenderer.stream(view)
+                .let { stream -> events.mapNotNull { stream.accept(it) } }
+                .joinToString(separator = "\n")
+                .let { if (it.isEmpty()) "" else "$it\n" }
+
+            assertEquals(
+                HumanConsoleRenderer.render(events, view),
+                live,
+                "the live stream and the batch render must be the same presentation under $view",
+            )
+        }
     }
 
     @Test

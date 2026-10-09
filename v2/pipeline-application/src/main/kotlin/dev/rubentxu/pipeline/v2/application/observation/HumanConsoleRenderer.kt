@@ -148,9 +148,7 @@ object HumanConsoleRenderer {
 
         /** Renders one event, or returns `null` when the view excludes it. */
         fun accept(event: DomainEvent): String? {
-            if (event is StageStarted) {
-                scope = Scope(scope.stageNames + (event.stageIndex to event.stageName))
-            }
+            scope = scope.after(event)
             val line = line(event, scope)
             if (!visible(line.family, view)) return null
             return format(line, view)
@@ -181,15 +179,26 @@ object HumanConsoleRenderer {
      */
     internal data class Scope(val stageNames: Map<Int, String> = emptyMap()) {
         fun stage(index: Int): String = stageNames[index] ?: "stage $index"
+
+        /**
+         * The scope AFTER [event], which is the only question either walk has to ask.
+         *
+         * [fold] and [ConsoleStream.accept] each used to carry their own copy of "if this is a
+         * StageStarted, remember the name". Two copies of a state transition is precisely how a live
+         * stream and a post-hoc render of the same events come to disagree about which stage a Step
+         * line belongs to — and the disagreement would be invisible, because both would still print a
+         * plausible stage. One function, called by both, is the only version where SCOPE-* is a
+         * property of the model rather than of the caller.
+         */
+        fun after(event: DomainEvent): Scope =
+            if (event is StageStarted) Scope(stageNames + (event.stageIndex to event.stageName)) else this
     }
 
     private fun fold(events: List<DomainEvent>): List<Line> {
         var scope = Scope()
         val out = ArrayList<Line>(events.size)
         for (event in events) {
-            if (event is StageStarted) {
-                scope = Scope(scope.stageNames + (event.stageIndex to event.stageName))
-            }
+            scope = scope.after(event)
             out += line(event, scope)
         }
         return out

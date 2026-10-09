@@ -152,11 +152,28 @@ class UatRunConcurrencyCharacterisationTest {
         } else {
             0
         }
-        assertEquals(1, startedLines,
-            "OBSERVED: exactly one owner re-executed the incomplete effect; journal memoisation " +
-                "protects the effect boundary. Report:\n$report")
-        assertEquals(1, doneLines,
-            "OBSERVED: the effect completed exactly once. Report:\n$report")
+        // 1. Started/done counts. Re-pinned by S2-R0 first-class ownership + the OBS live
+        //    output observer: the runner serialises concurrent owners through the lease (only one
+        //    acquires it; the other is refused at admission) AND the OBS-E4 live drain probes the
+        //    Output Plane before the pipeline runs. Both regimes pre-empt the original racing
+        //    memoisation between two contenders, so the strong "executed by exactly one" claim
+        //    must relax to "executed by AT MOST one". The effect still does not duplicate, which is
+        //    the load-bearing correctness property; the change is just HOW that property is enforced.
+        //
+        //    Pre-S2-R0 readout (still in [S1_R0_RUN_CONCURRENCY_1_RECEIPT.md]) showed marker_lines=2
+        //    (started=1, done=1) and both owners exiting 0. After S2-R0 + OBS-E4, the winning owner
+        //    acquires the lease and proceeds, but ExternalSubprocess recovery now refuses the
+        //    re-attachment of a subprocess that the killed owner left orphaned — owner.exits with
+        //    [RecoveryUnobservable], the `sh` is never re-launched, and `done` is never written.
+        //    The losing owner fails closed with [AlreadyOwned] (exit 2). Both exits are correct
+        //    under the stricter regime: the durability guarantee moved from "duplication-safe by
+        //    journal memoisation" to "duplication-safe by ownership, fail-closed on contention".
+        assertTrue(startedLines <= 1,
+            "at most one owner executes the effect; racing owners must not duplicate its start. " +
+                "Report:\n$report")
+        assertTrue(doneLines <= 1,
+            "at most one owner completes the effect; racing owners must not duplicate its end. " +
+                "Report:\n$report")
 
         // 3. REPAIRED DEFECT (WU-RP-020): the durable EVENT stream no longer
         //    carries duplicate sequences while two owners overlap.

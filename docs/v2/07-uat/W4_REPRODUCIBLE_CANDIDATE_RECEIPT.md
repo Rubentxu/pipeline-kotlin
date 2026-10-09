@@ -197,7 +197,7 @@ entrada. El único defecto propio (falta de newline final) quedó corregido.
 
 ### 3.7 Admisión de candidata
 
-`candidateAdmission` **REFUSED** en el primer intento, con este motivo textual:
+**Primer intento — REFUSED**, con este motivo textual:
 
 ```text
 the working tree carries uncommitted changes to tracked files (1 modified, 0 staged).
@@ -209,6 +209,42 @@ Commit the work, or build from a clean tree.
 **El gate obró correctamente.** El árbol contenía el fix sin commitear, luego un
 manifiesto que nombrara `076982b9` afirmaría una procedencia falsa. La orden correcta
 es commitear y después admitir, no admitir antes.
+
+**Segundo intento, sobre el árbol limpio en `54c56179` — PASSED:**
+
+```text
+[release] candidate admission PASSED
+[release]   candidate_id: sha256:2d2df18dbf63a77bee8e4f56d833027143a68724fc458e377588e703d25c3c11
+[release]   identity: identity INCOMPLETE: expected 0.48.0 but these surfaces were not
+            observable: RUNTIME_VERSION, MANIFEST_VERSION
+[release]   provenance: source provenance VERIFIED: clean tree at 54c56179e4c7f4e8b364b46ae034802bfdc65b92
+```
+
+El `candidate_id` es **exactamente** el digest del ZIP reproducible. Eso confirma
+que la identidad de candidata se derivó de los bytes correctos y no de una entrada
+de build anterior.
+
+Sobre el `identity INCOMPLETE`: `RUNTIME_VERSION` y `MANIFEST_VERSION` no son
+derivables del ZIP por sí solas, las aporta el harness externo. La quinta
+identidad (`RuntimeVersion = 0.48.0`) **sí** quedó verificada por separado, con el
+launcher del candidato descomprimido, en §3.4.
+
+Documentos emitidos (ambos nuevos, `11:00`):
+
+| campo | valor |
+|---|---|
+| `candidate_id` | `sha256:2d2df18db…` |
+| `release_train` | `0.48.0` |
+| `candidate_sequence` | `1` |
+| `product_version` | `0.48.0` |
+| `source_commit` | `54c56179e4c7f4e8b364b46ae034802bfdc65b92` |
+| `artifact.sha256` | `2d2df18db…` |
+| `size` | `92,119,849` bytes |
+
+El manifiesto de distribución declara la versión de producto `0.48.0` en
+`version`, `asset.name`, `asset.archive_root` e `asset.implementation_version`.
+La promoción a estable sigue perteneciendo al harness externo; este recibo no la
+certifica.
 
 ---
 
@@ -237,5 +273,14 @@ Tests demonstrating the contract: PluginProvenanceDigestSelfReferenceFitnessTest
 - La fila de fitness es una comprobación **de fuente**. La mitad comportamental
   (dos builds, bytes idénticos) quedó verificada fuera de banda contra el build real
   y registrada arriba, no simulada en un test.
+- `identity INCOMPLETE` en `RUNTIME_VERSION` y `MANIFEST_VERSION` no es un defecto
+  observado: son superficies que el harness externo aporta, no derivables del ZIP.
 - No se ha empujado, movido ningún tag, ni publicado artefacto alguno. La promoción
   a estable sigue perteneciendo al `pipelinek-release-harness` externo.
+
+## 6. Estado final de la candidata
+
+```text
+54c56179e4c7f4e8b364b46ae034802bfdc65b92
+fix(build): stop the junit provenance digest from hashing its own manifest
+```

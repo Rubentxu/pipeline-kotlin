@@ -2,10 +2,10 @@ package dev.rubentxu.pipeline.v2.credentials.executor
 
 import dev.rubentxu.pipeline.v2.credentials.spi.CredentialMaterialization
 import dev.rubentxu.pipeline.v2.credentials.spi.CredentialProvider
-import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
+import dev.rubentxu.pipeline.v2.domain.credentials.boundPurpose
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialProjector
 import dev.rubentxu.pipeline.v2.domain.credentials.DefaultCredentialProjector
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
@@ -140,7 +140,9 @@ class WithCredentialsExecutor(
             for (spec in specs) {
                 val credentialsId = spec.credentialsId
                 credentialIds.add(credentialsId)
-                val purpose = kindToPurpose(spec.kind)
+                // AUD-07: single domain authority for kind → BoundPurpose. The
+                // local 7-arm copy was removed so there is exactly one mapping.
+                val purpose = spec.boundPurpose
 
                 // Emit CredentialBound BEFORE projection (ADR-0051 D8 ordering)
                 val boundEvent = CredentialBound(
@@ -179,23 +181,6 @@ class WithCredentialsExecutor(
             closeBoundCredentials(runId, credentialIds, eventSink, t)
             throw t
         }
-    }
-
-    /**
-     * Maps a [CredentialBindingSpec] kind string to a [BoundPurpose] (per ADR-0051 §D8).
-     *
-     * Replaces the legacy 7-arm `when` that lived in the executor; the kind
-     * labels here match the new domain sealed type exactly.
-     */
-    private fun kindToPurpose(kind: String): BoundPurpose = when (kind) {
-        "string" -> BoundPurpose.API_KEY
-        "usernamePassword" -> BoundPurpose.USERNAME_PASSWORD
-        "sshUserPrivateKey" -> BoundPurpose.SSH_KEY
-        "file" -> BoundPurpose.FILE
-        "certificate" -> BoundPurpose.CERTIFICATE
-        "zip" -> BoundPurpose.ZIP
-        "usernameColonPassword" -> BoundPurpose.USERNAME_COLON_PASSWORD
-        else -> throw IllegalArgumentException("Unknown CredentialBindingSpec kind: $kind")
     }
 
     /**

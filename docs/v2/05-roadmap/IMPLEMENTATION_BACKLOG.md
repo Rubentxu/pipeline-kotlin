@@ -374,3 +374,188 @@ No empezar E8 por amplitud funcional antes de haber demostrado E4/E5/E6/E7 con e
 - **POL-07** Trust hierarchy: platform/org/project/local packs.
 - **POL-08** Expiring waiver model (only if real operational need appears).
 - **POL-09** Pre-effect PolicyAdmission ENFORCE seam — future/M9; blocked until shadow evidence + security review.
+
+## B1.3 follow-up — enum decode in output codecs (P2, RE-MEASURED 2026-10-08; BoundPurpose CLOSED)
+
+**The original P2 row was wrong about its own scope.** It claimed ~8 raw `Enum.valueOf` throws in
+output codecs. Measured with `grep valueOf( --include=*.kt */src/main`: **22 occurrences in 13
+files**, and most of them already refuse in the owner's own vocabulary. Re-classified by what each
+site actually does:
+
+| site | what it does | verdict |
+|---|---|---|
+| `CoreShellStep:282-289` | `try { valueOf } catch (IAE) { throw CoreShellCodecException(...) }` | **already correct** — this is the pattern to copy |
+| `FailureKind` in `CoreArchiveArtifactsStep:151`, `CoreArtifactQueryStep:147`, `CorePublishHtmlStep:150`, `CoreStashStep:140/290` | raw `valueOf`, no catch | crude throw, but the content being decoded is already a `Failure`; value is diagnostic only |
+| `FailureKind.valueOf` in `JsonEventLog:453/731` | `try { } catch { FailureKind.UNKNOWN }` | **legal**: `UNKNOWN` is a declared variant of the enum, so this is a carrier, not a coercion |
+| `FailureOrigin.valueOf` in `CoreShellStep:303` | inside a `try` whose `catch (e: Exception)` rethrows `CoreShellCodecException` | already correct |
+| `PublishHtmlSkipReason.valueOf` in `CorePublishHtmlStep:158` | raw `valueOf` | crude throw, diagnostic only |
+| `BoundPurpose.valueOf` in `JsonEventLog:479` and `:492` | `try { } catch (_: Exception) { BoundPurpose.API_KEY }` | **THE REAL DEFECT — CLOSED, see below** |
+| `ScriptDiagnosticSeverity.valueOf` in `EventJsonDecoder:164` | `try { } catch (_: Exception) { INFO }` | legal default for an optional diagnostic field |
+
+**CLOSED (2026-10-08).** `BoundPurpose` has **seven** variants — `API_KEY`, `USERNAME_PASSWORD`,
+`SSH_KEY`, `FILE`, `CERTIFICATE`, `ZIP`, `USERNAME_COLON_PASSWORD` — and **no `UNKNOWN`**. Every
+one of them names a real binding kind, so the fallback did not degrade to a neutral value: it
+asserted "this credential is an API key" on a row that never said so. `CredentialBound` /
+`CredentialUsed` are the surface AGENTS.md forbids putting wrong information on, so an observer
+reading the durable stream could not distinguish "bound as an API key" from "the purpose field
+was unreadable".
+
+What changed: `BoundPurpose` gained `parse(token): BoundPurpose?` derived from `entries` plus
+`supportedTokens` (mirroring `FailureKind.parse`), and both credential branches now refuse a
+present-but-unreadable token instead of defaulting. An **absent** `purpose` field keeps its
+documented `API_KEY` default — a missing optional field is a tolerated shape, not a corrupt token,
+and the test asserts the pairing so the fix cannot widen into "refuse every credential event".
+Mutation `?: return null` -> `?: BoundPurpose.API_KEY` killed 3 rows; restore verified by SHA-256.
+
+**The defect was masking a failing test.** `JsonEventLogRoundTripTest.EVT-CR-008` used
+`"purpose":"ENV"`, which has not been a `BoundPurpose` member for some time. It passed only because
+the fallback swallowed the bad token; the row was in fact asserting that an invented binding kind
+was accepted, and would have passed with any spelling at all. With the fallback gone the test went
+genuinely red, which is how the stale fixture surfaced. Corrected to `FILE`, a real member — the row
+now exercises only what its name claims (an unknown `kind` is skipped). Repo-wide sweep for
+`"purpose":"…"` fixtures now finds no token outside the vocabulary.
+
+**Known limitation left open (new, P2) — CLOSED 2026-10-08.** The refusal now names the
+offending field. `decodeEvent` returns a private `EventDecodeOutcome` (`Decoded` / `Failed`) instead
+of `DomainEvent?`, and all nine failure sites carry a typed `EventDecodeFailure.UnreadableField`
+instead of a bare `null`. `decodeStoredRow` decodes once and keeps both halves of the outcome; the
+payload echo survives only as the fallback for a document whose SHAPE was unusable. The public
+signatures of `decode` and `decodeStoredRow` are unchanged, so no caller outside the file can depend
+on the codec's internal failure vocabulary.
+
+Why this was worth doing rather than documenting: the echo was not merely weak but **unsatisfiable**
+where it mattered. `MalformedPayload.detail` is capped at `STORED_ROW_DETAIL_CHARS` (200), and a
+realistic payload — a diagnostics blob plus a purpose — runs past that. Measured: a 339-char payload
+refused with a detail that stopped mid-filler, containing neither `purpose` nor the offending
+token. An operator reading a refused row could not learn WHICH field failed.
+
+Three things that this change turned up, none of them visible while the echo was in place:
+- **`buildResult` absent is not `buildResult` unreadable.** A first attempt wrote
+  `?.let { parse(it) } ?: return unreadable(...)`, which rejects the legitimate absent case that
+  three tests pin. Restored to returning inside the `let`, so absent stays null and a present token
+  outside the vocabulary still refuses.
+- **`S54DurableRefusalContractTest` was asserting on the echo**, not on the cause. Its payload
+  (`{ not the RunStarted schema`) is an object rather than the stored array shape, so decoding
+  reaches the envelope and stops at the first absent field. It now asserts `detail` names
+  `eventId` — the real, measured cause. Two earlier guesses about this fixture were wrong before
+  the detail was printed into the failure message.
+- **The detekt baseline is keyed on the signature.** `decodeEvent` was already exempt for
+  `LongMethod` and `CyclomaticComplexMethod`, but the key embeds the return type, so changing it
+  re-armed both rules (931 lines, complexity 277). Detekt 2.x also emits the nested type
+  unqualified (`EventDecodeOutcome`, not `JsonEventLog.EventDecodeOutcome`), which is why a
+  hand-edited key silently failed to suppress and the baseline had to be regenerated by the task.
+
+Evidence: RED 7 tests / 1 failure (`must name the offending field independently of the payload
+echo`); GREEN 7/7; mutation reverting to the payload echo killed exactly the new row; restore
+verified by SHA-256.
+
+**Explicitly NOT in scope:** the raw `valueOf` in the four archive/query/publish/stash output
+codecs. There the decoded content is already a `Failure`, so a wrong type costs a confusing
+diagnostic and cannot re-run an effect or convert a failure into a success. Deciding whether they
+converge onto `FailureKind.parse` is a separate, lower-value row.
+
+## core.waitUntil handler stub is dead but frozen (P1, open)
+
+**Medido en B1.3 (2026-10-08), NO corregido a propósito.** `CoreWaitUntilStep.capabilityRoutedHandler`
+emite un par `WaitUntilPolled`/`WaitUntilCompleted` con `conditionResult = true` y
+`WaitUntilCompletion.Satisfied` sin evaluar la condición ni ejecutar el cuerpo. Probado contra la
+autoridad productiva que **nunca se invoca**: el descriptor declara
+`BodyExecutionOwner.CANONICAL_ENGINE`, el engine ejecuta el cuerpo (su efecto `core.sh` deja el
+fichero marcador) y los eventos salen de `WaitUntilEngine`; una sonda con reloj `1970-01-01` no
+apareció en ningún evento.
+
+**Por qué no se "arregla" aquí.** `CoreWaitUntilDifferentialContractTest` congela ese
+comportamiento en dos filas que invocan `definition.handler.execute(...)` y afirman
+`conditionResult == true` y `outcome == "completed"`:
+
+- `handler — emits WaitUntilPolled and WaitUntilCompleted events with stub pattern`
+- `handler — stub output has completed outcome with zero attempts-durations`
+
+Convertirlo en un refusal es **reescribir un Differential Contract Freeze**, no endurecer runtime.
+
+**Owner:** diseño de Step (con B1.3 como quien lo midió). **Exit criterion:** una de estas tres
+decisiones, con recibo y sin dejar el estado intermedio ambiguo:
+- (a) borrar el handler y definir qué satisfies `StepDefinition` y qué ejecuta la contract suite; o
+- (b) convertirlo en refusal explícito y reescribir las 2 filas del freeze; o
+- (c) dejarlo muerto, y entonces **borrar las 2 filas** que fijan un contrato sin valor de
+      regresión, porque un freeze de algo inalcanzable protege de nada y ocupa el hueco donde un
+      freeze de verdad debería estar.
+
+Detalle completo y evidencia: `../07-uat/B1_3_CONTROL_JOURNAL_UNKNOWN_STATUS_RECEIPT.md` §8.
+
+## `ScriptingDiagnostic.line`/`column` se perdían en cada replay (P1, CLOSED 2026-10-08)
+
+**Medido, no supuesto.** `DomainEventExhaustiveRoundTripTest` recorre las **71** variantes de
+`DomainEvent` por reflexión, las encodes con `JsonEventLog.encode` y las relee con
+`JsonEventLog.decode`. Dos de 71 no fazan round-trip:
+
+```
+original: ScriptingDiagnostic(severity=DEBUG, message=..., line=7, column=7, path=...)
+decoded:  ScriptingDiagnostic(severity=DEBUG, message=..., line=0, column=0, path=...)
+```
+
+**Causa raíz.** `EventJsonWriter.encodeDiagnostics` escribe `line`/`column` como **números JSON
+sin comillas**, y `EventJsonDecoder.parseDiagnostic` los leía con `EventJsonFields.stringField(...).
+toIntOrNull()`. El lector de cadenas no casa con `7`; devolvía `null` y el `?: 0` se comía la
+posición. El escritor y el lector llevaban años de acuerdo sobre el *nombre* del campo y
+desacuerdo sobre su *tipo*. **Todo replay de un diagnóstico de scripting ha perdido la
+posición del origen.**
+
+**Corrección:** `EventJsonFields.intField`, que ya existía para exactamente ese propósito.
+
+## Fila `RunStarted` sin `scriptPath` decodificaba con `""` (P1, CLOSED 2026-10-08)
+
+Mismo test. `scriptPath = EventJsonFields.stringField(s, "scriptPath") ?: ""` es un **default
+semántico inventado**: una fila sin `scriptPath` decodificaba como si el run hubiera arrancado
+sin nombrar nunca el script. Viola Semantic Conservation §2 (unrecognized token → valor plausible
+en vez de fail-closed). Ahora devuelve `EventDecodeFailure.UnreadableField("scriptPath", …)`.
+
+## La red que faltaba, y por qué el split de `decodeEvent` sigue diferido (P2, DEFERRED)
+
+Antes de partir `decodeEvent` (931 líneas, complejidad 277, entrada de detekt baseline) medí su
+cobertura: decodifica **71** kinds, y `DomainEventRoundTripTest` nombraba **10**. No existía
+round-trip exhaustivo en ningún módulo. Partir 975 líneas tocando **61 brazos sin red** es
+refactorizar a ciegas.
+
+**Orden correcto: red primero, split después.** La red ya existe
+(`DomainEventExhaustiveRoundTripTest`); el split sigue diferido como decisión propia, y ahora tiene
+la condición satisfecha para hacerla sin riesgo ciego.
+
+**Lo que la red NO cubría, y sí era deuda real (cerrado en el slice siguiente):**
+`decodeEvent` usaba `Instant.now()` como fallback de `occurredAt` no parseable — reloj ambiental
+dentro de un decoder que debería ser puro. Junto con él, cinco `?: <default>` más del mismo
+patrón. Todo cerrado y registrado en la sección siguiente.
+
+## El decoder inventaba valores en 8 sitios (P1, CLOSED 2026-10-08)
+
+**Una familia, no ocho casos.** `DurableDecodeInventsNoValueTest` cerró seis filas que
+comparten una sola causa: un campo **presente pero ilegible** se convertía en un valor
+plausible en vez de un rechazo. Es la misma clase que ya cerró `purpose` → `API_KEY` y que
+Semantic Conservation §2 prohíbe.
+
+| Sitio | Defecto | Efecto silencioso |
+|---|---|---|
+| `decodeEvent.occurredAt` | `catch { Instant.now() }` | una fila vieja quedaba sellada con la hora de **lectura**; dos lecturas de la misma fila daban dos eventos distintos |
+| `parseArtifactEntry.archivedAt` | `catch { Instant.now() }` | misma pérdida de tiempo, en archivados |
+| `parseDiagnostic.severity` | `catch { INFO }` | un ERROR o WARNING ilegible se reportaba como información rutinaria |
+| `decode{Stashed,Restored,HtmlReport}Entries.sizeBytes` | `?: 0L` | una entrada de tamaño desconocido se declaraba fichero vacío |
+| `parseDiagnostic.line/column` | `?: 0` | posición desconocida apuntando al inicio del fichero |
+| `StashCreated/StashRestored.stageName,name` | `?: ""` | un stash sin nombre decodificaba con nombre vacío |
+
+**El peor de todos, y el que no era un simple default.** Cuando una entrada de una lista era
+ilegible, `mapNotNull` la **descartaba** y el evento decodificaba bien con una lista **más
+corta**. Un stash de cinco ficheros con uno corrupto volvía como un stash de cuatro, y nada
+en ninguna parte reportaba la diferencia. Por eso `decode*Entries` ahora tienen una variante
+`…OrRefuse` que distingue "el campo no está o está vacío" (legítimo) de "el campo está y una
+entrada es ilegible" (rechazo), y el refusal sube hasta el evento.
+
+**Nota de detekt:** añadir esas tres variantes llevó el objeto a 13 funciones y disparó
+`TooManyFunctions`. No se subió el límite ni se generó baseline: las dos variantes antiguas
+`decodeStashedEntries`/`decodeRestoredEntries` ya no tenían ningún llamador tras el cambio, así
+que eran código muerto y se eliminaron. El objeto queda en 11, el límite exacto.
+
+**Lo que NO se tocó y sigue siendo deuda real:** `decodeArtifactEntries` y
+`decodeHtmlReportEntries` (y cualquier otro consumidor del mismo patrón) no están
+auditados; el `?: ""` en `parseDiagnostic.message`/`path` se eliminó al hacerlos
+requeridos, pero la política general de "campo ausente en un tipo sin defaults" no está
+fitness-eada todavía.

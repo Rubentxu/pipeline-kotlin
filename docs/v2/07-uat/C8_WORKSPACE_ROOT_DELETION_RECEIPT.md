@@ -5,6 +5,467 @@
 **Fixed:** same session, on top of `a1441573`
 **Falsified:** yes, twice (unit + end-to-end)
 
+## C8 / C9 — Reconciliation, 2026-10-09
+
+**Status: C8 → RESOLVED. C9 → RESOLVED.** Every criterion has a row bound to the
+final SHA; three of them were hiding real problems. See "Verdict".
+
+This section reconciles the finding recorded above with the state of the tree on
+2026-10-09, and adds the work that closes it. The historical narrative above is
+left untouched: it is the record of the original defect and it is evidence for
+its own SHA.
+
+## What the finding said, and what was still true
+
+The original C8 fix was **behaviourally correct** and still is. Both guards fire
+in the real execution path, before any effect:
+
+```text
+DeleteDirOperationsAdapter.kt:112   guard computed BEFORE executor.execute()
+CleanWsOperationsAdapter.kt:97      idem
+WorkspacePathResolver.authorizeRootDestruction
+    WorkspaceLease.Attached → Refused(ProtectedWorkspaceRoot)
+    WorkspaceLease.Managed  → Permitted
+```
+
+What was still true, and is what kept C8 at MITIGATED:
+
+```text
+StepSpec.DeleteDir(path = ".")      StepSpec.kt:277   default intact
+CoreDeleteDirStep(path = ".")       :36              default intact
+protectWorkspaceRoot: Boolean       DeleteDirExecutor + CleanWsExecutor
+```
+
+The residual defect was **not** the existence of the default. It was that the
+decision governing a root wipe was a single `Boolean` the caller could pass
+wrong, and that the type could not express a caller who had not yet resolved
+ownership at all.
+
+## Why the default was NOT removed
+
+Removing `path = "."` was measured and rejected, not skipped:
+
+| Constraint | Evidence |
+| --- | --- |
+| Jenkins verbatim contract | `FArchL7JenkinsVerbatimSignatureReflectionTest` pins `DeleteDir` to exactly one `String` field named `path`, WCL-S-008 / FIL-ALL-001 |
+| ABI baseline | `pipeline-scripting-api/api/*.api:493` freezes `StepSpec$DeleteDir` |
+| Serialisation | the compiler always emits `path`; the decoder's `?: "."` is the historical-payload path and stays |
+
+`deleteDir()` with no argument is how Jenkins users write the Step. Removing the
+default would break source compatibility of every existing pipeline and gain
+nothing: `UserOwned` already refuses the root before any effect. The defect was
+never that the default existed, it was that the default's **outcome** was decided
+by a bit the caller could pass wrong.
+
+## The change: `RootDestruction`, a closed type
+
+`protectWorkspaceRoot: Boolean = false` → `rootDestruction: RootDestruction`.
+
+```kotlin
+enum class RootDestruction {
+    ScratchOwned,        // PipelineK's own scratch
+    UserOwned,           // a --workspace checkout
+    DecidedElsewhere,    // ownership unresolved → fails closed
+}
+```
+
+The `Boolean` admitted `ScratchOwned` and `UserOwned` and made
+`DecidedElsewhere` **unrepresentable**. So every caller had to answer a question
+it does not own by picking one of two bits, and two adapters each re-derived the
+same rule inline. C8 and C9 also shared two independent booleans, which allowed
+one to be wired to scratch while the other stayed user-owned with nothing
+observing the divergence. One type makes both unrepresentable.
+
+### The enum carries no boolean, and this was found by mutation, not by review
+
+The first version of this fix declared the enum as
+`enum class RootDestruction(val permitsRootWipe: Boolean)` and consumed the bit at
+both call sites. It read as a closed type and it was not one: the three states
+were collapsed again one layer down, which is the same defect with a new name.
+
+Row `C8-M2` was supposed to prevent exactly that and did not. It filtered
+`RootDestruction::class.java.methods` on names starting with `permit` or
+`protect`. A Kotlin `val permitsRootWipe` compiles to the JVM getter
+`getPermitsRootWipe()`, which starts with `get`. **The predicate matched nothing,
+the row was green, and the collapse was sitting in the enum.** The row was
+certifying the comment above it rather than the code below it.
+
+Both halves are fixed and both are now mutation-verified:
+
+- `C8-M2` asks the question it claims to ask — is there a public no-arg getter
+  returning `boolean` — rather than guessing at a name prefix.
+- `C8-M2a` is new. A closed enum is not sufficient on its own: a consumer may
+  collapse it locally, so the row pins that both executors decide with
+  `when (rootDestruction)`. A fourth ownership case must then be a compile error
+  in every consumer, not a case that silently inherits whichever value a bit gave it.
+
+Measured, not asserted:
+
+| Mutation | Result |
+| --- | --- |
+| re-add `val permitsRootWipe: Boolean = false` | `C8-M2` RED: `found [getPermitsRootWipe]` — the pre-fix version of this row left it green |
+| collapse the `when` to `rootDestruction == RootDestruction.ScratchOwned` | `C8-M2a` RED: `must decide root destruction by when (rootDestruction)` |
+
+The domain guard is unchanged and remains defence in depth: a safer API does not
+replace the runtime ownership check.
+
+## Evidence
+
+### Matrix — `C8DestructiveIntentMatrixTest`, 13 rows
+
+| Row | Claim |
+| --- | --- |
+| C8-M1 | `RootDestruction` has exactly the three ownership cases |
+| C8-M2 | the type exposes no `boolean` getter that re-collapses the decision |
+| C8-M2a | both executors decide with `when (rootDestruction)`, not a local bit |
+| C8-M3 | `UserOwned` + root → REFUSED, canary files survive |
+| C8-M4 | `ScratchOwned` + root → wiped, `.deleted` marker written |
+| C8-M5 | `UserOwned` + valid sub-path → allowed, root contents intact |
+| C8-M6 | `DecidedElsewhere` → fails closed on `deleteDir` |
+| C8-M6a | `DecidedElsewhere` → fails closed on `cleanWs` too |
+| C8-M7 | every spelling of the root (`.`, `./`, `build/..`) obeys the same intent |
+| C8-M8 | traversal outside the workspace refused for **every** intent |
+| C8-M9 | a symlink inside the workspace is not followed out of it |
+| C8-M9a | a target that IS a symlink is confined; no marker lands outside |
+| C8-M10 | a legacy payload without `path` still decodes to the root |
+| C8-M10a | that decoded root is REFUSED on a `UserOwned` workspace |
+| C8-M10b | the same payload DOES wipe a `ScratchOwned` workspace |
+| C8-M10c | `DecidedElsewhere` on a legacy payload fails closed too |
+| C8-I1 | the installed binary refuses `deleteDir()` on an attached root |
+| C8-I2 | the installed binary refuses a pattern-less `cleanWs()` on an attached root |
+| C8-I3 | the installed binary still deletes a MANAGED root |
+| C9-M1 | `UserOwned` + pattern-less `cleanWs` → REFUSED, no `.cleaned` marker |
+| C9-M2 | empty pattern list is a full wipe, refused like `null` |
+| C9-M3 | `ScratchOwned` keeps the pattern-less sweep contract |
+| C9-M4 | both executors take the same type, so C8 and C9 cannot drift |
+
+C8-M10 and M10a…M10c live in `pipeline-application`
+(`C8HistoricalPayloadAuthorizationTest`), because the codec under test is
+`CoreDeleteDirStep` and `pipeline-step-sdk:files` must not depend on
+`pipeline-application`. C8-I1…I3 live in `pipeline-application/cli`
+(`C8InstalledDistributionCanaryTest`) and run the `installDist` binary.
+
+The zero-effects oracle is a **filesystem observation** (canary files survive),
+not the thrown exception — a Step that deleted everything and then threw would
+pass an `assertThrows`-only test (HARNESS FIDELITY LAW §3).
+
+### Mutations — 11, each attributed to the rows it flips
+
+```text
+M1   UserOwned → permitted            killed C8-M3, C8-M7
+M2   ScratchOwned → refused           killed C8-M4, C9-M3, WCL-S-001/002/006
+M3   deleteDir root guard removed     killed C8-M3, C8-M6, C8-M7
+M4   cleanWs pattern-less guard removed   killed C8-M6a, C9-M1, C9-M2
+M5   traversal containment removed    killed C8-M8, WCL-S-003
+M6   DecidedElsewhere → permitted     killed C8-M6, C8-M6a
+M7   re-add `val permitsRootWipe`     killed C8-M2
+M8   collapse the `when` to `==`      killed C8-M2a
+M9   revert the real-path anchoring   killed C8-M9a
+M10  change the decoder fallback      killed C8-M10, M10a, M10b, M10c
+M11  `val wipesRoot = true` in the shipped binary  killed C8-I1
+```
+
+Eleven mutations. Four did not kill what they should on the first attempt and
+each is recorded below: M6, the C8-M2 reflection filter, C8-M9a's assertion, and
+C8-I3's `--workspace` premise.
+
+Every mutation was restored with a verified hash, and the final runs returned to
+green on the rows bound to the final SHA.
+
+**M6 initially killed nothing.** Letting `DecidedElsewhere` be permitted
+left the suite green, because no row exercised the unresolved state against a
+root wipe. That was a real hole in the test set, not a harness artefact, and
+C8-M6 / C8-M6a were added to close it. Recording this because a mutation that
+survives is the cheapest possible signal that a claim was never tested.
+
+### UAT — destructive-effect absence, in a real run
+
+`UatLocal011WorkflowControlTest.SC-011-14` is new: the previous
+destructive-effect UAT covered only `deleteDir`, and C9 is the more dangerous of
+the two because `cleanWs()` with no patterns has no partial form to narrow it.
+
+It asserts all three halves — non-zero exit, `StepFailed` present, `WsCleaned`
+**absent**, and both `important.txt` and `src/main.kt` surviving.
+
+**Mutation:** replacing the `cleanWs` guard with `require(true)` produced
+`Expected a StepFailed for the cleanWs step. Events: []` — the workspace had
+already been swept. The row detects the defect it exists for.
+
+`SC-011-13` (`deleteDir` on an Attached root) already covered the twin and is
+unchanged.
+
+### Gate
+
+```text
+C8DestructiveIntentMatrixTest + WorkspaceCleanupTest   36 tests  0 failures  0 errors
+pipeline-step-sdk:files + pipeline-application (C8 set) 2243 tests  0 failures  0 errors  (16 skipped)
+C8HistoricalPayloadAuthorizationTest + CoreDeleteDirStepUnitTest   26 tests  0 failures  (4 skips)
+C8InstalledDistributionCanaryTest                     3 tests  0 failures  0 errors  (installDist)
+UatLocal011WorkflowControlTest                         15 tests  0 failures  0 errors  (1 skip)
+FArchL7JenkinsVerbatimSignatureReflectionTest           6 tests  0 failures  0 errors
+FArchS0SurfaceManifestTest                             11 tests  0 failures  0 errors
+```
+
+The `pipeline-application` full suite (2529 tests) was measured **before** the
+enum redesign and the symlink fix. It is historical evidence for the first
+iteration, not verification of the code committed here. The rows above are the
+post-fix evidence bound to the final SHA.
+
+The broad `check` was also run excluding the three pre-existing baseline
+failures, and returned green — but it ran concurrently with edits in flight, so
+it is recorded as inconclusive rather than as evidence.
+
+### Historical payload without `path` — the criterion was misstated, then met
+
+This was recorded as "ASSUMED, not measured". Writing the row found that the
+*decode* half was already covered and the *authorization* half was not — a
+distinction the original criterion did not make.
+
+Already present, unremarked:
+
+```text
+CoreDeleteDirStepUnitTest
+  "input codec decodes legacy payload without path field (defaults to dot)"
+```
+
+What was missing is that a payload with no `path` decodes to the workspace
+**ROOT** — it lands exactly where C8 is about — and nothing connected that
+decoded value to the ownership check. A round-trip is self-consistent by
+construction, so a decode test cannot witness the safety claim on its own.
+
+`C8HistoricalPayloadAuthorizationTest` (pipeline-application) closes it with
+four rows:
+
+| Row | Claim |
+| --- | --- |
+| C8-M10 | the legacy payload still decodes to `.`, unchanged |
+| C8-M10a | the decoded root is REFUSED on a `UserOwned` workspace, no marker written |
+| C8-M10b | the same payload DOES wipe a `ScratchOwned` workspace |
+| C8-M10c | `DecidedElsewhere` on a legacy payload also fails closed |
+
+C8-M10b exists so M10a cannot be true for the wrong reason: confinement that
+refuses everything is not confinement. M10a also asserts no `.deleted` marker,
+because a marker on a refused run would make a later MEMOIZED replay believe
+the wipe already happened.
+
+The row had to be written in `pipeline-application`, not in the SDK matrix:
+`CoreDeleteDirStep` lives there and `pipeline-step-sdk:files` must not depend
+on it. Attempting it in the SDK produced
+`compileTestKotlin: Unresolved reference 'CoreDeleteDirStep'` — the dependency
+direction refusing the shortcut, which is the correct outcome, not a nuisance.
+
+| Mutation | Result |
+| --- | --- |
+| MUT-M10 change the decoder fallback from `"."` to a sub-path | all four rows RED: M10 `"expected: <.> but was: <subdir-not-the-root>"`, M10b `NoSuchFileException`, M10a/M10c wrong exception type |
+| restore, verified by hash | `8bd0a2a6ceab6722e7d7f218f94ed9c0531134924279c1f7f5d57ee00a9551a3` |
+
+### Symlink confinement — found a real escape, not just missing coverage
+
+This criterion was recorded as PARTIAL because traversal was covered. Writing
+the row found an actual defect, and the two halves of the claim had different
+answers.
+
+`Path.normalize()` collapses `.` and `..` but does **not** dereference symlinks.
+So `require(targetPath.startsWith(workspace))` answers "what name did the
+caller write", not "where does the filesystem end up". A link named `escape`
+pointing at an outside directory has a normalised form inside the workspace and
+was accepted by the guard.
+
+Half one, the deletion walk, was already safe: `Files.walk` without
+`FOLLOW_LINKS` visits the link and not its target, so nothing outside was
+deleted. Half two, the MEMOIZED marker, was not. `.deleted` is written *inside*
+`targetPath`, and a write through a symlink resolves to the link's target.
+Measured directly before writing the row:
+
+```text
+ws/outside-link -> real/   deleteDir(path = "outside-link")
+  real/.deleted  exists  = true      <-- written outside the workspace
+  ws/.deleted    exists  = false
+```
+
+So `deleteDir` could drop a file into a directory the workspace never owned.
+A conformance test asserting only that outside files survive would have passed
+against this defect, because they did survive.
+
+The fix anchors the guard and the marker to the real path:
+
+```text
+realWorkspace = toRealPathAllowingMissing(workspace)
+realTarget    = toRealPathAllowingMissing(rawTarget)
+require(realTarget.startsWith(realWorkspace))
+require(wipesRoot || realTarget != realWorkspace)
+markerFile    = realTarget.resolve(".deleted")
+```
+
+`toRealPath` throws on a missing leaf and `deleteDir` legitimately targets
+directories that do not exist yet, so the deepest existing ancestor is resolved
+and the remaining segments re-appended.
+
+`DeleteDirResult.path` still reports the *declared* path. It is an observable,
+serialized output, and silently switching it to the resolved real path would
+have changed a published contract to fix a bug that did not need fixing.
+
+| Mutation | Result |
+| --- | --- |
+| MUT-M9 revert the anchoring to normalised paths | `C8-M9a` RED: `Expected IllegalArgumentException, but nothing was thrown` |
+| restore, verified by hash | `f91b1dd011c9f8e104dba7015ce8a056a56d89037b433399adbea9f2a17a8799` |
+
+`C8-M9` (the walk does not follow links) was green before and after, which is
+correct: it is the half that was already right, kept so a future `FOLLOW_LINKS`
+would break it.
+
+### Installed-distribution canary — SC-011-13/14 were not this
+
+`SC-011-13` and `SC-011-14` were recorded here as evidence for this criterion.
+Reading them again, they are not: `UatLocal011WorkflowControlTest.runPipeline`
+builds
+
+```text
+$JAVA_HOME/bin/java -cp <the TEST classpath> MainKt run ...
+```
+
+so they fork a JVM on the classpath `check` produced. They certify the compiled
+tree. The artifact a user installs — the `installDist` layout, the launcher, the
+packaged JARs, the assembled classpath — is different bytes from a different
+task, and neither row touches it.
+
+This is a distinction the repo already has a name for.
+`InstalledDistributionHarnessFitnessTest` records that "launch the same runtime
+by its main class on the test classpath" is a *second door* to the installed
+property, and `UatLocal011WorkflowControlTest.kt` is a listed entry in its debt
+ledger for exactly that. So the green SC-011-13/14 was real and was about the
+tree.
+
+`C8InstalledDistributionCanaryTest` (pipeline-application) closes the gap. It
+uses [AppBinSupport] + [OwnedSubprocess] against
+`build/install/pipelinek/bin/pipelinek`:
+
+| Row | Claim |
+| --- | --- |
+| C8-I1 | the installed binary refuses `deleteDir()` on an attached root, keeps both files, writes no marker |
+| C8-I2 | the installed binary refuses a pattern-less `cleanWs()` on an attached root, keeps the file, writes no marker |
+| C8-I3 | the installed binary still deletes a MANAGED root, so I1/I2 are not a blanket refusal |
+
+### `--workspace` is always USER-owned: a premise that was wrong and cost a row
+
+C8-I3 first ran with `--workspace <scratch>` expecting a wipe, and failed:
+
+```text
+"deleteDir refuses to delete the workspace root itself ('.../scratch')"
+```
+
+while the file it had just created sat untouched. The refusal was correct. The
+premise was not: `WorkspaceIntent.requestFor` maps `workspace != null` to
+`AttachExplicit`, which resolves to `WorkspaceLease.Attached`, which is
+`Refused` — always. **There is no `--workspace` invocation that yields
+`ScratchOwned`.** `--isolated` is the `ManagedIsolated` request and the only flag
+combination that reaches `WorkspaceLease.Managed` → `Permitted`.
+
+The failing row was the useful one: had C8-I3 not existed, the canary would have
+been two refusals and one absence of knowledge about how to reach the permitted
+half from the CLI at all.
+
+| Mutation | Result |
+| --- | --- |
+| MUT-M11 `val wipesRoot = true` in `DeleteDirExecutor` | `C8-I1` RED in the installed run: `no MEMOIZED marker may be written ... expected: <false> but was: <true>` |
+| restore, verified by hash | `f91b1dd011c9f8e104dba7015ce8a056a56d89037b433399adbea9f2a17a8799` |
+
+The mutation required rebuilding `installDist` before the run, which is the
+point: the canary observes the artifact, not the classpath.
+
+### Replay and durable schema — measured, not assumed
+
+The intent must not leak into anything durable, or every existing run's history
+would be reinterpreted under new semantics (DR-10).
+
+```text
+RootDestruction referenced by fingerprint / journal / payload / encode : NONE
+files changed under Fingerprint|Journal|Codec since the first C8 commit   : NONE
+the executors' durable input remains spec.path / spec.patterns only      : unchanged
+```
+
+`RootDestruction` is constructed inside the adapters at call time, from the
+lease, and is never serialized, hashed, or written to the operation journal. So
+the fingerprint of a `deleteDir` / `cleanWs` operation is byte-identical before
+and after this change, and historical payloads decode exactly as they did:
+`path ?: "."` still applies, and it still passes lease authorization because
+ownership is decided from the lease rather than from the payload.
+
+### Preexisting drift, excluded from the gate and NOT caused by this work
+
+Both were reproduced on a clean HEAD (`git stash`, then re-run), so the
+attribution is measured rather than assumed:
+
+```text
+:pipeline-domain:apiCheck      fails on HEAD  — 4d4075d5 added Sha256 without an apiDump
+:pipeline-domain:detekt        fails on HEAD  — 3 files missing a final newline (Sha256.kt et al.)
+:pipeline-application:detekt   fails on HEAD  — Sha256MigrationCharsetInvariantTest.kt final newline
+```
+
+Neither module is touched by this change (`git status` shows 0 files in
+`pipeline-domain`). The gate was run excluding exactly those three tasks.
+
+## Verdict
+
+**RESOLVED.** Every criterion the closure contract named now has a row bound
+to the SHA that carries it, and three of them turned out to be hiding real
+problems when the row was written.
+
+Satisfied, with evidence above:
+
+- the API states destructive intent as a closed type with no boolean anywhere in
+  the chain, so "unresolved ownership resolved toward destruction" is not merely
+  discouraged, it is unspellable;
+- both executors decide by matching cases, so a fourth ownership case is a
+  compile error rather than an inherited verdict;
+- the runtime check on `WorkspaceLease` is unchanged and still fail-closed;
+- destructive operations are confined to the real path, so a symlink can no
+  longer carry the MEMOIZED marker out of the workspace;
+- a legacy payload without `path` decodes to the root and is then refused;
+- the behaviour holds in the installed distribution, not only on the test
+  classpath;
+- every behavioural claim carries a mutation that kills it. Eleven mutations
+  were run. Four did not kill what they should on the first attempt — M6 (no row
+  exercised the unresolved state), C8-M2 (the reflection filter matched nothing),
+  C8-M9a (the assertion did not look at where the write landed), and C8-I3 (the
+  premise about `--workspace` was wrong) — and every one of those is recorded
+  above rather than quietly fixed.
+
+What still is **not** claimed: `sh("rm -rf")` remains an open escape hatch by
+design, Zip Slip and traversal are unchanged, and the pre-existing
+`pipeline-domain` `apiCheck` / `detekt` drift from `4d4075d5` is unrelated and
+still open.
+
+The pattern across this reconciliation is worth more than any single row. Every
+gap was entered as "probably fine, no test", and every gap paid:
+
+```text
+enum bit          the type looked closed and was not; its guard was blind
+symlink           the walk was safe and the marker write was not
+legacy payload    the decode was covered and the authorization was missing
+installed canary  two UATs looked like it and used the test classpath
+--workspace       assumed a scratch path that cannot exist
+```
+
+Coverage gaps are hypotheses about code nobody has run. Three of these five were
+wrong in ways that mattered.
+
+## Reference implementation consulted
+
+`jenkinsci/pipeline-basic-steps-plugin` — `deleteDir` / `cleanWs` step
+definitions and the workspace-deletion contract, for the parameter shape and the
+`deleteDir()` no-argument call form. Adopted: the Jenkins authoring surface and
+its parameter order, kept verbatim. Intentional deviation: ownership is decided
+by PipelineK's typed `WorkspaceLease` (ADR-0102) rather than by Jenkins'
+`FilePath` / node context, because this runtime resolves paths purely and has no
+remoting model. Security implications reviewed: Zip Slip and traversal are
+out of C8 scope and unchanged; the `sh("rm -rf")` escape hatch remains open by
+design and is recorded in "Known limitations" above.
+
+---
+
+## Original finding (2026-09-27, retained verbatim)
+
 ## What happened
 
 Running the DSL/Kotlin compatibility corpus the way the project's own CI does

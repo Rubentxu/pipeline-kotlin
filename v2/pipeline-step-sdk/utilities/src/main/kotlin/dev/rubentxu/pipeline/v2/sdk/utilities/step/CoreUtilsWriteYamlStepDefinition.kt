@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.sdk.utilities.step
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
@@ -24,7 +25,6 @@ import org.yaml.snakeyaml.DumperOptions
 import org.yaml.snakeyaml.Yaml
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
 
 /**
  * `core-utils.writeYaml` OFFICIAL_PLUGIN Step (LFC-2E2 utilities, Slice 2 / S2.2).
@@ -124,9 +124,8 @@ class CoreUtilsWriteYamlStepDefinition : StepDefinition<WriteYamlInput, WriteYam
                         ),
                     )
                 }
-                val hexDigest = MessageDigest.getInstance("SHA-256")
-                    .digest(bytes)
-                    .joinToString("") { "%02x".format(it) }
+                // Shared utility (B0). Same bytes, same lowercase hex.
+                val hexDigest = Sha256.ofBytes(bytes)
 
                 WriteYamlOutput(
                     wroteToFile = true,

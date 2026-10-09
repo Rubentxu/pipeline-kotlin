@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.domain.credentials
 
+import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 
 /**
@@ -133,6 +134,30 @@ data class UsernameColonPasswordBindingSpec(
 ) : CredentialBindingSpec {
     override val kind: String = "usernameColonPassword"
 }
+
+/**
+ * AUD-07 single authority: the ONLY mapping from a credential binding kind to
+ * its audit [BoundPurpose].
+ *
+ * Total over the sealed family — the compiler enforces that every binding kind
+ * is mapped, so a `file` / `certificate` / `zip` / `usernameColonPassword`
+ * binding can never be silently reported as [BoundPurpose.API_KEY] (the defect
+ * this replaces was a partial `when` with `else -> API_KEY`).
+ *
+ * An unknown raw `kind` token is unrepresentable at this seam: the compiled
+ * payload codec rejects it fail-closed before it can become a
+ * [CredentialBindingSpec], and once a spec exists its kind is a static type.
+ */
+val CredentialBindingSpec.boundPurpose: BoundPurpose
+    get() = when (this) {
+        is StringBindingSpec -> BoundPurpose.API_KEY
+        is UsernamePasswordBindingSpec -> BoundPurpose.USERNAME_PASSWORD
+        is SshUserPrivateKeyBindingSpec -> BoundPurpose.SSH_KEY
+        is FileBindingSpec -> BoundPurpose.FILE
+        is CertificateBindingSpec -> BoundPurpose.CERTIFICATE
+        is ZipBindingSpec -> BoundPurpose.ZIP
+        is UsernameColonPasswordBindingSpec -> BoundPurpose.USERNAME_COLON_PASSWORD
+    }
 
 /**
  * Ergonomic factory methods that mirror the legacy

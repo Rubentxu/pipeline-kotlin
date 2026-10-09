@@ -112,3 +112,36 @@ High-volume `sh` stdout/stderr must stop being duplicated as `EchoOutputCaptured
 ## 11. No total ordering lie
 
 `full` interleaving is a presentation stream. Only event sequence and console offset have authoritative local orders. CLI must not claim that a console line and a DomainEvent share one durable global sequence unless a future ADR introduces such a protocol.
+
+## 12. Exit-code contract (observation commands)
+
+The observation commands (`pipelinek events`, `pipelinek console`) return a status the caller can
+branch on without parsing stderr. The status is a decision, not an accident of the code path; it is
+pinned by tests (`MainEventsCliArgumentContractTest`, `MainConsoleCliArgumentContractTest`).
+
+Common vocabulary:
+
+- `0` — the command ran and reported what it observed. A read-only observation whose page carries
+  refusals, whose run/filter matches nothing, or whose continuation stalls is **still `0`**: the
+  refusal or stall is a structured token on **stderr**, not a command failure. `0` never asserts
+  that the query matched anything.
+- `1` — reserved for a read this command performed and that the plane refused (e.g. an unknown
+  stream), when the command's own result type distinguishes "refused" from "answered".
+- `2` — the command was **not run**: a usage/argument error. This includes a missing required
+  argument, an unknown `--option`, an extra positional argument, an option whose value is missing,
+  and any option value that does not parse or is outside its accepted range (`--limit`,
+  `--max-bytes`, `--range`, cursor tokens). A missing value is deliberately in this list: falling
+  back to a default would answer with a shape the caller never asked for.
+- any other status — an unhandled exception escaped `main`; the JVM produced that status and the
+  command did not choose it. A defect, never a designed outcome.
+
+Per command:
+
+| command | statuses |
+|---|---|
+| `pipelinek events` | `0` (drain `Answered` or `Stalled`), `2` (usage/argument error) |
+| `pipelinek console` | `0` (page emitted), `1` (plane refused the read), `2` (usage/argument error) |
+
+A `Stalled` events page is reported on stderr as `evt-stalled-v1:<runId>:<sequence>: ...` and
+returns `0`: the store claimed more rows than the continuation could reach, the command reported
+exactly that, and a non-zero status would misread a reported stall as a command failure.

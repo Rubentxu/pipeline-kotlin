@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.artefacts.local.AntStyleGlob
 import dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver
 import dev.rubentxu.pipeline.v2.domain.FailureKind
@@ -262,15 +263,8 @@ class ArchiveArtifactsOperationsAdapter(
         excludes.split(',').map { it.trim() }.filter { it.isNotEmpty() }
 
     private fun sha256Of(file: Path): String {
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
-        java.nio.file.Files.newInputStream(file).use { stream ->
-            val buffer = ByteArray(8192)
-            while (true) {
-                val read = stream.read(buffer)
-                if (read <= 0) break
-                digest.update(buffer, 0, read)
-            }
-        }
-        return digest.digest().joinToString("") { "%02x".format(it) }
+        // Shared utility (B0): the same streaming loop with the same 8192-byte buffer, so the
+        // digest value is unchanged for every file already archived.
+        return Sha256.ofFile(file)
     }
 }

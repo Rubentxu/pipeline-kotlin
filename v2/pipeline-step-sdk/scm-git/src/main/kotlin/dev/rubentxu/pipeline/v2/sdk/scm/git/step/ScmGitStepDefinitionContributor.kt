@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.sdk.scm.git.step
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
 import dev.rubentxu.pipeline.v2.domain.step.Delivery
@@ -25,7 +26,6 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
 
 /**
  * SCM/Git OFFICIAL_PLUGIN contributor (LFC-2E2 / F5.1 / ADR-0092).
@@ -124,7 +124,9 @@ fun StepRegistryBuilder.registerScmGit(
  */
 fun sha256DigestOf(jarPath: Path): String {
     require(Files.exists(jarPath)) { "JAR does not exist: $jarPath" }
-    val bytes = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(jarPath))
-    val hex = bytes.joinToString("") { "%02x".format(it) }
-    return "sha256:$hex"
+    // `ofFile` streams the JAR rather than reading it whole: the previous
+    // `Files.readAllBytes(jarPath)` materialised the entire archive to hash it, and an
+    // external plugin JAR is the one input here whose size is not ours to bound. The digest
+    // value is unchanged, so any `sha256:` reference already recorded still matches.
+    return "sha256:${Sha256.ofFile(jarPath)}"
 }

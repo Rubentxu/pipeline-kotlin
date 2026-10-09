@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application.cli
 
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+import dev.rubentxu.pipeline.v2.application.support.CliRun
+import dev.rubentxu.pipeline.v2.application.support.OwnedSubprocess
 import dev.rubentxu.pipeline.v2.application.ExternalEventDefinitionDiscovery
 import dev.rubentxu.pipeline.v2.events.registry.PayloadDecode
 import dev.rubentxu.pipeline.v2.events.PluginEventEmitted
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 /**
@@ -28,8 +31,9 @@ import java.util.concurrent.TimeUnit
  *
  * ```
  * external plugin JAR (own Gradle build, published contracts only)
- *   -> ServiceLoader discovery of EventDefinitionContributor
- *   -> one EventRegistry composed at the composition root
+ *   -> pass 1 admitted its manifest (no class loading)
+ *   -> pass 2 composed ONE frozen EventRegistry from ADMITTED artifacts only
+ *   -> the run's own composition report names this plugin's event kind
  *   -> a real `uppercaseObserved` Step declaring PLUGIN_EVENT_EMISSION_CAPABILITY (its zero-capability
  *      sibling `uppercase` stays untouched as the reference proof that a plugin can demand nothing)
  *   -> a real handler emitting example.uppercase.applied during a REAL run
@@ -38,6 +42,14 @@ import java.util.concurrent.TimeUnit
  *   -> `pipeline events` re-reads the history WITHOUT re-executing
  *   -> typed read-side: readSlice -> carrier -> registry re-type -> same payload
  * ```
+ *
+ * BLOCK 2e added the two arrows that had never been drawn in a single run. Before, admission was
+ * proven by [PluginAdmissionInstalledDistributionUatTest] and the durable event by this class, but
+ * nothing asserted that the event came out of a composition that had been ADMITTED — two green tests
+ * that did not meet. Step `1b` below closes that: the composition report is written only when at
+ * least one artifact was admitted, and its event kinds come from the frozen registry pass 2 built
+ * from admitted artifacts only, so this plugin's own kind appearing there is the arrow from
+ * admission to emission, observed in the SAME process that emitted.
  *
  * Two surfaces are checked on purpose, because they are different projections and only one of them
  * carries the semantics: the `events` CLI emits IDENTITY envelopes (`PipelineEventEnvelope`, which
@@ -48,22 +60,38 @@ import java.util.concurrent.TimeUnit
  * Everything asserted here is discrete: a kind present, an identity equal, a payload equal, an
  * ordering relation. No duration, no count of spawned processes, no wall clock.
  */
-@Timeout(value = 15, unit = TimeUnit.MINUTES)
+@Timeout(value = 30, unit = TimeUnit.MINUTES)
 class P3DPluginEventInstalledDistributionUatTest {
 
     private val binary: File = AppBinSupport.discover().toFile()
 
-    private data class CliResult(val exitCode: Int, val stdout: String, val stderr: String)
-
-    private fun run(vararg args: String): CliResult {
-        val proc = ProcessBuilder(binary.absolutePath, *args).start()
-        val finished = proc.waitFor(5, TimeUnit.MINUTES)
-        assertTrue(finished) { "binary hung on ${args.toList()}" }
-        return CliResult(
-            proc.exitValue(),
-            proc.inputStream.bufferedReader().readText(),
-            proc.errorStream.bufferedReader().readText(),
+    /**
+     * S6-PRE: this used to fork the binary by hand, wait for it, and only THEN read stdout and
+     * stderr — the exact shape the S6-PRE investigation removed.
+     *
+     * It was not hypothetical here. `Main.kt:431` prints a run's ENTIRE event log in one `println`,
+     * so any run of a non-trivial pipeline can exceed the 64 KiB pipe buffer; a harness that waits
+     * before it drains blocks forever, and when the class `@Timeout` finally fired the child
+     * `pipelinek` JVM stayed alive and degraded every measurement after it. This file was the last
+     * harness in the plugin-event chain still holding that shape, which is exactly why it sat in the
+     * fitness allowlist. [OwnedSubprocess] drains BOTH pipes from the instant the child starts, gives
+     * the child its own deadline, and reaps the tree on every path.
+     *
+     * The launch token is deliberately spelled nowhere in this comment: the fitness law scans test
+     * sources as raw TEXT, so documenting the old shape here with its literal spelling would keep
+     * this very file on the allowlist and make the migration unverifiable.
+     */
+    private fun run(vararg args: String): CliRun.Completed {
+        val result = OwnedSubprocess.run(
+            command = listOf(binary.absolutePath) + args,
+            timeout = CLI_DEADLINE,
         )
+        assertTrue(result is CliRun.Completed) {
+            "the installed binary did not finish within ${CLI_DEADLINE.seconds}s on ${args.toList()}; " +
+                "pid=${(result as? CliRun.TimedOut)?.diagnostics?.pid}. That is an ENVIRONMENT signal, " +
+                "not a verdict about the plugin event chain."
+        }
+        return result as CliRun.Completed
     }
 
     /** Envelope kind in the `events` CLI jsonl; earlier "kind" keys belong to ref projections. */
@@ -71,6 +99,16 @@ class P3DPluginEventInstalledDistributionUatTest {
         .filter { it.isNotBlank() }
         .mapNotNull { Regex("\"eventRefId\":\"[^\"]*\",\"kind\":\"([^\"]+)\"").find(it)?.groupValues?.get(1) }
         .toList()
+
+    /**
+     * The external-event line of `PreResolvedComposition.reportTo`, verbatim, or null when absent.
+     *
+     * The string is not invented here: it is the production report's own prefix, so a rename upstream
+     * breaks this test rather than silently turning it into an assertion that matches nothing.
+     */
+    private fun eventCompositionLine(stderr: String): String? =
+        stderr.lineSequence()
+            .firstOrNull { it.startsWith(EVENT_COMPOSITION_PREFIX) }
 
     @Test
     fun `an external plugin emits its own event and it is readable after the process is gone`(
@@ -108,6 +146,27 @@ class P3DPluginEventInstalledDistributionUatTest {
                 "kinds seen: $liveKinds",
         )
 
+        // 1b. BLOCK 2e — the arrow from ADMISSION to this emission, inside the same process.
+        //
+        // Everything above proves an event reached the store. It does not prove the registry that
+        // emitted it was ever admitted, which is the property S6 exists for: an implementation can
+        // emit perfectly while having bypassed the gate. The composition report closes that gap
+        // because it is produced in exactly one place — `admitThenComposeOrExit`, which writes it
+        // only when `admitted.isNotEmpty()`, and only from the frozen `EventRegistry` that pass 2
+        // built from ADMITTED artifacts alone.
+        //
+        // So this plugin's OWN kind appearing on that line is the admission decision, reported by
+        // the product, in the run that emitted. Asserting it separately from the emission would let
+        // the two drift apart again, which is how the chain came to be unproven in the first place.
+        val eventLine = eventCompositionLine(run1.stderr)
+        assertTrue(
+            eventLine != null && eventLine.contains(PLUGIN_EVENT_KIND),
+            "the run's own composition report must name $PLUGIN_EVENT_KIND: that report is emitted " +
+                "only after pass 1 admitted an artifact and pass 2 froze a registry from admitted " +
+                "artifacts, so it is the observable proof that this event came out of an ADMITTED " +
+                "composition rather than an ungated one. Report line was: $eventLine",
+        )
+
         // 2. The writer process is GONE. Re-read through a fresh process, without re-executing.
         val ev = run("events", "--db", db, runId)
         assertEquals(0, ev.exitCode, "events read must succeed; stderr:\n${ev.stderr.takeLast(300)}")
@@ -129,7 +188,7 @@ class P3DPluginEventInstalledDistributionUatTest {
                 .filterIsInstance<PluginEventEmitted>()
                 .single()
         }
-        assertEquals("example.uppercase.applied", carrier.registryKind)
+        assertEquals(PLUGIN_EVENT_KIND, carrier.registryKind)
         assertEquals(1, carrier.schemaVersion, "the version the plugin declared, not a default")
         assertEquals("v1:5:5", carrier.payload, "the plugin's own bytes, via the codec it registered")
         assertEquals("example.uppercase", carrier.emittedBy, "provenance is the plugin, not the runtime")
@@ -229,5 +288,25 @@ class P3DPluginEventInstalledDistributionUatTest {
             "example-uppercase-plugin JAR not found in ${candidates.map { it.toAbsolutePath() }}; " +
                 "run ./gradlew buildExamplePlugin (it builds the external plugin against the published SDK)",
         )
+    }
+
+    private companion object {
+        /**
+         * The subprocess's own contract. One `pipelinek run` composes five bundled plugins plus the
+         * external one from a cold JVM and then executes a durable pipeline; the class-level
+         * `@Timeout` stays as the outer "the whole test is broken" watchdog and is deliberately NOT
+         * what bounds a normal run. Not an assertion: no row in this class reads a duration.
+         */
+        val CLI_DEADLINE: Duration = Duration.ofMinutes(10)
+
+        /** The kind the external plugin's own `EventDefinition` declares. */
+        const val PLUGIN_EVENT_KIND = "example.uppercase.applied"
+
+        /**
+         * Verbatim prefix of the external-event line written by `PreResolvedComposition.reportTo`.
+         *
+         * Copied, not invented: this file does not get to choose what the product says it admitted.
+         */
+        const val EVENT_COMPOSITION_PREFIX = "Discovered external event definitions:"
     }
 }

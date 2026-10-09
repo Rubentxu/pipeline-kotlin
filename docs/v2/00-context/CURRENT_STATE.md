@@ -1,6 +1,31 @@
 # Estado actual y deuda que V2 debe resolver
 
-> **ADDENDUM 2026-10-01 — snapshot vigente (supersede este archivo como referencia).**
+> **ADDENDUM 2026-10-09 — snapshot vigente (supersede los anteriores como referencia; se
+> conservan por trazabilidad).**
+>
+> **Release estable (Latest):** `v0.47.0`, GitHub Release de 2026-10-06; zip
+> `2fa2d272…`, certificado por el harness externo (`evidence/dogfood/matrix.json`).
+>
+> **Candidata vigente:** `v0.48.0-rc1` (Pre-release, 2026-10-09T13:52:57Z).
+> Tag `v0.48.0-rc1` → `6e8e86bd`. Asset `pipelinek-0.48.0.zip`, 92 119 743 bytes,
+> `sha256:a4620df4855895e3cc14d5d8a05ee7bd64a75d128d3184be659defe0b009fb93`.
+> Recibo: `docs/v2/07-uat/R1_RELEASE_0_48_0_RC1_RECEIPT.md`.
+>
+> **Gate de admisión:** `G10 = NOT_RUN`; veredicto global `RP-5 PRODUCT_GATE_STOP`.
+> No existe check de admisión publicado para ningún SHA, y `main` no tiene
+> `required_status_checks`. La capacidad que lo produciría existe en el harness externo
+> pero no ha llegado a su remoto. Detalle en `docs/v2/07-uat/B0_3_HARNESS_INVESTIGATION_RECEIPT.md`.
+>
+> **Certificación externa pendiente:** el harness no ha emitido veredicto para
+> `v0.48.0-rc1` (su `evidence/` llega hasta `v0.47.0`). La promoción estable está
+> bloqueada por ello, correctamente.
+>
+> **Roadmap de producto:** RP-0..RP-5 con el productor sellado; la frontera vigente y
+> los hallazgos abiertos de la reconciliación están en
+> `docs/v2/05-roadmap/ROADMAP.md` (bloque de re-auditoría 2026-10-09) y
+> `docs/v2/07-uat/B0_RECONCILIATION_RECEIPT.md`.
+
+> **ADDENDUM 2026-10-01 — snapshot previo (supersede este archivo como referencia).**
 >
 > **Release:** `v0.46.0` ESTABLE (tag en origin → `63ef3220`; CandidateId de los bytes:
 > `59478baf…`; ver `docs/v2/08-production-readiness/V0460_STABLE_PROMOTION.md` y

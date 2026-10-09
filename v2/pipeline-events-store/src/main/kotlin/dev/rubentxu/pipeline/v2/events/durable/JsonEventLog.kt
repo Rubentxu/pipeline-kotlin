@@ -100,13 +100,21 @@ object JsonEventLog {
     }
 
     /**
-     * Single-event wire form: one JSON document per line (JSONL).
+     * ONE event as ONE JSON object, with no array wrapper.
      *
-     * [EventJsonWriter] is module-internal, so `pipeline-application` had no
-     * access to a per-event encoder and a `--format jsonl` run had nowhere to
-     * go. Exposing it here keeps ONE authority for the wire form: the bytes are
-     * produced by the same writer [encode] uses, so a JSONL document and the
-     * corresponding array document cannot drift apart.
+     * ## Why this exists rather than slicing [encodeTo]'s output
+     *
+     * [encode] and [encodeTo] are DOCUMENT codecs: their wire form is a bracketed array. A paged
+     * command cannot use them directly, because a page boundary has to land between two objects —
+     * and the two ways to get there are both wrong. Re-implementing the field writing here would
+     * create a second encoder that can drift from the store's, and it would be free to emit a shape
+     * the store never wrote. Wrapping a single event in an array and stripping the brackets would
+     * mean parsing what was just serialized, and would break on any field whose value legitimately
+     * contains the delimiter.
+     *
+     * So this delegates. The field order, the escaping and the `kind` tag are produced by the same
+     * [EventJsonWriter.encodeEvent] the store itself uses, and an event encoded here is byte-for-byte
+     * the same element [encode] would put at that index.
      */
     fun encodeOne(event: DomainEvent): String = EventJsonWriter.encodeEvent(event)
 
@@ -152,10 +160,52 @@ object JsonEventLog {
         for (eventStr in eventStrings) {
             val trimmed = eventStr.trim()
             if (trimmed.isEmpty()) continue
-            val event = decodeEvent(trimmed) ?: continue
+            val event = when (val outcome = decodeEvent(trimmed)) {
+                is EventDecodeOutcome.Decoded -> outcome.event
+                // A document legitimately holds kinds this binary does not know, and an object whose
+                // field cannot be read is skipped exactly as before. [decode] answers "which events
+                // are in this document" and has no row to attach a reason to; [decodeStoredRow] is
+                // the surface that must refuse, and it calls the same decoder and keeps the cause.
+                is EventDecodeOutcome.Failed -> continue
+            }
             events.add(event)
         }
         return events
+    }
+
+    /**
+     * Decodes the FIRST event object in [payload] and keeps what happened to it.
+     *
+     * [decodeStoredRow] needs this because its unit of work is one row, and a row that exists but
+     * did not decode has to be answered for — not silently reduced to an empty list. Routing
+     * through [decode] and taking `firstOrNull()` would throw away the failure, which is the
+     * information the store is obliged to report.
+     *
+     * A payload with no decodable object at all is a failure of the DOCUMENT shape, reported as a
+     * quoted payload rather than a named field: there is no field to name when the array itself
+     * could not be read.
+     */
+    private fun decodeFirstOutcome(payload: String): EventDecodeOutcome {
+        if (payload.isBlank() || payload == "[]") {
+            return EventDecodeOutcome.Failed(
+                EventDecodeFailure.UnreadableField(
+                    "payload",
+                    "the stored payload holds no event array",
+                )
+            )
+        }
+        for (eventStr in splitArray(payload.substring(1, payload.length - 1))) {
+            val trimmed = eventStr.trim()
+            if (trimmed.isEmpty()) continue
+            return decodeEvent(trimmed)
+        }
+        return EventDecodeOutcome.Failed(
+            EventDecodeFailure.UnreadableField(
+                "payload",
+                "does not satisfy the stored payload schema: " +
+                    payload.take(STORED_ROW_DETAIL_CHARS).let { "\"$it\"" },
+            )
+        )
     }
 
     /**
@@ -196,19 +246,83 @@ object JsonEventLog {
             dev.rubentxu.pipeline.v2.events.UndecodableReason.UnknownKind(rowKind)
         )
         else -> {
-            val decoded = decode(payload).firstOrNull()
-            if (decoded != null) StoredRowDecode.Accepted(decoded)
-            else StoredRowDecode.Refused(
-                dev.rubentxu.pipeline.v2.events.UndecodableReason.MalformedPayload(
-                    "payload does not satisfy the $rowKind schema: " +
-                        payload.take(STORED_ROW_DETAIL_CHARS).let { "\"$it\"" }
+            // Decode ONCE and keep both halves of the outcome. The decoder's own cause is
+            // preferred over quoting the payload, because the quote is truncated at
+            // [STORED_ROW_DETAIL_CHARS] and the offending field is routinely cut off; a 339-char
+            // payload refused with a detail that stopped mid-filler, naming neither field nor value.
+            // The payload echo survives only as a fallback for a document whose SHAPE was unusable,
+            // which is a fact about the payload as a whole rather than about one field.
+            when (val first = decodeFirstOutcome(payload)) {
+                is EventDecodeOutcome.Decoded -> StoredRowDecode.Accepted(first.event)
+                is EventDecodeOutcome.Failed -> StoredRowDecode.Refused(
+                    when (val c = first.cause) {
+                        is EventDecodeFailure.UnknownEventKind ->
+                            dev.rubentxu.pipeline.v2.events.UndecodableReason.UnknownKind(c.kind)
+                        is EventDecodeFailure.UnreadableField ->
+                            dev.rubentxu.pipeline.v2.events.UndecodableReason.MalformedPayload(c.description)
+                    }
                 )
-            )
+            }
         }
     }
 
     /** How much of a failing payload a refusal quotes. Bounded: these payloads can be GiB-scale. */
     private const val STORED_ROW_DETAIL_CHARS = 200
+
+    /**
+     * Why ONE event object inside a payload did not become a [DomainEvent], naming the field.
+     *
+     * This exists because a bare `null` cannot answer a question the store is obliged to ask. When
+     * `decodeStoredRow` refuses a row, it used to quote the payload — but a real payload can be
+     * GiB-scale, so the quote is truncated at [STORED_ROW_DETAIL_CHARS] and the offending field is
+     * routinely cut off. Measured: a 339-character payload with a diagnostics blob produced a
+     * refusal whose detail ended mid-filler, with neither the field name nor the offending value
+     * present. An operator reading a refused row could not learn WHICH field failed.
+     *
+     * So the cause travels with the refusal instead of being recoverable from an echo of the very
+     * bytes that were unreadable. [UnreadableField] is the cause; [UnknownEventKind] is kept
+     * separate because an unknown kind is version skew and is reported through
+     * `UndecodableReason.UnknownKind` by a caller that can act on it, while an unreadable field in
+     * a known kind is corruption.
+     *
+     * This is private on purpose. [decode] and [decodeStoredRow] keep their public shapes, so no
+     * caller outside this file can depend on the codec's internal failure vocabulary.
+     */
+    private sealed interface EventDecodeFailure {
+
+        /** The cause, rendered for [dev.rubentxu.pipeline.v2.events.UndecodableReason.MalformedPayload]. */
+        val description: String
+
+        /** [field] held nothing, or held something this kind cannot read as the type it needs. */
+        data class UnreadableField(val field: String, val value: String?) : EventDecodeFailure {
+            override val description: String = buildString {
+                append("field \"").append(field).append("\" is unreadable")
+                if (value != null) append(": ").append(value.take(FIELD_VALUE_DETAIL_CHARS))
+            }
+        }
+
+        /** The object names a [kind] this binary has no decoder for — forward-compat, not damage. */
+        data class UnknownEventKind(val kind: String) : EventDecodeFailure {
+            override val description: String = "no decoder for kind \"$kind\""
+        }
+    }
+
+    /** How much of an offending VALUE a cause quotes. Bounded for the same reason as the payload. */
+    private const val FIELD_VALUE_DETAIL_CHARS = 64
+
+    /**
+     * What [decodeEvent] produced: the event, or the cause it could not produce.
+     *
+     * Carries its own payload on each side so a caller cannot be tempted to read a null as
+     * "nothing to report" — that is the exact confusion this type removes. [decodeStoredRow] MUST
+     * answer for the row it was given, so it needs the failure, not its absence.
+     */
+    private sealed interface EventDecodeOutcome {
+
+        data class Decoded(val event: DomainEvent) : EventDecodeOutcome
+
+        data class Failed(val cause: EventDecodeFailure) : EventDecodeOutcome
+    }
 
     /**
      * Does this binary have a decoder for [kind]? P3-E E4c.
@@ -300,22 +414,41 @@ object JsonEventLog {
         return result
     }
 
-    private fun decodeEvent(s: String): DomainEvent? {
-        val eventId = EventJsonFields.stringField(s, "eventId") ?: return null
-        val runId = EventJsonFields.stringField(s, "runId") ?: return null
-        val sequence = EventJsonFields.longField(s, "sequence") ?: return null
-        val kind = EventJsonFields.stringField(s, "kind") ?: return null
-        val occurredAtStr = EventJsonFields.stringField(s, "occurredAt") ?: return null
-        val occurredAt = try { Instant.parse(occurredAtStr) } catch (_: Exception) { Instant.now() }
+    private fun decodeEvent(s: String): EventDecodeOutcome {
+        fun absent(field: String) = EventDecodeOutcome.Failed(EventDecodeFailure.UnreadableField(field, null))
+        fun unreadable(field: String, value: String?) =
+            EventDecodeOutcome.Failed(EventDecodeFailure.UnreadableField(field, value))
+        val eventId = EventJsonFields.stringField(s, "eventId") ?: return absent("eventId")
+        val runId = EventJsonFields.stringField(s, "runId") ?: return absent("runId")
+        val sequence = EventJsonFields.longField(s, "sequence")
+            ?: return absent("sequence")
+        val kind = EventJsonFields.stringField(s, "kind") ?: return absent("kind")
+        val occurredAtStr = EventJsonFields.stringField(s, "occurredAt")
+            ?: return absent("occurredAt")
+        // An occurredAt that is present but unparseable is refused. Falling back to
+        // Instant.now() stamped every replayed row with the time of READING it, so
+        // an event from months ago claimed to have happened during the replay, and
+        // two reads of the same row produced two different events.
+        val occurredAt = try {
+            Instant.parse(occurredAtStr)
+        } catch (_: Exception) {
+            return unreadable("occurredAt", occurredAtStr)
+        }
 
-        return when (kind) {
-            "RunStarted" -> RunStarted(
-                eventId = eventId,
-                runId = runId,
-                sequence = sequence,
-                occurredAt = occurredAt,
-                scriptPath = EventJsonFields.stringField(s, "scriptPath") ?: "",
-            )
+        val event = when (kind) {
+            "RunStarted" -> {
+                val scriptPath = EventJsonFields.stringField(s, "scriptPath")
+                    ?: return EventDecodeOutcome.Failed(
+                        EventDecodeFailure.UnreadableField("scriptPath", "RunStarted"),
+                    )
+                RunStarted(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    scriptPath = scriptPath,
+                )
+            }
             "CompilationStarted" -> CompilationStarted(
                 eventId = eventId,
                 runId = runId,
@@ -323,7 +456,8 @@ object JsonEventLog {
                 occurredAt = occurredAt,
             )
             "CompilationFinished" -> {
-                val cacheKey = EventJsonFields.parseCacheKey(s) ?: return null
+                val cacheKey = EventJsonFields.parseCacheKey(s)
+                    ?: return absent("cacheKey")
                 val diagnostics = EventJsonDecoder.decodeDiagnostics(s)
                 CompilationFinished(
                     eventId = eventId,
@@ -486,8 +620,19 @@ object JsonEventLog {
                 content = EventJsonFields.stringField(s, "content") ?: "",
             )
             "CredentialBound" -> {
-                val purposeStr = EventJsonFields.stringField(s, "purpose") ?: "API_KEY"
-                val purpose = try { BoundPurpose.valueOf(purposeStr) } catch (_: Exception) { BoundPurpose.API_KEY }
+                // An ABSENT purpose keeps its documented `API_KEY` default: a missing optional
+                // field is a tolerated shape. A PRESENT-but-unreadable token is not the same
+                // defect and MUST NOT be folded into that default — `BoundPurpose` has no
+                // `UNKNOWN` member, so defaulting here does not degrade to a neutral value, it
+                // asserts "this credential is an API key" on a row that never said so. On a
+                // durable event that is a wrong fact with no way for an observer to tell it apart
+                // from a real API-key binding, so the row is refused instead and
+                // `decodeStoredRow` reports the refusal against this known kind.
+                val purpose = when (val purposeStr = EventJsonFields.stringField(s, "purpose")) {
+                    null -> BoundPurpose.API_KEY
+                    else -> BoundPurpose.parse(purposeStr)
+                        ?: return unreadable("purpose", purposeStr)
+                }
                 val credIdStr = EventJsonFields.stringField(s, "credentialsId") ?: ""
                 CredentialBound(
                     eventId = eventId,
@@ -499,8 +644,13 @@ object JsonEventLog {
                 )
             }
             "CredentialUsed" -> {
-                val purposeStr = EventJsonFields.stringField(s, "purpose") ?: "API_KEY"
-                val purpose = try { BoundPurpose.valueOf(purposeStr) } catch (_: Exception) { BoundPurpose.API_KEY }
+                // Same rule as `CredentialBound` above: absent keeps the documented default,
+                // present-but-unreadable refuses rather than inventing a binding kind.
+                val purpose = when (val purposeStr = EventJsonFields.stringField(s, "purpose")) {
+                    null -> BoundPurpose.API_KEY
+                    else -> BoundPurpose.parse(purposeStr)
+                        ?: return unreadable("purpose", purposeStr)
+                }
                 val credIdStr = EventJsonFields.stringField(s, "credentialsId") ?: ""
                 CredentialUsed(
                     eventId = eventId,
@@ -634,7 +784,8 @@ object JsonEventLog {
                 )
             }
             "ArtifactArchived" -> {
-                val files = EventJsonDecoder.decodeArtifactEntries(s)
+                val files = EventJsonDecoder.decodeArtifactEntriesOrRefuse(s)
+                    ?: return unreadable("files", "ArtifactArchived")
                 ArtifactArchived(
                     eventId = eventId,
                     runId = runId,
@@ -655,9 +806,12 @@ object JsonEventLog {
             }
             // WU-LPR-089 — core.stash/core.unstash durable cross-stage data movement
             "StashCreated" -> {
-                val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
-                val name = EventJsonFields.stringField(s, "name") ?: ""
-                val files = EventJsonDecoder.decodeStashedEntries(s)
+                val stageName = EventJsonFields.stringField(s, "stageName")
+                    ?: return absent("stageName")
+                val name = EventJsonFields.stringField(s, "name")
+                    ?: return absent("name")
+                val files = EventJsonDecoder.decodeStashedEntriesOrRefuse(s)
+                    ?: return unreadable("files", "StashCreated")
                 StashCreated(
                     eventId = eventId,
                     runId = runId,
@@ -669,9 +823,12 @@ object JsonEventLog {
                 )
             }
             "StashRestored" -> {
-                val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
-                val name = EventJsonFields.stringField(s, "name") ?: ""
-                val entries = EventJsonDecoder.decodeRestoredEntries(s)
+                val stageName = EventJsonFields.stringField(s, "stageName")
+                    ?: return absent("stageName")
+                val name = EventJsonFields.stringField(s, "name")
+                    ?: return absent("name")
+                val entries = EventJsonDecoder.decodeRestoredEntriesOrRefuse(s)
+                    ?: return unreadable("entries", "StashRestored")
                 StashRestored(
                     eventId = eventId,
                     runId = runId,
@@ -901,7 +1058,7 @@ object JsonEventLog {
                 // default), but a PRESENT token outside the vocabulary is corruption and is
                 // refused, exactly like the absent-and-required `stageResult` below.
                 val buildResult = EventJsonFields.optionalStringField(s, "buildResult")
-                    ?.let { CatchErrorBuildResult.parse(it) ?: return null }
+                    ?.let { CatchErrorBuildResult.parse(it) ?: return unreadable("buildResult", it) }
                 // P3-E E4 — was `?: "UNSTABLE"`. That default turned a MISSING field into a
                 // semantic claim, and the claim was not neutral: UNSTABLE means the run
                 // continues while FAILURE aborts it. A record whose stageResult could not be
@@ -916,8 +1073,8 @@ object JsonEventLog {
                 // key being absent. One reader covers both, which is why no hasField probe
                 // is needed here even though `buildResult` right above it IS nullable.
                 val stageResult = EventJsonFields.stringField(s, "stageResult")
-                    ?.let { CatchErrorBuildResult.parse(it) }
-                    ?: return null
+                    ?.let { CatchErrorBuildResult.parse(it) ?: return unreadable("stageResult", it) }
+                    ?: return absent("stageResult")
                 val message = EventJsonFields.optionalStringField(s, "message")
                 CatchErrorTriggered(
                     eventId = eventId,
@@ -982,7 +1139,8 @@ object JsonEventLog {
                 // Vocabulary validation is deliberately NOT here: whether these three tokens
                 // are one concept is the open E4b.4 question, and validating against an
                 // undecided vocabulary would freeze it by accident.
-                val outcome = EventJsonFields.stringField(s, "outcome") ?: return null
+                val outcome = EventJsonFields.stringField(s, "outcome")
+                    ?: return absent("outcome")
                 WaitUntilCompleted(
                     eventId = eventId,
                     runId = runId,
@@ -1265,7 +1423,20 @@ object JsonEventLog {
                     )
                 }
             }
-            else -> null
+            else -> return EventDecodeOutcome.Failed(EventDecodeFailure.UnknownEventKind(kind))
         }
+        return EventDecodeOutcome.Decoded(event ?: return malformedBranch(kind))
     }
+
+    /**
+     * Unreachable by construction, and stated rather than asserted.
+     *
+     * The `when (kind)` above is exhaustive over every decodable kind, and its only fallthrough arm
+     * is the `else` that already returned. Kotlin cannot see that, so this arm exists to make the
+     * exhaustiveness a checked property rather than an `!!`: a kind added to the decoder without a
+     * matching arm lands HERE at compile time instead of becoming a null at runtime.
+     */
+    private fun malformedBranch(kind: String): EventDecodeOutcome = EventDecodeOutcome.Failed(
+        EventDecodeFailure.UnreadableField("kind", "the decoder produced no event for kind \"$kind\"")
+    )
 }

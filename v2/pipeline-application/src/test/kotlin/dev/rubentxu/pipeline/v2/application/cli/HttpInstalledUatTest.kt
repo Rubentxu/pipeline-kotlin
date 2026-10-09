@@ -1,7 +1,9 @@
 package dev.rubentxu.pipeline.v2.application.cli
 
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+import dev.rubentxu.pipeline.v2.application.support.CliRun
 import dev.rubentxu.pipeline.v2.application.support.HermeticHttpServer
+import dev.rubentxu.pipeline.v2.application.support.OwnedSubprocess
 import dev.rubentxu.pipeline.v2.application.support.ProcessPeakRss
 import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
@@ -18,6 +20,8 @@ import org.junit.jupiter.api.Timeout
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.nio.file.Paths
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 /**
@@ -144,30 +148,49 @@ class HttpInstalledUatTest {
         env: Map<String, String> = emptyMap(),
         onStart: (Long) -> Unit = {},
     ): CliResult {
-        val builder = ProcessBuilder(binary.absolutePath, *args).redirectErrorStream(true)
-        // `environment()` ADDS to the inherited environment rather than replacing it, so
-        // a scenario that passes one variable does not silently strip PATH from the
-        // launcher it is trying to exercise.
-        builder.environment().putAll(env)
-        val proc = builder.start()
-        val poller = ProcessPeakRss.poll(proc.pid())
-        onStart(proc.pid())
-        if (!proc.waitFor(timeoutMinutes, TimeUnit.MINUTES)) {
-            proc.destroyForcibly()
-            poller.stop()
-            error("the installed binary hung on ${args.toList()} after $timeoutMinutes min")
-        }
-        poller.stop()
-        return CliResult(
-            exitCode = proc.exitValue(),
-            output = proc.inputStream.bufferedReader().readText() +
-                " PEAK_RSS=" + (poller.peakBytes ?: -1L),
-            // Carried on the result rather than parsed back out of the text, so a
-            // memory scenario that forgets to assert on it still prints it in the
-            // failure. Re-collecting evidence for a regression is a tax nobody pays
-            // twice.
-            peakRssBytes = poller.peakBytes,
+        // S6-PRE. This used to fork the binary by hand with its pipes merged into one, wait for
+        // it, and only THEN read that single pipe — the shape the deadlock investigation removed.
+        // It was not hypothetical in this file either: `Main.kt:431` prints a run's whole event log in
+        // one `println`, and this suite runs 512 MiB bodies, so the single pipe was well past its
+        // 64 KiB capacity. The class `@Timeout` would then cut the TEST and leave a `pipelinek`
+        // JVM alive behind it.
+        //
+        // `output` is now `stdout` followed by `stderr` rather than one interleaved stream. Every
+        // assertion in this file is either a substring check or a `takeLast(...)` used to build a
+        // failure message, so neither depends on interleaving; the trade is stated here because it
+        // is a change, not because it is free.
+        var poller: ProcessPeakRss.Poller? = null
+        val outcome = OwnedSubprocess.run(
+            command = listOf(binary.absolutePath) + args,
+            timeout = Duration.ofMinutes(timeoutMinutes),
+            environment = env,
+            onStart = { pid ->
+                poller = ProcessPeakRss.poll(pid)
+                onStart(pid)
+            },
         )
+        poller?.stop()
+
+        return when (outcome) {
+            is CliRun.Completed -> CliResult(
+                exitCode = outcome.exitCode,
+                // Carried on the result rather than parsed back out of the text, so a memory
+                // scenario that forgets to assert on it still prints it in the failure.
+                output = outcome.stdout + outcome.stderr +
+                    " PEAK_RSS=" + (poller?.peakBytes ?: -1L),
+                peakRssBytes = poller?.peakBytes,
+                journal = null,
+            )
+            // An environment signal, and it says so. `OwnedSubprocess` has already reaped the tree
+            // and captured a thread dump, which is more than the old `error(...)` could offer.
+            is CliRun.TimedOut -> error(
+                "the installed binary hung on ${args.toList()} after $timeoutMinutes min; " +
+                    "pid=${outcome.diagnostics.pid} descendants=${outcome.diagnostics.descendantPids}",
+            )
+            is CliRun.LaunchFailed -> error(
+                "the installed binary could not be launched on ${args.toList()}: ${outcome.cause}",
+            )
+        }
     }
 
     private fun runFresh(
@@ -175,6 +198,7 @@ class HttpInstalledUatTest {
         vararg extraArgs: String,
         timeoutMinutes: Long = 5,
         env: Map<String, String> = emptyMap(),
+        onStart: (Long) -> Unit = {},
     ): CliResult {
         val db = File(tempDir("h8-db-"), "db.sqlite")
         val ctl = tempDir("h8-ctl-").absolutePath
@@ -188,7 +212,39 @@ class HttpInstalledUatTest {
             pipeline.absolutePath,
             timeoutMinutes = timeoutMinutes,
             env = env,
+            onStart = onStart,
         ).let { it.copy(journal = db.takeIf { file -> file.isFile }) }
+    }
+
+    /**
+     * The command line of [rootPid] and its descendants, joined, polled until [needle] appears.
+     *
+     * The pid a `ProcessBuilder` hands back is the launcher's `/bin/sh`, NOT the JVM: the start
+     * script runs `java` as a child rather than `exec`-ing it, so the budget this suite declares
+     * is invisible on the root pid's own cmdline. Reading only the root is how a row ends up
+     * certifying a flag that never reached a JVM.
+     *
+     * The deadline bounds a POLL, and is not an assertion about duration — nothing here judges
+     * how long anything took.
+     */
+    private fun cmdlineTree(rootPid: Long, needle: String, deadlineMillis: Long = 20_000): String {
+        val deadline = System.nanoTime() + deadlineMillis * 1_000_000
+        var seen = ""
+        while (System.nanoTime() < deadline) {
+            seen = ProcessHandle.of(rootPid).map { root ->
+                (listOf(root) + root.descendants().toList())
+                    .mapNotNull { handle ->
+                        runCatching {
+                            Files.readString(Paths.get("/proc/${handle.pid()}/cmdline"))
+                                .replace('\u0000', ' ')
+                        }.getOrNull()
+                    }
+                    .joinToString("  ||  ")
+            }.orElse("")
+            if (seen.contains(needle)) return seen
+            Thread.sleep(50)
+        }
+        return seen
     }
 
     /**
@@ -528,74 +584,109 @@ class HttpInstalledUatTest {
     // ── the property H4 was written for ────────────────────────────────────
 
     @Test
-    fun `H8-10 peak memory does not scale with the size of the response`() {
-        // H4's claim, measured from OUTSIDE the process:
+    fun `H8-10 a response twice the heap budget completes, so the body is not materialised`() {
+        // H4's claim, restated so that it can actually FAIL:
         //
-        //   peak RSS  =  O(maxBodyBytes)      and NOT  O(responseSize)
+        //   the subscriber bounds the body BEFORE holding it, rather than holding it and
+        //   then truncating what it already has
         //
-        // `HttpDefaults.MAX_RESPONSE_BYTES` is 1 MiB and is not author-configurable,
-        // so the variable under test is the RESPONSE SIZE. If the plugin materialised
-        // the body before truncating — the pre-H4 shape — a 256 MiB response would
-        // cost 256 MiB of heap and this assertion would fail by a wide margin.
+        // The previous shape of this row measured a RATIO of peak-RSS growth to body growth
+        // and cut it at 0.5. That is a size assertion, which Harness Fidelity 3 forbids,
+        // and it failed on a loaded machine at 0.65 having passed at 0.19 — it was
+        // measuring the machine rather than `http.request`. Raising the threshold would
+        // only move the machine's noise band upward, so the ratio is removed rather than
+        // retuned: a number that changes with the load has no verdict to give.
         //
-        // A ratio, not a ceiling. A JVM baseline of several hundred MiB dwarfs the
-        // signal, so an absolute limit would only ever measure the launcher; comparing
-        // two runs that differ ONLY in response size measures the thing that matters.
-        val sizes = listOf(
-            1L * 1024 * 1024,
-            32L * 1024 * 1024,
-            256L * 1024 * 1024,
+        // What replaces it is a DECLARED budget plus a discrete outcome:
+        //
+        //   budget = 256 MiB of heap for the WHOLE process, imposed by the launcher
+        //   body   = 512 MiB, which does not fit in that budget even once
+        //
+        // The claim is then no longer "memory grew slowly" but "a body twice its own heap
+        // budget still completes". A subscriber that materialised the body would have to
+        // hold 512 MiB in a 256 MiB heap and would die with OutOfMemoryError; the bounded
+        // subscriber keeps a 1 MiB prefix and digests the rest, so it cannot and does not.
+        //
+        // Both observations are discrete: an exit code and a request count. Nothing here
+        // reads a duration, a ratio or a magnitude, so the row cannot be moved by load.
+        // Peak RSS is still collected and printed because it is worth knowing, but it is
+        // characterisation and no longer load-bearing.
+        //
+        // The 256 MiB budget was measured, not guessed: the installed binary compiles and
+        // runs a plain pipeline under `-Xmx256m` (it still fits at 128m), so this cap
+        // constrains the HTTP subscriber rather than starving the script compiler it shares
+        // the JVM with.
+        val budgetBytes = 256L * 1024 * 1024
+        val budget = "-Xmx256m"
+        val bodyBytes = 2 * budgetBytes
+        // The guard is the row's own honesty check. It failed the FIRST time it ran because
+        // it compared `bodyBytes > 2 * 256 MiB` — that is 512 MiB > 512 MiB, which is false —
+        // so the separation this row claims in prose was not the separation the code checked.
+        // Stating the budget once, in bytes, and deriving the body from it is what keeps the
+        // comment and the assertion from drifting apart again.
+        assertTrue(
+            bodyBytes >= 2 * budgetBytes,
+            "the body must be at least twice the heap budget, or the world this row exists to " +
+                "exclude — a subscriber holding the body whole — would simply fit. " +
+                "bodyBytes=$bodyBytes budgetBytes=$budgetBytes",
         )
 
-        val peaks = sizes.map { bytes ->
-            val pipeline = script(get("${server.baseUrl}/large?bytes=$bytes"))
-            val result = runFresh(pipeline, "--allow-network", timeoutMinutes = 5)
-            assertEquals(
-                0,
-                result.exitCode,
-                "the $bytes-byte response must succeed; output:\n${result.output.takeLast(1200)}",
-            )
-            result.peakRssBytes
-        }
+        val pipeline = script(get("${server.baseUrl}/large?bytes=$bodyBytes"))
+        var observedCmdline: String = ""
+        val result = runFresh(
+            pipeline,
+            "--allow-network",
+            timeoutMinutes = 5,
+            // PIPELINEK_OPTS, and NOT DEFAULT_JVM_OPTS. The launcher assigns
+            // `DEFAULT_JVM_OPTS=""` in its own body, so an inherited value of that name is
+            // overwritten before it is ever read: it is decoration. This row's first version
+            // set it, measured nothing, and would have certified a budget the process never
+            // had. `PIPELINEK_OPTS` is the product-owned variable the launcher appends, and
+            // `JAVA_OPTS` is honoured too; both were checked against an 8m cap, which fails
+            // with a real OutOfMemoryError where the other runs fine.
+            env = mapOf("PIPELINEK_OPTS" to budget),
+            onStart = { pid -> observedCmdline = cmdlineTree(pid, budget) },
+        )
 
-        if (peaks.any { it == null }) {
-            // No /proc: say so rather than skip silently. A memory claim that was not
-            // measured must not read as a memory claim that passed.
-            println("H8-10 SKIPPED: peak RSS is unavailable on this platform (no /proc)")
-            return
-        }
-
-        val measured = peaks.mapIndexed { i, peak -> sizes[i] to peak!! }
-        measured.forEach { (bytes, peak) ->
-            println("H8-10 response=${bytes / (1024 * 1024)} MiB  peakRSS=${peak / (1024 * 1024)} MiB")
-        }
-
-        val (smallBytes, smallPeak) = measured.first()
-        val (largeBytes, largePeak) = measured.last()
-        val extraBody = largeBytes - smallBytes
-        val extraPeak = largePeak - smallPeak
-        val ratio = extraPeak.toDouble() / extraBody.toDouble()
-
-        // A RATIO, and the threshold is chosen to still catch the defect it exists
-        // for. A subscriber that materialised the body before truncating — the
-        // pre-H4 shape — would add roughly one byte of peak per body byte, i.e. a
-        // ratio of 1.0 or more, plus the retained copy. A subscriber that hashes and
-        // counts without materialising adds a constant, so its ratio trends to zero
-        // as the body grows.
-        //
-        // Measured: 0.19 on an idle machine, 0.26 under load average ~15. The first
-        // version of this test cut at 0.25, which is inside the noise a loaded box
-        // produces — it failed at 0.26 having passed at 0.19, so it was measuring
-        // the machine, not the subscriber. 0.5 sits a factor of two below the defect
-        // and a factor of two above the observed noise, which is the only interval
-        // in which this assertion says something about http.request.
+        // The budget must be OBSERVED on a real JVM's command line. Without this the row
+        // asserts "it completes within 256 MiB" while running under whatever ceiling the
+        // machine happens to impose, which is the decorative-configuration failure mode this
+        // block exists to remove, reintroduced one level up.
         assertTrue(
-            ratio < 0.5,
-            "peak RSS grew by ${extraPeak / (1024 * 1024)} MiB when the response grew by " +
-                "${extraBody / (1024 * 1024)} MiB (ratio ${"%.2f".format(ratio)}). A bounded " +
-                "subscriber that hashes and counts without materialising should add " +
-                "roughly the 1 MiB it retains and NOTHING per body byte. Growth " +
-                "proportional to the body is the pre-H4 defect.",
+            observedCmdline.isNotEmpty(),
+            "no process in the child's tree exposed a command line; the budget cannot be " +
+                "confirmed as applied, so the assertion below would be vacuous",
+        )
+        assertTrue(
+            observedCmdline.contains(budget),
+            "the child must actually run under the budget this row claims; $budget did not appear " +
+                "in any command line of its process tree. A budget that is set but not applied " +
+                "makes every assertion below vacuous. Observed: $observedCmdline",
+        )
+
+        // The observation, and it is ONE value rather than a comparison.
+        assertEquals(
+            0,
+            result.exitCode,
+            "a $bodyBytes-byte response must complete inside a $budget heap budget. A subscriber " +
+                "that materialised the body could not: it would need $bodyBytes bytes in a " +
+                "$budgetBytes-byte heap. Output:\n" + result.output.takeLast(1500),
+        )
+        // The other green, closed explicitly: an exit 0 that never made the request.
+        assertEquals(
+            1,
+            server.countOf("/large"),
+            "the request WAS sent and the server answered; an exit 0 with no request behind it " +
+                "would prove nothing about the subscriber",
+        )
+
+        // Characterisation, deliberately not an assertion. Peak RSS legitimately EXCEEDS the
+        // heap budget — it includes metaspace, code cache and direct buffers — which is
+        // exactly why an RSS ceiling would have measured the launcher instead of the
+        // subscriber.
+        println(
+            "H8-10 characterisation (not asserted): budget=$budget bodyBytes=$bodyBytes " +
+                "peakRssBytes=${result.peakRssBytes}",
         )
     }
 

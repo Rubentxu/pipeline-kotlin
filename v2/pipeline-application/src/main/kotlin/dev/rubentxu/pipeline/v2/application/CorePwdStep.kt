@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
@@ -26,7 +27,6 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
 
@@ -209,11 +209,16 @@ object CorePwdStep {
             PwdOutput(path = path)
         }
 
-    internal fun sha256(input: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hashBytes = digest.digest(input.toByteArray())
-        return hashBytes.joinToString("") { byte -> "%02x".format(byte) }
-    }
+    /**
+     * The `core.pwd` payload digest, emitted in `PwdEntered.sha256`.
+     *
+     * Routed through [Sha256] (B0). The bytes hashed are UNCHANGED on a UTF-8 platform, which
+     * every supported toolchain is (JEP 400 made UTF-8 the default in JDK 18), so an existing
+     * observer comparing digests keeps matching. What changed is that the charset is now
+     * stated rather than inherited: the previous `input.toByteArray()` resolved to the platform
+     * default, so this value silently depended on the JVM's locale.
+     */
+    internal fun sha256(input: String): String = Sha256.ofText(input)
 
     val definition: StepDefinition<PwdInput, PwdOutput> =
         object : StepDefinition<PwdInput, PwdOutput> {

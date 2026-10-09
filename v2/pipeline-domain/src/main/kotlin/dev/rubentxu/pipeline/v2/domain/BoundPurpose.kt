@@ -62,4 +62,35 @@ enum class BoundPurpose {
      * Colon-joined credentials (user:pass) — maps to `usernameColonPassword` binding.
      */
     USERNAME_COLON_PASSWORD,
+    ;
+
+    companion object {
+
+        /**
+         * The single boundary where a declared token becomes typed, for a decoder that has to
+         * refuse rather than default.
+         *
+         * [BoundPurpose] has **no `UNKNOWN` member**, deliberately: every variant names a real
+         * binding kind, so a catch-all would be a lie about what was bound. That is why
+         * `try { valueOf(raw) } catch { API_KEY }` was wrong — it did not degrade to a neutral
+         * value, it invented "this credential is an API key" from a string that said nothing of
+         * the kind. On `CredentialBound` / `CredentialUsed` that puts a wrong fact on the durable
+         * event stream, and an observer cannot distinguish it from a real API-key binding.
+         *
+         * The map is derived from [entries] rather than written out again: a second list of the
+         * same vocabulary is a second authority, and the two drift the first time someone adds a
+         * constant. This mirrors `FailureKind.parse`, which exists for the same reason.
+         *
+         * Returns **null** outside the vocabulary and deliberately does NOT fall back to a
+         * variant. The caller decides what an unreadable credential purpose means, because only
+         * the caller knows whether it can report a refusal or must keep reading history.
+         */
+        private val BY_TOKEN: Map<String, BoundPurpose> = entries.associateBy { it.name }
+
+        /** Every token this runtime accepts, for diagnostics on a refused spelling. */
+        val supportedTokens: Set<String> = BY_TOKEN.keys
+
+        /** Total over the vocabulary; **null** for anything else. Never defaults. */
+        fun parse(token: String): BoundPurpose? = BY_TOKEN[token]
+    }
 }

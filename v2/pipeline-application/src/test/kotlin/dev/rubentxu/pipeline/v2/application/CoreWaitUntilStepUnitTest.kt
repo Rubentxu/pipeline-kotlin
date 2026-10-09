@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilCompletion
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
@@ -86,9 +87,14 @@ class CoreWaitUntilStepUnitTest {
 
     @Test
     fun `codec output — WaitUntilOutput round-trips`() {
-        val original = WaitUntilOutput(resultOutcome = "completed", totalAttempts = 3, totalDurationMs = 1500L)
+        val original = WaitUntilOutput(
+            completion = WaitUntilCompletion.Satisfied,
+            totalAttempts = 3,
+            totalDurationMs = 1500L,
+        )
         val encoded = CoreWaitUntilStep.definition.contract.outputCodec.encode(original)
         val decoded = CoreWaitUntilStep.definition.contract.outputCodec.decode(encoded)
+        assertEquals(original.completion, decoded.completion)
         assertEquals(original.resultOutcome, decoded.resultOutcome)
         assertEquals(original.totalAttempts, decoded.totalAttempts)
         assertEquals(original.totalDurationMs, decoded.totalDurationMs)

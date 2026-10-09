@@ -54,6 +54,15 @@ internal class BeforeStageDirectiveEngine(
     private val gateContext: (dev.rubentxu.pipeline.v2.domain.EnvironmentSpec) -> dev.rubentxu.pipeline.v2.domain.directive.GateContext,
     private val gateEvaluator: (WhenPredicate, dev.rubentxu.pipeline.v2.domain.directive.GateContext) -> dev.rubentxu.pipeline.v2.domain.directive.GateVerdict,
     /**
+     * B4: the capabilities THIS run's composition supplies.
+     *
+     * The engine's own dependency, like the resolver below, and the reason the resolver's
+     * default can stop being the empty set. A composition root that knows what it supplies
+     * passes it; one that supplies nothing keeps the fail-closed default.
+     */
+    capabilityContributor: dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor =
+        dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor { emptyMap() },
+    /**
      * S3.1: the ONE seam allowed to answer "does a target exist".
      *
      * Injected rather than constructed, so the engine interprets a decision it
@@ -78,8 +87,17 @@ internal class BeforeStageDirectiveEngine(
      * The override seam is preserved for when a composition root really does
      * know the granted capability set; until then the default refuses a
      * `CapabilitySet` requirement loudly instead of granting it speculatively.
+     *
+     * B4 closes that seam's other half: the default is no longer the empty set
+     * unconditionally — it is the KEYS of [capabilityContributor], this run's own
+     * composed capability authority, so `agentWithCapabilities` is granted exactly
+     * when the capability is real for this run. A static table of "capabilities
+     * PipelineK can provide" is deliberately NOT used: it would grant a target for
+     * a capability no composition supplies.
      */
-    private val targetResolver: ExecutionTargetResolver = LocalExecutionTargetResolver(),
+    private val targetResolver: ExecutionTargetResolver = LocalExecutionTargetResolver(
+        grantedCapabilities = capabilityContributor.capabilities().keys,
+    ),
 ) {
 
     /** What the run must do next. Closed: the coordinator matches it exhaustively. */

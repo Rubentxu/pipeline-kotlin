@@ -265,10 +265,16 @@ class S54DurableRefusalContractTest {
                 "a known kind with an unreadable payload is corruption, not version skew",
             )
             assertTrue(
-                reason is UndecodableReason.MalformedPayload && reason.detail.contains("RunStarted"),
-                "and the detail names the schema that was violated. The detail is the decoder's prose, so " +
-                    "only the kind inside it is asserted: pinning the whole sentence would make this test " +
-                    "fail on a reworded decoder while the behaviour stayed correct.",
+                reason is UndecodableReason.MalformedPayload &&
+                    reason.detail.contains("eventId"),
+                "the refusal must name WHICH field could not be read. This row's payload " +
+                    "(`{ not the RunStarted schema`) is an object rather than the stored array " +
+                    "shape, so decoding reaches the envelope and stops at the first absent field — " +
+                    "and the named field is now the decoder's own statement of the cause, not an " +
+                    "echo of bytes it could not parse. The kind lives in its own column and is " +
+                    "classified by [decodeStoredRow], which is why the reason here is " +
+                    "MalformedPayload and not UnknownKind. " +
+                    "got detail: ${(reason as? UndecodableReason.MalformedPayload)?.detail}",
             )
         }
     }

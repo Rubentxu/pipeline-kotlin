@@ -20,7 +20,7 @@ import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
 import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
 import java.time.Instant
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
-import dev.rubentxu.pipeline.v2.domain.BoundPurpose
+import dev.rubentxu.pipeline.v2.domain.credentials.boundPurpose
 import dev.rubentxu.pipeline.v2.domain.step.BodyAggregateIdentity
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
@@ -110,12 +110,10 @@ internal class BodyExecutionEngine(
                             sequence = 0L,
                             occurredAt = clock.now(),
                             credentialsId = binding.credentialsId,
-                            purpose = when (binding.kind) {
-                                "string" -> BoundPurpose.API_KEY
-                                "usernamePassword" -> BoundPurpose.USERNAME_PASSWORD
-                                "sshUserPrivateKey" -> BoundPurpose.SSH_KEY
-                                else -> BoundPurpose.API_KEY
-                            },
+                            // AUD-07: the single domain authority. The previous local
+                            // `when` covered only 3 of 7 kinds and reported `file`,
+                            // `certificate`, `zip` and `usernameColonPassword` as API_KEY.
+                            purpose = binding.boundPurpose,
                             stepIndex = childIndex,
                         ),
                     )
@@ -135,9 +133,18 @@ internal class BodyExecutionEngine(
     /**
      * Projects a block's [BlockShellScope] onto the child execution surface:
      * derives the child ShOptions, emits the scope's scheduling/entry events,
-     * and pushes the context overlays. Moved verbatim from the coordinator,
-     * including its quirks (DirEntered timestamps via Instant.now() while
-     * TimeoutScheduled uses the durable clock).
+     * and pushes the context overlays. Moved verbatim from the coordinator.
+     *
+     * AUD-06 (B1d): the scope bookends whose event kinds have no other producer
+     * here — DirEntered/DirExited, TimestampsEntered/TimestampsExited and
+     * TimeoutTriggered — take `occurredAt` from the injected durable [clock],
+     * exactly like the sibling TimeoutScheduled already did. The WaitUntil and
+     * Retry attempt events keep `Instant.now()` because `WaitUntilEngine` and
+     * `RetryEngine` emit the SAME event kinds with the wall clock; changing this
+     * engine alone would make the two execution paths of one Step disagree on
+     * their time source. `occurredAt` is a non-deterministic identity field
+     * (excluded from semantic parity, absent from any fingerprint), so neither
+     * source touches durable replay semantics.
      */
     fun projectScope(
         scope: BlockShellScope,
@@ -186,7 +193,11 @@ internal class BodyExecutionEngine(
                     eventId = UUID.randomUUID().toString(),
                     runId = runId.value,
                     sequence = 0L,
-                    occurredAt = java.time.Instant.now(),
+                    // AUD-06 (B1d): DirEntered has no other producer, and its sibling
+                    // TimeoutScheduled already reads the injected durable [clock]. Take
+                    // `occurredAt` from the same seam so the dir bookends are reproducible
+                    // under an injected clock like the timeout bookends are.
+                    occurredAt = clock.now(),
                     path = scope.target.toString(),
                     previousPath = scope.previous.toString(),
                 ),
@@ -199,7 +210,8 @@ internal class BodyExecutionEngine(
                     eventId = UUID.randomUUID().toString(),
                     runId = runId.value,
                     sequence = 0L,
-                    occurredAt = java.time.Instant.now(),
+                    // AUD-06 (B1d): no other producer; same injected seam as DirEntered.
+                    occurredAt = clock.now(),
                 ),
             )
             ScopedBody(stageShOptions, context)
@@ -558,7 +570,9 @@ internal class BodyExecutionEngine(
                         eventId = UUID.randomUUID().toString(),
                         runId = runId.value,
                         sequence = 0L,
-                        occurredAt = Instant.now(),
+                        // AUD-06 (B1d): no other producer; keeps the DirEntered/DirExited
+                        // pair on one reproducible time source.
+                        occurredAt = clock.now(),
                         path = scope.target.toString(),
                         restoredTo = scope.previous.toString(),
                     ),
@@ -570,7 +584,9 @@ internal class BodyExecutionEngine(
                         eventId = UUID.randomUUID().toString(),
                         runId = runId.value,
                         sequence = 0L,
-                        occurredAt = Instant.now(),
+                        // AUD-06 (B1d): no other producer; keeps the Timestamps* pair on
+                        // one reproducible time source.
+                        occurredAt = clock.now(),
                     ),
                 )
             }
@@ -594,7 +610,10 @@ internal class BodyExecutionEngine(
                             eventId = UUID.randomUUID().toString(),
                             runId = runId.value,
                             sequence = 0L,
-                            occurredAt = Instant.now(),
+                            // AUD-06 (B1d): the breach pairs with the already-durable
+                            // TimeoutScheduled admission; same seam, so an observer can
+                            // subtract the two reproducibly under an injected clock.
+                            occurredAt = clock.now(),
                             stageOrStep = block.id.value,
                             action = "abort",
                             durationMs = scope.budgetMs,

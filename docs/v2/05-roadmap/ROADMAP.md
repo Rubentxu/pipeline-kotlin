@@ -4,6 +4,53 @@
 **Baseline de código auditado:** main @ a554fd5544f74f580bbd531c9b394cff1e073621 (2026-09-21).
 **Estado de esta entrega:** SOLO DOCUMENTACIÓN; NO se ha recompilado ni recertificado HEAD.
 **Estado de producto publicado:** v0.39.0, GitHub Release de 2026-09-19; su certificación NO se transmite a commits posteriores.
+
+**Actualización de hechos 2026-10-08 (observada, no inferida). Supersede las tres líneas anteriores como referencia de estado; se conservan por trazabilidad.**
+
+```text
+origin/main observado      b66bf7c796db28dabf3e13df9784844e7a59aeda
+rama de trabajo            s6-plugin-sdk @ acd12111 (33 commits por delante de main, 0 por detrás)
+producto publicado         v0.47.0 (GitHub Release Latest, 2026-10-06); zip sha256:2fa2d272…d3301c
+superficie de CI           inexistente (.github/workflows/ no existe; solo Dependabot activo)
+checks requeridos en main  ninguno (required_status_checks 404, rulesets [])
+ciclos SDDK                42 OPEN, 4 BLOCKED, 82 CLOSED, 1 RELEASE_PENDING
+```
+
+**Re-auditoría de hechos 2026-10-09 (observada, no inferida). Supersede el bloque del
+2026-10-08 como referencia de estado; aquel se conserva por trazabilidad. El baseline auditado
+de `a554fd55` (2026-09-21) **se conserva intacto**: un baseline fechado es el resultado de una
+auditoría, y sustituirlo por el HEAD actual no lo actualiza, lo falsifica.
+
+```text
+origin/main observado      98f163c04d7cbcb2976236eaa1c4272bc74e1fda
+producto publicado         v0.48.0-rc1 (Pre-release, 2026-10-09T13:52:57Z);
+                           tag v0.48.0-rc1 -> 6e8e86bd; zip pipelinek-0.48.0.zip
+                           92 119 743 bytes; sha256:a4620df4855895e3cc14d5d8a05ee7bd64a75d128d3184be659defe0b009fb93
+Latest (stable)            v0.47.0, GitHub Release de 2026-10-06
+superficie de CI           inexistente (.github/workflows/ -> 404; solo Dependabot activo)
+checks en HEAD             0 check runs sobre 98f163c0
+checks requeridos en main  ninguno (required_status_checks ausente, rulesets 0)
+ciclos SDDK                42 OPEN, 4 BLOCKED, 82 CLOSED, 1 RELEASE_PENDING
+```
+
+Cambios respecto del bloque del 2026-10-08, todos medidos:
+
+```text
+CERRADO   B0-F1 (P0): la PR #99 pasó a MERGED (2026-10-09T13:21:31Z) y 3ec99a4c es
+          ancestro de origin/main conservando su SHA propio. Merge directo, sin squash.
+          La release estable ya es reconstruible desde el trunk (ADR-0099).
+AVANZADO  B0-F4 (P1): la capacidad de publicar el check de admisión EXISTE y está probada
+          (harness/check_run.py, 53 tests verdes), pero en 74 commits sin pushear sobre un
+          origin/main parado desde 2026-09-29. Detalle en B0_3_HARNESS_INVESTIGATION_RECEIPT.md.
+EMPEORADO B0-F5 (P1): este drift es el que corrige el bloque de arriba.
+SIN CAMBIO B0-F2 (P0): sigue sin check requerido ni superficie que lo produzca. G10 = NOT_RUN.
+BRECHA    No existe certificación del harness para v0.48.0-rc1 (su evidence/ llega hasta
+          v0.47.0). La promoción estable sigue bloqueada por ello, correctamente.
+```
+
+Hallazgos de esa reconciliación, con evidencia y dueño, en `../07-uat/B0_RECONCILIATION_RECEIPT.md`.
+Los dos P0 de 2026-10-08 ya no lo son ambos: B0-F1 quedó resuelto, y B0-F2 sigue abierto con
+remedio externo compartido con B0-F4.
 **Autoridad operativa (TRAIN-0 cutover 2026-09-26):** SDDK + Git + ADRs + evidencia externa. `.agent/SESSION_POINTER.md` queda como proyección humana opcional / histórico (no autoridad). **Pruebas vinculantes:** ../07-uat/CERTIFICATION_PROTOCOL.md y ../07-uat/PRODUCTION_READY_UAT_MATRIX.md.
 **Subroadmap derivado:** la consola progresiva y el streaming durable se evolucionan en [OBS_PROGRESSIVE_CONSOLE_ROADMAP.md](OBS_PROGRESSIVE_CONSOLE_ROADMAP.md) (OBS-1 … OBS-7). Ese documento **no** es una autoridad de producto paralela: la prioridad, la integración y el calendario siguen siendo los de este roadmap, y ningún bloque OBS se admite antes de cumplir su gate ni bloquea la publicación del SDK.
 
@@ -367,3 +414,118 @@ Jenkins, Kubernetes o control plane. Si aparece una, se clasifica como trabajo d
 - Cada cierre registra fecha UTC, base SHA, HEAD SHA, TRAIN/WU, decisiones, paths, test argv/exit/XML, hashes de artefactos, errores abiertos, evidencia caducada, próximo primer comando y motivo. La validación histórica no se reescribe.
 - Los porcentajes se publican sólo para cohortes cerradas con denominador verificable (p. ej. WUs 2/6); si una WU está TBD, el avance global es NO_CALCULABLE.
 - La secuencia puede evolucionar por descubrimiento respaldado por un ADR/recibo, preservando trazabilidad y gates. Ni un TODO ni un comentario de código prevalecen sobre una prueba ejecutada.
+
+## 13. Plan por bloques B0..B7 — integración 2026-10-08
+
+**Qué es esto.** La secuencia única de trabajo pasa a expresarse en bloques de entrega de valor
+`B0..B7`. **No es un segundo roadmap**: cada bloque es una agrupación con exit criteria sobre las
+secciones RP-x ya existentes, y **no revoca, ni sustituye, ni reordena** ninguna decisión técnica
+aceptada. Si un bloque y un ADR aceptado discrepan, el ADR gana y el bloque se corrige.
+
+El bloque activo de esta sección (B0) está registrado como WorkItem `f8fc07e6` del ciclo
+`rp7-sem-s6-plugin-sdk`; los bloques siguientes se abren como WorkItem al iniciarse, no antes. La
+ejecución opera por la unidad de entrega del §12 (TRAIN / ciclo SDDK + WU internas), y el orden
+`B0 -> B1 -> ...` no autoriza a adelantar el gate del que depende cada bloque.
+
+### 13.1 Trazabilidad bloque → RP existente
+
+```text
+B0  verdad del repositorio, procedencia y admisión      RP-0, RP-1, ADR-0105 (G10)
+B1  hardening de runtime y convergencia semántica       RP-3, RP-2, RP-034, AUD-02..AUD-08
+B2  S6 plugin SDK v2 y plataforma extensible           RP-6, 05-step-plugin-sdk-v2
+B3  S7 certification harness v2                        RP-4, RP-5, CERTIFICATION_PROTOCOL
+B4  S8 compatibilidad, migración y release 0.49.x      RP-4, RP-5, RP-6
+B5  agent-first y secretless (ASX-0..ASX-6)             RP-7
+B6  hardening local y seguridad de producción           RP-7, RP-4, RP-5
+B7  depuración final y retirada de V1                   MIGRATION_PLAN, IMPLEMENTATION_BACKLOG
+```
+
+### 13.2 Orden y dependencias
+
+```text
+B0 -> B1 -> B2 -> B3 -> B4 -> B5 -> B6 -> B7
+```
+
+Ningún bloque abre trabajo de otro. Los spikes sin cambio público pueden adelantarse; su
+implementación no puede adelantar el gate del que depende. `RP-8` y `RP-9` **no pertenecen a este
+repositorio** (§10.1, §11.1): son de `pipelinek-fabric`.
+
+### 13.3 Exit criteria por bloque
+
+| Bloque | Exit criteria | Estado observado 2026-10-08 |
+|---|---|---|
+| B0 | Procedencia reproducible (mismo digest para entradas idénticas en dos checkouts, un path con espacios no rompe) + autoridad de admisión inequívoca + dependencias externas registradas como bloqueo verificable | **PARCIAL**: procedencia corregida y probada (digest idéntico al base en worktree, exclusiones exactas, builds reales); autoridad resuelta por ADR-0105; hallazgos abiertos: B0-F1 (release fuera de `main`, PR #99) y B0-F2 (main sin checks requeridos), ambos requieren autorización para tocar el remoto |
+| B1 | El perfil de ejecución soportado cumple sus contratos; sin defectos críticos/altos del bloque sin disposición explícita | **CERRADO con gate verde** (`check` 24m41s, 5195 tests, 0 fallos, 140 skipped declarados): AUD-02(c)(d) y su fuga de tmpdir, AUD-04, AUD-05, AUD-07 y el keying de AUD-08 cerrados con mutación; AUD-06 parcial con dueño y fila guarda; **AUD-03 CERRADO por B1.2** (`../07-uat/B1_2_WAITUNTIL_TERMINAL_ADT_RECEIPT.md`) — el terminal de `core.waitUntil` es el ADT `WaitUntilCompletion` que el motor durable ya proyectaba, el token de wire pasa a ser proyección derivada y el decoder **rechaza por nombre** lo que no puede nombrar en vez de coercionar a un timeout inexistente; allowlist de la ley ahora **vacía** y baseline de emisiones 3 → 2, con 2 mutaciones muertas. **B1.3 primera rebanada CERRADA** (`../07-uat/B1_3_CONTROL_JOURNAL_UNKNOWN_STATUS_RECEIPT.md`) — las filas de control de `retry` y `waitUntil` rechazaban un estado persistido desconocido fuera de su propio vocabulario (`Enum.valueOf` escapando como `IllegalArgumentException` en vez de `…DivergenceException`), lo que además perdía el fichero en el diagnóstico: un status desconocido **debe** rechazarse porque defaultear a `PENDING` re-ejecutaría un intento con efecto hijo ya ocurrido y a `SUCCEEDED` se tragaría un fallo; helper único `operationStatusOrThrow` con el rechazo como función, 2 mutaciones muertas (crudo y default). Gate: `check` 27m28s, **794 clases / 5225 tests**, 0 fallos, 140 skipped declarados. Las otras tres categorías de B1.3 se midieron y **no** se tocaron (83 `Instant.now()` en 32 ficheros con sustitución masiva prohibida; `StepOutcome.valueOf` inexistente; los `valueOf` de **codecs de salida** registrados como P2 con dueño y exit criterion). **B1.3 segunda rebanada CERRADA** (mismo recibo, §8) — el KDoc de `CoreWaitUntilStep` afirmaba que su handler stub se alcanzaba por el dispatcher legacy, premisa que dejó de ser cierta en G5 (2026-09-18) y que nadie volvió a mirar. Medido contra la autoridad productiva, no leído: (a) el cuerpo **sí** se ejecuta — su efecto `core.sh` deja el fichero marcador; (b) el handler **no** emite — se le dio un reloj absurdo (1970-01-01) y ningún `WaitUntilPolled` lo llevaba, luego los eventos salen de `WaitUntilEngine` vía el short-circuit `CANONICAL_ENGINE`. El handler es **código muerto en producción**; se conserva (StepDefinition lo exige) pero el KDoc ya no afirma una premisa falsa y advierte que una versión alcanzable sería el silent no-op que prohíbe Semantic Constitution §2. Cambio de producción **solo KDoc** (`git diff -U0` filtrado deja cero líneas de código). Mutación `CANONICAL_ENGINE → HANDLER_CONTINUATION` muerta en la aserción del marcador — después de invertir el orden, porque la versión previa moría por una precondición de `RunOutcome.Success` y por tanto no probaba lo que decía probar. Gate: `check` 27m11s, **795 clases / 5227 tests**, 0 fallos, 140 skipped. El resto es deuda P2 declarada en `../07-uat/B1_BLOCK_EXIT_RECEIPT.md` |
+| B2 | La plataforma de plugins funciona desde fuera del monorepo y está certificada al nivel Step/SDK aplicable | **CERRADO en su sustancia, con dos residuos nombrados** (`../07-uat/B2_BLOCK_EXIT_RECEIPT.md`): **BOM** `:pipeline-sdk-bom` publicado (fuera de `publishedContractModules`, porque no tiene ABI que guardar) y **ejecución externa probada** — un consumidor independiente resuelve por `platform(...)` con coordenadas sin versión y EJECUTA la distribución instalada con `--plugin-jar`, afirmando el payload propio del handler. La lista B2.2 quedó **verificada fila por fila** (`../07-uat/B2_CHECKLIST_VERIFICATION_RECEIPT.md`): `apiRange`, plugins incompatibles, cargas duplicadas y errores de admisión ya estaban implementados y probados — el rechazo por rango prueba que el código del plugin NUNCA corrió, con control de no-vacuidad — y se citan en lugar de reimplementarse. Suites contractuales por plugin medidas (14 externo + 113 utilities + 20 scm-git, 0 fallos). Residuos: el arnés que convierta esas suites en veredictos con testigos exigidos por mutación (B2.4 → B3) y la disposición del puerto `BranchInvoker` |
+| B3 | Testigos semánticos ejecutables, certificación externa coherente, veredictos que fallan ante mutaciones relevantes | **PARCIAL: precondiciones medidas** (`../07-uat/B3_PRECONDITION_STATE_RECEIPT.md`). El mecanismo de testigo ya existe y **discrimina**: `S0SemanticWitnessMatrixTest` (17) + `S3EnvironmentSemanticWitnessTest` (7), verdes con XML fresco. Kill/restart/recovery y seguridad destructiva tienen dueño y están verdes (15 tests: UatLocal001/002, S54, `DestructiveSafetyOwnershipTest`). **Sin dueño y declarado**: el vocabulario de veredicto (B3.7) no existe como tipo — es diseño con frontera decidida frente a ADR-0105, y no se creó aquí para no generar una segunda autoridad de admisión; extender el índice de testigos a los constructos restantes (el manifiesto tiene 50+3 y el índice nombra ~15); barrido de relojes (B3.5, B3a cubrió las dos sustituibles); escenarios S7 de plugin externo |
+| B4 | Contratos clasificados y verificados, candidata `0.49.x` entregada al harness | **PARCIAL, sólo queda el handoff externo**. **B4.1/B4.3 verificados**: los 4 módulos publicados están clasificados EXPERIMENTAL con taxonomía cerrada, fitness que falla el build si falta una entrada y la regla de que una excepción no puede invocar madurez más laxa (16 verdes); el inventario de superficie está verificado **por reflexión contra el código** (11 verdes) y **se corrige contra el código**. **B4.2 CERRADO** (`../07-uat/B4_2_CONSUMER_COMPATIBILITY_CHARACTERIZATION.md`): la premisa de que hacía falta producir consumidores era **falsa** — los dumps `.api` versionados SON la superficie por revisión y se pueden diffear. Cinco ejes separados; el inventario medido por clase (2 clases y 12 miembros ausentes en contratos publicados) coincide **9/9** con `published-contract-exceptions.json`, medido antes de leerlo; eje durable verificado **negativo con mecanismo** (huella = `wireToken`, versiones idénticas, decisión no serializable); `pipeline-output` con delta cero; y los 6 tipos perdidos por `pipeline-step-sdk/api` **no son ruptura de consumidor** (módulo sólo-BCV, 0 `maven-publish`, verificado). **B4.4 CERRADO** (`../07-uat/B4_4_PLUGIN_AUTHOR_GUIDE_RECEIPT.md`): guía de autores junto al plugin de referencia, derivada **ejecutando** el ejemplo (par de aislamiento EXIT 0 / EXIT 1 con salida real, 380 tests 0 fallos), con 3 defectos de documentación corregidos — incluido que `StepContractSuite` **no existe como clase** y que `examples/README.md` documentaba una ruta de binario inexistente. Hueco de §4 **CERRADO**: `agentWithCapabilities` promovido a **STABLE** (`../07-uat/B4_AGENT_CAPABILITIES_PROMOTION_RECEIPT.md`) con testigo en ambas direcciones cruzando el coordinador de producción y mutación que aísla la positiva. Queda: B4.5 (candidata; autoridad del harness), `BLOCKED_EXTERNAL` mientras el harness no publique check-runs ni commit statuses |
+| B5 | Agente y herramientas ejecutan con perfiles y secretos sin vía alternativa de ejecución | **OPEN** |
+| B6 | Garantías anunciadas del perfil soportado verificadas por pruebas externas | **OPEN** |
+| B7 | V1 retirada sin regresiones; V2 es la única ruta productiva | **OPEN**, último bloque |
+
+### 13.4 Condiciones de STOP vigentes (no negociables)
+
+No se declara un bloque terminado si: existe un defecto crítico/alto sin resolver dentro del alcance;
+una UAT obligatoria está omitida; la semántica se conserva por stub o mock; un test verde no se
+ejecutó realmente; se cambió un contrato público sin autorización; un efecto corre por ruta no
+canónica; se perdió información durable; se debilitó una protección de credenciales; se cambió el
+artefacto tras certificarlo; o falta la prueba externa exigida para el nivel anunciado. Un bloqueo
+externo legítimo se documenta y se conserva: **nunca se convierte en PASS**.
+
+### 13.5 Prohibiciones de frontera que este plan hereda
+
+```text
+- No implementar Jenkins, Kubernetes, control plane ni workers remotos aquí (son de pipelinek-fabric).
+- No certificar ni promocionar *estabilidad*: la autoridad del veredicto y de la promoción estable es el
+  harness externo (ADR-0105). ADR-0099 D6 mantiene aquí la construcción de la candidata, la verificación
+  local, la integración en `main`, el tag/publicación del prerelease y sus recibos. La prohibición que
+  sobrevive es la de NO declarar CERTIFIED ni STABLE_PROMOTED sin veredicto externo, y la de no publicar
+  el artefacto Maven definitivo como efecto lateral de publicar el prerelease (ADR-0099, ROADMAP A P2.4).
+- No reintroducir GitHub Actions para cerrar G10 (ADR-0105 D3).
+- No mantener tests que dependan del binario instalado o del corpus externo: eso vive en el harness.
+- No crear estado operativo nuevo dentro del repositorio.
+- No eliminar V1 antes de demostrar equivalencia o sustitución de sus capacidades necesarias.
+```
+
+**Reconciliación 2026-10-08 (P0.3).** La redacción anterior de esta sección decía
+"No publicar ni promocionar releases desde este repositorio: la autoridad es el harness
+externo", lo que contradecía a la vez ADR-0099 D3/D4/D6 y el propio objetivo de este plan. La
+ambigüedad era real y ya estaba reconocida: **ADR-0099 y ADR-0105 no chocan entre sí**, reparten
+cosas distintas.
+
+```text
+                      producto (este repositorio)         harness externo
+construcción candidata      SI (ADR-0099 D6)                     no
+verificación local         SI (ADR-0099 D6)                     no
+integración en main        SI (ADR-0099 D3, sin squash)          no
+tag + prerelease           SI (ADR-0099 D4)                      no
+publicación Maven rc       SI (ROADMAP A P2)                     no
+publicación Maven GA       NO — exige autorización + G10         no
+check de admisión G10      no — no hay superficie de CI          SI (ADR-0105 D3)
+veredicto CERTIFIED        no                                   SI (ADR-0105)
+promoción STABLE           no                                   SI (ADR-0099 D5)
+```
+
+Los cuatro estados que este plan debe distinguir sin ambigüedad:
+
+| Estado | Qué lo autoriza | Dónde se declara |
+|---|---|---|
+| `CANDIDATE_PUBLISHED` | integración en `main` + tag alcanzable + artefactos con digest | recibo local de candidatas |
+| `CERTIFIED` | veredicto externo sobre el `CandidateId` exacto | harness, este repositorio solo lo cita |
+| `STABLE_PROMOTED` | `CERTIFIED` + gates de producto + G10 + autorización | este repositorio tras el veredicto |
+| `BLOCKED_EXTERNAL` | cualquier estado cuyo veredicto externo aún no existe | se declara, nunca se convierte en `PASS` |
+
+Ningún resultado local — `./gradlew check`, una UAT verde, un digest coincidente — simula un
+veredicto del harness. Un `STEP-CERT` local nunca se escribe como `PRODUCT-GATE`.
+
+### 13.6 GATE de integración local y su alcance
+
+```bash
+cd v2 && ./gradlew check --rerun-tasks   # presupuesto derivado según AGENTS.md rule 4
+```
+
+Es necesario para el cierre local cuando aplique y **no sustituye** la certificación externa ni
+demuestra por sí solo el PRODUCT-GATE. Cada gate registra SHA y tree SHA, comando exacto, exit code,
+tests/fallos/errores/skipped, tareas ejecutadas y `UP-TO-DATE`, detekt y API check, cobertura cuando
+aplique, artefacto y SHA-256, UAT, mutaciones probadas, restricciones de plataforma, deuda abierta y
+resultado `PASS`/`FAIL`/`BLOCKED`/`NOT_RUN`.

@@ -1,3 +1,4 @@
+import dev.rubentxu.pipeline.build.ProvenanceDigest
 import java.io.ByteArrayOutputStream
 
 plugins {
@@ -27,7 +28,6 @@ tasks.test {
 }
 
 group = "dev.rubentxu.pipeline.v2"
-version = "0.36.0"
 
 kotlin {
     jvmToolchain(21)
@@ -67,7 +67,19 @@ val utilitiesVersion = providers.gradleProperty("pipeline.utilities.release.vers
 
 val utilitiesReleaseProps = layout.buildDirectory.file("resources/main/META-INF/utilities-release.properties")
 
-val computeUtilitiesDigest = tasks.register<Exec>("computeUtilitiesDigest") {
+val utilitiesClassesDir = layout.buildDirectory.dir("classes/kotlin/main")
+val utilitiesResourcesDir = layout.buildDirectory.dir("resources/main")
+
+// Exclusions by EXACT relative path, never by name suffix (B0.2). The previous filter dropped
+// any file ending with `plugin-manifest.json`, which would also drop an unrelated
+// `unrelated-plugin-manifest.json` from the identity.
+val utilitiesExcludedResourcePaths = setOf(
+    "META-INF/utilities-release.properties",
+    "META-INF/utilities-release.properties.digest",
+    "META-INF/pipelinek/plugin-manifest.json",
+)
+
+val computeUtilitiesDigest = tasks.register("computeUtilitiesDigest") {
     group = "utilities"
     description = "Compute the LFC-2E2 utilities OFFICIAL_PLUGIN provenance SHA-256."
 
@@ -78,36 +90,33 @@ val computeUtilitiesDigest = tasks.register<Exec>("computeUtilitiesDigest") {
     outputs.file(utilitiesReleaseProps)
     dependsOn("compileKotlin", "processResources")
 
-    doFirst {
-        val classesDir = layout.buildDirectory.dir("classes/kotlin/main").get().asFile
+    // Declared inputs, WITHOUT `skipWhenEmpty`: `inputs.dir + skipWhenEmpty` used to make Gradle
+    // mark this NO-SOURCE on incremental builds. `inputs.files(fileTree(...))` keeps the task
+    // runnable while still letting Gradle re-run it when the material changes (B0.2).
+    inputs.files(fileTree(utilitiesClassesDir)).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(fileTree(utilitiesResourcesDir) { exclude(utilitiesExcludedResourcePaths) })
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.property("publisher", publisher)
+    inputs.property("namespace", namespace)
+    inputs.property("version", ver)
+    inputs.property("module", "utilities")
+
+    // AUD-01: this used to be `sh -c "sha256sum <ABSOLUTE PATHS> | sha256sum"`, and `sha256sum`
+    // PRINTS THE FILENAME IT WAS GIVEN. The shared ProvenanceDigest frames only the root name and
+    // the relative path, so two checkouts of identical bytes hash identically.
+    doLast {
+        val classesDir = utilitiesClassesDir.get().asFile
         require(classesDir.exists()) { "classes/kotlin/main does not exist: run compileKotlin first" }
-        val resourcesDir = layout.buildDirectory.dir("resources/main").get().asFile
+        val resourcesDir = utilitiesResourcesDir.get().asFile
         val out = utilitiesReleaseProps.get().asFile
         out.parentFile.mkdirs()
-        val excludedOutput = out.absolutePath
-        val classFiles: List<String> = classesDir.walkTopDown()
-            .filter { it.isFile && it.absolutePath != excludedOutput }
-            .map { it.absolutePath }
-            .toList()
-            .sorted()
-        val resourceFiles: List<String> = if (resourcesDir.exists()) {
-            resourcesDir.walkTopDown()
-                .filter { it.isFile && it.absolutePath != excludedOutput }
-                .map { it.absolutePath }
-                .toList()
-                .sorted()
-        } else {
-            emptyList()
-        }
-        val all = (classFiles + resourceFiles).joinToString(" ")
-        require(all.isNotEmpty()) { "No class or resource files to hash for utilities OFFICIAL_PLUGIN provenance" }
-        commandLine = listOf("sh", "-c", "sha256sum $all | sha256sum | awk '{print $1}' > '${out.absolutePath}.digest'")
-    }
-
-    doLast {
-        val out = utilitiesReleaseProps.get().asFile
-        val digestFile = File("${out.absolutePath}.digest")
-        val hex = digestFile.readText().trim()
+        val hex = ProvenanceDigest.computeDigestHex(
+            listOf(
+                ProvenanceDigest.Root("classes", classesDir.toPath()),
+                ProvenanceDigest.Root("resources", resourcesDir.toPath()),
+            ),
+            utilitiesExcludedResourcePaths.mapTo(linkedSetOf()) { "resources/$it" },
+        )
         require(hex.length == 64) { "Expected 64-hex SHA-256, got '${hex.take(80)}'" }
         val digest = "sha256:$hex"
         out.writeText(
@@ -119,7 +128,6 @@ val computeUtilitiesDigest = tasks.register<Exec>("computeUtilitiesDigest") {
                 appendLine("pipeline.utilities.module=utilities")
             },
         )
-        digestFile.delete()
         println("utilities: provenance written to $out (digest=${digest.take(20)}...)")
     }
 }

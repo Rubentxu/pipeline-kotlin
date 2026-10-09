@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.WsCleaned
 import dev.rubentxu.pipeline.v2.sdk.files.CleanWsExecutor
+import dev.rubentxu.pipeline.v2.sdk.files.RootDestruction
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -94,10 +95,19 @@ class CleanWsOperationsAdapter(
             // treated a bare non-VCS project tree as disposable scratch. A
             // user-owned root is now refused regardless of what is on disk,
             // while PipelineK-managed scratch keeps its wipe contract.
-            protectWorkspaceRoot = WorkspacePathResolver.authorizeRootDestruction(
-                executionLocation.workspace,
-                "cleanWs",
-            ) !is DestructiveAuthorization.Permitted,
+            //
+            // C8: the decision is now a value, not a bit. The adapter maps the
+            // lease verdict onto the shared RootDestruction intent so the
+            // executor cannot be handed a half-resolved question.
+            rootDestruction = when (
+                WorkspacePathResolver.authorizeRootDestruction(
+                    executionLocation.workspace,
+                    "cleanWs",
+                )
+            ) {
+                is DestructiveAuthorization.Permitted -> RootDestruction.ScratchOwned
+                is DestructiveAuthorization.Refused -> RootDestruction.UserOwned
+            },
         )
 
         val execResult = executor.execute(

@@ -1,0 +1,359 @@
+# B1.3 — Un status durable desconocido se rechaza en el vocabulario del journal
+
+**Slice:** B1.3 del plan por bloques B0..B7 (ROADMAP §13.3), categoría "ramas `else` que
+aceptan variantes desconocidas / conversiones que se transforman en resultado por defecto"
+**Fecha:** 2026-10-08
+**Ciclo SDDK:** `p-733fb505b5a6bd2d/rp7-sem-s6-plugin-sdk` (OPEN/build, lease `orchestrator`)
+**Resultado:** `PASS` (ambas rebanadas)
+
+---
+
+## 1. Qué capability obtiene el usuario
+
+Un journal de control durable que **rechaza con el tipo que él mismo declara** cuando no puede
+interpretar una fila.
+
+Antes, ambos journals de control —el de `retry` (ADR-0075) y el de `waitUntil`— leían el estado
+persistido así:
+
+```kotlin
+status = ao["status"]?.jsonPrimitive?.content
+    ?.let { OperationStatus.valueOf(it) }
+    ?: throw RetryControlJournalDivergenceException("status missing in $file")
+```
+
+El `?:` maneja un campo **ausente**, y lo rechaza bien. El `?.let` maneja uno **presente pero no
+reconocido**, y lo hace dejando que `Enum.valueOf` lance `IllegalArgumentException`. El `catch` de
+alrededor solo captura `SerializationException`, así que esa excepción se escapa del vocabulario
+declarado del parser.
+
+Tres consecuencias, de menor a mayor gravedad:
+
+1. **El contrato declarado es falso para exactamente un campo.** Cualquier otro campo mal formado
+   lanza `…DivergenceException`. Ese no. Un llamador que captura el tipo declarado no lo captura, y
+   la recuperación escrita contra el contrato no recupera.
+2. **El diagnóstico pierde la evidencia.** El mensaje de `Enum.valueOf` nombra el token pero no el
+   fichero, y el fichero se llama por el SHA-256 del `controlOpId`, así que tampoco se puede
+   reconstruir. Con un `retry` y un `waitUntil` en vuelo, el operador no puede decir qué fila
+   durable es ilegible.
+3. **El rechazo no tiene dueño.** Fallar cerrado solo significa algo cuando el llamador reconoce
+   el rechazo. El contrato del planificador es precisamente que una fila de control ilegible es
+   una divergencia y **nunca** un re-plan; una excepción inesperada no se puede distinguir de un
+   fallo de infraestructura por el código que posee el bucle.
+
+## 2. La decisión y por qué no fue un `try`/`catch`
+
+Un `try { valueOf } catch { divergence }` en cada sitio habría sido la forma incorrecta dos veces:
+los dos journals crecerían con su propia copia, y un tercer journal reintroduciría el lanzamiento
+crudo en silencio.
+
+`operationStatusOrThrow` recibe el rechazo como **función**, así que cada journal conserva la
+propiedad de su propio tipo de excepción y de su propio texto. El saber que "un token desconocido
+no es un default" vive una vez; el saber que "una divergencia de retry dice `Retry…`" se queda en
+el journal de retry.
+
+### Por qué rechazar y no defaultear
+
+Una fila de control es estado durable que decide si un efecto se ejecuta otra vez. Defultear un
+token desconocido a `PENDING` **re-ejecutaría** un intento cuyo efecto hijo puede haber ocurrido ya;
+defaultearlo a `SUCCEEDED` se tragaría un fallo. Ningún default es seguro, así que no hay default: las
+únicas dos funciones totales aquí son "reconocido" y "rechazar". La segunda mutación de §4 existe
+precisamente para que nadie introduzca ese default pensando que es más amable.
+
+## 3. Alcance: por qué esto y no las otras tres categorías de B1.3
+
+El plan lista cuatro categorías en B1.3. Se midieron antes de elegir:
+
+| categoría | medición | por qué no es esta rebanada |
+|---|---|---|
+| `Instant.now()` vs puertos de reloj | 83 coincidencias en **32 ficheros** de producción | Sustitución masiva prohibida explícitamente por el plan. Además el recibo B1d ya movió los 5 sitios de productor único y **dejó con dueño y fila guarda** los 5 compartidos con `RetryEngine`/`WaitUntilEngine`: media-fix de una familia es peor que no tocar. |
+| duraciones monotónicas vs timestamps | `System.currentTimeMillis()` presente, reloj inyectado en 20 ficheros | La mezcla **es** el diseño de las filas guarda ya registradas. Reabrirla sin el trabajo de los 5 sitios compartidos rompe la ley de B1d. |
+| conversiones `String → StepOutcome` | **0** coincidencias de `StepOutcome.valueOf` en producción | La premisa de la categoría no se sostiene en el código actual. |
+| conversiones de enum sin validar / `else` que acepta desconocidos | `FailureKind.valueOf`, `OperationStatus.valueOf`, `PublishHtmlSkipReason.valueOf` | **Aquí está el defecto**, con consecuencia durable real. Los `FailureKind.valueOf` de codecs de salida también escapan como excepción cruda, pero son superficie de **fallo**, no de **decisión de re-ejecución**: un default sería incorrecto pero no puede duplicar un efecto. El de las filas de control sí puede. Se corrigió el que puede hacer daño y el otro queda nombrado abajo. |
+
+## 4. Evidencia
+
+### RED válido (no un error de compilación)
+
+El primer intento del RED no compilaba contra la API real (`recordAttempt`/`read` no existen; son
+`beginAttempt`/`readState`, y el fichero se nombra por SHA-256 con subdirectorio `retry-control` /
+`wait-until-control`). Un `compileTestKotlin` fallido **no es un RED** — Gradle ejecuta la clase
+previamente compilada. Se reescribió contra las firmas reales leídas del código:
+
+```
+cd v2 && ./gradlew :pipeline-application:test --tests '*ControlJournalUnknownStatusTest*'
+tests=3 failures=2 errors=0
+  RED the retry control journal refuses an unknown status with its own divergence type
+      Unexpected exception type thrown, expected: <RetryControlJournalDivergenceException>
+      but was: <java.lang.IllegalArgumentException>
+  RED the waitUntil control journal refuses an unknown status with its own divergence type
+      Unexpected exception type thrown, expected: <WaitUntilControlJournalDivergenceException>
+      but was: <java.lang.IllegalArgumentException>
+  OK  every status the enum defines still reads back, so strictness is not the fix
+```
+
+La tercera fila pasaba ya: los seis estados del enum seguían leyéndose, así que el RED era del
+**rechazo ausente**, no de un fixture roto. El fixture además afirma que la corrupción aterrizó
+antes de leer, con un mensaje `NON-VACUITY`.
+
+### GREEN
+
+```
+cd v2 && ./gradlew :pipeline-application:test --tests '*ControlJournalUnknownStatusTest*'
+tests=3 failures=0 errors=0
+```
+
+Familia completa de consumidores:
+
+```
+cd v2 && ./gradlew :pipeline-application:test --tests '*Retry*' --tests '*WaitUntil*' --tests '*ControlJournal*'
+138 tests · 0 failures · 0 errors
+```
+
+### Mutaciones negativas
+
+Restauradas y verificadas por SHA-256 (`sha256sum -c` → "La suma coincide" en ambos journals;
+helper sin rastros de mutación).
+
+| # | Mutación | Muerta por | RED |
+|---|---|---|---|
+| 1 | El `divergence` vuelve a ser el `IllegalArgumentException` crudo (el defecto original) | la columna de **retry** | 1 fila |
+| 2 | El helper **defaultea** `PENDING` en vez de rechazar (el otro modo de fallo) | las columnas de **retry Y waitUntil** | 2 filas |
+
+La mutación 2 es la que importa para el futuro: un default no lanza nada, así que un test que solo
+comprobara "falla de alguna manera" lo habría dado por bueno. Aquí lo matan las dos columnas, que es
+lo que hace que la columna de waitUntil sea una fila y no una copia decorativa.
+
+## 5. Verificación
+
+| Nivel | Alcance | Resultado |
+|---|---|---|
+| L0 | compilación | OK, sin `^e:` |
+| L1/L2 | `ControlJournalUnknownStatusTest` | 3 tests, 0 F |
+| L2 | retry + waitUntil + control journals | 138 tests, 0 F |
+| ADVERSARIAL | 2 mutaciones | ambas muertas, restauradas y verificadas |
+| L5 | `check` completo (`--no-daemon`) | `BUILD SUCCESSFUL in 27m 28s` |
+
+**Recuento autoritativo** (leído de los XML JUnit, no del exit code):
+
+```
+clases=794 tests=5225 failures=0 errors=0 skipped=140
+```
+
+Contra el baseline del gate anterior (793 clases / 5222 tests) el delta es **+1 clase / +3 tests**:
+exactamente `ControlJournalUnknownStatusTest`. Los 140 skipped son los pre-existentes y **no** se
+cuentan como pases.
+
+**Canario.** Los XML de la suite se borraron antes del gate y se regeneraron:
+
+```
+TEST-...durable.ControlJournalUnknownStatusTest.xml   tests=3 failures=0
+timestamp=2026-10-08T18:11:02.690Z   (gate: 17:48:37Z -> 18:16:13Z)
+```
+
+Es fresco y cae dentro de la ejecución. El proceso del gate usó `--no-daemon`, así que no hay
+posibilidad de reaprovechar un `UP-TO-DATE` como si fuera ejecución: los XML son la prueba.
+
+**Cumple HARNESS FIDELITY §4:** sin `Files.createTempDirectory` sin padre, sin `cwd`/`env` ambiente,
+sin reloj de pared — el estado no puede hacer parecer roto su propio sujeto.
+
+**Deuda declarada, no cerrada:** los 140 skipped son los `UatLocal*`/`UatCompat*` legados que
+viven en el harness externo, no un gap introducido aquí.
+
+## 6. Deuda que queda, con dueño
+
+- **Los `FailureKind.valueOf` / `PublishHtmlSkipReason.valueOf` de los codecs de salida** tienen la
+  misma forma (`Enum.valueOf` escapando como excepción cruda). **No se corrigieron aquí** y son
+  P2: un refusal con el tipo equivocado en un codec de salida produce un diagnóstico confuso, pero
+  no puede re-ejecutar un efecto ni convertir un fallo en un éxito. Registrado en
+  `IMPLEMENTATION_BACKLOG.md` como candidato al mismo helper, para que la decisión de aplicarlo sea
+  deliberada y no una segunda pasada automática.
+- **El límite ya declarado de `FArchE4b4`** (ventana de 2 líneas en la cláusula 3) sigue igual.
+
+## 7. Cierre de referencia de implementación
+
+```text
+Reference implementation consulted:  ninguno externo. El patrón de rechazo tipado ya existe en
+                                      el propio repo (completionFromWireOutcome de B1.2,
+                                      PluginAdmission.apiRange de B2.2) y se siguió esa forma.
+Behaviour adopted:                   rechazo en el vocabulario del dueño, con el valor Y el
+                                      fichero en el mensaje
+Intentional deviations:              ninguno
+Security implications reviewed:      n/a — no toca credenciales ni superficie expuesta
+Tests demonstrating the contract:    ControlJournalUnknownStatusTest (3)
+```
+
+---
+
+# 8. Segunda rebanada — el KDoc que mentía sobre `core.waitUntil`
+
+## 8.1 Qué semeasurable antes de decidir
+
+La tabla de §3-medidas dejó los sitios de reloj compartidos como "no tocados, con dueño y fila
+guarda". La fila guarda (recibo B1d, grupo (c)) dice:
+
+> El **mismo tipo de evento** lo emiten `WaitUntilEngine:168/190/392` y `CoreWaitUntilStep:185/198`
+> con `Instant.now()`. Cambiar sólo este motor pondría las dos rutas de ejecución del mismo Step en
+> fuentes de tiempo distintas.
+
+Antes de aceptar esa guarda por heredad, se comprobó si su premisa seguía siendo cierta en el
+código actual. B1.2 ya había demostrado que `core.waitUntil` es `REGISTRY_PRIMARY`, y eso obliga a
+comprobar quién emite realmente los eventos.
+
+## 8.2 El hallazgo
+
+`CoreWaitUntilStep.capabilityRoutedHandler` está comentado como *stub*: emite un par
+`WaitUntilPolled`/`WaitUntilCompleted` con `conditionResult = true` y
+`WaitUntilCompletion.Satisfied` **sin evaluar la condición ni ejecutar el cuerpo**. El KDoc del
+objeto justificaba su existencia así:
+
+```text
+G1 registers this candidate WITHOUT changing LEGACY_PLUGIN_IDS, the legacy decoder,
+the metadata row, or the legacy dispatcher. StructuralFamilyResolver therefore
+continues to route production invocations to LegacyCore until the later cutover gate.
+```
+
+Esa frase dejó de ser cierta en G5 (2026-09-18). El mismo KDoc afirmaba además que el handler
+emite los eventos observables, y el fitness `Lfc2WaitUntilCanonicalReentryFitnessTest` lo repite en
+su propiedad 4. Si el handler fuera alcanzable, `waitUntil` devolvería `Satisfied` sin haber
+evaluado nunca la condición: un **silent no-op**, que Semantic Constitution §2 prohíbe como vía de
+conservación.
+
+## 8.3 Cómo se resolvió sin asumir
+
+Nada de esto se resolvió leyendo código. Las dos afirmaciones se cruzaron con la autoridad
+productiva (`CanonicalDurableRunCoordinator.run` + `CoreStepRegistryFactory.registry()`):
+
+| afirmación | cómo se Midió | resultado |
+|---|---|---|
+| ¿el cuerpo se ejecuta de verdad? | el cuerpo escribe un fichero marcador vía `core.sh`; se comprueba su existencia | **sí**, el efecto ocurre |
+| ¿quién emite los eventos? | el handler recibió un reloj absurdo (`1970-01-01T00:00:00Z`) y se buscó esa marca en el flujo | **nadie** la llevaba → el handler no es el emisor |
+
+Con el reloj absurdo en su sitio, el flujo real de eventos fue:
+
+```text
+PROBE event kinds: [RunStarted, StageStarted, WaitUntilPolled, StepStarted,
+                     EchoOutputCaptured, StepFinished, WaitUntilPolled,
+                     WaitUntilCompleted, StageFinished, RunFinished]
+PROBE events stamped 1970: []
+```
+
+Los eventos vienen de `WaitUntilEngine` y el cuerpo lo ejecuta `StepDispatchEngine`, porque el
+descriptor declara `BodyExecutionOwner.CANONICAL_ENGINE` y ese es el short-circuit documentado en
+`StepDispatchEngine:312-332`. **El handler es código muerto en producción.**
+
+La sonda era temporal y se borró; la conclusión quedó escrita donde alguien la leerá.
+
+## 8.4 Por qué no se borró el código muerto
+
+Tres razones, todas explícitas:
+
+1. `StepDefinition` exige un handler y la contract suite resuelve la definition. Borrarlo es un
+   cambio más ancho que esta rebanada.
+2. Un muerto que dice "Satisfied" es peor que un muerto que lanza. Si alguien lo conectara sin
+   leer, reintroduciría el silent no-op.
+3. Por eso el KDoc **no** se limitó a decir "no alcanzable": dice que está muerto **y** que no debe
+   completarse "como si fuera un segundo bucle de polling", porque una versión alcanzable
+   reportaría una condición que nunca comprobó.
+
+El cambio de producción es **exclusivamente KDoc**: `git diff -U0` filtrado deja cero líneas de
+código, solo comentarios.
+
+## 8.5 Evidencia
+
+```text
+Suite dirigida (CoreWaitUntil* + *WaitUntil* + FArchE4b4*): 77 tests, 0 F, 0 E
+CoreWaitUntilBodyVsHandlerTest: 2 tests, 0 F (timestamp 18:23:17Z)
+Mutación muerta: owner CANONICAL_ENGINE -> HANDLER_CONTINUATION
+  → el cuerpo no se ejecuta y la fila muere en la ASERCIÓN DEL MARCADOR,
+    no en una precondición de "run succeeded"
+```
+
+Esa última distinción costó una iteración y es el punto de fondo: la primera versión de la fila
+aseveraba `RunOutcome.Success` **antes** del marcador, así que la mutación la mataba por el
+`SCHEMA mismatch` de la precondición — una muerte cierta pero por el motivo equivocado, que es la
+forma de un test que no prueba lo que dice probar. Se invirtió el orden: primero el marcador
+(sin condicionar al resultado), después el resultado.
+
+## 8.6 Fidelidad del arnés
+
+- **§1 autoridad productiva:** entra por `CanonicalDurableRunCoordinator.run` con el registro real.
+- **§2 no re-deriva:** no recalcula nada que producción decida; observa el fichero que el cuerpo
+  tenía que crear y la marca que el handler tenía que poner.
+- **§3 observación discreta:** presencia de un fichero y clasificación de una marca de tiempo. Cero
+  milisegundos, cero orden, cero tamaño.
+- **§4 hermético:** `@TempDir` en las dos filas, sin literal de `/tmp`, sin `cwd`/`env` ambiente, sin
+  red, sin singleton mutable.
+- **§5 mutación:** una por afirmación, atribuida, restaurada y verificada.
+
+## 8.7 Lo que sigue abierto y con dueño
+
+**No** se borró el handler y **no** se conectó el reloj de `WaitUntilEngine`/`RetryEngine` al puerto
+durable. La guarda de reloj de B1d sigue vigente por una razón distinta a la que decía: no por
+"dos rutas vivas", sino porque ahora está probado que el segundo productor es código muerto y
+unificar el reloj del motor exigiría un gate propio (S3–S7) que sigue sin dueño. Queda registrado
+como fila de B1.3, no como cierre.
+
+## 8.8 Lo que sigue abierto y con dueño: el stub no se puede arreglar en una rebanada
+
+La corrección obvia —que un handler muerto deje de reportar `Satisfied`— **se midió y se descartó**,
+porque su coste no es un fichero.
+
+`CoreWaitUntilDifferentialContractTest` **congela** el comportamiento stub en dos filas, y lo hace
+con nombres que declaran la intención:
+
+- `handler — emits WaitUntilPolled and WaitUntilCompleted events with stub pattern` (línea 76)
+- `handler — stub output has completed outcome with zero attempts-durations` (línea 116)
+
+Ambas invocan `CoreWaitUntilStep.definition.handler.execute(...)` directamente y **afirman** que
+`conditionResult` es `true` y que el outcome es `"completed"`. Convertir el handler en un refusal
+—un `IllegalStateException` en vez de un `Satisfied`— no es endurecer el runtime: es **descongelar
+un contrato de regresión y reescribir sus dos aserciones**, en un fichero titulado *Differential
+Contract Freeze* que existe precisamente para que nadie cambie la semántica de `core.waitUntil`
+sin una decisión registrada.
+
+Hay además una asimetría que sólo se ve al medir: esas filas fijan el comportamiento del handler,
+mientras el camino de producción (probado en §8.3) **no lo usa**. Así que el "contrato congelado"
+describe un componente que ya no participa en la ejecución del Step que dice describir.
+
+| opción | qué cuesta | quién debería decidir |
+|---|---|---|
+| borrar el handler | `StepDefinition` exige uno; hay que decidir qué lleva la contract suite | diseño de Step |
+| refusal explícito | reescribir las 2 filas del freeze, con su recibo | diseño de Step |
+| dejarlo muerto y documentado | nada; es el estado actual | ya decidido en §8.4 |
+
+**Se queda en la tercera opción**, y la primera queda registrada como P1 en
+`IMPLEMENTATION_BACKLOG.md` con este coste medido, para que la decisión sea explícita cuando se
+tome y no porque nadie se fijó en el fichero.
+
+## 8.9 Verificación de la segunda rebanada
+
+| Nivel | Alcance | Resultado |
+|---|---|---|
+| L1/L2 | `CoreWaitUntilBodyVsHandlerTest` | 2 tests, 0 F |
+| L2 | `CoreWaitUntil*` + `*WaitUntil*` + `FArchE4b4*` | 77 tests, 0 F, 0 E |
+| ADVERSARIAL | sonda de reloj absurdo + mutación de `owner` | la sonda es lo que produjo §8.3; la mutación murió en la aserción del marcador |
+| L5 | `check` completo (`--no-daemon`) | `BUILD SUCCESSFUL in 27m 11s` |
+
+```text
+clases=795 tests=5227 failures=0 errors=0 skipped=140
+```
+
+Delta sobre el gate anterior (794 / 5225): **+1 clase / +2 tests**, exactamente
+`CoreWaitUntilBodyVsHandlerTest`. Los 140 skipped son los pre-existentes del harness externo.
+
+**Canarios** (XML borrados antes del gate; corrida 18:24:26Z → 18:51:41Z):
+
+```text
+TEST-...CoreWaitUntilBodyVsHandlerTest.xml  tests=2 failures=0  ts=18:26:02.061Z
+TEST-...ControlJournalUnknownStatusTest.xml tests=3 failures=0  ts=18:46:20.571Z
+```
+
+Ambas dentro de la corrida.
+
+**Un intento fallido que también es evidencia.** El primer `check` de esta rebanada murió en
+22s con `:pipeline-application:detekt FAILED`, `NewLineAtEndOfFile` sobre el fichero de test nuevo.
+No se registró como PASS ni se re-lanzó a ciegas: se leyó `detekt.xml`, se corrigió la causa y
+`detekt` por sí solo dio `BUILD SUCCESSFUL in 8s` antes de relanzar el gate. El `BUILD FAILED` de
+detekt no es un defecto de producto, pero un gate que se declara verde sin mirar por qué falló sí
+lo sería.

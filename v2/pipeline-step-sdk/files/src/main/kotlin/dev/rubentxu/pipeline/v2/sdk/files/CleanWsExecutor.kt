@@ -1,9 +1,9 @@
 package dev.rubentxu.pipeline.v2.sdk.files
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
 import java.util.regex.PatternSyntaxException
 
 /**
@@ -46,16 +46,24 @@ data class CleanWsResult(
  *
  * - Operates only within workspace root
  * - Never touches `.v2/artifacts/` per F-ARCH-L6-003 invariant
- * - C9: refuses the pattern-less form when [protectWorkspaceRoot] is set.
+ * - C9: refuses the pattern-less form when [rootDestruction] does not permit it.
  *   `cleanWs(patterns = null)` means "delete every non-.v2 file", so against a
  *   `--workspace` root that is the user's whole project. See [CleanWsExecutor].
  *
+ * ## Why C8 and C9 share one type
+ *
+ * Both Steps answer the same question — may this root be destroyed wholesale —
+ * and C9 is strictly more dangerous: `deleteDir` has a sub-path form a caller
+ * could narrow by accident, `cleanWs` has no partial form at all. Two booleans
+ * let one be wired to scratch while the other stayed user-owned, with nothing
+ * observing the divergence. One [RootDestruction] makes that unrepresentable.
+ *
  * @param workspaceResolver Resolves stage workspace root: `(stageName, stageIndex) -> workspacePath`
- * @param protectWorkspaceRoot When true, refuse the pattern-less form.
+ * @param rootDestruction Whether a wholesale root sweep may run.
  */
 class CleanWsExecutor(
     private val workspaceResolver: (stageName: String, stageIndex: Int) -> Path,
-    private val protectWorkspaceRoot: Boolean = false,
+    val rootDestruction: RootDestruction = RootDestruction.DecidedElsewhere,
 ) {
 
     /**
@@ -75,8 +83,18 @@ class CleanWsExecutor(
         // non-.v2 file in the workspace". In a scratch workspace that is fine,
         // but with --workspace the root is the user's own project, and this
         // form would delete every file in it. Unlike deleteDir, this is not
-        // recoverable at all: there is no pattern to narrow it by accident.
-        require(!protectWorkspaceRoot || !spec.patterns.isNullOrEmpty()) {
+        // recoverable at all: there is no pattern to narrow it by accident. An
+        // unresolved ownership question fails closed here too.
+        //
+        // Matched on the cases, for the same reason as deleteDir: a bit would
+        // let a new ownership state inherit a verdict nobody chose for it.
+        val wipesRoot = when (rootDestruction) {
+            RootDestruction.ScratchOwned -> true
+            RootDestruction.UserOwned,
+            RootDestruction.DecidedElsewhere,
+            -> false
+        }
+        require(wipesRoot || !spec.patterns.isNullOrEmpty()) {
             "cleanWs refuses to run without patterns on workspace '$workspace'; " +
                 "pass patterns such as cleanWs(patterns = listOf(\"build/**\")) " +
                 "so only generated content is removed"
@@ -266,9 +284,13 @@ class CleanWsExecutor(
     }
 
     companion object {
-        fun sha256(bytes: ByteArray): String {
-            val digest = MessageDigest.getInstance("SHA-256")
-            return digest.digest(bytes).joinToString("") { "%02x".format(it) }
-        }
+        /**
+         * SHA-256 hex of [bytes], routed through the shared utility (B0).
+         *
+         * Byte-identical to the local implementation this replaces: same algorithm, same
+         * lowercase hex, same input. The value is emitted in the Step's observability event,
+         * so an external observer comparing digests keeps matching.
+         */
+        fun sha256(bytes: ByteArray): String = Sha256.ofBytes(bytes)
     }
 }

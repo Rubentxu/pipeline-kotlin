@@ -107,3 +107,43 @@ internal fun computeBundledPlugins(): List<String> {
         }
     }
 }
+
+/**
+ * S6-COMPOSITION — the product boundary: admit every plugin artifact, then compose, or exit.
+ *
+ * ## Why the exit lives here and not at the call site
+ *
+ * `Main` composes from two branches. If each one rendered its own refusal, one could report a
+ * refusal while the other composed anyway, and the two messages would drift apart as they were
+ * edited. Rendering once, here, makes "a refused plugin stops the run" a property of a single
+ * function rather than a convention repeated in two places.
+ *
+ * ## Why exit 2 and not exit 1
+ *
+ * 2 is this CLI's established code for "a plugin was refused", already used by the bundled-classpath
+ * conflict above, and 3 is reserved for a packaging defect. A refused plugin is an operator-facing
+ * refusal with a named artifact; a missing build version is a broken build. Collapsing them would
+ * make the two indistinguishable from a log line.
+ */
+internal fun admitThenComposeOrExit(pluginJars: List<String>): PreResolvedComposition =
+    when (val outcome = PluginCompositionAdmitter.admitThenCompose(pluginJars)) {
+        is CompositionOutcome.Composed -> {
+            outcome.composition.also { composition ->
+                if (outcome.admitted.isNotEmpty()) {
+                    composition.reportTo { line -> System.err.println(line) }
+                }
+            }
+        }
+
+        is CompositionOutcome.Refused -> {
+            System.err.println("Plugin admission refused for ${outcome.artifact}: ${outcome.rejection}")
+            System.exit(2)
+            error("unreachable: System.exit does not return")
+        }
+
+        is CompositionOutcome.RuntimeVersionUnavailable -> {
+            System.err.println("FATAL — ${outcome.detail}")
+            System.exit(3)
+            error("unreachable: System.exit does not return")
+        }
+    }

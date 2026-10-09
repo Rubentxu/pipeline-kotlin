@@ -85,10 +85,14 @@ value class Fingerprint(val hex: String) {
             )
 
             val canonicalJson = JSON.encodeToString(FingerprintPayload.serializer(), payload)
-            val digest = MessageDigest.getInstance("SHA-256")
-            val hashBytes = digest.digest(canonicalJson.toByteArray(Charsets.UTF_8))
-            val hexString = hashBytes.joinToString("") { "%02x".format(it) }
-            return Fingerprint(hexString)
+            // Routed through [dev.rubentxu.pipeline.v2.domain.digest.Sha256] (B0). This is the
+            // single most durable digest in the repository: it is the operation identity that
+            // replay, divergence and resume are decided against, and every shipped candidate
+            // has written rows keyed by the previous expression's exact value. The bytes hashed
+            // are unchanged — the previous code also used UTF-8 explicitly — so no existing
+            // fingerprint moves. What changes is that the hex form now comes from one place
+            // instead of a third local re-spelling of "%02x".
+            return Fingerprint(dev.rubentxu.pipeline.v2.domain.digest.Sha256.ofText(canonicalJson))
         }
     }
 }

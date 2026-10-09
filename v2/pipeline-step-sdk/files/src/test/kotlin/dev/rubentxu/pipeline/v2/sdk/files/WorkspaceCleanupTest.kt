@@ -39,7 +39,10 @@ class WorkspaceCleanupTest {
         Files.createDirectories(workspace.resolve("b"))
         Files.writeString(workspace.resolve("b/c.txt"), "world")
 
-        val executor = DeleteDirExecutor(workspaceResolver = { _, _ -> workspace })
+        val executor = DeleteDirExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            rootDestruction = RootDestruction.ScratchOwned,
+        )
         val spec = StepSpec.DeleteDir(path = ".")
         val result = executor.execute(stageName = "Test", stageIndex = 0, stepIndex = 0, spec = spec)
 
@@ -65,7 +68,10 @@ class WorkspaceCleanupTest {
         Files.createDirectories(workspace)
         Files.writeString(workspace.resolve("a.txt"), "hello")
 
-        val executor = DeleteDirExecutor(workspaceResolver = { _, _ -> workspace })
+        val executor = DeleteDirExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            rootDestruction = RootDestruction.ScratchOwned,
+        )
 
         val result1 = executor.execute(stageName = "Test", stageIndex = 0, stepIndex = 0, spec = StepSpec.DeleteDir())
         assertTrue(result1.deletedCount >= 1, "first run should delete")
@@ -80,7 +86,10 @@ class WorkspaceCleanupTest {
         val workspace = tempDir.resolve("workspace/build-0")
         Files.createDirectories(workspace)
 
-        val executor = DeleteDirExecutor(workspaceResolver = { _, _ -> workspace })
+        val executor = DeleteDirExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            rootDestruction = RootDestruction.ScratchOwned,
+        )
         val knownSha = "abc123def456"
         Files.writeString(workspace.resolve(".deleted"), knownSha)
 
@@ -98,7 +107,10 @@ class WorkspaceCleanupTest {
         val workspace = tempDir.resolve("workspace/build-0")
         Files.createDirectories(workspace)
 
-        val executor = DeleteDirExecutor(workspaceResolver = { _, _ -> workspace })
+        val executor = DeleteDirExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            rootDestruction = RootDestruction.ScratchOwned,
+        )
 
         val spec = StepSpec.DeleteDir(path = "/etc")
         val exception = runCatching {
@@ -127,7 +139,10 @@ class WorkspaceCleanupTest {
         Files.writeString(workspace.resolve("target/x.class"), "class1")
         Files.writeString(workspace.resolve("target/y.class"), "class2")
 
-        val executor = CleanWsExecutor(workspaceResolver = { _, _ -> workspace })
+        val executor = CleanWsExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            rootDestruction = RootDestruction.ScratchOwned,
+        )
         val spec = StepSpec.CleanWs(deleteDirs = false, patterns = listOf("target/**/*"))
         val result = executor.execute(stageName = "Test", stageIndex = 0, stepIndex = 0, spec = spec)
 
@@ -151,7 +166,10 @@ class WorkspaceCleanupTest {
         Files.writeString(workspace.resolve("target/x.class"), "class")
         Files.writeString(workspace.resolve("logs/y.log"), "log")
 
-        val executor = CleanWsExecutor(workspaceResolver = { _, _ -> workspace })
+        val executor = CleanWsExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            rootDestruction = RootDestruction.ScratchOwned,
+        )
         val spec = StepSpec.CleanWs(deleteDirs = true, patterns = listOf("target/**"))
         val result = executor.execute(stageName = "Test", stageIndex = 0, stepIndex = 0, spec = spec)
 
@@ -174,7 +192,10 @@ class WorkspaceCleanupTest {
         Files.createDirectories(workspace.resolve("target"))
         Files.writeString(workspace.resolve("target/x.class"), "class")
 
-        val executor = CleanWsExecutor(workspaceResolver = { _, _ -> workspace })
+        val executor = CleanWsExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            rootDestruction = RootDestruction.ScratchOwned,
+        )
         val spec = StepSpec.CleanWs(deleteDirs = true, patterns = null)
         val result = executor.execute(stageName = "Test", stageIndex = 0, stepIndex = 0, spec = spec)
 
@@ -199,7 +220,10 @@ class WorkspaceCleanupTest {
         Files.writeString(workspace.resolve("a/b/deep.txt"), "deep")
         Files.writeString(workspace.resolve("root.txt"), "root")
 
-        val executor = CleanWsExecutor(workspaceResolver = { _, _ -> workspace })
+        val executor = CleanWsExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            rootDestruction = RootDestruction.ScratchOwned,
+        )
         val spec = StepSpec.CleanWs(deleteDirs = false, patterns = listOf("a/**/*.txt"))
         val result = executor.execute(stageName = "Test", stageIndex = 0, stepIndex = 0, spec = spec)
 
@@ -216,7 +240,10 @@ class WorkspaceCleanupTest {
         Files.writeString(workspace.resolve("b.tmp"), "b")
         Files.writeString(workspace.resolve("c.txt"), "c")
 
-        val executor = CleanWsExecutor(workspaceResolver = { _, _ -> workspace })
+        val executor = CleanWsExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            rootDestruction = RootDestruction.ScratchOwned,
+        )
         val spec = StepSpec.CleanWs(deleteDirs = false, patterns = listOf("*.tmp"))
         val result = executor.execute(stageName = "Test", stageIndex = 0, stepIndex = 0, spec = spec)
 
@@ -261,7 +288,7 @@ class WorkspaceCleanupTest {
 
         val executor = DeleteDirExecutor(
             workspaceResolver = { _, _ -> workspace },
-            protectWorkspaceRoot = true,
+            rootDestruction = RootDestruction.UserOwned,
         )
 
         val error = assertThrows(IllegalArgumentException::class.java) {
@@ -285,7 +312,7 @@ class WorkspaceCleanupTest {
 
         val executor = DeleteDirExecutor(
             workspaceResolver = { _, _ -> workspace },
-            protectWorkspaceRoot = true,
+            rootDestruction = RootDestruction.UserOwned,
         )
 
         val result = executor.execute("Test", 0, 0, StepSpec.DeleteDir(path = "build"))
@@ -305,7 +332,7 @@ class WorkspaceCleanupTest {
 
         val executor = DeleteDirExecutor(
             workspaceResolver = { _, _ -> workspace },
-            protectWorkspaceRoot = true,
+            rootDestruction = RootDestruction.UserOwned,
         )
 
         assertThrows(IllegalArgumentException::class.java) {
@@ -322,7 +349,7 @@ class WorkspaceCleanupTest {
 
         val executor = DeleteDirExecutor(
             workspaceResolver = { _, _ -> workspace },
-            protectWorkspaceRoot = true,
+            rootDestruction = RootDestruction.UserOwned,
         )
 
         // "./" normalises to the root as well; both spellings must be refused.
@@ -338,7 +365,10 @@ class WorkspaceCleanupTest {
         Files.createDirectories(workspace)
         Files.writeString(workspace.resolve("a.txt"), "scratch")
 
-        val executor = DeleteDirExecutor(workspaceResolver = { _, _ -> workspace })
+        val executor = DeleteDirExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            rootDestruction = RootDestruction.ScratchOwned,
+        )
         val result = executor.execute("Test", 0, 0, StepSpec.DeleteDir(path = "."))
 
         assertTrue(result.deletedCount >= 1, "scratch workspace must still be wipeable")
@@ -358,7 +388,7 @@ class WorkspaceCleanupTest {
 
         val executor = CleanWsExecutor(
             workspaceResolver = { _, _ -> workspace },
-            protectWorkspaceRoot = true,
+            rootDestruction = RootDestruction.UserOwned,
         )
 
         val error = assertThrows(IllegalArgumentException::class.java) {
@@ -381,7 +411,7 @@ class WorkspaceCleanupTest {
 
         val executor = CleanWsExecutor(
             workspaceResolver = { _, _ -> workspace },
-            protectWorkspaceRoot = true,
+            rootDestruction = RootDestruction.UserOwned,
         )
 
         // An empty list is semantically the same as null: both take the
@@ -401,7 +431,7 @@ class WorkspaceCleanupTest {
 
         val executor = CleanWsExecutor(
             workspaceResolver = { _, _ -> workspace },
-            protectWorkspaceRoot = true,
+            rootDestruction = RootDestruction.UserOwned,
         )
 
         val result = executor.execute("Test", 0, 0, StepSpec.CleanWs(patterns = listOf("build/**")))
@@ -417,7 +447,10 @@ class WorkspaceCleanupTest {
         Files.createDirectories(workspace)
         Files.writeString(workspace.resolve("a.txt"), "scratch")
 
-        val executor = CleanWsExecutor(workspaceResolver = { _, _ -> workspace })
+        val executor = CleanWsExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            rootDestruction = RootDestruction.ScratchOwned,
+        )
         val result = executor.execute("Test", 0, 0, StepSpec.CleanWs(patterns = null))
 
         assertTrue(result.deletedFiles >= 1, "scratch wipe must still work")

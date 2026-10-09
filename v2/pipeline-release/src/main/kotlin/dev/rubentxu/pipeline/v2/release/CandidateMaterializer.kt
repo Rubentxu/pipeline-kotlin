@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.release
 import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 
 /**
  * P0.2 / P0.4 — the effectful half: measure real bytes and emit the candidate
@@ -21,12 +21,16 @@ import java.security.MessageDigest
  */
 object CandidateMaterializer {
 
-    /** Digest of a file's bytes, lowercase hex. */
-    fun sha256Of(path: Path): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        Files.newInputStream(path).use { stream -> digestStream(stream, digest) }
-        return digest.digest().toHexString()
-    }
+    /**
+     * Digest of a file's bytes, lowercase hex.
+     *
+     * This value becomes the candidate's identity, so the bytes hashed are unchanged: the
+     * shared utility (B0) streams with the same algorithm and produces the same lowercase hex
+     * as the local 64 KiB loop this replaces. The local loop and its private hex helper are
+     * deleted rather than left behind, because a candidate digest computable two ways is the
+     * kind of ambiguity that lets a wrong ZIP pass admission.
+     */
+    fun sha256Of(path: Path): String = Sha256.ofFile(path)
 
     /**
      * Write the candidate material next to the ZIP and validate the whole set
@@ -153,18 +157,6 @@ object CandidateMaterializer {
 
     private const val MANIFEST_NAME = "distribution-manifest.json"
     private const val HANDOFF_NAME = "candidate-handoff.json"
-
-    private fun digestStream(stream: InputStream, digest: MessageDigest) {
-        val buffer = ByteArray(64 * 1024)
-        while (true) {
-            val read = stream.read(buffer)
-            if (read < 0) break
-            digest.update(buffer, 0, read)
-        }
-    }
-
-    private fun ByteArray.toHexString(): String =
-        joinToString(separator = "") { "%02x".format(it) }
 }
 
 /** Outcome of materializing a candidate. */

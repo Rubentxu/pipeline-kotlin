@@ -1,7 +1,7 @@
 # pipeline-kotlin examples
 
 Real, runnable pipelines executed by the V2 CLI binary
-(`v2/pipeline-application/build/install/pipeline-application/bin/pipeline-application`).
+(`v2/pipeline-application/build/install/pipelinek/bin/pipelinek`).
 
 ## Run them
 
@@ -48,9 +48,13 @@ guarantee today is the parallel terminal aggregate (see `08`).
 ## CLI contract
 
 ```
-pipeline validate <script>                       # validate, emit events to stdout
-pipeline run [--db <path>] [--resume] <script>   # durable run with SQLite journal
+pipelinek validate <script>                                  # validate, emit events to stdout
+pipelinek run [--db <path>] [--resume] [--plugin-jar <jar>] <script>
 ```
+
+`--plugin-jar` is repeatable and is how an external plugin is loaded; the script then imports the
+plugin's own DSL extension. See the authoring guide in
+[`example-uppercase-plugin/README.md`](example-uppercase-plugin/README.md).
 
 ## Status (honest)
 

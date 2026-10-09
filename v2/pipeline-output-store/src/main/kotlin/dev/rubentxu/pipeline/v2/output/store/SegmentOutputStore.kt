@@ -120,7 +120,21 @@ class SegmentOutputStore(
     private val recoveryLock = ReentrantLock()
 
     @Volatile private var recovered = false
-    private val perStream = HashMap<OutputStreamId, ReentrantLock>()
+
+    /**
+     * One lock per stream, keyed by the **canonical** stream key.
+     *
+     * The key is `safe(streamId.value)` — exactly the directory name [layout] resolves for that
+     * stream — and it is deliberately a `String` rather than an [OutputStreamId]. [prune] reaches a
+     * stream by its directory name (the id is not invertible: `safe` folds `/` onto `_`), so a map
+     * keyed by the raw id could never share an entry with prune. The writer used to key on the raw
+     * id and prune on the folded name, so releasing a run added a second, permanently retained lock
+     * for a stream whose writer lock was already present (measured: `2N` locks after releasing `N`
+     * runs, AUD-08/B1a). Two ids that fold to the same name already share one on-disk directory, so
+     * they ARE one stream on disk and must share one lock; that is what makes this the correct
+     * canonical key and not merely a convenient one.
+     */
+    private val perStream = HashMap<String, ReentrantLock>()
 
     @Volatile private var frameIndex: SegmentFrameIndex? = null
 
@@ -376,8 +390,13 @@ class SegmentOutputStore(
             // Deleting under a per-stream lock, so a concurrent reader is served or refused, never
             // served from a directory being removed underneath it. Deleting without one is a race
             // whose outcome is "some bytes, or an IOException", decided by scheduling.
+            //
+            // The key is the directory name itself, which IS `streamKey(stream)` for the stream
+            // that wrote this directory: prune reaches a stream by its directory (the id is not
+            // invertible), so keying on the name is what lets it share the writer's lock instead of
+            // adding a permanent second one (AUD-08).
             val streamLock = synchronized(perStream) {
-                perStream.getOrPut(OutputStreamId(dir.fileName.toString())) { ReentrantLock() }
+                perStream.getOrPut(dir.fileName.toString()) { ReentrantLock() }
             }
             streamLock.withLock {
                 bytes += committedLocked(layoutFor(dir))
@@ -477,9 +496,19 @@ class SegmentOutputStore(
         withStreamLockFor(stream) { block() }
 
     private fun <T> withStreamLockFor(stream: OutputStreamId, block: () -> T): T {
-        val streamLock = synchronized(perStream) { perStream.getOrPut(stream) { ReentrantLock() } }
+        val streamLock = synchronized(perStream) { perStream.getOrPut(streamKey(stream)) { ReentrantLock() } }
         return streamLock.withLock { block() }
     }
+
+    /**
+     * The canonical lock key for a stream: the `safe()`-folded name that also names its directory.
+     *
+     * `layout(stream)` resolves the directory with exactly this fold, so a writer and [prune] (which
+     * reaches the same directory by directory name) compute the same key for the same stream. Kept
+     * in one place so the two sites cannot drift apart again, which is the defect B1c fixes.
+     */
+    private fun streamKey(stream: OutputStreamId): String = safe(stream.value)
+
     /**
      * Drop any uncommitted bytes and return how many were dropped.
      *

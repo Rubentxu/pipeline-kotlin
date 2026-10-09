@@ -75,6 +75,61 @@ object ShExecution {
     }
 
     /**
+     * Stream a process transcript into the Output Plane, redacting on the way in.
+     *
+     * RESTORED VERBATIM FROM `origin/main` during the §1.1 reconciliation. It is NOT new code:
+     * `ShExecution.kt` auto-merged, and the automatic merge silently dropped this function while
+     * `main`'s own `B1aOutputPlaneProviderLifecycleCharacterizationTest` still calls it. A clean
+     * textual merge is not a safe merge, and the compile is what caught it.
+     *
+     * **This is not on the production path on this branch.** `main` reaches this function from
+     * `invokeShell`; this branch reaches the Output Plane through the composed sink instead —
+     * `RedactingOutputIngress` handed to the executor as `channelSinks`, which drains the redacted
+     * stream in bounded windows and commits each chunk. That is the successor to the pull-shaped
+     * `appendFrom` below, and it is what OBS-C2.3 and the live-window work delivered.
+     *
+     * It is kept because a characterisation test that exercised it is still in the tree and
+     * deleting the subject to make the test compile would certify a path that no longer exists.
+     * Whether that test should instead be repointed at the composed sink is an open decision for
+     * the owner, recorded as such rather than decided here.
+     *
+     * M1-P2. This replaces the pair of emitters that used to exist here, and the replacement is not
+     * a refactor: those emitters were the **second** rendering of the same bytes. The wrapper
+     * writes `console.log`, and then the JVM re-rendered its content into an
+     * `EchoOutputCaptured` event built from in-memory buffers. Two sources, one redactor in two
+     * overloads, and no property saying they agreed — so a parity test built on this path would
+     * have compared two implementations rather than one writer against what it wrote. The event is
+     * gone; the store is the authority. See ADR-M1 D2.
+     *
+     * Redaction happens **here**, on the way to persistence, not on the way out. A store that
+     * redacted at read time would already have written the secret to disk, and the byte count a
+     * reader sees would depend on how many secrets happened to be in the stream.
+     *
+     * Streaming, never materialised: the producer is consumed in bounded windows by
+     * [dev.rubentxu.pipeline.v2.output.store.OutputStreamHandle.appendFrom], so the resident set is one
+     * window plus redactor lookahead regardless of transcript size.
+     */
+    internal fun ingestTranscriptIntoOutputPlane(
+        controlDirRoot: Path,
+        runId: String,
+        opId: String,
+        source: () -> InputStream?,
+        secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry?,
+    ) {
+        val input = source() ?: return
+        val redacted = if (secretPatternRegistry != null) {
+            // Each StreamingRedactor carries independent boundary state, so a secret split across
+            // window edges is still scrubbed.
+            dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor(secretPatternRegistry).wrap(input)
+        } else {
+            input
+        }
+        val store = OutputPlaneProvider.storeFor(controlDirRoot)
+        store.open(OutputPlaneProvider.streamId(runId, opId))
+            .appendFrom(redacted)
+    }
+
+    /**
      * Executes a shell step with durable semantics.
      *
      * @param step The shell step specification.
@@ -167,7 +222,17 @@ object ShExecution {
             // Non-durable fallback: script written to temp file; argv = [bash, <path>]
             // P2: env injected via pb.environment().putAll (WS-S-005)
             // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
-            return executeNonDurableInvocation(command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot, secretPatternRegistry)
+            return executeNonDurableInvocation(
+                command = command,
+                env = EnvModel.apply(shOptions.env),
+                eventSink = eventSink,
+                stepIndex = stepIndex,
+                runId = runId,
+                opId = opId.format(),
+                controlDirRoot = controlDirRoot,
+                timeoutMs = shOptions.timeoutMs,
+                secretPatternRegistry = secretPatternRegistry,
+            )
         }
 
         // workspaceRoot from shOptions is set by PipelineRun.kt with the correct stageName → stageIndex mapping.
@@ -302,7 +367,22 @@ object ShExecution {
             // Non-durable fallback for non-Linux platforms
             // P2: script via temp file; env via pb.environment().putAll (WS-S-005)
             // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
-            return executeNonDurableInvocation(command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot, secretPatternRegistry)
+            return executeNonDurableInvocation(
+                command = command,
+                env = EnvModel.apply(shOptions.env),
+                eventSink = eventSink,
+                stepIndex = stepIndex,
+                runId = runId,
+                opId = opId.format(),
+                controlDirRoot = controlDirRoot,
+                timeoutMs = shOptions.timeoutMs,
+                secretPatternRegistry = secretPatternRegistry,
+            )
+        } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
+            // PAR-D: a CancellationException is an execution mechanism, not a failure.
+            // Mapping it to Failed(INFRASTRUCTURE) would make "the run was cancelled"
+            // indistinguishable from "the shell substrate broke". Rethrow unchanged.
+            throw ce
         } catch (failure: EngineInvariantViolation) {
             throw failure
         } catch (e: Exception) {
@@ -438,13 +518,36 @@ object ShExecution {
         runId: String,
         opId: String,
         controlDirRoot: Path?,
+        timeoutMs: Long?,
         secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
     ): ShellInvocationResult {
+        // AUD-02 (c): the caller's budget must reach the runtime. `0` means "no
+        // timeout" on BOTH routes (TMO-S-013, DurableShellExecutor: `timeoutMs > 0`
+        // arms the watchdog); a negative budget is not a mode this route can
+        // honour, so it is refused explicitly instead of being silently dropped.
+        val effectiveTimeoutMs = when {
+            timeoutMs == null || timeoutMs == 0L -> null
+            timeoutMs > 0L -> timeoutMs
+            else -> return ShellInvocationResult.Failed(
+                PipelineFailure(
+                    FailureKind.INFRASTRUCTURE,
+                    "core.sh timeoutMs must be positive or null/0 for no timeout: $timeoutMs",
+                ),
+            )
+        }
+
         // Env flows typed through the runtime boundary (M3 invariant: secret
         // bytes never escape SecretHandle here). The runtime materialises them
         // at the moment it hands them to the OS env block, and never persists
         // them. The legacy code coerced eagerly at pb.environment().putAll —
         // the runtime collapses that responsibility into one place.
+        //
+        // AUD-02 (c/d): when the caller owns the root, it is theirs and is left
+        // alone; when this route had to create its own scratch directory under
+        // java.io.tmpdir, this route owns its full lifecycle and deletes it on
+        // success, failure, timeout AND cancellation (deterministic cleanup; the
+        // historical leak of one `pipeline-sh-non-durable*` per invocation).
+        val ownsControlDir = controlDirRoot == null
         val controlDir: Path = try {
             controlDirRoot?.resolve(opId) ?: Files.createTempDirectory("pipeline-sh-non-durable")
         } catch (_: Exception) {
@@ -453,92 +556,115 @@ object ShExecution {
             )
         }
 
-        val runtime = ProcessDurableTaskRuntime(
-            controlDir,
-            object : Clock {
-                override fun now(): Instant = Instant.now()
-            },
-        )
-        val request = TaskExecutionRequest(
-            task = TaskSpec.ShellScriptTask(
-                script = command.script,
-                interpreter = InterpreterPolicy.BASH,
-            ),
-            runId = RunId(runId),
-            opId = opId,
-            timeoutMs = null,
-            env = env,
-        )
+        try {
+            val runtime = ProcessDurableTaskRuntime(
+                controlDir,
+                object : Clock {
+                    override fun now(): Instant = Instant.now()
+                },
+            )
+            val request = TaskExecutionRequest(
+                task = TaskSpec.ShellScriptTask(
+                    script = command.script,
+                    interpreter = InterpreterPolicy.BASH,
+                ),
+                runId = RunId(runId),
+                opId = opId,
+                timeoutMs = effectiveTimeoutMs,
+                env = env,
+            )
 
-        // Accumulate chunks into one EchoOutputCaptured (matches legacy behaviour
-        // — one event per step, full script output). O(chunk) memory at the sink.
-        val stdoutBuilder = StringBuilder()
-        val stderrBuilder = StringBuilder()
-        val sink = ExecutionOutputSink { chunk ->
-            when (chunk.stream) {
-                TaskStream.STDOUT -> stdoutBuilder.append(String(chunk.data, Charsets.UTF_8))
-                TaskStream.STDERR -> stderrBuilder.append(String(chunk.data, Charsets.UTF_8))
+            // Accumulate chunks into one EchoOutputCaptured (matches legacy behaviour
+            // — one event per step, full script output). O(chunk) memory at the sink.
+            val stdoutBuilder = StringBuilder()
+            val stderrBuilder = StringBuilder()
+            val sink = ExecutionOutputSink { chunk ->
+                when (chunk.stream) {
+                    TaskStream.STDOUT -> stdoutBuilder.append(String(chunk.data, Charsets.UTF_8))
+                    TaskStream.STDERR -> stderrBuilder.append(String(chunk.data, Charsets.UTF_8))
+                }
+            }
+
+            val result = try {
+                runtime.execute(request, sink)
+            } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
+                // PAR-D: a cancellation is an execution mechanism, not a failure. The
+                // runtime already recorded its own durable CANCELLED terminal; mapping
+                // it to a Failed(INFRASTRUCTURE) value is the forbidden conversion.
+                throw ce
+            } catch (failure: EngineInvariantViolation) {
+                throw failure
+            } catch (failure: Exception) {
+                return ShellInvocationResult.Failed(
+                    PipelineFailure(FailureKind.INFRASTRUCTURE, failure.message ?: "core.sh could not execute"),
+                )
+            }
+
+            // The NON-DURABLE fallback, and the one place where a console event is still correct.
+            //
+            // This path runs when there is no controlDirRoot at all — no filesystem privileges, or a
+            // non-Linux host — so there is no Output Plane to write into. ADR-M1 D2 forbids a SECOND
+            // authority over the same bytes; it does not require one to exist where none can. Here the
+            // event is the only rendering, so it is not a second anything.
+            //
+            // The law the fitness test enforces is therefore per-execution, not per-type: "for any
+            // one execution, the transcript bytes exist in exactly one place." A guard written as
+            // "EchoOutputCaptured is never emitted" would have been wrong here and would have pushed
+            // someone into deleting the only observable console this path has.
+            //
+            // WU-LPR-011: the observable content is redacted with the chunk-boundary-safe redactor
+            // before emission, exactly as on the durable path.
+            val output = stdoutBuilder.toString() + stderrBuilder.toString()
+            val observableContent = redactTranscript(output, secretPatternRegistry)
+            eventSink.append(
+                EchoOutputCaptured(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = Instant.now(),
+                    stepIndex = stepIndex,
+                    content = observableContent,
+                ),
+            )
+
+            val terminal = when {
+                result.timedOut -> DurableTaskTerminal.Cancelled(
+                    InterruptionRecord(
+                        kind = InterruptionKind.TIMEOUT,
+                        message = "core.sh timed out",
+                        operationId = opId,
+                    ),
+                )
+                result.cancelled -> DurableTaskTerminal.Cancelled(
+                    InterruptionRecord(
+                        kind = InterruptionKind.PARENT_CANCELLED,
+                        message = "core.sh was cancelled",
+                        operationId = opId,
+                    ),
+                )
+                else -> DurableTaskTerminal.Exited(
+                    exitCode = result.exitCode,
+                    output = DurableTaskOutput(controlDir.toString(), output),
+                )
+            }
+            return classifyShellTerminal(terminal, command.returnMode)
+        } finally {
+            // Single deletion point: runs for success, typed failure, timeout and the
+            // cancellation rethrow above. Only a scratch dir this route created is
+            // removed; a caller-provided control root is never touched here.
+            if (ownsControlDir) {
+                deleteRecursively(controlDir)
             }
         }
+    }
 
-        val result = try {
-            runtime.execute(request, sink)
-        } catch (failure: EngineInvariantViolation) {
-            throw failure
-        } catch (failure: Exception) {
-            return ShellInvocationResult.Failed(
-                PipelineFailure(FailureKind.INFRASTRUCTURE, failure.message ?: "core.sh could not execute"),
-            )
+    /** Best-effort, deterministic removal of a scratch control directory this route owns. */
+    private fun deleteRecursively(root: Path) {
+        kotlin.runCatching {
+            Files.walk(root).use { paths ->
+                paths.sorted(java.util.Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
+            }
         }
-
-        // The NON-DURABLE fallback, and the one place where a console event is still correct.
-        //
-        // This path runs when there is no controlDirRoot at all — no filesystem privileges, or a
-        // non-Linux host — so there is no Output Plane to write into. ADR-M1 D2 forbids a SECOND
-        // authority over the same bytes; it does not require one to exist where none can. Here the
-        // event is the only rendering, so it is not a second anything.
-        //
-        // The law the fitness test enforces is therefore per-execution, not per-type: "for any
-        // one execution, the transcript bytes exist in exactly one place." A guard written as
-        // "EchoOutputCaptured is never emitted" would have been wrong here and would have pushed
-        // someone into deleting the only observable console this path has.
-        //
-        // WU-LPR-011: the observable content is redacted with the chunk-boundary-safe redactor
-        // before emission, exactly as on the durable path.
-        val output = stdoutBuilder.toString() + stderrBuilder.toString()
-        val observableContent = redactTranscript(output, secretPatternRegistry)
-        eventSink.append(
-            EchoOutputCaptured(
-                eventId = UUID.randomUUID().toString(),
-                runId = runId,
-                sequence = 0L,
-                occurredAt = Instant.now(),
-                stepIndex = stepIndex,
-                content = observableContent,
-            ),
-        )
-
-        val terminal = when {
-            result.timedOut -> DurableTaskTerminal.Cancelled(
-                InterruptionRecord(
-                    kind = InterruptionKind.TIMEOUT,
-                    message = "core.sh timed out",
-                    operationId = opId,
-                ),
-            )
-            result.cancelled -> DurableTaskTerminal.Cancelled(
-                InterruptionRecord(
-                    kind = InterruptionKind.PARENT_CANCELLED,
-                    message = "core.sh was cancelled",
-                    operationId = opId,
-                ),
-            )
-            else -> DurableTaskTerminal.Exited(
-                exitCode = result.exitCode,
-                output = DurableTaskOutput(controlDir.toString(), output),
-            )
-        }
-        return classifyShellTerminal(terminal, command.returnMode)
     }
 
     private fun ShellInvocationResult.toLegacyStatus(

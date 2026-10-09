@@ -40,6 +40,43 @@ tasks.named<Jar>("jar") {
     }
 }
 
+// S6-COMPOSITION — the version the RUNTIME reads, as a classpath RESOURCE rather than as a jar
+// manifest attribute.
+//
+// Why this exists, and why it is not redundant with the manifest above: `Package.getImplementationVersion()`
+// only answers when the code was loaded from a JAR that declares a manifest. Thirty-four UAT and
+// corpus harnesses legitimately launch the CLI with `java -cp <test classpath>`, where
+// `pipeline-application` is a CLASSES DIRECTORY and no manifest exists. Reading the version only
+// from the manifest made admission fail closed on every one of those runs — 143 tests, all dying
+// with `FATAL - jar manifest is missing Implementation-Version` and exit 3. The fail-closed rule
+// was right; the SOURCE was wrong, because it conflated "no manifest" with "not a build artifact".
+//
+// Both are populated from the same `project.version`, which is the sole authority (WU-LPR-071).
+// `RuntimeApiVersionDriftTest` asserts the two agree, so this can never become a second authority
+// free to disagree with the manifest that `pipeline-release` certifies against.
+val generateVersionResource by tasks.registering {
+    val outputDir = layout.buildDirectory.dir("generated/version-resources")
+    val versionValue = project.version.toString()
+    inputs.property("version", versionValue)
+    outputs.dir(outputDir)
+    doLast {
+        val target = outputDir.get()
+            .file("dev/rubentxu/pipeline/v2/application/pipelinek-version.properties")
+            .asFile
+        target.parentFile.mkdirs()
+        target.writeText(
+            "# Generated from project.version. Do not edit; see build.gradle.kts.\n" +
+                "# The runtime reads THIS, because Package.getImplementationVersion() is null\n" +
+                "# whenever the CLI runs from a classes directory instead of a jar.\n" +
+                "version=$versionValue\n",
+        )
+    }
+}
+
+sourceSets.main {
+    resources.srcDir(generateVersionResource)
+}
+
 dependencies {
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-events"))
@@ -120,6 +157,11 @@ tasks.test {
         ":pipeline-step-sdk:junit:jar",
         ":pipeline-step-sdk:utilities:jar",
     )
+    // S6-COMPOSITION: RuntimeApiVersionDriftTest compares the generated version resource against
+    // the jar manifest's Implementation-Version, so this module's own jar must exist before the
+    // test runs. Same reasoning as the plugin jars above: the subject is resolved from the
+    // filesystem at runtime, not from the compile classpath.
+    dependsOn(tasks.named("jar"))
     useJUnitPlatform()
 
     // ── Cross-module inputs, declared ────────────────────────────────────────────

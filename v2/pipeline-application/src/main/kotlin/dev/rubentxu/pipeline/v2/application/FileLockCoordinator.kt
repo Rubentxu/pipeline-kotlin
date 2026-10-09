@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import java.io.FileNotFoundException
 import java.nio.channels.FileChannel
 import java.nio.channels.FileLock
@@ -7,7 +8,6 @@ import java.nio.channels.OverlappingFileLockException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
-import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -235,10 +235,9 @@ class FileLockCoordinator(
      * designed out rather than validated at runtime.
      */
     private fun lockFileFor(resource: String): Path {
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(resource.toByteArray(Charsets.UTF_8))
-            .take(6)
-            .joinToString("") { "%02x".format(it) }
+        // 6 digest bytes, as before. The truncation is named in the utility rather than spelled
+        // here so this stays one hex form in the repository (B0).
+        val digest = Sha256.ofBytesPrefix(resource.toByteArray(Charsets.UTF_8), 6)
         val safe = buildString {
             for (c in resource) {
                 append(if (c.isLetterOrDigit() && c.code < 128 || c == '-' || c == '_' || c == '.') c else '_')

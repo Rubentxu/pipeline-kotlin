@@ -327,6 +327,67 @@ class UatLocal011WorkflowControlTest {
         )
     }
 
+    /**
+     * SC-011-14: an Attached (USER-owned) root must fail closed on `cleanWs()`.
+     *
+     * The twin of SC-011-13, and the row that was missing. C9 is strictly the
+     * more dangerous of the two — `cleanWs()` with no patterns means "delete
+     * every non-.v2 file in the workspace", and there is no partial form to
+     * narrow it by — yet the destructive-effect UAT covered only `deleteDir`.
+     * A guard that is green in unit tests and never fires in a real run is
+     * exactly what SC-011-13's own KDoc records happening to the deleteDir
+     * guard; repeating that for cleanWs would be accepting the same defect a
+     * second time.
+     *
+     * Asserts all three halves: the refusal, the absence of the event, and the
+     * survival of the caller's files. A refusal that swept anyway would still
+     * satisfy a check on the exit code alone.
+     */
+    @Test
+    fun `SC-011-14 cleanWs refuses an attached root and preserves its content`() {
+        val script = tempDir.resolve("sc-011-14.pipeline.kts")
+        Files.writeString(script, """
+            pipeline {
+                stages {
+                    stage("test") {
+                        sh("echo 'precious' > important.txt")
+                        sh("mkdir -p src && echo 'nested' > src/main.kt")
+                        cleanWs()
+                    }
+                }
+            }
+        """.trimIndent())
+
+        Files.deleteIfExists(tempDir.resolve("important.txt"))
+        val result = runPipeline(script) // no flag => Attached, USER-owned root
+
+        assertNotEquals(0, result.exitCode,
+            "cleanWs over an attached root must fail closed, but the run exited 0. stdout: ${result.stdout}")
+
+        val stepFailed = result.events.filterIsInstance<StepFailed>()
+        assertTrue(
+            stepFailed.isNotEmpty(),
+            "Expected a StepFailed for the cleanWs step. Events: ${result.events.map { it::class.simpleName }}",
+        )
+        // Assert the failure exists and that NOTHING was swept — the event
+        // absence plus the surviving files are the real proof. The step id is
+        // not asserted: cleanWs lowers to a `registrystep` whose identifier is
+        // an implementation detail of the registry path, and pinning it would
+        // make this row brittle without making it stronger.
+        assertTrue(
+            result.events.none { it is WsCleaned },
+            "No WsCleaned may be emitted when the authorization refused.",
+        )
+        assertTrue(
+            Files.exists(tempDir.resolve("important.txt")),
+            "The caller's file must survive a refused pattern-less sweep.",
+        )
+        assertTrue(
+            Files.exists(tempDir.resolve("src/main.kt")),
+            "The caller's nested source must survive a refused pattern-less sweep.",
+        )
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     // SC-011-05: cleanWs patterns + dirs-only + retention invariant
     // ═══════════════════════════════════════════════════════════════════════════

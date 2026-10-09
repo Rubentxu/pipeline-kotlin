@@ -78,6 +78,23 @@ A PASS applies to exactly:
 - mandatory GitHub admission check published;
 - branch/release protection observes that check.
 
+**Status: `BLOCKED_EXTERNAL` (ADR-0105, 2026-10-08).** The first bullet is
+local and this repository owns it. The second and third are published by
+`pipelinek-release-harness` against a candidate, and neither this repository nor
+a local agent can satisfy them: `.github/workflows/` does not exist, and
+publishing a check run requires write credentials over this repository.
+
+The condition is evaluated against the harness's verdict, never assumed:
+
+```text
+no admission check for this candidate SHA  ->  G10 = NOT_RUN
+                                             ->  RP-5 PRODUCT_GATE_STOP
+```
+
+Absence is `NOT_RUN`, which is a `STOP`. It is not `PASS`, and there is no
+third value. A candidate without an externally published admission check cannot
+appear as `PRODUCT_GATE_GO`.
+
 ## Final decision
 
 Only two valid outcomes:

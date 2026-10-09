@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.StepNode
-import java.security.MessageDigest
 
 /**
  * Deterministic structural identity of a block Step's body (WU-RP-035).
@@ -70,7 +70,9 @@ internal object BodyStructureDigest {
                 append('\u001E')
             }
         }
-        return sha256Hex(canonical)
+        // Shared utility (B0). Same bytes, same lowercase hex, so parent block identities
+        // already written to a journal keep matching.
+        return Sha256.ofText(canonical)
     }
 
     /**
@@ -81,8 +83,4 @@ internal object BodyStructureDigest {
     private fun StepNode.bodySegments(): List<String> =
         (this as? dev.rubentxu.pipeline.v2.domain.BlockStepNode)?.body?.map { it.id.value } ?: emptyList()
 
-    private fun sha256Hex(value: String): String {
-        val bytes = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
-        return bytes.joinToString("") { byte -> "%02x".format(byte) }
-    }
 }

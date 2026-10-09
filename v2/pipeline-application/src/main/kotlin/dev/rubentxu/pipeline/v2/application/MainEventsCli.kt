@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
 import dev.rubentxu.pipeline.v2.events.EventRecordRead
 import dev.rubentxu.pipeline.v2.events.UndecodableReason
+import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
 import dev.rubentxu.pipeline.v2.events.identity.EnvelopeCodec
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
@@ -70,6 +71,29 @@ import dev.rubentxu.pipeline.v2.events.identity.EventQuery
  */
 object MainEventsCli {
 
+    /**
+     * What the command prints per row: the identity projection, or the typed event itself.
+     *
+     * This is a closed pair on purpose. It is a choice of CODEC, not of reader: both cases read the
+     * same [EventPageDrain.Outcome] through the same store, with the same query, the same cursor and
+     * the same exit status. Adding a third projection must be a decision here rather than a flag
+     * threaded through the drain, because a projection is the only thing `--typed` is allowed to
+     * change and the reason it cannot be allowed to change anything else.
+     */
+    private sealed interface RowProjection {
+        /** The V1 envelope wire form. Byte-for-byte unchanged by the existence of `--typed`. */
+        data object Envelope : RowProjection
+
+        /**
+         * The stored [dev.rubentxu.pipeline.v2.events.DomainEvent], one JSON object per line.
+         *
+         * This is the projection that carries `stageName`, `stepName`, `stepType` and `outcome`.
+         * Those values are not reconstructed: they are read from the record, because the envelope
+         * that the same drain also produces does not hold them.
+         */
+        data object Typed : RowProjection
+    }
+
     fun main(args: Array<String>): Int {
         var db: String? = null
         var runId: String? = null
@@ -78,6 +102,7 @@ object MainEventsCli {
         var limit = DEFAULT_LIMIT
         var afterCursor: String? = null
         var limitArg: String? = null
+        var projection: RowProjection = RowProjection.Envelope
 
         var i = 0
         while (i < args.size) {
@@ -88,6 +113,10 @@ object MainEventsCli {
                 "--subject" -> subjectCanonical = args.getOrNull(++i)
                 "--limit" -> limitArg = args.getOrNull(++i)
                 "--after-cursor" -> afterCursor = args.getOrNull(++i)
+                // MAIN: opcion anadida en origin/main. OBS no la tenia; quedarse con el lado de
+                // OBS entero habria perdido trabajo de main, y quedarse con el de main habria
+                // perdido el comentario de abajo, que explica el defecto con su historia.
+                "--typed" -> projection = RowProjection.Typed
                 else -> when {
                     // AUD-04. This arm used to be `else -> if (!args[i].startsWith("--") && runId == null)
                     // runId = args[i]`, so an unknown `--flag` matched `else`, failed the `startsWith`
@@ -116,7 +145,11 @@ object MainEventsCli {
         }
 
         if (db == null || runId == null) {
-            System.err.println("Usage: pipeline events --db <path> <runId> [--kind K] [--subject v1:run:ID|v1:stage:ID:N|...] [--limit N] [--after-cursor TOKEN]")
+            System.err.println(
+                "Usage: pipeline events --db <path> <runId> [--kind K] " +
+                    "[--subject v1:run:ID|v1:stage:ID:N|...] [--limit N] " +
+                    "[--after-cursor TOKEN] [--typed]",
+            )
             return 2
         }
 
@@ -166,7 +199,11 @@ object MainEventsCli {
                 else -> EventQuery.All
             }
 
-            when (val outcome = EventPageDrain.drain(reader, run, query, cursor, limit)) {
+            val outcome = when (projection) {
+                RowProjection.Envelope -> EventPageDrain.drain(reader, run, query, cursor, limit)
+                RowProjection.Typed -> return reportTyped(store, run, query, cursor, limit, runId)
+            }
+            when (outcome) {
                 is EventPageDrain.Outcome.Answered -> {
                     outcome.page.envelopes.forEach { println(EnvelopeCodec.encode(it)) }
                     reportRefusals(runId, outcome.page.refusals)
@@ -186,10 +223,106 @@ object MainEventsCli {
                     )
                 }
             }
-            return 0
+            return exitCodeFor(outcome)
         } finally {
             store.close()
         }
+    }
+
+    /**
+     * The `--typed` branch: the same read, the same query, the same cursor and the same status
+     * contract as the envelope branch, printed through the typed codec instead.
+     *
+     * It is a separate method rather than a branch inside the envelope loop because the two
+     * projections genuinely carry different things: [dev.rubentxu.pipeline.v2.events.identity.PipelineEventEnvelope]
+     * has identity, and the [dev.rubentxu.pipeline.v2.events.DomainEvent] has the semantic fields the
+     * envelope dropped. What they share — refusal reporting, continuation reporting, the exit status —
+     * is the part that must not fork, so it calls the SAME [reportRefusals] and [reportContinuation]
+     * the envelope path uses and returns the SAME [exitCodeFor] mapping by routing through
+     * [EventPageDrain.drainTyped]'s outcome.
+     */
+    private fun reportTyped(
+        store: dev.rubentxu.pipeline.v2.events.EventStore,
+        run: ResourceRef,
+        query: EventQuery,
+        cursor: EventCursor?,
+        limit: Int,
+        runId: String,
+    ): Int {
+        val outcome = EventPageDrain.drainTyped(store, run, query, cursor, limit)
+        val page = outcome.page
+        page.events.forEach { println(JsonEventLog.encodeOne(it)) }
+        reportRefusals(runId, page.refusals)
+        reportContinuation(page.nextCursor)
+        if (outcome is EventPageDrain.TypedOutcome.Stalled) {
+            System.err.println(
+                "evt-stalled-v1:$runId:${page.nextCursor?.lastSequence ?: 0L}: " +
+                    "the store reported more rows and the continuation did not advance; " +
+                    "history past this point was NOT read",
+            )
+        }
+        // Routed through [typedExitCodeFor], which states the SAME contract as [exitCodeFor] over the typed
+        // ADT. A literal `0` happened to agree with it, but it did not INHERIT it: a function that is
+        // exhaustive over an ADT is what forces a new case to choose a status, and `return 0` has no
+        // such forcing function. Two overloads rather than a conversion between them: converting a
+        // typed page into an envelope-shaped one would mean fabricating envelopes the caller never
+        // reads, which is wasted work in the exit-code path of a command whose whole point is not to
+        // lose information.
+        return typedExitCodeFor(outcome)
+    }
+
+    /**
+     * The exit-code contract, stated once and total over [EventPageDrain.Outcome].
+     *
+     * ## Why this exists rather than a bare `return 0`
+     *
+     * The command returned `0` on both [EventPageDrain.Outcome.Answered] and
+     * [EventPageDrain.Outcome.Stalled], and nothing recorded that as a decision. A `Stalled` page
+     * means the store claimed more rows existed and the continuation could not reach them; the
+     * diagnostic goes to stderr as a structured token and the status is still `0`. That is the
+     * intended contract (observation is read-only and reports what it saw), but it was an accident
+     * of the code rather than a pinned contract (AUD-05). Routing both cases through one exhaustive
+     * function makes the value a decision: adding a case to `Outcome` forces a status to be chosen,
+     * and a test asserts both cells.
+     *
+     * ## Contract
+     *
+     * ```text
+     * 0     the observation completed. Whether it carried refusals (Answered) or the store
+     *       reported more rows than were reachable (Stalled), the read did what was asked and
+     *       reported it on stderr. An unknown run and a filter that matches nothing are also 0.
+     * 2     the command was NOT run: usage/argument error. Missing --db or <runId>, an unknown
+     *       --option, an extra positional, a non-positive/non-numeric --limit, an invalid or
+     *       foreign cursor, or a db path that does not exist.
+     * other an unhandled exception escaped main; the JVM produced that status, this command did
+     *       not choose it. That is a defect, not a designed outcome.
+     * ```
+     */
+    internal fun exitCodeFor(outcome: EventPageDrain.Outcome): Int = when (outcome) {
+        is EventPageDrain.Outcome.Answered -> 0
+        // The stall is reported on stderr (evt-stalled-v1:...); the process still completed an
+        // observation and must not be read as a failure by a caller that only looks at the status.
+        is EventPageDrain.Outcome.Stalled -> 0
+    }
+
+    /**
+     * The SAME exit-code contract as [exitCodeFor], stated over the typed outcome.
+     *
+     * It is a second statement of one rule rather than a second rule. The two ADTs differ in the
+     * payload they carry — [EventPageDrain.TypedPage] holds `DomainEvent`s where [EventPageDrain.Page]
+     * holds envelopes — and nothing else: both are `Answered` or `Stalled`, and the status depends
+     * only on which. Duplicating the two cells is the honest encoding of that. Converting one outcome
+     * into the other to reuse a single function would either fabricate envelopes nobody reads or
+     * weaken [exitCodeFor] to take a flag, and both trade a real property (exhaustiveness over a
+     * closed ADT) for a cosmetic one (a shorter file).
+     *
+     * A change to one that is not mirrored in the other is a defect in the contract, not in the code.
+     */
+    internal fun typedExitCodeFor(outcome: EventPageDrain.TypedOutcome): Int = when (outcome) {
+        is EventPageDrain.TypedOutcome.Answered -> 0
+        // Same reasoning as the envelope branch: the stall is named on stderr as `evt-stalled-v1:...`
+        // and the observation still completed, so a status-only consumer must not read it as failure.
+        is EventPageDrain.TypedOutcome.Stalled -> 0
     }
 
     /** One line per refusal, then a count, so "were there any" is a single-token question. */

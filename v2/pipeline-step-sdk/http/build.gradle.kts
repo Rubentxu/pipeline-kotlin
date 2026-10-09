@@ -1,3 +1,4 @@
+import dev.rubentxu.pipeline.build.ProvenanceDigest
 import java.io.ByteArrayOutputStream
 
 plugins {
@@ -23,7 +24,13 @@ tasks.test {
 }
 
 group = "dev.rubentxu.pipeline.v2"
-version = "0.36.0"
+
+/**
+ * The one hashing primitive the provenance seam uses lives in `buildSrc`
+ * (`dev.rubentxu.pipeline.build.ProvenanceDigest`), shared with scm-git and utilities.
+ * Keeping three private copies is what let AUD-01 be fixed by hand in three places and
+ * left the next fix able to miss two of them (B0.2).
+ */
 
 kotlin {
     jvmToolchain(21)
@@ -51,7 +58,21 @@ val httpVersion = providers.gradleProperty("pipeline.http.release.version").orEl
 
 val httpReleaseProps = layout.buildDirectory.file("resources/main/META-INF/http-release.properties")
 
-val computeHttpDigest = tasks.register<Exec>("computeHttpDigest") {
+val httpClassesDir = layout.buildDirectory.dir("classes/kotlin/main")
+val httpResourcesDir = layout.buildDirectory.dir("resources/main")
+
+// Exclusions by EXACT relative path, never by name suffix (B0.2). The previous filter dropped
+// any file ending with `plugin-manifest.json`, which would also drop an unrelated
+// `unrelated-plugin-manifest.json` from the identity. The three entries are the only documents
+// the plugin generates into its own artifact, and hashing them is a fixed-point loop because
+// they carry the digest.
+val httpExcludedResourcePaths = setOf(
+    "META-INF/http-release.properties",
+    "META-INF/http-release.properties.digest",
+    "META-INF/pipelinek/plugin-manifest.json",
+)
+
+val computeHttpDigest = tasks.register("computeHttpDigest") {
     group = "http"
     description = "Compute the HTTP OFFICIAL_PLUGIN provenance SHA-256 (deterministic over class files + resources)."
 
@@ -62,36 +83,40 @@ val computeHttpDigest = tasks.register<Exec>("computeHttpDigest") {
     outputs.file(httpReleaseProps)
     dependsOn("compileKotlin", "processResources")
 
-    doFirst {
-        val classesDir = layout.buildDirectory.dir("classes/kotlin/main").get().asFile
+    // Declared inputs so Gradle can re-run this task when the material changes (it is no longer
+    // unconditionally always-running). Class dirs and resources dirs are the hashed tree; the
+    // three generated documents are excluded from the resource snapshot so that updating them
+    // does not retrigger the task and cannot feed back into the digest. Path sensitivity is
+    // RELATIVE: the task's own up-to-date key must be checkout-independent too.
+    inputs.files(fileTree(httpClassesDir)).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(fileTree(httpResourcesDir) { exclude(httpExcludedResourcePaths) })
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.property("publisher", publisher)
+    inputs.property("namespace", namespace)
+    inputs.property("version", ver)
+    inputs.property("module", "http")
+
+    // The digest is PLAIN COMPUTATION rather than a shell pipeline, and the one hashing
+    // primitive is shared with scm-git and utilities via buildSrc. It used to be
+    // `tasks.register<Exec>`; keeping Exec without a commandLine fails with
+    // "A problem occurred starting process 'command 'null''".
+    doLast {
+        val classesDir = httpClassesDir.get().asFile
         require(classesDir.exists()) { "classes/kotlin/main does not exist: run compileKotlin first" }
-        val resourcesDir = layout.buildDirectory.dir("resources/main").get().asFile
+        val resourcesDir = httpResourcesDir.get().asFile
         val out = httpReleaseProps.get().asFile
         out.parentFile.mkdirs()
-        val excludedOutput = out.absolutePath
-        val classFiles: List<String> = classesDir.walkTopDown()
-            .filter { it.isFile && it.absolutePath != excludedOutput }
-            .map { it.absolutePath }
-            .toList()
-            .sorted()
-        val resourceFiles: List<String> = if (resourcesDir.exists()) {
-            resourcesDir.walkTopDown()
-                .filter { it.isFile && it.absolutePath != excludedOutput }
-                .map { it.absolutePath }
-                .toList()
-                .sorted()
-        } else {
-            emptyList()
-        }
-        val all = (classFiles + resourceFiles).joinToString(" ")
-        require(all.isNotEmpty()) { "No class or resource files to hash for HTTP OFFICIAL_PLUGIN provenance" }
-        commandLine = listOf("sh", "-c", "sha256sum $all | sha256sum | awk '{print $1}' > '${out.absolutePath}.digest'")
-    }
-
-    doLast {
-        val out = httpReleaseProps.get().asFile
-        val digestFile = File("${out.absolutePath}.digest")
-        val hex = digestFile.readText().trim()
+        // AUD-01: this used to be `sh -c "sha256sum <ABSOLUTE PATHS> | sha256sum"`, and
+        // `sha256sum` PRINTS THE FILENAME IT WAS GIVEN, so two checkouts of identical bytes
+        // produced different digests. The shared ProvenanceDigest frames only the root name and
+        // the relative path, so the absolute checkout path never enters the material.
+        val hex = ProvenanceDigest.computeDigestHex(
+            listOf(
+                ProvenanceDigest.Root("classes", classesDir.toPath()),
+                ProvenanceDigest.Root("resources", resourcesDir.toPath()),
+            ),
+            httpExcludedResourcePaths.mapTo(linkedSetOf()) { "resources/$it" },
+        )
         require(hex.length == 64) { "Expected 64-hex SHA-256, got '${hex.take(80)}'" }
         val digest = "sha256:$hex"
         out.writeText(
@@ -103,7 +128,6 @@ val computeHttpDigest = tasks.register<Exec>("computeHttpDigest") {
                 appendLine("pipeline.http.module=http")
             },
         )
-        digestFile.delete()
         println("http: provenance written to $out (digest=${digest.take(20)}...)")
     }
 }

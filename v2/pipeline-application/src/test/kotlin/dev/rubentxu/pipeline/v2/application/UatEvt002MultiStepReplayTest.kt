@@ -21,9 +21,14 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.time.Duration
+
+import dev.rubentxu.pipeline.v2.application.support.CliRun
+import dev.rubentxu.pipeline.v2.application.support.OwnedSubprocess
 
 /**
  * UAT-EVT-002: multi-step pipeline fixture test.
@@ -53,28 +58,43 @@ class UatEvt002MultiStepReplayTest {
     // and pipeline-application (legacy) install locations.
     private val appBin: Path by lazy { AppBinSupport.discover() }
 
+    /**
+     * The subprocess's own contract, BELOW the class `@Timeout(120)`.
+     *
+     * `@Timeout` cannot own a process: when it fires, the child survives. The deadline belongs to
+     * the child so a hang is classified and reaped instead of leaving a `pipelinek` behind.
+     */
+    private val cliDeadline: Duration = Duration.ofSeconds(90)
+
     private val multiStepScript: Path by lazy {
         Paths.get(javaClass.getResource("/multi-step.pipeline.kts")!!.toURI())
     }
 
     @Test
     fun `cli run with multi-step script emits parseable JSON array`() {
-        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
-        val stdout = Subprocess.run(
-            command = listOf(appBin.toString(), "run", "--format", "json", multiStepScript.toString()),
-        ).requireExited().stdout.trim()
-        assertTrue(stdout.isNotEmpty(), "stdout must not be empty")
-        assertTrue(stdout.startsWith("["), "stdout must start with '['")
-        assertTrue(stdout.endsWith("]"), "stdout must end with ']'")
+        val (_, stdout, _) = runBinary("run", "--format", "json", multiStepScript.toString())
+        val output = stdout.trim()
+        assertTrue(output.isNotEmpty(), "stdout must not be empty")
+        assertTrue(output.startsWith("["), "stdout must start with '['")
+        assertTrue(output.endsWith("]"), "stdout must end with ']'")
 
         // Should not throw
-        val events = JsonEventLog.decode(stdout)
+        val events = JsonEventLog.decode(output)
         assertNotNull(events)
     }
 
     @Test
-    fun `multi-step script compiles successfully`() {
-        val (stdout, events, controlDir) = runAndDecode()
+    fun `multi-step script compiles successfully`(@TempDir tempDir: Path) {
+        // S4/M1: the control dir is named, not inferred from the invocation CWD, because the
+        // assertions below read process output and process output is the Output Plane's.
+        //
+        // It used to be `Files.createTempDirectory("uat-evt002-control")`, which lands in
+        // `java.io.tmpdir` and leaks a directory per row per run. It also had to SURVIVE the call,
+        // because `ConsolePlaneProbe` reads it after the child exits — which is exactly why moving
+        // it under the row's own `@TempDir` is the right home and a plain temp dir is not.
+        val controlDir = Files.createDirectories(tempDir.resolve("control"))
+        val (stdout, events, planeDir) = runAndDecode(controlDir)
+        assertEquals(controlDir, planeDir)
         // Durable-spine timeline (LF-0208: sh steps REALLY execute now), recounted against the
         // run that actually happened rather than against an arithmetic guess:
         //
@@ -162,28 +182,54 @@ class UatEvt002MultiStepReplayTest {
         assertTrue(rf.diagnostics.isEmpty(), "RunFinished diagnostics must be empty: ${rf.diagnostics}")
     }
 
-    private fun runAndDecode(): Triple<String, List<DomainEvent>, Path> {
-        // S4/M1: the control dir is named, not inferred from the invocation CWD, because the
-        // assertions below read process output and process output is the Output Plane's.
-        val controlDir = Files.createTempDirectory("uat-evt002-control")
-        // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
-        val cliRun = Subprocess.run(
-            command = listOf(
-                appBin.toString(),
-                "run", "--format", "json",
-                // Options before the script path: CliParser stops consuming flags at the first
-                // non-flag argument, so a trailing `--control-root` is dropped in silence.
-                "--control-root",
-                controlDir.toAbsolutePath().toString(),
-                multiStepScript.toString(),
-            ),
-        ).requireExited()
-        val exitCode = cliRun.exitCode
-        val stdout = cliRun.stdout
-        if (exitCode != 0) {
-            throw IllegalStateException("CLI exited with $exitCode. stderr: ${cliRun.stderr}")
+    /**
+     * S6-PRE. The ONE way this class runs the installed binary.
+     *
+     * Both launch sites had the same shape: `ProcessBuilder` with both pipes on `PIPE`, then
+     * `waitFor()` with NO deadline, then stdout read to EOF, and stderr read only when the exit
+     * code was non-zero.
+     *
+     * The order matters as much as the deadline. Reading stdout to EOF BEFORE draining stderr is
+     * the same hazard from the other side: the child blocks writing stderr that nobody is reading,
+     * and it never closes stdout, so the parent's own read never returns either. Waiting with a
+     * deadline and draining both pipes from the start removes the question rather than bounding it.
+     *
+     * `stderr` used to be invisible on a green run. It is now always in hand and always in the
+     * failure message.
+     */
+    private fun runBinary(vararg args: String): Triple<Int, String, String> {
+        val outcome = OwnedSubprocess.run(
+            command = listOf(appBin.toString()) + args,
+            timeout = cliDeadline,
+        )
+        return when (outcome) {
+            is CliRun.Completed -> Triple(outcome.exitCode, outcome.stdout, outcome.stderr)
+            is CliRun.TimedOut -> error(
+                "the installed binary hung on ${args.toList()} after ${cliDeadline.seconds}s; " +
+                    "pid=${outcome.diagnostics.pid} descendants=${outcome.diagnostics.descendantPids}. " +
+                    "This is an ENVIRONMENT signal, and it is what previously left a JVM alive: the " +
+                    "old waitFor() had no deadline, so the class @Timeout cut the test instead and " +
+                    "the failure never said why. Partial output: " +
+                    (outcome.stdout + outcome.stderr).takeLast(800),
+            )
+            is CliRun.LaunchFailed -> error(
+                "the installed binary could not be launched on ${args.toList()}: ${outcome.cause}",
+            )
         }
-        val events = JsonEventLog.decode(stdout)
-        return Triple(stdout, events, controlDir)
+    }
+
+    private fun runAndDecode(controlDir: Path): Triple<String, List<DomainEvent>, Path> {
+        val (exitCode, stdout, stderr) = runBinary(
+            "run", "--format", "json",
+            // Options before the script path: CliParser stops consuming flags at the first
+            // non-flag argument, so a trailing `--control-root` is dropped in silence.
+            "--control-root",
+            controlDir.toAbsolutePath().toString(),
+            multiStepScript.toString(),
+        )
+        if (exitCode != 0) {
+            throw IllegalStateException("CLI exited with $exitCode. stdout: $stdout. stderr: $stderr")
+        }
+        return Triple(stdout, JsonEventLog.decode(stdout), controlDir)
     }
 }

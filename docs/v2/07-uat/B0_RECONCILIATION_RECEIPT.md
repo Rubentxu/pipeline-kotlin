@@ -534,3 +534,70 @@ El riesgo no era teórico — ocurrió tres veces.
 
 Igual que antes: no cierra ningún hallazgo, no transiciona ciclos, no reescribe ADR-0105 ni
 PR-ADR-002, y no inventa destino de Maven, credenciales ni veredicto de harness.
+
+### Cierre de los 42 ciclos OPEN — clasificación medida, no por volumen
+
+El operador aprobó los gates humanos el 2026-10-09. Eso abre `cycle_supersede`, pero no
+convierte el cierre en un borrado masivo. Cada ciclo se clasificó por **qué entregó**,
+verificado contra el árbol y no contra su nombre.
+
+```text
+ENTREGADO Y VERIFICADO EN EL ÁRBOR → --reason goal-replaced (22)
+  train-1-d018-doc-alignment          ROADMAP.md re-auditado en 35439eab
+  train-1-d021-rp032-dsl-semantics    paquete dsl con AgentDsl y PipelineDslTypes
+  train-1-d022-rp040-coverage-config  kover en v2/build.gradle.kts:5
+  train-1-rp2-characterization       4ae8dca2 nombra la precedencia de replay
+  train-2-d023-rc8-candidate         rc0.4.1 superado por la línea v0.48.0-rc1
+  train-2-d024-bodyinterpreter-deadline-fitness
+                                      DslInterpreterDeadlineContractFitnessTest
+  train-2-d025-readme-sync-deadcode-cleanup  c99e3c2f
+  train-2-d026-h1-pipelinedsl-stagescope-extract  StageScope.kt (4f8a05f1)
+  train-2-d028-h11-readme-status-badges   3 badges shields.io en README.md
+  train-2-d029-h3a-main-helpers-extract    pwd()/isUnix() en StageScope.kt:282,349
+  train-2-d030-h3b-main-credentials-extract pipeline-credentials-api + durable/credentials
+  train-2-d031-h3c-main-durable-run-extract   package durable en domain y application
+  train-2-d032-h3d-main-scripted-extract      package scripted en application
+  reproducible-directive-plugin-jar    isPreserveFileTimestamps=false en los 3 plugins
+  detekt-domain-burndown-2026-09-28    v2/config/detekt/detekt.yml
+  evt-3-event-harness                  pipeline-event-harness + FArch020
+  em7-canonical-withcredentials-scope   CredentialBindingsPayload.kt
+  m4-slice-02-environment-composer     EnvironmentComposer.kt + FArchM4
+  ml-r10-2-6-credentials-runtime-parity pipeline-credentials-api api/spi
+  rp-053r-c1-coordinator-caps          CoordinatorCaps.kt
+  rp-053r-c1-composition-root          InMemoryArtifactIndex + coordinator
+  wu-lpr-090-publish-html              recibos Tier B2 y RP034
+  wu-rp-020-durable-sequence-authority RunExecutionLease.kt
+  lfc2-e1-s2-a5-g3-core-isunix-readiness  StageScope.kt:349 y ScriptedExecutionApi:458
+
+RETIRADO SIN LLEGAR, AUSENCIA VERIFICADA → --reason external-obsolete (20)
+  train-1-d019-rp021-routes-catalog     no existe RoutesCatalog en v2/
+  train-1-d020-rp030-hexagonal-fitness  no existe test hexagonal con ese nombre
+  train-2-d027-h9-configuration-cache   no existe ConfigCache en v2/*/src/main
+  lfc2-e1-b11-context-blocks            no existe ContextBlock; quedó StageScope
+  pipeline-rule-inprocess-harness       no existe; cubre StepContractSuite
+  train-dsl-honesty, s2-5-3-coordinator-fixture, train-040-gate-recovery,
+  y el resto del lote exploratorio: sin artefacto, sin commit, sin consumidor
+```
+
+La asimetría es el punto. D-029 se cierra como entregado porque el código está y la prueba
+también. D-027 se cierra como retirado **sin llegar**, y su `--reason` lo dice. Fundir los dos
+casos convertiría 42 ciclos cerrados en una afirmación falsa sobre el estado del proyecto.
+
+```text
+antes    OPEN 42 · CLOSED 82 · BLOCKED 4 · pending_human_decisions 2
+despues  OPEN  0 · CLOSED 124 · BLOCKED 4 · pending_human_decisions 0
+```
+
+Lo que queda abierto no es trabajo sin hacer: son cuatro ciclos `BLOCKED` —`m0-02-compiler-
+plugin-k2-migration`, `inc-039-kdoc-fix`, `lfc4-000-execution-model-contract-freeze` y
+`rp-020-durable-sequence-authority`— y ninguno tiene un `--reason` honesto de cierre, porque
+están bloqueados por precondición externa y no por trabajo pendiente.
+
+Una mecánica que costó cuatro intentos y no está en la ayuda: el evento
+`authority-approval-system-cycle_supersede-require_approval` tiene **id global fijo**.
+Emitido una vez, cualquier `supersede` posterior choca con `duplicate_event_id`, que el
+motor registra como *fail-soft* sin re-emitir nada. El cierre avanza al reintentar tras el
+`grant`, y en ráfaga hay que serializar: una pausa corta entre cierres convierte el fallo en
+éxito. El `grant` solo no basta, y el CLI responde `ADMISSION: approval required` aunque el
+approval exista — el mensaje no distingue "no aprobado" de "aprobado con el evento global ya
+consumido".

@@ -450,10 +450,39 @@ Clasificados:
 
 | Código | Qué pide | Por qué no se cierra aquí |
 |---|---|---|
-| SDDK001 ×5 | referencias a rutas inexistentes | cuatro son typos reales (`pipeline-git`, `pipeline-junit`, `id`, `\|`); uno es un repo hermano ausente |
+| SDDK001 ×6 | referencias a rutas inexistentes | **clasificados abajo**; no son errores de redacción |
 | SDDK005 | `schemas/` con los JSON Schema canónicos | el repo no tiene contrato de schemas |
 | SDDK009 | `docs/generated/workflow.md` | el generador exige `workflow/workflow.yaml`, que este repo nunca tuvo |
 | SDDK014 | `manifest.toml` del pack | el repo no declara un pack de framework |
+
+**Corrección 2026-10-09: los SDDK001 NO son cuatro typos reparables.** Este recibo los
+clasificó como "typos reales reparables sin decisión". Es falso, y se corrige con el contexto
+de cada línea:
+
+```text
+PLUGIN_IDENTITY_MODEL.md:168   "plugin: pipeline-git"    -> YAML de ejemplo, no una ruta
+PLUGIN_IDENTITY_MODEL.md:173   "plugin: pipeline-junit"  -> YAML de ejemplo, no una ruta
+PLUGIN_IDENTITY_MODEL.md:253   "id: io.rubentxu.…"        -> clave YAML, no una ruta
+S6_BLOCK_CD_…RECEIPT.md:1004   "|"                       -> celda de una tabla Markdown
+```
+
+Cuatro son **falsos positivos**: el linter lee prosa como si fuera una referencia explícita.
+Editar esos markdown para "satisfacer" el lint significaría deformar documentación correcta
+para callar a una herramienta — y `pipeline-git`/`pipeline-junit` son nombres de plugin
+legítimos en un modelo que describe cómo se han de nombrar, no rutas que existan hoy.
+
+Los otros dos sí son referencias rotas, pero no por redacción:
+
+```text
+GRADLE_GRAPH_INVENTORY.md:8           "../build/diagrams/….svg"
+  -> artefacto de build, gitignored (.gitignore:5 build/); se arregla GENERANDO, no editando
+LOCAL_FOUNDATION_CONSOLIDATION.md:6    "../../pipeline-kotlin-local-foundation-consolidation/…"
+  -> repo hermano ausente del disco; se arregla CLONANDO, no editando
+```
+
+Ni uno ni otro se resuelven tocando el markdown. Y el linter **no expone marcador de
+excepción** (`--root` y `--format` son sus únicas opciones), así que la suppression no es una
+opción disponible sin cambiar el framework.
 
 **No es regresión de este trabajo**: los mismos 9 errores existen en el commit base de B0
 (`acd12111`), medido antes y después. `sddk generate docs --root . --in-repo` falla con
@@ -461,9 +490,9 @@ Clasificados:
 o sea que SDDK009 no es reparable sin inventar un manifiesto de workflow que este proyecto no
 usa.
 
-Los cuatro typos de SDDK001 sí son reparables y no requieren decisión. Quedan registrados como
-deuda con dueño, no corregidos aquí, porque son un contrato de framework y no parte del exit
-criterion de B0.
+**Deuda real que sí queda, y es de una línea:** los dos typos de CJK que se colaron en este
+propio recibo durante la sesión (corregidos antes de commitear, sin llegar a `origin/main`).
+El riesgo no era teórico — ocurrió tres veces.
 
 ### Lo que este recibo sigue sin hacer
 

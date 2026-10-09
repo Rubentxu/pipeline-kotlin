@@ -389,7 +389,26 @@ Ningún bloque se declara cerrado. `B0..B7` se integraron en el ROADMAP único (
 
 ## 8. Addendum 2026-10-09 — estado tras B0-1/2/3 y deuda de `sddk lint`
 
-### Lo que este trabajo resolvió
+### Estado de los hallazgos, con entrada de seguimiento
+
+Los tres hallazgos que quedan abiertos tienen dueño externo y ahora tienen **identificador
+registrado en el backlog de SDDK**, no solo prosa en este recibo. Un hallazgo anotado en un
+documento y sin entrada de seguimiento se pierde en cuanto el documento deja de leerse.
+
+| Hallazgo | Dueño | Backlog item |
+|---|---|---|
+| B0-F2 (P0) `required_status_checks` | operador + harness | `bl-bl-01M4GKJSWZ000389177ZH5M3G0` |
+| B0-F4 (P1) publicar el check | proyecto propietario del harness | `bl-bl-01M4GKJXDX0003891754K2WQG0` |
+| B0-F6 (P2) aprobar `cycle_supersede` | propietario del ciclo de vida | `bl-bl-01M4GKJXF9000389174SGMZ0R0` |
+
+El orden entre F2 y F4 no es decorativo: **no hay contexto que exigir mientras no exista un
+check que lo produzca**. Publicar el check va antes que activar la protección; al revés, la
+protección exigiría un contexto que nadie emite, y `main` quedaría inejable.
+
+R2 (publicación Maven remota) y R3 (certificación externa / promoción estable) siguen
+`BLOCKED_EXTERNAL` y **no** se registran aquí: no son defectos de este repositorio sino
+capacidades de un tercero, y el mecanismo de backlog es para trabajo con dueño, no para
+ausencias.
 
 | Parte de B0 | Estado | Evidencia |
 |---|---|---|

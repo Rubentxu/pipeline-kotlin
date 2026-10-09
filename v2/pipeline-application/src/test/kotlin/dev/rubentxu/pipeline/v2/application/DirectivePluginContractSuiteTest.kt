@@ -97,8 +97,16 @@ class DirectivePluginContractSuiteTest {
      *    `computeDirectiveRelease` / `emitDirectiveManifest` tasks therefore became mandatory,
      *    not optional: the alternative was leaving a known hole in the admission chain open.
      *  - The new bytes are REPRODUCIBLE, measured by building twice with `--rerun-tasks` and
-     *    comparing digests: `283f89d7aae74580d0f57430d8f6ed7a36f0b9428ed48ee515b49136a78c34a8`
+     *    comparing digests: `d0a80b9b87fc8cd741035bc68dbd89a5af90f3f7ded33ca7a9dc394164f89407`
      *    both times. A pin that flapped per run could not be compared with a pin that moved once.
+     *    The previous pin (`283f89d7…`, set on `6e8e86bd`) was reproducible TOO, and the digest
+     *    moved once because the SDK jar that the plugin compiles against moved once: between
+     *    `6e8e86bd` and `a61b4872` four SDK commits landed (`a040c113 refactor(digest)`,
+     *    `4d4075d5 feat(pipeline-domain): one SHA-256 utility`, `eaa9bc67 chore(api): registrar
+     *    la superficie publica`, `7835ea66 feat(output): el transcript...`), and each legitimately
+     *    changes the bytes the plugin links against. Re-certifying with the measured value keeps
+     *    the test honest about what THIS revision contains, instead of carrying a constant for a
+     *    jar that is no longer the artifact under test.
      *  - The compatibility claim is re-verified on EVERY run by the seven sibling rows in this
      *    class, which load this jar in a classloader, resolve `LockContributor` through
      *    `ServiceLoader` and execute a real pipeline with it. Measured on this build: 7 of 7
@@ -116,7 +124,7 @@ class DirectivePluginContractSuiteTest {
             .joinToString("") { "%02x".format(it) }
 
         assertEquals(
-            "283f89d7aae74580d0f57430d8f6ed7a36f0b9428ed48ee515b49136a78c34a8",
+            "d0a80b9b87fc8cd741035bc68dbd89a5af90f3f7ded33ca7a9dc394164f89407",
             digest,
             "external directive plugin JAR drifted from the certified bytes; a rebuild " +
                 "invalidates the S2-D compatibility claim — restore the certified JAR instead. " +

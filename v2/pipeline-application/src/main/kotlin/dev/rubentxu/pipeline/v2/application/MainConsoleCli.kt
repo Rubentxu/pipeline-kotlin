@@ -323,6 +323,17 @@ sealed interface ConsoleCliRefusal {
     data class ControlDirNotFound(val path: String) : ConsoleCliRefusal
 
     /**
+     * A valued option was written and its value was not.
+     *
+     * Distinct from [MissingArgument], which is about a REQUIRED positional that was not supplied.
+     * This one is about an option that IS present, so the caller has already made a choice and must
+     * learn that the choice is incomplete. Keeping them apart is not cosmetic: conflating them is how
+     * `--max-bytes` at the end of the command line read as "no `--max-bytes`" and silently took the
+     * default page size.
+     */
+    data class MissingOptionValue(val option: String) : ConsoleCliRefusal
+
+    /**
      * A reader flag offered to a range read, or the other way round.
      *
      * [spansNothing] is the argument, in one token: the flag does not shrink the answer, it does not
@@ -349,6 +360,7 @@ fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal)
     is ConsoleCliRefusal.NotARange -> "Error: --range must be FROM:TO with integers, got ${refusal.value}"
     is ConsoleCliRefusal.NotACursorToken -> "Error: not an output cursor token: ${refusal.token}"
     is ConsoleCliRefusal.ControlDirNotFound -> "Error: control dir not found: ${refusal.path}"
+    is ConsoleCliRefusal.MissingOptionValue -> "Error: ${refusal.option} requires a value"
     is ConsoleCliRefusal.IncompatibleWithRange -> "Error: ${refusal.toString()}"
 }
 
@@ -531,14 +543,22 @@ private object MainConsoleCliAdmission {
         while (index < args.size) {
             val arg = args[index]
             when (arg) {
-                "--control-dir" -> controlDir = args.getOrNull(++index)
-                // Parsed as text and validated later, so a flag that does not parse becomes a refusal
-                // rather than the default. `--max-bytes abc` used to read as DEFAULT_PAGE_BYTES with
-                // exit 0 — the same shape as a command that silently did something other than what was
-                // asked. AUD-04, aligned with [MainEventsCli].
-                "--max-bytes" -> maxBytes = args.getOrNull(++index)
-                "--after-cursor" -> afterCursor = args.getOrNull(++index)
-                "--range" -> range = args.getOrNull(++index)
+                // Every valued option consumes the NEXT token, and the four of them share one arm so
+                // the rule cannot diverge between them. When there is no next token the flag is
+                // present and its value is missing — a different fact from the flag being absent.
+                // Reading both as null applied the default page size to a command that never
+                // supplied one, and left the caller unable to tell which command they had run.
+                "--control-dir", "--max-bytes", "--after-cursor", "--range" -> {
+                    val value = args.getOrNull(index + 1)
+                        ?: return ConsoleCliParse.Rejected(ConsoleCliRefusal.MissingOptionValue(arg))
+                    when (arg) {
+                        "--control-dir" -> controlDir = value
+                        "--max-bytes" -> maxBytes = value
+                        "--after-cursor" -> afterCursor = value
+                        else -> range = value
+                    }
+                    index++
+                }
                 else -> {
                     // AUD-04. This arm has no `else` of its own, so an unknown `--flag` matched it,
                     // satisfied neither condition, and completed as Unit — parsed as nothing, exit 0.

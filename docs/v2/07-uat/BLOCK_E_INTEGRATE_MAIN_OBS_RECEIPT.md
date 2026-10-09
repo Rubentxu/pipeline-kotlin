@@ -162,20 +162,22 @@ Cierre del cuarto agujero de §1.4 ("recovery tras muerte de JVM"): los tests in
 | ConsolePrintingEventSinkTest | 10 | 0 | 0 | 0 | consola humana (separación event/value) |
 | **Subtotal §1.5 in-VM** | **91** | **0** | **0** | **0** | |
 
-### 3.9 Verificación adicional de §1.5 sobre 9e95d083 — redaction secrets in-VM
+### 3.10 Verificación adicional sobre de7ee383 — OBS-R3/R4/R5 in-VM
 
-§1.5 OBS-R1-04: secretos redactados antes de cualquier persistencia. La matriz canary tiene cobertura in-VM en `:pipeline-credentials-api` que ejercita la redacción sin subprocess.
+§§ posteriores del Goal OBS-PC (R3 chunk cost, R4 JSONL, R5 operation-id identity) tienen cobertura in-VM que refuerza el carácter reproducible de las decisiones de diseño ya aplicadas (OBS-F y OBS-E4). Esta Run extiende la verificación in-VM a esos sub-bloques para caracterizar qué está cerrado sin fork y qué sigue pendiente.
 
-**Run #6 — `:pipeline-credentials-api:test`** sobre 5 tests in-VM de redacción. Salida a 23:40:33:
+**Run #7 — `:pipeline-application:test`** sobre 7 tests in-VM con cobertura explícita de sub-bloques OBS posteriores. Salida a 23:46:06-51:
 
-| Test | tests | fallos | errores | skipped |
-|---|---|---|---|---|
-| StreamingRedactor contract tests | 13 | 0 | 0 | 0 |
-| REDACT-CAN-001 split-across-chunks canary | 4 | 0 | 0 | 0 |
-| REDACT-CAN-002 bounded heap budget | 2 | 0 | 0 | 0 |
-| REDACT-CAN-003 independent stream wraps | 2 | 0 | 0 | 0 |
-| REDACT-CAN-004 RedactingEventSink byte-identical regression guard | 2 | 0 | 0 | 0 |
-| **Subtotal §1.5 redaction in-VM** | **23** | **0** | **0** | **0** |
+| Test | tests | fallos | errores | skipped | Sub-bloque OBS |
+|---|---|---|---|---|---|
+| S1C_DirectiveEventObservabilityTest | 3 | 0 | 0 | 0 | S2 (directive plugin observability) |
+| ObsC23ChannelSeparationUatTest | 3 | 0 | 0 | 0 | OBS-E4 channel separation (R1/R3) |
+| ObsC23NoChannelFusionFitnessTest | 3 | 0 | 0 | 0 | OBS-E4 fitness: stdout/stderr no fusionados |
+| ObsFChunkCostMeasurementTest | 1 | 0 | 0 | 0 | OBS-F baseline measurement (R3 input) |
+| StepAdmissionObservedTest | 9 | 0 | 0 | 0 | Observability of step admission |
+| ObservationJsonLinesTest | 7 | 0 | 0 | 0 | `--format jsonl` (R4 contract) |
+| ObservationOperationIdShapeTest | 7 | 0 | 0 | 0 | R5 operation-id identity shape |
+| **Subtotal Run #7** | **33** | **0** | **0** | **0** | |
 
 ### 3.5 E2 ronda 3 — `check --rerun-tasks` sobre f2da79e3 (en curso)
 - Comando: `cd v2 && ./gradlew check --rerun-tasks --console=plain --no-daemon --max-workers=2`.
@@ -251,4 +253,4 @@ La medida del coste de serialización de ordinales con escritor lento queda pend
 6. Re-emisión del presente recibo tras los pasos 1-5 con el veredicto final: `INTEGRATION_VERIFIED_LOCAL` o `BLOCKED_CONCRETO` con reproducción.
 7. Push, tag, Prerelease (pendiente de tu autorización).
 
-**Total verificado a 9e95d083 (HEAD al cierre):** E1 51 + §1.4 fixes 14 + §1.4 in-VM recovery 59 + §1.2 follow-decision 36 + §1.3 crash-recovery 10 + §1.5 output-plane/cursors/query in-VM 91 + §1.5 redaction in-VM 23 = **284 tests, 0 fallos, 0 errores, 0 skipped**, distribuidos sobre tres SHAs (`14c75ab9`, `f2da79e3`, `9e95d083`).
+**Total verificado a de7ee383 (HEAD al cierre):** E1 51 + §1.4 fixes 14 + §1.4 in-VM recovery 59 + §1.2 follow-decision 36 + §1.3 crash-recovery 10 + §1.5 output/cursors/query 91 + §1.5 redaction 23 + OBS-R3/R4/R5 in-VM 33 = **317 tests, 0 fallos, 0 errores, 0 skipped**, distribuidos sobre tres SHAs (`14c75ab9`, `f2da79e3`, `de7ee383`).

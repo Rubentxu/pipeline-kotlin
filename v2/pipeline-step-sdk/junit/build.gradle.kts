@@ -65,14 +65,30 @@ val computeJunitDigest = tasks.register<Exec>("computeJunitDigest") {
         val out = junitReleaseProps.get().asFile
         out.parentFile.mkdirs()
         val excludedOutput = out.absolutePath
+        // R-BUILD-01: BOTH documents this task feeds must be outside its own input set.
+        //
+        // The properties file is where the digest is WRITTEN. The manifest is where the digest
+        // is READ back from, and `emitJunitManifest dependsOn computeJunitDigest` writes it into
+        // this very resources directory. Excluding only the properties file left the PREVIOUS
+        // run's manifest inside the hash, so the digest of build N became an input to the digest
+        // of build N+1 and two `distZip` builds of the same clean tree produced different
+        // archives: 0a341cb8… and 3d4caf89… at 076982b9.
+        //
+        // Both exclusions are by absolute path, matching how the properties file was already
+        // excluded. The relative form would be shorter and would reintroduce the exact class of
+        // bug this fixes, since the digest task runs with an unspecified working directory.
+        val excludedFromDigest: Set<String> = setOf(
+            excludedOutput,
+            junitManifest.get().asFile.absolutePath,
+        )
         val classFiles: List<String> = classesDir.walkTopDown()
-            .filter { it.isFile && it.absolutePath != excludedOutput }
+            .filter { it.isFile && it.absolutePath !in excludedFromDigest }
             .map { it.absolutePath }
             .toList()
             .sorted()
         val resourceFiles: List<String> = if (resourcesDir.exists()) {
             resourcesDir.walkTopDown()
-                .filter { it.isFile && it.absolutePath != excludedOutput }
+                .filter { it.isFile && it.absolutePath !in excludedFromDigest }
                 .map { it.absolutePath }
                 .toList()
                 .sorted()

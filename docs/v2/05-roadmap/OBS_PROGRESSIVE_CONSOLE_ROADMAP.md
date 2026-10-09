@@ -124,10 +124,12 @@ callado: lo terminan a mitad de script, sin registrar por qué.
 Eso **excluye** el spool a fichero (un fichero del hijo guarda bytes crudos y `raw_secret_on_disk == 0`
 deja de ser cierto) y **descarta** reencolar un lector a un huérfano (no hay huérfano: ya está muerto).
 
-**Decisión de forma:** `ADR-OBS-003-child-output-descriptor-ownership.md`, estado `proposed`, pendiente
-de ratificación. La única forma compatible con las tres restricciones es un agente de ingesta que
-sobreviva a la JVM, redacte en memoria y confirme al plano sólo bytes saneados. `OBS-PC-208` sigue
-`NOT_RUN` hasta que esa ADR se ratifique: no se escribe código antes.
+**Decisión de forma:** `ADR-OBS-003-child-output-descriptor-ownership.md`, **aceptada 2026-10-09** (§2
+completo, incluido el `trap` SIGPIPE con su coste de compatibilidad declarado): agente de ingesta
+**uno por run**, lanzado y supervisado por PipelineK, que redacta en memoria y confirma al plano sólo
+bytes saneados. `OBS-PC-208` queda desbloqueado; su criterio de aceptación es §4 de la ADR
+(`0/50 → 50/50`, `bytes_after_release > bytes_after_kill`, `DONE` presente). Sigue `NOT_RUN` hasta que
+exista.
 
 ### OBS-3, OBS-4, OBS-5, OBS-6, OBS-7
 

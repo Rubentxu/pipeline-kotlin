@@ -2,9 +2,9 @@
 type: adr
 id: ADR-OBS-003
 title: "The child's output descriptors are owned by an agent that outlives the runtime JVM"
-status: proposed
+status: accepted
 date: 2026-10-09
-deciders: "pending ratification — Rubentxu (product owner)"
+deciders: "Rubentxu (product owner) — ratified §2 in full, 2026-10-09"
 supersedes: null
 superseded_by: null
 related:
@@ -15,6 +15,11 @@ related:
 ---
 
 # ADR-OBS-003 — Survival of the child when its runtime JVM dies (OBS-2 Level B)
+
+> **Accepted 2026-10-09.** §2 is ratified in full — the ingest agent, one per run, launched and
+> supervised by PipelineK — **including §2.3's `SIGPIPE` trap**, whose compatibility cost is stated in
+> §2.3 and accepted with it. §5's recommendation is therefore the decision, not a proposal.
+> `OBS-PC-208` is unblocked; its acceptance criterion is §4.
 
 ## 1. Context
 

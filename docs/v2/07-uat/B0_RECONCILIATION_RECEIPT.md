@@ -264,10 +264,43 @@ Triage medido (2026-10-08, `sddk plan work-item list` por ciclo + `sddk cycle ne
 
 **Por qué esto no se cierra aquí.** Cerrar los 23 exigiría emitir `exploration-report` y gate
 receipts **a posteriori** para trabajo ya hecho; eso es fabricar evidencia y es el falso verde que
-este repositorio prohíbe. Los 18 huérfanos no los puede cerrar ningún verbo existente. Así que la
-brecha queda registrada como **dependencia al proyecto propietario** (falta un verbo de mantenimiento
-para retirar ciclos huérfanos o incompletos con razón explícita), no como una tarea local pendiente.
-Decisión registrada en SDDK: `550ae52d-398d-44d5-a0f6-0386271340cf`.
+este repositorio prohíbe.
+
+**Corrección 2026-10-09: los 18 huérfanos SÍ los puede cerrar un verbo existente.** B0 afirmó
+que "ningún verbo puede cerrarlos" y que faltaba un verbo de mantenimiento en el framework.
+Eso es falso, y está medido:
+
+```text
+$ sddk cycle next --cycle p-733fb505b5a6bd2d/corpus-closure
+error: cycle … has no replayable state events        <- el frontier no ve transiciones
+
+$ sddk cycle supersede --cycle …/corpus-closure --reason scope-invalid \
+      --lease-owner orchestrator --fencing-token 1
+error: ADMISSION: approval required before mutating 'cycle_state'
+       (decision_id=approval-system-cycle_supersede); no changes were made
+```
+
+`cycle next` y `cycle supersede` son caminos distintos. El primero reconstruye el frontier desde
+los eventos y por eso no ve nada; el segundo no los necesita — exige lease y fencing token, que
+este ciclo tiene (`owner=orchestrator fencing_token=1`). El verbo existe, funciona y acepta
+`--reason scope-invalid`, `goal-replaced` o `external-obsolete`.
+
+Lo que falta no es capacidad: es **autorización**. `supersede` exige aprobación humana antes de
+mutar `cycle_state`, y la solicitud quedó registrada:
+
+```text
+sddk approval list --cycle p-733fb505b5a6bd2d/corpus-closure
+  capability:   surface.cycle_state#cycle_supersede
+  request_hash: sha256:7f762f08134515b0c1a7a37ef32955b8ebb08d0624eff471f4d3125093dda232
+  requested_at: 2026-10-09T15:11:06Z
+```
+
+Que el gate lo bloquee es lo correcto: cerrar 18 ciclos es una decisión de ciclo de vida, no una
+tarea de mantenimiento. Un agente que lo resolviera sin aprobación habría hecho exactamente lo que
+B0Dice evitar. El ciclo sigue `OPEN`; no se cambió nada.
+
+La brecha queda reformulada: **no falta un verbo, falta la decisión del propietario** sobre qué
+razón aplica a cada uno de los 18. Decisión registrada en SDDK: `550ae52d-398d-44d5-a0f6-0386271340cf`.
 
 Nota honesta sobre el ciclo activo: `rp7-sem-s6-plugin-sdk` está en el mismo nodo `Open/Explore` con
 `requires_met: false`, mientras sus commits sí se trazan por el ledger de WorkItems. La estagnación
@@ -365,7 +398,7 @@ Ningún bloque se declara cerrado. `B0..B7` se integraron en el ROADMAP único (
 | B0-F3 (P1) | **verificado** | certificación de 0.47.0 real; cita corregida (`decision` vive en `steps["certify-base"].stdout`, no es campo de primer nivel) |
 | B0-F4 (P1) | abierto, causa corregida | capacidad existe (53 tests) pero no llega a su remoto |
 | B0-F5 (P1) | **RESUELTO** | re-auditado 2026-10-09; bloque de hechos nuevos en `ROADMAP.md` y addendum en `CURRENT_STATE.md`; el baseline `a554fd55` se conserva intacto |
-| B0-F6 (P2) | abierto | 42 ciclos OPEN, 18 huérfanos sin verbo de cierre |
+| B0-F6 (P2) | abierto, **causa corregida** | no faltaba un verbo: `cycle supersede` funciona y acepta `--reason`; lo que exige es aprobación humana sobre `cycle_state`. Solicitud registrada `sha256:7f762f08…`. 18 huérfanos + 23 sin gate = 41 de 42 |
 | B0.2 — utilidad de digest única | **entregada** | `pipeline-domain/…/digest/Sha256.kt`; test funcional 8/8 con mutación 1:1 (la mutación `endsWith` no voltea ninguna fila; `contains` voltea exactamente una) |
 | B0.2 — migración de call sites | **entregada** | 29 sitios ad-hoc → 8: 4 dentro de la propia utilidad, 4 de efecto temporal (streaming) clasificados por `DigestMigrationBoundaryFitnessTest` |
 | B0.3 — autoridad de admisión | **medida** | `B0_3_HARNESS_INVESTIGATION_RECEIPT.md`; G10 sigue `NOT_RUN` |

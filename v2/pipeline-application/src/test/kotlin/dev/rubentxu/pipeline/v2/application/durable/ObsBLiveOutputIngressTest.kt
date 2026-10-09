@@ -298,11 +298,18 @@ class ObsBLiveOutputIngressTest {
         /**
          * The exact number of bytes [largeEmitter] produces before the barrier.
          *
-         * Asserted by the rows rather than assumed, because "past the 8 KiB buffer" is the whole
+         * Asserted by the rows rather than assumed, because "past the live window" is the whole
          * premise of the discriminator: a payload that only *looks* large would make the staging
          * buffer look innocent, and the two defects in this file would silently merge into one.
+         *
+         * **128 KiB since OBS-F, and the size is load-bearing.** The window was 8 KiB when this
+         * was written, 1 KiB after OBS-B, and 64 KiB after OBS-F measured what a window costs.
+         * A fixed 32 KiB stopped crossing it at the 64 KiB value, which would have made the row
+         * pass by accident rather than by the law it states. Two full windows is the smallest size
+         * that keeps the premise true with room to spare, so a further window increase fails
+         * loudly here instead of silently weakening the row.
          */
-        const val LARGE_PAYLOAD_BYTES: Int = 32 * 1024
+        const val LARGE_PAYLOAD_BYTES: Int = 128 * 1024
 
         const val SMALL_PAYLOAD: String = "MARCADOR-CHICO\n"
         const val SMALL_PAYLOAD_BYTES: Int = SMALL_PAYLOAD.length

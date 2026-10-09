@@ -36,8 +36,6 @@ class FArchObservationContractLawFitnessTest {
 
     private val v2Root: Path = ScannerSupport.v2Root()
 
-    private fun repoRoot(): Path = v2Root.parent
-
     private fun productionSources(module: String): List<Path> {
         val main = v2Root.resolve(module).resolve("src/main/kotlin")
         if (!Files.isDirectory(main)) return emptyList()
@@ -182,6 +180,16 @@ class FArchObservationContractLawFitnessTest {
         val neverAllowed = listOf(
             "io.grpc",
             "io.jenkins.pipelinek.fabric",
+            // OBS-F: the Fabric FQCN above was the only thing guarded, and "no Jenkins here" was
+            // therefore true of the adapter while saying nothing about the JENKINS TYPES. These are
+            // the roots a real Jenkins dependency arrives through. Bare `jenkins` is deliberately
+            // NOT in this list, and the reason is the law this repository already follows for
+            // Jenkins users: `PublishHtml`, `httpRequest` and friends are named after Jenkins on
+            // purpose, so a bare-word guard would be false on its first run — the same mistake the
+            // protobuf row below documents and avoids.
+            "hudson.",
+            "jenkins.model.",
+            "org.kohsuke.stapler",
         )
 
         val buildFiles = ScannerSupport.walkBuildFiles(v2Root)
@@ -241,6 +249,56 @@ class FArchObservationContractLawFitnessTest {
                     "protobuf is a module that has started speaking the protocol itself.",
             )
         }
+
+        // ---------------------------------------------------------------- network transport
+        //
+        // OBS-F named "network transport" as forbidden and nothing guarded it. The obvious law —
+        // "no socket anywhere in pipeline-kotlin" — is FALSE about this repository, and a guard
+        // asserting it would have been wrong on its first run, exactly as the protobuf row above
+        // records for protobuf.
+        //
+        // `:pipeline-step-sdk/http` is a real, shipped HTTP transport (`JdkHttpTransport`,
+        // `BoundedBodySubscriber`) and predates this work. So the law is pinned rather than
+        // absolute, and pinned in the one place that matters: the OBSERVATION and EXECUTION path
+        // must not open a socket. A socket appearing next to the Output Plane or a pump is how
+        // "this repository publishes ports" quietly becomes "this repository dials out", and that
+        // is the boundary Fabric exists to hold.
+        val networkOutsideHttp = mutableListOf<String>()
+        val networkNeedles = listOf("java.net.http", "java.net.Socket", "okhttp3.", "io.ktor.")
+        buildFiles.forEach { file ->
+            if (file.parent?.fileName?.toString() == "http") return@forEach
+            val code = stripComments(Files.readString(file))
+            networkNeedles.forEach { needle ->
+                if (code.contains(needle)) networkOutsideHttp += "${v2Root.relativize(file)} -> $needle"
+            }
+        }
+        sources.forEach { file ->
+            if (file.toString().contains("/pipeline-step-sdk/http/")) return@forEach
+            val code = stripComments(Files.readString(file))
+            networkNeedles.forEach { needle ->
+                if (code.contains(needle)) networkOutsideHttp += "${v2Root.relativize(file)} -> $needle"
+            }
+        }
+
+        if (networkOutsideHttp.isNotEmpty()) {
+            throw AssertionError(
+                "network transport outside :pipeline-step-sdk/http:\n" +
+                    networkOutsideHttp.joinToString("\n") { "  $it" } +
+                    "\n\nThe http Step is a sanctioned client capability and owns the only socket in " +
+                    "this repository. The observation and execution paths publish PORTS: a client " +
+                    "there means a consumer back on the write side, which is the boundary this " +
+                    "whole subsystem exists to keep.",
+            )
+        }
+
+        // ---------------------------------------------------------------- why "controller" is NOT here
+        //
+        // OBS-F also named "controller". It cannot be guarded as a word and the reason is worth
+        // keeping: `FileLockCoordinator` coordinates local locks and has nothing to do with
+        // Jenkins' master/controller, and `Capabilities.kt` names a controller concept of its own.
+        // A guard on the bare word would fail on those and would therefore be deleted the first
+        // time it fired. The boundary is already held by the FQCN and the Jenkins type roots
+        // above; a vocabulary collision is not a boundary crossing.
     }
 
     /**

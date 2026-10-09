@@ -193,27 +193,40 @@ síncrono en el hilo del pump, así que un fsync por KiB **ralentiza al proceso 
 pipe. Eso es *storage backpressure*, que la ley permite como flow-control intrínseco — pero a
 0,3 MiB/s el límite deja de ser el del subsistema de observabilidad y pasa a ser el del build.
 
-### 3.5 La decisión que este recibo NO toma
+### 3.5 La decisión, tomada y aplicada
 
-La constante `TRANSCRIPT_LIVE_WINDOW_BYTES` sigue en **1024**. No se cambió, por razones honestas:
+`TRANSCRIPT_LIVE_WINDOW_BYTES` pasa de **1024 a 65536**. Los datos lo decidían y la razón que
+mantenía el 1024 ya no existía:
 
-- **Ya no buys latencia.** El pump lee `min(window, available())`; un productor lento no se ve
+- **Ya no compraba latencia.** El pump lee `min(window, available())`; un productor lento no se ve
   afectado por la ventana, y un productor rápido la ve como granularidad de commit, no como suelo
-  de latencia. Su propio KDoc dice que el suelo pasó a ser el lookahead del redactor. El argumento
-  que justificó 1024 era otro —el suelo de latencia— y OBS-B lo eliminó sin revisar el número.
-- **Pero cambiarlo no es gratis y hay un intercambio real.** Con ventana de 64 KiB, un productor que
-  satura el pipe hace su primer byte visible tras ~64 ms en vez de ~1 ms. Es un coste de latencia
-  pequeño y medido a cambio de 377× de rendimiento de persistencia.
-- **Dos certificadores existentes dependen del valor actual** y habría que reescribirlos en el mismo
-  commit: `ObsBLiveOutputIngressTest.kt:459` afirma `LARGE_PAYLOAD_BYTES (32 KiB) >
-  TRANSCRIPT_LIVE_WINDOW_BYTES`, y `ObsC23ChannelSeparationUatTest.kt:207` construye un payload de
-  4 KiB precisamente para cruzar una frontera de ventana. Ambas premisas mueren con 64 KiB, y son
-  las pruebas que demuestran el comportamiento multi-frame.
+  de latencia. El suelo pasó a ser el lookahead del redactor. El 1024 era el valor que había elegido
+  una justificación que OBS-B eliminó, y el número se quedó.
+- **64 KiB es el codo de la curva** y coincide con el `DEFAULT_RESERVATION_BYTES` del store, de modo
+  que **una ventana es exactamente una reserva** y el 98% de reserva desperdiciada desaparece.
 
-El valor recomendado por los datos es **64 KiB**: es el codo de la curva (128 KiB sólo compra un 43 %
-más a cambio del doble de memoria de transacción), y coincide con el `DEFAULT_RESERVATION_BYTES` del
-store, de modo que **una ventana es exactamente una reserva** y nada se sobre-reserva. Queda como
-decisión de producto, no como resultado de esta medición.
+El coste se acepta y queda escrito en el KDoc de la constante: un producto que satura el pipe hace
+su primer byte visible tras ~64 ms en vez de ~1 ms.
+
+**Dos certificadores dependían del valor viejo y se reescribieron en el mismo commit**, que es la
+regla que OBS-C2.3 incumplió:
+
+| certificador | antes | ahora | por qué |
+|---|---|---|---|
+| `ObsBLiveOutputIngressTest` | payload de 32 KiB | **128 KiB** | su premisa es `LARGE_PAYLOAD_BYTES > TRANSCRIPT_LIVE_WINDOW_BYTES`; con 64 KiB un payload de 32 KiB ya no cruzaba la ventana y la fila habría pasado por accidente |
+| `ObsC23ChannelSeparationUatTest` | payload de 4 KiB | **128 KiB** | dos ventanas completas; una sola habría dejado de observar bytes comprometidos a mitad del paso |
+
+La segunda tenía además su premisa **sólo citada en el KDoc y nunca afirmada**, lo que la convertía
+en una afirmación que el compilador no comprobaba. Se ancló dentro de `windowPayload()`, que es la
+única función por la que pasa cualquier fila que necesite un payload comprometido a mitad del paso,
+de modo que una fila nueva no puede saltársela.
+
+**No hay mutación para la constante, y eso es una decisión y no un olvido.** Es un valor de ajuste
+medido, no una ley: ninguna ley se rompe por volver a 1024, y guardarlo con un umbral sería
+exactamente el «invented threshold» que la ley de conformismo prohíbe
+(`OutputPlaneConformanceTest`, «No invented thresholds»). Lo que sí queda guardado son las leyes que
+el window atraviesa —M-C1 y M-C2— y el valor está escrito junto a la medición que lo justifica, de
+modo que un cambio futuro se vuelve a decidir con datos y no por inercia.
 
 ---
 
@@ -223,9 +236,9 @@ decisión de producto, no como resultado de esta medición.
 |---|---|---|---|
 | 1 | events desde `EventCursor` | **PROBADO** (HF1/HF2) | `EventHistoryContractTest.kt:123`, `S54ExternalVerticalRestartUatTest.kt:141` |
 | 2 | output desde `OutputCursor` | **PROBADO** (HF2) | `ConsoleReadServiceTest.kt:103` |
-| 3 | suscriptor lento | **CARACTERIZACIÓN** | `Lpr040ObservationHarnessTest.kt:169` y `Lpr040OutputObservationHarnessTest.kt:144` no cruzan `ObservationOutputReader` ni una corrida viva. El segundo además afirma `ms < 120_000`, un umbral de reloj que HARNESS FIDELITY §3 prohíbe, en contradicción con su propio KDoc "HARNESS ONLY". |
-| 4 | desconexión con la corrida en curso | **AUSENTE** | Ninguna prueba detiene un consumidor a mitad de una corrida viva y comprueba que la corrida termina. `LiveOutputDrainTest.kt:186` y `ObsE5ObserveFollowTest.kt:254` paran el consumidor contra un store precargado, sin proceso detrás. |
-| 5 | reconexión de la línea de output entre procesos | **AUSENTE** | `S54` es el único que reconecta entre procesos y cubre sólo el `EventCursor`. `OutputPlaneConformanceTest.kt:175` simula reinicio re-instantiando el store en la misma JVM. |
+| 3 | suscriptor lento | **PROBADO** (HF2) | `ObsFConsumerContinuityUatTest` SLOW-1: el consumidor lee una página, queda aparcado en un latch que no controla, y el productor compromete MÁS y la corrida termina igual. La ley se afirma comparando dos extents comprometidos tomados con el consumidor parados entre medias. |
+| 4 | desconexión con la corrida en curso | **PROBADO** (HF2) | DISCONNECT-1: un consumidor lee una página y se abandona; el paso se libera y termina, el plano retiene cada byte, el tail queda `Sealed` y un lector NUEVO continúa exactamente donde paró el anterior. |
+| 5 | reconexión de la línea de output entre procesos | **PROBADO** (HF3) | RECONNECT-1: dos procesos forkeados de la distribución **instalada**. El B recibe un único string —el token que A imprimió— y nada más; la concatenación de ambas páginas debe igualar el transcript, sin hueco y sin repetición. |
 | 9 | filtrado stdout/stderr | **PROBADO** (HF2) | `ObsC23ChannelSeparationUatTest.kt:241,302,344`; `ObservationOutputFollowerTest.kt:165` |
 | 10 | running → sealed | **PROBADO** (HF2) | `ObsCChannelAndTailCharacterisationTest.kt:458` |
 | 11 | cero grpc/protobuf/Jenkins/controller/transporte | **PARCIAL** | `FArchObservationContractLawFitnessTest.kt:181` cubre `io.grpc`, `io.jenkins.pipelinek.fabric` y protobuf confinado a `:pipeline-protocol`. **No** cubre "jenkins", "controller" ni transporte de red, y escanea sólo `v2`. Además declara `repoRoot()` en la línea 39 y **nunca lo usa**. Una ley "sin transporte de red" sería además falsa sobre este repositorio: `pipeline-step-sdk/http/…/JdkHttpTransport.kt` usa `java.net.http.HttpClient`. |

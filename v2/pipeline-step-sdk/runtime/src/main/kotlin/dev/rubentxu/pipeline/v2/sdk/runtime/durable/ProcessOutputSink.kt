@@ -149,25 +149,52 @@ data class ProcessOutputSinks(
 /**
  * The most sanitized bytes the pump moves per write into the composed sink.
  *
- * ## What it bounds, and what it no longer does
+ * ## What it bounds now, after OBS-F measured it
  *
- * It bounds the store's per-chunk bookkeeping: every write here is one reserve/write/commit cycle,
- * so this is the transaction size, and OBS-F measures the throughput/RSS trade-off against data
- * rather than by taste. It is deliberately not a public contract, so changing it is not a breaking
- * change for a consumer of the read side.
+ * It bounds the store's per-chunk bookkeeping. Every write here is one `reserve -> write -> commit`
+ * cycle AND one frame in `SegmentFrameIndex`, and `SegmentFrameIndex.appendLine` opens a
+ * `FileChannel` and calls `force(false)` for each one — so this window is literally the number of
+ * fsyncs per byte of transcript. It is deliberately not a public contract, so changing it is not a
+ * breaking change for a consumer of the read side.
  *
- * It used to ALSO be the liveness bound, because the pump asked `redacted.read(window)` for a whole
- * window and `RedactingInputStream.read` returns only at `len` bytes or EOF. That made the console
- * quantised in 1024-byte steps: at 8 KiB — the value before OBS-B — a step emitting 100 B/s
- * withheld its first visible byte for over a minute, and even at 1 KiB a 20-byte transcript stayed
- * invisible until the step ended. Both were measured, not argued.
+ * ## Why it is 64 KiB and not 1024
  *
- * The pump now asks for `min(this, available())`, so this is a CEILING and the visible latency comes
- * from the redactor's lookahead instead — at most `MIN_SECRET_WINDOW` bytes. That is the floor that
- * cannot be tuned away: a byte inside the lookahead could still begin a secret, so emitting it early
- * would be a leak rather than a latency.
+ * The pump asks for `maxOf(1, minOf(window.size, redacted.available()))`, so a slow producer is
+ * unaffected: a step printing 100 B/s commits 100-byte chunks whatever this says. The window only
+ * governs a producer that fills the pipe, and there it is pure cost.
+ *
+ * Measured over 8 MiB through the real `RedactingOutputIngress` and a real `SegmentOutputStore`
+ * (`ObsFChunkCostMeasurementTest`; receipt
+ * `docs/v2/07-uat/OBSF_PUBLISHED_READ_SIDE_AND_CHUNK_COST_RECEIPT.md`):
+ *
+ * ```text
+ * window   transactions   frames=fsyncs   per MiB    MiB/s
+ *   1024            8192             8192   1024.0      0.3
+ *  16384             512              512     64.0     25.5
+ *  65536             128              128     16.0    112.3
+ * ```
+ *
+ * 1024 was chosen when this WAS a liveness bound — at 8 KiB a step emitting 100 B/s withheld its
+ * first visible byte for over a minute. OBS-B removed that role when the pump started asking for
+ * what is ready, and the number stayed at the value its old justification had picked. The latency
+ * floor is now the redactor's lookahead, at most `MIN_SECRET_WINDOW` bytes, and that one is
+ * redaction correctness rather than tuning: a byte inside the lookahead could still begin a secret,
+ * so emitting it early would be a leak rather than a latency.
+ *
+ * 64 KiB is the knee of the curve — 128 KiB buys 43% more for twice the transaction memory — and it
+ * is exactly `SegmentOutputStore.DEFAULT_RESERVATION_BYTES`. That alignment is the point: `reserve`
+ * reserves `max(minBytes, 64 KiB)`, so a 1024-byte window was reserving 64 KiB, writing 1 KiB and
+ * **discarding 98% of the reservation at every commit**. One window is now one reservation.
+ *
+ * ## What it costs, named
+ *
+ * A producer that saturates the pipe commits in 64 KiB units, so its first byte becomes visible
+ * after ~64 ms rather than ~1 ms. That is the whole trade: first-byte latency for a fast producer,
+ * against 377x the persistence throughput. At 0.3 MiB/s the cost was not merely slower — the sink
+ * runs on the pump thread, so a fsync per KiB backs the child's pipe up and slows the build itself,
+ * which is storage backpressure this subsystem is supposed to stay out of the way of.
  */
-const val TRANSCRIPT_LIVE_WINDOW_BYTES: Int = 1024
+const val TRANSCRIPT_LIVE_WINDOW_BYTES: Int = 64 * 1024
 
 /**
  * A [ProcessOutputSink] over a plain stream, for compositions that have not supplied one.

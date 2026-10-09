@@ -12,6 +12,7 @@ import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import dev.rubentxu.pipeline.v2.output.store.SegmentOutputStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfig
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.TRANSCRIPT_LIVE_WINDOW_BYTES
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -206,23 +207,36 @@ class ObsC23ChannelSeparationUatTest {
         /**
          * A per-channel payload larger than [TRANSCRIPT_LIVE_WINDOW_BYTES].
          *
-         * OBS-B fixed the live window at 1 KiB and documented it as a **liveness bound**: the
-         * pump asks the redacting stream for a whole window, so bytes become observable once a
-         * window is available or at EOF. A 13-byte payload is therefore correctly invisible
-         * mid-step, and asserting otherwise would make this row a test of OBS-B's latency
-         * contract wearing a channel test's name.
+         * The row observes *committed* bytes while the step is alive, and it can only do that if
+         * the payload is bigger than one pump window. The window has moved twice under this file —
+         * 8 KiB, then 1 KiB after OBS-B, then 64 KiB after OBS-F measured what a window costs —
+         * so this is sized against the constant rather than left at whatever was big enough when
+         * the row was written. **128 KiB is two windows**, and the row asserts the premise, so a
+         * future window increase fails here instead of quietly turning the row into a channel test
+         * that observes nothing.
          *
-         * Each channel emits more than one window so the row observes *committed* bytes while
-         * the step is alive. That keeps the assertion about ATTRIBUTION — which stream a byte
-         * belongs to — instead of about WHEN a byte becomes visible, which is OBS-B's law and
-         * is already covered by its own characterisation.
+         * The assertion stays about ATTRIBUTION — which stream a byte belongs to — and never about
+         * WHEN a byte becomes visible. Visibility is OBS-B's law and has its own characterisation
+         * in `ObsBLiveOutputIngressTest`.
          */
         const val WINDOW_PAYLOAD_PREFIX = "P"
-        const val WINDOW_PAYLOAD_BYTES = 4096
+        const val WINDOW_PAYLOAD_BYTES = 128 * 1024
     }
 
-    /** A payload of [WINDOW_PAYLOAD_BYTES] identifiable bytes for [channel]. */
+    /**
+     * A payload of [WINDOW_PAYLOAD_BYTES] identifiable bytes for [channel].
+     *
+     * The premise is checked HERE rather than in each row, because this is the one function every
+     * row that needs a committed mid-step payload has to go through. Asserting it at the call
+     * sites would leave a future row free to skip it, and the failure mode is silent: too small a
+     * payload does not fail, it observes nothing, and a channel test that observes nothing passes.
+     */
     private fun windowPayload(channel: OutputChannel): String {
+        require(WINDOW_PAYLOAD_BYTES > TRANSCRIPT_LIVE_WINDOW_BYTES) {
+            "premise broken: a ${WINDOW_PAYLOAD_BYTES}-byte payload no longer crosses a " +
+                "${TRANSCRIPT_LIVE_WINDOW_BYTES}-byte window, so a row using it would observe no " +
+                "committed bytes mid-step and pass without testing attribution at all"
+        }
         val tag = if (channel == OutputChannel.STDOUT) "OUT" else "ERR"
         val filler = WINDOW_PAYLOAD_PREFIX.repeat(WINDOW_PAYLOAD_BYTES) + "\n"
         return "$tag-BEGIN\n$filler$tag-END\n"

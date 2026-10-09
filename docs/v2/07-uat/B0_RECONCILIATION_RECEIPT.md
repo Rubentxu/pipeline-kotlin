@@ -688,3 +688,38 @@ delante. Corregirlo pertenece a esa rama.
 Lo relevante es que unificar `par/cli-observation` pasó por el `pre-merge-commit` recién
 instalado, así que esa fusión va a exigir alineación y closeout como cualquier otra. Reubicado como
 `bl-bl-01M4GN9APQ0003891AKK9Z6E80` (P2).
+
+### Corrección a mi propio cierre: el backlog no estaba agotado
+
+Escribí que había agotado el trabajo ejecutable. Eso era falso, y el salto de confianza
+meritaba la auditoría que lo destapó.
+
+Al revisar el backlog encontré `C8 CRITICAL data loss` sin priorizar. Lo verifiqué contra el
+código antes de aceptar el rótulo:
+
+```text
+StepSpec.DeleteDir(path = ".")           default, alcanzable desde el builder
+WorkspaceResolver                        era el segundo defecto del hallazgo
+WorkspacePathResolver.authorizeRootDestruction
+    Attached → Refused(ProtectedWorkspaceRoot)   incluso con marcador VCS
+    Managed  → Permitted
+DeleteDirOperationsAdapter:112          consume el guard
+CleanWsOperationsAdapter:97             idem
+DestructiveSafetyOwnershipTest          11 tests, 0 failures, 0 errors
+docs/v2/07-uat/C8_WORKSPACE_ROOT_DELETION_RECEIPT.md
+```
+
+C8 está cerrado y con recibo. **Lo que quedaba abierto era el ledger, no el código**: el item
+nunca se cerró en el backlog porque nadie lo priorizó.
+
+El hallazgo general es peor que C8. De 40 items, **31 nunca fueron priorizados**, y de esos 31
+al menos 19 describen en su propio texto un cierre ya ocurrido — `DONE`, `CERRADO`,
+`CORRECTION`, o con SHA de commit. El backlog llevaba tiempo siendo un archivo de notas de
+trabajo pasado, no una lista de deuda vigente.
+
+Así que la afirmación correcta no era "el trabajo ejecutable está agotado". Era: **cerré los 42
+ciclos que había, corregí los dos defectos ejecutables que encontré, y dejé 31 items sin
+auditar**. Esa tercera cosa es trabajo pendiente de verdad, y yo no la había hecho.
+
+Registrado como `bl-bl-01M4GNDJK30003891ATJG34KM0` (P1). La auditoría de los 31 —qué sigue
+vivo, qué ya se resolvió y nunca se cerró— es la siguiente unidad de trabajo real.

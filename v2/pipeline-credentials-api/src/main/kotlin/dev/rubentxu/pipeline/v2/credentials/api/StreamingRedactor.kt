@@ -251,6 +251,25 @@ class StreamingRedactor(
                 }
 
                 // Step 5: pending.size < maxLiteral and source still has data → fill lookahead
+                //
+                // RETURN WHAT WE HAVE rather than going to the source for the rest.
+                //
+                // `InputStream.read` is allowed to return fewer than `len` bytes, and forcing a full
+                // fill is what stranded the transcript. `available()` says how much can be emitted
+                // without touching the source; a caller that trusts it asks for exactly that. This
+                // method then consumed the buffer, found the lookahead ring short and the input
+                // buffer drained, and called `source.read()` — which blocks for as long as the
+                // producer chooses to say nothing. The bytes it had already decided stayed inside
+                // this object and never reached the caller.
+                //
+                // Measured on `ObsBJvmDeathOutputRecoveryUatTest`, whose child writes 400 lines and
+                // then waits at a barrier: `available()` reported 8111 ready bytes, the pump asked
+                // for them, and both pump threads sat RUNNABLE inside `source.read` for 55 s while
+                // the durable transcript stayed frozen at the single byte committed before the
+                // stall. Blocking is only safe while there is nothing to lose, hence `written > 0`.
+                if (written > 0 && !sourceExhausted && ringCount < maxLiteral && inputOffset >= inputLimit) {
+                    return written
+                }
                 if (fillPending()) continue
             }
 
@@ -280,10 +299,15 @@ class StreamingRedactor(
          * ## Which way it is allowed to be wrong
          *
          * A matched literal expands to the scrub marker, so the true count can exceed this estimate;
-         * a caller given too few asks [read] for a little more and blocks, which is the safe
-         * direction — it waits rather than acting on bytes that do not exist. The direction that
-         * would be a security defect is the other one, and it cannot happen: the withheld lookahead
-         * is subtracted here rather than assumed away.
+         * a caller given too few asks [read] for a little more, and [read] now returns what it has
+         * already decided rather than going to the source for the remainder. That was not always so,
+         * and the claim that blocking here is "the safe direction" was wrong in a way only a stalled
+         * producer could reveal: `read` used to fill the whole requested length even while holding
+         * bytes, so a producer that stopped writing mid-stream kept every already-decided byte
+         * inside this object. See the early return in [read].
+         *
+         * The direction that would be a security defect is the other one, and it cannot happen: the
+         * withheld lookahead is subtracted here rather than assumed away.
          */
         override fun available(): Int {
             if (closed) return 0

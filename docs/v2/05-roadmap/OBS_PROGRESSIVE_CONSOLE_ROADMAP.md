@@ -114,6 +114,21 @@ captura actual viaja por pipes propiedad de la JVM y `console.log` fue eliminado
 así que la salida del hijo posterior a esa muerte **no tiene hoy camino al Output Plane**. Prohibido un
 spool de secretos en claro como solución de recuperación.
 
+**Estado del Nivel B — `NOT_RUN`, con el defecto medido.** El propietario fijó A **y** B como garantía de
+producto. El spike obligatorio se ejecutó (`7c345be1`) y medió algo distinto de lo que se suponía: el
+hijo **sobrevive** a la muerte de su JVM (marca `RESUMED`, y escribe un fichero con éxito) y **muere en
+su primera escritura a stdout**, porque su fd 1 es la tubería del pump y el kernel responde `EPIPE` →
+`SIGPIPE`. Produce 0 de 50 líneas posteriores y el Output Plane no gana ni un byte. Un `sh` no se queda
+callado: lo terminan a mitad de script, sin registrar por qué.
+
+Eso **excluye** el spool a fichero (un fichero del hijo guarda bytes crudos y `raw_secret_on_disk == 0`
+deja de ser cierto) y **descarta** reencolar un lector a un huérfano (no hay huérfano: ya está muerto).
+
+**Decisión de forma:** `ADR-OBS-003-child-output-descriptor-ownership.md`, estado `proposed`, pendiente
+de ratificación. La única forma compatible con las tres restricciones es un agente de ingesta que
+sobreviva a la JVM, redacte en memoria y confirme al plano sólo bytes saneados. `OBS-PC-208` sigue
+`NOT_RUN` hasta que esa ADR se ratifique: no se escribe código antes.
+
 ### OBS-3, OBS-4, OBS-5, OBS-6, OBS-7
 
 Detalle en el enunciado del evolutivo. Los presupuestos numéricos de OBS-3 se fijan **con línea base

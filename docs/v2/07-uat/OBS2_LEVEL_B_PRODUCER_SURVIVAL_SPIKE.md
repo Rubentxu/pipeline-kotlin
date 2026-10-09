@@ -66,6 +66,10 @@ as a product guarantee, is a genuinely larger commitment than "keep the bytes".
 The roadmap's "no new daemon without a spike" condition is now discharged for the *question*; it is not
 discharged for the *shape*, which is an ADR.
 
+**Shape proposed in `ADR-OBS-003-child-output-descriptor-ownership.md` (status `proposed`, pending
+ratification).** It is deliberately *not* accepted here: it adds a supervised process to the product's
+deployment surface, and that is the owner's call, not this block's.
+
 ## Fidelity
 
 HF3. `kill -9` on the real JVM; the child's process tree deliberately not killed. The genuine

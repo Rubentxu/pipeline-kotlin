@@ -90,6 +90,55 @@ val pluginDir: java.io.File = repoRoot.resolve("examples/example-uppercase-plugi
 val v2Gradlew: java.io.File = repoRoot.resolve("v2/gradlew")
 val externalPluginJar: java.io.File = pluginDir.resolve("build/libs/example-uppercase-plugin-0.1.0.jar")
 
+// W6.2b: the OTHER two plugin shapes, built the same way -- as INDEPENDENT Gradle builds against
+// this revision's published SDK, never as subprojects of this one. Until these were executed on
+// the installed binary, the open-world claim had been verified for atomic Steps only, and the S6
+// audit (docs/v2/05-roadmap/S6_SECTIONS_4_5_9_AUDIT.md) recorded §4/§5 as verified by absence of a
+// forbidden pattern rather than by execution.
+val blockPluginDir: java.io.File = repoRoot.resolve("examples/example-block-plugin")
+val blockPluginJar: java.io.File = blockPluginDir.resolve("build/libs/example-block-plugin-0.1.0.jar")
+
+val directivePluginDir: java.io.File = repoRoot.resolve("examples/example-directive-plugin")
+val directivePluginJar: java.io.File =
+    directivePluginDir.resolve("build/libs/example-directive-plugin-0.1.0.jar")
+
+fun registerExternalPluginBuild(
+    taskName: String,
+    description: String,
+    dir: java.io.File,
+    jar: java.io.File,
+) = tasks.register<Exec>(taskName) {
+    group = "verification"
+    this.description = description
+    inputs.dir(dir.resolve("src"))
+    inputs.files(dir.resolve("build.gradle.kts"), dir.resolve("settings.gradle.kts"))
+    outputs.file(jar)
+
+    workingDir = repoRoot
+    commandLine(
+        v2Gradlew.absolutePath,
+        "-p", dir.absolutePath,
+        "--console=plain",
+        "-PsdkRepo=" + sdkRepoDir.absolutePath,
+        "-PsdkVersion=" + sdkVersion,
+        "jar",
+    )
+}
+
+val buildExternalBlockPlugin = registerExternalPluginBuild(
+    "buildExternalBlockPlugin",
+    "Builds examples/example-block-plugin against THIS revision's published SDK.",
+    blockPluginDir,
+    blockPluginJar,
+)
+
+val buildExternalDirectivePlugin = registerExternalPluginBuild(
+    "buildExternalDirectivePlugin",
+    "Builds examples/example-directive-plugin against THIS revision's published SDK.",
+    directivePluginDir,
+    directivePluginJar,
+)
+
 val buildExternalPlugin by tasks.registering(Exec::class) {
     group = "verification"
     description = "Builds examples/example-uppercase-plugin against THIS revision's published SDK."
@@ -121,16 +170,32 @@ val pipelinekBin: java.io.File = file(
 )
 
 val externalScript: java.io.File = file("fixtures/external.pipeline.kts")
+val externalBlockScript: java.io.File = file("fixtures/external-block.pipeline.kts")
+val externalDirectiveScript: java.io.File = file("fixtures/external-directive.pipeline.kts")
 
 tasks.test {
     useJUnitPlatform()
-    // A test whose subject is optional is a test that passes by omission. Both the plugin JAR and
-    // the installed binary are built before the assertion runs, or the build fails.
+    // A test whose subject is optional is a test that passes by omission. Every plugin JAR and the
+    // installed binary are built before the assertions run, or the build fails.
     dependsOn(buildExternalPlugin)
+    dependsOn(buildExternalBlockPlugin)
+    dependsOn(buildExternalDirectivePlugin)
 
     systemProperty("pipelinek.bin", pipelinekBin.absolutePath)
     systemProperty("example.plugin.jar", externalPluginJar.absolutePath)
     systemProperty("external.script", externalScript.absolutePath)
+    systemProperty("example.block.plugin.jar", blockPluginJar.absolutePath)
+    systemProperty("external.block.script", externalBlockScript.absolutePath)
+    systemProperty("example.directive.plugin.jar", directivePluginJar.absolutePath)
+    systemProperty("external.directive.script", externalDirectiveScript.absolutePath)
+
+    // The fixtures are RUNTIME inputs, not compiled sources, so nothing declares them and Gradle
+    // cannot see them change. Without this, editing `repeatBlock(3)` to `repeatBlock(2)` leaves
+    // `:test UP-TO-DATE`: the suite reports green while executing the previous run's scripts.
+    // That is precisely the "a gate uses results not its own execution" defect, and it also makes
+    // the mutation that validates these rows unrunnable. Declared as file inputs so the task is
+    // out of date whenever a fixture's bytes change.
+    inputs.files(externalScript, externalBlockScript, externalDirectiveScript)
 
     // Hermetic temp root. JUnit `@TempDir` resolves `java.io.tmpdir`, which by default is `/tmp` —
     // often RAM-backed and always outside this build. Point it at a build-local directory so a

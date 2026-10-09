@@ -100,6 +100,25 @@ object JsonEventLog {
     }
 
     /**
+     * ONE event as ONE JSON object, with no array wrapper.
+     *
+     * ## Why this exists rather than slicing [encodeTo]'s output
+     *
+     * [encode] and [encodeTo] are DOCUMENT codecs: their wire form is a bracketed array. A paged
+     * command cannot use them directly, because a page boundary has to land between two objects —
+     * and the two ways to get there are both wrong. Re-implementing the field writing here would
+     * create a second encoder that can drift from the store's, and it would be free to emit a shape
+     * the store never wrote. Wrapping a single event in an array and stripping the brackets would
+     * mean parsing what was just serialized, and would break on any field whose value legitimately
+     * contains the delimiter.
+     *
+     * So this delegates. The field order, the escaping and the `kind` tag are produced by the same
+     * [EventJsonWriter.encodeEvent] the store itself uses, and an event encoded here is byte-for-byte
+     * the same element [encode] would put at that index.
+     */
+    fun encodeOne(event: DomainEvent): String = EventJsonWriter.encodeEvent(event)
+
+    /**
      * WU-RP-044 (M5 RSS debt): streams the same JSON array as [encode] to
      * [out] one event at a time so the full document is never materialised as
      * a single in-memory String. Byte-for-byte identical output.

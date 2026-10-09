@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
 import dev.rubentxu.pipeline.v2.events.EventRecordRead
 import dev.rubentxu.pipeline.v2.events.UndecodableReason
+import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
 import dev.rubentxu.pipeline.v2.events.identity.EnvelopeCodec
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
@@ -70,6 +71,29 @@ import dev.rubentxu.pipeline.v2.events.identity.EventQuery
  */
 object MainEventsCli {
 
+    /**
+     * What the command prints per row: the identity projection, or the typed event itself.
+     *
+     * This is a closed pair on purpose. It is a choice of CODEC, not of reader: both cases read the
+     * same [EventPageDrain.Outcome] through the same store, with the same query, the same cursor and
+     * the same exit status. Adding a third projection must be a decision here rather than a flag
+     * threaded through the drain, because a projection is the only thing `--typed` is allowed to
+     * change and the reason it cannot be allowed to change anything else.
+     */
+    private sealed interface RowProjection {
+        /** The V1 envelope wire form. Byte-for-byte unchanged by the existence of `--typed`. */
+        data object Envelope : RowProjection
+
+        /**
+         * The stored [dev.rubentxu.pipeline.v2.events.DomainEvent], one JSON object per line.
+         *
+         * This is the projection that carries `stageName`, `stepName`, `stepType` and `outcome`.
+         * Those values are not reconstructed: they are read from the record, because the envelope
+         * that the same drain also produces does not hold them.
+         */
+        data object Typed : RowProjection
+    }
+
     fun main(args: Array<String>): Int {
         var db: String? = null
         var runId: String? = null
@@ -78,6 +102,7 @@ object MainEventsCli {
         var limit = DEFAULT_LIMIT
         var afterCursor: String? = null
         var limitArg: String? = null
+        var projection: RowProjection = RowProjection.Envelope
 
         var i = 0
         while (i < args.size) {
@@ -88,6 +113,7 @@ object MainEventsCli {
                 "--subject" -> subjectCanonical = args.getOrNull(++i)
                 "--limit" -> limitArg = args.getOrNull(++i)
                 "--after-cursor" -> afterCursor = args.getOrNull(++i)
+                "--typed" -> projection = RowProjection.Typed
                 else -> when {
                     // A leading `--` that is not a known option is a typo or a newer flag from a
                     // different build. Ignoring it would run a different command than the one the
@@ -110,7 +136,7 @@ object MainEventsCli {
         }
 
         if (db == null || runId == null) {
-            System.err.println("Usage: pipeline events --db <path> <runId> [--kind K] [--subject v1:run:ID|v1:stage:ID:N|...] [--limit N] [--after-cursor TOKEN]")
+            System.err.println("Usage: pipeline events --db <path> <runId> [--kind K] [--subject v1:run:ID|v1:stage:ID:N|...] [--limit N] [--after-cursor TOKEN] [--typed]")
             return 2
         }
 
@@ -160,7 +186,10 @@ object MainEventsCli {
                 else -> EventQuery.All
             }
 
-            val outcome = EventPageDrain.drain(reader, run, query, cursor, limit)
+            val outcome = when (projection) {
+                RowProjection.Envelope -> EventPageDrain.drain(reader, run, query, cursor, limit)
+                RowProjection.Typed -> return reportTyped(store, run, query, cursor, limit, runId)
+            }
             when (outcome) {
                 is EventPageDrain.Outcome.Answered -> {
                     outcome.page.envelopes.forEach { println(EnvelopeCodec.encode(it)) }
@@ -185,6 +214,41 @@ object MainEventsCli {
         } finally {
             store.close()
         }
+    }
+
+    /**
+     * The `--typed` branch: the same read, the same query, the same cursor and the same status
+     * contract as the envelope branch, printed through the typed codec instead.
+     *
+     * It is a separate method rather than a branch inside the envelope loop because the two
+     * projections genuinely carry different things: [dev.rubentxu.pipeline.v2.events.identity.PipelineEventEnvelope]
+     * has identity, and the [dev.rubentxu.pipeline.v2.events.DomainEvent] has the semantic fields the
+     * envelope dropped. What they share — refusal reporting, continuation reporting, the exit status —
+     * is the part that must not fork, so it calls the SAME [reportRefusals] and [reportContinuation]
+     * the envelope path uses and returns the SAME [exitCodeFor] mapping by routing through
+     * [EventPageDrain.drainTyped]'s outcome.
+     */
+    private fun reportTyped(
+        store: dev.rubentxu.pipeline.v2.events.EventStore,
+        run: ResourceRef,
+        query: EventQuery,
+        cursor: EventCursor?,
+        limit: Int,
+        runId: String,
+    ): Int {
+        val outcome = EventPageDrain.drainTyped(store, run, query, cursor, limit)
+        val page = outcome.page
+        page.events.forEach { println(JsonEventLog.encodeOne(it)) }
+        reportRefusals(runId, page.refusals)
+        reportContinuation(page.nextCursor)
+        if (outcome is EventPageDrain.TypedOutcome.Stalled) {
+            System.err.println(
+                "evt-stalled-v1:$runId:${page.nextCursor?.lastSequence ?: 0L}: " +
+                    "the store reported more rows and the continuation did not advance; " +
+                    "history past this point was NOT read",
+            )
+        }
+        return 0
     }
 
     /**

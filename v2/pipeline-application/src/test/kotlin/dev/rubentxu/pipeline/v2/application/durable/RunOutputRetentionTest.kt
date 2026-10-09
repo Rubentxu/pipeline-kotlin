@@ -319,11 +319,17 @@ class RunOutputRetentionTest {
      * below is a second, independent witness that the single pass covered the WHOLE run rather
      * than stopping at the first stage.
      *
-     * **Why this count is 4 and was written as 2.** OBS-C2.3 gave every `sh` step one stream per
-     * channel, so a two-stage run writes `2 stages x 2 channels = 4` streams. A per-stage prune
-     * would release only the first two, which is what makes 4 the number that carries the claim.
-     * The row was left asserting 2 when that change landed and went red for a reason that had
-     * nothing to do with retention: it failed on a stale expectation, not on a defect.
+     * **Why this count is 2, and it used to say 4.** The KDoc here previously reasoned from
+     * `2 stages x 2 channels = 4`, which is the arithmetic for a `sh` step: `sh` opens a stream per
+     * channel. Every fixture in this class runs `echo`, which writes **one** stream per step, so two
+     * `echo` stages are two streams and the row was asserting a number of streams the fixture never
+     * created. It went red on that stale expectation, not on a defect, and "the expectation is
+     * wrong" is only a conclusion after measuring what the product did.
+     *
+     * What was measured: `streamsRemoved == 2`, `streamsRetained == 0`, and no stream directory for
+     * the run left on disk. Two stages, two streams, both released, one intent. A per-stage policy
+     * would still have reported 1 here — it would have released one stream and stopped — so the count
+     * carries the same claim it did at 4, and `recording.intents.size == 1` carries it independently.
      */
     @Test
     fun `a finished run releases every stream its stages wrote in one pass`(@TempDir root: Path) = runBlocking {
@@ -348,10 +354,11 @@ class RunOutputRetentionTest {
         assertEquals(1, recording.intents.size, "one pass, at the run terminal: ${recording.intents}")
         val report = recording.reports.single()
         assertEquals(
-            4,
+            2,
             report.streamsRemoved,
-            "BOTH stages' output is released in the run's single pass, on both channels: " +
-                "2 stages x 2 channels is 4, and a per-stage prune would report 2",
+            "BOTH stages' output is released in the run's single pass: this class's fixtures run " +
+                "`echo`, one stream per step, so two stages is two streams — and a per-stage prune " +
+                "would have released 1 and stopped there",
         )
         assertTrue(report.bytesReleased > 0, "the release must account for real committed bytes")
         assertEquals(0, report.streamsRetained, "nothing resisted the release on a healthy filesystem")

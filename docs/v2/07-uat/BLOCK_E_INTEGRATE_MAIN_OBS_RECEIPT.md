@@ -263,6 +263,30 @@ Run #10 corre la matriz de fitness de arquitectura in-VM sin forkear `pipelinek`
 
 Cuentas totales: 110 XML files (110 `<testsuite>` records), `tests="550"`, `skipped="10"`, `failures="0"`, `errors="0"` (540 ejecutados verde + 10 fixture-arrays skipped intencionalmente sobre la matriz `ViolationFixture`).
 
+### 3.14 Verificación adicional sobre 9b103394 — pipeline-step-sdk in-VM
+
+Run #11 corre la batería completa de los módulos `pipeline-step-sdk:api`, `:files`, `:http`, `:junit`, `:runtime` (todos in-VM, sin forkear `pipelinek`). Salida a `BUILD SUCCESSFUL in 1m 15s`.
+
+**Run #11 — pipeline-step-sdk (5 módulos, 19 XML files, 0/0/0/0)**
+
+| tests | failures | errors | skipped |
+|---|---|---|---|
+| **186** | 0 | 0 | 0 |
+
+Cubre `CompatibilityLevelEnumTest`, `StepDescriptorSchemaTest`, `FileExistsExecutorTest`, `FileReadExecutorTest`, `FileWriteExecutorTest`, `C8DestructiveIntentMatrixTest`, `WorkspaceCleanupTest`, `BoundedBodySubscriberTest`, `EgressAdmissionTest`, `HttpCodecTruthTest`, `HttpCredentialApplicationTest`, `HttpCredentialContainmentTest`, `HttpEgressApplicationTest`, `HttpRequestStepContractTest`, `JdkHttpOperationsTest`, `JdkHttpTransportAsyncTest`, `HttpPluginContractTest`, `HttpProvenanceDigestSourceLawTest`, `JUnitReportParserTest`, `DurableShConfigTest`. SDK sin subprocess, todos cierran verde.
+
+### 3.15 Verificación adicional sobre 9b103394 — credentials + binding + testkit in-VM
+
+Run #12 corre `:pipeline-credentials-executor`, `:pipeline-credentials-local`, `:pipeline-binding-factory`, `:pipeline-testkit`. Salida a `BUILD SUCCESSFUL in 1m 17s`.
+
+**Run #12 — credentials + binding + testkit (19 XML files, 0/0/0/0)**
+
+| tests | failures | errors | skipped |
+|---|---|---|---|
+| **125** | 0 | 0 | 0 |
+
+Cubre la frontera credentials-api/binding/testkit in-VM sin forkear. Queda `pipeline-credentials-multipart` fuera porque su `CredentialMaterializerTest` ya usa `AppBinSupport` (subprocess, wedge).
+
 ### 3.5 E2 ronda 3 — `check --rerun-tasks` sobre f2da79e3 (en curso)
 - Comando: `cd v2 && ./gradlew check --rerun-tasks --console=plain --no-daemon --max-workers=2`.
 - Comandos equivalentes: mismo cuerpo; difieren en flags de recursos (--no-daemon por la mortalidad de daemon observada bajo carga, --max-workers=2 para aliviar la carga).
@@ -337,4 +361,4 @@ La medida del coste de serialización de ordinales con escritor lento queda pend
 6. Re-emisión del presente recibo tras los pasos 1-5 con el veredicto final: `INTEGRATION_VERIFIED_LOCAL` o `BLOCKED_CONCRETO` con reproducción.
 7. Push, tag, Prerelease (pendiente de tu autorización).
 
-**Total verificado a fb3a1e88 (HEAD al cierre):** 486 (Run #9 ya comiteado) + Run #10 architecture-tests 540 verde (10 skipped intencionales) = **1026 tests verde** sobre cuatro SHAs (`14c75ab9`, `f2da79e3`, `9644a1ea`, `fb3a1e88`). 10 skipped + 0 failures + 0 errors en el acumulado.
+**Total verificado a 9b103394 (HEAD al cierre):** 1026 (Run #10 ya comiteado) + Run #11 pipeline-step-sdk 186 verde + Run #12 credentials + binding + testkit 125 verde = **1337 tests verde** sobre cinco SHAs (`14c75ab9`, `f2da79e3`, `9644a1ea`, `fb3a1e88`, `9b103394`). 10 skipped + 0 failures + 0 errors en el acumulado.

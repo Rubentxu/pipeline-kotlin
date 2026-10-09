@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery
+import dev.rubentxu.pipeline.v2.application.observation.FormatParseResult
 import dev.rubentxu.pipeline.v2.application.observation.SelectorCompileResult
 import dev.rubentxu.pipeline.v2.application.observation.LineSelector
 import dev.rubentxu.pipeline.v2.application.observation.compileQuery
@@ -296,6 +297,26 @@ sealed interface CliError {
         override fun toString(): String =
             "InvalidLimit: --limit needs a positive whole number of records, got '$value'. " +
                 "Omit it to show everything."
+    }
+
+    /**
+     * A valued option was handed a token that is itself an option of this CLI.
+     *
+     * Refused rather than consumed, and the severity is not uniform. `run --db --resume script.kts`
+     * stored the literal `"--resume"` as a database path and left the durable policy at its default,
+     * exiting 0: the caller asked for two things and one of them was quietly not done.
+     * `--control-root --allow-network script.kts` is the same shape with the egress flag on the
+     * losing side — the run stayed network-denied while the caller believed they had opened it.
+     *
+     * Scoped to tokens this build KNOWS, deliberately. Refusing every value that begins with `--`
+     * would make `--grep --verbose-stop` unexpressible, trading one silent drop for a new surprise;
+     * a token that names nothing is far more likely to be a pattern than a mistyped flag.
+     */
+    data class OptionValueIsAnOption(val option: String, val value: String) : CliError {
+        override fun toString(): String =
+            "OptionValueIsAnOption: '$option' was given '$value', which is another option of this CLI. " +
+                "Refusing rather than storing '$value' as the value of '$option', which would have " +
+                "dropped a flag you asked for and exited 0."
     }
 }
 
@@ -650,21 +671,8 @@ object CliParser {
         }
     }
 
-    /**
-     * Options that decide what a run DOES rather than what a reader sees.
-     *
-     * Listed explicitly because the alternative — accepting them and ignoring them — is how a
-     * reader ends up replaying a run the caller did not ask for.
-     */
-    private val EXECUTION_ONLY_OPTIONS = setOf(
-        "--resume",
-        "--rerun",
-        "--workspace",
-        "--isolated",
-        "--sandbox-profile",
-        "--plugin-jar",
-        "--allow-network",
-    )
+    private val EXECUTION_ONLY_OPTIONS: Set<String> =
+        (EXECUTION_ONLY_FLAGS.map { it.token } + EXECUTION_ONLY_VALUED.map { it.token }).toSet()
 
     /**
      * What a reader that reads BOTH lanes can deliver, which is what `observe` parses against.
@@ -676,10 +684,24 @@ object CliParser {
         ObservationView.EVENT_LANE_VIEWS + ObservationView.CONSOLE
 
     /**
-     * Process one CLI option at [index] of [args], mutating [state] and
-     * returning the next index or a typed rejection. Extracted from
-     * [parse] to keep the loop driver's complexity below the detekt
-     * `CyclomaticComplexMethod` threshold.
+     * Process one CLI option at [index] of [args], mutating [state] and returning the next index or
+     * a typed rejection.
+     *
+     * Recognition, consumption and application are three separate steps, and the split is the fix
+     * rather than a style preference:
+     *
+     * 1. **Recognition** — [recognise] looks the token up in [FlagOption] / [ValuedOption]. An unknown
+     *    token is refused here, before `args[index + 1]` is read at all.
+     * 2. **Consumption** — the arity in that table decides whether [args] is consulted. A [FlagOption]
+     *    never looks at the next token. That is what makes `run --follow` complain about the missing
+     *    SCRIPT instead of the missing value, and what stops `--control-root` from eating
+     *    `--allow-network`.
+     * 3. **Application** — [FlagOptions] and [ValuedOptions] decide what an option MEANS, grouped by
+     *    the shape of its value so neither is a twenty-five-branch switch.
+     *
+     * This used to open with `val value = args.getOrNull(index + 1) ?: return MissingOptionValue`
+     * BEFORE dispatching on the name, which made every option take a value and nothing stop a valued
+     * option from swallowing a flag. `CliParserArityTest` is the row-per-row record of both.
      *
      * Shared with [parseObservation] on purpose: one table of what each option means, whatever verb
      * is being parsed.
@@ -690,183 +712,271 @@ object CliParser {
         index: Int,
         state: ParseState,
     ): ApplyOutcome {
-        val value = args.getOrNull(index + 1)
-            ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
-        return when (option) {
-            "--db" -> {
-                state.dbPath = value
-                ApplyOutcome.Applied(index + 2)
-            }
-            "--resume" -> if (state.durableRunPolicy != DurableRunPolicy.ReusePriorRun) {
-                ApplyOutcome.Rejected(CliError.ConflictingDurablePolicies)
-            } else {
-                state.durableRunPolicy = DurableRunPolicy.ResumePriorRun
-                ApplyOutcome.Applied(index + 1)
-            }
-            "--rerun" -> if (state.durableRunPolicy != DurableRunPolicy.ReusePriorRun) {
-                ApplyOutcome.Rejected(CliError.ConflictingDurablePolicies)
-            } else {
-                state.durableRunPolicy = DurableRunPolicy.StartFreshRun
-                ApplyOutcome.Applied(index + 1)
-            }
-            "--control-root" -> {
-                state.controlRoot = value
-                ApplyOutcome.Applied(index + 2)
-            }
-            "--workspace" -> {
-                state.workspace = value
-                ApplyOutcome.Applied(index + 2)
-            }
-            "--isolated" -> {
-                state.isolated = true
-                ApplyOutcome.Applied(index + 1)
-            }
-            "--plugin-jar" -> {
-                state.pluginJars += value
-                ApplyOutcome.Applied(index + 2)
-            }
-            // RP6-C / LFC-2E3. A BOOLEAN flag with no value, deliberately: the
-            // only question is whether this run may egress at all, and a
-            // `--allow-network=<something>` spelling would invite a per-host
-            // allowlist this runtime does not implement. Until it does, an
-            // all-or-nothing switch is the honest surface.
-            "--allow-network" -> {
-                state.allowNetwork = true
-                ApplyOutcome.Applied(index + 1)
-            }
-            "--sandbox-profile" -> {
-                state.sandboxProfile = when (value) {
-                    "none" -> SandboxProfile.NONE
-                    "local" -> SandboxProfile.LOCAL
-                    "os" -> return ApplyOutcome.Rejected(CliError.UnsupportedSandboxProfile(value))
-                    else -> return ApplyOutcome.Rejected(CliError.InvalidSandboxProfile(value))
-                }
-                ApplyOutcome.Applied(index + 2)
-            }
-            "--view" -> {
-                val requested = args.getOrNull(index + 1)
-                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
-                // Resolved HERE, not at the effect boundary: an unusable view is
-                // rejected before a process, a store or a journal is created.
-                when (val resolved = resolveView(requested, state.deliverableViews)) {
-                    is ViewParseResult.Parsed -> {
-                        state.view = resolved.view
-                        ApplyOutcome.Applied(index + 2)
-                    }
-                    is ViewParseResult.Invalid ->
-                        ApplyOutcome.Rejected(CliError.InvalidView(resolved.value))
-                    is ViewParseResult.Unavailable ->
-                        ApplyOutcome.Rejected(CliError.UnavailableView(resolved.view))
-                }
-            }
-            "--format" -> {
-                val requested = args.getOrNull(index + 1)
-                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
-                when (val resolved = ObservationFormat.parseFormat(requested)) {
-                    is dev.rubentxu.pipeline.v2.application.observation.FormatParseResult.Parsed -> {
-                        state.format = resolved.format
-                        ApplyOutcome.Applied(index + 2)
-                    }
-                    is dev.rubentxu.pipeline.v2.application.observation.FormatParseResult.Invalid ->
-                        ApplyOutcome.Rejected(CliError.InvalidFormat(resolved.value))
-                }
-            }
-            "--grep" -> {
+        val recognised = recognise(option)
+            ?: return ApplyOutcome.Rejected(CliError.UnknownOption(option))
+        return when (recognised) {
+            is RecognisedOption.Flag -> FlagOptions.apply(recognised.option, index, state)
+            is RecognisedOption.Valued -> {
                 val value = args.getOrNull(index + 1)
                     ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
-                if (value.isEmpty()) {
-                    return ApplyOutcome.Rejected(CliError.EmptyTextFilter(option))
+                if (value in KNOWN_OPTIONS) {
+                    return ApplyOutcome.Rejected(CliError.OptionValueIsAnOption(option, value))
                 }
-                // Repeated flags OR together into one group; the group's sense
-                // (whitelist or blacklist) is decided once, at normalization.
-                state.grepSelectors += TextSelector.Literal(value)
-                ApplyOutcome.Applied(index + 2)
+                ValuedOptions.apply(recognised.option, value, index, state)
             }
-            "--grep-regex" -> {
-                val value = args.getOrNull(index + 1)
-                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
-                if (value.isEmpty()) {
-                    return ApplyOutcome.Rejected(CliError.EmptyTextFilter(option))
-                }
-                state.grepSelectors += TextSelector.Pattern(value)
-                ApplyOutcome.Applied(index + 2)
-            }
-            "--grep-invert" -> {
-                state.grepInvert = true
-                ApplyOutcome.Applied(index + 1)
-            }
-            "--stage" -> {
-                val value = args.getOrNull(index + 1)
-                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
-                if (value.isEmpty()) {
-                    return ApplyOutcome.Rejected(CliError.EmptyTextFilter(option))
-                }
-                state.stageNames += value
-                ApplyOutcome.Applied(index + 2)
-            }
-            "--step" -> {
-                val value = args.getOrNull(index + 1)
-                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
-                if (value.isEmpty()) {
-                    return ApplyOutcome.Rejected(CliError.EmptyTextFilter(option))
-                }
-                state.stepNames += value
-                ApplyOutcome.Applied(index + 2)
-            }
-            "--kind" -> {
-                val value = args.getOrNull(index + 1)
-                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
-                if (value.isEmpty()) {
-                    return ApplyOutcome.Rejected(CliError.EmptyTextFilter(option))
-                }
-                state.eventKinds += value
-                ApplyOutcome.Applied(index + 2)
-            }
-            "--outcome" -> {
-                val value = args.getOrNull(index + 1)
-                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
-                val outcome = ObservedOutcome.fromToken(value)
-                    ?: return ApplyOutcome.Rejected(CliError.InvalidOutcome(value))
-                state.outcomes += outcome
-                ApplyOutcome.Applied(index + 2)
-            }
-            "--follow" -> {
-                state.follow = true
-                ApplyOutcome.Applied(index + 1)
-            }
-            "--tail-bytes" -> {
-                val value = args.getOrNull(index + 1)
-                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
-                val bytes = value.toLongOrNull()
-                if (bytes == null || bytes <= 0L) {
-                    return ApplyOutcome.Rejected(CliError.InvalidTailBytes(value))
-                }
-                state.tailBytes = bytes
-                ApplyOutcome.Applied(index + 2)
-            }
-            "--limit" -> {
-                val value = args.getOrNull(index + 1)
-                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
-                // Read as a count or refused. Never clamped: `--limit 0` and `--limit -3` are callers
-                // whose budget came out empty, and answering either with silence hides the mistake.
-                val records = value.toIntOrNull()
-                if (records == null || records <= 0) {
-                    return ApplyOutcome.Rejected(CliError.InvalidLimit(value))
-                }
-                state.budget = RecordBudget.UpTo(records)
-                ApplyOutcome.Applied(index + 2)
-            }
-            "--channel" -> {
-                val value = args.getOrNull(index + 1)
-                    ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
-                // Resolved HERE, at the boundary, so nothing downstream has to decide whether a
-                // token names a channel. Repeating the flag unions, per the AND-across/OR-within rule.
-                val channel = OutputChannel.fromToken(value)
-                    ?: return ApplyOutcome.Rejected(CliError.InvalidChannel(value))
-                state.channels += channel
-                ApplyOutcome.Applied(index + 2)
-            }
-            else -> ApplyOutcome.Rejected(CliError.UnknownOption(option))
         }
+    }
+}
+
+/** The execution-only half of each table. Split by arity because the two enums are distinct types. */
+private val EXECUTION_ONLY_FLAGS: List<FlagOption> =
+    listOf(FlagOption.RESUME, FlagOption.RERUN, FlagOption.ISOLATED, FlagOption.ALLOW_NETWORK)
+
+private val EXECUTION_ONLY_VALUED: List<ValuedOption> =
+    listOf(ValuedOption.WORKSPACE, ValuedOption.SANDBOX_PROFILE, ValuedOption.PLUGIN_JAR)
+
+/**
+ * The whole option surface of this CLI, in one table.
+ *
+ * Two enums rather than one, and the reason is exhaustiveness: [FlagOptions] matches a
+ * `when (FlagOption)` over six cases and [ValuedOptions] a `when (ValuedOption)` over fifteen, both
+ * with no `else`. One enum would force an `else` into each, and an `else` here is the defect this
+ * refactor exists to remove — an unrecognised option is exactly what must never fall through.
+ */
+private enum class FlagOption(val token: String) {
+    RESUME("--resume"),
+    RERUN("--rerun"),
+
+    /** RP034-H / ADR-0101: managed scratch workspace. */
+    ISOLATED("--isolated"),
+
+    /**
+     * RP6-C / LFC-2E3. A BOOLEAN with no value, deliberately: the only question is whether this run
+     * may egress at all, and a `--allow-network=<something>` spelling would invite a per-host
+     * allowlist this runtime does not implement. Until it does, an all-or-nothing switch is the
+     * honest surface.
+     */
+    ALLOW_NETWORK("--allow-network"),
+    GREP_INVERT("--grep-invert"),
+    FOLLOW("--follow"),
+    ;
+
+    companion object {
+        val BY_TOKEN: Map<String, FlagOption> = entries.associateBy { it.token }
+    }
+}
+
+/** Options that take exactly one value. The split from [FlagOption] is what keeps both `when`s total. */
+private enum class ValuedOption(val token: String) {
+    DB("--db"),
+    CONTROL_ROOT("--control-root"),
+    WORKSPACE("--workspace"),
+    PLUGIN_JAR("--plugin-jar"),
+    SANDBOX_PROFILE("--sandbox-profile"),
+    VIEW("--view"),
+    FORMAT("--format"),
+    GREP("--grep"),
+    GREP_REGEX("--grep-regex"),
+    STAGE("--stage"),
+    STEP("--step"),
+    KIND("--kind"),
+    OUTCOME("--outcome"),
+    TAIL_BYTES("--tail-bytes"),
+    LIMIT("--limit"),
+    CHANNEL("--channel"),
+    ;
+
+    companion object {
+        val BY_TOKEN: Map<String, ValuedOption> = entries.associateBy { it.token }
+    }
+}
+
+/** A recognised option and its arity, before any value has been read. */
+private sealed interface RecognisedOption {
+    data class Flag(val option: FlagOption) : RecognisedOption
+    data class Valued(val option: ValuedOption) : RecognisedOption
+}
+
+/** Every token this build knows, used to stop a valued option from eating a flag. */
+private val KNOWN_OPTIONS: Set<String> = FlagOption.BY_TOKEN.keys + ValuedOption.BY_TOKEN.keys
+
+/** Look the token up. `null` means this build has no such option, and that is an error, not a skip. */
+private fun recognise(option: String): RecognisedOption? =
+    FlagOption.BY_TOKEN[option]?.let { RecognisedOption.Flag(it) }
+        ?: ValuedOption.BY_TOKEN[option]?.let { RecognisedOption.Valued(it) }
+
+/** Options with no value. Their outcome never depends on what follows them. */
+private object FlagOptions {
+    fun apply(option: FlagOption, index: Int, state: ParseState): ApplyOutcome = when (option) {
+        FlagOption.RESUME -> setDurablePolicy(DurableRunPolicy.ResumePriorRun, index, state)
+        FlagOption.RERUN -> setDurablePolicy(DurableRunPolicy.StartFreshRun, index, state)
+        FlagOption.ISOLATED -> flag(index) { state.isolated = true }
+        FlagOption.ALLOW_NETWORK -> flag(index) { state.allowNetwork = true }
+        FlagOption.GREP_INVERT -> flag(index) { state.grepInvert = true }
+        FlagOption.FOLLOW -> flag(index) { state.follow = true }
+    }
+
+    /** A flag occupies exactly one position, so its outcome never depends on what follows it. */
+    private inline fun flag(index: Int, set: () -> Unit): ApplyOutcome {
+        set()
+        return ApplyOutcome.Applied(index + 1)
+    }
+
+    private fun setDurablePolicy(policy: DurableRunPolicy, index: Int, state: ParseState): ApplyOutcome {
+        if (state.durableRunPolicy != DurableRunPolicy.ReusePriorRun) {
+            return ApplyOutcome.Rejected(CliError.ConflictingDurablePolicies)
+        }
+        state.durableRunPolicy = policy
+        return ApplyOutcome.Applied(index + 1)
+    }
+}
+
+/**
+ * Options with a value, dispatched by the shape of that value.
+ *
+ * The three groups are not decoration: each has a different failure mode, and collapsing them is how
+ * a parser ends up with one error vocabulary for three unrelated mistakes.
+ */
+private object ValuedOptions {
+    fun apply(
+        option: ValuedOption,
+        value: String,
+        index: Int,
+        state: ParseState,
+    ): ApplyOutcome = when (option) {
+        // Paths. Existence is not checked here: a path that does not exist yet is a legitimate thing
+        // to name, and the effect boundary reports it. Naming a FLAG is not legitimate — refused above.
+        ValuedOption.DB -> { state.dbPath = value; ApplyOutcome.Applied(index + 2) }
+        ValuedOption.CONTROL_ROOT -> { state.controlRoot = value; ApplyOutcome.Applied(index + 2) }
+        ValuedOption.WORKSPACE -> { state.workspace = value; ApplyOutcome.Applied(index + 2) }
+        ValuedOption.PLUGIN_JAR -> { state.pluginJars += value; ApplyOutcome.Applied(index + 2) }
+
+        // Closed vocabulary or a number, resolved HERE at the boundary so nothing downstream re-decides
+        // what a token names. Repeating a flag unions, per the AND-across/OR-within rule.
+        ValuedOption.SANDBOX_PROFILE -> ClosedValueOptions.applySandboxProfile(value, index, state)
+        ValuedOption.VIEW -> ClosedValueOptions.applyView(value, index, state)
+        ValuedOption.FORMAT -> ClosedValueOptions.applyFormat(value, index, state)
+        ValuedOption.OUTCOME -> ClosedValueOptions.applyOutcomeToken(value, index, state)
+        ValuedOption.CHANNEL -> ClosedValueOptions.applyChannelToken(value, index, state)
+        ValuedOption.TAIL_BYTES -> ClosedValueOptions.applyTailBytes(value, index, state)
+        ValuedOption.LIMIT -> ClosedValueOptions.applyLimit(value, index, state)
+
+        // Free text. Empty is refused: under substring semantics it matches EVERY line, which is a
+        // typo promoted to a filter that keeps everything.
+        ValuedOption.GREP -> TextFilterOptions.addGrep(option.token, value, index, state, TextSelector::Literal)
+        ValuedOption.GREP_REGEX -> TextFilterOptions.addGrep(option.token, value, index, state, TextSelector::Pattern)
+        ValuedOption.STAGE -> TextFilterOptions.addTextFilter(option.token, value, index, state.stageNames)
+        ValuedOption.STEP -> TextFilterOptions.addTextFilter(option.token, value, index, state.stepNames)
+        ValuedOption.KIND -> TextFilterOptions.addTextFilter(option.token, value, index, state.eventKinds)
+    }
+}
+
+/**
+ * Values that name a closed vocabulary or a count, and therefore have exactly one right answer.
+ *
+ * Every function here either resolves the token into a typed field of [ParseState] or refuses it by
+ * name. None of them clamps, defaults or falls through: an unrecognised name in a closed vocabulary
+ * is the caller's typo, and answering it with something plausible is how `--limit abc` became 100.
+ */
+private object ClosedValueOptions {
+    fun applySandboxProfile(value: String, index: Int, state: ParseState): ApplyOutcome {
+        state.sandboxProfile = when (value) {
+            "none" -> SandboxProfile.NONE
+            "local" -> SandboxProfile.LOCAL
+            "os" -> return ApplyOutcome.Rejected(CliError.UnsupportedSandboxProfile(value))
+            else -> return ApplyOutcome.Rejected(CliError.InvalidSandboxProfile(value))
+        }
+        return ApplyOutcome.Applied(index + 2)
+    }
+
+    fun applyView(value: String, index: Int, state: ParseState): ApplyOutcome =
+        // Resolved HERE, not at the effect boundary: an unusable view is rejected before a process,
+        // a store or a journal is created.
+        when (val resolved = resolveView(value, state.deliverableViews)) {
+            is ViewParseResult.Parsed -> {
+                state.view = resolved.view
+                ApplyOutcome.Applied(index + 2)
+            }
+            is ViewParseResult.Invalid ->
+                ApplyOutcome.Rejected(CliError.InvalidView(resolved.value))
+            is ViewParseResult.Unavailable ->
+                ApplyOutcome.Rejected(CliError.UnavailableView(resolved.view))
+        }
+
+    fun applyFormat(value: String, index: Int, state: ParseState): ApplyOutcome =
+        when (val resolved = ObservationFormat.parseFormat(value)) {
+            is FormatParseResult.Parsed -> {
+                state.format = resolved.format
+                ApplyOutcome.Applied(index + 2)
+            }
+            is FormatParseResult.Invalid ->
+                ApplyOutcome.Rejected(CliError.InvalidFormat(resolved.value))
+        }
+
+    fun applyOutcomeToken(value: String, index: Int, state: ParseState): ApplyOutcome {
+        val outcome = ObservedOutcome.fromToken(value)
+            ?: return ApplyOutcome.Rejected(CliError.InvalidOutcome(value))
+        state.outcomes += outcome
+        return ApplyOutcome.Applied(index + 2)
+    }
+
+    fun applyChannelToken(value: String, index: Int, state: ParseState): ApplyOutcome {
+        val channel = OutputChannel.fromToken(value)
+            ?: return ApplyOutcome.Rejected(CliError.InvalidChannel(value))
+        state.channels += channel
+        return ApplyOutcome.Applied(index + 2)
+    }
+
+    fun applyTailBytes(value: String, index: Int, state: ParseState): ApplyOutcome {
+        val bytes = value.toLongOrNull()
+        if (bytes == null || bytes <= 0L) {
+            return ApplyOutcome.Rejected(CliError.InvalidTailBytes(value))
+        }
+        state.tailBytes = bytes
+        return ApplyOutcome.Applied(index + 2)
+    }
+
+    fun applyLimit(value: String, index: Int, state: ParseState): ApplyOutcome {
+        val records = value.toIntOrNull()
+        if (records == null || records <= 0) {
+            return ApplyOutcome.Rejected(CliError.InvalidLimit(value))
+        }
+        state.budget = RecordBudget.UpTo(records)
+        return ApplyOutcome.Applied(index + 2)
+    }
+}
+
+/** Free-text values, which accumulate into an OR group and share one refusal for being empty. */
+private object TextFilterOptions {
+    /**
+     * Repeated `--grep` / `--grep-regex` OR into one group; the group's sense (whitelist or
+     * blacklist) is decided once, at normalization, so `Only` and `Except` stay distinct cases of
+     * [LineSelector] rather than a flag that travels downstream.
+     */
+    fun addGrep(
+        token: String,
+        value: String,
+        index: Int,
+        state: ParseState,
+        selector: (String) -> TextSelector,
+    ): ApplyOutcome {
+        if (value.isEmpty()) {
+            return ApplyOutcome.Rejected(CliError.EmptyTextFilter(token))
+        }
+        state.grepSelectors += selector(value)
+        return ApplyOutcome.Applied(index + 2)
+    }
+
+    fun addTextFilter(
+        token: String,
+        value: String,
+        index: Int,
+        into: MutableSet<String>,
+    ): ApplyOutcome {
+        if (value.isEmpty()) {
+            return ApplyOutcome.Rejected(CliError.EmptyTextFilter(token))
+        }
+        into += value
+        return ApplyOutcome.Applied(index + 2)
     }
 }

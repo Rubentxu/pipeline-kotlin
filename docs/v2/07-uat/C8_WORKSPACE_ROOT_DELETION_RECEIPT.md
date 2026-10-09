@@ -125,6 +125,8 @@ replace the runtime ownership check.
 | C8-M6a | `DecidedElsewhere` → fails closed on `cleanWs` too |
 | C8-M7 | every spelling of the root (`.`, `./`, `build/..`) obeys the same intent |
 | C8-M8 | traversal outside the workspace refused for **every** intent |
+| C8-M9 | a symlink inside the workspace is not followed out of it |
+| C8-M9a | a target that IS a symlink is confined; no marker lands outside |
 | C9-M1 | `UserOwned` + pattern-less `cleanWs` → REFUSED, no `.cleaned` marker |
 | C9-M2 | empty pattern list is a full wipe, refused like `null` |
 | C9-M3 | `ScratchOwned` keeps the pattern-less sweep contract |
@@ -134,7 +136,7 @@ The zero-effects oracle is a **filesystem observation** (canary files survive),
 not the thrown exception — a Step that deleted everything and then threw would
 pass an `assertThrows`-only test (HARNESS FIDELITY LAW §3).
 
-### Mutations — 8, each attributed to the rows it flips
+### Mutations — 9, each attributed to the rows it flips
 
 ```text
 M1   UserOwned → permitted            killed C8-M3, C8-M7
@@ -145,6 +147,7 @@ M5   traversal containment removed    killed C8-M8, WCL-S-003
 M6   DecidedElsewhere → permitted     killed C8-M6, C8-M6a
 M7   re-add `val permitsRootWipe`     killed C8-M2
 M8   collapse the `when` to `==`      killed C8-M2a
+M9   revert the real-path anchoring   killed C8-M9a
 ```
 
 M1, M2 and M6 were first written against the boolean-carrying enum and are now
@@ -180,7 +183,7 @@ unchanged.
 ### Gate
 
 ```text
-C8DestructiveIntentMatrixTest + WorkspaceCleanupTest   34 tests  0 failures  0 errors
+C8DestructiveIntentMatrixTest + WorkspaceCleanupTest   36 tests  0 failures  0 errors
 pipeline-application direct consumers                  73 tests  0 failures  0 errors  (1 skip: SC-011-11 load, unrelated)
 FArchL7JenkinsVerbatimSignatureReflectionTest           6 tests  0 failures  0 errors
 FArchS0SurfaceManifestTest                             11 tests  0 failures  0 errors
@@ -192,6 +195,61 @@ The last row predates the enum redesign and was measured before it. It is
 reported as historical evidence for the first iteration, not as verification of
 the code committed here; the rows above are the post-redesign evidence and are
 the ones bound to the final SHA.
+
+### Symlink confinement — found a real escape, not just missing coverage
+
+This criterion was recorded as PARTIAL because traversal was covered. Writing
+the row found an actual defect, and the two halves of the claim had different
+answers.
+
+`Path.normalize()` collapses `.` and `..` but does **not** dereference symlinks.
+So `require(targetPath.startsWith(workspace))` answers "what name did the
+caller write", not "where does the filesystem end up". A link named `escape`
+pointing at an outside directory has a normalised form inside the workspace and
+was accepted by the guard.
+
+Half one, the deletion walk, was already safe: `Files.walk` without
+`FOLLOW_LINKS` visits the link and not its target, so nothing outside was
+deleted. Half two, the MEMOIZED marker, was not. `.deleted` is written *inside*
+`targetPath`, and a write through a symlink resolves to the link's target.
+Measured directly before writing the row:
+
+```text
+ws/outside-link -> real/   deleteDir(path = "outside-link")
+  real/.deleted  exists  = true      <-- written outside the workspace
+  ws/.deleted    exists  = false
+```
+
+So `deleteDir` could drop a file into a directory the workspace never owned.
+A conformance test asserting only that outside files survive would have passed
+against this defect, because they did survive.
+
+The fix anchors the guard and the marker to the real path:
+
+```text
+realWorkspace = toRealPathAllowingMissing(workspace)
+realTarget    = toRealPathAllowingMissing(rawTarget)
+require(realTarget.startsWith(realWorkspace))
+require(wipesRoot || realTarget != realWorkspace)
+markerFile    = realTarget.resolve(".deleted")
+```
+
+`toRealPath` throws on a missing leaf and `deleteDir` legitimately targets
+directories that do not exist yet, so the deepest existing ancestor is resolved
+and the remaining segments re-appended.
+
+`DeleteDirResult.path` still reports the *declared* path. It is an observable,
+serialized output, and silently switching it to the resolved real path would
+have changed a published contract to fix a bug that did not need fixing.
+
+| Mutation | Result |
+| --- | --- |
+| MUT-M9 revert the anchoring to normalised paths | `C8-M9a` RED: `Expected IllegalArgumentException, but nothing was thrown` |
+| restore, verified by hash | `f91b1dd011c9f8e104dba7015ce8a056a56d89037b433399adbea9f2a17a8799` |
+
+`C8-M9` (the walk does not follow links) was green before and after, which is
+correct: it is the half that was already right, kept so a future `FOLLOW_LINKS`
+would break it.
 
 ### Replay and durable schema — measured, not assumed
 
@@ -250,15 +308,20 @@ Satisfied, with evidence above:
 | Criterion | Status |
 | --- | --- |
 | API + execution satisfy every C8 criterion | MET |
+| Symlink / nested-directory confinement | MET — was PARTIAL; writing the row found a real escape (marker written through a link into a directory outside the workspace), now fixed and mutation-verified |
 | Historical payload without `path` decodes and authorizes | ASSUMED, not measured — the `path ?: "."` path is read in the decoder but has no explicit regression test |
-| Symlink / nested-directory confinement | PARTIAL — traversal is covered (C8-M8, WCL-S-003); a symlink pointing outside the workspace is not explicitly exercised |
 | Installed-distribution canary | OPEN — `SC-011-14` is a real application run, not a run against the installed ZIP |
 
-The remaining three are test-coverage gaps, not known defects: the production
-behaviour on each is believed correct and none has contradicted that. But
-"believed correct" is the phrase this receipt has been burned by before, so the
-verdict stays MITIGATED until the rows exist and are bound to the SHA that
-carries them.
+The remaining two are test-coverage gaps, not known defects: the production
+behaviour on each is believed correct and nothing observed has contradicted
+that. But "believed correct" is the phrase this receipt has been burned by
+before, so the verdict stays MITIGATED until the rows exist and are bound to the
+SHA that carries them.
+
+The symlink criterion is the reason this section exists. It was entered as
+"PARTIAL — probably fine, no row" and turned out to be a live escape that a
+survival-only conformance test would have passed. Coverage gaps are hypotheses,
+and this one paid.
 
 ## Reference implementation consulted
 

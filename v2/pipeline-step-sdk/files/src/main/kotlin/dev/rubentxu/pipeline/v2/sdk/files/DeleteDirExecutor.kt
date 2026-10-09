@@ -65,10 +65,29 @@ class DeleteDirExecutor(
      */
     fun execute(stageName: String, stageIndex: Int, stepIndex: Int, spec: StepSpec.DeleteDir): DeleteDirResult {
         val workspace = workspaceResolver(stageName, stageIndex)
-        val targetPath = workspace.resolve(spec.path).normalize()
 
-        // Workspace-root safety guard
-        require(targetPath.startsWith(workspace)) {
+        // Resolve the REAL path before any decision about it. `normalize()`
+        // collapses `.` and `..` but does not dereference symlinks, so a
+        // `targetPath` that IS a link keeps its in-workspace name while every
+        // operation on it — including writing the MEMOIZED marker — lands on
+        // the link's target, outside the workspace.
+        //
+        // Both the containment check and the marker must be anchored to the
+        // real path, or a symlink becomes an exit from a workspace that never
+        // appears to leave. `toRealPath` fails when the leaf does not exist, so
+        // the parent is resolved instead and the leaf is re-appended.
+        val realWorkspace = toRealPathAllowingMissing(workspace)
+        val rawTarget = workspace.resolve(spec.path).normalize()
+        // Two distinct values, deliberately not one. `realTarget` is where
+        // every effect happens. `declaredTarget` is what the caller wrote and
+        // is what DeleteDirResult.path reports, because that field is an
+        // observable, serialized output and must not silently change shape.
+        val realTarget = toRealPathAllowingMissing(rawTarget)
+        val declaredTarget = rawTarget
+
+        // Workspace-root safety guard, now on real paths: it is the only check
+        // that survives a symlinked root or a symlinked target.
+        require(realTarget.startsWith(realWorkspace)) {
             "deleteDir path '${spec.path}' escapes workspace root"
         }
 
@@ -87,12 +106,12 @@ class DeleteDirExecutor(
             RootDestruction.DecidedElsewhere,
             -> false
         }
-        require(wipesRoot || targetPath != workspace) {
+        require(wipesRoot || realTarget != realWorkspace) {
             "deleteDir refuses to delete the workspace root itself ('$workspace'); " +
                 "pass a sub-path such as deleteDir(\"build\") to remove generated content"
         }
 
-        val markerFile = targetPath.resolve(".deleted")
+        val markerFile = realTarget.resolve(".deleted")
 
         // MEMOIZED idempotency: check for existing marker
         if (Files.exists(markerFile)) {
@@ -104,7 +123,7 @@ class DeleteDirExecutor(
             if (existingSha.isNotEmpty()) {
                 // Idempotent re-run: marker exists, treat as no-op
                 return DeleteDirResult(
-                    path = targetPath,
+                    path = declaredTarget,
                     deletedCount = 0,
                     sha256 = existingSha,
                 )
@@ -112,13 +131,16 @@ class DeleteDirExecutor(
         }
 
         // Count items before deletion (children only, not the root directory itself)
-        val deletedCount = countItems(targetPath)
+        val deletedCount = countItems(realTarget)
 
         // Delete all contents recursively (but NOT the root targetPath itself)
         // This preserves the workspace root and allows the .deleted marker to be written inside it
-        if (Files.exists(targetPath)) {
-            Files.walk(targetPath)
-                .filter { it != targetPath } // do NOT delete the root directory itself
+        // Same reason: the walk is anchored to the real path, so a link named
+        // `escape` is removed as a link and never followed into its target.
+        val walked = realTarget
+        if (Files.exists(walked)) {
+            Files.walk(walked)
+                .filter { it != walked } // do NOT delete the root directory itself
                 .sorted(Comparator.reverseOrder())
                 .forEach { p ->
                     try {
@@ -135,7 +157,7 @@ class DeleteDirExecutor(
         Files.writeString(markerFile, sha256)
 
         return DeleteDirResult(
-            path = targetPath,
+            path = declaredTarget,
             deletedCount = deletedCount,
             sha256 = sha256,
         )
@@ -146,6 +168,29 @@ class DeleteDirExecutor(
         return Files.walk(path)
             .filter { it != path } // don't count the root itself
             .count().toInt()
+    }
+
+    /**
+     * Dereference [path] as far as it exists, tolerating a missing leaf.
+     *
+     * `Path.toRealPath` throws when the leaf does not exist, and `deleteDir`
+     * legitimately targets directories that have not been created yet. So the
+     * deepest existing ancestor is resolved and the remaining segments are
+     * re-appended. That yields the real path when the target exists and a
+     * correctly anchored guess when it does not.
+     */
+    private fun toRealPathAllowingMissing(path: Path): Path {
+        var ancestor: Path? = path
+        while (ancestor != null && !Files.exists(ancestor)) {
+            ancestor = ancestor.parent
+        }
+        val existing: Path = ancestor ?: return path
+        // `relativize` is the java.nio member. The kotlin.io `relativeTo`
+        // extension also exists and resolves to a File here, which does not
+        // compile; the member is the intended call anyway.
+        val suffix: Path = existing.relativize(path)
+        val resolved: Path = existing.toRealPath()
+        return resolved.resolve(suffix).normalize()
     }
 
     companion object {

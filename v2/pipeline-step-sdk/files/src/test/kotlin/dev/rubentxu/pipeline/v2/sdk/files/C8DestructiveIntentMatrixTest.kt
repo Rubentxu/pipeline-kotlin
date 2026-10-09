@@ -137,6 +137,102 @@ class C8DestructiveIntentMatrixTest {
         }
     }
 
+    // ── symlink confinement: a link must not become an exit ─────────────────
+
+    @Test
+    @DisplayName("C8-M9 a symlink target inside the workspace cannot smuggle deletion out")
+    fun `C8-M9 symlinks do not delete outside the workspace`(@TempDir tempDir: Path) {
+        // The traversal guard compares NORMALISED paths, so it answers "where
+        // does this name point" and not "where does it end up". A symlink named
+        // `escape` that points at an outside directory has a normalised form
+        // INSIDE the workspace, which the guard accepts. Whether the wipe then
+        // crosses the link is a property of the walk, not of the guard.
+        //
+        // `Files.walk` without FOLLOW_LINKS visits the link itself and not its
+        // target, so the expectation is that the outside tree survives and only
+        // the link is removed. Asserting the filesystem rather than the
+        // implementation means this row also catches a future walk that follows
+        // links.
+        val workspace = tempDir.resolve("workspace")
+        val outside = tempDir.resolve("outside")
+        seed(workspace)
+        seed(outside)
+        val outsideCanary = outside.resolve("keep.txt")
+        assertTrue(Files.exists(outsideCanary), "precondition: the outside canary exists")
+
+        val link = workspace.resolve("escape")
+        try {
+            Files.createSymbolicLink(link, outside)
+        } catch (e: UnsupportedOperationException) {
+            // Not every filesystem in every environment supports symlinks; an
+            // unexercised row must not masquerade as a passing one.
+            org.junit.jupiter.api.Assumptions.assumeTrue(false, "symlinks unsupported: ${e.message}")
+        }
+
+        val executor = DeleteDirExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            rootDestruction = RootDestruction.ScratchOwned,
+        )
+        executor.execute("stage", 0, 0, StepSpec.DeleteDir(path = "."))
+
+        assertTrue(
+            Files.exists(outsideCanary),
+            "deleteDir followed a symlink and deleted ${outsideCanary} at $outsideCanary; " +
+                "a wipe of the workspace must not cross a link boundary",
+        )
+    }
+
+    @Test
+    @DisplayName("C8-M9a a target that is a symlink is confined, not written through")
+    fun `C8-M9a a symlinked target never receives the marker`(@TempDir tempDir: Path) {
+        // The second escape route is the marker itself. `.deleted` is written
+        // INSIDE targetPath, and writing through a symlink resolves to the
+        // link's target. Measured on this JDK before writing the row: with the
+        // guard comparing NORMALISED paths, `ws/outside-link -> real/` was
+        // accepted, and `real/.deleted` appeared outside the workspace while
+        // `ws/.deleted` did not exist.
+        //
+        // Scratch ownership is used on purpose so the root guard is not what
+        // refuses this; the claim under test is the containment check itself.
+        val realDir = tempDir.resolve("real")
+        val workspace = tempDir.resolve("workspace")
+        seed(realDir)
+        seed(workspace)
+        val link = workspace.resolve("outside-link")
+        try {
+            Files.createSymbolicLink(link, realDir)
+        } catch (e: UnsupportedOperationException) {
+            org.junit.jupiter.api.Assumptions.assumeTrue(false, "symlinks unsupported: ${e.message}")
+        }
+
+        val executor = DeleteDirExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            rootDestruction = RootDestruction.ScratchOwned,
+        )
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            executor.execute("stage", 0, 0, StepSpec.DeleteDir(path = "outside-link"))
+        }
+        assertTrue(
+            error.message!!.contains("escapes workspace root"),
+            "expected a containment refusal, got: ${error.message}",
+        )
+        assertTrue(
+            Files.exists(realDir.resolve("keep.txt")),
+            "deleteDir deleted through the symlink into $realDir",
+        )
+        // The walk is safe on its own — `Files.walk` without FOLLOW_LINKS
+        // visits the link, not its target. The marker write was the half that
+        // was not: it resolved through the link and dropped `.deleted` into a
+        // directory outside the workspace. Anchoring the guard and the write to
+        // the real path is what closes it.
+        assertFalse(
+            Files.exists(realDir.resolve(".deleted")),
+            "deleteDir wrote its .deleted marker through the symlink, landing at " +
+                "${realDir.resolve(".deleted")} — outside the workspace. The walk does not " +
+                "follow links, so the deletion half of the claim held; the marker write did not",
+        )
+    }
+
     // ── each state maps to a distinct, testable decision ─────────────────────
 
     @Test

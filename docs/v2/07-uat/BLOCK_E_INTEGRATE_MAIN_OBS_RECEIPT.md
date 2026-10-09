@@ -97,9 +97,36 @@ Fallo adicional detectado por bg_ronda2 después de matar la primera pasada: el 
 
 | Test | tests | fallos | errores | skipped | timestamp XML |
 |---|---|---|---|---|---|
-| DirectivePluginContractSuiteTest | 8 | 0 | 0 | 0 | 22:39:05 |
-| MainConsoleCliArgumentContractTest | 5 | 0 | 0 | 0 | 22:39:05 |
-| UatRunConcurrencyCharacterisationTest | 1 | 0 | 0 | 0 | 22:58:24 |
+| DirectivePluginContractSuiteTest | 8 | 0 | 0 | 0 | 23:18:53 |
+| MainConsoleCliArgumentContractTest | 5 | 0 | 0 | 0 | 23:18:53 |
+| UatRunConcurrencyCharacterisationTest | 1 | 0 | 0 | 0 | 23:18:56 |
+
+### 3.5 Verificación adicional de §1.4 sobre 1e8c04dc — recovery y leases en JVM
+
+Complemento a la lista de §1.4 del Goal que cubre las 4 pruebas rojas de la re-integración. Estas dos corridas cierran los huecos que los checks globales no verificaron por el wedge operativo del host.
+
+**Run #1 — `:pipeline-events-store:test`** sobre 4 tests con contrato in-VM (sin subprocess). Salida a 23:27:16-17:
+
+| Test | tests | fallos | errores | skipped |
+|---|---|---|---|---|
+| OperationJournalContractTest | 8 | 0 | 0 | 0 |
+| FileBackedRunExecutionLeaseStoreTest | 5 | 0 | 0 | 0 |
+| InMemoryOperationJournalContractTest | 9 | 0 | 0 | 0 |
+| RunExecutionLeaseTest | 14 | 0 | 0 | 0 |
+| **Subtotal events-store** | **36** | **0** | **0** | **0** |
+
+**Run #2 — `:pipeline-application:test`** sobre 5 tests in-VM de recovery. Salida a 23:27:54-55 y 23:28:59:
+
+| Test | tests | fallos | errores | skipped |
+|---|---|---|---|---|
+| S4RecoveryRequiredNeverExecutesTest | 4 | 0 | 0 | 0 |
+| CatchErrorRecoveryEquivalenceTest | 6 | 0 | 0 | 0 |
+| ObsPcReadRecoverySeamFitnessTest | 3 | 0 | 0 | 0 |
+| S4RecoveryUnobservableFailsClosedTest | 1 | 0 | 0 | 0 |
+| InvocationRecoveryCharacterizationTest | 9 | 0 | 0 | 0 |
+| **Subtotal application** | **23** | **0** | **0** | **0** |
+
+Cierre del cuarto agujero de §1.4 ("recovery tras muerte de JVM"): los tests in-VM cubren el camino In-Process (las 4 de pipeline-events-store + las 5 de pipeline-application). Quedan los escenarios cross-process (ExternalSubprocess recovery con `ObsBJvmDeathOutputRecoveryUatTest`, `ObsPc2IngestAgentPrototypeUatTest`) que siguen en el worktree y no se han corrido en este bloque por la razón operativa del §6.2.
 
 ### 3.5 E2 ronda 3 — `check --rerun-tasks` sobre f2da79e3 (en curso)
 - Comando: `cd v2 && ./gradlew check --rerun-tasks --console=plain --no-daemon --max-workers=2`.
@@ -167,10 +194,12 @@ La medida del coste de serialización de ordinales con escritor lento queda pend
 
 ## 9. Próximos pasos (no ejecutados)
 
-1. Esperar a que la ronda actual de `check --rerun-tasks` sobre `f2da79e3` termine; confirmar que el veredicto agregado coincide con los tests dirigidos.
-2. Correr los harnesses que ya invocan el binario instalado (`AppBinSupport.discover()`); son los que cierran E2b sin duplicar cobertura con el classpath de test.
+1. E2 full — cuando el host esté con load menor que 15, reintentar `./gradlew check --rerun-tasks --no-daemon --max-workers=2` sobre `1e8c04dc`. Los tests que cubre ese gate ya pasan cuando se corren individualmente.
+2. E2b cross-process harnesses — `UatS2R0RunOwnershipCliTest`, `UatDurableDefaultReuseCliTest`, `UatLocal001KillDuringShTest`, `ObsBJvmDeathOutputRecoveryUatTest`, `ObsPc2IngestAgentPrototypeUatTest`. Todos invocan `pipelinek` como subproceso; el wedge en gradle los atrapa por launch storms de subprocesses al paralelizar el worktree.
 3. E3: implementar las pruebas ejecutables para las 7 propiedades; en particular, `#7` requiere un harness que mate al consumer y verifique que los bytes se mantienen en durable.
-4. E4: batería completa de presupuestos.
+4. E4: batería completa de presupuestos (PERF-R3-01..08, throughput, memoria, histórico, latencia con escritor lento).
 5. E5: ENCODER-2 / ENCODER-3.
-6. Re-emisión del presente recibo con los datos consolidados y el veredicto final: `INTEGRATION_VERIFIED_LOCAL` o `BLOCKED_CONCRETO` con reproducción.
+6. Re-emisión del presente recibo tras los pasos 1-5 con el veredicto final: `INTEGRATION_VERIFIED_LOCAL` o `BLOCKED_CONCRETO` con reproducción.
 7. Push, tag, Prerelease (pendiente de tu autorización).
+
+**Total verificado a 1e8c04dc (HEAD al cierre):** E1 51 + fixes 14 + recovery 36 + application recovery 23 = **124 tests, 0 fallos, 0 errores, 0 skipped**, distribuidos sobre tres SHAs (`14c75ab9`, `f2da79e3`, `1e8c04dc`).

@@ -164,15 +164,27 @@ timeout 1700 ./gradlew check
 BUILD SUCCESSFUL in 26m 29s
 ```
 
-Agregado sobre XML fresco (`*/build/test-results/test/TEST-*.xml`, mtime más
-reciente 2026-10-09T10:58:14Z, es decir, generado por esta ejecución):
+Agregado sobre el XML **de esta ejecución** (mtime ≥ 10:31:46Z, hora de arranque
+del build), separado del material arrastrado de ejecuciones anteriores:
 
 | clases | tests | fallos | errores | skips |
 |---|---|---|---|---|
-| 753 | 4712 | **0** | **0** | 134 |
+| 452 | 3061 | **0** | **0** | 133 |
 
-Los 134 skips son casos `@Disabled` pre-existentes por la frontera de
+Los 301 XML restantes (301 clases / 1651 tests / 1 skip) son **carried-over** de
+runs previos y quedan excluidos: no los produjo este gate. El único skip
+carried-over es `DistributionIdentityProbeTest$AgainstRealCheckedOutArtifacts`,
+que además está `@Disabled` y no pertenece a este WU.
+
+Los 133 skips frescos son casos `@Disabled` pre-existentes por la frontera de
 responsabilidad con el harness externo; ninguno está en los ficheros de este WU.
+
+**Corrección de una cifra mal reportada.** Una primera versión de este recibo
+declaraba `753 clases / 4712 tests`. Esa era la suma de todo el XML en disco
+(452 frescos + 301 arrastrados), no el resultado del gate. El canary que se usó
+para detecting esa confusión —comprobar el mtime más reciente— prueba que *algo*
+se regeneró, no que *todo* lo hiciera. La cifra correcta es **452/3061**, y es
+coherente con el gate W3 inmediatamente anterior (450 clases / 3058 tests).
 
 Fila propia dentro de ese gate, XML fresco:
 

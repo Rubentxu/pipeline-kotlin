@@ -2166,3 +2166,32 @@ git push origin main --tags
   `source_commit 6f97d9ed`). Promotion to stable belongs to `pipelinek-release-harness`.
 - `PRODUCT-GATE` remains `BLOCKED_EXTERNAL`: no CI surface exists and its absence is
   not green.
+
+---
+
+## Correction (2026-10-09, W4) — aggregate test XML must be filtered by run
+
+19. **Never aggregate `*/build/test-results/test/TEST-*.xml` without filtering by run.**
+    Those directories accumulate. After the W4 `check`, disk held **753** XML classes
+    but only **452** were from that run; the other 301 were carried-over from earlier
+    executions. The W4 receipt initially reported `753 classes / 4712 tests` as the
+    gate result and it was wrong — the true run was `452 / 3061 / 0 failures / 0 errors`.
+
+    The mistake that produced it: the canary rule was followed as "check the newest
+    mtime", which proves *something* regenerated but not *everything*. Filter on a
+    run-start timestamp:
+
+    ```python
+    RUN_START = <wall clock when the build started>
+    fresh = [p for p in glob.glob('*/build/test-results/test/TEST-*.xml')
+             if os.path.getmtime(p) >= RUN_START]
+    ```
+
+    Cross-check the fresh count against the previous green gate in the same cycle.
+    W3 reported 450 and W4 fresh is 452; a jump to 753 should have been a red flag,
+    and it was not treated as one.
+
+20. **XML count legitimately exceeds test-file count** (W4: 346 XML vs 328 Kotlin
+    files in `pipeline-application`) because of nested and `@ParameterizedTest`
+    classes. Do not treat XML > files as an anomaly; do treat XML >> previous gate
+    as one.

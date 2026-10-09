@@ -131,6 +131,24 @@ bytes saneados. `OBS-PC-208` queda desbloqueado; su criterio de aceptación es �
 (`0/50 → 50/50`, `bytes_after_release > bytes_after_kill`, `DONE` presente). Sigue `NOT_RUN` hasta que
 exista.
 
+### OBS-2 Nivel A — cobertura auditada, NO cerrable todavía
+
+Una fila que comparte tema con una UAT no es una fila que la discharged. La auditoría
+(`docs/v2/07-uat/OBS2_LEVEL_A_COVERAGE_AUDIT.md`, sobre `a3423983`) leyó las filas y no los nombres:
+
+| UAT | Veredicto |
+|---|---|
+| 201 líneas visibles en vivo | `IMPLEMENTED` — acotada por el lookahead de redacción, cualificación que debe viajar con el estado |
+| 202 ambos canales sin deadlock | `PARTIAL` — probado a 20 MiB por canal en el **sustrato** (`collectingSink`), no en la composición del Output Plane |
+| 203 secretos partidos entre ventanas y canales | `IMPLEMENTED` |
+| 204 `returnStdout` exacto | `PARTIAL` — el valor tipado está fijado; la **ausencia de stdout en la transcripción** no |
+| 205 proceso termina con output pendiente | `NOT_COVERED` — el drenaje existe en el executor, ninguna fila lo afirma |
+| 206 timeout con retención del prefijo | `PARTIAL` — cancelación y no duplicación probadas; la **retención** no |
+| 207 caída del observador independiente | `IMPLEMENTED` |
+
+Faltan cuatro filas (202 en la composición, 204 ausencia, 205 drenaje, 206 retención). Ninguna exige
+arquitectura nueva: son filas sobre comportamiento que ya existe. OBS-2 Nivel A sigue **abierto**.
+
 ### OBS-3, OBS-4, OBS-5, OBS-6, OBS-7
 
 Detalle en el enunciado del evolutivo. Los presupuestos numéricos de OBS-3 se fijan **con línea base

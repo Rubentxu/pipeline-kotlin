@@ -648,3 +648,43 @@ del repositorio, porque es configuración local de `core.hooksPath` y no hay en 
 instalación versionada de hooks que extender. La **evidencia** del cierre queda en este
 recibo; una máquina nueva no hereda el hook sin ese paso, y eso sigue siendo una laguna que no
 he cerrado.
+
+### Dos mensajes de recovery del CLI que apuntan a comandos que no existen
+
+Encontrados cerrando los 42 ciclos, no buscados: los dos aparecieron en pantalla cuando el
+cierre falló, que es exactamente cuando un operador copia lo que lee.
+
+```text
+1. ENGINE_SUPERSEDE_EVIDENCE_REFS_REQUIRED
+   recovery: supply at least one evidence reference with --evidence-ref <ref>
+   real:     error: unexpected argument '--evidence-ref' found
+             tip: a similar argument exists: '--evidence-refs'
+
+2. ENGINE_STORAGE (lease conflict)
+   recovery: run `sddk cycle lock inspect --cycle <c>` ...
+   real:     error: unrecognized subcommand 'inspect'
+   subcomandos reales: acquire · renew · release · status
+```
+
+El primero además tiene una segunda capa: `--evidence-refs` no acepta una lista separada por
+comas, exige un **JSON array string**.Eso es lo que hizo que un cierre pareciera fallar sin
+causa — el flag se aceptaba, el valor no, y el motor informaba `evidence refs list cannot be
+empty` sobre una lista que el operador sí había escrito.
+
+Registrado como `bl-bl-01M4GNA0XJ0003891AM64C9S40` (P1), con dueño en el CLI de SDDK y no en
+este repositorio.
+
+El `cycle.pause` de `bl-bl-01M3J092HV00038740H86X7Q00` sigue abierto y es de la misma familia:
+`PAUSED` no existe en el dominio, así que la transición está declarada y es inejecutable. No
+lo he tocado porque arreglarlo exige cambiar el dominio del CLI, no este repo.
+
+### Un item de deuda que no es de esta rama
+
+`bl-bl-01M4BM43QY000388Q8AE9EN740` (`ObsBJvmDeathOutputRecoveryUatTest` asserta sobre tiempo)
+no es ejecutable desde `main`: **el test no existe en esta rama**. Se creó en `fa57f798`
+(2026-10-07) sobre `par/cli-observation`, que está 62 commits por detrás de `main` y 104 por
+delante. Corregirlo pertenece a esa rama.
+
+Lo relevante es que unificar `par/cli-observation` pasó por el `pre-merge-commit` recién
+instalado, así que esa fusión va a exigir alineación y closeout como cualquier otra. Reubicado como
+`bl-bl-01M4GN9APQ0003891AKK9Z6E80` (P2).

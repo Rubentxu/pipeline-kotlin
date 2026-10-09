@@ -2110,3 +2110,59 @@ git push origin main --tags
   `WithCredentialsExecutor`), then re-run the full gate. Until that lands, `main` is RED
   and must not be tagged or shipped.
 - **Not executed:** external release-harness matrix (belongs to `pipelinek-release-harness`).
+
+---
+
+## W4 (2026-10-09, `6f97d9ed`) — candidate reproducibility and admission
+
+### Active Change
+
+- **Changed surfaces:** `v2/pipeline-step-sdk/junit/build.gradle.kts` (build logic, not
+  Kotlin), `pipeline-architecture-tests` (one new fitness row), docs only.
+- **SUT:** `computeJunitDigest` — a Gradle `Exec` task, not JVM code.
+- **Result:** ZIP digest is stable at `2d2df18d…` across 5 `--rerun-tasks`.
+
+### Knowledge worth keeping (each of these cost a wrong turn)
+
+13. **`check` runs `detekt`, NOT `detektTest`.** `v2/build.gradle.kts:348` attaches
+    `check` to `detekt`, which applies the per-module `detekt-baseline.xml`.
+    `detektTest` is a separate task with no baseline: it reported 77 findings in
+    36 pre-existing files and would have looked like a red gate. Always run the task
+    the build attaches, not the one whose name matches your intent.
+
+14. **A fitness row that cannot find its subject is worse than none.** The first
+    anchor was `computeJunitDigest = tasks.register`; the script actually declares
+    `tasks.register<Exec>("computeJunitDigest")`. `substringAfter` on a missing
+    delimiter returns the WHOLE input, and the row then inspected a truncated
+    region and reported green. Assert the anchor was found before trusting a
+    region-based check.
+
+15. **Strip comments before grepping build scripts.** Loosening a manifest check to
+    "any identifier containing *manifest*" matched `emitJunitManifest`, which appears
+    in a pre-existing comment — identical in the buggy and fixed file. The row went
+    green against the exact defect it was written for. Comments are not code.
+
+16. **`nohup … &` detaches the wrapper, not Gradle.** The `gradlew` process stays
+    alive holding `.gradle/pipelinek-build.lock`; retries then fail with *"Another
+    Gradle invocation is already using this v2 checkout"*, which is NOT a code
+    defect. A missing `BUILD SUCCESSFUL` line means the build is still running, not
+    that it failed. Follow the real PID (`lsof <logfile>`), not the task wrapper.
+
+17. **`candidateAdmission` requires a CLEAN tree and will say so.** It refused with
+    *"the working tree carries uncommitted changes to tracked files"*, which was
+    correct: the manifest would otherwise name a commit whose content the ZIP does
+    not contain. Order is commit first, admit second. There is no way to admit
+    uncommitted work.
+
+18. **`identity INCOMPLETE` for `RUNTIME_VERSION`/`MANIFEST_VERSION` is by design.**
+    Those surfaces are not ZIP-derived (`CandidateMaterializer.kt:57`) and come from
+    the external harness. Candidate 0.45.0 reported the same INCOMPLETE. Verify
+    `RuntimeVersion` separately by running the unpacked candidate's own launcher;
+    do not read INCOMPLETE as a defect.
+
+### Next
+
+- Handoff for `0.48.0` is emitted and immutable (`candidate_id sha256:2d2df18d…`,
+  `source_commit 6f97d9ed`). Promotion to stable belongs to `pipelinek-release-harness`.
+- `PRODUCT-GATE` remains `BLOCKED_EXTERNAL`: no CI surface exists and its absence is
+  not green.

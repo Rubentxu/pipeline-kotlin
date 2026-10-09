@@ -214,6 +214,31 @@ Por qué no se corrige aquí: `ROADMAP.md` declara un **baseline auditado** con 
 afirmación sobre un árbol que nadie auditó. La corrección honesta es re-auditar contra el
 trunk actual y emitir un baseline nuevo con su propia fecha, que es trabajo de otra unidad.
 
+**RESUELTO 2026-10-09.** Re-auditado contra el trunk y corregido con el patrón que el propio
+documento ya usaba: un bloque de hechos observados nuevo, que supersede al anterior como
+referencia de estado sin destruirlo. El baseline `a554fd55` **se conserva intacto**.
+
+```text
+ROADMAP.md      bloque "Re-auditoría de hechos 2026-10-09" añadido
+CURRENT_STATE.md addendum 2026-10-09 añadido, conservando el de 2026-10-01
+```
+
+Los dos documentos declaran ahora el mismo estado, y coincide con lo medido por API:
+
+```text
+origin/main          98f163c04d7cbcb2976236eaa1c4272bc74e1fda
+producto publicado   v0.48.0-rc1 (Pre-release, 2026-10-09T13:52:57Z)
+                     tag -> 6e8e86bd; zip 92 119 743 bytes
+                     sha256:a4620df4855895e3cc14d5d8a05ee7bd64a75d128d3184be659defe0b009fb93
+Latest (stable)      v0.47.0 (2026-10-06), zip 2fa2d272…, certificado por el harness
+checks en HEAD       0 sobre 98f163c0;  required_status_checks ausente;  rulesets 0
+ciclos SDDK          42 OPEN, 4 BLOCKED, 82 CLOSED, 1 RELEASE_PENDING
+```
+
+El digest del ZIP publicado por la API (`a4620df4…`) **coincide** con el registrado en el
+recibo R1 de esta misma entrega: los bytes remotos son los que se certificaron, no una
+reconstrucción posterior.
+
 ### B0-F6 (P2) — inventario de ciclo de vida pendiente
 
 42 ciclos OPEN (la mayoría sin lease y con `updated_at` de septiembre), 4 BLOCKED
@@ -339,7 +364,7 @@ Ningún bloque se declara cerrado. `B0..B7` se integraron en el ROADMAP único (
 | B0-F2 (P0) | abierto | `required_status_checks` sigue ausente; sin superficie de CI (ADR-0105 D3) |
 | B0-F3 (P1) | **verificado** | certificación de 0.47.0 real; cita corregida (`decision` vive en `steps["certify-base"].stdout`, no es campo de primer nivel) |
 | B0-F4 (P1) | abierto, causa corregida | capacidad existe (53 tests) pero no llega a su remoto |
-| B0-F5 (P1) | abierto, empeorado | `ROADMAP.md` declara v0.39.0 siendo Latest v0.47.0 |
+| B0-F5 (P1) | **RESUELTO** | re-auditado 2026-10-09; bloque de hechos nuevos en `ROADMAP.md` y addendum en `CURRENT_STATE.md`; el baseline `a554fd55` se conserva intacto |
 | B0-F6 (P2) | abierto | 42 ciclos OPEN, 18 huérfanos sin verbo de cierre |
 | B0.2 — utilidad de digest única | **entregada** | `pipeline-domain/…/digest/Sha256.kt`; test funcional 8/8 con mutación 1:1 (la mutación `endsWith` no voltea ninguna fila; `contains` voltea exactamente una) |
 | B0.2 — migración de call sites | **entregada** | 29 sitios ad-hoc → 8: 4 dentro de la propia utilidad, 4 de efecto temporal (streaming) clasificados por `DigestMigrationBoundaryFitnessTest` |

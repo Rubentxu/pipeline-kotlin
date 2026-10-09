@@ -16,10 +16,41 @@ checks requeridos en main  ninguno (required_status_checks 404, rulesets [])
 ciclos SDDK                42 OPEN, 4 BLOCKED, 82 CLOSED, 1 RELEASE_PENDING
 ```
 
+**Re-auditoría de hechos 2026-10-09 (observada, no inferida). Supersede el bloque del
+2026-10-08 como referencia de estado; aquel se conserva por trazabilidad. El baseline auditado
+de `a554fd55` (2026-09-21) **se conserva intacto**: un baseline fechado es el resultado de una
+auditoría, y sustituirlo por el HEAD actual no lo actualiza, lo falsifica.
+
+```text
+origin/main observado      98f163c04d7cbcb2976236eaa1c4272bc74e1fda
+producto publicado         v0.48.0-rc1 (Pre-release, 2026-10-09T13:52:57Z);
+                           tag v0.48.0-rc1 -> 6e8e86bd; zip pipelinek-0.48.0.zip
+                           92 119 743 bytes; sha256:a4620df4855895e3cc14d5d8a05ee7bd64a75d128d3184be659defe0b009fb93
+Latest (stable)            v0.47.0, GitHub Release de 2026-10-06
+superficie de CI           inexistente (.github/workflows/ -> 404; solo Dependabot activo)
+checks en HEAD             0 check runs sobre 98f163c0
+checks requeridos en main  ninguno (required_status_checks ausente, rulesets 0)
+ciclos SDDK                42 OPEN, 4 BLOCKED, 82 CLOSED, 1 RELEASE_PENDING
+```
+
+Cambios respecto del bloque del 2026-10-08, todos medidos:
+
+```text
+CERRADO   B0-F1 (P0): la PR #99 pasó a MERGED (2026-10-09T13:21:31Z) y 3ec99a4c es
+          ancestro de origin/main conservando su SHA propio. Merge directo, sin squash.
+          La release estable ya es reconstruible desde el trunk (ADR-0099).
+AVANZADO  B0-F4 (P1): la capacidad de publicar el check de admisión EXISTE y está probada
+          (harness/check_run.py, 53 tests verdes), pero en 74 commits sin pushear sobre un
+          origin/main parado desde 2026-09-29. Detalle en B0_3_HARNESS_INVESTIGATION_RECEIPT.md.
+EMPEORADO B0-F5 (P1): este drift es el que corrige el bloque de arriba.
+SIN CAMBIO B0-F2 (P0): sigue sin check requerido ni superficie que lo produzca. G10 = NOT_RUN.
+BRECHA    No existe certificación del harness para v0.48.0-rc1 (su evidence/ llega hasta
+          v0.47.0). La promoción estable sigue bloqueada por ello, correctamente.
+```
+
 Hallazgos de esa reconciliación, con evidencia y dueño, en `../07-uat/B0_RECONCILIATION_RECEIPT.md`.
-Dos son P0 y **no** están corregidos: la release estable `v0.47.0` se cortó desde `3ec99a4c`, que no
-está en `main` y vive en la PR #99 abierta (contradice ADR-0099), y `main` no tiene hoy ningún check
-requerido ni superficie que pueda producirlo (G10 sin mecanismo).
+Los dos P0 de 2026-10-08 ya no lo son ambos: B0-F1 quedó resuelto, y B0-F2 sigue abierto con
+remedio externo compartido con B0-F4.
 **Autoridad operativa (TRAIN-0 cutover 2026-09-26):** SDDK + Git + ADRs + evidencia externa. `.agent/SESSION_POINTER.md` queda como proyección humana opcional / histórico (no autoridad). **Pruebas vinculantes:** ../07-uat/CERTIFICATION_PROTOCOL.md y ../07-uat/PRODUCTION_READY_UAT_MATRIX.md.
 
 ## 0. Autoridad, límites y significado de DONE

@@ -7,8 +7,8 @@
 
 ## C8 / C9 — Reconciliation, 2026-10-09
 
-**Status: C8 → MITIGATED. C9 → MITIGATED.** (The API and execution defects are
-closed; three coverage criteria remain open. See "Verdict".)
+**Status: C8 → RESOLVED. C9 → RESOLVED.** Every criterion has a row bound to the
+final SHA; three of them were hiding real problems. See "Verdict".
 
 This section reconciles the finding recorded above with the state of the tree on
 2026-10-09, and adds the work that closes it. The historical narrative above is
@@ -131,6 +131,9 @@ replace the runtime ownership check.
 | C8-M10a | that decoded root is REFUSED on a `UserOwned` workspace |
 | C8-M10b | the same payload DOES wipe a `ScratchOwned` workspace |
 | C8-M10c | `DecidedElsewhere` on a legacy payload fails closed too |
+| C8-I1 | the installed binary refuses `deleteDir()` on an attached root |
+| C8-I2 | the installed binary refuses a pattern-less `cleanWs()` on an attached root |
+| C8-I3 | the installed binary still deletes a MANAGED root |
 | C9-M1 | `UserOwned` + pattern-less `cleanWs` → REFUSED, no `.cleaned` marker |
 | C9-M2 | empty pattern list is a full wipe, refused like `null` |
 | C9-M3 | `ScratchOwned` keeps the pattern-less sweep contract |
@@ -139,13 +142,14 @@ replace the runtime ownership check.
 C8-M10 and M10a…M10c live in `pipeline-application`
 (`C8HistoricalPayloadAuthorizationTest`), because the codec under test is
 `CoreDeleteDirStep` and `pipeline-step-sdk:files` must not depend on
-`pipeline-application`.
+`pipeline-application`. C8-I1…I3 live in `pipeline-application/cli`
+(`C8InstalledDistributionCanaryTest`) and run the `installDist` binary.
 
 The zero-effects oracle is a **filesystem observation** (canary files survive),
 not the thrown exception — a Step that deleted everything and then threw would
 pass an `assertThrows`-only test (HARNESS FIDELITY LAW §3).
 
-### Mutations — 10, each attributed to the rows it flips
+### Mutations — 11, each attributed to the rows it flips
 
 ```text
 M1   UserOwned → permitted            killed C8-M3, C8-M7
@@ -158,15 +162,15 @@ M7   re-add `val permitsRootWipe`     killed C8-M2
 M8   collapse the `when` to `==`      killed C8-M2a
 M9   revert the real-path anchoring   killed C8-M9a
 M10  change the decoder fallback      killed C8-M10, M10a, M10b, M10c
+M11  `val wipesRoot = true` in the shipped binary  killed C8-I1
 ```
 
-M1, M2 and M6 were first written against the boolean-carrying enum and are now
-restated as case edits (`UserOwned` → permitted, `ScratchOwned` → refused,
-`DecidedElsewhere` → permitted) because that is what the code exposes. They
-target the same rows and the same claims.
+Eleven mutations. Four did not kill what they should on the first attempt and
+each is recorded below: M6, the C8-M2 reflection filter, C8-M9a's assertion, and
+C8-I3's `--workspace` premise.
 
-Every mutation was restored with a verified hash, and the final run returned to
-34 tests / 0 failures.
+Every mutation was restored with a verified hash, and the final runs returned to
+green on the rows bound to the final SHA.
 
 **M6 initially killed nothing.** Letting `DecidedElsewhere` be permitted
 left the suite green, because no row exercised the unresolved state against a
@@ -194,17 +198,22 @@ unchanged.
 
 ```text
 C8DestructiveIntentMatrixTest + WorkspaceCleanupTest   36 tests  0 failures  0 errors
-pipeline-application direct consumers                  73 tests  0 failures  0 errors  (1 skip: SC-011-11 load, unrelated)
+pipeline-step-sdk:files + pipeline-application (C8 set) 2243 tests  0 failures  0 errors  (16 skipped)
+C8HistoricalPayloadAuthorizationTest + CoreDeleteDirStepUnitTest   26 tests  0 failures  (4 skips)
+C8InstalledDistributionCanaryTest                     3 tests  0 failures  0 errors  (installDist)
+UatLocal011WorkflowControlTest                         15 tests  0 failures  0 errors  (1 skip)
 FArchL7JenkinsVerbatimSignatureReflectionTest           6 tests  0 failures  0 errors
 FArchS0SurfaceManifestTest                             11 tests  0 failures  0 errors
-UatLocal011WorkflowControlTest                         15 tests  0 failures  0 errors  (1 skip)
-pipeline-application full suite                        2529 tests  0 failures  0 errors  (123 skipped)
 ```
 
-The last row predates the enum redesign and was measured before it. It is
-reported as historical evidence for the first iteration, not as verification of
-the code committed here; the rows above are the post-redesign evidence and are
-the ones bound to the final SHA.
+The `pipeline-application` full suite (2529 tests) was measured **before** the
+enum redesign and the symlink fix. It is historical evidence for the first
+iteration, not verification of the code committed here. The rows above are the
+post-fix evidence bound to the final SHA.
+
+The broad `check` was also run excluding the three pre-existing baseline
+failures, and returned green — but it ran concurrently with edits in flight, so
+it is recorded as inconclusive rather than as evidence.
 
 ### Historical payload without `path` — the criterion was misstated, then met
 
@@ -305,6 +314,65 @@ have changed a published contract to fix a bug that did not need fixing.
 correct: it is the half that was already right, kept so a future `FOLLOW_LINKS`
 would break it.
 
+### Installed-distribution canary — SC-011-13/14 were not this
+
+`SC-011-13` and `SC-011-14` were recorded here as evidence for this criterion.
+Reading them again, they are not: `UatLocal011WorkflowControlTest.runPipeline`
+builds
+
+```text
+$JAVA_HOME/bin/java -cp <the TEST classpath> MainKt run ...
+```
+
+so they fork a JVM on the classpath `check` produced. They certify the compiled
+tree. The artifact a user installs — the `installDist` layout, the launcher, the
+packaged JARs, the assembled classpath — is different bytes from a different
+task, and neither row touches it.
+
+This is a distinction the repo already has a name for.
+`InstalledDistributionHarnessFitnessTest` records that "launch the same runtime
+by its main class on the test classpath" is a *second door* to the installed
+property, and `UatLocal011WorkflowControlTest.kt` is a listed entry in its debt
+ledger for exactly that. So the green SC-011-13/14 was real and was about the
+tree.
+
+`C8InstalledDistributionCanaryTest` (pipeline-application) closes the gap. It
+uses [AppBinSupport] + [OwnedSubprocess] against
+`build/install/pipelinek/bin/pipelinek`:
+
+| Row | Claim |
+| --- | --- |
+| C8-I1 | the installed binary refuses `deleteDir()` on an attached root, keeps both files, writes no marker |
+| C8-I2 | the installed binary refuses a pattern-less `cleanWs()` on an attached root, keeps the file, writes no marker |
+| C8-I3 | the installed binary still deletes a MANAGED root, so I1/I2 are not a blanket refusal |
+
+### `--workspace` is always USER-owned: a premise that was wrong and cost a row
+
+C8-I3 first ran with `--workspace <scratch>` expecting a wipe, and failed:
+
+```text
+"deleteDir refuses to delete the workspace root itself ('.../scratch')"
+```
+
+while the file it had just created sat untouched. The refusal was correct. The
+premise was not: `WorkspaceIntent.requestFor` maps `workspace != null` to
+`AttachExplicit`, which resolves to `WorkspaceLease.Attached`, which is
+`Refused` — always. **There is no `--workspace` invocation that yields
+`ScratchOwned`.** `--isolated` is the `ManagedIsolated` request and the only flag
+combination that reaches `WorkspaceLease.Managed` → `Permitted`.
+
+The failing row was the useful one: had C8-I3 not existed, the canary would have
+been two refusals and one absence of knowledge about how to reach the permitted
+half from the CLI at all.
+
+| Mutation | Result |
+| --- | --- |
+| MUT-M11 `val wipesRoot = true` in `DeleteDirExecutor` | `C8-I1` RED in the installed run: `no MEMOIZED marker may be written ... expected: <false> but was: <true>` |
+| restore, verified by hash | `f91b1dd011c9f8e104dba7015ce8a056a56d89037b433399adbea9f2a17a8799` |
+
+The mutation required rebuilding `installDist` before the run, which is the
+point: the canary observes the artifact, not the classpath.
+
 ### Replay and durable schema — measured, not assumed
 
 The intent must not leak into anything durable, or every existing run's history
@@ -339,9 +407,9 @@ Neither module is touched by this change (`git status` shows 0 files in
 
 ## Verdict
 
-**MITIGATED.** The API and execution now close the defect, but three of the
-stated closure criteria are still open, and recording `RESOLVED` would be the
-false-green this receipt exists to prevent.
+**RESOLVED.** Every criterion the closure contract named now has a row bound
+to the SHA that carries it, and three of them turned out to be hiding real
+problems when the row was written.
 
 Satisfied, with evidence above:
 
@@ -351,31 +419,36 @@ Satisfied, with evidence above:
 - both executors decide by matching cases, so a fourth ownership case is a
   compile error rather than an inherited verdict;
 - the runtime check on `WorkspaceLease` is unchanged and still fail-closed;
-- every behavioural claim carries a mutation that kills it, and the two that
-  initially did not are recorded and now closed;
-- the destructive-effect absence is proven in a real run, not only in unit tests;
-- the Jenkins signature, the ABI baseline, historical-payload decoding and the
-  durable fingerprint are unchanged, so no migration was owed to a consumer.
+- destructive operations are confined to the real path, so a symlink can no
+  longer carry the MEMOIZED marker out of the workspace;
+- a legacy payload without `path` decodes to the root and is then refused;
+- the behaviour holds in the installed distribution, not only on the test
+  classpath;
+- every behavioural claim carries a mutation that kills it. Eleven mutations
+  were run. Four did not kill what they should on the first attempt — M6 (no row
+  exercised the unresolved state), C8-M2 (the reflection filter matched nothing),
+  C8-M9a (the assertion did not look at where the write landed), and C8-I3 (the
+  premise about `--workspace` was wrong) — and every one of those is recorded
+  above rather than quietly fixed.
 
-**Open, and the reason this is not RESOLVED:**
+What still is **not** claimed: `sh("rm -rf")` remains an open escape hatch by
+design, Zip Slip and traversal are unchanged, and the pre-existing
+`pipeline-domain` `apiCheck` / `detekt` drift from `4d4075d5` is unrelated and
+still open.
 
-| Criterion | Status |
-| --- | --- |
-| API + execution satisfy every C8 criterion | MET |
-| Symlink / nested-directory confinement | MET — was PARTIAL; writing the row found a real escape (marker written through a link into a directory outside the workspace), now fixed and mutation-verified |
-| Historical payload without `path` decodes and authorizes | MET — the decode half was already covered; `C8HistoricalPayloadAuthorizationTest` adds the authorization half, which was genuinely absent |
-| Installed-distribution canary | OPEN — `SC-011-14` is a real application run, not a run against the installed ZIP |
+The pattern across this reconciliation is worth more than any single row. Every
+gap was entered as "probably fine, no test", and every gap paid:
 
-The remaining one is a test-coverage gap, not a known defect: the installed
-distribution has not been exercised. But "believed correct" is the phrase this
-receipt has been burned by before, so the verdict stays MITIGATED until the row
-exists and is bound to the SHA that carries it.
+```text
+enum bit          the type looked closed and was not; its guard was blind
+symlink           the walk was safe and the marker write was not
+legacy payload    the decode was covered and the authorization was missing
+installed canary  two UATs looked like it and used the test classpath
+--workspace       assumed a scratch path that cannot exist
+```
 
-Two criteria that were entered as "probably fine, no row" both turned out
-otherwise: the symlink criterion was a live escape that a survival-only
-conformance test would have passed, and the historical-payload criterion was
-missing its entire authorization half while looking covered. Coverage gaps are
-hypotheses, and both of these paid.
+Coverage gaps are hypotheses about code nobody has run. Three of these five were
+wrong in ways that mattered.
 
 ## Reference implementation consulted
 

@@ -50,16 +50,20 @@ class SegmentOutputStoreTest {
     private fun refusal(result: OutputReadResult): OutputRefusal =
         assertInstanceOf(OutputReadResult.Refused::class.java, result, "expected a refusal, got $result").reason
 
-    /** A writer that dies between reserve and commit: the reservation is left on disk, uncommitted. */
-    private fun SegmentOutputStore.crashAfterWriting(
+    /**
+     * A writer that dies between reserve and commit: the reservation is left on disk, uncommitted.
+     *
+     * Delegated to [CrashedResidue] rather than done with a live store, because "the handle was
+     * dropped" stopped modelling a crash the moment ownership became a kernel `FileLock` — see that
+     * object's KDoc for the full account of what that fiction cost.
+     */
+    private fun crashed(
+        root: Path,
         stream: OutputStreamId,
-        payload: String,
-    ): Unit {
-        val reservation = open(stream).reserve(payload.length)
-        reservation.write(bytes(payload))
-        // No commit, no abandon. The handle is simply dropped, exactly as it would be on process
-        // death. The durable residue is cur.res plus uncommitted bytes in cur.seg.
-    }
+        acknowledged: ByteArray = ByteArray(0),
+        unacknowledged: ByteArray = ByteArray(0),
+        reservedBytes: Long = 64L * 1024L,
+    ) = CrashedResidue.leave(root, stream, acknowledged, unacknowledged, reservedBytes)
 
     // ------------------------------------------------------------------ basics
 
@@ -339,10 +343,7 @@ class SegmentOutputStoreTest {
     @Test
     fun `I2 - bytes written but never committed do not appear after recovery`(@TempDir root: Path) {
         val stream = OutputStreamId("i2")
-        val first = SegmentOutputStore(root)
-        first.recover()
-        first.open(stream).reserve(8).apply { write(bytes("kept")) }.commit()
-        first.crashAfterWriting(stream, "phantom-bytes")
+        crashed(root, stream, bytes("kept"), bytes("phantom-bytes"))
 
         val after = SegmentOutputStore(root)
         after.recover()
@@ -355,10 +356,7 @@ class SegmentOutputStoreTest {
     @Test
     fun `a reservation after an unreconciled tail does not expose the stale bytes`(@TempDir root: Path) {
         val stream = OutputStreamId("stale-tail")
-        val crashed = SegmentOutputStore(root)
-        crashed.recover()
-        crashed.open(stream).reserve(8).apply { write(bytes("kept")) }.commit()
-        crashed.crashAfterWriting(stream, "STALE")
+        crashed(root, stream, bytes("kept"), bytes("STALE"))
 
         val after = SegmentOutputStore(root)
         after.recover()
@@ -376,11 +374,8 @@ class SegmentOutputStoreTest {
     @Test
     fun `I3 and I6 - an unused reservation is released, so the order stays dense`(@TempDir root: Path) {
         val stream = OutputStreamId("i3")
-        val first = SegmentOutputStore(root)
-        first.recover()
-        first.open(stream).reserve(8).apply { write(bytes("aaa")) }.commit()
-        // Reserve a large range, use none of it, die.
-        first.open(stream).reserve(4096)
+        // Acknowledged 3 bytes, then a writer that reserved 4096 and used none of them before dying.
+        crashed(root, stream, bytes("aaa"), reservedBytes = 4096)
 
         val after = SegmentOutputStore(root)
         val report = after.recover()
@@ -416,9 +411,8 @@ class SegmentOutputStoreTest {
     @Test
     fun `an unresolved reservation blocks a new one until recovery resolves it`(@TempDir root: Path) {
         val stream = OutputStreamId("stranded")
-        val crashed = SegmentOutputStore(root)
-        crashed.recover()
-        crashed.open(stream).reserve(16) // dies here: cur.res is on disk, uncommitted
+        // The writer dies with cur.res on disk and nothing committed behind it.
+        crashed(root, stream, reservedBytes = 16)
 
         // A process that has not reconciled must not append. Appending over an unresolved
         // reservation would make the stranded range unreachable rather than released.

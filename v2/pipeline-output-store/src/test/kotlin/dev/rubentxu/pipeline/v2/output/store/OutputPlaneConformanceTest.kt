@@ -174,13 +174,17 @@ class OutputPlaneConformanceTest {
     @Test
     fun `a restart mid-stream resumes at the committed offset with no gap and no repeat`(@TempDir root: Path) {
         val stream = OutputStreamId("restart")
-        val first = SegmentOutputStore(root)
-        first.recover()
         val acknowledged = "part-one-".repeat(100)
-        first.open(stream).reserve(acknowledged.length).apply { write(bytes(acknowledged)) }.commit()
-
-        // The writer dies here, mid-stream, with a reservation outstanding.
-        first.open(stream).reserve(4096).write(bytes("LOST-NEVER-ACKNOWLEDGED"))
+        // The writer dies mid-stream, with a 4096 reservation outstanding and the bytes below past
+        // the commit record. Written as residue rather than with a live store: a store that never
+        // died still holds cur.own, and recovery then correctly skips it. See CrashedResidue.
+        CrashedResidue.leave(
+            root = root,
+            stream = stream,
+            acknowledged = bytes(acknowledged),
+            unacknowledged = bytes("LOST-NEVER-ACKNOWLEDGED"),
+            reservedBytes = 4096,
+        )
 
         val after = SegmentOutputStore(root)
         val report = after.recover()

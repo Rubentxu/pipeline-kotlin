@@ -99,10 +99,17 @@ fun coalesceWakeup(current: ObservationWakeup?, newer: ObservationWakeup): Obser
  * did the run end?          the run plane, NOT here
  * ```
  *
- * This type answers the first two and refuses to answer the third. `Sealed` says no further bytes
- * will be written to THAT stream; it says nothing about whether the run succeeded, and it is not read
- * as an outcome — that duplication is exactly what `ADR-M1 §D2` forbids and what `OutputTailState`
- * was built to avoid.
+ * The type answers the first two and never carries the third. `Sealed` says no further bytes will be
+ * written to THAT stream; it says nothing about whether the run succeeded, and it is not read as an
+ * outcome — that duplication is exactly what `ADR-M1 §D2` forbids and what `OutputTailState` was built
+ * to avoid. The THIRD question is asked, but it is asked of a different authority and arrives as an
+ * argument to [followDecision]: "did the run end?" belongs to the run plane, and a follow decision
+ * that had to infer it from stream tails would be inferring a run's fate from its silence.
+ *
+ * That is why `FollowDecision.Finished` is a claim about the OUTPUT lane and nothing more — the same
+ * distinction the run lane draws with `FollowOutcome.ReachedRunFinish`, which is a different case for
+ * exactly this reason. `ReachedSealedOutput` says every stream is sealed; `ReachedRunFinish` says the
+ * run ended. Making either imply the other is the duplication this whole model exists to avoid.
  *
  * ## Why a null tail state means "keep reading"
  *
@@ -123,18 +130,62 @@ sealed interface FollowDecision {
 /**
  * Pure decision over what the follower has already read.
  *
+ * ## What [runFinished] is FOR, and what it must never become
+ *
+ * [runFinished] is a rescue for the one case where the output plane has NO evidence at all: a run
+ * that owns no stream, because it wrote nothing. With lazy stream declaration (a stream is created
+ * on its first byte) that is not a corner case, it is every silent step — `sh("true")`. Both facts
+ * look identical from the output plane, an empty tail list, and only the run plane separates them:
+ *
+ *  * empty tails, run still going  → [FollowDecision.ReadAgain]. Nothing has been observed, and
+ *    nothing observed is not evidence of completion.
+ *  * empty tails, run finished     → [FollowDecision.Finished]. This is `sh("true")`, and it is the
+ *    OBS-R1 §1.2 defect: a silent step must terminate its follower.
+ *
+ * ## Why this has no UAT number
+ *
+ * It does not get one. `OBS-PC-101..107` (read recovery) and `OBS-PC-201..207` (live output) are the
+ * published rows, and none of them asks whether a follow ends on a run that wrote nothing. So this is
+ * recorded as a defect found under OBS-R1 §1.2, not as a certified UAT: naming it `UAT-…` would have
+ * borrowed authority from a matrix that does not contain it. If the owner wants it as a row, it gets
+ * registered as one in the roadmap first and cited here afterwards — never the other way round.
+ *
+ * ## Why it is NOT a conjunct on the sealed case
+ *
+ * When at least one stream is known, sealing already answers the question this function asks, and
+ * requiring the run to have finished as well would be WRONG rather than merely stricter. Three
+ * reasons, in order of force:
+ *
+ *  1. It would collapse two distinct outcomes into one. `Finished` here means the output lane is
+ *     final; the run lane reports `ReachedRunFinish` for the run's fate. Two cases exist precisely
+ *     because those are two facts, and `ADR-M1 §D2` forbids reading one as the other.
+ *  2. It would make `--view console --follow` unterminatable without an event plane. A console-only
+ *     lane has no event store to ask, so `hasRunFinished` can only answer "I do not know" — and
+ *     conflating that with "keep reading forever" hangs the consumer instead of ending it.
+ *  3. "Every stream is sealed" is itself the answer the caller asked for. A follower re-reads the
+ *     tail list every round, so a stream declared later is observed later; the sealed case is not
+ *     claiming the run is over, only that the output plane has nothing pending.
+ *
+ * The rejected alternative was declaring a stream for a silent step so there would be something to
+ * seal. That invents an observation to buy a termination, which is why [runFinished] exists instead.
+ *
  * @param moreFrames whether the last page was truncated by the window.
- * @param tailStates the tail state of every stream this follower has seen a frame for. `null` entries
- *   are streams whose state could not be established, and they keep the follower going.
+ * @param tailStates the tail state of every stream this run owns. `null` entries are streams whose
+ *   state could not be established, and they keep the follower going.
+ * @param runFinished whether the durable execution authority says the run reached a terminal state.
+ *   Consulted ONLY when [tailStates] is empty. A lane that cannot answer must leave this `false`,
+ *   because `false` here means "no evidence", never "the run is still going".
  */
 fun followDecision(
     moreFrames: Boolean,
     tailStates: Collection<OutputTailState?>,
+    runFinished: Boolean,
 ): FollowDecision = when {
     moreFrames -> FollowDecision.ReadAgain
-    // An empty history means no stream was ever observed, which is not evidence that all of them
-    // are sealed. A follower that has read nothing has not proven the run finished.
-    tailStates.isEmpty() -> FollowDecision.ReadAgain
+    // The run owns no stream, so the output plane says nothing at all and the run plane must answer.
+    tailStates.isEmpty() && !runFinished -> FollowDecision.ReadAgain
+    // Any stream that is open, or whose state is unknown, still owes bytes. Unreachable for an empty
+    // list, and harmless there: `any` over an empty collection is false.
     tailStates.any { state -> state !is OutputTailState.Sealed } -> FollowDecision.ReadAgain
     else -> FollowDecision.Finished
 }

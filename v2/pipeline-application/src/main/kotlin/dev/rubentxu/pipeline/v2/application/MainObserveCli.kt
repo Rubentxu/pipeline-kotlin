@@ -365,7 +365,11 @@ object MainObserveCli {
             }
             if (!parsed.budget.allows(emitted)) return FollowOutcome.ReachedRecordBudget.asOutcome()
             val tails = lanes.outputTailsOf(runId).orEmpty()
-            when (followDecision(moreFrames, tails)) {
+            // Two authorities, asked separately. `tails` is the OUTPUT plane and answers whether more
+            // BYTES can arrive; `hasRunFinished` is the EXECUTION plane and answers whether the run
+            // ended at all. A silent run has no tails, so without the second fact `follow` on
+            // `sh("true")` would never return.
+            when (followDecision(moreFrames, tails, lanes.hasRunFinished(runId))) {
                 FollowDecision.ReadAgain -> {
                     if (control.shouldStop()) return FollowOutcome.StoppedByConsumer.asOutcome()
                     if (!moreFrames) control.idle()
@@ -438,6 +442,29 @@ interface ObserveLanes : AutoCloseable {
     val hasOutputPlane: Boolean
 
     fun eventsOf(runId: String): Sequence<DomainEvent>
+
+    /**
+     * Whether the durable EVENT authority says this run reached a terminal state.
+     *
+     * Added for the OBS-R1 §1.2 console-closure defect, because the output lane provably cannot
+     * substitute for it. A run that finished writing nothing owns no stream and no frame, so
+     * [outputTailsOf] answers an empty list for it — and so it answers the same empty list for a run
+     * that has not started. A follower that read termination off that list would hang on
+     * `sh("true")` forever.
+     *
+     * It is consulted ONLY when the tail list is empty. A non-empty sealed tail is the output lane's
+     * own authority and needs no corroboration; requiring the run to have finished as well would make
+     * a console-only lane, which has no event store to ask, unterminatable. See `followDecision`.
+     *
+     * It is a FACT from the run's own authority rather than an inference, which is why it is a
+     * method here and not something `observe` has to derive from what the output lane happens to hold.
+     *
+     * Defaulted so every lane can answer without re-implementing: [RunFinished] is the terminal fact
+     * and the event lane already knows how to enumerate. A lane with a cheaper indexed query may
+     * override it; one that cannot answer this must NOT return true, because that would end a follow
+     * on a run that is still going.
+     */
+    fun hasRunFinished(runId: String): Boolean = eventsOf(runId).any { it is RunFinished }
 
     /**
      * `null` means THIS LANE DOES NOT EXIST — no `--control-root` was given, so there is no plane
@@ -561,6 +588,10 @@ internal object ComposeLanes {
             override val hasOutputPlane: Boolean get() = reader != null
             override fun eventsOf(runId: String): Sequence<DomainEvent> =
                 eventStore?.eventsFor(runId) ?: emptySequence()
+            override fun hasRunFinished(runId: String): Boolean =
+                // RunFinished is the terminal FACT. Its absence is not a guess that the run is still
+                // going: it only means this authority cannot prove otherwise, which keeps reading.
+                eventStore?.eventsFor(runId)?.any { it is RunFinished } ?: false
             override fun outputOf(runId: String, afterOrdinal: Long, frameLimit: Int) =
                 reader?.readOutput(runId, afterOrdinal, frameLimit)
 

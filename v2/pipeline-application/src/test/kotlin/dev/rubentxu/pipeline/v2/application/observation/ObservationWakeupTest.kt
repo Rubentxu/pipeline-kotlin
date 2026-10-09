@@ -189,12 +189,12 @@ class ObservationWakeupTest {
     fun `FOLLOW-1 finished only when nothing is pending and every known stream is Sealed`() {
         assertEquals(
             FollowDecision.Finished,
-            followDecision(moreFrames = false, tailStates = listOf(OutputTailState.Sealed(10))),
+            followDecision(moreFrames = false, tailStates = listOf(OutputTailState.Sealed(10)), runFinished = true),
             "nothing pending and one sealed stream is a finished tail",
         )
         assertEquals(
             FollowDecision.ReadAgain,
-            followDecision(moreFrames = true, tailStates = listOf(OutputTailState.Sealed(10))),
+            followDecision(moreFrames = true, tailStates = listOf(OutputTailState.Sealed(10)), runFinished = true),
             "a truncated page means more frames exist right now, whatever the tail says",
         )
     }
@@ -203,7 +203,7 @@ class ObservationWakeupTest {
     fun `FOLLOW-2 an unknown stream keeps the follower going because null is not Sealed`() {
         assertEquals(
             FollowDecision.ReadAgain,
-            followDecision(moreFrames = false, tailStates = listOf(null)),
+            followDecision(moreFrames = false, tailStates = listOf(null), runFinished = true),
             "a stream whose state could not be established is NOT finished. Stopping here looks " +
                 "exactly like a successfully completed follow, which is the worst failure available",
         )
@@ -212,6 +212,7 @@ class ObservationWakeupTest {
             followDecision(
                 moreFrames = false,
                 tailStates = listOf(OutputTailState.Sealed(4), OutputTailState.Open(9)),
+                runFinished = true,
             ),
             "one stream still open keeps the whole follower going",
         )
@@ -221,7 +222,7 @@ class ObservationWakeupTest {
     fun `FOLLOW-3 a stream never observed is not evidence that the run ended`() {
         assertEquals(
             FollowDecision.ReadAgain,
-            followDecision(moreFrames = false, tailStates = emptyList()),
+            followDecision(moreFrames = false, tailStates = emptyList(), runFinished = false),
             "a follower that has read nothing has not proven the run finished. Treating an empty " +
                 "history as completion would end every follow that started before the first frame",
         )
@@ -248,7 +249,7 @@ class ObservationWakeupTest {
         )
         assertEquals(
             FollowDecision.ReadAgain,
-            followDecision(moreFrames = false, tailStates = reader.tailStatesOf(run)),
+            followDecision(moreFrames = false, tailStates = reader.tailStatesOf(run), runFinished = true),
             "an unestablished stream keeps the follower going",
         )
 
@@ -262,18 +263,109 @@ class ObservationWakeupTest {
         )
         assertEquals(
             FollowDecision.ReadAgain,
-            followDecision(moreFrames = false, tailStates = reader.tailStatesOf(run)),
+            followDecision(moreFrames = false, tailStates = reader.tailStatesOf(run), runFinished = true),
         )
 
         // 3. Sealed, with no frame ever published. The follower may conclude.
         store.seal(stderr)
         assertEquals(
             FollowDecision.Finished,
-            followDecision(moreFrames = false, tailStates = reader.tailStatesOf(run)),
+            followDecision(moreFrames = false, tailStates = reader.tailStatesOf(run), runFinished = true),
             "with every declared stream sealed and nothing pending, the follower may conclude. " +
                 "Without streamsOfRun this verdict was unreachable for a follower that had read " +
                 "nothing, and 'read until nothing is pending' became an infinite poll of a run that " +
                 "had already finished",
+        )
+    }
+
+    /**
+     * OBS-R1 §1.2 — `sh("true")`, and a follower that has to stop. Not a UAT number; see below.
+     *
+     * A silent step owns no stream and no frame, so the output plane answers an EMPTY tail list for
+     * it. Until the run-finished fact became an argument, that empty list was the whole evidence
+     * available and the answer was `ReadAgain` forever: a follow on a finished, successful,
+     * completely silent run could not return. Lazy stream declaration turned that from a corner case
+     * into the common one — every step that prints nothing now hits it.
+     *
+     * The other wrong answer is the one this row exists to rule out — declare a stream anyway so the
+     * follower has something to seal. That invents an observation to buy a termination, which is what
+     * `ADR-M1 §D2` forbids, and it is worse than hanging: it makes a step that printed nothing
+     * indistinguishable from a step that printed something a reader could later look up.
+     *
+     * **This row has no UAT identifier on purpose.** `OBS-PC-101..107` and `OBS-PC-201..207` are the
+     * published matrices and neither contains "a follow ends on a run that wrote nothing". It was
+     * first written as `UAT-R1-01`, which was a fabricated id: it borrowed the authority of a matrix
+     * that does not contain it, and `R1` is a release block, not a UAT prefix. The honest label is a
+     * defect found under OBS-R1 §1.2. Registering it as a row is the owner's call and happens in the
+     * roadmap, not in a test name.
+     *
+     * HF0 Pure Contract. [followDecision] reads no clock, no filesystem and no ambient state, so
+     * driving it directly is the faithful level and not a reimplementation of the decision. What this
+     * level does NOT claim: that a real installed run reaches this verdict. `ObsE5ObserveFollowTest`
+     * covers the CLI path, and an end-to-end row over a real `sh("true")` remains NOT RUN.
+     *
+     * Mutations: FOLLOW-M1 — answer `Finished` from the empty-tails arm regardless of [runFinished];
+     * killed by FOLLOW-3 alone. FOLLOW-M2 — restore the old unconditional `tailStates.isEmpty()` arm;
+     * killed by the first assertion of THIS row, and it is the mutation that re-introduces the hang.
+     * FOLLOW-M3 — promote [runFinished] to a conjunct on every case (`!runFinished -> ReadAgain`
+     * before the sealed test); killed by FOLLOW-6. That mutation is not a simplification, it is the
+     * defect this section's rejection describes, and it is why FOLLOW-6 exists.
+     */
+    @Test
+    fun `FOLLOW-5 a run that finished without writing a byte still ends its follower`() {
+        assertEquals(
+            FollowDecision.Finished,
+            followDecision(moreFrames = false, tailStates = emptyList(), runFinished = true),
+            "a run that finished without writing a byte IS a finished console. The empty tail list is " +
+                "the absence of observations, never evidence that the run is still going",
+        )
+        assertEquals(
+            FollowDecision.ReadAgain,
+            followDecision(moreFrames = false, tailStates = emptyList(), runFinished = false),
+            "and the SAME empty list with the run still running keeps reading, which is what makes the " +
+                "previous row a fact about the run rather than about its silence",
+        )
+        assertEquals(
+            FollowDecision.ReadAgain,
+            followDecision(moreFrames = true, tailStates = emptyList(), runFinished = true),
+            "frames pending right now outrank every other fact, terminal run included",
+        )
+    }
+
+    /**
+     * The run-finished fact rescues the empty case and NOTHING ELSE.
+     *
+     * This row exists because the first version of the fix got it wrong in the direction that looks
+     * stricter, and a passing suite did not catch it for a day: `!runFinished -> ReadAgain` placed
+     * BEFORE the sealed test made run completion a conjunct on every decision. It kept FOLLOW-5 green
+     * — the row it was written for — while silently breaking `ObsE5ObserveFollowTest.FOLLOW-2`, a
+     * console-only lane with no event plane, which then could never end at all.
+     *
+     * So the claim is two-sided and both halves are pinned here: the run fact is REQUIRED when the
+     * output plane has nothing, and IGNORED when sealing already answered. A one-sided test would
+     * have accepted either error.
+     *
+     * HF0 Pure Contract, same level as FOLLOW-5. `ObsE5ObserveFollowTest.FOLLOW-2` covers the same
+     * property one level up, through `MainObserveCli.follow`, and both are kept: the unit row states
+     * the rule, the integration row states that the CLI actually reaches it.
+     *
+     * Mutation FOLLOW-M3: promote `runFinished` to a conjunct — killed by the first assertion.
+     */
+    @Test
+    fun `FOLLOW-6 a sealed stream ends the output lane without asking whether the run ended`() {
+        assertEquals(
+            FollowDecision.Finished,
+            followDecision(moreFrames = false, tailStates = listOf(OutputTailState.Sealed(7)), runFinished = false),
+            "sealing is the output lane's OWN authority and it is not asked to prove anything about " +
+                "the run. Requiring run completion here would make --view console --follow " +
+                "unterminatable on a console-only lane, which has no event store to ask and can only " +
+                "ever answer 'I do not know'",
+        )
+        assertEquals(
+            FollowDecision.Finished,
+            followDecision(moreFrames = false, tailStates = listOf(OutputTailState.Sealed(7)), runFinished = true),
+            "and with the run finished it is the same answer, because ReachedSealedOutput and " +
+                "ReachedRunFinish are DIFFERENT cases and neither implies the other",
         )
     }
 

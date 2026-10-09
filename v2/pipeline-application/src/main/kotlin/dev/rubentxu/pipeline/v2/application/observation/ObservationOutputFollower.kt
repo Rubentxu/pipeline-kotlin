@@ -34,6 +34,15 @@ package dev.rubentxu.pipeline.v2.application.observation
 class ObservationOutputFollower(
     private val reader: ObservationOutputReader,
     private val frameLimit: Int,
+    /**
+     * Whether the durable EXECUTION authority says this run reached a terminal state.
+     *
+     * The output plane cannot answer it. A run that finished writing nothing has no stream to seal
+     * and no frame to read, so from here it is indistinguishable from a run that has not started.
+     * Defaulting to `false` keeps a caller that cannot answer in the SAFE direction — keep reading —
+     * and a caller that can answer must say so rather than let silence stand in for the fact.
+     */
+    private val runFinished: (String) -> Boolean = { false },
 ) {
 
     init {
@@ -98,6 +107,7 @@ class ObservationOutputFollower(
                     decision = followDecision(
                         moreFrames = false,
                         tailStates = reader.tailStatesOf(runId),
+                        runFinished = runFinished(runId),
                     ),
                 )
             }

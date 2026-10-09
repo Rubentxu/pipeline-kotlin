@@ -18,8 +18,8 @@ repositories {
 }
 
 dependencies {
-    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")
     // The Gradle-level fixture runs a real Gradle build that executes the SAME production class
     // through a real task, hermetically, against `@TempDir`. Bundled with Gradle: no new external
     // dependency, no network.

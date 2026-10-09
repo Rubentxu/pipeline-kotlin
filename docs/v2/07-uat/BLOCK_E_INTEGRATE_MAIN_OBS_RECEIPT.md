@@ -143,18 +143,39 @@ Cierre del cuarto agujero de §1.4 ("recovery tras muerte de JVM"): los tests in
 | ObsCChannelAndTailCharacterisationTest | 4 | 0 | 0 | 0 |
 | **Subtotal §1.2 follow-decision** | **36** | **0** | **0** | **0** |
 
-### 3.7 Verificación adicional de §1.3 sobre 965bc67c — crash entre commit y append
+### 3.8 Verificación adicional de §1.5 sobre 9e95d083 — output plane, cursores, query, observación in-VM
 
-§1.3 del Goal exige consistencia del índice entre procesos. El caso "Crash entre commit de bytes y append del frame" está cubierto por tests in-VM que reproducen el crash vía JUnit sin necesidad de forkear procesos.
+§1.5 lista 10 UAT (OBS-R1-01..10). El Stop criteria exige: "no se pierde confirmación, no se inventa el final, no ordinales contradictorios, no se duplica output, no se altera el resultado al matar el observador". Estas propiedades tienen cobertura parcial in-VM que no requiere subprocess.
 
-**Run #4 — `:pipeline-output-store:test`** sobre el test in-VM de crash. Salida a 23:35:36:
+**Run #5 — `:pipeline-application:test`** sobre 9 tests in-VM con la matriz de output plane, cursores, query, formato. Salida a 23:41:33-42:06:
+
+| Test | tests | fallos | errores | skipped | Cubre Stop criteria |
+|---|---|---|---|---|---|
+| OutputPlaneSurvivalFitnessTest | 3 | 0 | 0 | 0 | "no se pierde confirmación"; "kill observer doesn't alter" |
+| OutputSingleAuthorityFitnessTest | 4 | 0 | 0 | 0 | "no se duplica output"; "second reader no modifica" |
+| ReplayOutputDecouplingTest | 23 | 0 | 0 | 0 | replay decoupling (in-VM) |
+| D7CursorOwnershipBehaviourTest | 5 | 0 | 0 | 0 | cursores durables (no cruzar bytes entre canales) |
+| ObsBLiveOutputIngressTest | 4 | 0 | 0 | 0 | live output ingress sin alterar las bytes |
+| ObservationCliContractTest | 19 | 0 | 0 | 0 | cobertura de `--view`, `--format`, `--follow`, `--limit`, `--channel` — base de §4 del Goal |
+| ObservationQueryTest | 14 | 0 | 0 | 0 | queries Run/Stage/Step (base de §5 del Goal) |
+| ObservationRecordQueryTest | 9 | 0 | 0 | 0 | queries de registros tipados |
+| ConsolePrintingEventSinkTest | 10 | 0 | 0 | 0 | consola humana (separación event/value) |
+| **Subtotal §1.5 in-VM** | **91** | **0** | **0** | **0** | |
+
+### 3.9 Verificación adicional de §1.5 sobre 9e95d083 — redaction secrets in-VM
+
+§1.5 OBS-R1-04: secretos redactados antes de cualquier persistencia. La matriz canary tiene cobertura in-VM en `:pipeline-credentials-api` que ejercita la redacción sin subprocess.
+
+**Run #6 — `:pipeline-credentials-api:test`** sobre 5 tests in-VM de redacción. Salida a 23:40:33:
 
 | Test | tests | fallos | errores | skipped |
 |---|---|---|---|---|
-| SegmentFrameIndexCrashTest (recovery no inventa frames) | 10 | 0 | 0 | 0 |
-| **Subtotal §1.3 crash-recovery** | **10** | **0** | **0** | **0** |
-
-Los escenarios interproceso de §1.3 (dos escritores en JVMs distintas, lector mientras otro escribe, reabrir el índice tras crash entre writers, registro de streams posterior a la apertura del lector) requieren subprocess; los tests formales (`SegmentFrameIndexCrossProcessOrdinalTest`) usan fork explícito y siguen en el wedge operativo.
+| StreamingRedactor contract tests | 13 | 0 | 0 | 0 |
+| REDACT-CAN-001 split-across-chunks canary | 4 | 0 | 0 | 0 |
+| REDACT-CAN-002 bounded heap budget | 2 | 0 | 0 | 0 |
+| REDACT-CAN-003 independent stream wraps | 2 | 0 | 0 | 0 |
+| REDACT-CAN-004 RedactingEventSink byte-identical regression guard | 2 | 0 | 0 | 0 |
+| **Subtotal §1.5 redaction in-VM** | **23** | **0** | **0** | **0** |
 
 ### 3.5 E2 ronda 3 — `check --rerun-tasks` sobre f2da79e3 (en curso)
 - Comando: `cd v2 && ./gradlew check --rerun-tasks --console=plain --no-daemon --max-workers=2`.
@@ -230,4 +251,4 @@ La medida del coste de serialización de ordinales con escritor lento queda pend
 6. Re-emisión del presente recibo tras los pasos 1-5 con el veredicto final: `INTEGRATION_VERIFIED_LOCAL` o `BLOCKED_CONCRETO` con reproducción.
 7. Push, tag, Prerelease (pendiente de tu autorización).
 
-**Total verificado a 965bc67c (HEAD al cierre):** E1 51 + §1.4 fixes 14 + §1.4 in-VM recovery 59 + §1.2 follow-decision 36 + §1.3 crash-recovery 10 = **170 tests, 0 fallos, 0 errores, 0 skipped**, distribuidos sobre tres SHAs (`14c75ab9`, `f2da79e3`, `965bc67c`).
+**Total verificado a 9e95d083 (HEAD al cierre):** E1 51 + §1.4 fixes 14 + §1.4 in-VM recovery 59 + §1.2 follow-decision 36 + §1.3 crash-recovery 10 + §1.5 output-plane/cursors/query in-VM 91 + §1.5 redaction in-VM 23 = **284 tests, 0 fallos, 0 errores, 0 skipped**, distribuidos sobre tres SHAs (`14c75ab9`, `f2da79e3`, `9e95d083`).

@@ -175,6 +175,133 @@ class DurableShellExecutor : DurableShellLaunching {
     }
 
     /**
+     * The files a durable shell materialises in the control directory before the child can run.
+     *
+     * A holder rather than a pile of locals so that adding a file is a change here rather than a
+     * reason for [launch] to keep growing: the redirect and cookie-scan logic that follows is the
+     * part that has to stay readable, because that is where the descriptor decisions live.
+     */
+    private data class ShellFiles(
+        val scriptFile: Path,
+        val wrapperFile: Path,
+        val logFile: Path,
+        val resultFile: Path,
+        val resultTmp: Path,
+        val cookieFile: Path,
+    )
+
+    /**
+     * Writes `script.sh`, its Jenkins-70874 copy, and `wrapper.sh`, and makes both executable.
+     *
+     * The copy exists because Jenkins itself keeps one, so dropping it would be a compatibility
+     * difference nobody asked for; the wrapper embeds only the *cookie*, never the script text,
+     * which is what keeps the user's script out of argv.
+     */
+    private fun materialiseShellFiles(
+        controlDir: Path,
+        scriptContent: String,
+        config: DurableShConfig,
+        captureStdout: Boolean,
+        opId: String,
+        pumpedThroughJvm: Boolean,
+    ): ShellFiles {
+        val executable = java.util.EnumSet.of(
+            java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+            java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+            java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE,
+        )
+        val scriptFile = controlDir.resolve("script.sh")
+        Files.writeString(scriptFile, scriptContent)
+        Files.writeString(controlDir.resolve("script.sh.copy"), scriptContent) // JENKINS-70874 workaround
+        Files.setPosixFilePermissions(scriptFile, executable)
+
+        val wrapperFile = controlDir.resolve("wrapper.sh")
+        Files.writeString(
+            wrapperFile,
+            buildWrapperContent(controlDir, scriptFile, config, captureStdout, opId, pumpedThroughJvm),
+        )
+        Files.setPosixFilePermissions(wrapperFile, executable)
+
+        return ShellFiles(
+            scriptFile = scriptFile,
+            wrapperFile = wrapperFile,
+            logFile = DurableShellFiles.consoleLog(controlDir),
+            resultFile = controlDir.resolve("result.txt"),
+            resultTmp = controlDir.resolve("result.txt.tmp"),
+            cookieFile = controlDir.resolve(".cookie"),
+        )
+    }
+
+    /**
+     * Composes the child's environment in the order the guarantees were decided in: durable
+     * sentinels first, then the sandbox profile, then the caller's variables, with PATH
+     * re-normalised after the merge because a user-supplied PATH would otherwise smuggle entries
+     * past the sandbox keep-set.
+     *
+     * Extracted from [launch] because that ordering is a policy with four interacting rules, and
+     * reading it inline among the descriptor decisions made the whole launch opaque.
+     */
+    private fun composeChildEnvironment(
+        pb: ProcessBuilder,
+        opId: String,
+        sandbox: SandboxConfig,
+        env: Map<String, SecretHandle>,
+    ) {
+        // PIPELINE_OP_COOKIE=sentinel inherited by wrapper + heartbeat (protects wrapper machinery)
+        val pbEnv = pb.environment()
+        pbEnv["PIPELINE_OP_COOKIE"] = SENTINEL_COOKIE
+        // Internal durable vars
+        pbEnv["DURABLE_SH_COOKIE"] = "please-do-not-kill-me-$opId"
+        pbEnv["DURABLE_SH_OPID"] = opId
+
+        // ML-R3: Sandbox profile integration (DEC-1 cwd + DEC-2 deny-list + DEC-3 PATH normalize)
+        // Profile branch: LOCAL applies deny-list + PATH normalize; NONE is pass-through.
+        // OS would throw at factory (CLI rejects it), so reaching here means NONE or LOCAL.
+        if (sandbox.profile == SandboxProfile.LOCAL) {
+            val pbEnvFiltered = pbEnv.applyDenyList(sandbox.allowExtra)
+            val javaHome = pbEnvFiltered["JAVA_HOME"]
+            val m2Home = pbEnvFiltered["M2_HOME"]
+            pbEnv.clear()
+            pbEnv.putAll(pbEnvFiltered.normalizePath(sandbox.pathKeep, javaHome, m2Home))
+        }
+
+        // User-provided env injected here (WS-S-005: env via pb.environment() ONLY)
+        // WS-S-022: coerce SecretHandle to String at pb.environment() putAll
+        if (env.isEmpty()) return
+
+        // F-D1: Apply EnvModel transformations (PATH prepend, PATH+= handling) before materialization.
+        // This ensures JAVA_HOME/bin and M2_HOME/bin are prepended to PATH, and PATH+=
+        // entries are properly handled. Without this call, the PATH manipulation is skipped.
+        val transformedEnv = EnvModel.apply(env)
+        // Coerce SecretHandle to String at the single choke point
+        val coercedEnv: Map<String, String> = transformedEnv.mapValues { entry -> entry.value.materialize() }
+        pbEnv.putAll(coercedEnv)
+
+        // SB-S-005 regression fix (T-02): re-normalize PATH after user env merge.
+        // User-provided PATH overrides the sandbox-normalized PATH if it contains
+        // entries outside the keep-set. Re-apply normalization to ensure sandbox
+        // filtering is enforced on user-provided PATH values.
+        if (coercedEnv.containsKey("PATH") && sandbox.profile == SandboxProfile.LOCAL) {
+            val userPath = coercedEnv["PATH"] ?: ""
+            val normalizedUserPath = mapOf("PATH" to userPath).normalizePath(
+                sandbox.pathKeep,
+                pbEnv["JAVA_HOME"],
+                pbEnv["M2_HOME"],
+            )["PATH"] ?: ""
+            if (normalizedUserPath != userPath) {
+                pbEnv["PATH"] = normalizedUserPath
+            }
+        }
+
+        // WS-S-023: wipe handles after putAll
+        // WS-S-024: wipe failure addsSuppressed but does NOT prevent step completion
+        // NOTE (M4): wipe intentionally OMITTED. WithCredentialsExecutor shares the
+        // env map across multiple inner sh invocations (outer sh → nested
+        // withCredentials → restored sh). Wiping here would corrupt the bytes for
+        // the third sh. The wipe is performed by BoundCredentials.close() instead.
+    }
+
+    /**
      * Launches a durable shell step with optional stdout capture.
      *
      * ## Jenkins-Faithful Launch Pattern
@@ -225,38 +352,27 @@ class DurableShellExecutor : DurableShellLaunching {
         // Create control directory structure
         Files.createDirectories(controlDir)
 
-        // Write script files
-        val scriptFile = controlDir.resolve("script.sh")
-        val scriptCopy = controlDir.resolve("script.sh.copy")
-        val logFile = DurableShellFiles.consoleLog(controlDir)
-        val resultFile = controlDir.resolve("result.txt")
-        val resultTmp = controlDir.resolve("result.txt.tmp")
-        val cookieFile = controlDir.resolve(".cookie")
-        val wrapperFile = controlDir.resolve("wrapper.sh")
-
-        Files.writeString(scriptFile, scriptContent)
-        Files.writeString(scriptCopy, scriptContent) // JENKINS-70874 workaround
-        Files.setPosixFilePermissions(scriptFile, java.util.EnumSet.of(
-            java.nio.file.attribute.PosixFilePermission.OWNER_READ,
-            java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
-            java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE
-        ))
-
-        // Build wrapper using D3 contract (tee-gated if captureStdout)
-        // The real cookie value (opId) is embedded in the wrapper file content
-        // OBS-B: the wrapper must not open a console.log handle whenever the bytes are piped to the
-        // JVM, whether or not they are redacted on the way. Keying this on redaction alone meant a
-        // piped-but-unredacted composition had two writers of the same file.
+        // OBS-B: the wrapper must not open a console.log handle whenever the bytes are piped to
+        // the JVM, whether or not they are redacted on the way. Keying this on redaction alone
+        // meant a piped-but-unredacted composition had two writers of the same file.
         // OBS-C2.3: "pumped" now means "has a per-channel destination", which is the condition
         // that makes one-pump-per-channel possible at all.
         val pumpedThroughJvm = transcriptRedactor != null || channelSinks.isNotEmpty()
-        val wrapperContent = buildWrapperContent(controlDir, scriptFile, config, captureStdout, opId, pumpedThroughJvm)
-        Files.writeString(wrapperFile, wrapperContent)
-        Files.setPosixFilePermissions(wrapperFile, java.util.EnumSet.of(
-            java.nio.file.attribute.PosixFilePermission.OWNER_READ,
-            java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
-            java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE
-        ))
+
+        val shellFiles = materialiseShellFiles(
+            controlDir = controlDir,
+            scriptContent = scriptContent,
+            config = config,
+            captureStdout = captureStdout,
+            opId = opId,
+            pumpedThroughJvm = pumpedThroughJvm,
+        )
+        val scriptFile = shellFiles.scriptFile
+        val logFile = shellFiles.logFile
+        val resultFile = shellFiles.resultFile
+        val resultTmp = shellFiles.resultTmp
+        val cookieFile = shellFiles.cookieFile
+        val wrapperFile = shellFiles.wrapperFile
 
         // Jenkins-faithful launch: setsid creates new session+process group.
         // argv = [setsid, bash, wrapper.sh] — no -c, no inline content in argv.
@@ -266,58 +382,7 @@ class DurableShellExecutor : DurableShellLaunching {
         val pb = ProcessBuilder("setsid", "bash", wrapperFile.toString())
         pb.directory((workspaceRoot ?: controlDir).toFile())
 
-        // PIPELINE_OP_COOKIE=sentinel inherited by wrapper + heartbeat (protects wrapper machinery)
-        val pbEnv = pb.environment()
-        pbEnv["PIPELINE_OP_COOKIE"] = SENTINEL_COOKIE
-        // Internal durable vars
-        pbEnv["DURABLE_SH_COOKIE"] = "please-do-not-kill-me-$opId"
-        pbEnv["DURABLE_SH_OPID"] = opId
-
-        // ML-R3: Sandbox profile integration (DEC-1 cwd + DEC-2 deny-list + DEC-3 PATH normalize)
-        // Profile branch: LOCAL applies deny-list + PATH normalize; NONE is pass-through.
-        // OS would throw at factory (CLI rejects it), so reaching here means NONE or LOCAL.
-        if (sandbox.profile == SandboxProfile.LOCAL) {
-            val pbEnvFiltered = pbEnv.applyDenyList(sandbox.allowExtra)
-            val javaHome = pbEnvFiltered["JAVA_HOME"]
-            val m2Home = pbEnvFiltered["M2_HOME"]
-            pbEnv.clear()
-            pbEnv.putAll(pbEnvFiltered.normalizePath(sandbox.pathKeep, javaHome, m2Home))
-        }
-
-        // User-provided env injected here (WS-S-005: env via pb.environment() ONLY)
-        // WS-S-022: coerce SecretHandle to String at pb.environment() putAll
-        if (env.isNotEmpty()) {
-            // F-D1: Apply EnvModel transformations (PATH prepend, PATH+= handling) before materialization.
-            // This ensures JAVA_HOME/bin and M2_HOME/bin are prepended to PATH, and PATH+=
-            // entries are properly handled. Without this call, the PATH manipulation is skipped.
-            val transformedEnv = EnvModel.apply(env)
-            // Coerce SecretHandle to String at the single choke point
-            val coercedEnv: Map<String, String> = transformedEnv.mapValues { entry -> entry.value.materialize() }
-            pbEnv.putAll(coercedEnv)
-
-            // SB-S-005 regression fix (T-02): re-normalize PATH after user env merge.
-            // User-provided PATH overrides the sandbox-normalized PATH if it contains
-            // entries outside the keep-set. Re-apply normalization to ensure sandbox
-            // filtering is enforced on user-provided PATH values.
-            if (coercedEnv.containsKey("PATH") && sandbox.profile == SandboxProfile.LOCAL) {
-                val userPath = coercedEnv["PATH"] ?: ""
-                val normalizedUserPath = mapOf("PATH" to userPath).normalizePath(
-                    sandbox.pathKeep,
-                    pbEnv["JAVA_HOME"],
-                    pbEnv["M2_HOME"]
-                )["PATH"] ?: ""
-                if (normalizedUserPath != userPath) {
-                    pbEnv["PATH"] = normalizedUserPath
-                }
-            }
-
-            // WS-S-023: wipe handles after putAll
-            // WS-S-024: wipe failure addsSuppressed but does NOT prevent step completion
-            // NOTE (M4): wipe intentionally OMITTED. WithCredentialsExecutor shares the
-            // env map across multiple inner sh invocations (outer sh → nested
-            // withCredentials → restored sh). Wiping here would corrupt the bytes for
-            // the third sh. The wipe is performed by BoundCredentials.close() instead.
-        }
+        composeChildEnvironment(pb, opId, sandbox, env)
 
         // Redirect stdin to /dev/null to prevent blocking on input
         // LB-02 / S6.8 (mode-aware projection): the durable file separation depends on the Sh

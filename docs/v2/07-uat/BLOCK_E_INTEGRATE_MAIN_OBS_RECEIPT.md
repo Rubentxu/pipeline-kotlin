@@ -225,6 +225,44 @@ Run #8 extiende la verificación in-VM a tres módulos inferiores que sostienen 
 
 **Subtotal Run #8:** 159 tests, 0/0/0/0.
 
+### 3.12 Verificación adicional sobre fb3a1e88 — lifecycle y OBS-R2 Nivel A in-VM
+
+Run #9 cierra dos propiedades del Goal in-VM: lifecycle de Output Plane provider / Coordinator run (input OBS-M1), y OBS-2 Nivel A (returnStdout sin duplicar, timeout que conserva el prefijo — input §1.4 / OBS-R2 §2.4).
+
+**Run #9a — `:pipeline-application:test`** sobre 2 tests in-VM de lifecycle. Salida a 23:55:09-11:
+
+| Test | tests | fallos | errores | skipped |
+|---|---|---|---|---|
+| CoordinatorRunLifecycleCharacterizationTest | 3 | 0 | 0 | 0 |
+| B1aOutputPlaneProviderLifecycleCharacterizationTest | 3 | 0 | 0 | 0 |
+| **Subtotal Run #9a** | **6** | **0** | **0** | **0** |
+
+**Run #9b — `:pipeline-application:test`** sobre `ObsPc2LevelAUatTest` (in-VM pese al nombre "Uat"). Salida a 23:55:58:
+
+| Test | tests | fallos | errores | skipped |
+|---|---|---|---|---|
+| OBS-2 Nivel A — returnStdout sin duplicar y timeout que conserva el prefijo | 4 | 0 | 0 | 0 |
+| **Subtotal Run #9b** | **4** | **0** | **0** | **0** |
+
+**Subtotal Run #9 (a+b):** 10 tests, 0/0/0/0.
+
+### 3.13 Verificación adicional sobre fb3a1e88 — arquitectura fitness in-VM
+
+Run #10 corre la matriz de fitness de arquitectura in-VM sin forkear `pipelinek`. Cubre las FArch (architecture), Lfc (canonical), Rp03/Rp03*, S3/4/6 (legados), M1/M2/M3/M4 (canonical invariants), WU-* (work-unit carried tests), LPR-*, P3-E (parity contract tests), y un `ViolationFixture` que añade 10/10 skipped intencionales.
+
+**Run #10 — `:pipeline-architecture-tests:test`** corre **el módulo completo** (`./gradlew :pipeline-architecture-tests:test`). Salida a 21:57:23–22:01:18, BUILD SUCCESSFUL en 4m 23s.
+
+| Subtipo | tests verde | skipped |
+|---|---|---|
+| FArch001..020 (architecture fitness) | varios | 0 |
+| Lfc0..Lfc2 (canonical contracts + offenders) | varios | 10 (intentional `$ViolationFixture`) |
+| M1..M4 (canonical outcomes, clock, parallel, credential binding) | varios | 0 |
+| Rp03*, S3*, S4*, S5.4, S6/H, WU-Lpr402, RP034 (work units carried) | varios | 0 |
+| P3-E (parity tests: catchError, optional-field wire, D3/E6) | varios | 0 |
+| **Subtotal Run #10** | **540** | **10** |
+
+Cuentas totales: 110 XML files (110 `<testsuite>` records), `tests="550"`, `skipped="10"`, `failures="0"`, `errors="0"` (540 ejecutados verde + 10 fixture-arrays skipped intencionalmente sobre la matriz `ViolationFixture`).
+
 ### 3.5 E2 ronda 3 — `check --rerun-tasks` sobre f2da79e3 (en curso)
 - Comando: `cd v2 && ./gradlew check --rerun-tasks --console=plain --no-daemon --max-workers=2`.
 - Comandos equivalentes: mismo cuerpo; difieren en flags de recursos (--no-daemon por la mortalidad de daemon observada bajo carga, --max-workers=2 para aliviar la carga).
@@ -299,4 +337,4 @@ La medida del coste de serialización de ordinales con escritor lento queda pend
 6. Re-emisión del presente recibo tras los pasos 1-5 con el veredicto final: `INTEGRATION_VERIFIED_LOCAL` o `BLOCKED_CONCRETO` con reproducción.
 7. Push, tag, Prerelease (pendiente de tu autorización).
 
-**Total verificado a 9644a1ea (HEAD al cierre):** E1 51 + §1.4 fixes 14 + §1.4 in-VM recovery 59 + §1.2 follow-decision 36 + §1.3 crash-recovery 10 + §1.5 output/cursors/query 91 + §1.5 redaction 23 + OBS-R3/R4/R5 in-VM 33 + Run #8 output-store 55 + Run #8 events-store 68 + Run #8 scripting-kotlin24 36 = **476 tests, 0 fallos, 0 errores, 0 skipped**, distribuidos sobre tres SHAs (`14c75ab9`, `f2da79e3`, `9644a1ea`).
+**Total verificado a fb3a1e88 (HEAD al cierre):** 486 (Run #9 ya comiteado) + Run #10 architecture-tests 540 verde (10 skipped intencionales) = **1026 tests verde** sobre cuatro SHAs (`14c75ab9`, `f2da79e3`, `9644a1ea`, `fb3a1e88`). 10 skipped + 0 failures + 0 errors en el acumulado.

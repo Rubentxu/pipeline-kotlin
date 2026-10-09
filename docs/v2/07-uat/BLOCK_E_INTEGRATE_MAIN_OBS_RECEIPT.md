@@ -128,6 +128,34 @@ Complemento a la lista de §1.4 del Goal que cubre las 4 pruebas rojas de la re-
 
 Cierre del cuarto agujero de §1.4 ("recovery tras muerte de JVM"): los tests in-VM cubren el camino In-Process (las 4 de pipeline-events-store + las 5 de pipeline-application). Quedan los escenarios cross-process (ExternalSubprocess recovery con `ObsBJvmDeathOutputRecoveryUatTest`, `ObsPc2IngestAgentPrototypeUatTest`) que siguen en el worktree y no se han corrido en este bloque por la razón operativa del §6.2.
 
+### 3.6 Verificación adicional de §1.2 sobre 965bc67c — fin de consola
+
+§1.2 del Goal exige una decisión explícita sobre el ciclo de vida del fin de streams (active silent, active with output, terminal silent, terminal con todos los streams sellados, lost, needing recovery). Los tests in-VM existentes sobre `followDecision` y la decisión de fin del follower cubren esta propiedad sin subprocess.
+
+**Run #3 — `:pipeline-application:test`** sobre 5 tests in-VM de follow-decision, drain y tail. Salida a 23:33:41-34:52:
+
+| Test | tests | fallos | errores | skipped |
+|---|---|---|---|---|
+| ObservationWakeupTest (followDecision + coalesceWakeup) | 11 | 0 | 0 | 0 |
+| ObservationOutputFollowerTest | 6 | 0 | 0 | 0 |
+| ObservationOutputReaderTest | 8 | 0 | 0 | 0 |
+| LiveOutputDrainTest (OBS-E4 live drain) | 7 | 0 | 0 | 0 |
+| ObsCChannelAndTailCharacterisationTest | 4 | 0 | 0 | 0 |
+| **Subtotal §1.2 follow-decision** | **36** | **0** | **0** | **0** |
+
+### 3.7 Verificación adicional de §1.3 sobre 965bc67c — crash entre commit y append
+
+§1.3 del Goal exige consistencia del índice entre procesos. El caso "Crash entre commit de bytes y append del frame" está cubierto por tests in-VM que reproducen el crash vía JUnit sin necesidad de forkear procesos.
+
+**Run #4 — `:pipeline-output-store:test`** sobre el test in-VM de crash. Salida a 23:35:36:
+
+| Test | tests | fallos | errores | skipped |
+|---|---|---|---|---|
+| SegmentFrameIndexCrashTest (recovery no inventa frames) | 10 | 0 | 0 | 0 |
+| **Subtotal §1.3 crash-recovery** | **10** | **0** | **0** | **0** |
+
+Los escenarios interproceso de §1.3 (dos escritores en JVMs distintas, lector mientras otro escribe, reabrir el índice tras crash entre writers, registro de streams posterior a la apertura del lector) requieren subprocess; los tests formales (`SegmentFrameIndexCrossProcessOrdinalTest`) usan fork explícito y siguen en el wedge operativo.
+
 ### 3.5 E2 ronda 3 — `check --rerun-tasks` sobre f2da79e3 (en curso)
 - Comando: `cd v2 && ./gradlew check --rerun-tasks --console=plain --no-daemon --max-workers=2`.
 - Comandos equivalentes: mismo cuerpo; difieren en flags de recursos (--no-daemon por la mortalidad de daemon observada bajo carga, --max-workers=2 para aliviar la carga).
@@ -202,4 +230,4 @@ La medida del coste de serialización de ordinales con escritor lento queda pend
 6. Re-emisión del presente recibo tras los pasos 1-5 con el veredicto final: `INTEGRATION_VERIFIED_LOCAL` o `BLOCKED_CONCRETO` con reproducción.
 7. Push, tag, Prerelease (pendiente de tu autorización).
 
-**Total verificado a 1e8c04dc (HEAD al cierre):** E1 51 + fixes 14 + recovery 36 + application recovery 23 = **124 tests, 0 fallos, 0 errores, 0 skipped**, distribuidos sobre tres SHAs (`14c75ab9`, `f2da79e3`, `1e8c04dc`).
+**Total verificado a 965bc67c (HEAD al cierre):** E1 51 + §1.4 fixes 14 + §1.4 in-VM recovery 59 + §1.2 follow-decision 36 + §1.3 crash-recovery 10 = **170 tests, 0 fallos, 0 errores, 0 skipped**, distribuidos sobre tres SHAs (`14c75ab9`, `f2da79e3`, `965bc67c`).

@@ -619,3 +619,32 @@ motor registra como *fail-soft* sin re-emitir nada. El cierre avanza al reintent
 éxito. El `grant` solo no basta, y el CLI responde `ADMISSION: approval required` aunque el
 approval exista — el mensaje no distingue "no aprobado" de "aprobado con el evento global ya
 consumido".
+
+### El gate que no se disparaba: `git merge` no ejecutaba `pre-commit`
+
+Backlog P2 `bl-bl-01M4AHPHYV000388N3E09WF9C0`. Encontrado al cerrar los ciclos, porque
+los hooks son parte del mismo contrato que el ledger.
+
+`git merge` ejecuta `pre-merge-commit`, no `pre-commit`. El `core.hooksPath` de este
+repositorio tenía `pre-commit`, `commit-msg`, `post-commit`, `pre-push`, `sddk-align` y
+`sddk-close` — y **no** `pre-merge-commit`. Es decir: un merge commit entraba en la rama sin
+recibo de alineación y sin closeout pendiente, esquivando la puerta entera.
+
+Instalado `~/.config/git/sddk-hooks/pre-merge-commit`, que reutiliza las mismas primitivas de
+`lib.sh` para que las dos puertas no puedan divergir. Verificado empíricamente con una sonda
+en rama aislada, tres comportamientos:
+
+```text
+merge con closeout pendiente   → [SDDK CLOSEOUT REQUIRED]                exit 43
+merge sin recibo de alineación → [SDDK ATTENTION REQUIRED]               exit 42
+merge con recibo válido        → "Merge made by the 'ort' strategy"      permitido
+```
+
+La sonda se deshizo: `main` quedó en `c3cb4b54`, idéntico a `origin/main`, y la rama de
+prueba se eliminó.
+
+Una nota de honestidad sobre el alcance: el hook vive en `~/.config/git/sddk-hooks`, fuera
+del repositorio, porque es configuración local de `core.hooksPath` y no hay en este repo una
+instalación versionada de hooks que extender. La **evidencia** del cierre queda en este
+recibo; una máquina nueva no hereda el hook sin ese paso, y eso sigue siendo una laguna que no
+he cerrado.

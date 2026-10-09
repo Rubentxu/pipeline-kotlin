@@ -1,6 +1,12 @@
 # W5 — Reproducibility matrix for the 0.48.0 distribution ZIP
 
-**Tree under measurement:** `e01bd7a259245602eb9ba3889c87033cb2438f79` (`s6-plugin-sdk`), clean.
+- **Date:** 2026-10-09
+- **HEAD at authorship:** `e01bd7a259245602eb9ba3889c87033cb2438f79`
+- **Branch:** `s6-plugin-sdk`
+- **Cycle:** `p-733fb505b5a6bd2d/train-1-rp2-characterization` (OPEN)
+- **WorkItem:** `f8fc07e6-6f98-4b4a-81c0-3f5b717bd146`
+
+**Tree under measurement:** `e01bd7a2`, clean.
 **Subject:** `v2/pipeline-application/build/distributions/pipelinek-0.48.0.zip`.
 **Status:** every row below is OBSERVED on that SHA. No row is projected, and no
 row is inherited from an earlier candidate.
@@ -124,6 +130,50 @@ removes it, and `build/` is not versioned, so this is local residue from an olde
 implementation rather than a live defect. It is recorded rather than absorbed into
 the fix commit, because absorbing it would have mixed a live defect with dead
 state and made the change harder to review.
+
+## Git author identity varies across this branch, and it is not a repository defect
+
+Measured while recording the matrix, because candidate provenance depends on it.
+
+```text
+git var GIT_AUTHOR_IDENT        ->  Rubentxu <rubentxu74@gmail.com>
+git config user.name            ->  Rubentxu          (from ~/.gitconfig)
+git config user.email           ->  rubentxu74@gmail.com
+GIT_AUTHOR_EMAIL / GIT_COMMITTER_EMAIL in the shell   ->  (unset)
+```
+
+Yet the last twelve commits on this branch carry five different identities, and the
+branch as a whole carries seven:
+
+```text
+19  haizea.cabrera.g@gmail.com
+17  nomeacuerdodelputocorreo@gmail.com
+14  rubentxu74@gmail.com
+13  socketstuido@gmail.com
+13  pabloformacion13@gmail.com
+10  rubentxudev@gmail.com
+10  ilargia.c.g@gmail.com
+```
+
+What this rules out, and how:
+
+| Hypothesis | Check | Result |
+| --- | --- | --- |
+| repository-local config | `git config --local --list` | no `user.*` entry |
+| the SDDK git hooks rewrite it | `grep` over `core.hooksPath` hooks | no hook writes `GIT_AUTHOR_*` |
+| the identity guard sets it | `identity-guard.sh` | `guard_pending_identity` only **reads** identity to reject corporate emails; `guard_deny` never substitutes one |
+| a later amend or rebase rewrote it | author vs committer over 12 commits | 0 of 12 differ, so no commit was rewritten after creation |
+
+Git itself would sign as `Rubentxu` right now. The other identities therefore enter
+the commit process from outside this repository — the environment of whatever agent
+or tooling ran `git commit`. That component is not identifiable from here and is out
+of scope for this work.
+
+**History is not rewritten to normalise this.** The commits are pushed; rewriting
+published history to change an attribution field would be a larger and less honest
+intervention than recording the fact. It is logged so that an auditor reading a
+release receipt is not surprised by seven author emails on one branch, and so the
+variance is not later mistaken for tampering.
 
 ## What this matrix does NOT establish
 

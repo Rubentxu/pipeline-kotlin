@@ -139,15 +139,21 @@ Una fila que comparte tema con una UAT no es una fila que la discharged. La audi
 | UAT | Veredicto |
 |---|---|
 | 201 líneas visibles en vivo | `IMPLEMENTED` — acotada por el lookahead de redacción, cualificación que debe viajar con el estado |
-| 202 ambos canales sin deadlock | `PARTIAL` — probado a 20 MiB por canal en el **sustrato** (`collectingSink`), no en la composición del Output Plane |
+| 202 ambos canales sin deadlock | `IMPLEMENTED` — `ObsPc2LevelAUatTest`, 20 000 líneas por canal **en la composición del Output Plane**; mutación M-A3 la tumba 1:1 |
 | 203 secretos partidos entre ventanas y canales | `IMPLEMENTED` |
-| 204 `returnStdout` exacto | `PARTIAL` — el valor tipado está fijado; la **ausencia de stdout en la transcripción** no |
-| 205 proceso termina con output pendiente | `NOT_COVERED` — el drenaje existe en el executor, ninguna fila lo afirma |
-| 206 timeout con retención del prefijo | `PARTIAL` — cancelación y no duplicación probadas; la **retención** no |
+| 204 `returnStdout` exacto | `IMPLEMENTED` — `ObsPc2LevelAUatTest`; la ausencia de stdout en la transcripción queda fijada, mutación M-A1 1:1 |
+| 205 proceso termina con output pendiente | `IMPLEMENTED` — fila escrita y verde, **pero sin mutación que la tumbe** |
+| 206 timeout con retención del prefijo | `IMPLEMENTED` — fila escrita y verde, **pero sin mutación que la tumbe** |
 | 207 caída del observador independiente | `IMPLEMENTED` |
 
-Faltan cuatro filas (202 en la composición, 204 ausencia, 205 drenaje, 206 retención). Ninguna exige
-arquitectura nueva: son filas sobre comportamiento que ya existe. OBS-2 Nivel A sigue **abierto**.
+Las siete UAT de Nivel A tienen ahora fila. Lo que **no** está resuelto es la solidez de dos de ellas:
+`205` y `206` son verdes pero no han demostrado tener dientes, y la mutación que debía hacerlo (M-A2,
+quitar el drenaje EOF) no tumba ninguna. Como efecto colateral dejó sin respaldo una afirmación causal
+del comentario de `DurableShellExecutor` sobre qué vuelca los últimos bytes.
+
+**Pendiente antes de declarar OBS-2 Nivel A cerrado:** mutación que tumbe `205` y mutación que tumbe
+`206`, o identificación del mecanismo real en cada caso. OBS-2 Nivel A sigue **abierto** por eso, no
+por filas ausentes.
 
 ### OBS-3, OBS-4, OBS-5, OBS-6, OBS-7
 

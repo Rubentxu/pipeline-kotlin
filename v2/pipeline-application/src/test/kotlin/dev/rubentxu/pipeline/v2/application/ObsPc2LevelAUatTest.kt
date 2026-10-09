@@ -6,6 +6,10 @@ import dev.rubentxu.pipeline.v2.application.durable.ShOperationsAdapter
 import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.output.OutputCursor
+import dev.rubentxu.pipeline.v2.output.OutputReadResult
+import dev.rubentxu.pipeline.v2.output.OutputStreamId
+import dev.rubentxu.pipeline.v2.output.store.SegmentOutputStore
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.ShellCommand
 import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
@@ -65,7 +69,9 @@ import kotlin.concurrent.thread
  * ## Mutations — measured, and two of them are a lesson
  *
  * - **M-A1** (mirror stdout into the console: pipe stdout AND pump it in capture mode) REDS **204**
- *   alone and leaves 205 and 206 green. 1:1, as a fitness row should be.
+ *   alone. 1:1.
+ * - **M-A3** (cross the two pump descriptors — give the STDOUT channel the error stream and vice versa)
+ *   REDS **202** alone, leaving 204, 205 and 206 green. 1:1.
  * - **M-A2** (remove the EOF drain, i.e. never close the redacting stream) REDS **nothing**, in
  *   either scenario.
  *
@@ -87,6 +93,10 @@ import kotlin.concurrent.thread
  * stand for both. Neither has a mutation that kills it yet. `206` needs one aimed at the deadline path
  * (one that discards committed bytes when it cancels); `205` needs one that removes whatever actually
  * flushes the tail, which this block has not identified.
+ *
+ * `204` and `202` are the two that are demonstrably load-bearing today, and they are guarded by two
+ * different mechanisms — the composition that decides which channels exist, and the mapping that decides
+ * which descriptor feeds which channel. A single guard could not have covered both.
  */
 @Timeout(300)
 @DisplayName("OBS-2 Nivel A — returnStdout sin duplicar y timeout que conserva el prefijo")
@@ -98,6 +108,10 @@ class ObsPc2LevelAUatTest {
     lateinit var tempDir: Path
 
     private lateinit var workspace: Path
+
+    private companion object {
+        const val PAGE_BYTES = 64 * 1024
+    }
 
     @BeforeEach
     fun setUp() {
@@ -225,6 +239,89 @@ class ObsPc2LevelAUatTest {
                 "never committed. A step that seals its console while bytes sit in a pump loses exactly " +
                 "the bytes a human is most likely to be watching for — the last thing the process said.",
         )
+    }
+
+    /**
+     * OBS-PC-202 — both channels at volume, through the real composition, with no deadlock and no
+     * cross-contamination.
+     *
+     * The audit's finding was a *layer* finding, not a volume finding: `Lpr040OutputObservationHarnessTest`'s
+     * `P2 mixed streams 20MiB each` is the right experiment, but it drives `ProcessDurableTaskRuntime`
+     * with a `collectingSink()`. This composition puts a `StreamingRedactor`, a `RedactingOutputIngress`
+     * and a durable `reserve → write → commit` per chunk on a per-channel lock in front of the same pipes,
+     * and the redaction stage is precisely the one that holds bytes back across a chunk boundary.
+     *
+     * The line count is not invented: it is the one the suite already uses for "large" in
+     * `Lpr011r2SecretRedactionAtRestUatTest` (`large output streams through the ingress within budget`),
+     * applied to both channels at once. That row tolerates `> 15_000` of 20 000 newlines, so this row
+     * applies the same tolerance rather than tightening a threshold that was never measured here.
+     *
+     * Both channels are read **separately**, from their own channel-addressed streams. A single merged
+     * read would make "both channels arrived" true even if the pump fused them.
+     */
+    @Test
+    @Timeout(value = 600, unit = TimeUnit.SECONDS)
+    fun `OBS-PC-202 both channels flow at volume through the plane without deadlock`() {
+        val runId = "r-pc2-202"
+        val root = controlRoot("pc2-202")
+        val lines = 20_000
+
+        val script = """
+            for i in ${'$'}(seq 1 $lines); do
+              printf 'OUT-%08d-abcdefghijklmnopqrstuvwxyz\n' ${'$'}i
+              printf 'ERR-%08d-0123456789abcdef0123456789\n' ${'$'}i 1>&2
+            done
+        """.trimIndent()
+
+        runBlocking {
+            adapter(runId, root).invoke(
+                command = ShellCommand(script = script, returnMode = ShellReturnMode.NONE),
+                runId = RunId(runId),
+                stepIndex = 0,
+            )
+        }
+
+        val store = OutputPlaneProvider.storeForReading(root)
+        val streams = OutputPlaneProvider.streamsOf(runId, OpId(runId, 0, 0).format())
+        val out = String(readAllBytes(store, streams.stdout.stream), Charsets.UTF_8)
+        val err = String(readAllBytes(store, streams.stderr.stream), Charsets.UTF_8)
+
+        // Identity first: a fused pump would make the volume assertions below pass anyway.
+        assertFalse(
+            err.contains("OUT-"),
+            "stdout bytes reached the stderr stream, so --channel stderr would answer with the wrong " +
+                "channel's bytes. No volume assertion matters once this holds.",
+        )
+        assertFalse(
+            out.contains("ERR-"),
+            "stderr bytes reached the stdout stream. The two pumps are not independent.",
+        )
+
+        assertTrue(
+            out.count { it == '\n' } > 15_000,
+            "stdout lost lines at volume through the composition: ${out.count { it == '\n' }} newlines " +
+                "for $lines emitted",
+        )
+        assertTrue(
+            err.count { it == '\n' } > 15_000,
+            "stderr lost lines at volume through the composition: ${err.count { it == '\n' }} newlines " +
+                "for $lines emitted",
+        )
+    }
+
+    /** Paged drain of one channel-addressed stream, as a consumer would. Never returns `""` for a refusal. */
+    private fun readAllBytes(store: SegmentOutputStore, stream: OutputStreamId): ByteArray {
+        if (store.read(stream, OutputCursor.start(stream), PAGE_BYTES) is OutputReadResult.Refused) {
+            return ByteArray(0)
+        }
+        val out = java.io.ByteArrayOutputStream()
+        var cursor: OutputCursor? = OutputCursor.start(stream)
+        while (cursor != null) {
+            val page = (store.read(stream, cursor, PAGE_BYTES) as? OutputReadResult.Page)?.page ?: break
+            out.write(page.bytes)
+            cursor = page.next
+        }
+        return out.toByteArray()
     }
 
     /**

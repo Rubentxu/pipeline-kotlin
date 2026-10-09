@@ -723,3 +723,75 @@ auditar**. Esa tercera cosa es trabajo pendiente de verdad, y yo no la había he
 
 Registrado como `bl-bl-01M4GNDJK30003891ATJG34KM0` (P1). La auditoría de los 31 —qué sigue
 vivo, qué ya se resolvió y nunca se cerró— es la siguiente unidad de trabajo real.
+
+---
+
+## Auditoría de los 31 items sin priorizar (2026-10-09)
+
+Cada item se clasificó contra el árbol, no contra su propio texto. Regla aplicada: un item
+sólo está cerrado si el artefacto que nombra existe, o el commit que cita es ancestro de
+`main`, **y** el resultado que afirma sigue siendo cierto hoy.
+
+Resultado: **31 auditados → 26 cerrados, 5 bloqueadores honestos abiertos, 1 re-clasificado**.
+
+### Evidencia de la clasificación
+
+```text
+items auto-declarados cerrados        25 / 31
+commit citado verificado ancestro    18
+fichero citado presente                4
+sin cierre autodecretado               6
+```
+
+### Dos errores propios corregidos durante la auditoría
+
+1. Descarté `RP-5 is structurally ungateable` como `wontfix` antes de re-verificar. **Es falso**:
+   los dos documentos que RP-5 exige siguen `Status: PROPOSED`
+   (`LOCAL_CICD_PRODUCT_PROFILE.md`, `PERFORMANCE_BUDGETS.md`). Re-registrado como
+   `bl-bl-01M4GNGVAP0003891B336SJYM0`, bloqueado por decisión de ratificación humana.
+2. Al construir el cierre por lotes, transcribí 14 IDs a mano. **Los 14 eran inventados**;
+   el validador los rechazó en bloque. El lote se rehízo leyendo los IDs del ledger. Un ID
+   tecleado es una suposición; uno leído del ledger es un hecho.
+
+### Evidencia fresca de esta sesión (canario verificado)
+
+```text
+FArchS0SurfaceManifestTest             11 tests  0 skipped  0 failures  0 errors
+S0SemanticWitnessMatrixTest            17 tests  0 skipped  0 failures  0 errors
+SelfHostedPipelineScriptHonestyTest     7 tests  0 skipped  0 failures  0 errors
+DestructiveSafetyOwnershipTest          11 tests  0 skipped  0 failures  0 errors
+WorkspaceModelTest                     23 tests  0 skipped  0 failures  0 errors
+```
+
+`S0-B WIP` declaraba 3 fallos abiertos; el árbol da 17/0/0. Las notas WIP y su sucesora
+`CERRADO` describen el mismo estado entregado.
+
+### Los 5 que quedan abiertos, con dueño y precondición
+
+| Item | Clasificación | Por qué sigue abierto |
+| --- | --- | --- |
+| `bl-bl-01M4GNGVAP0003891B336SJYM0` | requiere decisión humana | RP-5 depende de 2 documentos aún `PROPOSED` |
+| `bl-bl-01M4GNH5JW0003891B2HFR0100` | `BLOCKED_EXTERNAL` | `sddk-mode-selftest` con cwd fijo a un path inexistente: 0 ok / 14 fail. Vive fuera del repo |
+| `bl-bl-01M4GNJKJG0003891B42D0KY80` | `BLOCKED_UNMERGED` | `--view/--format` (ADR-0088) existe en `par/cli-observation`, **nunca llegó a `main`** |
+| `bl-bl-01M4GNJQC20003891B5PTRK940` | `BLOCKED_UNMERGED` | `ConsolePrintingEventSink` ausente de `main`; mismo bloqueador de integración |
+| `bl-bl-01M3J74VJW0003874EBFCCV5C0` | P1, mitigado | C8: el default destructivo sigue vivo (§ siguiente) |
+
+### C8: cerrado no es resuelto
+
+C8 **no está cerrado**. El default `path = "."` sigue en `StepSpec.DeleteDir:277` y
+`CoreDeleteDirStep:36`. Lo que existe es una mitigación verificada **en la ruta de ejecución
+real**, no sólo en tests:
+
+```text
+DeleteDirOperationsAdapter.kt:112   protectWorkspaceRoot calculado ANTES de executor.execute()
+CleanWsOperationsAdapter.kt:97      idem
+```
+
+Con `WorkspaceLease.Attached` ambos fallan cerrados antes de cualquier efecto, sea cual sea
+el argumento `path`. Por eso un `deleteDir()` sin argumentos no destruye un root de usuario.
+
+El hueco que queda, y por lo que C8 sigue P1: quien lee la firma de `StepSpec.DeleteDir` ve
+un default que borra la raíz y no puede saber que `Attached` lo rechaza. La combinación
+ilegal sigue siendo representable (AGENTS.md §5/§8). El arreglo candidato es quitar el
+default o estrecharlo a un valor no-raíz, conservando la guarda de dominio como defensa en
+profundidad. Registrado como `bl-bl-01M4GNTCY00003891BPQN5KGW0`.

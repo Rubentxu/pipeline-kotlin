@@ -100,6 +100,31 @@ artefactos `0.47.0` distintos y solo uno fue el promovido. `INFERRED` (por recib
 
 ### B0-F4 (P1) — el harness todavía no publica el check de admisión que ADR-0105 le asigna
 
+**Actualizado 2026-10-09** (ver `B0_3_HARNESS_INVESTIGATION_RECEIPT.md`). La afirmación
+original de este hallazgo —"no publica check porque la capacidad no existe todavía"— era
+**incompleta, no falsa**, y la diferencia cambia el dueño del bloqueo:
+
+```text
+ANTES (2026-10-08)  la capacidad no existe todavía
+AHORA (2026-10-09)  la capacidad EXISTE y está probada: harness/check_run.py,
+                     53 tests verdes, payload ligado a (SHA, artifact digest,
+                     verdict digest, perfil, identidad); una candidata supersedida
+                     nunca es success; la ausencia es failure, nunca neutral
+                     PERO vive en 74 commits sin pushear + 4 módulos sin commitear,
+                     sobre un origin/main parado desde 2026-09-29
+```
+
+El veredicto de G10 **no se mueve**: `NOT_RUN`, `RP-5 PRODUCT_GATE_STOP`. Lo que cambia es
+que el bloqueo son tres acciones concretas con dueño externo, no trabajo de implementación
+pendiente.
+
+Hallazgo nuevo de la misma investigación: el roadmap del harness afirma que ADR-0105
+"no existe upstream", y es falso. Su `FETCH_HEAD` contra este repo es de 2026-09-29: nunca
+hace `fetch`, así que evalúa su autoridad contra un snapshot de diez días. Su autoridad
+declarada sobre este check es `PR-ADR-002`, estado **PROPOSED**, con la prohibición de su
+propio AGENTS.md de atribuirle aceptación. Aceptar ADR-0105 sin resolver ese choque deja dos
+documentos declarándose autoridad sobre el mismo check.
+
 Búsqueda literal en el checkout real del harness (`Pipelinek-Test-Hardness@a97ad2b1`):
 
 ```text
@@ -120,6 +145,9 @@ Contraparte local que sí existe: `scripts/consult-harness-verdict.py` (exit `0/
 
 ### B0-F5 (P1) — drift documental confirmado (AUD-11 deja de ser hipótesis)
 
+**Actualizado 2026-10-09**: el drift **persiste y ha empeorado**. B0 lo registró contra
+v0.47.0; el trunk ya va a `v0.48.0-rc1`.
+
 `docs/v2/00-context/CURRENT_STATE.md` (addendum 2026-10-01) declara:
 
 ```text
@@ -131,6 +159,20 @@ Contraparte local que sí existe: `scripts/consult-harness-verdict.py` (exit `0/
 Y el encabezado de `docs/v2/05-roadmap/ROADMAP.md` declara baseline `main @ a554fd55` (2026-09-21)
 y producto publicado `v0.39.0`, cuando el trunk real es `b66bf7c7` y el producto publicado es
 `v0.47.0`.
+
+**Medición de re-verificación (2026-10-09, OBSERVED):**
+
+```text
+CURRENT_STATE.md:5   "> Release: `v0.46.0` ESTABLE"          -> sigue stale (v0.48.0-rc1 es Latest)
+ROADMAP.md:4        "Baseline: main @ a554fd55"             -> sigue stale (main = 573abf66)
+ROADMAP.md:6        "Estado de producto publicado: v0.39.0" -> sigue stale (Latest = v0.47.0)
+sddk cycle list     42 ciclos OPEN                          -> el número de B0 sigue siendo correcto
+```
+
+Por qué no se corrige aquí: `ROADMAP.md` declara un **baseline auditado** con fecha. Sobrescribir
+`a554fd55` con el HEAD actual no actualiza el drift: convertiría una auditoría fechada en una
+afirmación sobre un árbol que nadie auditó. La corrección honesta es re-auditar contra el
+trunk actual y emitir un baseline nuevo con su propia fecha, que es trabajo de otra unidad.
 
 ### B0-F6 (P2) — inventario de ciclo de vida pendiente
 
@@ -244,3 +286,59 @@ Ningún bloque se declara cerrado. `B0..B7` se integraron en el ROADMAP único (
 - No afirma que el harness carezca de check publisher en todas sus ramas (solo en la inspeccionada).
 - No transiciona ciclos SDDK ni archiva nada.
 ```
+
+---
+
+## 8. Addendum 2026-10-09 — estado tras B0-1/2/3 y deuda de `sddk lint`
+
+### Lo que este trabajo resolvió
+
+| Parte de B0 | Estado | Evidencia |
+|---|---|---|
+| B0.2 — utilidad de digest única | **entregada** | `pipeline-domain/…/digest/Sha256.kt`; test funcional 8/8 con mutación 1:1 (la mutación `endsWith` no voltea ninguna fila; `contains` voltea exactamente una) |
+| B0.2 — migración de call sites | **entregada** | 29 sitios ad-hoc → 8: 4 dentro de la propia utilidad, 4 de efecto temporal (streaming) clasificados por `DigestMigrationBoundaryFitnessTest` |
+| B0.3 — autoridad de admisión | **medida** | `B0_3_HARNESS_INVESTIGATION_RECEIPT.md`; B0-F4 corregido, G10 sigue `NOT_RUN` |
+
+Verificación de la migración: 8 módulos, **3683 tests, 0 fallos, 0 errores, 132 skipped**,
+`BUILD SUCCESSFUL in 22m 31s`.
+
+Dos defectos de producción los encontró el test funcional, no la revisión: `Stream.sorted()`
+sin comparador (`kotlin.Pair` no es `Comparable`) y un framing de directorios basado en espacio
+que colisionaba con espacios en nombres de fichero, sustituido por framing NUL explícito.
+
+### B0-F4 sigue abierto, con la causa corregida
+
+No se cierra. La capacidad existe pero no ha llegado a su remoto, y el choque de autoridad
+ADR-0105 (aceptado) contra PR-ADR-002 (PROPOSED, la que lee el harness) sigue sin política que
+lo resuelva. Detalle en `B0_3_HARNESS_INVESTIGATION_RECEIPT.md` §5 y §8.
+
+### Deuda encontrada: `sddk lint` falla con 9 errores, y es de framework
+
+```text
+$ sddk lint
+lint: 9 error(s), 0 warning(s)
+```
+
+Clasificados:
+
+| Código | Qué pide | Por qué no se cierra aquí |
+|---|---|---|
+| SDDK001 ×5 | referencias a rutas inexistentes | cuatro son typos reales (`pipeline-git`, `pipeline-junit`, `id`, `\|`); uno es un repo hermano ausente |
+| SDDK005 | `schemas/` con los JSON Schema canónicos | el repo no tiene contrato de schemas |
+| SDDK009 | `docs/generated/workflow.md` | el generador exige `workflow/workflow.yaml`, que este repo nunca tuvo |
+| SDDK014 | `manifest.toml` del pack | el repo no declara un pack de framework |
+
+**No es regresión de este trabajo**: los mismos 9 errores existen en el commit base de B0
+(`acd12111`), medido antes y después. `sddk generate docs --root . --in-repo` falla con
+`failed to read workflow manifest "./workflow/workflow.yaml": No such file or directory`,
+o sea que SDDK009 no es reparable sin inventar un manifiesto de workflow que este proyecto no
+usa.
+
+Los cuatro typos de SDDK001 sí son reparables y no requieren decisión. Quedan registrados como
+deuda con dueño, no corregidos aquí, porque son un contrato de framework y no parte del exit
+criterion de B0.
+
+### Lo que este recibo sigue sin hacer
+
+Igual que antes: no cierra ningún hallazgo, no transiciona ciclos, no reescribe ADR-0105 ni
+PR-ADR-002, y no inventa destino de Maven, credenciales ni veredicto de harness.

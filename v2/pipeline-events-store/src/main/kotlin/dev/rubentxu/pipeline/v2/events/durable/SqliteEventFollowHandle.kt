@@ -13,7 +13,9 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal
 import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort
 import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
 import java.util.ArrayDeque
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.Condition
+import java.util.concurrent.locks.ReentrantLock
 
 /**
  * M1-C — production [dev.rubentxu.pipeline.v2.events.follow.EventFollowHandle]
@@ -109,7 +111,18 @@ internal class SqliteEventFollowHandle(
     private val options: EventFollowOptions,
 ) : EventFollowHandle {
 
-    private val closed = AtomicBoolean(false)
+    private val lock = ReentrantLock()
+
+    /**
+     * Closed flag. Reads happen from the consumer's `hasNext()` thread AND
+     * from a thread that calls [close]; the lock serialises both so the
+     * closed state is observed atomically with the [idleCondition]
+     * `signalAll` that wakes the sleeping consumer.
+     */
+    private var closed = false
+
+    /** Signalled by [close] so an [idle] consumer unblocks within `pollIntervalMs`. */
+    private val idleCondition: Condition = lock.newCondition()
 
     /** The cursor the next [EventRecordReadPort.readRecords] will be called with. */
     private var cursor: EventCursor? = options.after
@@ -165,18 +178,27 @@ internal class SqliteEventFollowHandle(
      * owned by the [SqliteEventFollower] factory, not by this handle,
      * so the handle has no resources of its own to release.
      *
-     * A [Thread.sleep] in progress inside [idle] is interrupted and
-     * the closed flag is set, so a consumer that closed the handle on
-     * another thread is unblocked within milliseconds.
+     * A consumer sleeping inside [idle] on [idleCondition] is released
+     * by [idleCondition.signalAll]; the next [FollowIterator.hasNext]
+     * observes the closed flag and returns `false` promptly. Without this
+     * `signalAll` a `Thread.sleep`-based implementation would keep the
+     * iterator blocked until the full `pollIntervalMs` elapsed; the lock +
+     * condition pair is what turns the operator's "close releases waits"
+     * correction into a sub-cycle response.
      */
     override fun close() {
-        if (closed.compareAndSet(false, true)) {
+        lock.lock()
+        try {
+            if (closed) return
+            closed = true
             // Drop any event that a concurrent `hasNext` may have
             // buffered; the contract is that no half-page is delivered
             // after `close` returns. A consumer that is sleeping in
-            // `idle()` will be released by the next `hasNext` check
-            // on the closed flag (bounded by `pollIntervalMs`).
+            // `idle()` is woken by the signalAll below.
             pending.clear()
+            idleCondition.signalAll()
+        } finally {
+            lock.unlock()
         }
     }
 
@@ -185,12 +207,29 @@ internal class SqliteEventFollowHandle(
     private inner class FollowIterator : Iterator<EventFollowEvent> {
 
         override fun hasNext(): Boolean {
-            if (closed.get()) {
-                pending.clear()
-                return false
+            // Order matters: `closed` first (terminal state), then
+            // `pending.isNotEmpty()` (events still to deliver), then
+            // `terminated` (the natural end). The pending check must
+            // come BEFORE `terminated` because `next()` calls
+            // `hasNext()` recursively to verify, and once `terminated`
+            // is set the only way to drain the last event is the
+            // pending check.
+            lock.lock()
+            try {
+                if (closed) {
+                    pending.clear()
+                    return false
+                }
+            } finally {
+                lock.unlock()
             }
             if (pending.isNotEmpty()) return true
-            if (terminated) return false
+            lock.lock()
+            try {
+                if (terminated) return false
+            } finally {
+                lock.unlock()
+            }
             // One poll cycle: fills `pending` with the events the
             // follow produces for this round (StateChanged first, then
             // Page, then optional terminal). Returns `false` if the
@@ -202,11 +241,17 @@ internal class SqliteEventFollowHandle(
             // give up" is the bounded-wait semantic: a consumer that
             // wants to wait longer calls [hasNext] again, and the
             // contract is that a closed handle will return `false`
-            // promptly.
+            // promptly (the close path signals the condition so this
+            // sleep wakes early).
             idle()
-            if (closed.get()) {
-                pending.clear()
-                return false
+            lock.lock()
+            try {
+                if (closed) {
+                    pending.clear()
+                    return false
+                }
+            } finally {
+                lock.unlock()
             }
             drainOnce()
             return pending.isNotEmpty()
@@ -227,7 +272,12 @@ internal class SqliteEventFollowHandle(
      * to idle and retry).
      */
     private fun drainOnce(): Boolean {
-        if (closed.get() || terminated) return false
+        lock.lock()
+        try {
+            if (closed || terminated) return false
+        } finally {
+            lock.unlock()
+        }
 
         // 1. First poll: detect unknown run BEFORE the initial state
         // change. The callback is the store-side authority the M1-A
@@ -437,15 +487,33 @@ internal class SqliteEventFollowHandle(
      * a test that wants a faster turnaround passes `pollIntervalMs
      * = 0` (which the options allow because the predicate is `>= 0`).
      */
+    /**
+     * Sleep on the consumer's thread for [pollIntervalMs], interruptible
+     * by [close].
+     *
+     * Replaces a plain [Thread.sleep] (which only wakes on
+     * [Thread.interrupt], not on a flag check) with a [Condition.awaitNanos]
+     * bound by [lock]. [close] does `lock.lock(); closed = true;
+     * idleCondition.signalAll(); lock.unlock()`, so a consumer that
+     * closed the handle from another thread wakes within the bounded
+     * wait. The baseline cadence is `pollIntervalMs = FOLLOW_IDLE_MILLIS
+     * = 25L`; passing `0L` short-circuits and yields immediately.
+     */
     private fun idle() {
-        if (closed.get()) return
         val ms = options.pollIntervalMs
         if (ms <= 0) return
+        val nanos = TimeUnit.MILLISECONDS.toNanos(ms)
+        lock.lock()
         try {
-            Thread.sleep(ms)
+            if (closed) return
+            idleCondition.awaitNanos(nanos)
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
-            closed.set(true)
+            // Honor closed-state semantics: the interrupted consumer
+            // observes `closed == true` on the next hasNext and exits.
+            closed = true
+        } finally {
+            lock.unlock()
         }
     }
 

@@ -16,7 +16,9 @@ import dev.rubentxu.pipeline.v2.output.follow.OutputFollowEvent
 import dev.rubentxu.pipeline.v2.output.follow.OutputFollowHandle
 import dev.rubentxu.pipeline.v2.output.follow.OutputFollowOptions
 import java.util.ArrayDeque
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.Condition
+import java.util.concurrent.locks.ReentrantLock
 
 /**
  * M1-B — production [OutputFollowHandle] driven by a polling loop on the
@@ -79,7 +81,18 @@ internal class SegmentOutputFollowHandle(
     private val options: OutputFollowOptions,
 ) : OutputFollowHandle {
 
-    private val closed = AtomicBoolean(false)
+    private val lock = ReentrantLock()
+
+    /**
+     * Closed flag. Reads happen from the consumer's `hasNext()` thread AND
+     * from a thread that calls [close]; the lock serialises both so the
+     * closed state is observed atomically with the [idleCondition]
+     * `signalAll` that wakes the sleeping consumer.
+     */
+    private var closed = false
+
+    /** Signalled by [close] so an [idle] consumer unblocks within `pollIntervalMs`. */
+    private val idleCondition: Condition = lock.newCondition()
 
     /** The strict cut for `framesOfRun`: every emitted frame has `ordinal > afterOrdinal`. */
     private var afterOrdinal: Long = options.afterOrdinal ?: -1L
@@ -130,18 +143,27 @@ internal class SegmentOutputFollowHandle(
      * the [SegmentOutputFollower] factory, not by this handle, so the
      * handle has no resources of its own to release.
      *
-     * A [Thread.sleep] in progress inside [idle] is interrupted and the
-     * closed flag is set, so a consumer that closed the handle on
-     * another thread is unblocked within milliseconds.
+     * A consumer sleeping inside [idle] on [idleCondition] is released
+     * by [idleCondition.signalAll]; the next [FollowIterator.hasNext]
+     * observes the closed flag and returns `false` promptly. Without this
+     * `signalAll` a `Thread.sleep`-based implementation would keep the
+     * iterator blocked until the full `pollIntervalMs` elapsed; the lock +
+     * condition pair is what turns the operator's "close releases waits"
+     * correction into a sub-cycle response.
      */
     override fun close() {
-        if (closed.compareAndSet(false, true)) {
+        lock.lock()
+        try {
+            if (closed) return
+            closed = true
             // Drop any event that a concurrent `hasNext` may have
             // buffered; the contract is that no half-page is delivered
             // after `close` returns. A consumer that is sleeping in
-            // `idle()` will be released by the next `hasNext` check on
-            // the closed flag (bounded by `pollIntervalMs`).
+            // `idle()` is woken by the signalAll below.
             pending.clear()
+            idleCondition.signalAll()
+        } finally {
+            lock.unlock()
         }
     }
 
@@ -150,12 +172,29 @@ internal class SegmentOutputFollowHandle(
     private inner class FollowIterator : Iterator<OutputFollowEvent> {
 
         override fun hasNext(): Boolean {
-            if (closed.get()) {
-                pending.clear()
-                return false
+            // Order matters: `closed` first (terminal state), then
+            // `pending.isNotEmpty()` (events still to deliver), then
+            // `terminated` (the natural end). The pending check must
+            // come BEFORE `terminated` because `next()` calls
+            // `hasNext()` recursively to verify, and once `terminated`
+            // is set the only way to drain the last event is the
+            // pending check.
+            lock.lock()
+            try {
+                if (closed) {
+                    pending.clear()
+                    return false
+                }
+            } finally {
+                lock.unlock()
             }
             if (pending.isNotEmpty()) return true
-            if (terminated) return false
+            lock.lock()
+            try {
+                if (terminated) return false
+            } finally {
+                lock.unlock()
+            }
             // One poll cycle: fills `pending` with up to `maxRecords` events
             // (or fewer if the cycle ends earlier). Returns the first event
             // from the queue, or `null` if the cycle was quiet.
@@ -165,11 +204,17 @@ internal class SegmentOutputFollowHandle(
             // case a write landed during the sleep. The "twice then give
             // up" is the bounded-wait semantic: a consumer that wants to
             // wait longer calls [hasNext] again, and the contract is that
-            // a closed handle will return `false` promptly.
+            // a closed handle will return `false` promptly (the close path
+            // signals the condition so this sleep wakes early).
             idle()
-            if (closed.get()) {
-                pending.clear()
-                return false
+            lock.lock()
+            try {
+                if (closed) {
+                    pending.clear()
+                    return false
+                }
+            } finally {
+                lock.unlock()
             }
             drainOnce()
             return pending.isNotEmpty()
@@ -189,7 +234,12 @@ internal class SegmentOutputFollowHandle(
      * the cycle was quiet (the caller may want to idle and retry).
      */
     private fun drainOnce(): Boolean {
-        if (closed.get() || terminated) return false
+        lock.lock()
+        try {
+            if (closed || terminated) return false
+        } finally {
+            lock.unlock()
+        }
 
         // 1. Discover the declared streams for this run.
         val declared: List<OutputStreamId> = try {
@@ -228,8 +278,9 @@ internal class SegmentOutputFollowHandle(
         // 3. For each declared stream, ask the tail port.
         val open: MutableList<OutputStreamId> = ArrayList(declared.size)
         val sealed: MutableList<OutputStreamId> = ArrayList()
+        val frameEndByStream: MutableMap<OutputStreamId, Long> = HashMap(declared.size)
         for (stream in declared) {
-            if (closed.get()) return pending.isNotEmpty()
+            if (isClosed()) return pending.isNotEmpty()
             val state: OutputTailState? = try {
                 tails.tailState(stream)
             } catch (e: Exception) {
@@ -253,10 +304,18 @@ internal class SegmentOutputFollowHandle(
                 is OutputTailState.Open -> {
                     lastCommitted[stream] = state.committedEnd
                     open.add(stream)
+                    // `committedEnd` is the durable end of the stream at
+                    // the moment of the tail-port query; for the
+                    // pending-bytes guard below we use it as the
+                    // upper bound the stream's cursor must reach.
+                    frameEndByStream[stream] = state.committedEnd
                 }
                 is OutputTailState.Sealed -> {
                     lastCommitted[stream] = state.finalEnd
                     sealed.add(stream)
+                    // For sealed streams the durable end IS the final
+                    // extent; pending bytes are `finalEnd - streamCursor`.
+                    frameEndByStream[stream] = state.finalEnd
                 }
             }
         }
@@ -271,18 +330,36 @@ internal class SegmentOutputFollowHandle(
         }
 
         // 5. If every declared stream is sealed and the consumer asked
-        // for `UntilAllSealed`, the follow reaches its terminal. The
-        // Output Plane does NOT emit `RunTerminal`; the application
-        // layer joins the event plane to learn that.
+        // for `UntilAllSealed`, the follow reaches its terminal — BUT
+        // only when every stream's `streamCursors[stream]` has reached
+        // its durable extent. A sealed stream with bytes that were
+        // written but not yet paged through (because a previous cycle
+        // ran out of `maxRecords` budget before reading them) MUST be
+        // delivered first; emitting `Completed` with pending bytes
+        // would drop them on the floor.
         if (open.isEmpty() && sealed.isNotEmpty() && options.until is FollowUntil.UntilAllSealed) {
-            if (!streamSealedEmitted) {
+            val pendingBytesByStream: List<Pair<OutputStreamId, Long>> = sealed.map { stream ->
+                val end = frameEndByStream[stream] ?: 0L
+                val cursor = streamCursors[stream] ?: 0L
+                stream to (end - cursor).coerceAtLeast(0L)
+            }
+            val totalPending: Long = pendingBytesByStream.sumOf { it.second }
+            if (totalPending > 0L) {
+                // Fall through to step 6: drain the pending bytes
+                // before honouring the UntilAllSealed terminal. The
+                // `open.isEmpty()` guard above ensures no stream is
+                // still open; the only thing left to deliver is the
+                // byte pages of sealed streams whose cursors have not
+                // yet reached `finalEnd`.
+            } else if (!streamSealedEmitted) {
                 streamSealedEmitted = true
                 pending.add(
                     OutputFollowEvent.StateChanged(FollowState.StreamSealed(sealed.toList())),
                 )
                 return true
+            } else {
+                return queueCompleted()
             }
-            return queueCompleted()
         }
 
         // 6. Poll for new frames. `maxRecords` bounds records per cycle,
@@ -306,7 +383,7 @@ internal class SegmentOutputFollowHandle(
             return false
         }
         for (frame in framesInRun) {
-            if (closed.get() || terminated) return pending.isNotEmpty()
+            if (isClosed() || terminated) return pending.isNotEmpty()
             if (pending.size >= maxRecords) {
                 // Out of budget before reading this frame. Keep
                 // `afterOrdinal` at the cut so the next cycle re-reads
@@ -322,7 +399,7 @@ internal class SegmentOutputFollowHandle(
             var frameCursor = streamCursors[frame.stream] ?: frame.from
             val frameEnd = frame.to
             while (frameCursor < frameEnd) {
-                if (closed.get() || terminated) return pending.isNotEmpty()
+                if (isClosed() || terminated) return pending.isNotEmpty()
                 if (pending.size >= maxRecords) {
                     // Out of budget mid-frame: leave `afterOrdinal` at
                     // the previous cut so the next cycle re-reads this
@@ -392,20 +469,48 @@ internal class SegmentOutputFollowHandle(
     }
 
     /**
-     * Sleep on the consumer's thread for [pollIntervalMs]. The design
-     * pins `pollIntervalMs = FOLLOW_IDLE_MILLIS = 25L` as the baseline;
-     * a test that wants a faster turnaround passes `pollIntervalMs = 0`
-     * (which the options allow because the predicate is `>= 0`).
+     * Sleep on the consumer's thread for [pollIntervalMs], interruptible
+     * by [close].
+     *
+     * Replaces a plain [Thread.sleep] (which only wakes on
+     * [Thread.interrupt], not on a flag check) with a [Condition.awaitNanos]
+     * bound by [lock]. [close] does `lock.lock(); closed = true;
+     * idleCondition.signalAll(); lock.unlock()`, so a consumer that closed
+     * the handle from another thread wakes within the bounded wait. The
+     * baseline cadence is `pollIntervalMs = FOLLOW_IDLE_MILLIS = 25L`;
+     * passing `0L` short-circuits and yields immediately, which is what
+     * the JUnit tests use to keep the suite fast.
      */
     private fun idle() {
-        if (closed.get()) return
         val ms = options.pollIntervalMs
         if (ms <= 0) return
+        val nanos = TimeUnit.MILLISECONDS.toNanos(ms)
+        lock.lock()
         try {
-            Thread.sleep(ms)
+            if (closed) return
+            idleCondition.awaitNanos(nanos)
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
-            closed.set(true)
+            // Honor closed-state semantics: the interrupted consumer
+            // observes `closed == true` on the next hasNext and exits.
+            closed = true
+        } finally {
+            lock.unlock()
+        }
+    }
+
+    /**
+     * Lock-guarded closed-state read for hot loops inside [drainOnce]
+     * that already hold no lock. Cheap (one lock/unlock per frame is
+     * negligible compared to the storage reads) and serialised with
+     * [close]'s flag set.
+     */
+    private fun isClosed(): Boolean {
+        lock.lock()
+        try {
+            return closed
+        } finally {
+            lock.unlock()
         }
     }
 

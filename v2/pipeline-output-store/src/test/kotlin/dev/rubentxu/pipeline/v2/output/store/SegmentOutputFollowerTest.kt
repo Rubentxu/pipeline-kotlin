@@ -636,4 +636,260 @@ class SegmentOutputFollowerTest {
             handle.close()
         }
     }
+
+    // -------------------------------------------------------------- 14/15: Idle vs Complete
+    //
+    // The pull API emits OutputFollowEvent.Completed (or Refused) BEFORE
+    // hasNext()==false. `Completed` is the COMPLETE signal — a stateful
+    // event the consumer observes and reacts to. `hasNext()==false` is the
+    // END signal — the iterator's terminal. These two are distinct; a
+    // consumer that mistakes one for the other (e.g. relying on
+    // `hasNext==false` as "the follow is done" without first inspecting
+    // the last event) misreads the contract. The two cases pin both shapes.
+
+    @Test
+    fun `14 Completed is observed before hasNext returns false on a sealed run`(@TempDir root: Path) {
+        val store = openStore(root)
+        val runId = "run-completed-before-end"
+        val stream = address(runId, "sh-0", OutputChannel.STDOUT)
+        writeAndFrame(store, stream, OutputChannel.STDOUT, "done\n")
+        store.seal(stream)
+
+        val handle = follower(store).open(
+            runId,
+            OutputFollowOptions(
+                pollIntervalMs = 0L,
+                until = FollowUntil.UntilAllSealed(runId),
+            ),
+        )
+        try {
+            val it = handle.iterator()
+            // First: Running. Then: Bytes. Then: StreamSealed. Then: Completed.
+            // Then: hasNext() must return false.
+            assertTrue(it.hasNext(), "StateChanged(Running) is queued")
+            val first = it.next()
+            assertInstanceOf(OutputFollowEvent.StateChanged::class.java, first)
+            assertTrue(it.hasNext(), "Bytes is queued")
+            it.next()
+            assertTrue(it.hasNext(), "StreamSealed is queued")
+            it.next()
+            // The critical assertion: `Completed` is the COMPLETE signal,
+            // observed BEFORE the iterator reports its end.
+            assertTrue(it.hasNext(), "Completed is the terminal EVENT, not the iterator's end")
+            val last = it.next()
+            assertEquals(
+                OutputFollowEvent.Completed,
+                last,
+                "Completed is a stateful event, not the iterator's end signal",
+            )
+            // The END signal is the subsequent `hasNext() == false`.
+            assertFalse(
+                it.hasNext(),
+                "hasNext()==false is the END signal, observed AFTER Completed",
+            )
+        } finally {
+            handle.close()
+        }
+    }
+
+    @Test
+    fun `15 Refused is observed before hasNext returns false on an unknown run`(@TempDir root: Path) {
+        val store = openStore(root)
+        // No stream declared for this runId — `runExists` returns false
+        // (no byte directory), so the first event is Refused(UnknownStream).
+        val handle = follower(store).open(
+            "run-unknown-refused",
+            OutputFollowOptions(pollIntervalMs = 0L),
+        )
+        try {
+            val it = handle.iterator()
+            assertTrue(it.hasNext(), "Refused is queued")
+            val refused = assertInstanceOf(OutputFollowEvent.Refused::class.java, it.next())
+            assertInstanceOf(OutputRefusal.UnknownStream::class.java, refused.refusal)
+            // The critical assertion: `Refused` is observed BEFORE the
+            // iterator reports its end. The closed-hierarchy refusal is
+            // a stateful event the consumer can inspect.
+            assertFalse(
+                it.hasNext(),
+                "Refused is observed BEFORE the iterator's end; hasNext==false is the END signal",
+            )
+        } finally {
+            handle.close()
+        }
+    }
+
+    // -------------------------------------------------------------- 16: UntilAllSealed-with-pending-bytes
+
+    @Test
+    fun `16 UntilAllSealed does not complete with pending bytes`(@TempDir root: Path) {
+        val store = openStore(root)
+        val runId = "run-pending-bytes"
+        val stream = address(runId, "sh-0", OutputChannel.STDOUT)
+        // 5 bytes in a single frame. The follow uses maxRecords=1 so the
+        // first cycle can deliver at most ONE Bytes event; the remaining
+        // bytes stay in the frame until a later cycle drains them.
+        // UntilAllSealed must NOT emit Completed before every byte has been
+        // delivered to the consumer.
+        val frame = writeAndFrame(store, stream, OutputChannel.STDOUT, "hello")
+        assertEquals(5L, frame.to)
+        store.seal(stream)
+
+        val handle = follower(store).open(
+            runId,
+            OutputFollowOptions(
+                pollIntervalMs = 0L,
+                pageMaxBytes = 4,
+                maxRecords = 1, // forces a partial-frame drain across cycles
+                until = FollowUntil.UntilAllSealed(runId),
+            ),
+        )
+        try {
+            val it = handle.iterator()
+            // 1. StateChanged(Running).
+            assertTrue(it.hasNext())
+            assertInstanceOf(OutputFollowEvent.StateChanged::class.java, it.next())
+            // 2. The first Bytes event (4 bytes — pageMaxBytes cap).
+            assertTrue(it.hasNext(), "Bytes(page=4) is queued")
+            val firstPage = assertInstanceOf(OutputFollowEvent.Bytes::class.java, it.next())
+            assertEquals(4, firstPage.page.bytes.size)
+            // 3. CRITICAL: no Completed yet. The follow MUST drain the
+            // remaining 1 byte before honouring UntilAllSealed. The
+            // `assertFalse` calls hasNext() once to check; that call
+            // is itself a poll cycle, so it consumes the next event
+            // (the second Bytes(1) page) and the assertion verifies
+            // it is NOT Completed. The pending-bytes guard is what
+            // caused the follow to drain byte 5 in this cycle rather
+            // than emitting StreamSealed+Completed and exiting.
+            val nextEvent: OutputFollowEvent? = if (it.hasNext()) it.next() else null
+            assertFalse(
+                nextEvent is OutputFollowEvent.Completed,
+                "UntilAllSealed must NOT complete with pending bytes; got Completed before byte 5",
+            )
+            // `nextEvent` is the second Bytes(1) page (the assertion
+            // confirmed it is not Completed). Capture it for the
+            // byte-union check below; the assertion's own hasNext()
+            // call drained it from the follow.
+            val secondPage = assertInstanceOf(OutputFollowEvent.Bytes::class.java, nextEvent)
+            assertEquals(1, secondPage.page.bytes.size, "the last byte is delivered in the second page")
+            // 4. Drain the rest: StreamSealed, then Completed.
+            val remaining = drain(handle)
+            // 1 StreamSealed + 1 Completed = 2 events.
+            assertEquals(2, remaining.size, "expected StreamSealed + Completed, got $remaining")
+            assertInstanceOf(OutputFollowEvent.StateChanged::class.java, remaining[0])
+            assertEquals(OutputFollowEvent.Completed, remaining[1], "Completed is the last event")
+            // Total bytes across the two pages equal the original 5.
+            val allBytes = (listOf(firstPage) + listOf(secondPage)).joinToString("") {
+                String(it.page.bytes, StandardCharsets.UTF_8)
+            }
+            assertEquals("hello", allBytes, "the union of Bytes pages reconstructs the original payload")
+        } finally {
+            handle.close()
+        }
+    }
+
+    // -------------------------------------------------------------- 17: close releases mid-poll wait
+
+    @Test
+    fun `17 close releases a mid-poll wait within pollIntervalMs`(@TempDir root: Path) {
+        val store = openStore(root)
+        val runId = "run-close-release"
+        val stream = address(runId, "sh-0", OutputChannel.STDOUT)
+        // Quiet run — no frames after the initial write; the follow
+        // enters its idle loop after the first poll.
+        writeAndFrame(store, stream, OutputChannel.STDOUT, "one\n")
+
+        val pollIntervalMs = 200L
+        val handle = follower(store).open(
+            runId,
+            OutputFollowOptions(pollIntervalMs = pollIntervalMs, maxRecords = 16),
+        )
+        try {
+            val it = handle.iterator()
+            // Drain the initial events (Running + Bytes) so the next
+            // hasNext enters the poll loop and ultimately the idle
+            // sleep.
+            assertTrue(it.hasNext())
+            assertInstanceOf(OutputFollowEvent.StateChanged::class.java, it.next())
+            assertTrue(it.hasNext())
+            assertInstanceOf(OutputFollowEvent.Bytes::class.java, it.next())
+
+            // The next hasNext enters the idle sleep. Start a timer,
+            // close from this thread (which signals the Condition so
+            // the sleep wakes early), and assert hasNext returns
+            // false within (pollIntervalMs * 2) — a generous bound
+            // that accommodates one extra cycle. Without the
+            // Condition-based close, this assertion would only pass
+            // after the full pollIntervalMs of every remaining cycle
+            // (and would be flaky on slow CI).
+            val started = System.nanoTime()
+            handle.close()
+            val more = it.hasNext()
+            val elapsedMs = (System.nanoTime() - started) / 1_000_000L
+            assertFalse(more, "iterator must stop after close")
+            assertTrue(
+                elapsedMs <= pollIntervalMs * 2L,
+                "close must release the wait within one cycle; elapsed=${elapsedMs}ms, bound=${pollIntervalMs * 2}ms",
+            )
+        } finally {
+            handle.close()
+        }
+    }
+
+    // -------------------------------------------------------------- 18: intra-frame resumption
+
+    @Test
+    fun `18 maxRecords=1 forces a partial-frame drain across two cycles without duplicating bytes`(
+        @TempDir root: Path,
+    ) {
+        val store = openStore(root)
+        val runId = "run-intra-frame-resume"
+        val stream = address(runId, "sh-0", OutputChannel.STDOUT)
+        // 10 bytes in one frame; the follow uses maxRecords=1 and
+        // pageMaxBytes=4. The expected shape: Running, then per-cycle
+        // single Bytes events. The frame's total is 10 bytes split
+        // across 3 pages (4 + 4 + 2). Without the per-stream cursor
+        // preserved across cycles, the second cycle would re-read the
+        // same 4 bytes and duplicate them. The invariant under test:
+        // `streamCursors[stream]` survives the cycle boundary and the
+        // `afterOrdinal` advances ONLY on the page that crosses
+        // `frameEnd`.
+        val frame = writeAndFrame(store, stream, OutputChannel.STDOUT, "0123456789")
+        assertEquals(10L, frame.to)
+
+        val handle = follower(store).open(
+            runId,
+            OutputFollowOptions(
+                pollIntervalMs = 0L,
+                pageMaxBytes = 4,
+                maxRecords = 1,
+            ),
+        )
+        try {
+            val events = drain(handle, limit = 32)
+            val byteEvents = events.filterIsInstance<OutputFollowEvent.Bytes>()
+            // 1 Running + 3 Bytes + 1 Completed = 5 events; the
+            // critical assertion is on the byte pages.
+            assertEquals(3, byteEvents.size, "expected 3 Bytes pages (4, 4, 2), got $byteEvents")
+            assertEquals(4, byteEvents[0].page.bytes.size)
+            assertEquals(4, byteEvents[1].page.bytes.size)
+            assertEquals(2, byteEvents[2].page.bytes.size)
+            // No byte is duplicated across the two cycles. The cursor
+            // survives the cycle boundary: page 2 starts at offset 4
+            // (the byte the first cycle stopped at), not at 0.
+            assertEquals(0L, byteEvents[0].page.from)
+            assertEquals(4L, byteEvents[0].page.end)
+            assertEquals(4L, byteEvents[1].page.from, "page 2 resumes at byte 4 (no duplication)")
+            assertEquals(8L, byteEvents[1].page.end)
+            assertEquals(8L, byteEvents[2].page.from, "page 3 resumes at byte 8")
+            assertEquals(10L, byteEvents[2].page.end)
+            // The union of the three pages reconstructs the original
+            // payload byte-for-byte, in order, with no gaps or repeats.
+            val joined = byteEvents.joinToString("") {
+                String(it.page.bytes, StandardCharsets.UTF_8)
+            }
+            assertEquals("0123456789", joined, "intra-frame resume must reconstruct the original payload")
+        } finally {
+            handle.close()
+        }
+    }
 }

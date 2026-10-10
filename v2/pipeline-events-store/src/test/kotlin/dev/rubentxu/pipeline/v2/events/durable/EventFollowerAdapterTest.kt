@@ -748,4 +748,51 @@ class EventFollowerAdapterTest {
             store.close()
         }
     }
+
+    // -------------------------------------------------------------- 18: close releases mid-poll wait
+
+    @Test
+    fun `18 close releases a mid-poll wait within pollIntervalMs`(@TempDir tempDir: Path) {
+        val events = (1L..3L).map { runStarted(it) }
+        val (store, follower) = freshFollower(tempDir, events)
+        try {
+            val pollIntervalMs = 200L
+            val handle = follower.open(
+                runId,
+                EventFollowOptions(pollIntervalMs = pollIntervalMs, maxRecords = 16),
+            )
+            try {
+                val it = handle.iterator()
+                // Drain the buffered events (Live + Page + Completed)
+                // so the next hasNext enters the poll loop and
+                // ultimately the idle sleep.
+                assertTrue(it.hasNext())
+                it.next()
+                assertTrue(it.hasNext())
+                it.next()
+                assertTrue(it.hasNext())
+                it.next()
+
+                // Start a timer, close from this thread (which
+                // signals the Condition so the sleep wakes early),
+                // and assert hasNext returns false within
+                // (pollIntervalMs * 2). Without the Condition-based
+                // close, this assertion would only pass after the
+                // full pollIntervalMs of every remaining cycle.
+                val started = System.nanoTime()
+                handle.close()
+                val more = it.hasNext()
+                val elapsedMs = (System.nanoTime() - started) / 1_000_000L
+                assertFalse(more, "iterator must stop after close")
+                assertTrue(
+                    elapsedMs <= pollIntervalMs * 2L,
+                    "close must release the wait within one cycle; elapsed=${elapsedMs}ms, bound=${pollIntervalMs * 2}ms",
+                )
+            } finally {
+                handle.close()
+            }
+        } finally {
+            store.close()
+        }
+    }
 }

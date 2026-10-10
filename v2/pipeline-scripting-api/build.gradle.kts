@@ -34,7 +34,7 @@ dependencies {
     // was real but undeclared: it existed transitively, by accident of the module graph.
     api(project(":pipeline-domain"))
     testImplementation(libs.junit.jupiter)
-    testImplementation("org.jetbrains.kotlin:kotlin-reflect:2.4.10")
+    testImplementation("org.jetbrains.kotlin:kotlin-reflect:2.4.20")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 }
 

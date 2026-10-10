@@ -74,8 +74,11 @@ internal class OutputPinStore(
     /** Release the pin with [pinId]. Returns `true` if released, `false` if not found. */
     fun release(pinId: OutputPinId): Boolean = withLock {
         val current = readAll()
+        val wallClock = now()
+        // Treat expired pins as already released — the user observable behaviour is the same.
+        val target = current.firstOrNull { it.pinId == pinId } ?: return@withLock false
+        if (target.isExpiredAt(wallClock)) return@withLock false
         val kept = current.filter { it.pinId != pinId }
-        if (kept.size == current.size) return@withLock false
         save(kept)
         true
     }

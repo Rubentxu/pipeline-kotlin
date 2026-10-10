@@ -40,6 +40,9 @@ value class OutputDigest(val hex: String) {
         /** Default digest algorithm. Matches the journal's `Fingerprint`. */
         const val DEFAULT_ALGORITHM: String = "SHA-256"
 
+        /** Lookup table for hex encoding (lowercase 0-9a-f). */
+        private val HEX_CHARS = ('0'..'9') + ('a'..'f')
+
         /** The all-zero digest — used as a placeholder / "no digest". */
         val EMPTY: OutputDigest = OutputDigest("0".repeat(64))
 
@@ -49,8 +52,6 @@ value class OutputDigest(val hex: String) {
             val out = md.digest(bytes)
             return OutputDigest(out.toHex())
         }
-
-        private val HEX_CHARS = ('0'..'9') + ('a'..'f')
 
         private fun ByteArray.toHex(): String {
             val sb = StringBuilder(size * 2)

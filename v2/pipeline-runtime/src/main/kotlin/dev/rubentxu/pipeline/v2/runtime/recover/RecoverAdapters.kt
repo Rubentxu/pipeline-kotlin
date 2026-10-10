@@ -212,10 +212,45 @@ class RuntimeRecoverPortStoreAdapter(
 
         // 6. Dispatch.
         return when (decision) {
-            is RecoveryChoice.AlreadyRecovered -> RecoverOutcome.AlreadyRecovered(
-                attempt = decision.attempt,
-                terminalAtMs = decision.terminalAtMs,
-            )
+            is RecoveryChoice.AlreadyRecovered -> {
+                // M3 — also consult the pin port in the AlreadyRecovered
+                // path. A run that was already recovered on a previous call
+                // and now has a new pin must STILL fail closed; otherwise
+                // re-attaching under a recovered-terminal contract would
+                // silently release bytes the consumer holds.
+                if (pinPort != null) {
+                    val streams = try {
+                        frames.streamsOfRun(runId)
+                    } catch (e: Exception) {
+                        return RecoverOutcome.FailClosed(
+                            RecoverRefusal.StorageError(e.shortDiagnostic()),
+                        )
+                    }
+                    for (stream in streams) {
+                        val pins = try {
+                            pinPort.pinsOf(stream)
+                        } catch (e: Exception) {
+                            return RecoverOutcome.FailClosed(
+                                RecoverRefusal.StorageError(e.shortDiagnostic()),
+                            )
+                        }
+                        if (pins.isNotEmpty()) {
+                            val firstRange = pins.first().range
+                            return RecoverOutcome.FailClosed(
+                                RecoverRefusal.PinnedBytesOutsideRecoveredRegion(
+                                    stream = stream,
+                                    range = firstRange,
+                                    pins = pins,
+                                ),
+                            )
+                        }
+                    }
+                }
+                RecoverOutcome.AlreadyRecovered(
+                    attempt = decision.attempt,
+                    terminalAtMs = decision.terminalAtMs,
+                )
+            }
             is RecoveryChoice.Reattach -> RecoverOutcome.ReattachPending(
                 attempt = decision.attempt,
                 deadlineMs = decision.deadlineMs,

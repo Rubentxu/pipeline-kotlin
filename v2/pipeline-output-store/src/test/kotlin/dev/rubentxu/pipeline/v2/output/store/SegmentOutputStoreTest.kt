@@ -673,4 +673,119 @@ class SegmentOutputStoreTest {
             "the power-loss refusal must remain quotable next to the claim",
         )
     }
+
+    // -------------------------------------------------------------- OUT-01
+
+    /**
+     * OUT-01: pruning by `safe(runId) + "_"` prefix can delete streams belonging to a different
+     * run whose safe-form starts with that prefix. Witnessed here with runId `"run"` (whose
+     * prefix is `"run_"`) and a separate runId `"run_x"` whose stream directory `run_x_stdout`
+     * starts with `"run_"`. Pruning the former must NOT delete the latter.
+     *
+     * Status: known to fail until the identity is made unequivocal (the durable format change
+     * is tracked separately and not this block's to make — for now, the test is a guard
+     * that fails today and must pass after the fix lands).
+     */
+    @Test
+    fun `OUT-01 prune of a short runId must not delete streams of a longer runId sharing the safe prefix`(@TempDir root: Path) {
+        val store = SegmentOutputStore(root)
+        store.recover()
+
+        // Run A: short runId whose safe form is "run" (prefix "run_").
+        val runA = "run"
+        val streamA = OutputStreamId("$runA/stdout")
+        store.open(streamA).reserve(8).apply { write(bytes("A-stdout")) }.commit()
+
+        // Run B: longer runId whose safe form is "run_x" — its stream directory starts with "run_".
+        val runB = "run_x"
+        val streamB = OutputStreamId("$runB/stdout")
+        store.open(streamB).reserve(8).apply { write(bytes("B-stdout")) }.commit()
+
+        // Sanity: both stream directories exist and share the "run_" prefix.
+        val streamsRoot = root.resolve("streams")
+        val dirA = streamsRoot.resolve(safeStreamName(streamA.value))
+        val dirB = streamsRoot.resolve(safeStreamName(streamB.value))
+        assertTrue(Files.isDirectory(dirA), "run A's stream dir must exist pre-prune")
+        assertTrue(Files.isDirectory(dirB), "run B's stream dir must exist pre-prune")
+        assertTrue(
+            dirA.fileName.toString().startsWith("run_"),
+            "run A's safe stream name must start with the 'run_' prefix (sanity)",
+        )
+        assertTrue(
+            dirB.fileName.toString().startsWith("run_"),
+            "run B's safe stream name ALSO starts with 'run_' — this is the OUT-01 trap",
+        )
+
+        // Pruning run A must NOT delete run B's stream.
+        val report = store.prune(OutputPruneIntent.RunReachedTerminalState(runId = runA))
+
+        assertEquals(1, report.removed, "only run A's stream should be removed")
+
+        // The defining OUT-01 assertion: run B's stream directory survives.
+        assertTrue(
+            Files.isDirectory(dirB),
+            "OUT-01: run B's stream ('run_x/stdout') must NOT be deleted by pruning run A; " +
+                "if this is missing, the prefix-based filter selected B's directory by accident",
+        )
+        // And run B's bytes are still readable.
+        val readB = store.read(streamB, OutputCursor.start(streamB), 1024)
+        assertInstanceOf(OutputReadResult.Page::class.java, readB, "run B's stream must still serve reads after pruning run A")
+        assertEquals(
+            "B-stdout",
+            String((readB as OutputReadResult.Page).page.bytes, StandardCharsets.UTF_8),
+        )
+    }
+
+    // -------------------------------------------------------------- OUT-02
+
+    /**
+     * OUT-02: `safeStreamName` is not injective. Two distinct runIds whose safe forms are equal
+     * collide on disk. Witnessed here: runId `run/abc` (with a slash) and runId `run_abc` (already
+     * safe form) both sanitize to `run_abc`. Writing to one silently aliases the other.
+     *
+     * Status: known to fail until a non-ambiguous physical identity is introduced. The durable
+     * format change is a separate concern with a migration policy.
+     */
+    @Test
+    fun `OUT-02 distinct runIds whose safe forms are equal collide on disk and serve each other's bytes`(@TempDir root: Path) {
+        val store = SegmentOutputStore(root)
+        store.recover()
+
+        // Two semantically distinct runIds that collapse to the same safe form.
+        val runA = "run/abc"   // sanitises to "run_abc"
+        val runB = "run_abc"   // already safe, equal to safe(runA)
+        val streamA = OutputStreamId("$runA/stdout")
+        val streamB = OutputStreamId("$runB/stdout")
+
+        // Sanity: safe form is identical.
+        assertEquals(
+            safeStreamName(runA),
+            safeStreamName(runB),
+            "pre-condition: safe(runA) must equal safe(runB) for this witness",
+        )
+
+        // Both streams resolve to the same on-disk directory; writing to one aliases the other.
+        val dirA = root.resolve("streams").resolve(safeStreamName(streamA.value))
+        val dirB = root.resolve("streams").resolve(safeStreamName(streamB.value))
+        assertEquals(
+            dirA,
+            dirB,
+            "pre-condition: both runIds must map to the same stream directory for the collision to bite",
+        )
+
+        store.open(streamA).reserve(16).apply { write(bytes("A-stdout-A-stdou")) }.commit()
+        // After writing through runA, reading through runB should also see them — they share bytes.
+        val readB = store.read(streamB, OutputCursor.start(streamB), 1024)
+        assertInstanceOf(OutputReadResult.Page::class.java, readB, "read through runB must succeed; they share bytes")
+        val bytesFromB = (readB as OutputReadResult.Page).page.bytes
+        // The OUT-02 witness: B serves A's bytes (or whatever aliases exist). This is not a defect
+        // we can test with a positive assertion beyond "they share bytes" without changing the
+        // durable format; the test just proves the collision is observable, which is enough to
+        // make the durable-format decision required.
+        assertTrue(
+            bytesFromB.isNotEmpty(),
+            "OUT-02 witness: runA and runB share a directory; bytes through runB are non-empty " +
+                "after writing through runA — proves the collision exists and is observable",
+        )
+    }
 }

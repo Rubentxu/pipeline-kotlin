@@ -51,7 +51,19 @@ class UatComp003CredentialsDefaultImportTest {
         val result = scriptingHost.compile(definition)
 
         assertTrue(result.isSuccess, "Expected successful compilation: ${result.diagnostics}")
-        assertTrue(result.diagnostics.isEmpty(), "Expected no diagnostics: ${result.diagnostics}")
+        // M1-F.1: the Kotlin compiler emits an INFO diagnostic confirming that
+        // -Xuse-fast-jar-file-system=false was accepted. The diagnostic is NOT
+        // a failure — it is the observable side-effect of the option that
+        // M1-F.1 added. The test asserts only on ERROR/FATAL, which are the
+        // user-actionable cases.
+        val errorDiagnostics = result.diagnostics.filter {
+            it.severity == ScriptDiagnosticSeverity.ERROR ||
+                it.severity == ScriptDiagnosticSeverity.FATAL
+        }
+        assertTrue(
+            errorDiagnostics.isEmpty(),
+            "Expected no ERROR/FATAL diagnostics: $errorDiagnostics",
+        )
         assertNotNull(result.value, "Expected a script instance to be returned")
 
         // Verify no ClassNotFoundException in diagnostics
@@ -94,9 +106,27 @@ class UatComp003CredentialsDefaultImportTest {
 
         // CR-CLASS-002: both compile successfully
         assertTrue(result1.isSuccess, "First compile must succeed: ${result1.diagnostics}")
-        assertTrue(result1.diagnostics.isEmpty(), "First compile must have no diagnostics: ${result1.diagnostics}")
+        // M1-F.1: see comment on the corresponding assertion above — the
+        // Kotlin compiler's "Using outdated version of JAR FS" INFO
+        // diagnostic is the observable confirmation that the option took
+        // effect, not a failure.
+        val errorDiagnostics1 = result1.diagnostics.filter {
+            it.severity == ScriptDiagnosticSeverity.ERROR ||
+                it.severity == ScriptDiagnosticSeverity.FATAL
+        }
+        assertTrue(
+            errorDiagnostics1.isEmpty(),
+            "First compile must have no ERROR/FATAL diagnostics: $errorDiagnostics1",
+        )
         assertTrue(result2.isSuccess, "Second compile must succeed: ${result2.diagnostics}")
-        assertTrue(result2.diagnostics.isEmpty(), "Second compile must have no diagnostics: ${result2.diagnostics}")
+        val errorDiagnostics2 = result2.diagnostics.filter {
+            it.severity == ScriptDiagnosticSeverity.ERROR ||
+                it.severity == ScriptDiagnosticSeverity.FATAL
+        }
+        assertTrue(
+            errorDiagnostics2.isEmpty(),
+            "Second compile must have no ERROR/FATAL diagnostics: $errorDiagnostics2",
+        )
 
         // CR-CLASS-005: cacheKey is byte-identical between two identical evaluations
         // INV-CACHEKEY-STABLE: sha256Hex(scriptText, sortedClasspath, kotlinVersion, hostVersion)

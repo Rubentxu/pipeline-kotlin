@@ -201,6 +201,34 @@ class InMemoryEventStore : EventSink {
     }
 
     /**
+     * M1-A — authoritatively answer "has this run ever been written to".
+     *
+     * The [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]
+     * adapter needs to distinguish a run that does not exist from a
+     * run that exists but has not yet produced any event. The in-memory
+     * authority is the map key: a runId with no key has never been
+     * `append`ed. (Note: a runId with a key but an empty list cannot
+     * happen in the in-memory store — `append` always inserts, and the
+     * map is created on first `append`.)
+     */
+    fun hasRun(runId: String): Boolean = store.containsKey(runId)
+
+    /**
+     * M1-A — the durable `MAX(sequence)` of the in-memory list, or
+     * `null` if the run has no rows.
+     *
+     * Mirrors [dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore.tailSequence]
+     * so the [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]
+     * adapter can refuse a cursor past the tail uniformly across the
+     * two stores. A run with a key but an empty list cannot happen
+     * in this store — `append` always inserts and the map is created
+     * on first `append` — so the empty-run case reduces to a missing
+     * key here.
+     */
+    fun tailSequence(runId: String): Long? =
+        store[runId]?.maxOfOrNull { it.sequence }
+
+    /**
      * Cuts the page inside the list instead of filtering a full [eventsFor] scan.
      *
      * The read holds the same monitor the write does. `eventsFor` hands out `asSequence()` over

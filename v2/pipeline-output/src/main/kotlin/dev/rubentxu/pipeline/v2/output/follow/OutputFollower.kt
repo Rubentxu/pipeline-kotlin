@@ -69,6 +69,13 @@ interface OutputFollower {
      * page and [OutputFollowOptions.maxRecords] per poll cycle, mirroring
      * the existing `LiveOutputDrain` and `ObservationOutputFollower` in
      * `v2/pipeline-application/.../observation/`.
+     *
+     * The handle is single-observer: a second consumer that wants to
+     * observe the same run independently calls [open] again. Two
+     * iterators over the same handle would be a definition of cursor
+     * sharing; the contract does not allow that, because cursor sharing
+     * across consumers is exactly the kind of "two parallel histories"
+     * bug P3-E E4c was written to prevent.
      */
     fun open(runId: String, options: OutputFollowOptions): OutputFollowHandle
 }
@@ -78,17 +85,33 @@ interface OutputFollower {
  * consumer MUST close it when finished (a `use { }` block in Kotlin, or
  * a try-with-resources in Java).
  *
- * The handle is NOT thread-safe; the consumer drives the iterator from a
- * single thread. Multiple independent follows for the same run use
- * multiple handles (each handle has its own cursor).
+ * The handle is single-observer: the iterator obtained from
+ * [iterator] yields the events of this follow in a single pass; the
+ * handle is one iterator, and one iterator is the entire read surface
+ * of the handle. Two consumers that want to observe the same run
+ * independently each call [OutputFollower.open] and each get their
+ * own handle.
+ *
+ * The handle is NOT thread-safe; the consumer drives the iterator from
+ * a single thread. Resumption across a restart is via
+ * [OutputFollowOptions.afterOrdinal]: a consumer that crashed and
+ * restarted opens a new handle with `afterOrdinal = lastObserved` and
+ * the implementation begins polling from there.
  */
 interface OutputFollowHandle : AutoCloseable {
 
     /**
-     * Returns a fresh iterator over the events the follow produces.
-     * Calling this method more than once returns independent iterators
-     * that share the underlying store cursor; in practice the consumer
-     * calls it exactly once and drains the iterator.
+     * Returns the iterator over the events this follow produces.
+     *
+     * One iterator per handle. Calling this method more than once
+     * returns the same iterator (idempotent), and that iterator is
+     * single-pass: once it has emitted [OutputFollowEvent.Completed]
+     * or [OutputFollowEvent.Refused] and the consumer has drained it,
+     * subsequent calls to [Iterator.hasNext] return `false`.
+     *
+     * To resume after a restart, the consumer opens a NEW handle with
+     * [OutputFollowOptions.afterOrdinal] set to the last ordinal it
+     * observed; it does not re-iterate this handle.
      */
     fun iterator(): Iterator<OutputFollowEvent>
 
@@ -119,11 +142,23 @@ data class OutputFollowOptions(
     val includeFrames: Boolean = true,
     val maxRecords: Int = 256,
     val until: FollowUntil = FollowUntil.Unbounded,
+    /**
+     * Resume strictly after this frame ordinal. `null` starts at the
+     * beginning of the declared streams. A consumer that crashed
+     * mid-poll persists the last ordinal it observed and reopens with
+     * `afterOrdinal = lastObserved`; the implementation begins polling
+     * from there. The `OutputFrameIndex.framesOfRun(runId, afterOrdinal,
+     * limit)` call is the existing primitive that backs this.
+     */
+    val afterOrdinal: Long? = null,
 ) {
     init {
         require(pageMaxBytes > 0) { "pageMaxBytes must be positive, got $pageMaxBytes" }
         require(pollIntervalMs >= 0) { "pollIntervalMs must be non-negative, got $pollIntervalMs" }
         require(maxRecords > 0) { "maxRecords must be positive, got $maxRecords" }
+        require(afterOrdinal == null || afterOrdinal >= 0) {
+            "afterOrdinal must be non-negative, got $afterOrdinal"
+        }
     }
 }
 

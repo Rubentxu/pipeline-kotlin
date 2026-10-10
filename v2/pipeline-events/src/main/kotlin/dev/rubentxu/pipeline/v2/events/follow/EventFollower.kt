@@ -62,25 +62,51 @@ interface EventFollower {
      * [EventFollowEvent.Page.slice.refusals] (carried by
      * [EventRecordSlice.refusals]); the follow itself does not refuse on
      * a single undecodable row.
+     *
+     * The handle is single-observer: a second consumer that wants to
+     * observe the same run independently calls [open] again. Two
+     * iterators over the same handle would be cursor sharing; the
+     * contract does not allow that, because cursor sharing across
+     * consumers is exactly the kind of "two parallel histories" bug
+     * P3-E E4c was written to prevent.
      */
     fun open(runId: String, options: EventFollowOptions): EventFollowHandle
 }
 
 /**
  * A handle to an active follow. The handle is `AutoCloseable`; the
- * consumer MUST close it when finished.
+ * consumer MUST close it when finished (a `use { }` block in Kotlin, or
+ * a try-with-resources in Java).
  *
- * The handle is NOT thread-safe; the consumer drives the iterator from a
- * single thread. Multiple independent follows for the same run use
- * multiple handles (each handle has its own cursor).
+ * The handle is single-observer: the iterator obtained from
+ * [iterator] yields the events of this follow in a single pass; the
+ * handle is one iterator, and one iterator is the entire read surface
+ * of the handle. Two consumers that want to observe the same run
+ * independently each call [EventFollower.open] and each get their own
+ * handle.
+ *
+ * The handle is NOT thread-safe; the consumer drives the iterator from
+ * a single thread. Resumption across a restart is via
+ * [EventFollowOptions.after]: a consumer that crashed and restarted
+ * opens a new handle with `after = lastCursor` and the implementation
+ * begins polling from there.
  */
 interface EventFollowHandle : AutoCloseable {
 
     /**
-     * Returns a fresh iterator over the events the follow produces.
-     * Calling this method more than once returns independent iterators
-     * that share the underlying store cursor; in practice the consumer
-     * calls it exactly once and drains the iterator.
+     * Returns the iterator over the events this follow produces.
+     *
+     * One iterator per handle. Calling this method more than once
+     * returns the same iterator (idempotent), and that iterator is
+     * single-pass: once it has emitted [EventFollowEvent.Completed]
+     * or [EventFollowEvent.Refused] and the consumer has drained it,
+     * subsequent calls to [Iterator.hasNext] return `false`.
+     *
+     * To resume after a restart, the consumer opens a NEW handle with
+     * [EventFollowOptions.after] set to the last cursor it observed
+     * (the [EventRecordSlice.nextCursor] of the last
+     * [EventFollowEvent.Page] it consumed); it does not re-iterate this
+     * handle.
      */
     fun iterator(): Iterator<EventFollowEvent>
 
@@ -100,6 +126,16 @@ data class EventFollowOptions(
     val pollIntervalMs: Long = 25L,
     val maxRecords: Int = 256,
     val until: EventFollowUntil = EventFollowUntil.Unbounded,
+    /**
+     * Resume strictly after this cursor. `null` starts at the
+     * beginning of the run. A consumer that crashed mid-poll persists
+     * the last [EventRecordSlice.nextCursor] it observed and reopens
+     * with `after = lastCursor`; the implementation begins polling
+     * from there. The
+     * [EventRecordReadPort.readRecords] call is the existing primitive
+     * that backs this.
+     */
+    val after: EventCursor? = null,
     /**
      * Reporting-only threshold. The follow reports the observed lag
      * (current time minus last `occurredAt`) at this interval; it does

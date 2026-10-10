@@ -57,6 +57,30 @@ sealed interface OutputRefusal {
         val requestedEnd: Long,
         val readableBytes: Long,
     ) : OutputRefusal
+
+    /**
+     * M1-B — a follow's declared stream lost retention between two polls.
+     *
+     * Surfaced by [dev.rubentxu.pipeline.v2.output.follow.OutputFollower.open]
+     * when a stream the consumer was tailing was pruned by the
+     * retention policy. The cursor position the consumer held is
+     * preserved as [lastCommitted] so the consumer can decide
+     * whether to reset-and-retry or escalate; the follow does NOT
+     * silently emit a `next == null` page and pretend nothing was lost.
+     */
+    data class StreamLostRetention(
+        val stream: OutputStreamId,
+        val lastCommitted: Long,
+    ) : OutputRefusal
+
+    /**
+     * M1-B — the consumer closed the follow handle. Surfaced as a
+     * refusal when the follow's iterator was still being driven by
+     * another consumer; the public contract is that the close is
+     * idempotent and the refusal is the final event of the
+     * cancelled follow.
+     */
+    data class FollowCancelled(val runId: String) : OutputRefusal
 }
 
 /** A read that either produced a bounded page or was refused. */

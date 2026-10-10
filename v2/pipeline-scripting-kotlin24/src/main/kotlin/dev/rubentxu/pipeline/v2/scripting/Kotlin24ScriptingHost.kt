@@ -67,8 +67,42 @@ class Kotlin24ScriptingHost(
      * scripts being served from cache — OBSERVED: the flag was in the binary,
      * yet a script compiled before the change still discarded its result
      * silently.
+     *
+     * M1-F.1: bumped to 1.2.0 when `-Xuse-fast-jar-file-system=false` was
+     * added. Same fast-jar-file-system rationale: the option is a real
+     * behaviour change that MUST invalidate previously compiled scripts.
      */
-    private val hostVersion = "1.1.0"
+    private val hostVersion = "1.2.0"
+
+    /**
+     * The compiler options the host always passes to the Kotlin scripting host.
+     *
+     * M1-F.1: `-Xuse-fast-jar-file-system=false` is mandatory. Kotlin 2.4.10's
+     * [FastJarFileSystemKt] (in kotlin-stdlib) calls
+     * `sun.misc.Unsafe::invokeCleaner`, which on JDK 21+ emits a warning and
+     * is scheduled for removal. Disabling the fast jar file system routes
+     * jar reads through the regular `JarFile` path, which is the documented
+     * workaround and removes the call entirely. See ADR-M1-F D1.
+     *
+     * The option is also a cache-key input (via [hostVersion]): adding it
+     * without bumping the host version would silently keep the old compiled
+     * artifacts in cache, the same defect the S0-C1 comment above records.
+     */
+    private val compilerFlags: List<String> = listOf(
+        // Pure Builder Consumption Gate: an unconsumed return value from
+        // a MUST_CONSUME PURE_BUILDER is a compile error in a
+        // `.pipeline.kts`. This is Kotlin's own return-value checker
+        // (`@MustUseReturnValues` + `-Xreturn-value-checker=check`) —
+        // no custom compiler plugin and no second source of truth.
+        // The annotation is only enforced where the checker is enabled,
+        // so other consumers of the DSL library are unaffected.
+        "-Xreturn-value-checker=check",
+        // M1-F.1: real elimination of `sun.misc.Unsafe::invokeCleaner`
+        // calls from Kotlin 2.4.10's [FastJarFileSystemKt]. Routes jar
+        // reads through the legacy `JarFile` path, which does not
+        // touch Unsafe. See the field KDoc above.
+        "-Xuse-fast-jar-file-system=false",
+    )
 
     override fun compile(definition: ScriptDefinition): ScriptCompilationResult {
         val effectiveRunId = runId ?: definition.sourcePath?.fileName?.toString() ?: UUID.randomUUID().toString()
@@ -145,14 +179,11 @@ class Kotlin24ScriptingHost(
             host.evalWithTemplate<Any>(
                 source,
             {
-                // Pure Builder Consumption Gate: an unconsumed return value from
-                // a MUST_CONSUME PURE_BUILDER is a compile error in a
-                // `.pipeline.kts`. This is Kotlin's own return-value checker
-                // (`@MustUseReturnValues` + `-Xreturn-value-checker=check`) —
-                // no custom compiler plugin and no second source of truth.
-                // The annotation is only enforced where the checker is enabled,
-                // so other consumers of the DSL library are unaffected.
-                this[compilerOptions] = listOf("-Xreturn-value-checker=check")
+                // Pure Builder Consumption Gate + M1-F.1 fast-jar-file-system
+                // option. Both live in [compilerFlags] so they share the same
+                // authority and the same cache-key input. The S0-C1 / M1-F.1
+                // comments on those fields explain why each option is here.
+                this[compilerOptions] = compilerFlags
                 jvm {
                     dependenciesFromCurrentContext()
                     if (classpathFiles.isNotEmpty()) {

@@ -14,6 +14,9 @@ import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.events.durable.RunExecutionLease
 import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.output.OutputFrameIndex
+import dev.rubentxu.pipeline.v2.output.OutputPin
+import dev.rubentxu.pipeline.v2.output.OutputPinPort
+import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import dev.rubentxu.pipeline.v2.output.store.OutputRecoveryPort
 import dev.rubentxu.pipeline.v2.runtime.inspect.AttemptId
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionResult
@@ -75,6 +78,17 @@ class RuntimeRecoverPortStoreAdapter(
     private val frames: OutputFrameIndex,
     private val introspect: RuntimeRecoverPortIntrospect,
     private val clock: Clock,
+    /**
+     * M3 — optional pin port consulted by [recover] before returning
+     * `RecoveredTerminal`. When `null` (default), no pin check runs and
+     * the recover adapter behaves exactly as it did in M2.
+     *
+     * The audit §D.4 PARTIAL verdict flagged that the M2 recover port is
+     * silent on pins; M3 closes this with a consult that returns
+     * [RecoverRefusal.PinnedBytesOutsideRecoveredRegion] when an active
+     * pin covers bytes the run owns.
+     */
+    private val pinPort: OutputPinPort? = null,
     private val syntheticObserverId: String = "m2-observer",
     private val json: Json = Json {
         ignoreUnknownKeys = true
@@ -209,6 +223,40 @@ class RuntimeRecoverPortStoreAdapter(
             is RecoveryChoice.FailClosed -> RecoverOutcome.FailClosed(decision.cause)
             is RecoveryChoice.ReuseTerminal -> {
                 val receipt = decision.receipt
+
+                // M3 — consult the pin port BEFORE we commit the recover.
+                // Any active pin on the run's streams blocks the recover
+                // with `PinnedBytesOutsideRecoveredRegion`; expired pins
+                // are not pins and the recover proceeds.
+                if (pinPort != null) {
+                    val streams = try {
+                        frames.streamsOfRun(runId)
+                    } catch (e: Exception) {
+                        return RecoverOutcome.FailClosed(
+                            RecoverRefusal.StorageError(e.shortDiagnostic()),
+                        )
+                    }
+                    for (stream in streams) {
+                        val pins = try {
+                            pinPort.pinsOf(stream)
+                        } catch (e: Exception) {
+                            return RecoverOutcome.FailClosed(
+                                RecoverRefusal.StorageError(e.shortDiagnostic()),
+                            )
+                        }
+                        if (pins.isNotEmpty()) {
+                            val firstRange = pins.first().range
+                            return RecoverOutcome.FailClosed(
+                                RecoverRefusal.PinnedBytesOutsideRecoveredRegion(
+                                    stream = stream,
+                                    range = firstRange,
+                                    pins = pins,
+                                ),
+                            )
+                        }
+                    }
+                }
+
                 // a) Append one terminal journal row (idempotent via the
                 //    journal's ON CONFLICT path).
                 val now = clock.now().toEpochMilli()

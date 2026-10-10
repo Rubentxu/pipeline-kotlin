@@ -1,8 +1,12 @@
 package dev.rubentxu.pipeline.v2.output.store
 
 import dev.rubentxu.pipeline.v2.output.OutputCursor
+import dev.rubentxu.pipeline.v2.output.OutputDigest
+import dev.rubentxu.pipeline.v2.output.OutputPinPort
+import dev.rubentxu.pipeline.v2.output.OutputPinResult
 import dev.rubentxu.pipeline.v2.output.OutputPruneIntent
 import dev.rubentxu.pipeline.v2.output.OutputPruneReport
+import dev.rubentxu.pipeline.v2.output.OutputReadDigestedResult
 import dev.rubentxu.pipeline.v2.output.OutputReadPort
 import dev.rubentxu.pipeline.v2.output.OutputTailPort
 import dev.rubentxu.pipeline.v2.output.OutputTailState
@@ -10,6 +14,8 @@ import dev.rubentxu.pipeline.v2.output.OutputReadResult
 import dev.rubentxu.pipeline.v2.output.OutputRefusal
 import dev.rubentxu.pipeline.v2.output.OutputRetentionPort
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
+import dev.rubentxu.pipeline.v2.output.PruneAuthorisation
+import dev.rubentxu.pipeline.v2.output.PruneRefusal
 import java.io.InputStream
 import java.nio.channels.FileChannel
 import java.nio.file.Files
@@ -88,6 +94,14 @@ class SegmentOutputStore(
      * makes debris disappear; it is not what makes a read honest.
      */
     private val recoveryPermitted: Boolean = true,
+    /**
+     * M3 — optional pin port consulted by [canPrune]. When `null` (default),
+     * `canPrune` returns [PruneAuthorisation.Granted] unconditionally. The
+     * audit §B.3 (f) names the consult-before-act primitive as the load-bearing
+     * authority on the retention-under-pin invariant; the wiring is optional
+     * so test fixtures that do not need pins can construct a plain store.
+     */
+    private val pinPort: OutputPinPort? = null,
 ) : OutputAppendPort, OutputReadPort, OutputRecoveryPort, OutputRetentionPort, OutputSealPort,
     OutputTailPort {
 
@@ -303,6 +317,38 @@ class SegmentOutputStore(
     }
 
     /**
+     * M3 — single-pass digest read. Same refusal shape as [readRange];
+     * the default `OutputReadPort.readRangeDigested` does the same in two
+     * passes (one for the page, one for the hash). The override collapses
+     * both into one I/O round via [SegmentReader.readRangeDigested].
+     */
+    override fun readRangeDigested(
+        stream: OutputStreamId,
+        from: Long,
+        to: Long,
+    ): OutputReadDigestedResult {
+        if (!recovered && recoveryPermitted) {
+            return OutputReadDigestedResult.Refused(OutputRefusal.RecoveryNotCompleted)
+        }
+        val layout = layout(stream)
+        if (!Files.isDirectory(layout.streamDir)) {
+            return OutputReadDigestedResult.Refused(OutputRefusal.UnknownStream(stream))
+        }
+        if (from < 0 || to <= from) {
+            return OutputReadDigestedResult.Refused(OutputRefusal.InvalidRange(from, to))
+        }
+        return withStreamLockDigested(stream) {
+            val extent = committedLocked(layout)
+            if (to > extent) {
+                return@withStreamLockDigested OutputReadDigestedResult.Refused(
+                    OutputRefusal.OffsetBeyondCommitted(to, extent),
+                )
+            }
+            readRangeDigestedLocked(layout, stream, from, to)
+        }
+    }
+
+    /**
      * Reconcile durable state. Idempotent, and safe to interrupt and call again — a store that
      * cannot be recovered twice cannot be trusted after its own recovery crashes.
      */
@@ -435,6 +481,69 @@ class SegmentOutputStore(
         return OutputPruneReport(removed, bytes, retained)
     }
 
+    /**
+     * M3 — consult-before-act: would [intent] succeed RIGHT NOW, given the
+     * current pins?
+     *
+     * When [pinPort] is wired, this composes the existing retention port
+     * with the pin port's `pinsForSafeName` per stream directory of the run.
+     * When no pin port is wired (the default), returns
+     * [PruneAuthorisation.Granted] unconditionally — the test fixtures and
+     * the M1/M2 paths do not need the consult-before-act primitive.
+     *
+     * The composition table from the design §8.3:
+     *
+     * ```text
+     * canPrune(intent):
+     *   for each stream of intent.runId:
+     *     pins = pinsOf(stream)
+     *     if pins.isNotEmpty() -> Consulted(stream, range, pins)
+     *     else -> Granted
+     *   if no streams for runId -> Refused(StorageError("unknown run ..."))
+     *   if pin storage failed -> Refused(SubstrateUnavailable)
+     * ```
+     */
+    override fun canPrune(intent: OutputPruneIntent): PruneAuthorisation {
+        requireRecoveredForWriting()
+        val pins = pinPort ?: return PruneAuthorisation.Granted
+        val streamDirs = runStreamDirs(intent.runId)
+        if (streamDirs.isEmpty()) {
+            // The design §8.3 has a `Refused(UnknownStream)` case, but the
+            // intent names a runId, not a stream. The pragmatic translation:
+            // unknown run = no output to protect, refused with a Storage
+            // cause so the caller can route rather than re-freeze on an
+            // arbitrary unknown-stream shape.
+            return PruneAuthorisation.Refused(
+                PruneRefusal.StorageError("unknown run ${intent.runId}"),
+            )
+        }
+        var pinError = false
+        for (dir in streamDirs) {
+            val safeName = dir.fileName.toString()
+            val active = if (pins is OutputPinPortStoreAdapter) {
+                pins.pinsForSafeName(safeName)
+            } else {
+                // Fallback path: a custom pin port adapter that does not
+                // implement the canPrune helper. Try to reconstruct by
+                // streaming the pinsOf API; works when the original id's
+                // safe fold equals the dir name (lossy fold caveat applies).
+                pins.pinsOf(streamFromSafeName(safeName))
+            }
+            if (active.isNotEmpty()) {
+                val firstRange = active.first().range
+                return PruneAuthorisation.Consulted(
+                    stream = active.first().stream,
+                    range = firstRange,
+                    pinsAtConsult = active,
+                )
+            }
+        }
+        if (pinError) {
+            return PruneAuthorisation.Refused(PruneRefusal.SubstrateUnavailable)
+        }
+        return PruneAuthorisation.Granted
+    }
+
     /** Post-order delete: children before their parent, so a partially-failed pass is re-runnable. */
     private fun deleteRecursively(dir: Path): Boolean {
         if (!Files.exists(dir)) return false
@@ -520,6 +629,11 @@ class SegmentOutputStore(
 
     private fun withStreamLock(stream: OutputStreamId, block: () -> OutputReadResult): OutputReadResult =
         withStreamLockFor(stream) { block() }
+
+    private fun withStreamLockDigested(
+        stream: OutputStreamId,
+        block: () -> OutputReadDigestedResult,
+    ): OutputReadDigestedResult = withStreamLockFor(stream) { block() }
 
     private fun <T> withStreamLockFor(stream: OutputStreamId, block: () -> T): T {
         val streamLock = synchronized(perStream) { perStream.getOrPut(streamKey(stream)) { ReentrantLock() } }
@@ -611,6 +725,34 @@ class SegmentOutputStore(
         from = from,
         to = to,
     )
+
+    /**
+     * M3 — single-pass digested read; same calling convention as
+     * [readRangeLocked] but returns the page + SHA-256 in one I/O round.
+     */
+    private fun readRangeDigestedLocked(
+        layout: Layout,
+        stream: OutputStreamId,
+        from: Long,
+        to: Long,
+    ): OutputReadDigestedResult = SegmentReader.readRangeDigested(
+        stream = stream,
+        sealedDir = layout.sealedDir,
+        segmentFile = layout.segmentFile,
+        committedEnd = committedLocked(layout),
+        currentBase = currentBaseLocked(layout),
+        from = from,
+        to = to,
+    )
+
+    /**
+     * Reconstruct the [OutputStreamId] from a directory's safe name. Lossy
+     * in general, but the canonical `run/op/transcript` shape round-trips
+     * through `_`→`/`. Used only as a fallback when the pin adapter is not
+     * an [OutputPinPortStoreAdapter].
+     */
+    private fun streamFromSafeName(safeName: String): OutputStreamId =
+        OutputStreamId(safeName.replace("_", "/"))
 
     /**
      * Runs [block] holding this stream's ownership, or answers `false` when a live writer holds it.

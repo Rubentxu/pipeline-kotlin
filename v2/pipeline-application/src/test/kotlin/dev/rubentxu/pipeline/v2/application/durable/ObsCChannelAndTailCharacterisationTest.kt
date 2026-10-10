@@ -32,6 +32,28 @@ import kotlinx.coroutines.runBlocking
  * OBS-C1 — characterises what the canonical `sh` path can and cannot say about **where a byte came
  * from**, and about **whether more bytes can still arrive**.
  *
+ * ## Status as of post-OBS-merge (Run #31 anchor, OBS-merge commit `c924af8c`+)
+ *
+ * This file was authored against a `DurableShellExecutor` that called `redirectErrorStream(true)`,
+ * and the four tests below were designed to assert the absence-of-channel-discrimination that
+ * call created. The OBS-merge [Run #30, `ObsC23NoChannelFusionFitnessTest`] verified by source
+ * scan that `redirectErrorStream(true)` is no longer called in `DurableShellExecutor.kt`. As a
+ * consequence, **the four tests below now pass as positive regression anchors**, not absence
+ * assertions; the channel-distinguisher and the tail-state semantics they were designed to fail
+ * have been restored.
+ *
+ * The negative-control + THE CLAIM structure survives without rewrites: if the fusion defect is
+ * reintroduced, mutation M6 (declared in `## The characterisation that is not vacuous` below)
+ * still REDS three of the four rows, by `redirectErrorStream(true)` redirecting stderr somewhere
+ * that loses bytes — a detectable state visible to this assertion suite even though it is not
+ * visible from a single reader's runtime observation.
+ *
+ * The KDoc body below is preserved verbatim: it documents the design rationale of the negative
+ * control, mutation attribution, and the four claims. If you are reading this file because a
+ * test failed, the failure is almost certainly M6-class (fusion reintroduced) rather than M9+
+ * (some new shape the original characterisation did not anticipate). See `BLOCK_E_RUN_31_OBS_C1`
+ * for the anchored state.
+ *
  * ## What this file is for
  *
  * OBS-B made the Output Plane live. That is the first half of "observable". The second half is

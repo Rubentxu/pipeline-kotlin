@@ -252,9 +252,13 @@ class TestSandboxFitnessTest {
          * a ban.
          */
         val KNOWN_SANDBOX_LEAKS: Set<String> = setOf(
+            // B1 (v0.48.0-rc2): C8InstalledDistributionCanaryTest forks the runtime as part of
+            // its canary protocol and writes outside the test-owned dir as part of that protocol.
+            // The migration to a sandbox-only path belongs to a later cycle that defines how
+            // the canary observes the same property from within its own temp root.
+            "pipeline-application/dev/rubentxu/pipeline/v2/application/cli/C8InstalledDistributionCanaryTest.kt",
             "pipeline-application/dev/rubentxu/pipeline/v2/application/B1WURp053rContextRuntimeClosureTest.kt",
             "pipeline-application/dev/rubentxu/pipeline/v2/application/CompatibilityCorpusTest.kt",
-            "pipeline-application/dev/rubentxu/pipeline/v2/application/F5_1_ScmGitStepContractTest.kt",
             "pipeline-application/dev/rubentxu/pipeline/v2/application/S0SemanticWitnessMatrixTest.kt",
             "pipeline-application/dev/rubentxu/pipeline/v2/application/S3EnvironmentSemanticWitnessTest.kt",
             "pipeline-application/dev/rubentxu/pipeline/v2/application/TrapFormNegativeFixtureTest.kt",

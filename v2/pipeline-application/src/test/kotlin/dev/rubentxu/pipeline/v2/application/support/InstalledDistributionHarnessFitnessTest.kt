@@ -281,29 +281,30 @@ class InstalledDistributionHarnessFitnessTest {
          *    is not a law.
          */
         val KNOWN_DEBT: Set<String> = setOf(
+            // B1 (v0.48.0-rc2): three OBS-installed-binary end-to-end tests added during the
+            // OBS / S6 integration landed without the corresponding KNOWN_DEBT entries. They
+            // legitimately fork the runtime via ProcessBuilder to test the installed binary's
+            // behaviour (output streaming characterisation, default run + human console,
+            // silent follow UAT). Migrating to OwnedSubprocess would change the launched
+            // subject from the installed jar to a classpath-runtime, which would void the
+            // "installed binary" property these tests exist to verify. They are added here
+            // together with the reason per the law's own rule, and the migration belongs to
+            // a later cycle that defines how to assert installed-binary behaviour through
+            // OwnedSubprocess without re-running the same code on the classpath.
+            "dev/rubentxu/pipeline/v2/application/ObsAOutputStreamingCharacterisationTest.kt",
+            "dev/rubentxu/pipeline/v2/application/RunDefaultIsHumanEndToEndTest.kt",
+            "dev/rubentxu/pipeline/v2/application/cli/ObsR1SilentFollowInstalledUatTest.kt",
             "dev/rubentxu/pipeline/v2/application/B1WURp053rContextRuntimeClosureTest.kt",
             "dev/rubentxu/pipeline/v2/application/CanonicalInMemoryCliTest.kt",
-            "dev/rubentxu/pipeline/v2/application/CliCompileErrorExitsOneTest.kt",
-            "dev/rubentxu/pipeline/v2/application/CliDslConstructionFailureSurfacesTest.kt",
             "dev/rubentxu/pipeline/v2/application/CliMissingScriptRejectionTest.kt",
-            "dev/rubentxu/pipeline/v2/application/CliNonCanonicalInMemoryExitsTwoTest.kt",
             "dev/rubentxu/pipeline/v2/application/DirScopeEndToEndTest.kt",
             "dev/rubentxu/pipeline/v2/application/ErrorHandlingTest.kt",
-            "dev/rubentxu/pipeline/v2/application/Lfc2WaitUntilCanonicalReentryFitnessTest.kt",
-            "dev/rubentxu/pipeline/v2/application/S0SemanticWitnessMatrixTest.kt",
-            "dev/rubentxu/pipeline/v2/application/S3EnvironmentSemanticWitnessTest.kt",
             "dev/rubentxu/pipeline/v2/application/SelfHostedPipelineScriptHonestyTest.kt",
-            "dev/rubentxu/pipeline/v2/application/TrapFormNegativeFixtureTest.kt",
-            "dev/rubentxu/pipeline/v2/application/UatDsl006BodyExecutionTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatDurableDefaultReuseCliTest.kt",
-            "dev/rubentxu/pipeline/v2/application/UatEvt001ReplayTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatInputBlockDurableTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatLocal002ResumeAfterKillTest.kt",
-            "dev/rubentxu/pipeline/v2/application/UatLocal003ReturnStdoutTest.kt",
-            "dev/rubentxu/pipeline/v2/application/UatLocal004TimeoutTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatLocal005EnvSpecialCharsTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatLocal005RegressionGateTest.kt",
-            "dev/rubentxu/pipeline/v2/application/UatLocal006LostHeartbeatTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatLocal007SandboxProfileTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatLocal008CredentialsTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatLocal009TopStepsTest.kt",
@@ -318,11 +319,7 @@ class InstalledDistributionHarnessFitnessTest {
             "dev/rubentxu/pipeline/v2/application/UatRunConcurrencyCharacterisationTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatS2AWhenGateInstalledBinaryTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatS2R0RunOwnershipCliTest.kt",
-            "dev/rubentxu/pipeline/v2/application/UatStep001ShExecutionTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatStep001ShFailureStepFinishedCountTest.kt",
-            "dev/rubentxu/pipeline/v2/application/UatStep002EchoCaptureTest.kt",
-            "dev/rubentxu/pipeline/v2/application/UatStep003ErrorAbortTest.kt",
-            "dev/rubentxu/pipeline/v2/application/UatStep004SleepTimingTest.kt",
             "dev/rubentxu/pipeline/v2/application/UatTimeoutBlockDurableTest.kt",
             "dev/rubentxu/pipeline/v2/application/WorkspaceAnchorScopeEndToEndTest.kt",
             "dev/rubentxu/pipeline/v2/application/WorkspaceExecutionLocationCharacterizationTest.kt",
@@ -333,7 +330,6 @@ class InstalledDistributionHarnessFitnessTest {
             "dev/rubentxu/pipeline/v2/application/cli/WURp020MavenRealUatTest.kt",
             "dev/rubentxu/pipeline/v2/application/cli/WURp021NodeRealUatTest.kt",
             "dev/rubentxu/pipeline/v2/application/cli/WURp023ObservationModesUatTest.kt",
-            "dev/rubentxu/pipeline/v2/application/support/PureBuilderProbe.kt",
         )
     }
 }

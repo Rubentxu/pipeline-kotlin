@@ -43,6 +43,7 @@ class RuntimeIntrospectionPortStoreAdapter(
     private val journal: OperationJournal,
     private val cursors: ReplayCursorStore,
     private val lease: FileBackedRunExecutionLeaseStore,
+    private val syntheticObserverId: String = "m2-observer",
 ) : RuntimeIntrospectionPort {
 
     override fun inspect(runId: String): RuntimeIntrospectionResult {
@@ -141,9 +142,12 @@ class RuntimeIntrospectionPortStoreAdapter(
 
             // Lease authority. Consult the pure decider with a synthetic request —
             // we do NOT mutate the lease, we just ask what it WOULD do.
+            val syntheticOwner: dev.rubentxu.pipeline.v2.events.durable.RunOwnerId =
+                dev.rubentxu.pipeline.v2.events.durable.RunOwnerId.of(syntheticObserverId)
+                    ?: error("invalid syntheticObserverId $syntheticObserverId")
             val syntheticRequest = dev.rubentxu.pipeline.v2.events.durable.LeaseRequest(
                 runId = runId,
-                ownerId = SYNTHETIC_OWNER,
+                ownerId = syntheticOwner,
             )
             val decision = RunExecutionLease.acquire(observedLease, syntheticRequest)
             when (decision) {
@@ -263,15 +267,6 @@ class RuntimeIntrospectionPortStoreAdapter(
         val cls = this::class.simpleName ?: this.javaClass.name
         val msg = message?.take(120)?.replace('\n', ' ')
         return if (msg.isNullOrBlank()) cls else "$cls: $msg"
-    }
-
-    private companion object {
-        // A synthetic owner id used when consulting the pure lease decider for
-        // an observation-only path. The decider does not persist anything about
-        // this id; the call is read-only and the decider's `Acquire` verdict is
-        // only observed for the typed `LeaseHeldByAnother` case.
-        val SYNTHETIC_OWNER: dev.rubentxu.pipeline.v2.events.durable.RunOwnerId =
-            dev.rubentxu.pipeline.v2.events.durable.RunOwnerId.of("inspect-m2-observer")!!
     }
 }
 

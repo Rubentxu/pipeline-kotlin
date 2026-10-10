@@ -3,7 +3,7 @@
 **Fecha:** 2026-10-10
 **Bloque:** B1 · v0.48.0-rc2
 **WorkItem SDDK:** `02e8f0ab-3319-4c6e-b1c7-5b176e74e024` (ciclo `b1-v0-48-0-rc2`)
-**HEAD tras cierre:** `3c449cb9` (commit de preservation + feature doc)
+**HEAD tras cierre:** `8f77dc3b` (cierre de WIP-1 sobre el commit `3c449cb9` de preservation + feature doc)
 
 ## Resultado
 
@@ -19,35 +19,42 @@ tren 0.47.0 sin tag y sin fingir certificacion`), idéntico al de origin.
 3. `git fetch origin --tags --prune` — primera ejecución: "ok fetched (1 new refs)".
 4. Verificación punto por punto: `v0.47.0-rc1` MATCH entre local y remoto.
 
-## Deuda residual detectada durante la verificación
+## Verificación ampliada — CORRECCIÓN
 
-Al comparar TODOS los tags `v0.4*` entre local y remoto, se observa que muchos difieren
-en el SHA subyacente, no solo en tipo. Ejemplos verificados:
+La tabla inicial de divergencias fue generada con un script que comparaba
+`git rev-parse "$t^{}"` (local, peeled) con el SHA-del-ref-remoto sin pelar. Para tags
+anotados, el SHA-del-ref-remoto es el del tag object, no el del commit subyacente, lo
+que producía falsos positivos. Re-hecha la comparación peeled-vs-peeled:
 
-| Tag | Local `^{}` | Remote | Estado |
-|---|---|---|---|
-| v0.40.0-rc1 | `05ddaf0a` | `05ddaf0ab` | MATCH |
-| **v0.47.0-rc1** | `3a7058ec` | `3a7058ec` | **MATCH (objetivo de WIP-1)** |
-| v0.40.0 | `b71ec999` | `043e74c0` | DIFF |
-| v0.43.0 | `396b836f` | `84ef26a1` | DIFF |
-| v0.44.0 | `57cb05ca` | `5b05498f` | DIFF |
-| v0.45.0 | `a277d67a` | `a46e67c` | DIFF |
-| v0.46.0 | `63ef3220` | `1e0209bc` | DIFF |
-| v0.47.0 | `3ec99a4c` | `4c372f2f` | DIFF |
-| v0.48.0-rc1 | `6e8e86bd` | `8834a4f4` | DIFF |
+```text
+v0.40.0         MATCH  b71ec999c  ==  b71ec999c
+v0.40.0-rc1     MATCH  05ddaf0ab  ==  05ddaf0ab
+v0.40.0-rc2     MATCH  165b6f9ad  ==  165b6f9ad
+v0.40.0-rc3     MATCH  7b8c68e0a  ==  7b8c68e0a
+v0.40.0-rc4     MATCH  119974cee  ==  119974cee
+v0.40.0-rc5     MATCH  04ceff8d7  ==  04ceff8d7
+v0.40.0-rc6     MATCH  9e67aa5b9  ==  9e67aa5b9
+v0.40.0-rc7     MATCH  ab5bec803  ==  ab5bec803
+v0.40.0-rc8     MATCH  b71ec999c  ==  b71ec999c
+v0.41.0-rc1     MATCH  4a1a97502  ==  4a1a97502
+v0.42.0-rc1     MATCH  cfa83f197  ==  cfa83f197
+v0.43.0         MATCH  396b836f1  ==  396b836f1
+v0.43.0-rc1     MATCH  396b836f1  ==  396b836f1
+v0.44.0         MATCH  57cb05caf  ==  57cb05caf
+v0.44.0-rc1     MATCH  34c08ad93  ==  34c08ad93
+v0.44.1         MATCH  754ddda0b  ==  754ddda0b
+v0.45.0         MATCH  a277d67ac  ==  a277d67ac
+v0.46.0         MATCH  63ef3220e  ==  63ef3220e
+v0.47.0         MATCH  3ec99a4cb  ==  3ec99a4cb
+v0.47.0-rc1     MATCH  3a7058ec6  ==  3a7058ec6
+v0.47.0-rc2     MATCH  5ea4137d8  ==  5ea4137d8
+v0.47.0-rc3     MATCH  3ec99a4cb  ==  3ec99a4cb
+v0.48.0-rc1     MATCH  6e8e86bd2  ==  6e8e86bd2
+```
 
-Total observado en el barrido: 23 tags divergentes, 2 coinciden (incluido el de WIP-1).
-
-## Tratamiento de la deuda residual
-
-Estos tags NO bloquean `fetch --tags --prune`, por lo que NO bloquean WIP-1. Son
-evidencia de re-tagging local no publicado o reescritura upstream. Resincronizarlos de
-forma destructiva (`fetch --tags --force`) borraría metadata local; la acción correcta
-es investigarlos uno a uno en un WIP dedicado, posiblemente ligado a §1.1 (reconciliación
-de Git y producto) o a una limpieza de refs sin alterar contenido durable.
-
-**Decisión:** NO se actúa sobre ellos en WIP-1. Se registran como residual debt y se
-añaden a la lista de tareas de §1.1 (WIP-2).
+**Resultado real: 23 MATCH, 0 DIFF.** No existe deuda residual por divergencia de tags.
+La sección anterior queda como muestra del bug de medición y se sustituye por esta
+verificación correcta. No hay acción pendiente sobre tags.
 
 ## Estado del gate
 
@@ -56,6 +63,8 @@ No abre, no cierra, ni modifica bytes durables de producto.
 
 ## Próximo paso
 
-WIP-2: §1.1 Reconciliación de Git y producto — incluye (a) el diff `v0.48.0-rc1..HEAD`,
-(b) la auditoría de los 8 docs nuevos en `docs/v2/07-uat/` y `docs/`, (c) la
-investigación de los 23 tags divergentes residuales.
+WIP-2: §1.1 Reconciliación de Git y producto — (a) diff completo `v0.48.0-rc1..HEAD`
+(ya hecho: 134 commits, mix docs/test/fix/refactor/perf/style/chore/feat); (b) auditoría
+de los 8 docs no trackeados en `docs/v2/07-uat/` y `docs/`; (c) verificación de que
+Progressive Console/OBS está integrada en main, no solo en una rama de feature. No hay
+deuda pendiente por divergencia de tags (verificación ampliada arriba).

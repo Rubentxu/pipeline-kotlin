@@ -1,9 +1,11 @@
-# WIP-5 — Estado de handoff M0: PK PREPARED, espera a Fabric
+# WIP-5 — Estado de handoff M0: PK_PREPARED, par usa v0.48.0-rc2 (sujeto a Fabric)
 
 **Fecha:** 2026-10-10
 **Hito:** M0 (evolución coordinada PK × Fabric)
-**Estado del lado PK:** `PREPARED`. Pendiente: `FAB_CONSUMER_VERDICT.md` y
-`PAIR_RECEIPT.json` con `PAIR_CERTIFIED` por el Pair Integrator.
+**Estado del lado PK:** **`PK_PREPARED`** (canónico, decisión del Pair Integrator).
+**Artefacto del par:** `v0.48.0-rc2` (publicado, SHA-256 `0fd6aec2ddf8f7a1ff95bbb0cf64961b384ee078f1846acd94844925ea4ffea7`).
+**Sujeto a verificación por Fabric.** PK **no** publica otro release; PK **no**
+espera. Puede seguir con trabajo autónomo no dependiente de esta iniciativa.
 
 ## Lo entregado por el agente PK
 
@@ -23,6 +25,11 @@
 | `PAIR_RECEIPT.json` con `PAIR_CERTIFIED` para M0 | **Pair Integrator** (manual o tercer agente) | requiere el `FAB_CONSUMER_VERDICT.md` previo; requiere `git ls-remote` sobre `Rubentxu/pipelinek-fabric` |
 | `verify_pair_gate.py --strict-remote` exit 0 con `M0-<id> PASS; verified N mandatory log hashes; next milestone UNLOCKED` | **Pair Integrator** | requiere `pk_repo` y `fabric_repo` checkouteados localmente; no aplica en este workspace PK |
 | Certificación final y promoción del par M0 | **Pair Integrator** (en ambos roadmaps) | requiere los pasos anteriores |
+
+> **Decisión del Pair Integrator (2026-10-10):** PK **no** publica otro release;
+> PK **no** espera. El par M0 usa el artefacto publicado `v0.48.0-rc2` sujeto a
+> verificación por Fabric. PK puede continuar con trabajo autónomo no
+> dependiente de esta iniciativa. El lado PK de M0 está **cerrado**.
 
 ## Por qué M0 no se cierra aquí
 

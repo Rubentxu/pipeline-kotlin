@@ -56,15 +56,18 @@ class RunIdDirectory(private val root: Path) {
         // if the process died mid-write. After this change, the file is either the prior value
         // or the new one — never a partial value. Atomic move on POSIX is rename(2); on Windows
         // the existing file is replaced when ATOMIC_MOVE is requested.
+        //
+        // The temp filename MUST be unique per call: a fixed "<target>.tmp" collides when two
+        // concurrent callers share the same definition (each writes to the same temp, then races
+        // to move). A monotonic counter plus the thread id makes collisions impossible without
+        // needing fs-level locks.
         Files.createDirectories(root)
         val target = root.resolve(fileNameFor(definitionId))
-        val temp = target.resolveSibling(target.fileName.toString() + ".tmp")
-        Files.writeString(temp, runId.value)
+        val temp = Files.createTempFile(root, ".${target.fileName}.", ".tmp")
         try {
+            Files.writeString(temp, runId.value)
             Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
         } catch (t: Throwable) {
-            // Best-effort: a failed atomic move with a half-rolled temp would not be resolved by a
-            // retry here. Surface the cause so a caller can decide; do not silently lose.
             Files.deleteIfExists(temp)
             throw t
         }

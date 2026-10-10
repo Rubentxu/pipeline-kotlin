@@ -7,8 +7,12 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.events.durable.FileBackedRunExecutionLeaseStore
+import dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition
+import dev.rubentxu.pipeline.v2.events.durable.LeaseRequest
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
+import dev.rubentxu.pipeline.v2.events.durable.RunExecutionLease
+import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.output.OutputFrameIndex
 import dev.rubentxu.pipeline.v2.output.store.OutputRecoveryPort
 import dev.rubentxu.pipeline.v2.runtime.inspect.AttemptId
@@ -71,6 +75,7 @@ class RuntimeRecoverPortStoreAdapter(
     private val frames: OutputFrameIndex,
     private val introspect: RuntimeRecoverPortIntrospect,
     private val clock: Clock,
+    private val syntheticObserverId: String = "m2-observer",
     private val json: Json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
@@ -78,7 +83,13 @@ class RuntimeRecoverPortStoreAdapter(
 ) : RuntimeRecoverPort {
 
     override fun recover(runId: String, options: RecoverOptions): RecoverOutcome {
-        // 1. Lease boundary (audit B.8, G.3 by analogy).
+        val syntheticObserver: RunOwnerId = RunOwnerId.of(syntheticObserverId)
+            ?: error("invalid syntheticObserverId $syntheticObserverId")
+        // 1. Lease boundary (audit B.8, G.3 by analogy). Consult the pure
+        //    decider with a synthetic request; refuse only on
+        //    LeaseAcquisition.AlreadyOwned (a live other-owner present).
+        //    Reentered / Acquired / TakenOver / Unverifiable are tolerated
+        //    because recover does NOT actually acquire — it observes.
         val observed = try {
             lease.observe(runId)
         } catch (e: Exception) {
@@ -86,13 +97,16 @@ class RuntimeRecoverPortStoreAdapter(
                 RecoverRefusal.StorageError(e.shortDiagnostic()),
             )
         }
-        if (observed?.ownerAlive == true) {
-            // Live other-owner present; refuse.
-            return RecoverOutcome.FailClosed(
-                RecoverRefusal.LeaseHeldByAnother(
-                    "run $runId is held by ${observed.ownerId?.value ?: "unknown"}",
-                ),
-            )
+        val syntheticRequest = LeaseRequest(runId = runId, ownerId = syntheticObserver)
+        when (val decision = RunExecutionLease.acquire(observed, syntheticRequest)) {
+            is LeaseAcquisition.AlreadyOwned -> {
+                return RecoverOutcome.FailClosed(
+                    RecoverRefusal.LeaseHeldByAnother(
+                        "run $runId is held by ${decision.heldBy.value}",
+                    ),
+                )
+            }
+            else -> { /* Reentered / Acquired / TakenOver / Unverifiable — proceed. */ }
         }
 
         // 2. Introspect (existing).

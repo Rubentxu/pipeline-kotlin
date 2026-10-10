@@ -10,14 +10,16 @@ import java.nio.file.Path
 import java.nio.file.Paths
 
 /**
- * M1-E — capability-registration contract test.
+ * M1-E / M2-E — capability-registration contract test.
  *
  * Pins the invariant that the cross-repo interface contract
  * (`docs/pipelinek-coordinated-evolution/coordination/INTERFACE_CONTRACT.md`)
  * has a `CONTRACT_SHA256.txt` companion whose contents match the SHA-256 of
- * the contract file, and that the contract itself enumerates the two
+ * the contract file, and that the contract itself enumerates the
  * capabilities published by CRIC-M1 (`output.follow.v1` and
- * `events.follow.v1`) with their certifying test references.
+ * `events.follow.v1`, both PUBLICADA) and CRIC-M2
+ * (`runtime.inspect.v1`, `runtime.cancel.v1`, `runtime.recover.v1`, all
+ * EXPERIMENTAL in `v0.50.0-rc1`) with their certifying test references.
  *
  * ## Why this test exists
  *
@@ -64,16 +66,26 @@ class CapabilityRegistrationTest {
     }
 
     @Test
-    @DisplayName("the contract enumerates output.follow.v1 and events.follow.v1 as published")
+    @DisplayName("the contract enumerates CRIC-M1 and CRIC-M2 capabilities as published")
     fun `capabilities are listed as published`() {
         val dir = locateContractDir()
         val contract = Files.readString(dir.resolve("INTERFACE_CONTRACT.md"))
+        // CRIC-M1 — PUBLICADA in v0.49.0-rc1, carried forward in v0.50.0-rc1
         assertTrue(contract.contains("output.follow.v1"),
             "contract must reference output.follow.v1; see CRIC-M1 audit table")
         assertTrue(contract.contains("events.follow.v1"),
             "contract must reference events.follow.v1; see CRIC-M1 audit table")
+        // CRIC-M2 — EXPERIMENTAL in v0.50.0-rc1
+        assertTrue(contract.contains("runtime.inspect.v1"),
+            "contract must reference runtime.inspect.v1; see CRIC-M2 audit table")
+        assertTrue(contract.contains("runtime.cancel.v1"),
+            "contract must reference runtime.cancel.v1; see CRIC-M2 audit table")
+        assertTrue(contract.contains("runtime.recover.v1"),
+            "contract must reference runtime.recover.v1; see CRIC-M2 audit table")
         assertTrue(contract.contains("**PUBLICADA**"),
-            "contract must mark at least one capability as PUBLICADA")
+            "contract must mark CRIC-M1 capabilities as PUBLICADA")
+        assertTrue(contract.contains("**EXPERIMENTAL**"),
+            "contract must mark CRIC-M2 capabilities as EXPERIMENTAL")
     }
 
     @Test
@@ -89,11 +101,37 @@ class CapabilityRegistrationTest {
             "SegmentOutputFollowerTest",
             "EventFollowerAdapterTest",
             "M1DCrossJvmFollowTest",
+            // CRIC-M2 test classes also pinned here — both audit tables
+            // appear in the same contract document.
+            "RuntimeIntrospectionPortAdapterTest",
+            "RuntimeControlPortAdapterTest",
+            "RuntimeRecoverPortAdapterTest",
         )
         for (name in mustMention) {
             assertTrue(contract.contains(name),
-                "contract must reference $name in the CRIC-M1 audit table")
+                "contract must reference $name in the capability audit tables")
         }
+    }
+
+    @Test
+    @DisplayName("the CRIC-M2 audit table references the certifying test classes")
+    fun `M2 audit table names the certifying tests`() {
+        val dir = locateContractDir()
+        val contract = Files.readString(dir.resolve("INTERFACE_CONTRACT.md"))
+        // The M2 audit table must appear and name its three adapter
+        // tests plus the pure-decider fitness test.
+        val mustMention = listOf(
+            "RuntimeIntrospectionPortAdapterTest",
+            "RuntimeControlPortAdapterTest",
+            "RuntimeRecoverPortAdapterTest",
+            "RuntimeRecoverDecisionTableFitnessTest",
+        )
+        for (name in mustMention) {
+            assertTrue(contract.contains(name),
+                "contract must reference $name in the CRIC-M2 audit table")
+        }
+        assertTrue(contract.contains("Capacidades publicadas (CRIC-M2)"),
+            "contract must contain a 'Capacidades publicadas (CRIC-M2)' table")
     }
 
     // -------------------------------------------------------------- helpers

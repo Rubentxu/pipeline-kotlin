@@ -714,6 +714,70 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
      *
      * `EventSliceParityLawsTest` is what holds this to the inherited meaning.
      */
+
+    /**
+     * M1-A — authoritatively answer "has this run ever been written to".
+     *
+     * The [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]
+     * adapter needs to distinguish a run that does not exist (the
+     * consumer mistyped the runId, or the run was on a different host)
+     * from a run that exists but has not yet produced any event. The
+     * adapter's only authority for that distinction is this method, and
+     * SQLite's `EXISTS` over the events table is the cheapest correct
+     * answer.
+     *
+     * The check is row-presence on the events table, NOT "non-empty
+     * page from readRecords": a run that has just been declared but
+     * not yet appended to must answer `true` so the adapter can serve
+     * an empty [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult.Page]
+     * to the consumer instead of refusing with
+     * [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal.UnknownRun].
+     *
+     * Connection lifecycle: opens a fresh short-lived connection via
+     * [freshConnection] so the call does not share state with the
+     * persistent writer connection (a write under load would otherwise
+     * see the connection busy).
+     */
+    fun hasRun(runId: String): Boolean = freshConnection().use { conn ->
+        conn.prepareStatement(
+            "SELECT 1 FROM events WHERE run_id = ? LIMIT 1"
+        ).use { ps ->
+            ps.setString(1, runId)
+            ps.executeQuery().use { rs -> rs.next() }
+        }
+    }
+
+    /**
+     * M1-A — durable `MAX(sequence)` for [runId], or `null` if the run
+     * has no rows.
+     *
+     * The [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]
+     * adapter uses this to refuse a cursor that is past the tail.
+     * SQLite's `MAX` is `null` over an empty set, so the function
+     * returns `null` for an empty run without a separate existence
+     * check; the adapter already gated the unknown-run case on
+     * [hasRun] before calling this.
+     *
+     * Connection lifecycle: opens a fresh short-lived connection via
+     * [freshConnection] (same rationale as [hasRun]: avoid sharing
+     * state with the persistent writer connection).
+     */
+    fun tailSequence(runId: String): Long? = freshConnection().use { conn ->
+        conn.prepareStatement(
+            "SELECT MAX(sequence) FROM events WHERE run_id = ?"
+        ).use { ps ->
+            ps.setString(1, runId)
+            ps.executeQuery().use { rs ->
+                if (rs.next()) {
+                    val v = rs.getLong(1)
+                    if (rs.wasNull()) null else v
+                } else {
+                    null
+                }
+            }
+        }
+    }
+
     override fun readRecords(
         runId: String,
         after: dev.rubentxu.pipeline.v2.events.identity.EventCursor?,

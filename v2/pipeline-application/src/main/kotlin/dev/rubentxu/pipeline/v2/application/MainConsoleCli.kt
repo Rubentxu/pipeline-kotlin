@@ -262,6 +262,20 @@ object ConsoleReadService {
             "console-refused: dangling-commit end=${reason.requestedEnd} readable=${reason.readableBytes}"
         OutputRefusal.RecoveryNotCompleted ->
             "console-refused: recovery-not-completed"
+        // M1-A additions: the Output follow contract introduced two
+        // new refusal cases. They can reach `console-refused` when a
+        // follow produces a Refused event the application layer
+        // surfaces. Render them with stable, script-branchable text.
+        is OutputRefusal.StreamLostRetention ->
+            "console-refused: stream-lost-retention stream=${reason.stream.value} last-committed=${reason.lastCommitted}"
+        is OutputRefusal.FollowCancelled ->
+            "console-refused: follow-cancelled run=${reason.runId}"
+        // M1-B addition: a thrown exception from the read ports is
+        // caught at the follower boundary and surfaced as a typed
+        // refusal. The console renders the cause as a short string
+        // so a script can branch on the prefix.
+        is OutputRefusal.StorageError ->
+            "console-refused: storage-error cause=${reason.cause}"
     }
 }
 

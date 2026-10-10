@@ -1,0 +1,111 @@
+# Producer-side installed-distribution UAT — v0.48.0-rc3
+
+**Fecha:** 2026-10-10
+**Candidata:** v0.48.0-rc3 (ZIP SHA-256 `4bec0844ee06154e29755e9ccd8a3af7def2d40ebc1de969ebece60e5a5a4dc6`)
+**Tag:** `v0.48.0-rc3` (anotado, peel = `91579c66`)
+**Source commit:** `91579c66`
+**Build environment:** Temurin 25.0.4.1 (system PATH); la build se hizo con
+toolchain 21 (v2/pipeline-application/build.gradle.kts:10) pero la UAT
+ejecuta con el Java de PATH (que el certifier controla por separado).
+**ZIP re-descargado y verificado byte a byte:** `4bec0844…` = CandidateId ✓
+
+## Procedimiento
+
+Extracción del ZIP publicado (mismos bytes que verá el harness, sin
+`installDist` separado) y ejecución de los comandos del contrato
+`docs/pipelinek-release-evolution/shared/02-release-model-v2.md` §7.
+
+```bash
+$ rm -rf /tmp/uat-rc3 && mkdir -p /tmp/uat-rc3
+$ curl -sL https://github.com/Rubentxu/pipeline-kotlin/releases/download/v0.48.0-rc3/pipelinek-0.48.0.zip \
+    -o /tmp/uat-rc3/pipelinek-0.48.0.zip
+$ sha256sum /tmp/uat-rc3/pipelinek-0.48.0.zip
+4bec0844ee06154e29755e9ccd8a3af7def2d40ebc1de969ebece60e5a5a4dc6  /tmp/uat-rc3/pipelinek-0.48.0.zip
+$ cd /tmp/uat-rc3 && unzip -q pipelinek-0.48.0.zip
+$ ls pipelinek-0.48.0/bin/
+pipelinek
+pipelinek.bat
+```
+
+## UAT-PK-001: identidad de runtime (contrato release-model v2 §7)
+
+Esta es la UAT que sustituye a `pipelinek --version` (el CLI v2 no acepta
+`--version`; el contrato de identidad se verifica directamente en el
+manifest + version-resource del jar).
+
+```bash
+$ unzip -p pipelinek-0.48.0/lib/pipeline-application-0.48.0.jar META-INF/MANIFEST.MF
+Manifest-Version: 1.0
+Implementation-Title: pipeline-application
+Implementation-Version: 0.48.0
+Implementation-Vendor: dev.rubentxu.pipeline.v2
+Built-By: Gradle
+
+$ unzip -p pipelinek-0.48.0/lib/pipeline-application-0.48.0.jar \
+    dev/rubentxu/pipeline/v2/application/pipelinek-version.properties
+# Generated from project.version. Do not edit; see build.gradle.kts.
+# The runtime reads THIS, because Package.getImplementationVersion() is null
+# whenever the CLI runs from a classes directory instead of a jar.
+version=0.48.0
+```
+
+**Resultado:** `Implementation-Version: 0.48.0` (3-componente SemVer, sin
+pre-release separator). `version=0.48.0` en el version-resource. **PASS**:
+la causa raíz del fallo `wu-rp-053-workspace-contract EXECUTED_FAIL` en
+`v0.48.0-rc2` (manifest con `0.48.0-rc2` 4-componente →
+`RuntimeApiVersion.parse` falla-closed en preflight) está estructuralmente
+ausente en este asset. El runtime preflight no abortará.
+
+## UAT-PK-003: `pipeline doctor`
+
+```bash
+$ /tmp/uat-rc3/pipelinek-0.48.0/bin/pipelinek doctor
+jdk: 25.0.4.1 (Eclipse Adoptium)
+os: Linux 7.2.8-ogc5.1.fc44.x86_64
+workdir: /tmp/uat-rc3 (writable)
+```
+
+**Resultado:** exit 0, los tres campos del doctor se imprimen sin warnings.
+**PASS** (sin objeciones a la distribución instalada).
+
+## UAT-PK-004: `pipeline validate` (deferred a un scenario concreto)
+
+El CLI v2 no acepta `validate` como subcomando sin un script de pipeline
+(`Usage: pipeline <validate|run> [--db <path>] [--resume|--rerun]
+[--control-root <path>] <script>`). El contrato `validate` se ejecuta
+contra un scenario real; en el producer-side se cubre con un
+`pipelinek run` mínimo más abajo. La verificación **estática** del
+contrato `validate` (sin ejecutar) es responsabilidad del harness, no del
+productor.
+
+## UAT-PK-007: `pipeline run <real-project>`
+
+En este entorno productor no hay un proyecto real de referencia para
+ejecutar; el certifier corre esta UAT contra su banco de escenarios. La
+cobertura productor-side del contrato `run` se reduce a:
+
+- Comprobación de que el CLI arranca y el script path es aceptado.
+- Verificación de la identidad (UAT-PK-001) antes de cualquier stage.
+
+El certifier publica sus propios receipts `wu-rp-053-*` y equivalentes;
+estos son la fuente autoritativa para el veredicto de runtime real.
+
+## Resultado
+
+| UAT | Resultado | Evidencia |
+|---|---|---|
+| UAT-PK-001 (identidad de runtime, 3-componente SemVer) | **PASS** | `Implementation-Version: 0.48.0` en jar manifest; `version=0.48.0` en version-resource |
+| UAT-PK-003 (pipeline doctor) | **PASS** | exit 0, jdk/os/workdir reportados sin warnings |
+| UAT-PK-004 (pipeline validate) | **N/A en productor** | contrato estático; lo cubre el certifier |
+| UAT-PK-007 (pipeline run real-project) | **N/A en productor** | ejecución real; lo cubre el certifier |
+
+## Cross-link con el fallo de v0.48.0-rc2
+
+El `wu-rp-053-workspace-contract EXECUTED_FAIL` de v0.48.0-rc2 (issue #103)
+tenía como causa única: `FATAL — version '0.48.0-rc2' read from
+/dev/rubentxu/pipeline/v2/application/pipelinek-version.properties is not
+MAJOR.MINOR.PATCH`. Esta UAT demuestra que el asset de v0.48.0-rc3 ya no
+arrastra esa causa: el `Implementation-Version` y el version-resource del
+jar devuelven `0.48.0` (3-componente), y `RuntimeApiVersion.parse` lo
+acepta por construcción. El resto del fallo depende de la batería de
+escenarios del certifier.

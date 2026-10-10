@@ -247,48 +247,54 @@ subprojects {
         // tracked modules.
         val koverRuleMinByModule = mapOf(
             // HIGH coverage (≥75 line)
-            "pipeline-artefacts-local"      to 85,
-            "pipeline-binding-factory"      to 85,
-            "pipeline-domain"               to 75, // historical intent preserved at line-based
-            "pipeline-events"               to 70, // 77.6 - 5 + slack for D-002 instrumentation overhead
-            "pipeline-event-harness"        to 70,
-            "pipeline-step-sdk/runtime"     to 70,
-            "pipeline-step-sdk/utilities"   to 65,
+            ":pipeline-artefacts-local"       to 85,
+            ":pipeline-binding-factory"       to 85,
+            ":pipeline-domain"                to 75, // historical intent preserved at line-based
+            ":pipeline-events"                to 70, // 77.6 - 5 + slack for D-002 instrumentation overhead
+            ":pipeline-event-harness"         to 70,
+            ":pipeline-step-sdk:runtime"      to 70,
+            ":pipeline-step-sdk:utilities"    to 65,
             // MID coverage (50-75 line)
-            "pipeline-step-sdk/scm-git"     to 55,
-            "pipeline-credentials-executor" to 55,
-            "pipeline-scripting-kotlin24"   to 55,
+            ":pipeline-step-sdk:scm-git"      to 55,
+            ":pipeline-credentials-executor"  to 55,
+            ":pipeline-scripting-kotlin24"    to 55,
         )
         val koverRuleDisabledByModule = setOf(
             // generated / DSL / fitness / no-data modules: line metric not the right invariant
-            "pipeline-step-sdk/api",        // 1.5% line: pure codec IR + interfaces
-            "pipeline-step-sdk/processor",  // 9.4% line: KSP code generator
-            "pipeline-step-sdk/junit",      // 15.5% line: dominant case is contract fixtures
-            "pipeline-step-sdk/http",       // contract/fitness dominant; the wire is pinned by golden vectors
-            "pipeline-step-sdk/files",      // no line data: only branch/class visible
-            "pipeline-scripting-api",       // 32.1% line: pure DSL builder methods
-            "pipeline-credentials-api",     // no line data: only branch visible
-            "pipeline-credentials-local",   // no line data: only branch visible
-            "pipeline-credentials-multipart", // no line data: only class/method visible
-            "pipeline-testkit",             // test-only support module
-            "pipeline-architecture-tests",  // fitness assertions only
-            "pipeline-application",         // coordinator composition; coverage from harness UATs
+            ":pipeline-step-sdk:api",         // 1.5% line: pure codec IR + interfaces
+            ":pipeline-step-sdk:processor",   // 9.4% line: KSP code generator
+            ":pipeline-step-sdk:junit",       // 15.5% line: dominant case is contract fixtures
+            ":pipeline-step-sdk:http",        // contract/fitness dominant; the wire is pinned by golden vectors
+            ":pipeline-step-sdk:files",       // no line data: only branch/class visible
+            ":pipeline-scripting-api",        // 32.1% line: pure DSL builder methods
+            ":pipeline-credentials-api",      // no line data: only branch visible
+            ":pipeline-credentials-local",    // no line data: only branch visible
+            ":pipeline-credentials-multipart",// no line data: only class/method visible
+            ":pipeline-testkit",              // test-only support module
+            ":pipeline-architecture-tests",   // fitness assertions only
+            ":pipeline-application",          // coordinator composition; coverage from harness UATs
         )
+        // COV-01 fix: address by `project.path` (with leading colon), not `project.name`. The
+        // previous code used slash-separated names (e.g. "pipeline-step-sdk/runtime") against
+        // `project.name`, which for a nested project is just the leaf ("runtime"); the maps
+        // never matched and the `when` fell through silently — no rule was applied to any
+        // nested subproject, neither the min nor the disabled list. With Gradle paths the
+        // selection is exact and unambiguous.
         when {
-            project.name in koverRuleMinByModule -> {
+            project.path in koverRuleMinByModule -> {
                 kover {
                     reports {
                         verify {
                             rule("D-013 branch coverage (anti-regression)") {
                                 bound {
-                                    minValue.set(koverRuleMinByModule.getValue(project.name))
+                                    minValue.set(koverRuleMinByModule.getValue(project.path))
                                 }
                             }
                         }
                     }
                 }
             }
-            project.name in koverRuleDisabledByModule -> {
+            project.path in koverRuleDisabledByModule -> {
                 kover {
                     reports {
                         verify {

@@ -82,14 +82,16 @@ repositories {
 // candidate suffix by construction (`^(\d+)\.(\d+)\.(\d+)$`) because the v0.43.0 incident:
 // an artifact internally consistent at `0.43.0-rc1` was later presented under a GA identity.
 // Candidate state lives in `CandidateHandoff` (`candidateSequence`, `candidateId` = sha256 of
-// ROADMAP A (2026-10-10): 0.48.0 -> 0.49.0 (MINOR). CRIC-M1 publishes
-// output.follow.v1 and events.follow.v1 as new consumer-negotiable
-// capabilities. The 0.48.0 train is closed (rc3 was the last published
-// Prerelease of that train and is awaiting certifier verdict); the 0.49.0
-// train opens with v0.49.0-rc1. ProductVersion rejects a candidate suffix
-// by construction; the candidate is identified by digest
-// (CandidateId = sha256 of the distribution ZIP), not by the version string.
-version = "0.49.0"
+// ROADMAP A (2026-10-10): 0.49.0 -> 0.50.0 (MINOR). CRIC-M2 publishes
+// runtime.inspect.v1, runtime.cancel.v1, and runtime.recover.v1 as
+// EXPERIMENTAL consumer-negotiable capabilities. M1 capabilities
+// (output.follow.v1, events.follow.v1) carry forward as PUBLICADA.
+// The 0.49.0 train is closed (rc1 was the only candidate); the 0.50.0
+// train opens with v0.50.0-rc1. ProductVersion rejects a candidate
+// suffix by construction; the candidate is identified by digest
+// (CandidateId = sha256 of the distribution ZIP), not by the version
+// string.
+version = "0.50.0"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

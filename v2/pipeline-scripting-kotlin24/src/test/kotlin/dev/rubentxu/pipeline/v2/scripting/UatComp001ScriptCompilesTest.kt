@@ -25,7 +25,18 @@ class UatComp001ScriptCompilesTest {
         val result = scriptingHost.compile(definition)
 
         assertTrue(result.isSuccess, "Expected successful compilation: ${result.diagnostics}")
-        assertTrue(result.diagnostics.isEmpty(), "Expected no diagnostics: ${result.diagnostics}")
+        // M1-F.1: the Kotlin compiler confirms `-Xuse-fast-jar-file-system=false`
+        // with an INFO diagnostic. The diagnostic is NOT a failure — it is the
+        // observable confirmation that the option was accepted. The test asserts
+        // only on ERROR/FATAL diagnostics, which are the user-actionable cases.
+        val errorDiagnostics = result.diagnostics.filter {
+            it.severity == ScriptDiagnosticSeverity.ERROR ||
+                it.severity == ScriptDiagnosticSeverity.FATAL
+        }
+        assertTrue(
+            errorDiagnostics.isEmpty(),
+            "Expected no ERROR/FATAL diagnostics: $errorDiagnostics",
+        )
         assertNotNull(result.value)
     }
 

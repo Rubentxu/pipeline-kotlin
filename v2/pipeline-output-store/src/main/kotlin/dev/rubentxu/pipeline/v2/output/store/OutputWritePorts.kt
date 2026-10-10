@@ -205,16 +205,84 @@ interface OutputRecoveryPort {
 interface OutputSealPort {
 
     /**
-     * Records that no further bytes will be written to [stream], and returns the resulting tail end.
+     * Records that no further bytes will be written to [stream], and returns the resulting
+     * [SealOutcome].
      *
-     * Idempotent: sealing an already-sealed stream returns the same [end] and changes nothing.
-     * Refuses an append after a seal rather than accepting it, because a sealed stream that grows
-     * would make [dev.rubentxu.pipeline.v2.output.OutputTailState.Sealed] a promise the store had
-     * already broken.
+     * ## Closed return type, by design (M1-F.3)
      *
-     * @return the sealed end, which is the stream's committed extent at the moment of sealing
+     * A channel that was never opened is NOT a failure: `sh("echo hi")` writes
+     * to stdout and never opens stderr, so the stderr seal must be a silent
+     * no-op. A real I/O failure (disk full, FS permission) IS a failure, and
+     * must surface as a typed [SealOutcome.Failure] rather than an exception
+     * that the caller cannot distinguish from "unknown stream".
+     *
+     * The return type makes all four outcomes explicit:
+     *   - [SealOutcome.Sealed] — newly sealed; `end` is the committed extent
+     *   - [SealOutcome.AlreadySealed] — was sealed before; `end` is the
+     *     previously-recorded end. Idempotent: re-sealing is a no-op.
+     *   - [SealOutcome.NeverOpened] — legitimate absence; `end` is null.
+     *     This is the per-channel "no bytes were ever produced" case the
+     *     durable shell substrate observes for the silent channel of a
+     *     stdout-only (or stderr-only) script.
+     *   - [SealOutcome.Failure] — real I/O failure; `cause` is the throwable
+     *     and `end` may be null or a partial extent (the failure might have
+     *     happened before the marker could be written).
+     *
+     * Refuses an append after a seal rather than accepting it, because a
+     * sealed stream that grows would make [dev.rubentxu.pipeline.v2.output.OutputTailState.Sealed]
+     * a promise the store had already broken.
      */
-    fun seal(stream: OutputStreamId): Long
+    fun seal(stream: OutputStreamId): SealOutcome
+}
+
+/**
+ * The closed result of a single [OutputSealPort.seal] call.
+ *
+ * M1-F.3 — every channel's seal is a total function whose result is one
+ * of these cases. Exceptions were the wrong shape for the "legitimate
+ * absence" path: a `sh("echo hi")` invocation only opens stdout, so
+ * sealing stderr must be silent and a non-exceptional no-op. Real I/O
+ * failures still surface, but as data a caller can route on rather than
+ * a try/catch that conflates "unknown stream" with "disk full".
+ */
+sealed interface SealOutcome {
+
+    /**
+     * The committed extent of the stream, recorded at the moment of sealing.
+     *
+     * `null` for [NeverOpened] (there are no bytes to record) and for
+     * [Failure] when the failure happened before the marker could be
+     * written. A failure that DID write the marker carries the recorded
+     * end so the caller can decide whether to keep the partial seal.
+     */
+    val end: Long?
+
+    /** Newly sealed. `end` is the committed extent at the moment of sealing. */
+    data class Sealed(override val end: Long) : SealOutcome
+
+    /**
+     * Was already sealed. `end` is the previously-recorded end. Idempotent:
+     * re-sealing is a no-op and the recorded end does not move.
+     */
+    data class AlreadySealed(override val end: Long) : SealOutcome
+
+    /**
+     * Stream was never opened. Legitimate absence — the durable shell
+     * substrate sees this when a stdout-only script has no stderr bytes
+     * to seal. A caller does NOT need to surface this as a warning.
+     */
+    data object NeverOpened : SealOutcome {
+        override val end: Long? = null
+    }
+
+    /**
+     * Real I/O failure (disk full, FS permission denied, ...).
+     *
+     * `cause` is the throwable. `end` is null if the failure happened
+     * before the marker could be written, or the partial extent if the
+     * marker DID land but a subsequent step failed.
+     */
+    data class Failure(val cause: Throwable, override val end: Long? = null) : SealOutcome
 }
 
 /**

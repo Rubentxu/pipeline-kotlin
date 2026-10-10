@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.DefinitionId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 
 sealed interface StoredRunId {
     data class Found(val runId: RunId) : StoredRunId
@@ -50,8 +51,23 @@ class RunIdDirectory(private val root: Path) {
      *         be written.
      */
     fun record(definitionId: DefinitionId, runId: RunId) {
+        // RUN-01 fix: write-to-temp + atomic rename replaces the previous `Files.writeString`
+        // which was a non-atomic truncate-then-write that could leave the file partially written
+        // if the process died mid-write. After this change, the file is either the prior value
+        // or the new one — never a partial value. Atomic move on POSIX is rename(2); on Windows
+        // the existing file is replaced when ATOMIC_MOVE is requested.
         Files.createDirectories(root)
-        Files.writeString(root.resolve(fileNameFor(definitionId)), runId.value)
+        val target = root.resolve(fileNameFor(definitionId))
+        val temp = target.resolveSibling(target.fileName.toString() + ".tmp")
+        Files.writeString(temp, runId.value)
+        try {
+            Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (t: Throwable) {
+            // Best-effort: a failed atomic move with a half-rolled temp would not be resolved by a
+            // retry here. Surface the cause so a caller can decide; do not silently lose.
+            Files.deleteIfExists(temp)
+            throw t
+        }
     }
 
     /**

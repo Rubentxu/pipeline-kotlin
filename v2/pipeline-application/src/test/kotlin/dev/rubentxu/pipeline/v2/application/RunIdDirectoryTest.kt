@@ -91,4 +91,51 @@ class RunIdDirectoryTest {
 
         assertTrue(java.nio.file.Files.isRegularFile(nested.resolve("abc123")))
     }
+
+    // -------------------------------------------------------------- RUN-01
+
+    /**
+     * RUN-01 witness: concurrent record() calls from many threads must leave the record file
+     * in a coherent state — either the old value or one of the new values, never a partial or
+     * mixed-content file. Atomic write (temp + rename) is what guarantees this; without it, the
+     * truncate-then-write race window of `Files.writeString` could leave the file empty or
+     * truncated between the two halves of the call.
+     */
+    @Test
+    fun `RUN-01 concurrent record calls leave the file in a coherent state - no partial writes`() {
+        val dir = directory()
+        val def = DefinitionId("concurrent-def")
+        // Pre-seed so there is always a previous value to overwrite atomically.
+        dir.record(def, RunId("seed-0"))
+
+        val writers = (1..16).map { i ->
+            Thread {
+                repeat(50) { j ->
+                    dir.record(def, RunId("run-$i-$j"))
+                }
+            }
+        }
+        writers.forEach { it.start() }
+        writers.forEach { it.join() }
+
+        val recorded = dir.lastRunId(def)
+        // Coherent: must equal ONE of the values that was written (the last writer wins).
+        val allExpected = buildSet {
+            add("seed-0")
+            for (i in 1..16) for (j in 0 until 50) add("run-$i-$j")
+        }
+        assertTrue(
+            recorded.value in allExpected,
+            "RUN-01: recorded '${recorded.value}' is not a coherent value written by any thread; " +
+                "the file may have been left in a partial/mixed state by the concurrent writes",
+        )
+        // And the on-disk content must match exactly what we read back (no truncation).
+        val onDisk = java.nio.file.Files.readString(tempDir.resolve("last-run").resolve("concurrent-def"))
+        assertEquals(
+            recorded.value,
+            onDisk,
+            "RUN-01: on-disk content must equal what lastRunId returns; partial content would " +
+                "indicate the write was non-atomic",
+        )
+    }
 }

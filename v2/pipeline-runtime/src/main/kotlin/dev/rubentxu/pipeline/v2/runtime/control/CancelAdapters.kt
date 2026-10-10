@@ -13,6 +13,7 @@ import dev.rubentxu.pipeline.v2.events.durable.RunExecutionLease
 import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.output.OutputFrameIndex
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
+import dev.rubentxu.pipeline.v2.output.store.OutputRecoveryPort
 import dev.rubentxu.pipeline.v2.output.store.SealOutcome
 import dev.rubentxu.pipeline.v2.runtime.inspect.AttemptId
 import kotlinx.serialization.encodeToString
@@ -53,8 +54,10 @@ class RuntimeControlPortStoreAdapter(
     private val journal: OperationJournal,
     private val lease: FileBackedRunExecutionLeaseStore,
     private val frames: OutputFrameIndex,
+    private val outputRecovery: OutputRecoveryPort,
     private val sealStream: (OutputStreamId) -> SealOutcome,
     private val clock: Clock,
+    private val syntheticObserverId: String = "m2-observer",
     private val json: Json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
@@ -62,6 +65,8 @@ class RuntimeControlPortStoreAdapter(
 ) : RuntimeControlPort {
 
     override fun cancel(runId: String, reason: CancelReason): CancelOutcome {
+        val syntheticObserver: RunOwnerId = RunOwnerId.of(syntheticObserverId)
+            ?: error("invalid syntheticObserverId $syntheticObserverId")
         // 1. Lease consultation (read-only).
         val observed = try {
             lease.observe(runId)
@@ -72,7 +77,7 @@ class RuntimeControlPortStoreAdapter(
         }
         val syntheticRequest = LeaseRequest(
             runId = runId,
-            ownerId = SYNTHETIC_OWNER,
+            ownerId = syntheticObserver,
         )
         when (val decision = RunExecutionLease.acquire(observed, syntheticRequest)) {
             is LeaseAcquisition.AlreadyOwned -> {
@@ -166,7 +171,19 @@ class RuntimeControlPortStoreAdapter(
             )
         }
 
-        // 4. Per-stream seal (idempotent). OutputSealPort.seal returns NeverOpened
+        // 4. Recover the output store first (ADR-M1 O3 — `SegmentOutputStore
+        //    .seal()` requires `OutputRecoveryPort.recover()` to have run
+        //    first). The recover call is itself idempotent, so a cancel that
+        //    lands on an already-recovered store is a no-op.
+        try {
+            outputRecovery.recover()
+        } catch (e: Exception) {
+            return CancelOutcome.Refused(
+                CancelRefusal.StorageError(e.shortDiagnostic()),
+            )
+        }
+
+        // 5. Per-stream seal (idempotent). OutputSealPort.seal returns NeverOpened
         // for streams that were never declared — that is fine, it's a silent
         // no-op (not an error).
         val streamsToSeal: List<OutputStreamId> = try {
@@ -215,12 +232,5 @@ class RuntimeControlPortStoreAdapter(
         val cls = this::class.simpleName ?: this.javaClass.name
         val msg = message?.take(120)?.replace('\n', ' ')
         return if (msg.isNullOrBlank()) cls else "$cls: $msg"
-    }
-
-    private companion object {
-        // Synthetic owner id used to consult the pure lease decider for an
-        // observation-only path; see the introspection adapter's companion
-        // for the same rationale.
-        val SYNTHETIC_OWNER: RunOwnerId = RunOwnerId.of("cancel-m2-observer")!!
     }
 }

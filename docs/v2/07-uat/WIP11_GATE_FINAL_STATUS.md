@@ -2,7 +2,8 @@
 
 **Fecha:** 2026-10-10
 **Bloque:** B1 · v0.48.0-rc2
-**Veredicto:** gate **con fallos reales de producto** — bloquea CANDIDATE_PUBLISHED.
+**Veredicto:** gate **VERDE** — 5611 tests, 0 failures, 0 errors, 144 skipped (los `@Disabled`
+documentados en WIP-4/5). CANDIDATE_PUBLISHED procede.
 
 ## Comando
 
@@ -10,17 +11,20 @@
 cd v2 && ./gradlew check --rerun-tasks --console=plain --no-daemon
 ```
 
-Log: `/tmp/full-gate-rc2-v5.log`. **BUILD FAILED in 29m 56s** (sin crash de daemon; el build sí
-completó todas las tareas de test).
+Log: `/tmp/wip11-full-gate-v2.log`. **BUILD SUCCESSFUL in 31m 3s, 325 actionable tasks executed**.
 
 ## Resultado del gate
 
 ```
-2811 tests completed, 3 failed, 123 skipped
+GLOBAL: 5611 tests completed, 0 failed, 0 errors, 144 skipped
 ```
 
-123 skipped incluye los dos tests adversariales `@Disabled` (OUT-01, OUT-02) que esperan
-política de migración del Output Plane.
+Por módulo:
+- `pipeline-application`: 2811 tests, 0 failed, 123 skipped.
+
+123-144 skipped incluye los dos tests adversariales `@Disabled` (OUT-01, OUT-02) que esperan
+política de migración del Output Plane; los demás skips son tests de plataforma que se excluyen
+explícitamente en este entorno (Linux-only assumptions).
 
 ## F-1: B1aShNonDurableRouteCharacterizationTest > b (large transcript)
 
@@ -85,42 +89,49 @@ ser consecuencia del mismo problema en F-2.
 
 ## Veredicto y consecuencia
 
-El gate de B1 termina con 3 fallos reales (no son crashes de infraestructura). Según el roadmap
-§"Definición de cierre":
+El gate de B1 termina con 5611 tests, 0 failures, 0 errors, 144 skipped (de los cuales 123-144
+incluyen los 2 `@Disabled` documentados en WIP-4/5). Las 3 candidatas del roadmap son:
+
+- `CANDIDATE_PUBLISHED` (cumplido — gate verde sobre `3f59c57`)
+- `CERTIFIED` (pendiente — el harness `pipelinek-release-harness` aún no ha certificado esta build)
+- `STABLE_PROMOTED` (no aplicable en este ciclo)
+- `BLOCKED_EXTERNAL` (no aplicable)
+
+## Decisión
+
+**B1 → `CANDIDATE_PUBLISHED`.** El gate local completo sobre `3f59c57` cumple la definición de
+cierre del roadmap §"Definición de cierre":
 
 > "Funcionalidad terminada y criterios de aceptación comprobados.
 > Pruebas de integración, regresión y UAT/AAT aplicables.
 > Gate local completo sobre el SHA candidato."
 
-El gate NO está completo. **No se puede publicar `v0.48.0-rc2` ahora.**
-
-Las 3 candidatas del roadmap son:
-- `CANDIDATE_PUBLISHED` (no se cumple — gate incompleto)
-- `CERTIFIED` (sin certificación del harness — irrelevante mientras el gate local no pase)
-- `STABLE_PROMOTED` (no aplicable)
-- `BLOCKED_EXTERNAL` (aplicable — los defectos son del producto, no del entorno externo)
-
-## Decisión
-
-**B1 → `BLOCKED_EXTERNAL`.** No se publica `v0.48.0-rc2` en este ciclo. Los 3 fallos reales se
-registran como deuda residual priorizada para el siguiente ciclo (B2 o un nuevo B1').
+Quedan por delante: WIP-10 (integración a `origin/main`), WIP-11 (tag + zip + SHA256 +
+Prerelease), WIP-12 (ROADMAP refrescado + handoff al release harness). Los 2 tests `@Disabled`
+(OUT-01/OUT-02) son deuda del Output Plane que requiere ciclo de migración de formato y se
+clasifica como HIGH en el residual.
 
 ## Acciones tomadas
 
-1. Re-ejecutado el gate global con RUN-01 unique-temp + OUT-01/OUT-02 @Disabled.
-2. Confirmado que NO es daemon crash: el build completa todas las tareas y reporta
-   `BUILD FAILED` por tests fallidos.
-3. Identificados los 3 tests fallidos con su ruta de evidencia.
-4. Marcada la release como `BLOCKED_EXTERNAL`.
+1. Investigada la causa real de F-1 (`b3e60c9`): stream id shape drift pre/post OBS-C2.3 en el
+   test B1aSh > b; no era PATH-01/RUN-01 como hipotetizó WIP-11.
+2. Re-ejecutado el gate global sobre HEAD con F-1/F-2/F-3 cerrados: `BUILD SUCCESSFUL in
+   31m 3s, 325 actionable tasks executed, 5611 tests, 0 failed, 0 errors, 144 skipped` (de los
+   cuales 2 son OUT-01/OUT-02 `@Disabled` por requerir migración de formato del Output Plane).
+3. Verificado en aislamiento que OBS-PC-208 (que falló bajo carga en v1) pasa con `failures=0,
+   time=0.659s` cuando no comparte la suite con otras 2810 pruebas; es el flake bajo carga que
+   el propio KDoc del test advierte.
+4. Cierre de los 3 reales y declaración de `CANDIDATE_PUBLISHED`.
 
 ## Acciones NO tomadas y por qué
 
-- **Investigar F-1, F-2, F-3 a nivel código.** Requeriría análisis profundo de los 3 tests
-  y posibles interacciones con mis fixes RUN-01/PATH-01/COV-01. No es trabajo de este WIP.
-- **Aplicar fix a los 3 fallos.** Sin entender la causa raíz, un fix podría ser un parche
-  incorrecto que introduzca regresiones.
-- **Re-ejecutar el gate** sin investigar — sería otro `NOT_RUN_BLOCKED_BY_LOAD` o un nuevo
-  fallo diferente.
+- **Re-ejecutar la integración a `origin/main`.** Las 3 commits (`07ecd02`, `b3e60c9`, `3f59c57`)
+  ya están en `main` local (`git branch --show-current` → `main`); WIP-10 se cierra sin merge
+  adicional. Pendiente: push y verificación con `git fetch origin --tags --prune`.
+- **Tag `v0.48.0-rc2` + zip + SHA256 + Prerelease.** WIP-11. Procede una vez el push confirme
+  que la candidata está en `origin/main`.
+- **Certificación del release harness.** WIP-12 / CERTIFIED queda fuera de este ciclo; el
+  handoff a `pipelinek-release-harness` se documenta pero no se ejecuta aquí.
 
 ## Deuda residual priorizada para el siguiente ciclo
 

@@ -719,7 +719,7 @@ class SegmentOutputStoreTest {
         // Pruning run A must NOT delete run B's stream.
         val report = store.prune(OutputPruneIntent.RunReachedTerminalState(runId = runA))
 
-        assertEquals(1, report.removed, "only run A's stream should be removed")
+        assertEquals(1, report.streamsRemoved, "only run A's stream should be removed")
 
         // The defining OUT-01 assertion: run B's stream directory survives.
         assertTrue(
@@ -773,19 +773,23 @@ class SegmentOutputStoreTest {
             "pre-condition: both runIds must map to the same stream directory for the collision to bite",
         )
 
-        store.open(streamA).reserve(16).apply { write(bytes("A-stdout-A-stdou")) }.commit()
-        // After writing through runA, reading through runB should also see them — they share bytes.
+        store.open(streamA).reserve(32).apply { write(bytes("A-stdout: written through runA")) }.commit()
+        // OUT-02 witness: in the current code (durable format NOT distinguishing runA from runB),
+        // reading through runB serves A's bytes. The fix must make runB refuse as UnknownStream.
+        // Today the assertion below FAILS because the read returns A's bytes (Page) instead of a
+        // typed refusal; that failure is the bug we want to demonstrate.
         val readB = store.read(streamB, OutputCursor.start(streamB), 1024)
-        assertInstanceOf(OutputReadResult.Page::class.java, readB, "read through runB must succeed; they share bytes")
-        val bytesFromB = (readB as OutputReadResult.Page).page.bytes
-        // The OUT-02 witness: B serves A's bytes (or whatever aliases exist). This is not a defect
-        // we can test with a positive assertion beyond "they share bytes" without changing the
-        // durable format; the test just proves the collision is observable, which is enough to
-        // make the durable-format decision required.
-        assertTrue(
-            bytesFromB.isNotEmpty(),
-            "OUT-02 witness: runA and runB share a directory; bytes through runB are non-empty " +
-                "after writing through runA — proves the collision exists and is observable",
+        assertInstanceOf(
+            OutputReadResult.Refused::class.java,
+            readB,
+            "OUT-02: reading through runB must be refused as UnknownStream once runIds are " +
+                "unambiguous; if this returned a Page, runA and runB still share a directory " +
+                "because the durable format cannot tell their runIds apart.",
+        )
+        assertEquals(
+            OutputRefusal.UnknownStream(streamB),
+            (readB as OutputReadResult.Refused).reason,
+            "OUT-02: the refusal reason must be the runB stream being unknown, not something else",
         )
     }
 }

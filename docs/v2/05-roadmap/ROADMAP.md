@@ -26,12 +26,30 @@ origin/main observado      98f163c04d7cbcb2976236eaa1c4272bc74e1fda
 producto publicado         v0.48.0-rc1 (Pre-release, 2026-10-09T13:52:57Z);
                            tag v0.48.0-rc1 -> 6e8e86bd; zip pipelinek-0.48.0.zip
                            92 119 743 bytes; sha256:a4620df4855895e3cc14d5d8a05ee7bd64a75d128d3184be659defe0b009fb93
+candidata v0.48.0-rc2       CANDIDATE_PUBLISHED (2026-10-10, local; pendiente push);
+                           tag v0.48.0-rc2 -> 74c5331e; zip pipelinek-0.48.0-rc2.zip
+                           ~88.2 MB; sha256:0fd6aec2ddf8f7a1ff95bbb0cf64961b384ee078f1846acd94844925ea4ffea7
+                           gate v2 verde 5611 tests / 0 failures / 144 skipped
+                           (recibos: ../07-uat/WIP11_GATE_FINAL_STATUS.md y
+                            evidence/v0.48.0-rc2/release-receipt.md)
 Latest (stable)            v0.47.0, GitHub Release de 2026-10-06
 superficie de CI           inexistente (.github/workflows/ -> 404; solo Dependabot activo)
 checks en HEAD             0 check runs sobre 98f163c0
 checks requeridos en main  ninguno (required_status_checks ausente, rulesets 0)
 ciclos SDDK                42 OPEN, 4 BLOCKED, 82 CLOSED, 1 RELEASE_PENDING
 ```
+
+**Hechos del 2026-10-10 (v0.48.0-rc2, observado).** F-1/F-2/F-3 del gate anterior (sobre
+`2f5ba9aa`) cerrados en commits `07ecd02` (F-2/F-3: ledgers S6-PRE y S6-PRE 2) y `b3e60c9`
+(F-1: stream-id shape drift pre/post OBS-C2.3 en B1aSh > b; el test consultaba un stream
+`.../transcript` que OBS-C2.3 eliminó, ahora consulta `.../stdout`). WIP-11 receipt enmendado
+en `3f59c57` (causa real de F-1) y declarado verde en `98e25f3` (gate v2 BUILD SUCCESSFUL
+in 31m 3s, 5611 tests, 0 failures, 144 skipped). B1 feature doc actualizado a CANDIDATE_PUBLISHED
+en `0d2ee1a`. Version bump a `0.48.0-rc2` en `74c5331`. Tag anotado `v0.48.0-rc2` peel=
+`74c5331e` (regla 9 de AGENTS.md). Release-receipt en
+`evidence/v0.48.0-rc2/release-receipt.md`. Deuda residual priorizada: **OUT-01/OUT-02 HIGH**
+(ambos `@Disabled` por requerir política de migración de formato del Output Plane;
+`SegmentOutputStoreTest.kt` los define con la condición de habilitación documentada).
 
 Cambios respecto del bloque del 2026-10-08, todos medidos:
 

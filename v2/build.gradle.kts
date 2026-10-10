@@ -84,7 +84,7 @@ repositories {
 // Candidate state lives in `CandidateHandoff` (`candidateSequence`, `candidateId` = sha256 of
 // the distribution ZIP), never in this string. The product version is final; the candidate is
 // identified by digest.
-version = "0.48.0-rc2"
+version = "0.48.0"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

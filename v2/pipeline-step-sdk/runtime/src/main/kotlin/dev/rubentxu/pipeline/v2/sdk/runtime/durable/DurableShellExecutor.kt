@@ -518,21 +518,21 @@ class DurableShellExecutor : DurableShellLaunching {
             }
             val handle = process.toHandle()
 
-            // Advisory session-leader verification (can be non-fatal if setsid forks).
-            // The real kill mechanism uses cookie-scan (Jenkins pattern), not PGID.
-            // The session-leader check is informative only; if it fails, we continue
-            // with the cookie-scan kill which will still work correctly.
-            try {
-                if (!isSessionLeader(handle.pid())) {
-                    // Log but don't fail — cookie scan will handle the kill correctly
-                    System.err.println(
-                        "[DurableShellExecutor] Warning: PID ${handle.pid()} is not a session leader. " +
-                        "Cookie-scan kill will be used for timeout termination."
-                    )
-                }
-            } catch (_: Exception) {
-                // Non-fatal: continue even if verification fails
-            }
+            // M1-F.2: the previous code printed "[DurableShellExecutor] Warning:
+            // PID X is not a session leader" to stderr every time `setsid` had
+            // forked before the JVM grabbed the ProcessHandle — which is the
+            // expected behaviour of the `setsid` argv pattern (argv = [setsid,
+            // bash, wrapper.sh]; setsid exits quickly after forking bash as a
+            // new session leader). The cookie-scan kill that follows this
+            // point does not care which process was the launcher: it scans
+            // /proc/<pid>/environ for PIPELINE_OP_COOKIE=<real>, then SIGTERMs
+            // and SIGKILLs the session that owns it. The warning was a
+            // diagnostic about implementation choice dressed up as a fault,
+            // and a healthy `pipelinek run` produced one per `sh` step.
+            //
+            // Real failures (signal delivery, fork failure, timeout) are
+            // still surfaced as typed results below; only the noise was
+            // removed.
 
             handle
         } catch (e: Exception) {

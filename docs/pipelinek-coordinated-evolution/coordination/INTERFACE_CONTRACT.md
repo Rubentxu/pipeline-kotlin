@@ -19,6 +19,8 @@
     > **CRIC-M1 (v0.49.0-rc1, 2026-10-10):** `output.follow.v1` y `events.follow.v1` quedan **publicadas** en el release de PipelineK `v0.49.0-rc1`. La ausencia deja de ser el caso por defecto para consumidores que adopten ese release; los releases anteriores siguen bajo el contrato "ausencia => fallback o refusal" sin cambios. Certifying tests: `SegmentOutputFollowerTest` (18 casos, `:pipeline-output-store`) y `EventFollowerAdapterTest` (18 casos, `:pipeline-events-store`); cross-JVM e2e: `M1DCrossJvmFollowTest` (6 casos UAT-PK-M1-001..006, `:pipeline-application`). La autoridad del cambio de contrato exige la actualización de `CONTRACT_SHA256.txt` y el recibo de release inmutable.
     >
     > **CRIC-M2 (v0.50.0-rc1, 2026-10-10):** `runtime.inspect.v1`, `runtime.cancel.v1` y `runtime.recover.v1` quedan **publicadas como EXPERIMENTAL** en el release de PipelineK `v0.50.0-rc1`. Certifying tests: `RuntimeIntrospectionPortAdapterTest` (8 casos, `:pipeline-runtime`), `RuntimeControlPortAdapterTest` (8 casos, `:pipeline-runtime`) y `RuntimeRecoverPortAdapterTest` (8 casos, `:pipeline-runtime`); matriz pura de decisión: `RuntimeRecoverDecisionTableFitnessTest` (12 casos, `:pipeline-runtime`). La transición "EXPERIMENTAL => PUBLICADA" ocurre tras la certificación por `pipelinek-release-harness`; hasta entonces, los consumidores que adopten `v0.50.0-rc1` deben tratar las tres capacidades como negociables pero todavía no estables, y los releases anteriores siguen bajo el contrato "ausencia => fallback o refusal" sin cambios. Las capacidades M1 (`output.follow.v1`, `events.follow.v1`) se mantienen **PUBLICADA** en este release. La autoridad del cambio de contrato exige la actualización de `CONTRACT_SHA256.txt` y el recibo de release inmutable.
+    >
+    > **CRIC-M3 (v0.51.0-rc1, 2026-10-11):** `output.read.digested.v1`, `output.pin.v1` y `output.refusal.retention.v1` quedan **publicadas como EXPERIMENTAL** en el release de PipelineK `v0.51.0-rc1`. Certifying tests: `OutputReadDigestedAdapterTest` (5 casos, `:pipeline-output-store`), `OutputPinPortAdapterTest` (10 casos, `:pipeline-output-store`), `PruneAuthorisationAdapterTest` (5 casos, `:pipeline-output-store`), `OutputRefusalClosedTest` (4 casos, `:pipeline-output-store`) y `RecoverRefusalPinExtensionTest` (3 casos, `:pipeline-runtime`); además `CapabilityRegistrationTest` (5+ casos, `:pipeline-application`) pin byte-a-byte la presencia de las cinco capacidades M1+M2+M3 y la tabla CRIC-M3. La transición "EXPERIMENTAL => PUBLICADA" ocurre tras la certificación por `pipelinek-release-harness`; hasta entonces, los consumidores que adopten `v0.51.0-rc1` deben tratar las tres capacidades como negociables pero todavía no estables, y los releases anteriores siguen bajo el contrato "ausencia => fallback o refusal" sin cambios. Las capacidades M1 (`output.follow.v1`, `events.follow.v1`) se mantienen **PUBLICADA**; las capacidades M2 (`runtime.inspect.v1`, `runtime.cancel.v1`, `runtime.recover.v1`) permanecen **EXPERIMENTAL** en este release. La autoridad del cambio de contrato exige la actualización de `CONTRACT_SHA256.txt` y el recibo de release inmutable.
 7. **Control distribuido:** Fabric posee lease, fencing, asignación deseada y worker reconciler; PipelineK posee recuperación efectiva de sus operaciones. Un silencio del proceso o un socket desconectado no equivale a un resultado.
 8. **Replicación:** ACK únicamente tras persistir exactamente el rango y digest aceptados. Falta `[a,b)` + recepción `[b,c)` => Gap, no ACK acumulado; `(a,b,digestA)` repetido => AlreadyCommitted; digest distinto => Conflict.
 9. **Ownership:** PipelineK NO depende de Fabric, Jenkins, S3, Elasticsearch ni gRPC para su core; Fabric NO reinterpreta terminalidad por logs ni escribe directamente el journal privado de PipelineK.
@@ -67,3 +69,31 @@ negociables pero todavía no estables. Los releases anteriores siguen
 bajo "ausencia => fallback o refusal" sin cambios. La autoridad del
 cambio es el `release-receipt` del candidato correspondiente y la
 batería de certificación del certifier.
+
+## Capacidades publicadas (CRIC-M3)
+
+| Capability ID | Versión | Publicada en | Autor | Test unitario | Estado |
+|---|---|---|---|---|---|
+| `output.read.digested.v1` | v1 | `v0.51.0-rc1` (2026-10-11) | PipelineK | `OutputReadDigestedAdapterTest` (5 casos, `:pipeline-output-store`) | **EXPERIMENTAL** |
+| `output.pin.v1` | v1 | `v0.51.0-rc1` (2026-10-11) | PipelineK | `OutputPinPortAdapterTest` (10 casos, `:pipeline-output-store`) | **EXPERIMENTAL** |
+| `output.refusal.retention.v1` | v1 | `v0.51.0-rc1` (2026-10-11) | PipelineK | `PruneAuthorisationAdapterTest` (5 casos, `:pipeline-output-store`), `OutputRefusalClosedTest` (4 casos, `:pipeline-output-store`), `RecoverRefusalPinExtensionTest` (3 casos, `:pipeline-runtime`) | **EXPERIMENTAL** |
+
+Las tres capacidades M3 introducen superficie nueva sobre los puertos
+publicados de `:pipeline-output` (`OutputReadPort.readRangeDigested`,
+`OutputPinPort.pin / release / pinsOf / isPinned`,
+`OutputRetentionPort.canPrune`) y una cuarta superficie aditiva ya
+existente (`OutputRefusal` recibe `RetentionGap`, `Corrupt`,
+`Unavailable`, `RangeLostRetention`; `RecoverRefusal` recibe
+`PinnedBytesOutsideRecoveredRegion`). Los certifying tests arriba son
+los que demuestran el cierre de las invariantes I.4 (recover
+no-destructivo bajo pin), I.5 (retención honra pin) e I.6 (pérdida
+de retención como refusal tipado, no EOF) que el audit M3
+(`dab35001`) había marcado como `PARTIAL` / `UNVERIFIED`. La
+transición "EXPERIMENTAL => PUBLICADA" ocurre tras la certificación
+de la candidata `v0.51.0-rc1` por `pipelinek-release-harness`; hasta
+entonces, los consumidores que adopten `v0.51.0-rc1` deben tratar las
+tres capacidades como negociables pero todavía no estables. Los
+releases anteriores siguen bajo "ausencia => fallback o refusal" sin
+cambios. La autoridad del cambio es el `release-receipt` del
+candidato correspondiente y la batería de certificación del
+certifier.

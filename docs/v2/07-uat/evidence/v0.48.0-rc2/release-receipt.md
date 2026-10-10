@@ -1,6 +1,6 @@
 # PipelineK v0.48.0-rc2 — release-candidate receipt
 
-**Estado final:** `SUPERSEDED — STRUCTURALLY NON-CERTIFIABLE`.
+**Estado final:** `PROVENIENCIA_INCIDENT`.
 
 El tag `v0.48.0-rc2` (anotado, peel = `74c5331e`) lleva asociada una candidata
 publicada en GitHub cuyo ZIP renovado (`4bec0844…`) **no** fue construido desde

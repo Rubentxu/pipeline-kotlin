@@ -276,6 +276,19 @@ object ConsoleReadService {
         // so a script can branch on the prefix.
         is OutputRefusal.StorageError ->
             "console-refused: storage-error cause=${reason.cause}"
+        // M3 additions: the digest/pin/retention surface introduced four
+        // new refusal cases. Render them with stable, script-branchable text
+        // so consumers can grep the prefix. The sealed ADT discipline means
+        // adding a case forces this branch list to grow here at compile
+        // time — the discipline the audit §B.2 (d) requires.
+        is OutputRefusal.RetentionGap ->
+            "console-refused: retention-gap stream=${reason.stream.value} last-committed=${reason.lastCommitted}"
+        is OutputRefusal.Corrupt ->
+            "console-refused: corrupt stream=${reason.stream.value} reason=${reason.reason}"
+        OutputRefusal.Unavailable ->
+            "console-refused: unavailable"
+        is OutputRefusal.RangeLostRetention ->
+            "console-refused: range-lost-retention stream=${reason.stream.value} last-committed=${reason.lastCommitted}"
     }
 }
 

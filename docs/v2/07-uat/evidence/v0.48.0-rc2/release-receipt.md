@@ -1,28 +1,52 @@
 # PipelineK v0.48.0-rc2 — release-candidate receipt
 
-**Estado:** `CANDIDATE_PUBLISHED` — candidata construida sobre HEAD verde, tag inmutable
-publicado en `origin`, material en `dist/candidates/v0.48.0-rc2/`, **GitHub Prerelease
-publicada y asset verificado por re-descarga**. Pendiente: `CERTIFIED` por el
-release harness tras una segunda construcción independiente y comparación
-byte-a-byte.
+**Estado final:** `SUPERSEDED — STRUCTURALLY NON-CERTIFIABLE`.
 
-> **Renovación de la candidata 2026-10-10** (auditoría `wu-rp-053-workspace-contract`):
-> la primera construcción de `v0.48.0-rc2` (SHA-256 `0fd6aec2ddf8f7a1ff95bbb0cf64961b384ee078f1846acd94844925ea4ffea7`,
-> 88.2 MB) llevaba `Implementation-Version: 0.48.0-rc2` (4-componente SemVer) en
-> el manifest, lo que el `RuntimeApiVersion` rechazaba con `FATAL` en preflight.
-> La candidata renovada (SHA-256 `4bec0844ee06154e29755e9ccd8a3af7def2d40ebc1de969ebece60e5a5a4dc6`,
-> 88.2 MB) lleva `Implementation-Version: 0.48.0` (3-componente) y la release
-> `v0.48.0-rc2` mantiene su identidad y tag. Detalle en la sección
-> **"Auditoría wu-rp-053-workspace-contract y renovación de la candidata"** al
-> final de este recibo.
+El tag `v0.48.0-rc2` (anotado, peel = `74c5331e`) lleva asociada una candidata
+publicada en GitHub cuyo ZIP renovado (`4bec0844…`) **no** fue construido desde
+el commit de peel del tag sino desde `2e088f67` (el commit de auditoría que
+revirtió el bump 4-componente). Eso es un **incidente de procedencia** en los
+términos de `docs/pipelinek-release-evolution/shared/02-release-model-v2.md`
+§3 y de `docs/v2/03-specifications/DISTRIBUTION_RELEASE_SPEC.md` §7a
+(version laundering): el nombre del tag promete bytes que no proceden de su
+peel, por lo que la identidad "tag → bytes" no es defendible y el certifier
+no puede admitir la candidata como `CERTIFIED` mientras la asociación esté
+rota.
 
-**Release:** prerelease en GitHub. Asset re-descargado y verificado: sha256 y bytes
-idénticos a los medidos antes de publicar.
+El tag **no** se mueve ni se borra (la.release model v2 §3 y la regla 9 de
+AGENTS.md prohíben reescribir la historia publicada). La release en GitHub
+**no** se sobrescribe (la re-publicación anterior con `--clobber` ya
+introdujo el incidente y no se repite). La candidata correcta se publica en
+un tag nuevo (v0.48.0-rc3) con bytes que sí proceden de su peel; su recibo
+vive en `docs/v2/07-uat/evidence/v0.48.0-rc3/release-receipt.md`.
+
+> **Histórico de la candidata v0.48.0-rc2 (2026-10-10).** Primera construcción
+> (SHA-256 `0fd6aec2ddf8f7a1ff95bbb0cf64961b384ee078f1846acd94844925ea4ffea7`,
+> 88.2 MB) llevaba `Implementation-Version: 0.48.0-rc2` (4-componente SemVer)
+> en el manifest; el `RuntimeApiVersion` la rechazaba con `FATAL` en preflight
+> y el certifier la rechazó como `wu-rp-053-workspace-contract EXECUTED_FAIL`
+> (issue #103). Segunda construcción (SHA-256
+> `4bec0844ee06154e29755e9ccd8a3af7def2d40ebc1de969ebece60e5a5a4dc6`,
+> 88.2 MB) llevaba `Implementation-Version: 0.48.0` (3-componente) y superaba
+> el preflight, pero sus bytes proceden de `2e088f67` (HEAD de la auditoría)
+> mientras el tag `v0.48.0-rc2` sigue peelando a `74c5331e`. Esa disociación
+> es la raíz del incidente de procedencia. Detalle completo en la sección
+> **"Auditoría wu-rp-053-workspace-contract y renovación de la candidata"**
+> al final de este recibo y en `docs/v2/07-uat/evidence/v0.48.0-rc3/`.
+
+**Release (histórico):** prerelease en GitHub, ya no se modifica. El asset
+re-descargado y verificado (`4bec0844…`) es la prueba de que el binario
+renovado pasa el preflight, pero la asociación tag → bytes quedó rota y por
+eso esta candidata no es certificable en su identidad actual.
 
 - **URL:** https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.48.0-rc2
-- **Tag:** `v0.48.0-rc2` (anotado, peel = `74c5331` = `origin/main` = HEAD).
-- **Commit de build:** `74c5331` (version bump 0.48.0 → 0.48.0-rc2; regla 9 de AGENTS.md:
-  el tag se crea sobre commit ya integrado).
+- **Tag:** `v0.48.0-rc2` (anotado, peel = `74c5331e`).
+- **Commit de peel del tag:** `74c5331` (version bump 0.48.0 → 0.48.0-rc2; regla 9 de AGENTS.md:
+  el tag se crea sobre commit ya integrado). Esos bytes son los del primer
+  release, que el certifier rechazó con `CERTIFICATION_FAILED`.
+- **Commit de los bytes publicados actualmente:** `2e088f67` (auditoría
+  `wu-rp-053-workspace-contract`). Esos bytes pasan el preflight, pero no
+  son los del peel del tag, de ahí el incidente de procedencia.
 - **Push:** HECHO. `git push origin main` llevó `543e1cc5..e518bc82`. `git push origin
   v0.48.0-rc2` llevó el tag.
 

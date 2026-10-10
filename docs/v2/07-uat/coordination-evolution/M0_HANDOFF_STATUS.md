@@ -1,4 +1,4 @@
-# WIP-5 — Estado de handoff M0: PK_PREPARED, par usa v0.48.0-rc2 (sujeto a Fabric)
+# WIP-5 — Estado del lado PK en M0: PK_PREPARED, no espera
 
 **Fecha:** 2026-10-10
 **Hito:** M0 (evolución coordinada PK × Fabric)
@@ -6,6 +6,19 @@
 **Artefacto del par:** `v0.48.0-rc2` (publicado, SHA-256 `0fd6aec2ddf8f7a1ff95bbb0cf64961b384ee078f1846acd94844925ea4ffea7`).
 **Sujeto a verificación por Fabric.** PK **no** publica otro release; PK **no**
 espera. Puede seguir con trabajo autónomo no dependiente de esta iniciativa.
+
+## Regla de la que se deriva este estado
+
+`coordination/PAIR_RELEASE_FLOW.md` lo dice explícitamente: la ausencia de
+`PAIR_CERTIFIED` **bloquea la promoción del siguiente hito y el arranque integrado
+del siguiente**, **no** la implementación, las pruebas ni la publicación de la
+candidata del hito actual. Cada agente ejecuta su trabajo sobre su propio
+repositorio; el Pair Integrator ata el nudo después.
+
+`Para M0 no existe un certificado anterior`: el verificador exime M0 de
+`--previous-receipt` (`verify_pair_gate.py` línea 130: `if mid == 'M0': ensure(
+previous_receipt is None ...)`). Fabric hace su M0 y publica su propia candidata;
+el Pair Integrator la une después con la PK.
 
 ## Lo entregado por el agente PK
 
@@ -17,32 +30,31 @@ espera. Puede seguir con trabajo autónomo no dependiente de esta iniciativa.
 | WIP-4 | `pair_gate_selftest.py` verde | ✅ `M0_SELFTEST.log` (`PASS: shared contract equality; drift fail-closed; incomplete uncertified pair fail-closed`) |
 | WIP-5 | Apuntar handoff + bloqueo | ✅ este documento |
 
-## Lo que NO se ha hecho (lo hace el lado Fabric o el Pair Integrator)
+## Lo que hace cada rol en M0 (ninguno espera a otro)
 
-| Tarea | Quién | Bloqueo actual |
+| Rol | Qué hace | Estado |
 |---|---|---|
-| `FAB_CONSUMER_VERDICT.md` con rangos de compat, tests cruzados, divergencias | **Fabric Consumer Agent** | el repo `Rubentxu/pipelinek-fabric` está en `e6e4fd3` (medido el 2026-10-10) y no se ha tocado desde entonces; no hay consumer agent corriendo este ciclo |
-| `PAIR_RECEIPT.json` con `PAIR_CERTIFIED` para M0 | **Pair Integrator** (manual o tercer agente) | requiere el `FAB_CONSUMER_VERDICT.md` previo; requiere `git ls-remote` sobre `Rubentxu/pipelinek-fabric` |
-| `verify_pair_gate.py --strict-remote` exit 0 con `M0-<id> PASS; verified N mandatory log hashes; next milestone UNLOCKED` | **Pair Integrator** | requiere `pk_repo` y `fabric_repo` checkouteados localmente; no aplica en este workspace PK |
-| Certificación final y promoción del par M0 | **Pair Integrator** (en ambos roadmaps) | requiere los pasos anteriores |
+| **PK Producer Agent** (este lado) | Implementa, prueba, publica su candidata, emite `PK_CONTRACT_HANDOFF.md` | **Hecho.** `v0.48.0-rc2` publicado, SHA-256 `0fd6aec2…` |
+| **Fabric Consumer Agent** | Implementa, prueba, publica su candidata, emite `FAB_CONSUMER_VERDICT.md` | **Pendiente.** Repo Fabric en `e6e4fd3` (medido el 2026-10-10). Ningún recibo cruzado lo bloquea: el verificador exime M0 de `--previous-receipt` |
+| **Pair Integrator** | Verifica que el `INTERFACE_CONTRACT.md` sea byte-idéntico en ambos paquetes, ejecuta `verify_pair_gate.py --strict-remote` con el `PAIR_RECEIPT.json` firmado por las dos partes | **Pendiente.** No espera: ata el nudo cuando AMBOS lados han publicado |
 
-> **Decisión del Pair Integrator (2026-10-10):** PK **no** publica otro release;
-> PK **no** espera. El par M0 usa el artefacto publicado `v0.48.0-rc2` sujeto a
-> verificación por Fabric. PK puede continuar con trabajo autónomo no
-> dependiente de esta iniciativa. El lado PK de M0 está **cerrado**.
+`coordination/PAIR_RELEASE_FLOW.md` §"Seguridad del orden (evitar interbloqueo)"
+lo dice: **"Desarrollo paralelo permitido bajo dos worktrees y artifacts candidate
+inmutables, con contrato congelado. Promoción bloqueada hasta aprobación cruzada.
+No exigir que ambas publicaciones sucedan de forma atómica en Git."**
 
-## Por qué M0 no se cierra aquí
+La instrucción correcta para M0 es:
 
-CRIC-1 §"Regla de bloqueo" y `coordination/PAIR_RELEASE_FLOW.md` §"Estados
-válidos del gate" lo dicen explícitamente: la promoción del par exige un único
-`PAIR_RECEIPT.json` con `state=PAIR_CERTIFIED`, **no** un estado narrativo
-divergente. PK entrega el handoff y mide lo que le toca; el certificado del par
-lo emite el Pair Integrator tras cruzar ambos lados.
+- **PK**: ejecuta su M0, publica su candidata, emite su handoff. **No espera.**
+- **Fabric**: ejecuta su M0, publica su candidata, emite su verdict. **No espera.**
+- **Pair Integrator**: ejecuta su gate cuando ambos lados han publicado, produce
+  `PAIR_CERTIFIED`. **No espera** (lo dispara cualquier humano/agente que vea
+  ambos candidatos publicados).
+- **`PAIR_RECEIPT.json` con `PAIR_CERTIFIED` para M0** solo puede existir DESPUÉS
+  de que los dos agentes hayan ejecutado su M0. Nadie debe esperar un recibo que
+  solo puede producirse después de ejecutar su propio trabajo.
 
-`agent/PIPELINEK-AGENT-HANDOFF.md` lo refuerza: "No marcar M(n) DONE hasta que
-Pair Integrator certifique ambas releases juntas y autorice M(n+1)."
-
-## Acciones del lado PK ya tomadas para acelerar M0
+## Acciones del lado PK ya tomadas para M0
 
 - HEAD PK local = `origin/main` (sin commits sin pushear), `65f97430`.
 - Tag `v0.48.0-rc2` publicado y ancestro de `origin/main`.
@@ -73,20 +85,18 @@ Pair Integrator certifique ambas releases juntas y autorice M(n+1)."
 
 ## Reanudación
 
-Cuando el `FAB_CONSUMER_VERDICT.md` llegue al Pair Integrator, este:
-1. Verifica que el `INTERFACE_CONTRACT.md` siga byte-idéntico en ambos paquetes
-   (`sha256sum coordination/INTERFACE_CONTRACT.md` en PK y Fabric).
-2. Ejecuta `verify_pair_gate.py --strict-remote` con los clones PK y Fabric
-   y el `PAIR_RECEIPT.json` firmado.
-3. Si exit 0, declara `PAIR_CERTIFIED` para M0 y refresca el `ROADMAP.md` PK
-   con la fila correspondiente.
-4. Si exit ≠ 0, emite `BLOCKED_RECEIPT.md` con motivo y la acción correctiva.
-
-PK queda en espera. No hay más trabajo PK para M0; el lado PK está hecho.
+El Pair Integrator, cuando vea `v0.48.0-rc2` publicado en PK y la candidata de
+Fabric publicada, ejecuta `verify_pair_gate.py --strict-remote` con el
+`PAIR_RECEIPT.json` firmado por ambos agentes. Si exit 0, declara
+`PAIR_CERTIFIED` para M0. **No hay nadie esperando** a que esto pase para
+trabajar: PK ya hizo su parte; Fabric hace la suya; el Pair Integrator ata el
+nudo.
 
 ## Próximo paso
 
 WIP-13: refrescar `docs/v2/05-roadmap/ROADMAP.md` con la fila de la iniciativa
-de evolución coordinada M0–M7, una vez que el Pair Integrator emita
-`PAIR_CERTIFIED` para M0. Hasta entonces, la fila queda como `BLOQUEADO — espera
-de FAB_CONSUMER_VERDICT.md + PAIR_RECEIPT.json firmado`.
+de evolución coordinada M0–M7, **sin esperar** a `PAIR_CERTIFIED` (la fila
+refleja el estado del lado PK como `PK_PREPARED`; cuando llegue
+`PAIR_CERTIFIED` se actualiza a `M0_CERTIFIED` y se autoriza M1 como trabajo
+integrado). Hasta entonces, el lado PK de M0 está **cerrado** y PK puede
+seguir con trabajo autónomo no dependiente de esta iniciativa.

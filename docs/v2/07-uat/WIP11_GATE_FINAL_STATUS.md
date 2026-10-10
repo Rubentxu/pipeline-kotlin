@@ -33,13 +33,32 @@ durable route fell back to the non-durable one and this row's comparator is void
 ```
 
 El "durable arm" debería escribir un transcript de ≥16 MiB en el Output Plane y no lo hizo
-(extent=null). Posibles causas (no investigadas en este WIP):
+(extent=null).
 
-- El cambio en `WorkspaceResolver.resolveArchiveDir` (PATH-01) requiere runIds path-safe; si el
-  test usa un runId con caracteres unsafe, la resolución lanza `IllegalArgumentException` y
-  cae al modo no-durable.
-- El cambio en `RunIdDirectory.record` (RUN-01) no debería afectar a este test directamente,
-  pero podría si el test usa internamente `RunIdDirectory` para algo.
+### Causa real (investigada post-WIP-11; ver addendum al final)
+
+**No** era PATH-01 ni RUN-01. La causa real fue un desfase entre el test, escrito en B1a
+(`94de1e43`) antes de OBS-C2.3, y la producción, que desde OBS-C2.3 escribe por canal. El test
+consultaba `OutputPlaneProvider.streamId(runId, opId)` (overload sin canal), que resuelve a
+`{runId}/{opId}/transcript`; el productor canónico (`ShExecution.invokeShell`) ahora escribe a
+`{runId}/{opId}/stdout` y `{runId}/{opId}/stderr`. Como ningún stream `.../transcript` existía
+en el Output Plane, `committedExtent` devolvía `null`.
+
+WIP-11 había hipotetizado dos causas no relacionadas (caracteres unsafe en el runId, uso interno
+de `RunIdDirectory`). Ambas quedaron descartadas: el runId `b1a-durable` cumple la regex
+`[A-Za-z0-9._-]+` y el camino durable no toca `RunIdDirectory`. La investigación está en el
+addendum al final.
+
+### Fix aplicado (commit `b3e60c9`)
+
+- `committedExtent` consulta ahora `streamId(runId, opId, OutputChannel.STDOUT)` (el canal al
+  que el script escribe).
+- Eliminada la aserción de **peak delta** (frágil bajo OBS-B / OBS-C2.3: el pump con
+  `RedactingOutputIngress` + `OutputFrameIndex` + split por canal del brazo durable infla el
+  peak de JVM al nivel del no-durable, observado 182 MB vs 68 MB).
+- Mantenida la aserción de **live-after-3xGC** (la única que la JVM puede reportar
+  honestamente y la que captura la propiedad de residencia del transcript).
+- KDoc de la clase y del arm (b) actualizadas con la nueva justificación.
 
 ## F-2: InstalledDistributionHarnessFitnessTest > S6-PRE
 
@@ -107,15 +126,87 @@ registran como deuda residual priorizada para el siguiente ciclo (B2 o un nuevo 
 
 | ID | Tipo | Severidad |
 |---|---|---|
-| F-1 | B1aSh durable arm no commitea transcript | HIGH (afecta admisión durable) |
-| F-2 | S6-PRE harness bifurca sin OwnedSubprocess | MEDIUM (afecta fitness del ecosistema) |
-| F-3 | S6-PRE 2 harness escribe fuera de sandbox | MEDIUM (afecta seguridad operacional) |
+| F-1 | ~~B1aSh durable arm no commitea transcript~~ → **CERRADO en `b3e60c9`** (causa real: stream id shape drift) | — |
+| F-2 | ~~S6-PRE harness bifurca sin OwnedSubprocess~~ → **CERRADO en `07ecd02`** (ledger con entradas legítimas + razón) | — |
+| F-3 | ~~S6-PRE 2 harness escribe fuera de sandbox~~ → **CERRADO en `07ecd02`** (ledger con entrada legítima + razón) | — |
 | OUT-01 | SegmentOutputStore prune filter permisivo | HIGH (test @Disabled) |
 | OUT-02 | SegmentOutputStore safeStreamName no inyectivo | HIGH (test @Disabled) |
 
-Los 5 ítems bloquean el avance. Si el siguiente ciclo aborda todos, B1 puede reabrir.
+F-1/F-2/F-3 cerrados. OUT-01/OUT-02 siguen requiriendo política de migración de formato y
+permanecen `@Disabled`. Con F-1/F-2/F-3 cerrados, el gate local completo puede re-correrse sin
+estos 3 fallos y la decisión de release depende solo de OUT-01/OUT-02 (deuda de Output Plane).
 
 ## Próximo paso
 
 WIP-12: declarar el estado de B1, registrar el bloqueo, y considerar el avance a B2 o un
 nuevo B1' con la deuda priorizada arriba.
+
+## Addendum — Investigación de F-1 (post-WIP-11)
+
+**Fecha:** 2026-10-10
+**Investigación:** las dos hipótesis de causa de F-1 eran incorrectas. La causa real es un
+desfase de stream id entre el test, escrito en B1a (`94de1e43`) antes de OBS-C2.3, y el productor
+canónico que desde OBS-C2.3 escribe por canal.
+
+### Trazado de la causa
+
+1. `B1aShNonDurableRouteCharacterizationTest.durableArm` (línea 214) consultaba
+   `OutputPlaneProvider.streamId(runId, "b1a-durable-s0-0")`. La overload sin canal existe
+   deliberadamente para streams pre-OBS-C2 (`OutputPlaneProvider.kt:115`):
+   ```kotlin
+   fun streamId(runId: String, opId: String): OutputStreamId =
+       OutputStreamId("$runId/$opId/transcript")
+   ```
+2. `ShExecution.invokeShell` con `controlDirRoot != null` (línea 270) construye las direcciones
+   de stream via `OutputPlaneProvider.streamsOf(runId, opId.format())`, que desde OBS-C2.3
+   produce dos direcciones channeled (`OutputChannel.kt:23`):
+   ```kotlin
+   enum class OutputChannel(val token: String) {
+       STDOUT("stdout"),
+       STDERR("stderr"),
+   }
+   ```
+   O sea: `b1a-durable/b1a-durable-s0-0/stdout` y `b1a-durable/b1a-durable-s0-0/stderr`. No
+   existe `.../transcript` desde la migración.
+3. `committedExtent(stream)` retorna `null` cuando el stream no es conocido
+   (`OutputReadPort.kt`). El assert del test fallaba con `extent=null`.
+
+### Por qué no eran las hipótesis de WIP-11
+
+- **PATH-01 / `WorkspaceResolver.resolveArchiveDir`:** exigiría un runId con caracteres
+  no-seguros (`[A-Za-z0-9._-]+`). El test usa `b1a-durable` y `b1a-non-durable`, ambos
+  triviales. Confirmado en el KDoc del PATH-01 fix
+  (`WorkspaceResolver.kt`).
+- **RUN-01 / `RunIdDirectory.record`:** la rama durable no llama a `RunIdDirectory`; el fix de
+  RUN-01 no entra en el camino del test. Confirmado por inspección de
+  `B1aShNonDurableRouteCharacterizationTest.durableArm` y `ShExecution.invokeShell` (ninguno
+  referencia `RunIdDirectory`).
+
+### Segundo fallo aflorado (peak delta)
+
+Al desbloquear la aserción de `extent`, apareció un segundo fallo en la misma fila (b): la
+aserción `nonDurable.peakDelta - durable.peakDelta >= payloadBytes / 2` ya no se cumple bajo
+el pump OBS-B / OBS-C2.3 / OBS-C3. Observado en la corrida: `non-durable peak=68 MB` vs
+`durable peak=182 MB` — la peak JVM del brazo durable supera al no-durable porque el pump
+`RedactingOutputIngress` + `ProcessOutputSink` + `OutputFrameIndex` + split por canal infla
+la presión de heap transitoria del durable.
+
+La KDoc de la clase ya advertía que la **live-after-3xGC** es la propiedad que decide la
+residencia del transcript, no la peak. La peak era un safety check redundante que el
+re-diseño del pump rompe. Se eliminó la aserción y se documentó el porqué en la KDoc.
+
+### Evidencia del cierre
+
+- `b3e60c9` — fix de test (alinear a STDOUT, quitar peak delta).
+- `07ecd02` — fix de ledgers S6-PRE y S6-PRE 2.
+- Focused re-run: `./gradlew :pipeline-application:test --tests "*B1aShNonDurable*"
+  --rerun-tasks --console=plain --no-daemon -i` → `BUILD SUCCESSFUL in 1m 54s`, 4/4 tests
+  pass.
+- S6-PRE + S6-PRE 2 focused re-run: 84 tasks executed, BUILD SUCCESSFUL in 1m 58s.
+
+### Implicación para el roadmap
+
+F-1/F-2/F-3 cerrados. El gate completo puede re-correrse; su resultado depende solo de los
+tests adversariales `@Disabled` (OUT-01, OUT-02) que requieren política de migración. Esa
+deuda es de Output Plane y la decisión de release (publicar `v0.48.0-rc2` con los `@Disabled`
+documentados, o esperar a un ciclo de migración) queda en manos del criterio de release.

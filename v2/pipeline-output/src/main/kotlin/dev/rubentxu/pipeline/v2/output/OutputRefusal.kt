@@ -81,6 +81,21 @@ sealed interface OutputRefusal {
      * cancelled follow.
      */
     data class FollowCancelled(val runId: String) : OutputRefusal
+
+    /**
+     * M1-B — the underlying storage failed during a follow poll.
+     *
+     * The follow contract is total: a thrown exception from
+     * [OutputReadPort.read], [OutputFrameIndex.framesOfRun] or
+     * [OutputTailPort.tailState] is caught at the follower boundary
+     * and surfaced as this refusal with a short diagnostic [cause].
+     * The M1-A review notes that an IOException-as-control-flow is
+     * a hole in the closed ADT, and the parallel port on the event
+     * side already exposes
+     * [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal.StorageError]
+     * for the same reason; the Output side mirrors it.
+     */
+    data class StorageError(val cause: String) : OutputRefusal
 }
 
 /** A read that either produced a bounded page or was refused. */

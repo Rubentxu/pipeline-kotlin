@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
+import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
+import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventRecordRead
 import dev.rubentxu.pipeline.v2.events.EventRecordSlice
@@ -251,24 +253,28 @@ class EventRecordReadPortAdapterTest {
         }
 
         @Test
-        fun `7 EventQuery is a no-op pass-through in the current SqliteEventStore`(@TempDir tempDir: Path) {
+        fun `7 EventQuery All is the only accepted query, non-All surfaces as StorageError refusal`(@TempDir tempDir: Path) {
             val (_, port) = freshAdapter(tempDir)
-            // Any query — including one that would, in a hypothetical
-            // future store, restrict the result — currently returns the
-            // same 3 typed rows because SqliteEventStore.readRecords
-            // does not filter. The audit M1_OUTPUT_EVENTS_AUDIT.md Q3
-            // pins this; the contract is that the port signature is
-            // stable while store-side filtering lands as an internal
-            // optimisation.
+            // The M1-A pass-through audit found that the underlying
+            // store did not filter on the read path, so a query that
+            // should have restricted the page silently returned the
+            // full one. The M1-A follow-up correction made the no-op
+            // explicit: any non-All query is refused closed with a
+            // StorageError naming the unsupported kind. The port
+            // signature is unchanged so callers continue to compile.
             val allEvents = port.readRecords(runId, after = null, query = EventQuery.All, limit = 10)
             val byKind = port.readRecords(
                 runId, after = null,
                 query = EventQuery.ByKind("RunStarted"), limit = 10,
             )
             val allPage = assertInstanceOf(EventRecordReadResult.Page::class.java, allEvents)
-            val byKindPage = assertInstanceOf(EventRecordReadResult.Page::class.java, byKind)
             assertEquals(3, allPage.slice.records.size)
-            assertEquals(3, byKindPage.slice.records.size, "SqliteEventStore does not filter; pass-through")
+            val byKindRefused = assertInstanceOf(EventRecordReadResult.Refused::class.java, byKind)
+            val err = assertInstanceOf(EventRecordReadRefusal.StorageError::class.java, byKindRefused.refusal)
+            assertTrue(
+                err.cause.contains("ByKind") && err.cause.contains("RunStarted"),
+                "StorageError must name the unsupported query kind, got '${err.cause}'",
+            )
         }
 
         @Test
@@ -429,6 +435,218 @@ class EventRecordReadPortAdapterTest {
                 val secondPage = assertInstanceOf(EventRecordReadResult.Page::class.java, second)
                 assertEquals(1, secondPage.slice.records.size)
                 assertEquals(false, secondPage.slice.hasMore, "no rows beyond sequence 3")
+            } finally {
+                store.close()
+            }
+        }
+    }
+
+    @Nested
+    @DisplayName("M1-A follow-up: non-All EventQuery, cursor runId mismatch, lease authority, slice preservation")
+    inner class FollowUpCorrections {
+
+        @Test
+        fun `14 EventQuery non-All is refused with StorageError naming the unsupported kind`(
+            @TempDir tempDir: Path,
+        ) {
+            // Each non-All EventQuery case (ByKind, BySource, BySubject,
+            // BySequenceRange) surfaces as StorageError with the kind
+            // named in the diagnostic. The port signature is stable;
+            // the change is at the adapter's refusal surface.
+            val (_, port) = openSqliteStoreWithEvents(tempDir, threeEvents()).let { store ->
+                store to EventRecordReadPortStoreAdapter(store, store::hasRun, store::tailSequence)
+            }
+            val cases = listOf(
+                EventQuery.ByKind("RunStarted"),
+                EventQuery.BySource(
+                    ResourceRefs.run("test-source-run"),
+                ),
+                EventQuery.BySubject(
+                    ResourceRefs.run("test-subject-run"),
+                ),
+                EventQuery.BySequenceRange(1L, 3L),
+            )
+            for (q in cases) {
+                val result = port.readRecords(runId, after = null, query = q, limit = 10)
+                val refused = assertInstanceOf(
+                    EventRecordReadResult.Refused::class.java, result,
+                    "non-All query must refuse, got $result for $q",
+                )
+                val err = assertInstanceOf(
+                    EventRecordReadRefusal.StorageError::class.java, refused.refusal,
+                )
+                assertTrue(
+                    err.cause.startsWith("query not supported:"),
+                    "StorageError must name the kind, got '${err.cause}'",
+                )
+            }
+        }
+
+        @Test
+        fun `15 a cursor whose runId does not match the requested runId is refused with StorageError`(
+            @TempDir tempDir: Path,
+        ) {
+            // Compose the adapter against a real store. A consumer that
+            // passes a cursor from a DIFFERENT run is making a contract
+            // error: the cursor's runId is a parameter of the API, not
+            // a fact about the store, so the mismatch check happens
+            // BEFORE the existence / tail-sequence calls. The check is
+            // deliberately placed first so the StorageError diagnostic
+            // names the cursor's runId AND the requested runId, leaving
+            // the operator with no ambiguity about which runId was
+            // meant.
+            val (store, port) = run {
+                val s = openSqliteStoreWithEvents(tempDir, threeEvents())
+                s to EventRecordReadPortStoreAdapter(s, s::hasRun, s::tailSequence)
+            }
+            try {
+                val otherRunCursor = EventCursor("some-other-run-id", 0L)
+                val result = port.readRecords(
+                    runId = runId,
+                    after = otherRunCursor,
+                    query = EventQuery.All,
+                    limit = 10,
+                )
+                val refused = assertInstanceOf(EventRecordReadResult.Refused::class.java, result)
+                val err = assertInstanceOf(EventRecordReadRefusal.StorageError::class.java, refused.refusal)
+                assertTrue(
+                    err.cause.contains("some-other-run-id") && err.cause.contains(runId),
+                    "StorageError must name both runIds, got '${err.cause}'",
+                )
+            } finally {
+                store.close()
+            }
+        }
+
+        @Test
+        fun `16 a run known to the lease but with no events returns Page(hasMore=false), distinct from UnknownRun`(
+            @TempDir tempDir: Path,
+        ) {
+            // The lease is the primary authority for run existence.
+            // A run whose [FileBackedRunExecutionLeaseStore] has ever
+            // recorded a lease MUST answer `true` from `runExists`
+            // even if no event has been written to the events table.
+            // Without this, a freshly declared but quiet run would
+            // surface as `UnknownRun` on the read port, which is
+            // semantically wrong: the run exists, it just has not
+            // produced any event yet. The compose site (the test
+            // fixture here; the production wiring is the same shape)
+            // supplies `leaseStore.isKnown(runId) || store.hasRun(runId)`
+            // as the `runExists` callback.
+            val store = SqliteEventStore(tempDir.resolve("lease-only.db").toString())
+            val leaseStore = FileBackedRunExecutionLeaseStore(tempDir.resolve("leases"))
+            try {
+                // No events appended. The lease has been acquired once
+                // and released: the record file exists on disk.
+                val acquisition = leaseStore.acquire(
+                    LeaseRequest(runId, RunOwnerId.of("test-owner")!!),
+                )
+                assertInstanceOf(LeaseAcquisition.Acquired::class.java, acquisition)
+                leaseStore.release(RunOwnerId.of("test-owner")!!)
+                // The composed authority: lease OR store row presence.
+                // The lease authority is primary; the store row check
+                // is the fallback.
+                val composedRunExists: (String) -> Boolean = { rid ->
+                    leaseStore.isKnown(rid) || store.hasRun(rid)
+                }
+                val port = EventRecordReadPortStoreAdapter(
+                    store,
+                    runExists = composedRunExists,
+                    tailSequence = store::tailSequence,
+                )
+                val result = port.readRecords(runId, after = null, query = EventQuery.All, limit = 10)
+                // The Page, NOT the UnknownRun: the lease says yes, so
+                // an empty run answers with a (possibly empty) Page
+                // rather than refusing.
+                val page = assertInstanceOf(EventRecordReadResult.Page::class.java, result)
+                assertEquals(0, page.slice.records.size)
+                assertEquals(false, page.slice.hasMore)
+                // The cursor advances from `null` to the same run's
+                // zero-sequence cursor; nextCursor.lastSequence == 0.
+                assertEquals(EventCursor(runId, 0L), page.slice.nextCursor)
+            } finally {
+                runCatching { leaseStore.close() }
+                runCatching { store.close() }
+            }
+        }
+
+        @Test
+        fun `17 readRecords returns the slice verbatim - Undecodable, sequence, hasMore, nextCursor`(
+            @TempDir tempDir: Path,
+        ) {
+            // The adapter does NOT re-cut, does NOT re-decode, does NOT
+            // drop refusals. The M1-A design rule pins the store as
+            // the page authority: the adapter delegates to
+            // `store.readRecords(...)` and surfaces the slice verbatim.
+            // This test seeds a row the store cannot decode (a
+            // syntactically malformed payload for a typed event) and
+            // asserts the adapter preserves the Undecodable row,
+            // carries the next cursor past it, and reports
+            // `hasMore=false` correctly.
+            //
+            // We bypass the typed append path (the store would refuse
+            // a typed payload that does not parse) by inserting an
+            // undecodable row directly via the schema: an
+            // `UnknownKind` row whose `kind` column references a kind
+            // this binary does not know. The store's `append` does not
+            // expose an `UnknownKind` path; this is the audit's
+            // "audit-only" shape, exercised here through the SQLite
+            // connection the test opens by hand. The adapter's
+            // contract — preserve slice verbatim — is the property
+            // under test.
+            val dbFile = tempDir.resolve("slice.db").toString()
+            val store = SqliteEventStore(dbFile)
+            try {
+                // Three typed events via the store's append path.
+                for (event in threeEvents()) {
+                    store.append(event)
+                }
+                store.flush()
+                // One Undecodable row inserted directly. The store's
+                // `append` API does not accept an unknown kind; the
+                // audit shape is the row on disk, which we insert here
+                // to pin the slice-preservation law. The schema has
+                // `(event_id, run_id, sequence, kind, occurred_at, payload)`
+                // (cf. SqliteEventStore CREATE TABLE), so we populate
+                // every NOT NULL column including `occurred_at`.
+                val conn = java.sql.DriverManager.getConnection("jdbc:sqlite:$dbFile")
+                conn.use { c ->
+                    c.prepareStatement(
+                        "INSERT INTO events(event_id, run_id, sequence, kind, occurred_at, payload) VALUES (?, ?, ?, ?, ?, ?)",
+                    ).use { ps ->
+                        ps.setString(1, "evt-4-broken")
+                        ps.setString(2, runId)
+                        ps.setLong(3, 4L)
+                        ps.setString(4, "UnknownKind")
+                        ps.setString(5, at.toString())
+                        ps.setBytes(6, "garbage-not-json".toByteArray())
+                        ps.executeUpdate()
+                    }
+                }
+                val port = EventRecordReadPortStoreAdapter(store, store::hasRun, store::tailSequence)
+                val result = port.readRecords(runId, after = null, query = EventQuery.All, limit = 10)
+                val page = assertInstanceOf(EventRecordReadResult.Page::class.java, result)
+                // 3 typed + 1 undecodable = 4 records, the limit-bound
+                // counted ROWS not decodable events.
+                assertEquals(4, page.slice.records.size, "slice has every row in store order")
+                val typed = page.slice.records.filterIsInstance<EventRecordRead.Decoded>()
+                val undecodable = page.slice.records.filterIsInstance<EventRecordRead.Undecodable>()
+                assertEquals(3, typed.size)
+                assertEquals(1, undecodable.size)
+                // The Undecodable row carries its identity (sequence,
+                // eventId) verbatim from the row's columns.
+                val u = undecodable[0]
+                assertEquals(4L, u.sequence)
+                assertEquals("evt-4-broken", u.eventId)
+                assertEquals("UnknownKind", u.kind)
+                // nextCursor advances to the last row's sequence, not
+                // the last DECODED row's — a resuming reader pages
+                // past the refusal on purpose instead of re-reading
+                // it forever or stepping over it blind. The audit's
+                // pagination rule (count rows, decode inside the
+                // page) is what makes this honest.
+                assertEquals(EventCursor(runId, 4L), page.slice.nextCursor)
+                assertEquals(false, page.slice.hasMore, "no rows beyond sequence 4")
             } finally {
                 store.close()
             }

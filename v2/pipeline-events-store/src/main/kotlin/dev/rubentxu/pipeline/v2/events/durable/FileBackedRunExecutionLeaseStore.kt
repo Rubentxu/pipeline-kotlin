@@ -161,6 +161,33 @@ class FileBackedRunExecutionLeaseStore(
     }
 
     /**
+     * Whether a lease for [runId] has ever been recorded on disk (acquired,
+     * taken over, reentered, or released).
+     *
+     * The check is row-presence on the durable record file, NOT the lock
+     * table: the OS lock only knows whether THIS JVM currently holds the
+     * lock for [runId], whereas the M1-A "is this run known" authority needs
+     * to answer positively for a run whose lease was released earlier in
+     * the same process, or owned by a process that has since died and had
+     * its lock swept by the kernel. The record file is the audit trail that
+     * survives both lifecycles.
+     *
+     * The lease authority is the primary answer for run existence: a run
+     * that was deliberately declared (via [acquire]) MUST answer `true`
+     * even if it has not yet produced any event. This is the wiring the
+     * `EventRecordReadPortStoreAdapter.runExists` callback composes with
+     * `SqliteEventStore::hasRun` so an empty-but-declared run does not
+     * surface as [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal.UnknownRun]
+     * on the read port.
+     *
+     * Returns `false` for a runId whose record file does not exist (never
+     * acquired, or acquired on a previous lease-dir that has since been
+     * cleaned up).
+     */
+    fun isKnown(runId: String): Boolean =
+        Files.isRegularFile(leaseDir.resolve(recordFileName(runId)))
+
+    /**
      * Whether [held] is still the authoritative token for [runId]. This is the
      * fencing check a publisher calls immediately before writing.
      */

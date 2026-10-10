@@ -29,11 +29,16 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
  *    store via the [runExists] callback before calling readRecords.
  *    A Sqlite-backed adapter supplies `EXISTS(SELECT 1 FROM events
  *    WHERE run_id = ?) LIMIT 1`; an in-memory adapter supplies
- *    `runId in knownRuns`. Without this distinction, a consumer
+ *    `runId in knownRuns`. The production composition wires the lease
+ *    authority in addition: a run whose [FileBackedRunExecutionLeaseStore]
+ *    ever recorded a lease is "known" even if it has not yet produced
+ *    an event, and `leaseStore.isKnown(runId) || store.hasRun(runId)`
+ *    is the composed callback. Without this distinction, a consumer
  *    cannot tell whether `readRecords` returned zero rows because the
  *    run does not exist or because the run exists but has not yet
  *    produced any event. The operator's correction #6 in the M1
- *    review (2026-10-10) made this distinction mandatory.
+ *    review (2026-10-10) made this distinction mandatory; correction
+ *    #3 in the post-M1 follow-up made the lease authority primary.
  *
  *  - the **cursor-past-tail distinction** ([EventRecordReadRefusal.CursorBeyondTail]
  *    vs an empty [EventRecordReadResult.Page]). The underlying
@@ -48,18 +53,34 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
  *    The callback returns `null` for an empty run, in which case
  *    ANY non-null `after` is also past the tail.
  *
+ *  - the **cursor runId mismatch rejection** ([EventRecordReadRefusal.StorageError]).
+ *    An `after` whose `runId` differs from the requested `runId` is a
+ *    contract violation — a consumer mixed two cursors from different
+ *    runs — and is refused closed BEFORE the existence / tail checks.
+ *    The check is BEFORE the existence check because it is a
+ *    contract-level error, not a state error: the cursor's runId is
+ *    a parameter of the API, not a fact about the store. Surfacing it
+ *    as [EventRecordReadRefusal.StorageError] (rather than a separate
+ *    closed hierarchy case) keeps the refusal ADT unchanged.
+ *
+ *  - the **[EventQuery] argument refusal** ([EventRecordReadRefusal.StorageError]).
+ *    A non-[EventQuery.All] query is refused closed with a
+ *    `StorageError("query not supported: <kind>")` diagnostic. The
+ *    underlying [EventStore.readRecords] does not filter (it is the
+ *    sequence authority and the cut point, not a query engine); the
+ *    previous "pass-through" semantic was honest but left a query
+ *    filterless, which silently returned the full page. The operator's
+ *    correction says "explicit refusal is the correct answer; filter
+ *    belongs to M6 (Context/Pressure), not M1". The port signature is
+ *    unchanged so existing callers continue to compile; a caller that
+ *    passes `EventQuery.ByKind(...)` now sees a refusal with the
+ *    kind named in the diagnostic.
+ *
  *  - the **storage-error translation**. Any exception from
  *    [EventStore.readRecords] is caught and translated to
  *    [EventRecordReadRefusal.StorageError] with a short diagnostic.
  *    The port is total; a thrown exception would defeat the closed
  *    refusal hierarchy.
- *
- *  - the **[EventQuery] argument** is currently a no-op (the underlying
- *    [EventStore.readRecords] does not filter; it is the sequence
- *    authority and the cut point, not a query engine). The contract
- *    is that query filtering happens at the store layer when the store
- *    supports it. A future store-side filter implementation will plug
- *    in here without a port change.
  *
  *  - the **[after] cursor** is passed through to the store, which is
  *    the page authority. The store is responsible for the
@@ -77,10 +98,17 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
 class EventRecordReadPortStoreAdapter(
     private val store: EventStore,
     /**
-     * The store-side authority that distinguishes a known run with no
+     * The composed authority that distinguishes a known run with no
      * history yet from a run that does not exist. The adapter calls
      * this BEFORE [EventStore.readRecords] so an empty page is
      * unambiguous.
+     *
+     * For a production Sqlite + lease composition, the wiring is
+     * `leaseStore.isKnown(runId) || store.hasRun(runId)`: the lease
+     * authority is primary (a run that was deliberately declared via
+     * `acquire` is known even if no event has been written yet), with
+     * the `SELECT EXISTS` fallback covering cases where the lease
+     * record was cleaned up but the events survived.
      */
     private val runExists: (String) -> Boolean,
     /**
@@ -102,6 +130,35 @@ class EventRecordReadPortStoreAdapter(
         if (limit <= 0) {
             return EventRecordReadResult.Refused(
                 EventRecordReadRefusal.StorageError("limit must be positive, got $limit"),
+            )
+        }
+        // The cursor's runId must match the requested runId; a mismatch
+        // is a contract error (the consumer passed a cursor from a
+        // different run), not a state error. Refuse BEFORE consulting
+        // the existence / tail authorities, which are about THIS run,
+        // not about the cursor's run.
+        if (after != null && after.runId != runId) {
+            return EventRecordReadResult.Refused(
+                EventRecordReadRefusal.StorageError(
+                    "cursor.runId (${after.runId}) does not match requested runId ($runId)",
+                ),
+            )
+        }
+        // The EventQuery argument is currently a no-op pass-through at
+        // the underlying store. Refusing non-All queries closed here
+        // makes the no-op explicit and surfaces a typed rejection the
+        // consumer can act on (M6 / Context/Pressure is where query
+        // filtering belongs, not M1).
+        if (query !is EventQuery.All) {
+            val kind = when (query) {
+                is EventQuery.ByKind -> "ByKind(${query.kind})"
+                is EventQuery.BySource -> "BySource(${query.source})"
+                is EventQuery.BySubject -> "BySubject(${query.subject})"
+                is EventQuery.BySequenceRange -> "BySequenceRange(${query.fromSequence}, ${query.toSequence})"
+                is EventQuery.All -> "All" // unreachable, kept for exhaustiveness
+            }
+            return EventRecordReadResult.Refused(
+                EventRecordReadRefusal.StorageError("query not supported: $kind"),
             )
         }
         if (!runExists(runId)) {

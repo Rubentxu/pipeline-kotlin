@@ -1,8 +1,18 @@
 # PipelineK v0.48.0-rc2 — release-candidate receipt
 
-**Estado:** `CANDIDATE_PUBLISHED` — candidata construida sobre HEAD verde, tag inmutable,
-material en `dist/candidates/v0.48.0-rc2/`. Pendiente: GitHub Prerelease (push y
-publicación), y CERTIFIED por el release harness.
+**Estado:** `CANDIDATE_PUBLISHED` — candidata construida sobre HEAD verde, tag inmutable
+publicado en `origin`, material en `dist/candidates/v0.48.0-rc2/`, **GitHub Prerelease
+publicada y asset verificado por re-descarga**. Pendiente: CERTIFIED por el release harness.
+
+**Release:** prerelease en GitHub. Asset re-descargado y verificado: sha256 y bytes
+idénticos a los medidos antes de publicar.
+
+- **URL:** https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.48.0-rc2
+- **Tag:** `v0.48.0-rc2` (anotado, peel = `74c5331` = `origin/main` = HEAD).
+- **Commit de build:** `74c5331` (version bump 0.48.0 → 0.48.0-rc2; regla 9 de AGENTS.md:
+  el tag se crea sobre commit ya integrado).
+- **Push:** HECHO. `git push origin main` llevó `543e1cc5..b14ef25`. `git push origin
+  v0.48.0-rc2` llevó el tag.
 
 **Candidata:** `0.48.0-rc2`
 **Tag:** `v0.48.0-rc2` (anotado, peel = `74c5331` = HEAD = `main` local).
@@ -98,11 +108,13 @@ release (están documentados en WIP-4/5 con la condición de habilitación).
 
 ## Pendiente para este bloque (WIP-11 cierre / WIP-12)
 
-- **WIP-11**: push a `origin/main`, publicación de la GitHub Prerelease con el ZIP y
-  SHA256SUMS como assets, y verificación de que el asset re-descargado coincide.
-- **WIP-12**: refrescar `docs/v2/05-roadmap/ROADMAP.md` con el estado B1
-  CANDIDATE_PUBLISHED, clasificar la deuda residual en el roadmap, y entregar el
-  handoff a `pipelinek-release-harness` con la candidata y la URL del Prerelease.
+- **WIP-11**: ✅ push a `origin/main` HECHO, ✅ publicación del Prerelease HECHA,
+  ✅ verificación de asset re-descargado HECHA (sha256 idéntico al material stage).
+- **WIP-12**: ✅ ROADMAP refrescado en `4c725e4`, ✅ handoff al release harness en
+  `4c725e4` (`docs/v2/07-uat/evidence/v0.48.0-rc2/handoff-to-release-harness.md`).
+- **CERTIFIED**: pendiente; `pipelinek-release-harness` lo emite tras la segunda
+  construcción independiente y la comparación byte-a-byte (mismo patrón que
+  v0.42.0-rc1 y v0.47.0-rc3).
 
 ## Notas operativas
 

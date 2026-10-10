@@ -1,5 +1,8 @@
 package dev.rubentxu.pipeline.v2.runtime.recover
 
+import dev.rubentxu.pipeline.v2.output.OutputPin
+import dev.rubentxu.pipeline.v2.output.OutputStreamId
+
 /**
  * M2 — closed ADT of reasons a recover call failed closed.
  *
@@ -7,6 +10,10 @@ package dev.rubentxu.pipeline.v2.runtime.recover
  * This design adds `StorageError`, `SubstrateUnavailable`, and `LeaseHeldByAnother`
  * (mirroring the cancel port — recover also MUST NOT cross lease boundaries, audit
  * G.3 by analogy).
+ *
+ * M3 adds `PinnedBytesOutsideRecoveredRegion` to honour the §12 retention-under-pin
+ * invariant: a recover that drops pinned bytes would invalidate the consumer's
+ * retention hold.
  *
  * @see M2_INSPECT_RECOVER_CANCEL_DESIGN.md §5.4.
  */
@@ -45,4 +52,34 @@ sealed interface RecoverRefusal {
 
     /** The underlying storage failed; `cause` is a short diagnostic. */
     data class StorageError(val cause: String) : RecoverRefusal
+
+    /**
+     * M3 — a recover was attempted on a run with active pins, and
+     * those pins cover bytes the recover would have to release.
+     *
+     * A recover that drops pinned bytes would violate the contract §12
+     * invariant ("no podar rangos hasta probar que su garantía activa se
+     * transfirió a una copia durable, y que no existe pin"). The M2
+     * recover port's composition rule explicitly does NOT modify
+     * committed bytes; M3 extends that rule to: do NOT release pinned
+     * bytes.
+     *
+     * The recover port MUST consult `OutputPinPort.pinsOf(stream,
+     * range=intent.range)` BEFORE it returns `RecoveredTerminal`. If
+     * any pin covers the recovered region, the port returns
+     * `FailClosed(PinnedBytesOutsideRecoveredRegion(stream, range, pins))`
+     * instead.
+     *
+     * @property stream the stream whose pinned bytes the recover
+     *                  would have released
+     * @property range  the half-open range the recover would have
+     *                  touched
+     * @property pins   the active pins the consumer must release
+     *                  before re-trying
+     */
+    data class PinnedBytesOutsideRecoveredRegion(
+        val stream: OutputStreamId,
+        val range: LongRange,
+        val pins: List<OutputPin>,
+    ) : RecoverRefusal
 }

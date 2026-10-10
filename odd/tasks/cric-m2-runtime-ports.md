@@ -35,16 +35,20 @@ This closes the first half of CRIC Block 2; the release step / contract bump shi
 
 ## Tasks
 
-- [ ] **T1** — New module `:pipeline-runtime` (public types only).
+- [x] **T1** — New module `:pipeline-runtime` (public types only).
   - Acceptance: `:pipeline-runtime` compiles; 3 ports + ADTs are visible; `Capabilities` companion is NOT created (deferred).
   - Routes: delegated direct (writer creates whole module under delegation boundary 2+ non-trivial files).
-- [ ] **T2** — Production adapters in `:pipeline-runtime` (IntrospectionAdapters, CancelAdapters, RecoverAdapters, RecoverReport).
+  - Commit SHA: `3e0ecf15`
+- [x] **T2** — Production adapters in `:pipeline-runtime` (IntrospectionAdapters, CancelAdapters, RecoverAdapters, RecoverReport).
   - Acceptance: adapters implement the three ports against real stores; RecoverReport is the data class.
   - Routes: delegated direct.
-- [ ] **T3** — Test files (4): inspect / control / recover adapters + decision-matrix fitness.
+  - Commit SHA: `3836e63a`
+- [x] **T3** — Test files (4): inspect / control / recover adapters + decision-matrix fitness.
   - Acceptance: ≥24 test cases all green on real Sqlite + Segment stores.
+  - Actual: 36 test cases (8 + 8 + 8 + 12).
   - Routes: delegated direct.
-- [ ] **T4** — Cross-module compile check (full M2 gate).
+  - Commit SHA: `47b142c7`
+- [x] **T4** — Cross-module compile check (full M2 gate).
   - Acceptance: `:pipeline-runtime:test` + all M1 modules + `:pipeline-application:compileKotlin` green.
   - Routes: delegated direct (or inline for simple `./gradlew`).
 

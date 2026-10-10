@@ -1,7 +1,9 @@
 package dev.rubentxu.pipeline.v2.output.store
 
 import dev.rubentxu.pipeline.v2.output.OutputCursor
+import dev.rubentxu.pipeline.v2.output.OutputDigest
 import dev.rubentxu.pipeline.v2.output.OutputPage
+import dev.rubentxu.pipeline.v2.output.OutputReadDigestedResult
 import dev.rubentxu.pipeline.v2.output.OutputReadResult
 import dev.rubentxu.pipeline.v2.output.OutputRefusal
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
@@ -154,6 +156,80 @@ internal object SegmentReader {
                 from = from,
                 next = if (to >= committedEnd) null else OutputCursor(stream, to),
                 committedEnd = committedEnd,
+            ),
+        )
+    }
+
+    /**
+     * M3 — single-pass read: serves `[from, to)` out of the merged segment set
+     * AND computes a deterministic SHA-256 digest of the bytes in the SAME pass.
+     *
+     * The hash is updated as each chunk is read, so the I/O and the digest
+     * share the buffer. The default `OutputReadPort.readRangeDigested`
+     * implementation does the same in two passes; this override exists so a
+     * single I/O round produces both the page and the digest.
+     *
+     * Refusal cases mirror `readRange` exactly: a partial read becomes
+     * `OutputRefusal.DanglingCommit` so the contract test
+     * `DigestRefusalTranslation` can pin it.
+     */
+    fun readRangeDigested(
+        stream: OutputStreamId,
+        sealedDir: Path,
+        segmentFile: Path,
+        committedEnd: Long,
+        currentBase: Long,
+        from: Long,
+        to: Long,
+    ): OutputReadDigestedResult {
+        val size = (to - from).toInt()
+        val target = ByteArray(size)
+        var cursor = from
+        var written = 0
+        val digest = java.security.MessageDigest.getInstance(OutputDigest.DEFAULT_ALGORITHM)
+
+        val sealed = sealedSegments(sealedDir).sortedBy { it.base }
+
+        for (seg in sealed) {
+            if (cursor >= to) break
+            val segEnd = seg.base + seg.length
+            if (segEnd <= cursor) continue
+            val localStart = (cursor - seg.base).coerceAtLeast(0L)
+            val want = minOf(segEnd, to) - (seg.base + localStart)
+            val chunk = readChunk(seg.file, localStart, want)
+            chunk.copyInto(target, written)
+            digest.update(chunk, 0, chunk.size)
+            written += chunk.size
+            cursor += chunk.size
+        }
+
+        if (cursor < to && cursor >= currentBase) {
+            val localStart = cursor - currentBase
+            val want = minOf(committedEnd, to) - cursor
+            val chunk = readChunk(segmentFile, localStart, want)
+            chunk.copyInto(target, written)
+            digest.update(chunk, 0, chunk.size)
+            written += chunk.size
+            cursor += chunk.size
+        }
+
+        if (written != target.size) {
+            return OutputReadDigestedResult.Refused(
+                OutputRefusal.DanglingCommit(requestedEnd = to, readableBytes = written.toLong()),
+            )
+        }
+
+        val page = OutputPage(
+            bytes = target,
+            stream = stream,
+            from = from,
+            next = if (to >= committedEnd) null else OutputCursor(stream, to),
+            committedEnd = committedEnd,
+        )
+        return OutputReadDigestedResult.Digested(
+            page = page,
+            digest = OutputDigest(
+                digest.digest().joinToString("") { "%02x".format(it) },
             ),
         )
     }

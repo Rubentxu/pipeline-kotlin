@@ -72,8 +72,21 @@ class WorkspaceResolver(
      * @return The artefacts directory: `<controlDirRoot>/artefacts/<runId>/<stageName>/`
      */
     fun resolveArchiveDir(runId: String, stageName: String): Path {
+        // PATH-01 fix: validate runId as a path-safe segment (same character set as RunIdDirectory)
+        // AND verify the resolved path stays under `<controlDirRoot>/artefacts/` after lexical
+        // normalisation. Defends against traversal (`../`) and symlink-resolved-name against symlinks
+        // for the segment itself; symlink defence for the resolved artefacts dir is the caller's
+        // responsibility at write time, since a symlink-to-component cannot be detected lexically.
+        require(runId.matches(RUN_ID_SEGMENT)) {
+            "resolveArchiveDir: runId '$runId' is not a path-safe segment"
+        }
         val safeName = stageName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
-        return controlDirRoot.resolve("artefacts").resolve(runId).resolve(safeName)
+        val artefactsRoot = controlDirRoot.resolve("artefacts").toAbsolutePath().normalize()
+        val resolved = artefactsRoot.resolve(runId).resolve(safeName).normalize()
+        require(resolved.startsWith(artefactsRoot)) {
+            "resolveArchiveDir: resolved path '$resolved' is not contained under '$artefactsRoot'"
+        }
+        return resolved
     }
 
     /**
@@ -127,5 +140,11 @@ class WorkspaceResolver(
         // No-op: workspaces are retained on failure by default
         // Retention happens automatically because cleanupAfterComplete
         // is only called on SUCCESS outcomes
+    }
+
+    private companion object {
+        // Same character set as RunIdDirectory.fileNameFor — kept consistent so the two cannot
+        // disagree on what a "safe" run id looks like.
+        val RUN_ID_SEGMENT = Regex("""[A-Za-z0-9._-]+""")
     }
 }

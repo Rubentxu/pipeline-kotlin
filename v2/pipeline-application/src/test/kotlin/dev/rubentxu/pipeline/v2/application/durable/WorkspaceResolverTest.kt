@@ -5,6 +5,7 @@ import java.nio.file.Path
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -150,5 +151,47 @@ class WorkspaceResolverTest {
         val messy = tempDir.resolve("sub").resolve("..").resolve("proj")
         val resolver = WorkspaceResolver(tempDir, messy)
         assertEquals(tempDir.toAbsolutePath().normalize().resolve("proj"), resolver.resolve("Build", 0))
+    }
+
+    // -------------------------------------------------------------- PATH-01
+
+    /**
+     * PATH-01 witness: the runId is interpolated as a path segment without validation,
+     * allowing a caller to escape the controller root via `../`. Must fail closed.
+     */
+    @Test
+    fun `PATH-01 resolveArchiveDir refuses runId that traverses outside the controller root`() {
+        val resolver = createResolver()
+
+        assertThrows(IllegalArgumentException::class.java) {
+            resolver.resolveArchiveDir(runId = "../../etc/passwd", stageName = "Build")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            resolver.resolveArchiveDir(runId = "../escaped", stageName = "Build")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            resolver.resolveArchiveDir(runId = "run/with/slashes", stageName = "Build")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            resolver.resolveArchiveDir(runId = "run with spaces", stageName = "Build")
+        }
+    }
+
+    /**
+     * PATH-01 positive: a path-safe runId resolves to the expected artefacts dir and stays
+     * contained under `<controlDirRoot>/artefacts/`.
+     */
+    @Test
+    fun `PATH-01 resolveArchiveDir returns a contained path for a path-safe runId`() {
+        val resolver = createResolver()
+        val artefactsRoot = tempDir.resolve("artefacts").toAbsolutePath().normalize()
+
+        val resolved = resolver.resolveArchiveDir(runId = "run-001", stageName = "Build")
+
+        assertTrue(
+            resolved.toAbsolutePath().normalize().startsWith(artefactsRoot),
+            "PATH-01: resolved path [${resolved}] must be contained under [$artefactsRoot]",
+        )
+        assertEquals(artefactsRoot.resolve("run-001").resolve("Build"), resolved.toAbsolutePath().normalize())
     }
 }

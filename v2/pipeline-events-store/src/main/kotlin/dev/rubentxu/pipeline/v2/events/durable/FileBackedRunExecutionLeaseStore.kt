@@ -197,6 +197,25 @@ class FileBackedRunExecutionLeaseStore(
         return RunExecutionLease.authorisePublish(observed, held)
     }
 
+    /**
+     * M2 §4.7.1 — observe the live lease record for [runId] WITHOUT acquiring it.
+     *
+     * Read-only: this method does not take the OS file lock, does not advance the
+     * fencing token, and does not mutate any durable state. It returns the
+     * `LeaseRecord` so the [RuntimeIntrospectionPort] and [RuntimeControlPort]
+     * adapters can authoritatively answer "is the lease currently held by
+     * another?" without taking a fresh lease.
+     *
+     * The pure decider [RunExecutionLease.acquire] is what makes the
+     * `LeaseHeldByAnother` answer authoritative; this read-side twin exists only
+     * to fetch the durable facts the decider needs.
+     *
+     * @return The current `LeaseRecord`, or `null` when no lease has ever been
+     *   issued for [runId].
+     */
+    fun observe(runId: String): LeaseRecord? =
+        readRecord(leaseDir.resolve(recordFileName(runId)))
+
     override fun close() {
         val lock = held
         val channel = this.channel

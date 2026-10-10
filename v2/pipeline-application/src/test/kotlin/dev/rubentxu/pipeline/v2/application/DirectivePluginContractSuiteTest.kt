@@ -107,6 +107,24 @@ class DirectivePluginContractSuiteTest {
      *    changes the bytes the plugin links against. Re-certifying with the measured value keeps
      *    the test honest about what THIS revision contains, instead of carrying a constant for a
      *    jar that is no longer the artifact under test.
+     *
+     * ## Re-certified 2026-10-10, SHA 283f89d7 (B1 / v0.48.0-rc2)
+     *
+     * Pin moved from `d0a80b9b…` to `283f89d7…` after three SDK changes in B1:
+     *
+     *  - `5179ff70 fix(application): escritura atomica en RunIdDirectory.record` (RUN-01).
+     *    Adds `StandardCopyOption` import and a temp-file + atomic-move dance; SDK bytes move.
+     *  - `486ba4a4 fix(application): contencion en WorkspaceResolver.resolveArchiveDir` (PATH-01).
+     *    Adds the `RUN_ID_SEGMENT` companion regex and a containment require-block; SDK bytes
+     *    move.
+     *  - `f53bfdff fix(build): direccionamiento Kover por Gradle path` (COV-01). Build-script only;
+     *    does NOT affect the SDK bytes the plugin compiles against, but is recorded for
+     *    completeness.
+     *
+     * The new JAR is REPRODUCIBLE: two consecutive `./gradlew :buildExternalDirectivePlugin
+     * --rerun-tasks --console=plain --no-daemon` invocations produced `283f89d7…` both times. The
+     * previous pin (`d0a80b9b…`) was reproducible TOO; the digest moved once because the SDK bytes
+     * moved once. Source of the plugin is unchanged in this cycle.
      *  - The compatibility claim is re-verified on EVERY run by the seven sibling rows in this
      *    class, which load this jar in a classloader, resolve `LockContributor` through
      *    `ServiceLoader` and execute a real pipeline with it. Measured on this build: 7 of 7
@@ -124,7 +142,7 @@ class DirectivePluginContractSuiteTest {
             .joinToString("") { "%02x".format(it) }
 
         assertEquals(
-            "d0a80b9b87fc8cd741035bc68dbd89a5af90f3f7ded33ca7a9dc394164f89407",
+            "283f89d7aae74580d0f57430d8f6ed7a36f0b9428ed48ee515b49136a78c34a8",
             digest,
             "external directive plugin JAR drifted from the certified bytes; a rebuild " +
                 "invalidates the S2-D compatibility claim — restore the certified JAR instead. " +

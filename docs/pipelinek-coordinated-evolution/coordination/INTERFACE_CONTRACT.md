@@ -17,6 +17,8 @@
 6. **Compatibilidad y negociación:** contrato de capacidades explícitas y rango compatible; ausencia de `output.follow.v1` o `events.follow.v1` requiere fallback anunciado o refusal tipado, nunca un falso LIVE. ABI publicada y consumidor compilado contra ella, no contra el árbol de fuentes ni `mavenLocal` en el gate final.
 
     > **CRIC-M1 (v0.49.0-rc1, 2026-10-10):** `output.follow.v1` y `events.follow.v1` quedan **publicadas** en el release de PipelineK `v0.49.0-rc1`. La ausencia deja de ser el caso por defecto para consumidores que adopten ese release; los releases anteriores siguen bajo el contrato "ausencia => fallback o refusal" sin cambios. Certifying tests: `SegmentOutputFollowerTest` (18 casos, `:pipeline-output-store`) y `EventFollowerAdapterTest` (18 casos, `:pipeline-events-store`); cross-JVM e2e: `M1DCrossJvmFollowTest` (6 casos UAT-PK-M1-001..006, `:pipeline-application`). La autoridad del cambio de contrato exige la actualización de `CONTRACT_SHA256.txt` y el recibo de release inmutable.
+    >
+    > **CRIC-M2 (v0.50.0-rc1, 2026-10-10):** `runtime.inspect.v1`, `runtime.cancel.v1` y `runtime.recover.v1` quedan **publicadas como EXPERIMENTAL** en el release de PipelineK `v0.50.0-rc1`. Certifying tests: `RuntimeIntrospectionPortAdapterTest` (8 casos, `:pipeline-runtime`), `RuntimeControlPortAdapterTest` (8 casos, `:pipeline-runtime`) y `RuntimeRecoverPortAdapterTest` (8 casos, `:pipeline-runtime`); matriz pura de decisión: `RuntimeRecoverDecisionTableFitnessTest` (12 casos, `:pipeline-runtime`). La transición "EXPERIMENTAL => PUBLICADA" ocurre tras la certificación por `pipelinek-release-harness`; hasta entonces, los consumidores que adopten `v0.50.0-rc1` deben tratar las tres capacidades como negociables pero todavía no estables, y los releases anteriores siguen bajo el contrato "ausencia => fallback o refusal" sin cambios. Las capacidades M1 (`output.follow.v1`, `events.follow.v1`) se mantienen **PUBLICADA** en este release. La autoridad del cambio de contrato exige la actualización de `CONTRACT_SHA256.txt` y el recibo de release inmutable.
 7. **Control distribuido:** Fabric posee lease, fencing, asignación deseada y worker reconciler; PipelineK posee recuperación efectiva de sus operaciones. Un silencio del proceso o un socket desconectado no equivale a un resultado.
 8. **Replicación:** ACK únicamente tras persistir exactamente el rango y digest aceptados. Falta `[a,b)` + recepción `[b,c)` => Gap, no ACK acumulado; `(a,b,digestA)` repetido => AlreadyCommitted; digest distinto => Conflict.
 9. **Ownership:** PipelineK NO depende de Fabric, Jenkins, S3, Elasticsearch ni gRPC para su core; Fabric NO reinterpreta terminalidad por logs ni escribe directamente el journal privado de PipelineK.
@@ -45,3 +47,23 @@ Un release individual puede publicarse previamente cuando su compatibilidad con 
 | `events.follow.v1` | v1 | `v0.49.0-rc1` (2026-10-10) | PipelineK | `EventFollowerAdapterTest` (18 casos, `:pipeline-events-store`) | `M1DCrossJvmFollowTest` (UAT-PK-M1-002/004/005/006, `:pipeline-application`) | **PUBLICADA** |
 
 La transición "ausencia => publicada" es breaking para consumidores que asumían la ausencia. Los consumidores deben adaptar su rama de negociación para reconocer ambas capacidades como ofrecidas en `v0.49.0-rc1+`. La autoridad del cambio es el `release-receipt` del candidato correspondiente y la batería de certificación del certifier; este contrato enumera el estado vigente y los tests que lo demuestran.
+
+## Capacidades publicadas (CRIC-M2)
+
+| Capability ID | Versión | Publicada en | Autor | Test unitario | Estado |
+|---|---|---|---|---|---|
+| `runtime.inspect.v1` | v1 | `v0.50.0-rc1` (2026-10-10) | PipelineK | `RuntimeIntrospectionPortAdapterTest` (8 casos, `:pipeline-runtime`) | **EXPERIMENTAL** |
+| `runtime.cancel.v1` | v1 | `v0.50.0-rc1` (2026-10-10) | PipelineK | `RuntimeControlPortAdapterTest` (8 casos, `:pipeline-runtime`) | **EXPERIMENTAL** |
+| `runtime.recover.v1` | v1 | `v0.50.0-rc1` (2026-10-10) | PipelineK | `RuntimeRecoverPortAdapterTest` (8 casos, `:pipeline-runtime`) | **EXPERIMENTAL** |
+
+La matriz pura de decisión del recover (`RuntimeRecoverDecisionTableFitnessTest`,
+12 casos, `:pipeline-runtime`) no es cross-JVM; cubre la matriz de
+`EffectReplayPolicy.decide` envuelta por el decider público
+`RuntimeRecoverDecision.decideRecovery`. La transición
+"EXPERIMENTAL => PUBLICADA" ocurre tras la certificación de la candidata
+por `pipelinek-release-harness`; hasta entonces, los consumidores que
+adopten `v0.50.0-rc1` deben tratar las tres capacidades como
+negociables pero todavía no estables. Los releases anteriores siguen
+bajo "ausencia => fallback o refusal" sin cambios. La autoridad del
+cambio es el `release-receipt` del candidato correspondiente y la
+batería de certificación del certifier.

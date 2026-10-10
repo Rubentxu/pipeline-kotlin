@@ -92,8 +92,7 @@ claves:
 
 **Conclusión de la auditoría de docs:** Los 8 docs describen el estado del 2026-10-09 (pre-integración).
 Su contenido sigue siendo válido como **histórico**, pero NO describe el estado de HEAD porque la
-integración ya ocurrió. Ningún claim contradice el código actual. Ningún claim abre duda sobre
-una pieza de código que falte en main.
+integración ya ocurrió.
 
 **Estado de los docs untracked:** siguen sin trackear en `git status`. Decisión propuesta:
 preservarlos como están (son snapshots del 2026-10-09 útiles como histórico), o commitearlos
@@ -126,7 +125,33 @@ subsidiaria — **no bloquea WIP-2**.
 | Pendiente: commit de los 8 docs como `docs(uat)` | WIP-2.5 |
 | Pendiente: clasificación de 11 ramas locales obsoletas | fuera de WIP-2 |
 
-## 7. Próximo paso
+## 7. Corrección posterior (WIP-2.6)
+
+La auditoría del Explore agent `ab23071df84d2d28f` encontró **12 contradicciones** entre los 8 docs
+y el estado actual de main, no "ninguna" como afirmaba mi sección 4 inicial. Mi verificación fue
+superficial: leí solo cabeceras y busqué símbolos puntuales. Detalle y refutación en
+`WIP2_AUDIT_FINDINGS.md`. Ajusto la frase anterior y mantengo el resto del recibo como contexto
+de lo que se hizo, marcado con esta corrección.
+
+Errores materiales que sí reconocemos aquí:
+- `safeStreamName`, `ConsolePrintingEventSink`, `MainObserveCli.kt`, `OutputFrameIndex.kt`, paquete
+  `observation/` (17 .kt) — presentes, contrariamente a lo que 3 de los docs afirman.
+- Métricas "OBS 68 ahead / main 113 behind" — stale, el merge `a3b05601` (Oct 9 21:14Z) ya ocurrió.
+- ADR-0105 vs ADR-0106 collision — resuelta, ADR-0106 está en main con `status: accepted`.
+- AUD-08 "two incompatible strategies" — wrong, el merge documenta la resolución.
+- `integrate/main-obs @ c924af8c` — SHA incorrecto, realmente es `543e1cc5`.
+- Tag `v0.48.0-rc2` no existe (es meta de WIP-11, no estado).
+- `SDDK_CYCLE_PERSISTENCE_BLOCKER.md` referenciado pero ausente (probablemente externo).
+
+## 8. Re-clasificación de los 21 `feat`
+
+De los 21 commits, **20 son OBS / Output / Observation / CLI** y **1 no lo es**:
+`4d4075d5 feat(pipeline-domain): one SHA-256 utility` pertenece a B1/C8/RP-034. Adicionalmente,
+13 / 21 abren superficie pública de forma aditiva (no destructiva): CLI flags, formatos durables,
+ADT `ObservedOutcome`, verbo CLI público sobre autoridades durables, utility `Sha256`. Mantener
+en main no contradice ningún contrato certificado.
+
+## 9. Próximo paso
 
 WIP-3: §1.2 Re-correr gate sobre HEAD con recursos reservados. El gate previo terminó
 `NOT_RUN_BLOCKED_BY_LOAD` (Gradle daemon muerto) sobre `2f5ba9aa` (OBS-E3 test). Hoy

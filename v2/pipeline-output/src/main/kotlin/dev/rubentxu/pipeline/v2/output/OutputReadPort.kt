@@ -41,4 +41,47 @@ interface OutputReadPort {
      * consumer able to address a byte without reading the ones before it.
      */
     fun readRange(stream: OutputStreamId, from: Long, to: Long): OutputReadResult
+
+    /**
+     * M3 — read exactly the committed bytes in `[from, to)` of [stream]
+     * AND a deterministic content hash of those bytes.
+     *
+     * Contractual properties:
+     *
+     *  - `readRangeDigested(s, a, b).digest` is a deterministic function
+     *    of the committed bytes in `[a, b)` — same bytes, same digest;
+     *    different bytes, different digest.
+     *  - `readRangeDigested(s, a, b).page.bytes` equals the bytes
+     *    returned by `readRange(s, a, b)` for the same range (no
+     *    redactions, no re-encodings, no padding).
+     *  - A read that crosses a pruned range, or that lands in a
+     *    corrupted region, refuses closed with the sealed cases from
+     *    `OutputRefusal` — `RetentionGap`, `Corrupt`, `Unavailable`,
+     *    `RangeLostRetention`. A read NEVER returns a Page with an empty digest.
+     *
+     * The default implementation composes [readRange] + [OutputDigest.sha256Of];
+     * concrete adapters in `:pipeline-output-store` override this for a single
+     * pass that does not double the I/O.
+     *
+     * @param stream the stream to read
+     * @param from   inclusive start offset
+     * @param to     exclusive end offset; `to > from`
+     */
+    fun readRangeDigested(
+        stream: OutputStreamId,
+        from: Long,
+        to: Long,
+    ): OutputReadDigestedResult {
+        // Default implementation composes readRange + OutputDigest.sha256Of.
+        val result = readRange(stream, from, to)
+        return when (result) {
+            is OutputReadResult.Page -> OutputReadDigestedResult.Digested(
+                page = result.page,
+                digest = OutputDigest.sha256Of(result.page.bytes),
+            )
+            is OutputReadResult.Refused -> OutputReadDigestedResult.Refused(
+                reason = result.reason,
+            )
+        }
+    }
 }

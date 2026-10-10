@@ -159,4 +159,35 @@ interface OutputRetentionPort {
      * here a wrong answer is a missing deletion, which the caller can see.
      */
     fun prune(intent: OutputPruneIntent): OutputPruneReport
+
+    /**
+     * M3 — consult-before-act: would [intent] succeed RIGHT NOW, given
+     * the current pins?
+     *
+     * The returned [PruneAuthorisation] names the pins the call would
+     * refuse on (so the caller can `release` them and retry) WITHOUT
+     * mutating any state. The companion [prune] performs the deletion
+     * and returns what happened; [canPrune] returns the authorisation
+     * WITHOUT performing it. The two methods do NOT share state:
+     * [canPrune]'s answer is a point-in-time observation; [prune]'s
+     * answer is a record of what happened.
+     *
+     * The default implementation returns [PruneAuthorisation.Granted]
+     * when no pin port is wired; concrete adapters in
+     * `:pipeline-output-store` compose [OutputPinPort.pinsOf] with
+     * the existing `prune` path.
+     *
+     * @param intent the deletion the caller is contemplating
+     * @return a [PruneAuthorisation] — see `PruneAuthorisation.kt`.
+     */
+    fun canPrune(intent: OutputPruneIntent): PruneAuthorisation =
+        PruneAuthorisation.Granted
+
+    companion object {
+        /**
+         * Upper bound on a single `canPrune` call's wall time.
+         * Parallel to M2's `DEFAULT_INSPECT_TIMEOUT_MS`.
+         */
+        const val DEFAULT_CAN_PRUNE_TIMEOUT_MS: Long = 5_000L
+    }
 }

@@ -31,6 +31,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputChannel
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
+import dev.rubentxu.pipeline.v2.output.store.SealOutcome
 import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.Path
@@ -346,21 +347,18 @@ object ShExecution {
             //
             // Both channels are sealed because OBS-C2.3 gave the operation one stream per channel,
             // and a consumer that merged them must be able to see both reach their end.
+            //
+            // M1-F.3 — per-channel seal. A stdout-only script (e.g. `sh("echo hi")`)
+            // never opened stderr; sealing it would be a "no seal" outcome, not a
+            // warning. The [OutputSealPort.seal] return type makes the four cases
+            // explicit, and the per-channel loop below is the place that decides
+            // which of them surfaces to the user.
             val terminalResult = classifyShellTerminal(terminal, command.returnMode)
-            if (controlDirRoot != null) {
-                runCatching {
-                    val store = OutputPlaneProvider.storeForWriting(controlDirRoot)
-                    val streams = OutputPlaneProvider.streamsOf(runId, opId.format())
-                    streams.all.forEach { address -> store.seal(address.stream) }
-                }.onFailure { failure ->
-                    // A failure to seal does not invalidate the bytes already committed: the tail stays
-                    // Open, which is the SAFE direction — a consumer keeps polling rather than
-                    // declaring a finished run finished. Reporting it would be worse than the gap.
-                    System.err.println(
-                        "[ShExecution] could not seal the output tail of $runId/${opId.format()}: " +
-                            "${failure.message}",
-                    )
-                }
+            // controlDirRoot is non-null from this point: the function
+            // checked it at the top and returned early otherwise.
+            val sealFailure: PipelineFailure? = sealOperationTail(controlDirRoot, runId, opId.format())
+            sealFailure?.let { failure ->
+                return ShellInvocationResult.Failed(failure)
             }
             terminalResult
         } catch (e: dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException) {
@@ -412,6 +410,54 @@ object ShExecution {
         controlDirRoot = controlDirRoot,
         eventSink = eventSink,
     ).toStepOutcome()
+
+    /**
+     * Seals the operation's per-channel output tails and decides which
+     * outcomes are surfaced.
+     *
+     * M1-F.3:
+     *  - [SealOutcome.Sealed] / [SealOutcome.AlreadySealed] — silent.
+     *  - [SealOutcome.NeverOpened] — silent. A stdout-only script never
+     *    opened stderr, and a stderr-only script never opened stdout; that
+     *    is a legitimate absence, not a warning.
+     *  - [SealOutcome.Failure] — surfaces as a [PipelineFailure] of kind
+     *    INFRASTRUCTURE with the failure cause verbatim. The terminal is
+     *    reclassified so a downstream consumer sees the seal failure
+     *    rather than the (potentially-successful) shell exit.
+     *
+     * The previous shape printed "[ShExecution] could not seal the output
+     * tail ..." to stderr for every kind of failure including legitimate
+     * absence (the user's "stream not opened" noise). The new shape is
+     * silent on the legitimate paths and only surfaces real failures,
+     * which is what a healthy `pipelinek run` was missing.
+     */
+    private fun sealOperationTail(
+        controlDirRoot: java.nio.file.Path,
+        runId: String,
+        opId: String,
+    ): PipelineFailure? {
+        val store = OutputPlaneProvider.storeForWriting(controlDirRoot)
+        val streams = OutputPlaneProvider.streamsOf(runId, opId)
+        var firstFailure: PipelineFailure? = null
+        for (address in streams.all) {
+            when (val outcome = store.seal(address.stream)) {
+                is SealOutcome.Sealed,
+                is SealOutcome.AlreadySealed,
+                is SealOutcome.NeverOpened,
+                -> Unit
+                is SealOutcome.Failure -> {
+                    if (firstFailure == null) {
+                        firstFailure = PipelineFailure(
+                            FailureKind.INFRASTRUCTURE,
+                            "could not seal the output tail of $runId/$opId on " +
+                                "${address.stream.value}: ${outcome.cause.message ?: outcome.cause.toString()}",
+                        )
+                    }
+                }
+            }
+        }
+        return firstFailure
+    }
 
     /**
      * Executes a shell step within a parallel branch (W8 fold).

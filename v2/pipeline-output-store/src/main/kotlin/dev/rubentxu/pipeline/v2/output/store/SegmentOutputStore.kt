@@ -152,7 +152,8 @@ class SegmentOutputStore(
     // ------------------------------------------------------------------ the tail
 
     /**
-     * Records that [stream] will receive no further bytes, and returns the sealed end.
+     * Records that [stream] will receive no further bytes, and returns the
+     * [SealOutcome] that names which of the four cases the call landed in.
      *
      * The marker is written with the stream's committed extent AT THE MOMENT of sealing, not at the
      * moment it is read. That is what makes it a fact rather than a view: a reader in a fresh JVM
@@ -162,22 +163,47 @@ class SegmentOutputStore(
      * Idempotent by construction — if the marker exists it is left alone. Rewriting it with a later
      * extent would make a resumed run's seal depend on WHEN it happened to run, which is exactly the
      * non-determinism recovery must not have.
+     *
+     * ## Per-channel contract (M1-F.3)
+     *
+     *  - [SealOutcome.Sealed]: stream exists and was sealed by this call.
+     *  - [SealOutcome.AlreadySealed]: stream exists and was already sealed.
+     *    Idempotent: the recorded end is returned unchanged.
+     *  - [SealOutcome.NeverOpened]: stream has never been opened by any
+     *    writer. The legitimate-absence case a stdout-only script
+     *    produces for stderr — silent no-op, not a refusal.
+     *  - [SealOutcome.Failure]: real I/O failure while writing the marker.
+     *    The cause is propagated as data so the caller can route on it.
      */
-    override fun seal(stream: OutputStreamId): Long {
+    override fun seal(stream: OutputStreamId): SealOutcome {
         requireRecoveredForWriting()
         val layout = layout(stream)
         return withStreamLockFor(stream) {
-            // Sealing a stream nobody ever opened would mint an authority for bytes that were never
-            // written, and a reader would then be told "finished" about output that does not exist.
-            check(Files.isDirectory(layout.streamDir)) {
-                "cannot seal unknown stream ${stream.value}: no writer ever opened it"
+            // M1-F.3: an unopened stream is NOT a refusal. Sealing it
+            // would mint an authority for bytes nobody wrote, but a
+            // stdout-only script (which never opened stderr) must NOT
+            // warn here — that was the noise the user reported. The
+            // sealed result is data, not a check failure.
+            if (!Files.isDirectory(layout.streamDir)) {
+                return@withStreamLockFor SealOutcome.NeverOpened
             }
-            if (Files.exists(layout.streamSealMarker)) return@withStreamLockFor sealedEnd(layout)
-
+            if (Files.exists(layout.streamSealMarker)) {
+                return@withStreamLockFor SealOutcome.AlreadySealed(sealedEnd(layout))
+            }
             val end = committedLocked(layout)
-            Files.createDirectories(layout.streamDir)
-            Files.writeString(layout.streamSealMarker, "$end\n")
-            end
+            try {
+                Files.createDirectories(layout.streamDir)
+                Files.writeString(layout.streamSealMarker, "$end\n")
+                SealOutcome.Sealed(end)
+            } catch (t: Throwable) {
+                // A real I/O failure is not a refusal and not a
+                // legitimate absence: surface the cause as data so the
+                // caller can route on it. The previous shape threw
+                // IllegalStateException for "unknown stream" AND for
+                // I/O failures, which conflated the two and forced
+                // callers to inspect the message to tell them apart.
+                SealOutcome.Failure(cause = t, end = if (Files.exists(layout.streamSealMarker)) sealedEnd(layout) else null)
+            }
         }
     }
 

@@ -112,9 +112,13 @@ class SegmentOutputTailStateTest {
         val stream = OutputStreamId("run-1/build/sh-0/stdout")
         write(stream, "twenty bytes exactly", target)
 
-        val sealedEnd = target.seal(stream)
+        val outcome = target.seal(stream)
 
-        assertEquals(20L, sealedEnd, "the seal must record the extent the stream had WHEN it was sealed")
+        assertEquals(
+            SealOutcome.Sealed(20L),
+            outcome,
+            "the seal must record the extent the stream had WHEN it was sealed",
+        )
         assertEquals(
             OutputTailState.Sealed(20L),
             target.tailState(stream),
@@ -152,7 +156,11 @@ class SegmentOutputTailStateTest {
         // rewrite the fact with whatever the extent happens to be at that later moment.
         val second = target.seal(stream)
 
-        assertEquals(15L, second, "sealing is idempotent: the recorded end must not move")
+        assertEquals(
+            SealOutcome.AlreadySealed(15L),
+            second,
+            "sealing is idempotent: the recorded end must not move",
+        )
         assertEquals(OutputTailState.Sealed(15L), target.tailState(stream))
     }
 
@@ -180,17 +188,23 @@ class SegmentOutputTailStateTest {
         )
     }
 
+    /**
+     * M1-F.3 — sealing a stream nobody ever opened is NOT a refusal;
+     * it is the legitimate-absence case. The previous test asserted
+     * an exception; the new shape answers with [SealOutcome.NeverOpened]
+     * so a stdout-only script can seal stderr silently.
+     */
     @Test
-    fun `sealing a stream nobody ever opened is refused`() {
+    fun `sealing a stream nobody ever opened returns NeverOpened`() {
         val target = store()
 
-        val failure = assertThrows(IllegalStateException::class.java) {
-            target.seal(OutputStreamId("run-1/build/sh-9/stdout"))
-        }
+        val outcome = target.seal(OutputStreamId("run-1/build/sh-9/stdout"))
 
-        assertTrue(
-            failure.message!!.contains("unknown stream"),
-            "sealing must not mint an authority over bytes nobody wrote; got: ${failure.message}",
+        assertEquals(
+            SealOutcome.NeverOpened,
+            outcome,
+            "M1-F.3: an unopened stream is not a refusal — sealing it is a silent no-op, " +
+                "because a stdout-only script produces stderr bytes that never existed",
         )
     }
 

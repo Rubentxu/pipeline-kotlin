@@ -63,6 +63,14 @@ include(
     // published artifact carries no writer, no recovery entry point and no filesystem authority.
     // Not published, and deliberately so: see its build script.
     ":pipeline-output-store",
+    // M2: the runtime surface. The published module that exposes the three M2 verbs
+    // (inspect / cancel / recover) over the M1 read-side contracts. New on this branch;
+    // depends on the published :pipeline-events and :pipeline-output, and on the internal
+    // :pipeline-events-store / :pipeline-output-store for adapter wiring (declared as
+    // `implementation` in the module's build script to keep PK's internal types out of
+    // the published ABI). See `M2_INSPECT_RECOVER_CANCEL_DESIGN.md` §2.1 for the
+    // segregation rationale.
+    ":pipeline-runtime",
     ":pipeline-step-sdk:api",
     ":pipeline-step-sdk:runtime",
     ":pipeline-step-sdk:scm-git",

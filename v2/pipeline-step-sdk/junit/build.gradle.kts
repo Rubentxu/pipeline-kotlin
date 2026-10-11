@@ -199,7 +199,7 @@ val emitJunitManifest = tasks.register<JavaExec>("emitJunitManifest") {
     classpath = sourceSets["main"].runtimeClasspath + files(layout.buildDirectory.dir("resources/main"))
 
     inputs.files(junitReleaseProps)
-    inputs.property("apiRange", "[0.47.0, 0.49.0)")
+    inputs.property("apiRange", "[0.47.0, 0.52.0)")
     outputs.file(junitManifest)
 
     val out = junitManifest

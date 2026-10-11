@@ -166,7 +166,7 @@ val emitUtilitiesManifest = tasks.register<JavaExec>("emitUtilitiesManifest") {
         files(layout.buildDirectory.dir("resources/main"))
 
     inputs.files(utilitiesReleaseProps)
-    inputs.property("apiRange", "[0.47.0, 0.49.0)")
+    inputs.property("apiRange", "[0.47.0, 0.52.0)")
     outputs.file(utilitiesManifest)
 
     // Captured into a buffer rather than stdout: Gradle prints task output to the console,

@@ -29,7 +29,12 @@ object ScmGitPluginDeclaration {
     const val RELEASE_PROPERTIES_RESOURCE: String = "META-INF/scm-git-release.properties"
 
     /** Exclusive upper bound: 0.49 is where support stops, not where parsing stops. */
-    val API_RANGE: PipelineKApiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 49, 0))
+    /** Exclusive upper bound: 0.52 is where support stops, not where parsing stops.
+     *
+     * Extended from `[0.47.0, 0.49.0)` to `[0.47.0, 0.52.0)` as part of PK-R1: the 0.51.0
+     * consolidated train preserves every contract, manifest, and ABI this plugin reads. The
+     * extension is justified by `BuiltPluginManifestArtifactTest` on the real artefact. */
+    val API_RANGE: PipelineKApiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 52, 0))
 
     /**
      * The publisher / version / digest / namespace come from build-time

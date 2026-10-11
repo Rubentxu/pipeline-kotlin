@@ -258,7 +258,9 @@ internal class SqliteEventFollowHandle(
         }
 
         override fun next(): EventFollowEvent {
-            check(hasNext()) { "iterator is past its end; check hasNext() first" }
+            if (!hasNext()) {
+                throw NoSuchElementException("iterator is past its end; check hasNext() first")
+            }
             return pending.removeFirst()
         }
     }

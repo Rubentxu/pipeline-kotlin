@@ -78,3 +78,17 @@ proof that the published artifact is consumable by a real downstream.
   so the report can map directly.
 - JAR SHA matches across two `--rerun-tasks --no-build-cache` runs.
 - Test report totals: total / passed / failed / skipped.
+
+## PK-R1 closure (2026-10-11)
+
+- T1-T8 complete; T9 producer-side done. PK-R1 R1-A → R1-E all green.
+- T9 outcome: candidate v0.51.0-rc2 published locally
+  (`dist/candidates/v0.51.0-rc2/`, tag `v0.51.0-rc2 -> 56662425`,
+  SHA-256 `b5b72636…`). Release-receipt and handoff documents
+  written at `docs/v2/07-uat/evidence/v0.51.0-rc2/`.
+- Push to origin: PENDING operator authorization.
+- Gap documented (T8 finding): runtime publish/subscribe ports
+  (RuntimeRecoverPort, RuntimeControlPort, RuntimeIntrospectionPort)
+  are not in the published SDK; user chose to ship with the gap
+  documented; certifier may require v0.51.0-rc3.
+- CERTIFIED/GA: deferred to the release harness per release model v2.

@@ -77,16 +77,17 @@ Las **dos** nuevas capacidades negociables del train 0.53.0 quedan declaradas `E
 
 ## Pendiente
 
-- **Tag + Prerelease en GitHub:** la Prerelease `v0.53.0-rc1` se
-  publica desde la línea de comandos después de este handoff. El ZIP
-  `pipelinek-0.53.0-rc1` se sube como asset; el SHA-256 se anota en la
-  descripción de la Prerelease.
+- ✅ **Tag + Prerelease en GitHub:** Prerelease `v0.53.0-rc1`
+  publicada en `https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.53.0-rc1`.
+  ZIP `pipelinek-0.53.0.zip` (88.3 MB) subido como asset con
+  SHA-256 `f18981efceb8c2e4c08275777d1a6da6dd7e4cd3222a8014643838aa2de76965`.
 - **Veredicto del harness:** pendiente. Se añadirá al
   `release-receipt.md` cuando llegue.
 - **Promoción EXPERIMENTAL → PUBLICADA:** solo tras CERTIFIED, en un
   release posterior.
 - **Follow-up M-block** para cerrar el I.6 PARTIAL con agrupación
-  dirigida por eventos (typed `EventShapeReadPort`).
+  dirigida por eventos (typed `EventShapeReadPort`). **Resuelto en
+  M7 (`v0.54.0-rc1`)**.
 
 ---
 

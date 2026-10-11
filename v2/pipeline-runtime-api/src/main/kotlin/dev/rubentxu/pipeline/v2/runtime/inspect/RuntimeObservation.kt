@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.runtime.inspect
 
+import dev.rubentxu.pipeline.v2.domain.AttemptId
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
 
 /**
@@ -74,12 +75,6 @@ sealed interface RuntimeObservation {
     data class Unobservable(
         val reason: IntrospectionFailure,
     ) : RuntimeObservation
-}
-
-/** The current attempt a run is on. */
-@JvmInline
-value class AttemptId(val value: Int) {
-    init { require(value >= 1) { "attempt must be >= 1, got $value" } }
 }
 
 /**

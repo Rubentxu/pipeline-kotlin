@@ -39,6 +39,10 @@ class PublishedContractBoundaryFitnessTest {
         "pipeline-scripting-api",
         "pipeline-events",
         "pipeline-output",
+        // 0.52.0-rc1 / CRIC-M2: runtime publish/subscribe ports. Lock-step update with the
+        // matching append in `v2/build.gradle.kts`; if either list moves without the other,
+        // the first test below fails with `expected N entries but got M` — the desired signal.
+        "pipeline-runtime-api",
     )
 
     /**

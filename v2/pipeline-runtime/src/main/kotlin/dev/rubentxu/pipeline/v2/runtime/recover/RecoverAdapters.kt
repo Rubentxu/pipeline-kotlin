@@ -18,7 +18,7 @@ import dev.rubentxu.pipeline.v2.output.OutputPin
 import dev.rubentxu.pipeline.v2.output.OutputPinPort
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import dev.rubentxu.pipeline.v2.output.store.OutputRecoveryPort
-import dev.rubentxu.pipeline.v2.runtime.inspect.AttemptId
+import dev.rubentxu.pipeline.v2.domain.AttemptId
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionResult
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
 import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation

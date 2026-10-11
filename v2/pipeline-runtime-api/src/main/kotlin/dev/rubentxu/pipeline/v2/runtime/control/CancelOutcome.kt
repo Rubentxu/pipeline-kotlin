@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.v2.runtime.control
 
-import dev.rubentxu.pipeline.v2.runtime.inspect.AttemptId
+import dev.rubentxu.pipeline.v2.domain.AttemptId
 
 /**
  * M2 — closed ADT returned by [RuntimeControlPort.cancel].

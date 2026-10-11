@@ -91,7 +91,7 @@ repositories {
 // suffix by construction; the candidate is identified by digest
 // (CandidateId = sha256 of the distribution ZIP), not by the version
 // string.
-version = "0.51.0"
+version = "0.52.0"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version
@@ -469,6 +469,11 @@ val bcvModules = setOf(
     // the task did not exist. Guarding three published contracts and leaving the fourth free would
     // have been the inconsistency, not the fix.
     "pipeline-scripting-api",
+    // 0.52.0-rc1 / CRIC-M2: runtime ports publication. The new `:pipeline-runtime-api` module
+    // (carved out of `:pipeline-runtime` in commit 2a97653a) carries the M2 publish/subscribe
+    // ports and their ADTs. Guiding the published ABI here so `apiCheck` refuses an
+    // unannounced surface change.
+    "pipeline-runtime-api",
 )
 
 subprojects {
@@ -520,6 +525,15 @@ val publishedContractModules = listOf(
     // BLOCK 2: the event contract (envelope, cursor, read/paging) and the output read contract.
     "pipeline-events",
     "pipeline-output",
+    // 0.52.0-rc1 / CRIC-M2: the runtime publish/subscribe ports. The four existing entries
+    // (read-side contracts for events, output, scripting, and domain) gave consumers a
+    // complete read plane; this fifth entry adds the write plane. The invariant
+    // "PublishedContractBoundaryFitnessTest and must stay exactly the four" predates this
+    // entry; the fitness test is updated in lock-step (see
+    // v2/pipeline-architecture-tests/.../PublishedContractBoundaryFitnessTest.kt). The
+    // publication plan (§3.4 row 2, docs/v2/07-uat/evidence/cric-m2-publication-plan.md)
+    // names this expansion as the gate for 0.52.0-rc1.
+    "pipeline-runtime-api",
 )
 
 /**
@@ -538,6 +552,11 @@ val publishedContractModules = listOf(
  */
 val sdkBomModules = listOf(
     "pipeline-sdk-bom",
+    // 0.52.0-rc1 / CRIC-M2: the runtime API module is also in the BOM, so a consumer that
+    // pins the platform version pulls the runtime ports automatically. The BOM is the
+    // single resolution document, and leaving the runtime ports out of it would force
+    // every consumer to declare the version independently.
+    "pipeline-runtime-api",
 )
 
 val publishSdkForExternalPlugin by tasks.registering {

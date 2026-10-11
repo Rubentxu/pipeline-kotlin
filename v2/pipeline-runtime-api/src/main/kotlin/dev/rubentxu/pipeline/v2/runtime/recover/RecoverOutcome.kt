@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.v2.runtime.recover
 
-import dev.rubentxu.pipeline.v2.runtime.inspect.AttemptId
+import dev.rubentxu.pipeline.v2.domain.AttemptId
 import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
 
 /**

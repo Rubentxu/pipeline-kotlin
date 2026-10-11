@@ -235,3 +235,223 @@ sha256sum dist/candidates/v0.51.0-rc2/distribution-manifest.json
   `docs/pipelinek-release-evolution/shared/02-release-model-v2.md` §6.
 - **Push a origin** del tag y de la rama. Pendiente de autorización
   explícita del operador; el agente productor no asume esa decisión.
+
+## Estado del full gate sobre el commit constructor 56662425
+
+Comandos reproducidos (en un worktree de verificación independiente,
+`/tmp/pk-r1-verify`, sobre el commit constructor `56662425`):
+
+```bash
+cd /tmp/pk-r1-verify/v2
+./gradlew test -x detekt
+```
+
+Resultado (reconciliado):
+
+| Resultado | Cuenta | Detalle |
+|---|---:|---|
+| tests OK | 2832 | `:pipeline-application:test` (constructor) |
+| tests OK | 104 | `:pipeline-release:test` |
+| failures | 1 | `DirectivePluginContractSuiteTest > plugin jar is the certified build` (build-time, no del ZIP publicado) |
+| skipped | 123 | (mismo conteo que el gate parcial ya comunicado) |
+| detekt issues | 7 módulos | lint warnings (no tests): pipeline-events-store (9), pipeline-domain (1), pipeline-scripting-kotlin24 (2), pipeline-runtime (10), pipeline-output (5), pipeline-output-store (12). NO bloquean admission ni certificación; bloquean merge cuando el repo activa el gate `check`. |
+
+### Sobre el fallo del test del directive plugin (no es de la candidata)
+
+- **El test no es de runtime, es de build**: `DirectivePluginContractSuiteTest`
+  es una sanity check que el SHA del JAR `example-directive-plugin-0.1.0.jar`
+  coincide con el valor pineado en el código del test
+  (`175cb77178…` desde el commit `a520b92a`).
+- **El JAR del directive plugin NO está dentro de la ZIP publicada**:
+  la ZIP `pipelinek-0.51.0.zip` sólo incluye el runtime de
+  `v2/pipeline-application` y sus módulos del core + los plugins
+  oficiales bajo `lib/`. El plugin ejemplo vive en
+  `examples/example-directive-plugin`, que no se empaqueta en la
+  distribución.
+- **Reproducibilidad cross-worktree rota (defecto real del build, no
+  de la candidata)**: dos worktrees sobre el mismo commit producen
+  SHAs distintos para el JAR del directive plugin
+  (`175cb77178…` en `pk-r1-consolidate`, `7ec7c43c…` en
+  `pk-r1-verify`). La causa raíz está en
+  `examples/example-directive-plugin/build.gradle.kts:121-156`: el
+  `computeDirectiveRelease` recorre `resourcesDir` con `walkTopDown()`
+  y excluye sólo el `release.properties` que está escribiendo; un
+  `plugin-manifest.json` stale (de una ejecución anterior del propio
+  `emitDirectiveManifest`) queda dentro del cálculo del digest y
+  produce un SHA distinto cada build. La fix correcta es excluir
+  también el `plugin-manifest.json` (o limpiar el directorio de
+  recursos antes de calcular el digest).
+- **Por qué no se corrige en rc2**: corregir este defecto es una
+  edición del build de un plugin EJEMPLO, no de la candidata
+  certificada. Reconstruir el JAR con la fix alteraría la SHA
+  del test pin y forzaría una rc3 sin valor de release (el JAR
+  no entra en la distribución). Queda como **deuda explícita
+  CRIC-M2 / BLOCK 2.5** a resolver antes de la primera
+  promoción GA, no antes de la certifier-in.
+
+### Sobre los detekt issues
+
+- Son warnings de estilo, no tests fallidos.
+- El repo no activa el gate `check` en CI para este ciclo (la
+  admission `CandidateAdmission` no incluye `detekt` en su
+  contract); el certifier ejecuta su propio conjunto.
+- Aceptados como tech-debt de estilo; no bloquean admission.
+
+## SDK / BOM publicado
+
+Localización local (en este repo):
+
+```text
+v2/build/sdk-repo/dev/rubentxu/pipeline/v2/0.51.0/
+├── pipeline-domain-0.51.0.jar
+├── pipeline-events-0.51.0.jar
+├── pipeline-output-0.51.0.jar
+├── pipeline-scripting-api-0.51.0.jar
+├── pipeline-sdk-bom-0.51.0.jar
+├── pipeline-sdk-bom-0.51.0.pom
+└── ... (md5/sha1/sha256/sha512 de cada uno)
+```
+
+El `pipeline-sdk-bom-0.51.0.pom` lista los 4 contratos como
+`dependencyManagement`. El BOM se publica por el mismo task
+`publishSdkForExternalPlugin` desde la misma revisión, así un
+consumer que resuelve el BOM y las coordenadas encuentra un
+conjunto consistente o no encuentra nada.
+
+`pipeline-runtime` (donde viven `RuntimeRecoverPort`,
+`RuntimeControlPort`, `RuntimeIntrospectionPort`) NO está en
+`publishedContractModules` y por tanto NO se publica. Esto es
+una decisión arquitectónica explícita y rastreable, no una
+omisión. La release-receipt de v0.51.0-rc1
+(`docs/v2/07-uat/evidence/v0.51.0-rc1/`) documenta los puertos
+publish/subscribe como deuda CRIC-M2; esta release los mantiene
+en el mismo estado (EXPERIMENTAL → PUBLICADA en cert) y no los
+expone al consumer.
+
+## Capacidad LIVE read para un consumer externo (Fabric)
+
+Un consumer Fabric que quiere una sesión de lectura tipada de
+eventos y output de un run vivo lo hace contra las **interfaces
+del SDK**, sin importar `pipeline-output-store`,
+`pipeline-events-store`, `pipeline-application`, ni el journal
+interno.
+
+Patrón (las dos únicas dependencias del SDK que importan a un
+consumer LIVE son `OutputFollower` y `EventFollower`):
+
+```kotlin
+import dev.rubentxu.pipeline.v2.output.follow.OutputFollower
+import dev.rubentxu.pipeline.v2.output.follow.OutputFollowOptions
+import dev.rubentxu.pipeline.v2.output.follow.Unbounded
+import dev.rubentxu.pipeline.v2.events.follow.EventFollower
+import dev.rubentxu.pipeline.v2.events.follow.EventFollowOptions
+
+class FabricLiveSession(
+    private val outputFollower: OutputFollower,  // <- SDK interface
+    private val eventFollower: EventFollower,    // <- SDK interface
+) : AutoCloseable {
+
+    fun observeOutput(runId: String) {
+        outputFollower.open(runId, OutputFollowOptions(streams = emptyList()))
+            .use { handle ->
+                val it = handle.iterator()
+                while (it.hasNext()) {
+                    when (val event = it.next()) {
+                        is OutputFollowEvent.Bytes       -> emitBytes(event.page, event.newState)
+                        is OutputFollowEvent.StateChanged -> emitState(event.state)
+                        is OutputFollowEvent.Completed   -> return
+                        is OutputFollowEvent.Refused     -> throw IllegalStateException("refused: ${event.refusal}")
+                    }
+                }
+            }
+    }
+
+    fun observeEvents(runId: String) {
+        eventFollower.open(runId, EventFollowOptions(streams = emptyList()))
+            .use { handle ->
+                val it = handle.iterator()
+                while (it.hasNext()) {
+                    when (val event = it.next()) {
+                        is EventFollowEvent.Page          -> emitSlice(event.slice)
+                        is EventFollowEvent.StateChanged  -> emitState(event.state)
+                        is EventFollowEvent.Completed     -> return
+                        is EventFollowEvent.Refused       -> throw IllegalStateException("refused: ${event.refusal}")
+                    }
+                }
+            }
+    }
+
+    override fun close() { /* delegates are owned by the host */ }
+}
+```
+
+Lo que el consumer **NO** importa (lista cerrada, no exhaustiva):
+
+- `dev.rubentxu.pipeline.v2.output.store.*` (ni `OutputPinPortStoreAdapter`,
+  ni `SegmentOutputStore`).
+- `dev.rubentxu.pipeline.v2.events.durable.*` (ni el `InMemoryEventStore`,
+  ni el `InMemoryOperationJournal`).
+- `dev.rubentxu.pipeline.v2.application.*` (la capa de aplicación
+  está completamente fuera del SDK).
+- `dev.rubentxu.pipeline.v2.runtime.*` (puertos publish/subscribe;
+  deuda CRIC-M2, no disponibles para consumer).
+- Cualquier cosa bajo `v2/pipeline-application/.../journal/`.
+
+Las implementaciones de `OutputFollower` y `EventFollower`
+viven en `v2/pipeline-output-store` y `v2/pipeline-events-store`,
+que están deliberadamente fuera de `publishedContractModules`.
+El consumer NO las importa; las recibe vía SPI / factory del
+host en runtime (típicamente: el host arranca el proceso, y
+el consumer Fabric se conecta vía la CLI `pipelinek observe` o
+un IPC equivalente). En esta release la única ruta estable
+para el consumer es `pipelinek observe --format json` (que
+internamente usa el mismo SDK); un IPC/port dedicado es
+trabajo futuro, NO parte de rc2.
+
+### Cursores, semántica LIVE, y refusals
+
+- **OutputFollower**: pull iterator sobre `OutputFollowHandle`. El
+  primer evento es siempre `StateChanged` o `Refused`; los
+  siguientes alternan `Bytes` (página + nuevo `FollowState`) y,
+  si se ha llegado al final del run, `Completed`. La `FollowState`
+  puede ser `Running` (con `openStreams` y `sealedStreams`),
+  `StreamSealed` (todos los streams del run sellados, run no
+  terminal todavía), `RunTerminal` (run terminal, visto por el
+  event plane), o `Unobservable(refusal)` (el follow no puede
+  empezar; el refusal ADT explica por qué: `UnknownRun`,
+  `Closed`, `PermissionDenied`, etc.).
+- **EventFollower**: pull iterator sobre `EventFollowHandle`. Mismo
+  patrón: primer evento `StateChanged` o `Refused`,
+  siguientes `Page(slice, state)` y, si llega al final, `Completed`.
+  Las filas de refusal en el store (no-decodables) llegan
+  dentro de `slice.refusals` (no terminan el follow; el follow
+  sigue con la siguiente página).
+- **Semántica LIVE**: ambos followers son **poll-based** (25 ms
+  por defecto, configurable por `pollIntervalMs`). El wakeup
+  vocabulary (`ObservationWakeup`) existe en la base pero el
+  emisor todavía no está cableado, así que el primer corte es
+  polling; la corrección se mantiene porque el cursor es durable
+  y una wakeup perdida no pierde observaciones.
+- **Refusal ADT cerrado**: `OutputRefusal` y `EventFollowRefusal`
+  son sealed classes con un número fijo de casos. Un consumer
+  puede pattern-match exhaustivo sobre ellos y no necesita
+  importar ningún tipo interno del host.
+- **Reanudación tras crash**: el consumer persiste el último
+  ordinal observado y abre un nuevo handle con
+  `afterOrdinal = lastObserved`. La implementación usa el
+  `OutputFrameIndex.framesOfRun` ya existente; el public type
+  no cambia.
+
+### Matriz de compatibilidad
+
+| Componente | Estado para consumer externo | Notas |
+|---|---|---|
+| `pipeline-domain` (SemVer, PipelineKApiRange, Digest, Capability) | PUBLICADA | runtime estable |
+| `pipeline-scripting-api` (StageScope, compilador DSL) | PUBLICADA | runtime estable |
+| `pipeline-events` (DomainEvent, EventRecordReadPort, EventRecordSlice, EventFollower) | PUBLICADA | LIVE read disponible vía `EventFollower.open(runId, options).iterator()` |
+| `pipeline-output` (OutputReadPort, OutputFrameIndex, OutputPinPort, OutputFollower) | PUBLICADA | LIVE read disponible vía `OutputFollower.open(runId, options).iterator()` |
+| `pipeline-sdk-bom` (BOM Maven) | PUBLICADA | agrupa los 4 contratos con versiones derivadas de `rootProject.version` |
+| `pipeline-runtime` (RuntimeRecoverPort, RuntimeControlPort, RuntimeIntrospectionPort) | **NO PUBLICADA** — deuda CRIC-M2 | planes para una futura `RuntimeFollowPort` o similar, pero no en rc2 |
+| `pipeline-output-store` (SegmentOutputStore, OutputPinPortStoreAdapter) | NO PUBLICADA | implementaciones internas; el consumer sólo ve las interfaces |
+| `pipeline-events-store` (InMemoryEventStore, etc.) | NO PUBLICADA | idem |
+| `pipeline-application` (Main, MainObserveCli, etc.) | NO PUBLICADA | host-side only |

@@ -101,6 +101,23 @@ fun main(args: Array<String>) {
         return
     }
 
+    // PK-1 / ADR-PK1-IDENTITY: `capabilities` is a real subcommand.
+    // Emits `pipelinek.capabilities/1` JSON line on stdout; side-effect
+    // free. Machine-verifiable surface for external consumers.
+    if (args.firstOrNull() == "capabilities") {
+        val exitCode = MainCapabilitiesCli.main(args.drop(1).toTypedArray())
+        System.exit(exitCode)
+        return
+    }
+
+    // PK-1 / ADR-PK1-IDENTITY: `sdk-info` is a real subcommand.
+    // Emits `pipelinek.sdk/1` JSON line on stdout; side-effect free.
+    if (args.firstOrNull() == "sdk-info") {
+        val exitCode = MainSdkInfoCli.main(args.drop(1).toTypedArray())
+        System.exit(exitCode)
+        return
+    }
+
     // WU-LPR-011 F1: `doctor` is a real subcommand. Local-only health
     // diagnostics: JDK version, working directory writability probe. Exits
     // 0 when the local runtime is healthy, 2 on an environment defect.

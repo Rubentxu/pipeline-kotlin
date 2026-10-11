@@ -46,4 +46,15 @@ sealed interface IntrospectionRefusal {
      * what the inspector saw.
      */
     data class InconsistentLeaseState(val details: String) : IntrospectionRefusal
+
+    /**
+     * M7 — [inspectOperation] was called with an `(operationId, attempt)`
+     * pair that the journal has no row for. The case is additive on the
+     * existing `IntrospectionRefusal` ADT (no breaking change). The M6
+     * first-cut adapter used `StorageError("no journal row ...")` for
+     * this case; the M7 audit's B.2 hardening item is to lift the
+     * "no row" mode into a typed refusal case so a consumer can
+     * `when` on it without parsing the StorageError's cause string.
+     */
+    data class UnknownOperation(val operationId: String, val attempt: Int) : IntrospectionRefusal
 }

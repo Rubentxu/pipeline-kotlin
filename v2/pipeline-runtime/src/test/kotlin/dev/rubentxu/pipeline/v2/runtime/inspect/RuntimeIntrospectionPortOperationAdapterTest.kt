@@ -160,14 +160,15 @@ class RuntimeIntrospectionPortOperationAdapterTest {
     }
 
     @Test
-    fun `2 inspectOperation on an unknown operation returns Refused(StorageError)`(
+    fun `2 M7 inspectOperation on an unknown operation returns Refused(UnknownOperation)`(
         @TempDir tempDir: Path,
     ) {
         TestBundle(tempDir, runId).use { bundle ->
             val result = bundle.port.inspectOperation("never-existed-op", 1)
             val refused = assertInstanceOf(OperationInspectionResult.Refused::class.java, result)
-            val se = assertInstanceOf(IntrospectionRefusal.StorageError::class.java, refused.refusal)
-            assertTrue(se.cause.contains("never-existed-op"))
+            val uo = assertInstanceOf(IntrospectionRefusal.UnknownOperation::class.java, refused.refusal)
+            assertEquals("never-existed-op", uo.operationId)
+            assertEquals(1, uo.attempt)
         }
     }
 
@@ -197,14 +198,16 @@ class RuntimeIntrospectionPortOperationAdapterTest {
     }
 
     @Test
-    fun `5 inspectOperation on a different attempt than the journal has returns Refused`(
+    fun `5 M7 inspectOperation on a different attempt than the journal has returns Refused(UnknownOperation)`(
         @TempDir tempDir: Path,
     ) {
         TestBundle(tempDir, runId).use { bundle ->
             bundle.appendOperation(opId = "op-1", attempt = 1, runId = runId)
             val result = bundle.port.inspectOperation("op-1", 7)
             val refused = assertInstanceOf(OperationInspectionResult.Refused::class.java, result)
-            assertInstanceOf(IntrospectionRefusal.StorageError::class.java, refused.refusal)
+            val uo = assertInstanceOf(IntrospectionRefusal.UnknownOperation::class.java, refused.refusal)
+            assertEquals("op-1", uo.operationId)
+            assertEquals(7, uo.attempt)
         }
     }
 

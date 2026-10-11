@@ -221,6 +221,45 @@ class SourceProvenanceTest {
             out.toByteArray()
         }
 
+        // PK-R1 R1-C: ship a bundled plugin manifest alongside the
+        // application JAR so the new fail-closed compatibility gate
+        // admits the synthetic candidate. The apiRange is a wide window
+        // so any 0.x.0 product version passes the gate.
+        val pluginJarBytes = java.io.ByteArrayOutputStream().use { out ->
+            java.util.jar.JarOutputStream(out).use { jar ->
+                jar.putNextEntry(java.util.jar.JarEntry("META-INF/"))
+                jar.closeEntry()
+                jar.putNextEntry(java.util.jar.JarEntry("META-INF/pipelinek/"))
+                jar.closeEntry()
+                jar.putNextEntry(
+                    java.util.jar.JarEntry("META-INF/pipelinek/plugin-manifest.json"),
+                )
+                jar.write(
+                    (
+                        """
+                        {
+                          "codec": "pipelinek-manifest-codec/v1",
+                          "schemaVersion": "manifest/v1",
+                          "plugin": "v1:plugin:test/plugin/x",
+                          "releaseVersion": "$version",
+                          "apiRange": "[0.0.0, 9.9.9)",
+                          "publisher": "test",
+                          "delivery": "OFFICIAL_PLUGIN",
+                          "trust": "unverified",
+                          "families": ["TESTING"],
+                          "steps": [],
+                          "directives": [],
+                          "events": [],
+                          "capabilities": []
+                        }
+                        """.trimIndent() + "\n"
+                        ).toByteArray(Charsets.UTF_8),
+                )
+                jar.closeEntry()
+            }
+            out.toByteArray()
+        }
+
         java.util.zip.ZipOutputStream(java.nio.file.Files.newOutputStream(zip)).use { zos ->
             zos.putNextEntry(java.util.zip.ZipEntry("pipelinek-$version/"))
             zos.closeEntry()
@@ -228,6 +267,11 @@ class SourceProvenanceTest {
                 java.util.zip.ZipEntry("pipelinek-$version/lib/pipeline-application-$version.jar"),
             )
             zos.write(jarBytes)
+            zos.closeEntry()
+            zos.putNextEntry(
+                java.util.zip.ZipEntry("pipelinek-$version/lib/pipeline-step-sdk-test-$version.jar"),
+            )
+            zos.write(pluginJarBytes)
             zos.closeEntry()
         }
     }

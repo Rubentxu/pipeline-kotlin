@@ -25,7 +25,11 @@ class CandidateAdmissionTest {
     @TempDir
     lateinit var tempDir: Path
 
-    private fun buildZip(assetVersion: String, embeddedVersion: String): Path {
+    private fun buildZip(
+        assetVersion: String,
+        embeddedVersion: String,
+        includePlugin: Boolean = true,
+    ): Path {
         val zip = tempDir.resolve("pipelinek-$assetVersion.zip")
         val jar = tempDir.resolve("pipeline-application-$embeddedVersion.jar")
         ZipOutputStream(Files.newOutputStream(jar)).use { zos ->
@@ -37,10 +41,54 @@ class CandidateAdmissionTest {
             )
             zos.closeEntry()
         }
+        // PK-R1 R1-C: a synthetic ZIP must include a bundled plugin
+        // manifest that admits the product version, otherwise the new
+        // fail-closed compatibility gate refuses the candidate before
+        // the test's own assertion runs. The apiRange below is a wide
+        // window so any 0.x.0 test case (positive) passes the gate.
+        val innerJar: Path? = if (includePlugin) {
+            val inner = tempDir.resolve("inner-plugin-$embeddedVersion.jar")
+            java.util.jar.JarOutputStream(Files.newOutputStream(inner)).use { j ->
+                j.putNextEntry(java.util.jar.JarEntry("META-INF/"))
+                j.closeEntry()
+                j.putNextEntry(java.util.jar.JarEntry("META-INF/pipelinek/"))
+                j.closeEntry()
+                j.putNextEntry(java.util.jar.JarEntry("META-INF/pipelinek/plugin-manifest.json"))
+                j.write(
+                    (
+                        """
+                        {
+                          "codec": "pipelinek-manifest-codec/v1",
+                          "schemaVersion": "manifest/v1",
+                          "plugin": "v1:plugin:test/plugin/x",
+                          "releaseVersion": "$embeddedVersion",
+                          "apiRange": "[0.0.0, 9.9.9)",
+                          "publisher": "test",
+                          "delivery": "OFFICIAL_PLUGIN",
+                          "trust": "unverified",
+                          "families": ["TESTING"],
+                          "steps": [],
+                          "directives": [],
+                          "events": [],
+                          "capabilities": []
+                        }
+                        """.trimIndent() + "\n"
+                        ).toByteArray(Charsets.UTF_8),
+                )
+                j.closeEntry()
+            }
+            inner
+        } else null
         ZipOutputStream(Files.newOutputStream(zip)).use { zos ->
             zos.putNextEntry(ZipEntry("pipelinek-$assetVersion/")); zos.closeEntry()
             zos.putNextEntry(ZipEntry("pipelinek-$assetVersion/lib/pipeline-application-$embeddedVersion.jar"))
             zos.write(Files.readAllBytes(jar)); zos.closeEntry()
+            if (innerJar != null) {
+                zos.putNextEntry(ZipEntry("pipelinek-$assetVersion/lib/pipeline-step-sdk-test-$embeddedVersion.jar"))
+                zos.write(Files.readAllBytes(innerJar))
+                zos.closeEntry()
+                Files.deleteIfExists(innerJar)
+            }
         }
         return zip
     }

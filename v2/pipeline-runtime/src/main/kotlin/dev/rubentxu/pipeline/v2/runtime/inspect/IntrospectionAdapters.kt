@@ -6,6 +6,12 @@ import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.events.durable.RunExecutionLease
 import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort
+import dev.rubentxu.pipeline.v2.events.shape.EventShapeReadPort
+import dev.rubentxu.pipeline.v2.events.shape.StageFinishedTyped
+import dev.rubentxu.pipeline.v2.events.shape.StageStartedTyped
+import dev.rubentxu.pipeline.v2.events.shape.StepFinishedTyped
+import dev.rubentxu.pipeline.v2.events.shape.StepStartedTyped
+import dev.rubentxu.pipeline.v2.events.shape.TypedEvent
 import dev.rubentxu.pipeline.v2.output.OutputFrameIndex
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import dev.rubentxu.pipeline.v2.output.OutputTailPort
@@ -45,6 +51,14 @@ class RuntimeIntrospectionPortStoreAdapter(
     private val cursors: ReplayCursorStore,
     private val lease: FileBackedRunExecutionLeaseStore,
     private val syntheticObserverId: String = "m2-observer",
+    /**
+     * M7 — optional typed-event read port. When present, `runStructure`
+     * uses it to drive event-driven grouping (the audit's I.6 PARTIAL
+     * closure). When null, the adapter falls back to the M6 synthetic
+     * single-stage / single-step view. The audit's design §C names the
+     * pattern: the M7 surface is additive, the M6 fallback is preserved.
+     */
+    private val eventShapeRead: EventShapeReadPort? = null,
 ) : RuntimeIntrospectionPort {
 
     override fun inspect(runId: String): RuntimeIntrospectionResult {
@@ -319,10 +333,10 @@ class RuntimeIntrospectionPortStoreAdapter(
                     cursor = null,
                 )
             }
-            // M6 first cut: synthetic single-stage single-step view. The
-            // grouping is "every operation is in stage 0, step 0"; the
-            // pagination is per-operation (the cursor's `operationOrdinal`
-            // is the journal list index).
+            // M7 I.6 PARTIAL closure: read the typed events to drive
+            // event-driven grouping. When the port is null OR returns
+            // Empty / Refused, fall back to the M6 synthetic view.
+            val typedEvents: List<TypedEvent> = readTypedEventsForRun(runId)
             val startOpOrdinal: Int = options.cursor?.operationOrdinal ?: 0
             if (startOpOrdinal >= journalOps.size) {
                 return RunStructureResult.Structure(
@@ -331,52 +345,24 @@ class RuntimeIntrospectionPortStoreAdapter(
                 )
             }
             val effectiveOps = journalOps.drop(startOpOrdinal).take(options.pageSize)
-            val stepStartedAtMs: Long = effectiveOps
-                .mapNotNull { startedAtMsOf(it) }
-                .minOrNull() ?: 0L
-            val stepFinishedAtMs: Long? = effectiveOps
-                .mapNotNull { endedAtMsOf(it) }
-                .maxOrNull()
-            val state = stateOf(effectiveOps)
-            val operationSummaries: List<OperationSummary> = effectiveOps.map { op ->
-                OperationSummary(
-                    operationId = op.id,
-                    attempt = op.attempt,
-                    status = op.status,
-                    startedAtMs = startedAtMsOf(op),
-                    endedAtMs = endedAtMsOf(op),
-                    fingerprint = op.fingerprint.hex,
-                    streams = streamsForOperation(
-                        runId = op.input.runId,
-                        operationId = op.id,
-                    ),
+            val stages: List<StageSummary> = if (typedEvents.isNotEmpty()) {
+                groupEventDriven(
+                    runId = runId,
+                    operations = effectiveOps,
+                    typedEvents = typedEvents,
                 )
-            }
-            val stepSummary = StepSummary(
-                stepOrdinal = 0,
-                stepKey = "synthetic-step",
-                startedAtMs = stepStartedAtMs,
-                finishedAtMs = stepFinishedAtMs,
-                state = state,
-                operations = operationSummaries,
-            )
-            val stageSummary = StageSummary(
-                stageOrdinal = 0,
-                stageIndex = "synthetic-stage",
-                startedAtMs = stepStartedAtMs,
-                finishedAtMs = stepFinishedAtMs,
-                steps = listOf(stepSummary),
-            )
-            // Apply includeTerminalStages filter (the synthetic single stage
-            // either is or is not terminal depending on the operations it
-            // contains; the filter drops the synthetic stage when every
-            // operation is terminal and the caller asked for in-flight only).
-            val stages: List<StageSummary> = if (options.includeTerminalStages) {
-                listOf(stageSummary)
-            } else if (effectiveOps.any { !it.status.isTerminal }) {
-                listOf(stageSummary)
             } else {
-                emptyList()
+                listOf(buildSyntheticStage(runId, effectiveOps))
+            }
+            // Apply includeTerminalStages filter: when false, drop stages
+            // whose every operation is in a terminal status. Both the
+            // event-driven and synthetic paths share this rule.
+            val filtered = if (options.includeTerminalStages) stages else {
+                stages.filter { stage ->
+                    stage.steps.any { step ->
+                        step.operations.any { !it.status.isTerminal }
+                    }
+                }
             }
             val lastOpOrdinalIncluded = startOpOrdinal + effectiveOps.size - 1
             val nextCursor: StructureCursor? = if (lastOpOrdinalIncluded < journalOps.size - 1) {
@@ -387,7 +373,7 @@ class RuntimeIntrospectionPortStoreAdapter(
                 )
             } else null
             RunStructureResult.Structure(
-                structure = RunStructure.Stages(stages),
+                structure = RunStructure.Stages(filtered),
                 cursor = nextCursor,
             )
         } catch (e: Exception) {
@@ -508,6 +494,172 @@ class RuntimeIntrospectionPortStoreAdapter(
         if (ops.any { it.status.name == "ABORTED" }) return StepState.Cancelled
         if (ops.any { it.status.name == "PENDING" }) return StepState.Pending
         return StepState.Pending
+    }
+
+    // ── M7 helpers (private) ──────────────────────────────────────────────
+
+    /**
+     * Read the typed events for [runId] via the constructor's
+     * [eventShapeRead] port. Returns an empty list when the port is
+     * null (the M6 path), when the port returns [Empty], or when the
+     * port returns [Refused] (the caller's failure mode is the typed
+     * refusal, not a synthetic fallback that hides the failure).
+     */
+    private fun readTypedEventsForRun(runId: String): List<TypedEvent> {
+        val port = eventShapeRead ?: return emptyList()
+        return when (val r = port.eventShapesForRun(
+            runId,
+            dev.rubentxu.pipeline.v2.events.shape.EventShapeOptions.Default,
+        )) {
+            is dev.rubentxu.pipeline.v2.events.shape.EventShapeResult.Events -> r.events
+            dev.rubentxu.pipeline.v2.events.shape.EventShapeResult.Empty,
+            is dev.rubentxu.pipeline.v2.events.shape.EventShapeResult.Refused -> emptyList()
+        }
+    }
+
+    /**
+     * Build the synthetic single-stage / single-step view (the M6
+     * fallback). Every operation is placed under a synthetic stage 0
+     * / step 0. The test `RuntimeIntrospectionPortStructureAdapterTest`
+     * pins this fallback explicitly; the M6 contract test row for
+     * "synthetic grouping" lives on.
+     */
+    private fun buildSyntheticStage(
+        runId: String,
+        operations: List<DurableOperation>,
+    ): StageSummary {
+        val stepStartedAtMs: Long = operations
+            .mapNotNull { startedAtMsOf(it) }
+            .minOrNull() ?: 0L
+        val stepFinishedAtMs: Long? = operations
+            .mapNotNull { endedAtMsOf(it) }
+            .maxOrNull()
+        val operationSummaries: List<OperationSummary> = operations.map { op ->
+            OperationSummary(
+                operationId = op.id,
+                attempt = op.attempt,
+                status = op.status,
+                startedAtMs = startedAtMsOf(op),
+                endedAtMs = endedAtMsOf(op),
+                fingerprint = op.fingerprint.hex,
+                streams = streamsForOperation(
+                    runId = op.input.runId,
+                    operationId = op.id,
+                ),
+            )
+        }
+        val stepSummary = StepSummary(
+            stepOrdinal = 0,
+            stepKey = "synthetic-step",
+            startedAtMs = stepStartedAtMs,
+            finishedAtMs = stepFinishedAtMs,
+            state = stateOf(operations),
+            operations = operationSummaries,
+        )
+        return StageSummary(
+            stageOrdinal = 0,
+            stageIndex = "synthetic-stage",
+            startedAtMs = stepStartedAtMs,
+            finishedAtMs = stepFinishedAtMs,
+            steps = listOf(stepSummary),
+        )
+    }
+
+    /**
+     * Group operations by their enclosing stage and step using the
+     * typed events. An operation's stage is the most recent
+     * [StageStartedTyped] whose `occurredAtMs` is `<=` the operation's
+     * `startedAtMs`; the operation's step is the most recent
+     * [StepStartedTyped] for that stage. When no events match, the
+     * operation falls back to a synthetic "ungrouped" stage 0 / step 0.
+     *
+     * The grouping is in execution order: stages by `stageOrdinal`,
+     * steps within a stage by `stepKey`, operations within a step by
+     * their journal `startedAtMs`.
+     */
+    private fun groupEventDriven(
+        runId: String,
+        operations: List<DurableOperation>,
+        typedEvents: List<TypedEvent>,
+    ): List<StageSummary> {
+        val stageStartEvents = typedEvents.filterIsInstance<StageStartedTyped>()
+        val stepStartEvents = typedEvents.filterIsInstance<StepStartedTyped>()
+        val groupKey: (DurableOperation) -> Triple<Int, String, String> = { op ->
+            val opMs = startedAtMsOf(op)
+            val stage = stageStartEvents
+                .filter { opMs == null || it.occurredAtMs <= opMs }
+                .maxByOrNull { it.occurredAtMs }
+            val step = stepStartEvents
+                .filter { stage == null || it.stageOrdinal == stage.stageOrdinal }
+                .filter { opMs == null || it.occurredAtMs <= opMs }
+                .maxByOrNull { it.occurredAtMs }
+            val stageOrd = stage?.stageOrdinal ?: 0
+            val stageName = stage?.stageName ?: "ungrouped-stage"
+            val stepKey = step?.stepKey ?: "ungrouped-step"
+            Triple(stageOrd, "$stageOrd::$stageName", "$stageOrd::$stepKey")
+        }
+        val groups: Map<Triple<Int, String, String>, List<DurableOperation>> =
+            operations.groupBy(groupKey)
+        return groups.entries
+            .sortedBy { it.key.first }
+            .map { (key, ops) ->
+                val stageOrd = key.first
+                val stageName = key.second.substringAfter("::")
+                val stageStartedAtMs = ops
+                    .mapNotNull { startedAtMsOf(it) }
+                    .minOrNull() ?: 0L
+                val stageFinishedAtMs = ops
+                    .mapNotNull { endedAtMsOf(it) }
+                    .maxOrNull()
+                val stepGroupKey: (DurableOperation) -> String = { op ->
+                    val opMs = startedAtMsOf(op)
+                    val step = stepStartEvents
+                        .filter { it.stageOrdinal == stageOrd }
+                        .filter { opMs == null || it.occurredAtMs <= opMs }
+                        .maxByOrNull { it.occurredAtMs }
+                    step?.stepKey ?: "ungrouped-step"
+                }
+                val stepGroups: Map<String, List<DurableOperation>> = ops.groupBy(stepGroupKey)
+                val stepSummaries: List<StepSummary> = stepGroups.entries
+                    .sortedBy { it.key }
+                    .map { (stepKey, stepOps) ->
+                        val stepStartedAtMs: Long = stepOps
+                            .mapNotNull { startedAtMsOf(it) }
+                            .minOrNull() ?: 0L
+                        val stepFinishedAtMs: Long? = stepOps
+                            .mapNotNull { endedAtMsOf(it) }
+                            .maxOrNull()
+                        val operationSummaries: List<OperationSummary> = stepOps.map { op ->
+                            OperationSummary(
+                                operationId = op.id,
+                                attempt = op.attempt,
+                                status = op.status,
+                                startedAtMs = startedAtMsOf(op),
+                                endedAtMs = endedAtMsOf(op),
+                                fingerprint = op.fingerprint.hex,
+                                streams = streamsForOperation(
+                                    runId = op.input.runId,
+                                    operationId = op.id,
+                                ),
+                            )
+                        }
+                        StepSummary(
+                            stepOrdinal = 0,
+                            stepKey = stepKey,
+                            startedAtMs = stepStartedAtMs,
+                            finishedAtMs = stepFinishedAtMs,
+                            state = stateOf(stepOps),
+                            operations = operationSummaries,
+                        )
+                    }
+                StageSummary(
+                    stageOrdinal = stageOrd,
+                    stageIndex = stageName,
+                    startedAtMs = stageStartedAtMs,
+                    finishedAtMs = stageFinishedAtMs,
+                    steps = stepSummaries,
+                )
+            }
     }
 }
 

@@ -98,10 +98,10 @@ cadena CRIC-1. Tras la certificación por el harness, el
 
 ## Pendiente
 
-- **Tag + Prerelease en GitHub:** la Prerelease `v0.54.0-rc1` se
-  publica desde la línea de comandos después de este handoff. El ZIP
-  `pipelinek-0.54.0-rc1` se sube como asset; el SHA-256 se anota en
-  la descripción de la Prerelease.
+- ✅ **Tag + Prerelease en GitHub:** Prerelease `v0.54.0-rc1`
+  publicada en `https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.54.0-rc1`.
+  ZIP `pipelinek-0.54.0.zip` (88.4 MB) subido como asset con
+  SHA-256 `a09ef52ccb00beb361083c3e6d72637bb49bb2faffed8edfc980563f4e11a356`.
 - **Veredicto del harness:** pendiente. Se añadirá al
   `release-receipt.md` cuando llegue.
 - **M6.4 follow-up (consumer):** el `example-external-consumer` en el

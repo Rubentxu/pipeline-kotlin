@@ -138,6 +138,12 @@ regresiones.
 - ✅ `:pipeline-application:test --tests CapabilityRegistrationTest` 7/7 verde
 - ✅ `./gradlew publishSdkForExternalPlugin` 5 SDK coords + BOM a 0.54.0
 - ✅ `./gradlew :pipeline-application:distZip` `pipelinek-0.54.0.zip` (88.4 MB)
+- ✅ `git push -u origin release/cric-m7-v0.54.0-rc1` rama publicada
+- ✅ `git tag -a v0.54.0-rc1` + `git push origin v0.54.0-rc1` etiqueta publicada
+- ✅ `gh release create v0.54.0-rc1 --prerelease` Prerelease publicada con el ZIP asset
+
+**Estado actual:** `CANDIDATE_PUBLISHED` en GitHub.
+**Prerelease URL:** https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.54.0-rc1
 
 ## Pendiente
 

@@ -400,8 +400,14 @@ class RuntimeIntrospectionPortStoreAdapter(
                     IntrospectionRefusal.StorageError(e.shortDiagnostic()),
                 )
             } ?: return OperationInspectionResult.Refused(
-                IntrospectionRefusal.StorageError(
-                    "no journal row for ($operationId, attempt=$attempt)",
+                // M7 B.2 hardening: typed UnknownOperation refusal for
+                // the "no row" case. The M6 first-cut used a generic
+                // StorageError with a cause string; the M7 audit's
+                // recommendation is a typed case so a consumer can
+                // `when` on it without parsing strings.
+                IntrospectionRefusal.UnknownOperation(
+                    operationId = operationId,
+                    attempt = attempt,
                 ),
             )
             val runId = op.input.runId

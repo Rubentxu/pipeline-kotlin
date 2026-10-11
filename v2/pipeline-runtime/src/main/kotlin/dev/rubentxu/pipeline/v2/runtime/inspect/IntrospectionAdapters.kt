@@ -268,6 +268,31 @@ class RuntimeIntrospectionPortStoreAdapter(
         val msg = message?.take(120)?.replace('\n', ' ')
         return if (msg.isNullOrBlank()) cls else "$cls: $msg"
     }
+
+    // ── M6 (additive) — runStructure + inspectOperation ───────────────────
+    //
+    // The M6 design §F.1 phases the implementation in two commits: the
+    // types and the method signatures land in M6.1; the adapter wiring
+    // lands in M6.2. Until M6.2 lands, the methods throw a typed refusal
+    // so the build stays green and any consumer that calls them gets a
+    // refusal (NOT an exception) — preserving the "NEVER throws" rule of
+    // the M2 port. The refusal is `StorageError("m6-not-implemented")` so
+    // a consumer that wants to detect "the M6 wire isn't in this build
+    // yet" can do so without parsing an exception.
+
+    override fun runStructure(
+        runId: String,
+        options: StructureRunOptions,
+    ): RunStructureResult = RunStructureResult.Refused(
+        IntrospectionRefusal.StorageError("m6-not-implemented"),
+    )
+
+    override fun inspectOperation(
+        operationId: String,
+        attempt: Int,
+    ): OperationInspectionResult = OperationInspectionResult.Refused(
+        IntrospectionRefusal.StorageError("m6-not-implemented"),
+    )
 }
 
 /**

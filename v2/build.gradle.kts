@@ -91,7 +91,7 @@ repositories {
 // suffix by construction; the candidate is identified by digest
 // (CandidateId = sha256 of the distribution ZIP), not by the version
 // string.
-version = "0.51.0"
+version = "0.53.0"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

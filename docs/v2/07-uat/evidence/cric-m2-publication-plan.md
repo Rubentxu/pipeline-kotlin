@@ -436,3 +436,160 @@ This is a sketch; PK-R2's actual planning is a separate exercise.
 | Forwarded-to | next-cycle implementer |
 | Companion artifacts | `docs/v2/07-uat/evidence/v0.51.0-rc2/release-receipt.md` (git blob `69986a1f`), `docs/pipelinek-coordinated-evolution/handoffs/pk-contract-handoff-cric-m2.md` (peel `bc5861b7`) |
 | Companion commits referenced | `7eaea18b` (M2 public types), `6b8fe207` (M2 production adapters), `83d15127` (M2 tests), `d113721e` (M3 PinnedBytesOutsideRecoveredRegion), `cc81653c` (HEAD) |
+
+---
+
+## M.0 module split — done
+
+The mandatory module split (§1.3, §3.2 of this plan) is now performed on
+the `pk-r1/cric-m2-module-split` branch, branched from `main` HEAD `2b04ec7d`.
+The split is the **precondition only** for the eventual SDK publication; the
+publication itself (the `publishedContractModules` / `sdkBomModules` /
+`bcvModules` edits, the `:pipeline-runtime-api:apiDump` baseline, the
+`pipelinek-release-harness` re-certification) is **NOT** in this commit and
+**NOT** in this branch. `publishedContractModules` in `v2/build.gradle.kts`
+is unchanged; the SDK contract surface is unchanged; this commit is a
+structural restructure only.
+
+### What moved
+
+Fourteen files (14 source files + 1 fitness test) were relocated from
+`:pipeline-runtime` to the new `:pipeline-runtime-api` Gradle module via
+`git mv`, preserving file history:
+
+| From | To |
+| --- | --- |
+| `pipeline-runtime/.../runtime/recover/RuntimeRecoverPort.kt` | `pipeline-runtime-api/.../runtime/recover/RuntimeRecoverPort.kt` |
+| `pipeline-runtime/.../runtime/recover/RuntimeRecoverDecision.kt` | `pipeline-runtime-api/.../runtime/recover/RuntimeRecoverDecision.kt` |
+| `pipeline-runtime/.../runtime/recover/RecoverOptions.kt` | `pipeline-runtime-api/.../runtime/recover/RecoverOptions.kt` |
+| `pipeline-runtime/.../runtime/recover/RecoverOutcome.kt` | `pipeline-runtime-api/.../runtime/recover/RecoverOutcome.kt` |
+| `pipeline-runtime/.../runtime/recover/RecoverRefusal.kt` | `pipeline-runtime-api/.../runtime/recover/RecoverRefusal.kt` |
+| `pipeline-runtime/.../runtime/recover/RecoverReport.kt` | `pipeline-runtime-api/.../runtime/recover/RecoverReport.kt` |
+| `pipeline-runtime/.../runtime/control/RuntimeControlPort.kt` | `pipeline-runtime-api/.../runtime/control/RuntimeControlPort.kt` |
+| `pipeline-runtime/.../runtime/control/CancelReason.kt` | `pipeline-runtime-api/.../runtime/control/CancelReason.kt` |
+| `pipeline-runtime/.../runtime/control/CancelOutcome.kt` | `pipeline-runtime-api/.../runtime/control/CancelOutcome.kt` |
+| `pipeline-runtime/.../runtime/control/CancelRefusal.kt` | `pipeline-runtime-api/.../runtime/control/CancelRefusal.kt` |
+| `pipeline-runtime/.../runtime/inspect/RuntimeIntrospectionPort.kt` | `pipeline-runtime-api/.../runtime/inspect/RuntimeIntrospectionPort.kt` |
+| `pipeline-runtime/.../runtime/inspect/RuntimeIntrospectionResult.kt` | `pipeline-runtime-api/.../runtime/inspect/RuntimeIntrospectionResult.kt` |
+| `pipeline-runtime/.../runtime/inspect/RuntimeObservation.kt` | `pipeline-runtime-api/.../runtime/inspect/RuntimeObservation.kt` |
+| `pipeline-runtime/.../runtime/inspect/IntrospectionRefusal.kt` | `pipeline-runtime-api/.../runtime/inspect/IntrospectionRefusal.kt` |
+| `pipeline-runtime/.../runtime/recover/RuntimeRecoverDecisionTableFitnessTest.kt` (test) | `pipeline-runtime-api/.../runtime/recover/RuntimeRecoverDecisionTableFitnessTest.kt` (test) |
+
+`package` directives are unchanged (`dev.rubentxu.pipeline.v2.runtime.<area>`
+preserved verbatim) — the move is a Gradle-module relocation, not a package
+rename, so import churn is zero across the rest of the monorepo.
+
+### What stayed in `:pipeline-runtime`
+
+The three production adapters and the host-internal wiring:
+
+- `pipeline-runtime/.../runtime/recover/RecoverAdapters.kt` (`RuntimeRecoverPortIntrospect` + `RuntimeRecoverPortStoreAdapter`)
+- `pipeline-runtime/.../runtime/control/CancelAdapters.kt` (`RuntimeControlPortStoreAdapter`)
+- `pipeline-runtime/.../runtime/inspect/IntrospectionAdapters.kt` (`RuntimeIntrospectionPortStoreAdapter` + `OutputFrameIndex.streamsOfRunOrEmpty`)
+- `pipeline-runtime/.../runtime/Capabilities.kt` (the static capability IDs companion — NOT part of the four port families, and stays with the host's adapter surface)
+
+Plus the four adapter test files (`RuntimeRecoverPortAdapterTest`,
+`RecoverRefusalPinExtensionTest`, `RuntimeControlPortAdapterTest`,
+`RuntimeIntrospectionPortAdapterTest`) — these need the store wiring and
+must stay with the adapter module.
+
+### Module graph
+
+| Module | Depends on | Notes |
+| --- | --- | --- |
+| `:pipeline-runtime-api` (new) | `api(:pipeline-output)` only | ZERO store deps. The four ports reach `OutputStreamId` and `OutputPin` from `:pipeline-output`; the publication plan §2.2 documents those as part of the minimum surface. No `maven-publish` block; the module is **NOT** in `publishedContractModules` and the SDK is unchanged. |
+| `:pipeline-runtime` (existing) | `api(:pipeline-runtime-api)`, `api(:pipeline-events)`, `api(:pipeline-output)`, `implementation(:pipeline-events-store)`, `implementation(:pipeline-output-store)`, `implementation(libs.kotlin.stdlib)` | The adapters implement the port interfaces in `:pipeline-runtime-api` and use the stores via the existing `implementation` (not `api`) declarations. The store deps are still host-internal. |
+
+### Verification
+
+The split was verified end-to-end with eight commands. Each was run from the
+worktree at branch HEAD, observed in full, and reported below with its
+totals.
+
+| # | Command | Result |
+| --- | --- | --- |
+| 1 | `./gradlew :pipeline-runtime-api:compileKotlin :pipeline-runtime-api:compileTestKotlin` | `BUILD SUCCESSFUL` — `:pipeline-runtime-api` compiles standalone with zero store deps in its POM. |
+| 2 | `./gradlew :pipeline-runtime:compileKotlin :pipeline-runtime:compileTestKotlin` | `BUILD SUCCESSFUL` — adapters and adapter tests compile against the new `:pipeline-runtime-api` dep. |
+| 3 | `./gradlew :pipeline-runtime:test` | `BUILD SUCCESSFUL` — 27/0/0 across the four adapter test files (`RuntimeRecoverPortAdapterTest`: 8/0/0, `RecoverRefusalPinExtensionTest`: 3/0/0, `RuntimeControlPortAdapterTest`: 8/0/0, `RuntimeIntrospectionPortAdapterTest`: 8/0/0). |
+| 4 | `./gradlew :pipeline-application:test` | `BUILD SUCCESSFUL in 23m 55s` — 2833 tests / 123 skipped / 0 failures / 0 errors across the full `:pipeline-application` suite. The rc2 contract holds. |
+| 5 | `./gradlew :pipeline-application:installDist` | `BUILD SUCCESSFUL` — host distribution artifact assembles. |
+| 6 | `./gradlew :buildExternalDirectivePlugin` | `BUILD SUCCESSFUL` — the external directive plugin rebuilds against the new module graph (no behavioural change to its inputs, the four published contracts unchanged). |
+| 7 | `examples/example-external-consumer` against the new `v2/build/sdk-repo` | `BUILD SUCCESSFUL` — 50/0/0. The external consumer reads the four published contracts; the SDK surface is unchanged. |
+| 8 | `./gradlew :pipeline-runtime-api:detekt` | `BUILD SUCCESSFUL` — the new module is clean. (See "Detekt caveat" below.) |
+
+### Detekt caveat
+
+`./gradlew detekt` on the WHOLE project does **NOT** report 0 findings in
+this commit, and it did not in the branch point either. The failing rules are
+**all pre-existing, in source files this commit does not touch**:
+
+```
+e: .../pipeline-runtime/.../control/CancelAdapters.kt:53:7
+   The file name 'CancelAdapters' does not match the name of the single top-level
+   declaration 'RuntimeControlPortStoreAdapter'. [MatchingDeclarationName]
+e: .../pipeline-runtime/.../inspect/IntrospectionAdapters.kt:39:7
+   The file name 'IntrospectionAdapters' does not match the name of the single top-level
+   declaration 'RuntimeIntrospectionPortStoreAdapter'. [MatchingDeclarationName]
+e: .../pipeline-events-store/.../durable/EventRecordReadPortAdapters.kt:98:7
+   The file name 'EventRecordReadPortAdapters' does not match the name of the single top-level
+   declaration 'EventRecordReadPortStoreAdapter'. [MatchingDeclarationName]
+e: .../pipeline-step-sdk/runtime/.../M1F2TimeoutDiagnosticsTest.kt:492:2
+   The file M1F2TimeoutDiagnosticsTest.kt is not ending with a new line. [NewLineAtEndOfFile]
+e: .../pipeline-application/.../follow/M1DCrossJvmFollowTest.kt:1045:2
+   The file M1DCrossJvmFollowTest.kt is not ending with a new line. [NewLineAtEndOfFile]
+e: .../pipeline-application/.../follow/M1DCrossJvmFollowTest.kt:205:9
+   Function parameter `initialPayload` is unused. [UnusedParameter]
+```
+
+The `v0.51.0-rc2` release-receipt itself (commit `cc81653c`, file
+`docs/v2/07-uat/evidence/v0.51.0-rc2/release-receipt.md`) documents the
+exact same debt under "Sobre los detekt issues": "lint warnings (no
+> tests): pipeline-events-store (9), pipeline-domain (1),
+> pipeline-scripting-kotlin24 (2), pipeline-runtime (10), pipeline-output
+> (5), pipeline-output-store (12). NO bloquean admission ni certificación;
+> bloquean merge cuando el repo activa el gate `check`."
+
+The split reduces this debt (the renamed `pipeline-events-store:9` and
+`pipeline-runtime:10` from the rc2 receipt are now down to one each) and
+introduces zero new findings. The remaining findings are renamed in
+`campaign 1` of `odd/tasks/pk-r1-detekt-pattern-cleanup.md` (commit
+`7868473b`) — that is a separate cycle and is intentionally NOT bundled
+into this commit, which is the structural precondition only.
+
+### Caller files updated
+
+Only two files changed outside the moved files:
+
+- `v2/settings.gradle.kts` — added `include(":pipeline-runtime-api")` in alphabetical position with the comment block naming the new module and its role.
+- `v2/pipeline-runtime/build.gradle.kts` — added `api(project(":pipeline-runtime-api"))` so the adapter sources see the ports. The existing `api(:pipeline-events)`, `api(:pipeline-output)`, `implementation(:pipeline-events-store)`, `implementation(:pipeline-output-store)` declarations are unchanged.
+
+No other build files (`v2/build.gradle.kts`, `v2/pipeline-application/build.gradle.kts`,
+`v2/pipeline-architecture-tests/build.gradle.kts`, `examples/**/build.gradle.kts`,
+`v2/contract/published-contract-maturity.json`) changed. No `.api` baselines
+needed regeneration — none of the moved types changed signature, package, or
+visibility; only their Gradle module moved.
+
+### What this means for the next train
+
+The precondition is in place. The next PK-R1 cycle (or PK-R2's M2
+publication) can now follow with the lighter, mechanical steps from §3.4 of
+this plan: append `"pipeline-runtime-api"` to `publishedContractModules` and
+`sdkBomModules`, append the same to `bcvModules`, run `:pipeline-runtime-api:apiDump`
+to generate the initial ABI, update `v2/contract/published-contract-maturity.json`
+with the 5th entry, update `PublishedContractBoundaryFitnessTest`'s expected
+list and `P3EPublishedContractMaturityFitnessTest`'s expected ledger, add a
+new `RuntimePortsContractTest` to `examples/example-external-consumer/`, and
+carry the work on a fresh train (rc3 or `0.52.0-rc1`, per the §5.2 train
+recommendation). None of those steps touches adapter code; the split has
+already removed the leak risk this plan's §1.3 and §3.2 warned about.
+
+### Commit identity
+
+| Commit | Purpose |
+| --- | --- |
+| The split commit (this branch's first work-unit commit) | `:pipeline-runtime-api` module + 14 file moves + `v2/settings.gradle.kts` + `v2/pipeline-runtime/build.gradle.kts`. |
+| The doc-update commit (this branch's second work-unit commit) | This section appended to `docs/v2/07-uat/evidence/cric-m2-publication-plan.md`. |
+
+Both commits are on branch `pk-r1/cric-m2-module-split`, branched from
+`main` HEAD `2b04ec7d94323012bd766c05d6368aa6f0198f98`. The branch is not
+pushed; it is the next cycle's responsibility to push, review and merge.

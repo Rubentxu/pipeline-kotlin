@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm")
+    `maven-publish`
 }
 
 group = "dev.rubentxu.pipeline.v2"
@@ -29,6 +30,7 @@ dependencies {
     // names these types then fails to compile if the dependency is hidden at
     // `implementation` scope — the same failure mode the M1 read-side wires
     // guard against.
+    api(project(":pipeline-domain"))
     api(project(":pipeline-output"))
     // No `api(:pipeline-events)` declaration is needed: no public type in this
     // module names an event-plane value. The host's `:pipeline-runtime` keeps
@@ -55,11 +57,22 @@ tasks.test {
     useJUnitPlatform()
 }
 
-// PK-R1 / CRIC-M2 — the `maven-publish` block is intentionally absent in
-// this commit. The publication of `:pipeline-runtime-api` is a separate
-// follow-up cycle that the orchestrator task `odd/tasks/pk-r1-cric-m2-module-split.md`
-// names as out-of-scope-for-this-commit. `publishedContractModules` in
-// `v2/build.gradle.kts` is unchanged; the SDK contract surface is unchanged;
-// the only thing this commit does is restructure the monorepo module graph
-// so the eventual publication does not leak store dependencies into the
-// published POM.
+// 0.52.0-rc1 / CRIC-M2: this module is now on `publishedContractModules` in
+// `v2/build.gradle.kts`. The `maven-publish` block makes that claim real by
+// emitting an SDK Maven coordinate into `v2/build/sdk-repo/`. The pattern
+// mirrors `:pipeline-events` exactly; the version is not declared here
+// (rootProject.version is the single authority; per-module `version =` is a
+// release-time defect).
+publishing {
+    publications {
+        create<MavenPublication>("sdk") {
+            from(components["java"])
+        }
+    }
+    repositories {
+        maven {
+            name = "sdk"
+            url = uri(rootProject.layout.buildDirectory.dir("sdk-repo"))
+        }
+    }
+}

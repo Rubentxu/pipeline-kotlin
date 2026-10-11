@@ -50,7 +50,8 @@
     "pipeline-domain": "EXPERIMENTAL",
     "pipeline-scripting-api": "EXPERIMENTAL",
     "pipeline-events": "EXPERIMENTAL",
-    "pipeline-output": "EXPERIMENTAL"
+    "pipeline-output": "EXPERIMENTAL",
+    "pipeline-runtime-api": "EXPERIMENTAL"
   },
   "rationale": {
     "pipeline-domain": [
@@ -81,6 +82,22 @@
     "pipeline-output": [
       "EXPERIMENTAL: the smallest of the four and the least consumed; nothing in the P3-E",
       "block touched it."
+    ],
+    "pipeline-runtime-api": [
+      "EXPERIMENTAL, and the reason is specific rather than convenient: this module is new in",
+      "0.52.0-rc1 (carved out of :pipeline-runtime by the M.0 module-split commit 2a97653a)",
+      "and carries the three M2 publish/subscribe ports (RuntimeRecoverPort, RuntimeControlPort,",
+      "RuntimeIntrospectionPort) plus the pure decider (RuntimeRecoverDecision) and their",
+      "sealed ADTs. The module's public ABI is fully implemented in the M.0 commit and backed by",
+      "the in-monorepo adapter test suites (RuntimeRecoverPortAdapterTest, RuntimeControlPortAdapterTest,",
+      "RuntimeIntrospectionPortAdapterTest, RuntimeRecoverDecisionTableFitnessTest, RecoverRefusalPinExtensionTest)",
+      "but it has not been certified by pipelinek-release-harness and no external consumer has",
+      "compiled against it yet. EXPERIMENTAL is the honest classification: the surface is stable",
+      "in shape (interfaces, sealed ADTs, refusal cases) and unstable in the sense that the next",
+      "certified release may add FABRIC capability checks per port. The capability flips from",
+      "EXPERIMENTAL to PUBLICADA at the candidate boundary the publication plan §2.1 documents,",
+      "and a deliberate breaking change would be recorded in the sibling",
+      "published-contract-exceptions.json (per this file's own _comment, rule 3)."
     ]
   },
   "surfaces": {

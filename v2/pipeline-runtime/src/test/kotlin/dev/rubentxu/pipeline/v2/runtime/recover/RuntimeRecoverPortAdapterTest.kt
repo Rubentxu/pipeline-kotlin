@@ -195,7 +195,7 @@ class RuntimeRecoverPortAdapterTest {
             // Instead: assert the decider's surface, and skip the port-level
             // rerouting (the dryRun path).
             val observation = RuntimeObservation.LiveButEmpty(
-                attempt = dev.rubentxu.pipeline.v2.runtime.inspect.AttemptId(1),
+                attempt = dev.rubentxu.pipeline.v2.domain.AttemptId(1),
                 reason = "test",
             )
             val proof = RuntimeRecoverDecision.JournalProof(
@@ -310,7 +310,7 @@ class RuntimeRecoverPortAdapterTest {
             // this as `LiveButEmpty`). To trigger ReuseTerminal via dryRun,
             // we exercise the decider through a hand-rolled proof path.
             val observation = RuntimeObservation.Terminal(
-                attempt = dev.rubentxu.pipeline.v2.runtime.inspect.AttemptId(1),
+                attempt = dev.rubentxu.pipeline.v2.domain.AttemptId(1),
                 terminal = dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation.Succeeded(
                     terminalAtMs = 1_700_000_000_000L,
                 ),

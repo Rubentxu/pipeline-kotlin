@@ -593,3 +593,75 @@ already removed the leak risk this plan's §1.3 and §3.2 warned about.
 Both commits are on branch `pk-r1/cric-m2-module-split`, branched from
 `main` HEAD `2b04ec7d94323012bd766c05d6368aa6f0198f98`. The branch is not
 pushed; it is the next cycle's responsibility to push, review and merge.
+### M.0.x — AttemptId deduplication and SharedModel ledger update (2026-10-11)
+
+The M.0 commit (2a97653a) created `:pipeline-runtime-api` but did not depend
+on `:pipeline-domain`, even though the new module's public types include
+`AttemptId` (the value class declared at `RuntimeObservation.kt:80-81`).
+That created two distinct `AttemptId` value classes with the same name and
+the same value type `Int`: one canonical (`dev.rubentxu.pipeline.v2.domain.AttemptId`
+in `PipelineIds.kt:56`) and one duplicate inside `:pipeline-runtime-api`.
+
+The duplication is enforced-fail by two fitness tests:
+
+- `FArchM1CanonicalIdsTest > V2 id type declarations match the canonical
+  and legacy allowlist exactly` — the test scans v2 for inline value class
+  declarations whose name is in `allowedIdDeclarations`; the new `AttemptId`
+  added a second declaration path that the allowlist did not account for,
+  so the test failed with `Expected: 1 path, actual: 2 paths`.
+- `SharedModelCompositionFitnessTest > the measured composition of every
+  shared type matches the ledger` — the test's `consumersOf` is a string
+  match across the source tree, so the M.0 module's doc-comment references
+  to `OperationStatus` (in `RuntimeObservation.kt:17`) and `EffectReplayPolicy`
+  (in `RuntimeRecoverPort.kt:10`) added it as a string-match consumer of
+  `OperationStatus` and `ReplayPolicy` without the ledger knowing.
+
+Both failures are M.0 design issues, not W design issues. They block the W
+track because the architecture tests gate the build.
+
+#### What this commit does
+
+1. Adds `api(project(":pipeline-domain"))` to `:pipeline-runtime-api/build.gradle.kts`
+   so the new module can name canonical domain types.
+2. Removes the local `AttemptId` value class at
+   `v2/pipeline-runtime-api/src/main/kotlin/dev/rubentxu/pipeline/v2/runtime/inspect/RuntimeObservation.kt:80-83`.
+3. Imports the canonical `AttemptId` from `dev.rubentxu.pipeline.v2.domain.AttemptId`
+   in the four files that referenced the local one: `RuntimeObservation.kt`,
+   `CancelOutcome.kt`, `RecoverOutcome.kt`, `RuntimeRecoverDecision.kt`.
+4. Updates the three adapter files in `:pipeline-runtime` that imported the
+   local `AttemptId` (now removed) to import the canonical: `RuntimeControlPortStoreAdapter.kt`,
+   `RuntimeIntrospectionPortStoreAdapter.kt`, `RecoverAdapters.kt`.
+5. Updates the test that fully-qualified the local `AttemptId`:
+   `RuntimeRecoverPortAdapterTest.kt`.
+6. Updates the test in `:pipeline-runtime-api` that imported the local
+   `AttemptId`: `RuntimeRecoverDecisionTableFitnessTest.kt`.
+7. Updates `SharedModelCompositionFitnessTest.kt`'s ledger: `ReplayPolicy`
+   and `OperationStatus` consumer sets now include `pipeline-runtime-api`
+   (and `pipeline-runtime` for `OperationStatus`, which the M.0 split left
+   as a consumer via the `RuntimeControlPortStoreAdapter`).
+
+The apiDump file is regenerated because the public surface of
+`:pipeline-runtime-api` changed (one local value class removed, one canonical
+import added). The signature of `RuntimeObservation.Running` etc. is
+unchanged in shape — `attempt: AttemptId` is still `Int` underneath — but
+the published ABI's type reference now points to `dev.rubentxu.pipeline.v2.domain.AttemptId`
+instead of `dev.rubentxu.pipeline.v2.runtime.inspect.AttemptId`.
+
+#### Verification
+
+- `FArchM1CanonicalIdsTest`: 4 tests, 0 failures. The new `AttemptId`
+  declaration is gone; the canonical one is the only declaration.
+- `SharedModelCompositionFitnessTest`: 3 tests, 0 failures. The ledger
+  includes `pipeline-runtime-api` (and `pipeline-runtime` for `OperationStatus`)
+  in the consumer sets.
+- `:pipeline-runtime-api:test` and `:pipeline-runtime:test`: green.
+- The W-track gate above is now runnable end-to-end.
+
+### M.1 — SDK publication wiring done (2026-10-11)
+
+The W track has now executed: `:pipeline-runtime-api` is in the SDK
+publication pipeline, the version is `0.52.0`, the binary-compatibility
+contract is checked, and the contract-maturity JSON has its 5th entry.
+The three port tracks (Introspection, Control, Recover) can land on top
+of this commit.
+

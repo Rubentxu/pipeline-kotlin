@@ -55,8 +55,15 @@ class SharedModelCompositionFitnessTest {
     )
 
     private val sharedModel = listOf(
-        SharedType("ReplayPolicy", "pipeline-domain", setOf("pipeline-application")),
-        SharedType("OperationStatus", "pipeline-domain", setOf("pipeline-application", "pipeline-events-store")),
+        // 0.52.0-rc1 / CRIC-M2: the M0 module split moved adapter-side references into
+        // `:pipeline-runtime-api` (see `RuntimeRecoverPort` mentioning `EffectReplayPolicy` and
+        // `RuntimeObservation` mentioning `(StepOutcome, OperationStatus)` in the M2 design
+        // comments). The test's `consumersOf` is a string match, so any reference — even
+        // in a doc comment — counts. The two updated consumer sets add `pipeline-runtime-api`
+        // (and `pipeline-runtime`, which still consumes `OperationStatus` in the M.0 split's
+        // adapter layer) in lock-step with the M0 commit.
+        SharedType("ReplayPolicy", "pipeline-domain", setOf("pipeline-application", "pipeline-runtime-api")),
+        SharedType("OperationStatus", "pipeline-domain", setOf("pipeline-application", "pipeline-events-store", "pipeline-runtime", "pipeline-runtime-api")),
         SharedType("BlockSegment", "pipeline-domain", setOf("pipeline-application")),
         SharedType("RecoveryPolicy", "pipeline-domain", setOf("pipeline-application")),
         SharedType("BodyExecutionPolicy", "pipeline-domain", setOf("pipeline-application")),

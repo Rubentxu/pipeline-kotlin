@@ -15,7 +15,7 @@ import dev.rubentxu.pipeline.v2.output.OutputFrameIndex
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import dev.rubentxu.pipeline.v2.output.store.OutputRecoveryPort
 import dev.rubentxu.pipeline.v2.output.store.SealOutcome
-import dev.rubentxu.pipeline.v2.runtime.inspect.AttemptId
+import dev.rubentxu.pipeline.v2.domain.AttemptId
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive

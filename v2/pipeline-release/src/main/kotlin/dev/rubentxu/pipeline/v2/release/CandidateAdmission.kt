@@ -89,13 +89,39 @@ object CandidateAdmission {
 
         return when (result) {
             is MaterializationResult.Refused -> AdmissionOutcome.Refused(result.reason)
-            is MaterializationResult.Materialized -> AdmissionOutcome.Admitted(
-                candidateId = "sha256:${result.manifest.asset.sha256}",
-                manifestPath = result.manifestPath,
-                handoffPath = result.handoffPath,
-                identityVerdict = result.identity.render(),
-                provenanceVerdict = provenanceVerdict.render(),
-            )
+            is MaterializationResult.Materialized -> {
+                // PK-R1 R1-C: fail-closed bundled-plugin compatibility gate.
+                // Runs AFTER the manifest is written so the operator's failure
+                // diagnostic carries the candidate id, but BEFORE the outcome
+                // is reported as Admitted, so a host version the bundled
+                // plugins refuse is refused at the candidate boundary and
+                // never reaches the certifier.
+                //
+                // The check is observable from the distribution ZIP alone
+                // (the same bytes the identity gate just measured) and
+                // reproducible, so it can be re-run from the certifier
+                // without trusting the producer's claim about it.
+                val pluginEntries = BundledPluginCompatibility.probeZip(zip)
+                val pluginVerdict = BundledPluginCompatibility.evaluate(version, pluginEntries)
+                if (pluginVerdict is BundledPluginCompatibilityVerdict.Incompatible) {
+                    return AdmissionOutcome.Refused(
+                        "candidate REFUSED: " + pluginVerdict.render(),
+                    )
+                }
+                if (pluginVerdict is BundledPluginCompatibilityVerdict.NoPluginsFound) {
+                    return AdmissionOutcome.Refused(
+                        "candidate REFUSED: " + pluginVerdict.render(),
+                    )
+                }
+                AdmissionOutcome.Admitted(
+                    candidateId = "sha256:${result.manifest.asset.sha256}",
+                    manifestPath = result.manifestPath,
+                    handoffPath = result.handoffPath,
+                    identityVerdict = result.identity.render(),
+                    provenanceVerdict = provenanceVerdict.render(),
+                    pluginCompatibilityVerdict = pluginVerdict.render(),
+                )
+            }
         }
     }
 
@@ -123,6 +149,7 @@ sealed interface AdmissionOutcome {
         val handoffPath: Path,
         val identityVerdict: String,
         val provenanceVerdict: String = "source provenance not evaluated",
+        val pluginCompatibilityVerdict: String = "plugin compatibility not evaluated",
     ) : AdmissionOutcome
 
     /** The candidate is refused. The build MUST fail. */

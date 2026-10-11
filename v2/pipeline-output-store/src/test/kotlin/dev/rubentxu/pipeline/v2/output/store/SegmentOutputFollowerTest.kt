@@ -103,6 +103,7 @@ class SegmentOutputFollowerTest {
         return frameIndex.append(stream, channel, from = before, to = after)
     }
 
+    @Suppress("UnusedParameter") // options is reserved for overrides that flip pollIntervalMs; the default below keeps the helper call-site tidy.
     private fun follower(
         store: SegmentOutputStore,
         options: OutputFollowOptions = OutputFollowOptions(pollIntervalMs = 0L),

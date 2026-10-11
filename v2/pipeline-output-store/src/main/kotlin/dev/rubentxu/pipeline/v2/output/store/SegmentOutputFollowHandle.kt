@@ -221,7 +221,9 @@ internal class SegmentOutputFollowHandle(
         }
 
         override fun next(): OutputFollowEvent {
-            check(hasNext()) { "iterator is past its end; check hasNext() first" }
+            if (!hasNext()) {
+                throw NoSuchElementException("iterator is past its end; check hasNext() first")
+            }
             return pending.removeFirst()
         }
     }
@@ -233,6 +235,13 @@ internal class SegmentOutputFollowHandle(
      * events. Returns `true` if at least one event was queued, `false` if
      * the cycle was quiet (the caller may want to idle and retry).
      */
+    // drainOnce runs the seven-stage pipeline (declared-streams discovery, tail-port
+    // state probe, initial-state emission, UntilAllSealed guard, frame poll, page
+    // delivery, exhausted-check). The branch ordering is contract-bearing — the
+    // "sealed-with-pending-bytes falls through to step 6" rule is the boundary
+    // between honouring the terminal and not dropping buffered frames. Extracting
+    // helpers in this cycle would re-derive these invariants inside each one.
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun drainOnce(): Boolean {
         lock.lock()
         try {

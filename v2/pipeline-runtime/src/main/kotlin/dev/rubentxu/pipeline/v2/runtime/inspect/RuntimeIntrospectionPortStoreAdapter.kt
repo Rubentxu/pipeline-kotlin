@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.runtime.inspect
 
+import dev.rubentxu.pipeline.v2.domain.AttemptId
 import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.events.durable.FileBackedRunExecutionLeaseStore
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal

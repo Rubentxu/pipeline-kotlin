@@ -55,6 +55,7 @@ import dev.rubentxu.pipeline.v2.events.RetryAttemptFinished
 import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
+import dev.rubentxu.pipeline.v2.events.RunCorrelated
 import dev.rubentxu.pipeline.v2.events.StageFinished
 import dev.rubentxu.pipeline.v2.events.StageMarkedUnstable
 import dev.rubentxu.pipeline.v2.events.StageSkipped
@@ -179,6 +180,17 @@ internal object EventJsonWriter {
             is RunStarted -> {
                 sb.append(",\"scriptPath\":")
                 sb.append(EventJsonWriter.jsonString(event.scriptPath))
+            }
+            // PK-1 / ADR-PK1-IDENTITY: persist the correlation + owner fields
+            // in the JSON envelope so a consumer reading the durable event
+            // log can join runs to external invoker identities.
+            is RunCorrelated -> {
+                sb.append(",\"correlationId\":")
+                sb.append(EventJsonWriter.jsonString(event.correlationId.value))
+                sb.append(",\"ownerId\":")
+                sb.append(EventJsonWriter.jsonString(event.ownerId))
+                sb.append(",\"startedAtMs\":")
+                sb.append(event.startedAtMs)
             }
             is PluginEventEmitted -> {
                 sb.append(",\"registryKind\":")

@@ -20,10 +20,10 @@ import kotlin.reflect.KClass
  * the exact pair the durable log uses for a stored row. It never re-implements
  * encoding, decoding, or fingerprinting.
  *
- * **Why this test exists.** `decodeEvent` decodes 71 kinds but before this test
- * only 10 of them had a durable round-trip assertion. The other 61 were reachable
+ * **Why this test exists.** `decodeEvent` decodes 72 kinds but before this test
+ * only 10 of them had a durable round-trip assertion. The other 62 were reachable
  * production code with no encode/decode coverage, which made any restructuring of
- * `decodeEvent` a blind refactor.
+ * `decodeEvent` a blind refactor. (72 = 71 prior + RunCorrelated added in PK-1.)
  *
  * Values are produced reflectively so that adding a [DomainEvent] variant fails
  * here by construction rather than silently going untested.

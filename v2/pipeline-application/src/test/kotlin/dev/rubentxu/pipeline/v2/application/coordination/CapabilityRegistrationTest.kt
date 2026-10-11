@@ -71,7 +71,7 @@ class CapabilityRegistrationTest {
     }
 
     @Test
-    @DisplayName("the contract enumerates CRIC-M1, CRIC-M2, CRIC-M3 and CRIC-M6 capabilities as published")
+    @DisplayName("the contract enumerates CRIC-M1, CRIC-M2, CRIC-M3, CRIC-M6 and CRIC-M7 capabilities as published")
     fun `capabilities are listed as published`() {
         val dir = locateContractDir()
         val contract = Files.readString(dir.resolve("INTERFACE_CONTRACT.md"))
@@ -80,7 +80,7 @@ class CapabilityRegistrationTest {
             "contract must reference output.follow.v1; see CRIC-M1 audit table")
         assertTrue(contract.contains("events.follow.v1"),
             "contract must reference events.follow.v1; see CRIC-M1 audit table")
-        // CRIC-M2 — EXPERIMENTAL in v0.50.0-rc1, carried forward in v0.51.0-rc1 and v0.53.0-rc1
+        // CRIC-M2 — EXPERIMENTAL in v0.50.0-rc1, carried forward in v0.51.0-rc1, v0.53.0-rc1
         assertTrue(contract.contains("runtime.inspect.v1"),
             "contract must reference runtime.inspect.v1; see CRIC-M2 audit table")
         assertTrue(contract.contains("runtime.cancel.v1"),
@@ -94,19 +94,22 @@ class CapabilityRegistrationTest {
             "contract must reference output.pin.v1; see CRIC-M3 audit table")
         assertTrue(contract.contains("output.refusal.retention.v1"),
             "contract must reference output.refusal.retention.v1; see CRIC-M3 audit table")
-        // CRIC-M6 — EXPERIMENTAL in v0.53.0-rc1 (this release)
+        // CRIC-M6 — EXPERIMENTAL in v0.53.0-rc1
         assertTrue(contract.contains("runtime.structure.v1"),
             "contract must reference runtime.structure.v1; see CRIC-M6 audit table")
         assertTrue(contract.contains("runtime.operation.v1"),
             "contract must reference runtime.operation.v1; see CRIC-M6 audit table")
+        // CRIC-M7 — EXPERIMENTAL in v0.54.0-rc1 (this release)
+        assertTrue(contract.contains("runtime.eventshape.v1"),
+            "contract must reference runtime.eventshape.v1; see CRIC-M7 audit table")
         assertTrue(contract.contains("**PUBLICADA**"),
             "contract must mark CRIC-M1 capabilities as PUBLICADA")
         assertTrue(contract.contains("**EXPERIMENTAL**"),
-            "contract must mark CRIC-M2 / CRIC-M3 / CRIC-M6 capabilities as EXPERIMENTAL")
+            "contract must mark CRIC-M2 / CRIC-M3 / CRIC-M6 / CRIC-M7 capabilities as EXPERIMENTAL")
     }
 
     @Test
-    @DisplayName("the contract's audit tables reference all the certifying test classes (M1, M2, M3, M6)")
+    @DisplayName("the contract's audit tables reference all the certifying test classes (M1, M2, M3, M6, M7)")
     fun `audit tables name the certifying tests`() {
         val dir = locateContractDir()
         val contract = Files.readString(dir.resolve("INTERFACE_CONTRACT.md"))
@@ -133,6 +136,9 @@ class CapabilityRegistrationTest {
             "RuntimeIntrospectionPortStructureAdapterTest",
             "RuntimeIntrospectionPortOperationAdapterTest",
             "RuntimeIntrospectionPortStructurePaginationTest",
+            // CRIC-M7 (the M7 new test class)
+            "EventShapeReadPortAdapterTest",
+            "IntrospectionUnknownOperationRefusalTest",
         )
         for (name in mustMention) {
             assertTrue(contract.contains(name),
@@ -206,6 +212,27 @@ class CapabilityRegistrationTest {
         }
         assertTrue(contract.contains("Capacidades publicadas (CRIC-M6)"),
             "contract must contain a 'Capacidades publicadas (CRIC-M6)' table")
+    }
+
+    @Test
+    @DisplayName("the CRIC-M7 audit table references the certifying test classes")
+    fun `M7 audit table names the certifying tests`() {
+        val dir = locateContractDir()
+        val contract = Files.readString(dir.resolve("INTERFACE_CONTRACT.md"))
+        // The M7 audit table must appear and name its certifying test
+        // classes — the EventShapeReadPortAdapterTest (closes the M6 I.6
+        // PARTIAL via the typed-event read port) and the
+        // IntrospectionUnknownOperationRefusalTest (B.2 hardening).
+        val mustMention = listOf(
+            "EventShapeReadPortAdapterTest",
+            "IntrospectionUnknownOperationRefusalTest",
+        )
+        for (name in mustMention) {
+            assertTrue(contract.contains(name),
+                "contract must reference $name in the CRIC-M7 audit table")
+        }
+        assertTrue(contract.contains("Capacidades publicadas (CRIC-M7)"),
+            "contract must contain a 'Capacidades publicadas (CRIC-M7)' table")
     }
 
     // -------------------------------------------------------------- helpers

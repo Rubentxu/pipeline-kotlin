@@ -166,6 +166,105 @@ class RuntimeIntrospectionPortStructureAdapterTest {
         }
     }
 
+    /**
+     * M7 — TestBundleWithShape. Same as TestBundle, but constructs the
+     * `RuntimeIntrospectionPort` with an `EventShapeReadPort` so the
+     * adapter takes the EVENT-DRIVEN grouping path (not the M6
+     * synthetic fallback). The M7 audit's B.3 hardening is the
+     * 5-case sealed `TypedEvent` ADT; this bundle supplies the events
+     * the adapter reads to drive grouping.
+     */
+    private class TestBundleWithShape(
+        tempDir: Path,
+        runId: String,
+        private val typedEvents: List<Any>,
+    ) : AutoCloseable {
+        val clock: Clock = object : Clock {
+            override fun now(): Instant = Instant.parse("2026-01-01T00:00:00Z")
+        }
+        val eventStore = InMemoryEventStore()
+        val journal = InMemoryOperationJournal(clock)
+        val cursors = InMemoryReplayCursorStore(clock)
+        val leaseDir = tempDir.resolve("leases")
+        val outputDir = tempDir.resolve("output")
+        val lease = FileBackedRunExecutionLeaseStore(leaseDir)
+        val outputStore = SegmentOutputStore(outputDir)
+        val frames: OutputFrameIndex = object : OutputFrameIndex {
+            override fun declareStream(stream: OutputStreamId, channel: dev.rubentxu.pipeline.v2.output.OutputChannel) =
+                throw UnsupportedOperationException("not used in this test")
+            override fun append(stream: OutputStreamId, channel: dev.rubentxu.pipeline.v2.output.OutputChannel, from: Long, to: Long) =
+                throw UnsupportedOperationException("not used in this test")
+            override fun framesOfRun(runId: String, afterOrdinal: Long, limit: Int) = emptyList<dev.rubentxu.pipeline.v2.output.OutputFrame>()
+            override fun lastOrdinal(runId: String): Long? = null
+            override fun streamsOfRun(runId: String): List<OutputStreamId> = emptyList()
+            override fun recoverUnframedBytes(): List<dev.rubentxu.pipeline.v2.output.OutputFrame> = emptyList()
+        }
+        val tails: OutputTailPort = object : OutputTailPort {
+            override fun tailState(stream: OutputStreamId): OutputTailState? = null
+        }
+        val eventRead: EventRecordReadPort = EventRecordReadPortStoreAdapter(
+            store = eventStore,
+            runExists = eventStore::hasRun,
+            tailSequence = eventStore::tailSequence,
+        )
+
+        init {
+            val owner = RunOwnerId.of("m7-observer")!!
+            val request = LeaseRequest(runId, owner)
+            val decision = lease.acquire(request)
+            check(decision is LeaseAcquisition.Acquired || decision is LeaseAcquisition.Reentered) {
+                "lease acquisition refused: $decision"
+            }
+        }
+
+        val shapePort: dev.rubentxu.pipeline.v2.events.shape.EventShapeReadPort =
+            dev.rubentxu.pipeline.v2.events.shape.EventShapeReadPortStoreAdapter(
+                readTypedEvents = { rid -> if (rid == runId) typedEvents else emptyList() },
+                runExists = { _ -> true },
+            )
+
+        val port: RuntimeIntrospectionPort = RuntimeIntrospectionPortStoreAdapter(
+            eventReads = eventRead,
+            tails = tails,
+            frames = frames,
+            journal = journal,
+            cursors = cursors,
+            lease = lease,
+            eventShapeRead = shapePort,
+        )
+
+        fun appendOperation(
+            opId: String,
+            attempt: Int = 1,
+            status: OperationStatus = OperationStatus.SUCCEEDED,
+            runId: String,
+        ) {
+            val input = OperationInput(
+                stepId = "step-$opId",
+                params = emptyMap(),
+                runId = runId,
+                attempt = attempt,
+            )
+            val op = RerunOperation(
+                id = opId,
+                fingerprint = Fingerprint(SHORT_FINGERPRINT),
+                input = input,
+                output = null,
+                status = status,
+                attempt = attempt,
+            )
+            journal.append(op, deadlineMs = null)
+        }
+
+        override fun close() {
+            lease.close()
+        }
+
+        companion object {
+            const val SHORT_FINGERPRINT = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        }
+    }
+
     @Test
     fun `1 runStructure on a run with no journal returns RunStructure Empty`(@TempDir tempDir: Path) {
         TestBundle(tempDir, runId).use { bundle ->
@@ -315,5 +414,104 @@ class RuntimeIntrospectionPortStructureAdapterTest {
             .also { assertTrue(it.isFailure, "pageSize=0 must be rejected") }
         runCatching { StructureRunOptions(pageSize = StructureRunOptions.MAX_STRUCTURE_PAGE_SIZE + 1) }
             .also { assertTrue(it.isFailure, "pageSize=MAX+1 must be rejected") }
+    }
+
+    // ── M7 I.6 PARTIAL closure — event-driven grouping tests ───────────────
+    //
+    // The M6 first-cut tests above pin the SYNTHETIC single-stage /
+    // single-step fallback. The M7 tests below pin the EVENT-DRIVEN
+    // grouping that closes the M6 I.6 PARTIAL row. A future M-block that
+    // changes the grouping algorithm will need to update the M7 rows
+    // below; the M6 fallback rows stay as the backward-compat path.
+
+    @Test
+    fun `9 M7 runStructure with an EventShapeReadPort uses event-driven grouping not synthetic`(
+        @TempDir tempDir: Path,
+    ) {
+        // Use the test's in-memory clock value so the typed events'
+        // occurredAtMs is <= the operation's startedAtMs (the journal
+        // timestamps use the same clock).
+        val baseMs = Instant.parse("2026-01-01T00:00:00Z").toEpochMilli()
+        val at = Instant.ofEpochMilli(baseMs)
+        val typed = listOf<Any>(
+            dev.rubentxu.pipeline.v2.events.StageStarted(
+                eventId = "e-stage-0", runId = runId, sequence = 1L,
+                occurredAt = at.minusMillis(100L),
+                stageIndex = 0, stageName = "build",
+            ),
+            dev.rubentxu.pipeline.v2.events.StepStarted(
+                eventId = "e-step-0", runId = runId, sequence = 2L,
+                occurredAt = at.minusMillis(50L),
+                stageIndex = 0, stepIndex = 0, stepName = "compile",
+                stepType = "shell",
+            ),
+        )
+        TestBundleWithShape(tempDir, runId, typed).use { bundle ->
+            bundle.appendOperation(opId = "op-1", runId = runId)
+            val result = bundle.port.runStructure(runId, StructureRunOptions.Default)
+            val structure = assertInstanceOf(RunStructureResult.Structure::class.java, result)
+            val stages = (structure.structure as RunStructure.Stages).stages
+            // Event-driven grouping: NOT the synthetic "synthetic-stage" /
+            // "synthetic-step" labels. The stage name comes from the
+            // StageStarted event; the step key comes from the StepStarted event.
+            assertEquals(1, stages.size)
+            val stage = stages[0]
+            assertEquals("build", stage.stageIndex)
+            assertEquals(1, stage.steps.size)
+            val step = stage.steps[0]
+            assertEquals("step-0", step.stepKey)
+            assertEquals(1, step.operations.size)
+        }
+    }
+
+    @Test
+    fun `10 M7 runStructure with multiple StageStartedTyped groups operations by their stage`(
+        @TempDir tempDir: Path,
+    ) {
+        val baseMs = Instant.parse("2026-01-01T00:00:00Z").toEpochMilli()
+        val at = Instant.ofEpochMilli(baseMs)
+        // Two stages: build at baseMs-100, test at baseMs-50. Both events'
+        // occurredAtMs is < the journal's startedAt (baseMs), so both
+        // are eligible. The adapter picks the most recent (test). The
+        // test pinna that the most-recent-wins rule applies and that
+        // both ops end up in stage 1 (test), not in stage 0 (build).
+        val typed = listOf<Any>(
+            dev.rubentxu.pipeline.v2.events.StageStarted(
+                eventId = "e-stage-0", runId = runId, sequence = 1L,
+                occurredAt = at.minusMillis(100L),
+                stageIndex = 0, stageName = "build",
+            ),
+            dev.rubentxu.pipeline.v2.events.StageStarted(
+                eventId = "e-stage-1", runId = runId, sequence = 2L,
+                occurredAt = at.minusMillis(50L),
+                stageIndex = 1, stageName = "test",
+            ),
+        )
+        TestBundleWithShape(tempDir, runId, typed).use { bundle ->
+            bundle.appendOperation(opId = "op-1", runId = runId)
+            bundle.appendOperation(opId = "op-2", runId = runId)
+            val result = bundle.port.runStructure(runId, StructureRunOptions.Default)
+            val stages = ((result as RunStructureResult.Structure).structure as RunStructure.Stages).stages
+            // Most-recent-wins: both ops end up in the most recent stage.
+            assertEquals(1, stages.size)
+            assertEquals("test", stages[0].stageIndex)
+            assertEquals(2, stages[0].steps.sumOf { it.operations.size })
+        }
+    }
+
+    @Test
+    fun `11 M7 runStructure with NO typed events falls back to the M6 synthetic single-stage view`(
+        @TempDir tempDir: Path,
+    ) {
+        // Empty typed events list — the adapter should take the synthetic
+        // fallback path (the M6 behavior).
+        TestBundleWithShape(tempDir, runId, emptyList()).use { bundle ->
+            bundle.appendOperation(opId = "op-1", runId = runId)
+            val result = bundle.port.runStructure(runId, StructureRunOptions.Default)
+            val stages = ((result as RunStructureResult.Structure).structure as RunStructure.Stages).stages
+            assertEquals(1, stages.size)
+            assertEquals("synthetic-stage", stages[0].stageIndex)
+            assertEquals("synthetic-step", stages[0].steps[0].stepKey)
+        }
     }
 }

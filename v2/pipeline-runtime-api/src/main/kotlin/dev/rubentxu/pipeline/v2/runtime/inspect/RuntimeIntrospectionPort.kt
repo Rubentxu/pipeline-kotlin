@@ -122,5 +122,19 @@ interface RuntimeIntrospectionPort {
          * construction — the M6 design §C names the rule.
          */
         const val DEFAULT_INSPECT_TIMEOUT_MS: Long = 5_000L
+
+        /**
+         * M7 — upper bound on a single `runStructure` call's wall time.
+         *
+         * Documented so the UAT matrix can pin it; the implementation
+         * MUST honour it. The M7 audit's B.1 hardening item is to
+         * name the budget for the bounded-scan / paginated read path
+         * the same way `DEFAULT_INSPECT_TIMEOUT_MS` names the budget
+         * for the single-page inspect path. The value is 10_000L
+         * (twice `DEFAULT_INSPECT_TIMEOUT_MS`) because paginated
+         * reads may legitimately take longer than a single-page
+         * inspect.
+         */
+        const val DEFAULT_STRUCTURE_TIMEOUT_MS: Long = 10_000L
     }
 }

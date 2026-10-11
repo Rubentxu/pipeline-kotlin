@@ -82,6 +82,22 @@ class DirectivePluginContractSuiteTest {
      * silently regenerates the plugin, this pin turns "no rebuild" into a failing
      * test instead of an unverifiable sentence in a receipt.
      *
+     * ## Re-certified 2026-10-11, SHA 175cb77178 (PK-R1 / v0.51.0-rc2)
+     *
+     * Pin moved from `283f89d7…` to `175cb77178…`. The plugin's SOURCE changed for
+     * the first time since the 2026-10-07 cycle, in one place: `LockPluginDeclaration.API_RANGE`
+     * was extended from `[0.47.0, 0.49.0)` to `[0.47.0, 0.52.0)`, mirroring the same
+     * extension on `http`, `scm-git`, `junit`, `utilities`, and the example plugins.
+     * R1-B (PK-R1) requires 0.51.0 to admit this plugin at runtime, and the lower
+     * edge of the range is preserved, so the change is purely a widening on the
+     * upper side — no declared capability or contract shape was touched.
+     *
+     * The new bytes are REPRODUCIBLE, measured by two consecutive
+     * `./gradlew :buildExternalDirectivePlugin --rerun-tasks --console=plain --no-build-cache`
+     * invocations producing `175cb77178…` both times. The same digest follows from
+     * the full `:pipeline-application:test` run, which itself re-built the plugin
+     * before exercising the compatibility rows.
+     *
      * ## Re-certified 2026-10-07, SHA c424a9b2 (S6-COMPOSITION)
      *
      * The value moved from `3d244dea…` to `c424a9b2…`, and this time the plugin's SOURCE
@@ -142,7 +158,7 @@ class DirectivePluginContractSuiteTest {
             .joinToString("") { "%02x".format(it) }
 
         assertEquals(
-            "283f89d7aae74580d0f57430d8f6ed7a36f0b9428ed48ee515b49136a78c34a8",
+            "175cb77178a5ce7288ecb26400d8eb5bc4f7aaeef65c35bd0e30e58131c92380",
             digest,
             "external directive plugin JAR drifted from the certified bytes; a rebuild " +
                 "invalidates the S2-D compatibility claim — restore the certified JAR instead. " +

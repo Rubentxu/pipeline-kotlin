@@ -128,11 +128,30 @@ class RetentionAuthorityFitnessTest {
         //
         // The positive half matters as much as the negative one: a scan that only forbade `prune(`
         // would also pass on a build where nothing called it, which is the leak this wiring closed.
+        //
+        // PK-R1: M3 (CRIC-M3 RANGE/RETENTION) added `OutputPinPort` and its store adapter to
+        // document the pin–prune contract ("survives any subsequent OutputRetentionPort.prune(...)
+        // UNLESS released or expired"). That documentation references the seam's prune API by name
+        // inside KDoc, which the prior form of this fitness scanned as a violation. The fix is on
+        // the scan, not on the M3 KDoc: a line-by-line check that ignores KDoc and line comments
+        // proves the real claim ("no executable call site outside the seam") without forcing M3 to
+        // either rewrite its docs in past tense or invent an allowlist.
         val seam = "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/RunOutputRetention.kt"
+
+        // A line that LOOKS like a call site but is really a comment. The scan uses this to
+        // exclude KDoc lines (` * ...`) and line comments (`// ...`). A real call site cannot
+        // start with whitespace + one of those prefixes, so the lookahead runs BEFORE any
+        // whitespace consumption — placing `\s*` inside the negative lookahead prevents the
+        // regex engine from backtracking out of it once the `*` or `/` of a comment is
+        // reached. (A previous form placed `\s*` outside the lookahead and the engine
+        // happily backtracked to a shorter whitespace match that no longer started with
+        // the comment marker, slipping KDoc past the scan.)
+        val realCallLine = Regex("""^(?!\s*[*/])(.*\.prune\()""", RegexOption.MULTILINE)
+
         val offenders = allProductionSources()
             .filterNot { isThisTest(it) }
             .filter { it.relativeToV2() != vocabulary && it.relativeToV2() != seam }
-            .filter { it.text().contains(".prune(") }
+            .filter { source -> realCallLine.containsMatchIn(source.text()) }
             .map { it.relativeToV2() }
 
         assertTrue(
@@ -140,7 +159,7 @@ class RetentionAuthorityFitnessTest {
             "prune() is reached from the run's terminal state only. Offending files: $offenders",
         )
         assertTrue(
-            v2Root.resolve(seam).text().contains(".prune("),
+            realCallLine.containsMatchIn(v2Root.resolve(seam).text()),
             "the retention seam must actually reach the port; a fitness that forbade prune() everywhere " +
                 "would pass on a build where the plane is never pruned at all — the leak this wiring closed",
         )

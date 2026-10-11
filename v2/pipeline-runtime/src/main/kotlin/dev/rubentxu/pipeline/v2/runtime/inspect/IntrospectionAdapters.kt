@@ -46,6 +46,11 @@ class RuntimeIntrospectionPortStoreAdapter(
     private val syntheticObserverId: String = "m2-observer",
 ) : RuntimeIntrospectionPort {
 
+    // The inspect() body composes M1-A (lease-or-event-plane) knownness, M1-B tail
+    // openness, and M1-D frame-index declaration; the orchestration order is the
+    // contract. Splitting helpers would re-derive the sequencing invariants inside
+    // each one. The body's length is intentional.
+    @Suppress("LongMethod")
     override fun inspect(runId: String): RuntimeIntrospectionResult {
         return try {
             // M1-A composition: a run is "known" if the lease has ever recorded a
@@ -261,6 +266,12 @@ class RuntimeIntrospectionPortStoreAdapter(
         }
     }
 
+    // terminalAtMsOf is the documented placeholder for the journal stub: callers
+    // fall back to it via `?: terminalAtMsOf(terminalOp)` when the journal has
+    // not yet recorded a terminal timestamp. Returning 0L is by design until
+    // the journal grows the field; the `op` parameter is the future-proofed
+    // signature shape. Touching this would change observed introspection output.
+    @Suppress("FunctionOnlyReturningConstant", "UnusedParameter")
     private fun terminalAtMsOf(op: dev.rubentxu.pipeline.v2.domain.durable.DurableOperation): Long = 0L
 
     private fun Throwable.shortDiagnostic(): String {

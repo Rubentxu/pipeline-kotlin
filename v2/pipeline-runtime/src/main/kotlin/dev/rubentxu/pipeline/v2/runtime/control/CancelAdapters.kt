@@ -64,6 +64,11 @@ class RuntimeControlPortStoreAdapter(
     },
 ) : RuntimeControlPort {
 
+    // The cancel() body interleaves lease observation, lease-decision application,
+    // and storage-error refusal emission. The try/catch ordering and short-circuit
+    // returns are contract-bearing for the M2 control surface; extracting helpers
+    // would risk reordering the rejection seams. The body's length is intentional.
+    @Suppress("LongMethod")
     override fun cancel(runId: String, reason: CancelReason): CancelOutcome {
         val syntheticObserver: RunOwnerId = RunOwnerId.of(syntheticObserverId)
             ?: error("invalid syntheticObserverId $syntheticObserverId")

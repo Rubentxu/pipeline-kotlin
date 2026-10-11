@@ -47,7 +47,7 @@ object UppercasePluginDeclaration {
      *  ships with the same reference PK code the official plugins ship with, so the
      *  same range that admits http/scm-git/junit/utilities at 0.51.0 admits this
      *  fixture too. The plugin stops being supported at 0.52.0. */
-    val API_RANGE: PipelineKApiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 52, 0))
+    val API_RANGE: PipelineKApiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 53, 0))
 
     /**
      * What the Steps collectively demand, and it is written as the union of the three contracts

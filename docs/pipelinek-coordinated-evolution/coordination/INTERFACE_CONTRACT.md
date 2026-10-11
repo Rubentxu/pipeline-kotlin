@@ -172,3 +172,80 @@ El merge directo de `release/cric-m6-v0.53.0-rc1` a `main` (con `git mv` de los 
 ### Authority
 
 La autoridad de este cambio es la `release-receipt.md` de la candidata `v0.55.0-rc1` y la `PK_CONTRACT_HANDOFF CRIC-M6.4` a Fabric.
+
+## PK-1 — Contrato de identidad y superficies machine-verifiable (v0.56.0-rc1, 2026-10-12)
+
+**Release PK-1** que añade el **contrato de identidad de ejecución** y
+las **superficies machine-verifiable** sobre el chain CRIC-1 cerrado.
+Sin cambios de capabilities (las 11 vigentes se mantienen); el bump
+es MINOR (`0.55.0` → `0.56.0`) por las nuevas superficies.
+
+### Capacidades (sin cambios sobre `v0.55.0-rc1`)
+
+Las **once** capabilities se mantienen: 2 PUBLICADA + 9 EXPERIMENTAL.
+Ver la tabla "Capacidades publicadas (CRIC-M6.4 — v0.55.0-rc1)" arriba
+para el estado actual.
+
+### Superficies de contrato nuevas (PK-1)
+
+| Surface | Schema / tipo | Ubicación |
+|---|---|---|
+| `CorrelationId` | value class (typed) | `:pipeline-domain` |
+| `RunCorrelated` (DomainEvent) | n/a (typed) | `:pipeline-events` |
+| `LaunchReceipt` (JSON line, stdout) | `pipelinek.launch/1` | `:pipeline-application` |
+| `CliExit` (sealed + envelope, stderr) | `pipelinek.cli/1` | `:pipeline-application` |
+| `pipeline capabilities` (JSON line, stdout) | `pipelinek.capabilities/1` | subcomando CLI |
+| `pipeline sdk-info` (JSON line, stdout) | `pipelinek.sdk/1` | subcomando CLI |
+
+### Material publicado (inmutable)
+
+- **ZIP candidato:** `pipelinek-0.56.0.zip` (88.4 MB).
+- **SHA-256 ZIP:** `258d0bbde818cce7edf90c8b46a69025e5b7114b9d0e172b95a605a82f8eb974`.
+- **5 SDK coordinates** a `0.56.0` en `v2/build/sdk-repo/dev/rubentxu/pipeline/v2/`:
+  - `pipeline-domain-0.56.0.{jar,pom,module}`
+  - `pipeline-events-0.56.0.{jar,pom,module}`
+  - `pipeline-output-0.56.0.{jar,pom,module}`
+  - `pipeline-runtime-api-0.56.0.{jar,pom,module}` (M6+M7 surface)
+  - `pipeline-scripting-api-0.56.0.{jar,pom,module}`
+- **SDK BOM:** `pipeline-sdk-bom-0.56.0.{pom}`.
+
+### Cambios sobre `v0.55.0-rc1`
+
+1. **`CorrelationId`** (nuevo value class en `:pipeline-domain`) —
+   token de correlación externo, opcional vía `--correlation-id`.
+2. **`RunCorrelated`** (nuevo `DomainEvent`) — emitido cuando el
+   durable state se establece; lleva `correlationId`, `ownerId`,
+   `startedAtMs`. Decodificable y re-emitible (probado por
+   `DomainEventExhaustiveRoundTripTest` con 72 variantes).
+3. **`LaunchReceipt`** (nuevo en `:pipeline-application`) — JSON
+   envelope schema `pipelinek.launch/1` en stdout tras establecer
+   durable state.
+4. **`CliExit`** (nuevo sealed interface en `:pipeline-application`)
+   con 8 casos (`Success`, `PipelineFailed`, `InvalidArgument`,
+   `IncompatibleVersion`, `RuntimeNotAvailable`, `UnknownExecution`,
+   `ReadFailure`, `IntegrityViolation`) y JSON envelope schema
+   `pipelinek.cli/1` en stderr.
+5. **`pipeline capabilities`** (nuevo subcomando) — JSON envelope
+   schema `pipelinek.capabilities/1` en stdout con 11 capabilities.
+6. **`pipeline sdk-info`** (nuevo subcomando) — JSON envelope
+   schema `pipelinek.sdk/1` en stdout con 5 coords + BOM.
+7. **`DomainEvent` sealed hierarchy** crece de 71 a 72 variantes
+   (`RunCorrelated`).
+8. **Versión** `0.55.0` → `0.56.0` (MINOR).
+9. **PK_CONTRACT_HANDOFF CRIC-PK1 a Fabric:** sigue a este handoff
+   como `docs/pipelinek-coordinated-evolution/handoffs/pk-contract-handoff-cric-pk1.md`.
+10. **ADR PK-1:** `docs/pipelinek-coordinated-evolution/pk1-design/ADR-PK1-IDENTITY.md`.
+
+### Estado de candidatas previas
+
+- `v0.55.0-rc1` (M6.4 corrective): sigue publicada en GitHub como
+  Prerelease; **canónica** para `PAIR_CERTIFIED` de la cadena CRIC-1.
+- `v0.56.0-rc1` (PK-1): sigue publicada en GitHub como Prerelease;
+  **canónica** para `PAIR_CERTIFIED` del primer hito del roadmap PK.
+  Certifier + Pair Integrator deciden cuál aceptar según el plan
+  (CRIC-1 cerrado → v0.55.0-rc1; PK-1 → v0.56.0-rc1).
+
+### Authority
+
+La autoridad de este cambio es la `release-receipt.md` de la candidata
+`v0.56.0-rc1` y la `PK_CONTRACT_HANDOFF CRIC-PK1` a Fabric.

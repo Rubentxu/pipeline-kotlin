@@ -97,7 +97,7 @@ class BuiltPluginManifestArtifactTest {
 
     @ParameterizedTest(name = "{0} is refused outside its declared apiRange")
     @MethodSource("artifacts")
-    @DisplayName("the same artifact is REFUSED at 0.60.0, outside [0.47.0, 0.49.0)")
+    @DisplayName("the same artifact is REFUSED at 0.60.0, outside [0.47.0, 0.52.0)")
     internal fun realArtifactIsRefusedOutsideItsApiRange(artifact: PluginArtifact) = withLoader(artifact) { loader ->
         val result = PluginAdmissionGate.admitThenLoad(
             contributorClassName = artifact.contributorClass,
@@ -109,7 +109,60 @@ class BuiltPluginManifestArtifactTest {
 
         assertTrue(
             result is PluginAdmissionResult.Refused,
-            "${artifact.module} declares [0.47.0, 0.49.0), so a 0.60.0 runtime must be refused; got $result",
+            "${artifact.module} declares [0.47.0, 0.52.0), so a 0.60.0 runtime must be refused; got $result",
+        )
+    }
+
+    /**
+     * Positive admission at 0.51.0 — the running runtime version of the PK-R1 consolidated train.
+     *
+     * Added as part of PK-R1: the four plugins' `apiRange` was widened from `[0.47.0, 0.49.0)` to
+     * `[0.47.0, 0.52.0)` to admit them on 0.51.0, and this row is the *proof* that admission
+     * actually accepts the artefact at the running version (not at a synthetic substitute).
+     * A negative-only gate could pass green while admitting nothing — the prior `[0.47.0, 0.49.0)`
+     * form was that gate, and the 283 `:pipeline-application:test` failures it produced on the
+     * 0.51.0 build were the visible symptom. This row is the row that was missing.
+     */
+    @ParameterizedTest(name = "{0} is admitted at 0.51.0, the running runtime version")
+    @MethodSource("artifacts")
+    @DisplayName("the gate ADMITS the real artifact at 0.51.0, the running runtime version")
+    internal fun gateAdmitsTheRealArtifactAt051(artifact: PluginArtifact) = withLoader(artifact) { loader ->
+        val result = PluginAdmissionGate.admitThenLoad(
+            contributorClassName = artifact.contributorClass,
+            classLoader = loader,
+            runtimeVersion = SemVer(0, 51, 0),
+            alreadyAdmitted = emptySet(),
+            strict = true,
+        )
+
+        assertTrue(
+            result is PluginAdmissionResult.Admitted,
+            "${artifact.module} declares [0.47.0, 0.52.0), so a 0.51.0 runtime must be admitted; got $result",
+        )
+    }
+
+    /**
+     * Negative admission at 0.52.0 — the exclusive upper bound. A range `[from, until)` accepts
+     * up to but not including `until`, and the seam must hold the line at 0.52.0 itself, not at
+     * some later minor. The row was missing in the prior form, where the seam held at 0.49.0
+     * because the *declared* range held at 0.49.0; widening the range without this row would
+     * have left a known-incorrect gate wide open in *both* directions.
+     */
+    @ParameterizedTest(name = "{0} is refused at the exclusive upper bound 0.52.0")
+    @MethodSource("artifacts")
+    @DisplayName("the gate REFUSES the real artifact at 0.52.0, the exclusive upper bound of [0.47.0, 0.52.0)")
+    internal fun realArtifactIsRefusedAtTheUpperBound(artifact: PluginArtifact) = withLoader(artifact) { loader ->
+        val result = PluginAdmissionGate.admitThenLoad(
+            contributorClassName = artifact.contributorClass,
+            classLoader = loader,
+            runtimeVersion = SemVer(0, 52, 0),
+            alreadyAdmitted = emptySet(),
+            strict = true,
+        )
+
+        assertTrue(
+            result is PluginAdmissionResult.Refused,
+            "${artifact.module} declares [0.47.0, 0.52.0), so a 0.52.0 runtime MUST be refused at the exclusive upper bound; got $result",
         )
     }
 

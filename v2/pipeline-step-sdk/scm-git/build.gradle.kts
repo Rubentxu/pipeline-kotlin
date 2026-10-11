@@ -204,7 +204,7 @@ val emitScmGitManifest = tasks.register<JavaExec>("emitScmGitManifest") {
     classpath = sourceSets["main"].runtimeClasspath + files(layout.buildDirectory.dir("resources/main"))
 
     inputs.files(scmGitReleaseProps)
-    inputs.property("apiRange", "[0.47.0, 0.49.0)")
+    inputs.property("apiRange", "[0.47.0, 0.52.0)")
     outputs.file(scmGitManifest)
 
     val out = scmGitManifest

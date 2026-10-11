@@ -287,7 +287,12 @@ class RuntimeIntrospectionPortAdapterTest {
             tails = bundle.tails,
             frames = object : OutputFrameIndex {
                 override fun declareStream(stream: OutputStreamId, channel: dev.rubentxu.pipeline.v2.output.OutputChannel) = Unit
-                override fun append(stream: OutputStreamId, channel: dev.rubentxu.pipeline.v2.output.OutputChannel, from: Long, to: Long) = throw UnsupportedOperationException()
+                override fun append(
+                    stream: OutputStreamId,
+                    channel: dev.rubentxu.pipeline.v2.output.OutputChannel,
+                    from: Long,
+                    to: Long,
+                ) = throw UnsupportedOperationException()
                 override fun framesOfRun(runId: String, afterOrdinal: Long, limit: Int) = throw IllegalStateException("storage error")
                 override fun lastOrdinal(runId: String): Long? = null
                 override fun streamsOfRun(runId: String): List<OutputStreamId> = throw IllegalStateException("storage error")

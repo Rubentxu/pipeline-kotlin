@@ -221,7 +221,9 @@ internal class SegmentOutputFollowHandle(
         }
 
         override fun next(): OutputFollowEvent {
-            check(hasNext()) { "iterator is past its end; check hasNext() first" }
+            if (!hasNext()) {
+                throw NoSuchElementException("iterator is past its end; check hasNext() first")
+            }
             return pending.removeFirst()
         }
     }

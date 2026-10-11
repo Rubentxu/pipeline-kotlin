@@ -10,7 +10,7 @@ import java.nio.file.Path
 import java.nio.file.Paths
 
 /**
- * M1-E / M2-E / M3-E — capability-registration contract test.
+ * M1-E / M2-E / M3-E / M6-E — capability-registration contract test.
  *
  * Pins the invariant that the cross-repo interface contract
  * (`docs/pipelinek-coordinated-evolution/coordination/INTERFACE_CONTRACT.md`)
@@ -20,9 +20,11 @@ import java.nio.file.Paths
  * `events.follow.v1`, both PUBLICADA), CRIC-M2
  * (`runtime.inspect.v1`, `runtime.cancel.v1`, `runtime.recover.v1`, all
  * EXPERIMENTAL in `v0.50.0-rc1`, carried forward as EXPERIMENTAL in
- * `v0.51.0-rc1`) and CRIC-M3 (`output.read.digested.v1`,
+ * `v0.51.0-rc1` and `v0.53.0-rc1`), CRIC-M3 (`output.read.digested.v1`,
  * `output.pin.v1`, `output.refusal.retention.v1`, all EXPERIMENTAL in
- * `v0.51.0-rc1`) with their certifying test references.
+ * `v0.51.0-rc1`, carried forward in `v0.53.0-rc1`) and CRIC-M6
+ * (`runtime.structure.v1`, `runtime.operation.v1`, both EXPERIMENTAL in
+ * `v0.53.0-rc1`) with their certifying test references.
  *
  * ## Why this test exists
  *
@@ -69,37 +71,42 @@ class CapabilityRegistrationTest {
     }
 
     @Test
-    @DisplayName("the contract enumerates CRIC-M1, CRIC-M2 and CRIC-M3 capabilities as published")
+    @DisplayName("the contract enumerates CRIC-M1, CRIC-M2, CRIC-M3 and CRIC-M6 capabilities as published")
     fun `capabilities are listed as published`() {
         val dir = locateContractDir()
         val contract = Files.readString(dir.resolve("INTERFACE_CONTRACT.md"))
-        // CRIC-M1 — PUBLICADA in v0.49.0-rc1, carried forward in v0.50.0-rc1 and v0.51.0-rc1
+        // CRIC-M1 — PUBLICADA in v0.49.0-rc1, carried forward in v0.50.0-rc1, v0.51.0-rc1, v0.53.0-rc1
         assertTrue(contract.contains("output.follow.v1"),
             "contract must reference output.follow.v1; see CRIC-M1 audit table")
         assertTrue(contract.contains("events.follow.v1"),
             "contract must reference events.follow.v1; see CRIC-M1 audit table")
-        // CRIC-M2 — EXPERIMENTAL in v0.50.0-rc1, carried forward in v0.51.0-rc1
+        // CRIC-M2 — EXPERIMENTAL in v0.50.0-rc1, carried forward in v0.51.0-rc1 and v0.53.0-rc1
         assertTrue(contract.contains("runtime.inspect.v1"),
             "contract must reference runtime.inspect.v1; see CRIC-M2 audit table")
         assertTrue(contract.contains("runtime.cancel.v1"),
             "contract must reference runtime.cancel.v1; see CRIC-M2 audit table")
         assertTrue(contract.contains("runtime.recover.v1"),
             "contract must reference runtime.recover.v1; see CRIC-M2 audit table")
-        // CRIC-M3 — EXPERIMENTAL in v0.51.0-rc1 (this release)
+        // CRIC-M3 — EXPERIMENTAL in v0.51.0-rc1, carried forward in v0.53.0-rc1
         assertTrue(contract.contains("output.read.digested.v1"),
             "contract must reference output.read.digested.v1; see CRIC-M3 audit table")
         assertTrue(contract.contains("output.pin.v1"),
             "contract must reference output.pin.v1; see CRIC-M3 audit table")
         assertTrue(contract.contains("output.refusal.retention.v1"),
             "contract must reference output.refusal.retention.v1; see CRIC-M3 audit table")
+        // CRIC-M6 — EXPERIMENTAL in v0.53.0-rc1 (this release)
+        assertTrue(contract.contains("runtime.structure.v1"),
+            "contract must reference runtime.structure.v1; see CRIC-M6 audit table")
+        assertTrue(contract.contains("runtime.operation.v1"),
+            "contract must reference runtime.operation.v1; see CRIC-M6 audit table")
         assertTrue(contract.contains("**PUBLICADA**"),
             "contract must mark CRIC-M1 capabilities as PUBLICADA")
         assertTrue(contract.contains("**EXPERIMENTAL**"),
-            "contract must mark CRIC-M2 / CRIC-M3 capabilities as EXPERIMENTAL")
+            "contract must mark CRIC-M2 / CRIC-M3 / CRIC-M6 capabilities as EXPERIMENTAL")
     }
 
     @Test
-    @DisplayName("the contract's audit tables reference all the certifying test classes (M1, M2, M3)")
+    @DisplayName("the contract's audit tables reference all the certifying test classes (M1, M2, M3, M6)")
     fun `audit tables name the certifying tests`() {
         val dir = locateContractDir()
         val contract = Files.readString(dir.resolve("INTERFACE_CONTRACT.md"))
@@ -122,6 +129,10 @@ class CapabilityRegistrationTest {
             "PruneAuthorisationAdapterTest",
             "OutputRefusalClosedTest",
             "RecoverRefusalPinExtensionTest",
+            // CRIC-M6 (the three new M6 test classes)
+            "RuntimeIntrospectionPortStructureAdapterTest",
+            "RuntimeIntrospectionPortOperationAdapterTest",
+            "RuntimeIntrospectionPortStructurePaginationTest",
         )
         for (name in mustMention) {
             assertTrue(contract.contains(name),
@@ -172,6 +183,29 @@ class CapabilityRegistrationTest {
         }
         assertTrue(contract.contains("Capacidades publicadas (CRIC-M3)"),
             "contract must contain a 'Capacidades publicadas (CRIC-M3)' table")
+    }
+
+    @Test
+    @DisplayName("the CRIC-M6 audit table references the certifying test classes")
+    fun `M6 audit table names the certifying tests`() {
+        val dir = locateContractDir()
+        val contract = Files.readString(dir.resolve("INTERFACE_CONTRACT.md"))
+        // The M6 audit table must appear and name its certifying test
+        // classes — the structure adapter, the operation adapter, and the
+        // structure pagination test. The synthetic-grouping PARTIAL row in
+        // the audit's I.6 closes with this test set; a follow-up M-block
+        // that adds event-driven grouping will update these tests.
+        val mustMention = listOf(
+            "RuntimeIntrospectionPortStructureAdapterTest",
+            "RuntimeIntrospectionPortOperationAdapterTest",
+            "RuntimeIntrospectionPortStructurePaginationTest",
+        )
+        for (name in mustMention) {
+            assertTrue(contract.contains(name),
+                "contract must reference $name in the CRIC-M6 audit table")
+        }
+        assertTrue(contract.contains("Capacidades publicadas (CRIC-M6)"),
+            "contract must contain a 'Capacidades publicadas (CRIC-M6)' table")
     }
 
     // -------------------------------------------------------------- helpers

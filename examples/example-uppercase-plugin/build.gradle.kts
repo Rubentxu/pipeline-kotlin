@@ -196,7 +196,7 @@ val emitUppercaseManifest = tasks.register<JavaExec>("emitUppercaseManifest") {
     )
 
     inputs.files(uppercaseReleaseProps)
-    inputs.property("apiRange", "[0.47.0, 0.49.0)")
+    inputs.property("apiRange", "[0.47.0, 0.52.0)")
     outputs.file(uppercaseManifest)
 
     val out = uppercaseManifest

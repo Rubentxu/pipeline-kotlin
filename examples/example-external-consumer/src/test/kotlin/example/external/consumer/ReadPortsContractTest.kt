@@ -23,14 +23,20 @@ import org.junit.jupiter.api.Test
 /**
  * PK-R1 R1-E / T8 — runtime READ ports the follow contracts compose.
  *
- * The published SDK does not include `pipeline-runtime` (deliberate: the
- * runtime read ports are the consumer side of the contract, not a published
- * module). What IS published — and what every follow impl composes against —
- * are the read ports in `pipeline-output` and `pipeline-events`:
+ * The published SDK does not include `pipeline-runtime` (deliberate: that
+ * module carries the host-internal adapters and the store deps; it is NOT
+ * a published module). What IS published — and what every follow impl
+ * composes against — are the read ports in `pipeline-output` and
+ * `pipeline-events`:
  *
  *   - OutputReadPort.read / readRange / readRangeDigested
  *   - OutputFrameIndex (declares streams, lists frames per run)
  *   - EventRecordReadPort.readRecords
+ *
+ * 0.52.0-rc1 adds a fifth published coordinate: `pipeline-runtime-api`
+ * carries the WRITE-plane ports (Introspection, Control, Recover) plus the
+ * pure decider. The runtime-port contract lives in `RuntimePortsContractTest`
+ * next to this one.
  *
  * Each test below distinguishes the contract surface (interface shape) from
  * the capability (the impl the consumer itself writes returns the documented

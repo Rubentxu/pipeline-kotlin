@@ -72,6 +72,11 @@ dependencies {
     implementation("dev.rubentxu.pipeline.v2:pipeline-events:$sdkVersion")
     implementation("dev.rubentxu.pipeline.v2:pipeline-output:$sdkVersion")
     implementation("dev.rubentxu.pipeline.v2:pipeline-scripting-api:$sdkVersion")
+    // 0.52.0-rc1: the runtime publish/subscribe ports. The five-coordinate set is the
+    // contract surface a downstream consumer compiles against; `pipeline-runtime` itself
+    // is still deliberately NOT published (it carries the adapters and the host-internal
+    // store deps; the SDK carries only the `pipeline-runtime-api` types).
+    implementation("dev.rubentxu.pipeline.v2:pipeline-runtime-api:$sdkVersion")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")

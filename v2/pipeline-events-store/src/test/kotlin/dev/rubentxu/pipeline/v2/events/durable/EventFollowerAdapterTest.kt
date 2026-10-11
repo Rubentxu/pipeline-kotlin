@@ -643,6 +643,7 @@ class EventFollowerAdapterTest {
     // -------------------------------------------------------------- bonus: refuse translation
 
     @Test
+    @Suppress("detekt:UnusedParameter") // tempDir is provided by JUnit @TempDir injection; the body uses a hand-rolled port and never touches the directory.
     fun `14 StorageError from the read port surfaces as UnknownRun (closed hierarchy)`(@TempDir tempDir: Path) {
         // Build a hand-rolled port that returns Refused(StorageError)
         // and a runExists callback that says yes. The follow must

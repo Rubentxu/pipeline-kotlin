@@ -118,3 +118,57 @@ Las dos capacidades M6 son métodos aditivos sobre `RuntimeIntrospectionPort` (M
 | `runtime.eventshape.v1` | v1 | `v0.54.0-rc1` (2026-10-12) | PipelineK | `EventShapeReadPortAdapterTest` (10 casos, `:pipeline-events`), `IntrospectionUnknownOperationRefusalTest` (3 casos, `:pipeline-runtime`), `RuntimeIntrospectionPortStructureAdapterTest` (3 casos M7 nuevos, total 11, `:pipeline-runtime`) | **EXPERIMENTAL** |
 
 La capacidad M7 cierra el M6 I.6 PARTIAL: el `EventShapeReadPort` (en `:pipeline-events`, puerto fun-interface SAM) devuelve los eventos tipados (5 casos del sealed `TypedEvent` ADT) que el `RuntimeIntrospectionPort.runStructure` compone para reemplazar la agrupación sintética M6 con agrupación dirigida por eventos. Los certifying tests arriba son los que demuestran el cierre del invariante I.6 y los tres items de hardening del audit M7: B.1 (`DEFAULT_STRUCTURE_TIMEOUT_MS = 10_000L` en `RuntimeIntrospectionPort` companion), B.2 (caso `IntrospectionRefusal.UnknownOperation(operationId, attempt)` aditivo, pineado por `IntrospectionUnknownOperationRefusalTest`), B.3 (5 casos del sealed `TypedEvent` pineados por `EventShapeReadPortAdapterTest` test 9). La transición "EXPERIMENTAL => PUBLICADA" ocurre tras la certificación de la candidata `v0.54.0-rc1` por `pipelinek-release-harness`; hasta entonces, los consumidores que adopten `v0.54.0-rc1` deben tratar la capacidad como negociable pero todavía no estable. Los releases anteriores siguen bajo "ausencia => fallback o refusal" sin cambios. La autoridad del cambio es el `release-receipt` del candidato correspondiente y la batería de certificación del certifier.
+
+## Capacidades publicadas (CRIC-M6.4 — v0.55.0-rc1, 2026-10-12)
+
+**Release correctiva** que re-emite la candidata M6+M7 con la **superficie M6 reubicada** de `:pipeline-runtime` (host, no consumible) a `:pipeline-runtime-api` (SDK ABI). El contenido binario de las cinco capacidades EXPERIMENTAL vigentes es semánticamente equivalente al de `v0.54.0-rc1`; el cambio es de **placement del módulo publicado**, no de contrato.
+
+### Por qué esta release correctiva
+
+El branch M6 (`pk-cric-m6-impl`) se creó **antes** del M2 module split (`2a97653a`); el M6 surface (`RunStructure`, `OperationInspection`, `StructureRunOptions`, y los métodos `runStructure` + `inspectOperation` sobre `RuntimeIntrospectionPort`) se colocó en `:pipeline-runtime`. Tras el M2 split, el módulo de la superficie consumible es `:pipeline-runtime-api` (sin jdbc / sqlite / event-store). El `release-receipt.md` M6 publicó el `pipeline-runtime-0.53.0.jar` con la superficie adentro, pero ningún consumer podía depender de él sin violar el F.4 negative-scope (jdbc / sqlite / event-store transitivos).
+
+El merge directo de `release/cric-m6-v0.53.0-rc1` a `main` (con `git mv` de los 3 tipos puros) reubica la superficie M6 a `:pipeline-runtime-api` y deja `RuntimeIntrospectionPort` (con los 3 métodos M2+M6) en el módulo correcto. **Esta candidata `v0.55.0-rc1` es la primera release cuyo ZIP puede ser compilado por un consumer externo contra la ABI pública sin arrastrar implementaciones internas.**
+
+### Capacidades (sin cambios sobre `v0.54.0-rc1`)
+
+| Capability ID | Versión | Publicada en | Estado |
+|---|---|---|---|
+| `output.follow.v1` | v1 | `v0.49.0-rc1` | **PUBLICADA** |
+| `events.follow.v1` | v1 | `v0.49.0-rc1` | **PUBLICADA** |
+| `runtime.inspect.v1` | v1 | `v0.50.0-rc1` | **EXPERIMENTAL** |
+| `runtime.cancel.v1` | v1 | `v0.50.0-rc1` | **EXPERIMENTAL** |
+| `runtime.recover.v1` | v1 | `v0.50.0-rc1` | **EXPERIMENTAL** |
+| `output.read.digested.v1` | v1 | `v0.51.0-rc1` | **EXPERIMENTAL** |
+| `output.pin.v1` | v1 | `v0.51.0-rc1` | **EXPERIMENTAL** |
+| `output.refusal.retention.v1` | v1 | `v0.51.0-rc1` | **EXPERIMENTAL** |
+| `runtime.structure.v1` | v1 | `v0.53.0-rc1` / re-affirmed `v0.55.0-rc1` | **EXPERIMENTAL** |
+| `runtime.operation.v1` | v1 | `v0.53.0-rc1` / re-affirmed `v0.55.0-rc1` | **EXPERIMENTAL** |
+| `runtime.eventshape.v1` | v1 | `v0.54.0-rc1` / re-affirmed `v0.55.0-rc1` | **EXPERIMENTAL** |
+
+### Material publicado (inmutable)
+
+- **ZIP candidato:** `pipelinek-0.55.0.zip` (88.5 MB aprox.).
+- **5 SDK coordinates** a `0.55.0` en `v2/build/sdk-repo/dev/rubentxu/pipeline/v2/`:
+  - `pipeline-domain-0.55.0.{jar,pom,module}`
+  - `pipeline-events-0.55.0.{jar,pom,module}` (M7 surface aquí)
+  - `pipeline-output-0.55.0.{jar,pom,module}`
+  - `pipeline-runtime-api-0.55.0.{jar,pom,module}` (M6 surface reubicada aquí)
+  - `pipeline-scripting-api-0.55.0.{jar,pom,module}`
+- **SDK BOM:** `pipeline-sdk-bom-0.55.0.{pom}`.
+
+### Cambios sobre `v0.54.0-rc1`
+
+1. **M6 surface placement fix:** `RunStructure`, `OperationInspection`, `StructureRunOptions`, y los métodos `runStructure` + `inspectOperation` sobre `RuntimeIntrospectionPort` están en `:pipeline-runtime-api` (no en `:pipeline-runtime`). Un consumer que dependa de `pipeline-runtime-api:0.55.0` ve la superficie M6+M7 completa sin arrastrar jdbc / sqlite / event-store.
+2. **`fix(runtime)` AttemptId import:** `RuntimeIntrospectionPortStoreAdapter` re-importa `dev.rubentxu.pipeline.v2.domain.AttemptId` (perdido durante la resolución del conflicto de merge de M6). Sin cambio funcional observable, solo de compilación.
+3. **Versión** `0.54.0` → `0.55.0` (train PATCH; el cambio es de placement, no de contrato).
+4. **`CONTRACT_SHA256.txt`** refrescado (cambio en INTERFACE_CONTRACT.md por la sección "CRIC-M6.4" arriba).
+
+### Estado de candidatas previas
+
+- `v0.53.0-rc1` (M6 first-cut): sigue publicada en GitHub como Prerelease; **NO es consumible** (la superficie M6 está en `:pipeline-runtime`). Conservada por trazabilidad; el par `PAIR_CERTIFIED` con Fabric debe usar `v0.55.0-rc1`.
+- `v0.54.0-rc1` (M7 first-cut): sigue publicada en GitHub como Prerelease; contiene M6 en `:pipeline-runtime` (mismo defecto de placement). Conservada por trazabilidad; el consumer extension usa `v0.55.0-rc1`.
+- `v0.55.0-rc1` (M6.4 corrective): candidata canónica para `PAIR_CERTIFIED` con Fabric y para la promoción `EXPERIMENTAL → PUBLICADA` post-`CERTIFIED`.
+
+### Authority
+
+La autoridad de este cambio es la `release-receipt.md` de la candidata `v0.55.0-rc1` y la `PK_CONTRACT_HANDOFF CRIC-M6.4` a Fabric.

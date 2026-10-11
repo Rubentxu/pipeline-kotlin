@@ -16,6 +16,7 @@ import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
+import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.domain.RunIdGenerator
@@ -41,6 +42,7 @@ import dev.rubentxu.pipeline.v2.application.observation.RunObservationOutput
 import dev.rubentxu.pipeline.v2.application.observation.compileQuery
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.RunFinished
+import dev.rubentxu.pipeline.v2.events.RunCorrelated
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector
@@ -324,7 +326,6 @@ fun main(args: Array<String>) {
             } else {
                 redactedStore
             }
-
         val scriptContent = scriptPath.toFile().readText()
         val definitionId = dev.rubentxu.pipeline.v2.domain.DeterministicIdGenerator.definitionId(
             scriptPath.toString(),
@@ -355,8 +356,39 @@ fun main(args: Array<String>) {
         }
         val runIdDirectory = RunIdDirectory(controlDirRoot.resolve("last-run"))
         val fresh = UuidRunIdGenerator().next()
-        runIdDirectory.record(definitionId, fresh)
+        // PK-1 / ADR-PK1-IDENTITY: build the correlationId once here at
+        // the CLI boundary so both the durable last-run record and the
+        // in-memory RunCorrelated event share the same token.
+        val correlationId: CorrelationId = config.correlationId?.let { CorrelationId(it) }
+            ?: UuidCorrelationIdGenerator().next()
+        runIdDirectory.record(definitionId, fresh, correlationId as CorrelationId)
         val runId: String = fresh.value
+        // PK-1 / ADR-PK1-IDENTITY: emit the RunCorrelated event on the
+        // event sink so a consumer can join durable state to the
+        // external correlationId. The in-memory eventStore is created
+        // below; we emit after the rest of the run is wired (so the
+        // event is observed in the same order as it would be in the
+        // durable branch: lease -> RunCorrelated -> RunStarted).
+        // We also emit the LaunchReceipt on stdout for the consumer.
+        // For the in-memory branch the owner is a synthetic CLI pid +
+        // uuid; for the durable branch the lease-acquired owner is
+        // used (see below).
+        val syntheticOwner: RunOwnerId = RunOwnerId.of(
+            "cli-inmem-" + ProcessHandle.current().pid() + "-" +
+                java.util.UUID.randomUUID().toString().take(8)
+        )!!
+        // PK-1 / ADR-PK1-IDENTITY: emit the RunCorrelated event and
+        // the LaunchReceipt on stdout now that the in-memory event
+        // store is wired and the runId + correlationId + owner are
+        // known.
+        emitCorrelationAndReceipt(
+            eventStore = eventStore,
+            runId = dev.rubentxu.pipeline.v2.domain.RunId(runId),
+            correlationId = correlationId,
+            ownerId = syntheticOwner,
+            startedAtMs = System.currentTimeMillis(),
+            controlDir = controlDirRoot,
+        )
         val host = Kotlin24ScriptingHost(eventStore, runId)
         val dslClasspath = computeScriptClasspath(config.pluginJars)
         val definition0 = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
@@ -604,12 +636,18 @@ fun main(args: Array<String>) {
     // capability here; F5.1 SCM/Git migration is filed as a sibling
     // follow-up, OUT OF SCOPE for this WU).
     val runIdDirectory = RunIdDirectory(controlDirRoot.resolve("last-run"))
-    val runSelection = try {
+    // PK-1 / ADR-PK1-IDENTITY: build the correlationId once here at
+    // the CLI boundary so both the durable last-run record and the
+    // RunCorrelated event share the same token.
+    val pk1Correlation: CorrelationId = config.correlationId?.let { CorrelationId(it) }
+        ?: UuidCorrelationIdGenerator().next()
+    val runSelection: DurableRunSelection = try {
         selectDurableRun(
             policy = config.durableRunPolicy,
             runIdDirectory = runIdDirectory,
             definitionId = definitionId,
             runIdGenerator = UuidRunIdGenerator(),
+            correlationId = pk1Correlation,
         )
     } catch (e: IllegalArgumentException) {
         // WU-LPR-011 F4: --resume without a prior durable run is an
@@ -654,6 +692,21 @@ fun main(args: Array<String>) {
             throw IllegalStateException("unreachable")
         }
     }
+    // PK-1 / ADR-PK1-IDENTITY: lease is held; emit the RunCorrelated
+    // event on the durable event sink and the LaunchReceipt on stdout.
+    // The owner is the lease-acquired runOwner.
+    // PK-1 / ADR-PK1-IDENTITY: the durable branch's correlation is the
+    // one persisted alongside the runId; fall back to the CLI-bound
+    // token if the durable record has none.
+    val resolvedCorrelationId: CorrelationId = pk1Correlation
+    emitCorrelationAndReceipt(
+        eventStore = eventStore,
+        runId = dev.rubentxu.pipeline.v2.domain.RunId(runId),
+        correlationId = resolvedCorrelationId,
+        ownerId = requireNotNull(runOwner),
+        startedAtMs = System.currentTimeMillis(),
+        controlDir = controlDirRoot,
+    )
     val host = Kotlin24ScriptingHost(eventStore, runId)
     val dslClasspath = computeScriptClasspath(config.pluginJars)
     val definition = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
@@ -1122,3 +1175,43 @@ private const val OBSERVER_JOIN_TIMEOUT_MS = 5_000L
  * `MIN_SECRET_WINDOW`.
  */
 private const val REDACTION_CANARY_PROPERTY = "pipelinek.redaction.canaries"
+
+/**
+ * PK-1 / ADR-PK1-IDENTITY — emit the [RunCorrelated] event on the
+ * supplied event sink AND the [LaunchReceipt] JSON line on stdout.
+ *
+ * Called at the moment durable state is established (lease acquired for
+ * the durable branch; RunIdDirectory record for the in-memory branch).
+ * The event is the durable witness of the correlation; the receipt is
+ * the immediate stdout confirmation. Both are emitted in the same
+ * order so a consumer reading the event log + stdout can join them
+ * without an out-of-order window.
+ */
+private fun emitCorrelationAndReceipt(
+    eventStore: dev.rubentxu.pipeline.v2.events.EventSink,
+    runId: dev.rubentxu.pipeline.v2.domain.RunId,
+    correlationId: dev.rubentxu.pipeline.v2.domain.CorrelationId,
+    ownerId: dev.rubentxu.pipeline.v2.events.durable.RunOwnerId,
+    startedAtMs: Long,
+    controlDir: java.nio.file.Path,
+) {
+    val correlatedEvent = RunCorrelated(
+        eventId = "e-correlated-${System.nanoTime()}",
+        runId = runId.value,
+        sequence = 0L,
+        occurredAt = java.time.Instant.ofEpochMilli(startedAtMs),
+        correlationId = correlationId,
+        ownerId = ownerId.value,
+        startedAtMs = startedAtMs,
+    )
+    eventStore.append(correlatedEvent)
+    val receipt = LaunchReceipt.launched(
+        runId = runId,
+        correlationId = correlationId,
+        ownerId = ownerId,
+        startedAtMs = startedAtMs,
+        controlDir = controlDir,
+    )
+    System.out.write(LaunchReceipt.encode(receipt).toByteArray(Charsets.UTF_8))
+    System.out.flush()
+}

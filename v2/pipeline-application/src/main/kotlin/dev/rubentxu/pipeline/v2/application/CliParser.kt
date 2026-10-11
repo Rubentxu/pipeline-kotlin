@@ -14,6 +14,7 @@ import dev.rubentxu.pipeline.v2.application.observation.TextSelector
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
 import dev.rubentxu.pipeline.v2.application.observation.ViewParseResult
 import dev.rubentxu.pipeline.v2.application.observation.resolveView
+import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.output.OutputChannel
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
@@ -60,6 +61,14 @@ data class CliFlags(
     val allowNetwork: Boolean = false,
     /** External plugin JARs: one list feeds compilation and runtime discovery. */
     val pluginJars: List<String> = emptyList(),
+    /**
+     * PK-1 / ADR-PK1-IDENTITY: external invoker correlation token. When
+     * supplied, the runtime binds it to the [RunId] in durable state
+     * and emits it on the [dev.rubentxu.pipeline.v2.events.RunCorrelated]
+     * event. The raw string is held here; conversion to [CorrelationId]
+     * happens after parsing succeeds.
+     */
+    val correlationId: String? = null,
     /**
      * ADR-0088 / `CLI_OBSERVABILITY_SPEC.md` §1: which families of observation
      * reach the reader. Orthogonal to [format]; neither changes execution.
@@ -392,8 +401,8 @@ sealed interface DurableRunPolicy {
 sealed interface DurableRunSelection {
     val runId: RunId
 
-    data class Reused(override val runId: RunId) : DurableRunSelection
-    data class StartedFresh(override val runId: RunId) : DurableRunSelection
+    data class Reused(override val runId: RunId, val correlationId: CorrelationId? = null) : DurableRunSelection
+    data class StartedFresh(override val runId: RunId, val correlationId: CorrelationId? = null) : DurableRunSelection
 }
 
 /** Outcome of processing one CLI option within [CliParser.applyOption]. */
@@ -420,6 +429,14 @@ private class ParseState(
      */
     var allowNetwork: Boolean = false,
     val pluginJars: MutableList<String> = mutableListOf(),
+    /**
+     * PK-1 / ADR-PK1-IDENTITY: external invoker correlation token, set by
+     * `--correlation-id <uuid>`. The raw string lives here; conversion
+     * to a typed [CorrelationId] happens after parsing succeeds so
+     * a malformed value surfaces as a typed [InvalidCorrelationId]
+     * rather than crashing the parser.
+     */
+    var correlationId: String? = null,
     /** ADR-0088 `--view`. Resolved to a DELIVERABLE view at parse time. */
     var view: ObservationView = ObservationView.NORMAL,
     /**
@@ -578,6 +595,7 @@ object CliParser {
                 sandboxProfile = state.sandboxProfile,
                 allowNetwork = state.allowNetwork,
                 pluginJars = state.pluginJars.toList(),
+                correlationId = state.correlationId,
                 view = state.view,
                 format = state.format,
                 query = buildObservationQuery(
@@ -784,6 +802,12 @@ private enum class ValuedOption(val token: String) {
     TAIL_BYTES("--tail-bytes"),
     LIMIT("--limit"),
     CHANNEL("--channel"),
+    // PK-1 / ADR-PK1-IDENTITY: external invoker correlation token.
+    // The string is held as-is and converted to a typed
+    // [CorrelationId] after parsing; the parser refuses blank
+    // values via the same [MissingOptionValue] path as every
+    // other valued flag.
+    CORRELATION_ID("--correlation-id"),
     ;
 
     companion object {
@@ -850,6 +874,18 @@ private object ValuedOptions {
         ValuedOption.CONTROL_ROOT -> { state.controlRoot = value; ApplyOutcome.Applied(index + 2) }
         ValuedOption.WORKSPACE -> { state.workspace = value; ApplyOutcome.Applied(index + 2) }
         ValuedOption.PLUGIN_JAR -> { state.pluginJars += value; ApplyOutcome.Applied(index + 2) }
+        // PK-1 / ADR-PK1-IDENTITY: blank values are rejected here at
+        // the boundary; downstream the CliFlags.correlationId field
+        // converts the string to a typed [CorrelationId] with the
+        // same init guard.
+        ValuedOption.CORRELATION_ID -> {
+            if (value.isBlank()) {
+                ApplyOutcome.Rejected(CliError.MissingOptionValue("--correlation-id"))
+            } else {
+                state.correlationId = value
+                ApplyOutcome.Applied(index + 2)
+            }
+        }
 
         // Closed vocabulary or a number, resolved HERE at the boundary so nothing downstream re-decides
         // what a token names. Repeating a flag unions, per the AND-across/OR-within rule.

@@ -38,15 +38,16 @@ object HttpPluginDeclaration {
 
     const val RELEASE_PROPERTIES_RESOURCE: String = "META-INF/http-release.properties"
 
-    /** Exclusive upper bound: 0.52 is where support stops, not where parsing stops.
+    /** Exclusive upper bound: 0.53 is where support stops, not where parsing stops.
      *
-     * Extended from `[0.47.0, 0.49.0)` to `[0.47.0, 0.52.0)` as part of PK-R1: the 0.51.0
-     * consolidated train (CRIC-M1 + CRIC-M2 + CRIC-M3 + M1-F) preserved every contract, manifest,
-     * and ABI this plugin reads, and `BuiltPluginManifestArtifactTest` confirms the artifact is
-     * admitted at 0.51.0 and refused at 0.60.0 (see also the negative `apiRange` test in that
-     * suite, which still passes with the wider range because 0.60.0 remains outside). The plugin
-     * stops being supported at 0.52.0 — any future 0.52.x minor must declare its own range. */
-    val API_RANGE: PipelineKApiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 52, 0))
+     * Extended from `[0.47.0, 0.49.0)` to `[0.47.0, 0.52.0)` as part of PK-R1, then to
+     * `[0.47.0, 0.53.0)` for 0.52.0-rc1: the 0.51.0 consolidated train (CRIC-M1 + CRIC-M2 +
+     * CRIC-M3 + M1-F) preserved every contract, manifest, and ABI this plugin reads, and
+     * `BuiltPluginManifestArtifactTest` confirms the artifact is admitted at 0.51.0 and refused
+     * at 0.60.0 (see also the negative `apiRange` test in that suite, which still passes with the
+     * wider range because 0.60.0 remains outside). The plugin stops being supported at 0.53.0 —
+     * any future 0.53.x minor must declare its own range. */
+    val API_RANGE: PipelineKApiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 53, 0))
 
     private val DECLARED_CAPABILITIES =
         setOf(HTTP_TRANSPORT_CAPABILITY, NETWORK_EGRESS_CAPABILITY, BASIC_CREDENTIALS_CAPABILITY)

@@ -47,11 +47,12 @@ object RepeatPluginDeclaration {
     const val RELEASE_PROPERTIES_RESOURCE: String = "META-INF/example-block-release.properties"
 
     /** Exclusive upper bound: 0.49 is where support stops, not where parsing stops. */
-    /** Extended from [0.47.0, 0.49.0) to [0.47.0, 0.52.0) as part of PK-R1: the example block plugin
-     *  ships with the same reference PK code the official plugins ship with, so the
-     *  same range that admits http/scm-git/junit/utilities at 0.51.0 admits this
+    /** Extended from [0.47.0, 0.49.0) to [0.47.0, 0.52.0) as part of PK-R1, then to
+     *  [0.47.0, 0.53.0) for 0.52.0-rc1: the example block plugin ships with the same
+     *  reference PK code the official plugins ship with, so the same range that
+     *  admits http/scm-git/junit/utilities at 0.52.0 admits this
      *  fixture too. The plugin stops being supported at 0.52.0. */
-    val API_RANGE: PipelineKApiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 52, 0))
+    val API_RANGE: PipelineKApiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 53, 0))
 
     /**
      * What the Steps collectively demand.

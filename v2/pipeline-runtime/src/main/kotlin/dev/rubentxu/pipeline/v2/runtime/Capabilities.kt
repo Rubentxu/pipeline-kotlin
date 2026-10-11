@@ -55,6 +55,7 @@ import dev.rubentxu.pipeline.v2.domain.Capability
  * | `output.refusal.retention.v1` | **EXPERIMENTAL** (carry-forward from `v0.51.0`)  | `v0.51.0-rc1`       |
  * | `runtime.structure.v1`        | **EXPERIMENTAL** (new in this release)           | `v0.53.0-rc1`       |
  * | `runtime.operation.v1`        | **EXPERIMENTAL** (new in this release)           | `v0.53.0-rc1`       |
+ * | `runtime.eventshape.v1`       | **EXPERIMENTAL** (new in this release)           | `v0.54.0-rc1`       |
  *
  * EXPERIMENTAL → PUBLICADA happens after the candidate is CERTIFIED by
  * `pipelinek-release-harness` (per cross-repo contract §6 and the M1/M2
@@ -82,4 +83,8 @@ object Capabilities {
     val RUNTIME_STRUCTURE_V1: Capability = Capability("runtime.structure.v1")
     // inspectOperation adds typed per-operation terminality query.
     val RUNTIME_OPERATION_V1: Capability = Capability("runtime.operation.v1")
+
+    // CRIC-M7 — EXPERIMENTAL since v0.54.0-rc1 (this release); promoted to PUBLICADA after the candidate is CERTIFIED.
+    // EventShapeReadPort adds typed read of the Stage / Step boundary events on :pipeline-events.
+    val RUNTIME_EVENT_SHAPE_V1: Capability = Capability("runtime.eventshape.v1")
 }

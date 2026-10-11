@@ -43,7 +43,11 @@ object UppercasePluginDeclaration {
     const val RELEASE_PROPERTIES_RESOURCE: String = "META-INF/example-uppercase-release.properties"
 
     /** Exclusive upper bound: 0.49 is where support stops, not where parsing stops. */
-    val API_RANGE: PipelineKApiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 49, 0))
+    /** Extended from [0.47.0, 0.49.0) to [0.47.0, 0.52.0) as part of PK-R1: the example uppercase plugin
+     *  ships with the same reference PK code the official plugins ship with, so the
+     *  same range that admits http/scm-git/junit/utilities at 0.51.0 admits this
+     *  fixture too. The plugin stops being supported at 0.52.0. */
+    val API_RANGE: PipelineKApiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 52, 0))
 
     /**
      * What the Steps collectively demand, and it is written as the union of the three contracts

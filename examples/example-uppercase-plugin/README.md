@@ -182,7 +182,7 @@ real (no escrito a mano). Contenido real del artefacto de este directorio:
   "plugin": "v1:plugin:example-uppercase-plugin/plugin/uppercase",
   "releaseVersion": "0.1.0",
   "releaseDigest": "sha256:4fbd537b...",
-  "apiRange": "[0.47.0, 0.49.0)",
+  "apiRange": "[0.47.0, 0.52.0)",
   "publisher": "example-uppercase",
   "delivery": "EXTERNAL_REFERENCE",
   "trust": "unverified",

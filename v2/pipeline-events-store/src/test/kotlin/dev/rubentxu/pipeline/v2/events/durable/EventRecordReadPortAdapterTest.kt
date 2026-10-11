@@ -304,6 +304,7 @@ class EventRecordReadPortAdapterTest {
          * one-off [EventStore] that returns a fixed slice.
          */
         @Test
+        @Suppress("detekt:UnusedParameter") // tempDir is provided by JUnit @TempDir injection; the body uses a hand-rolled in-memory store.
         fun `9 refusal row interleaves with typed rows in sequence order`(@TempDir tempDir: Path) {
             @Suppress("UNCHECKED_CAST")
             val fakeStore = object : dev.rubentxu.pipeline.v2.events.EventStore {

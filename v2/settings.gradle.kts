@@ -63,13 +63,22 @@ include(
     // published artifact carries no writer, no recovery entry point and no filesystem authority.
     // Not published, and deliberately so: see its build script.
     ":pipeline-output-store",
-    // M2: the runtime surface. The published module that exposes the three M2 verbs
-    // (inspect / cancel / recover) over the M1 read-side contracts. New on this branch;
-    // depends on the published :pipeline-events and :pipeline-output, and on the internal
-    // :pipeline-events-store / :pipeline-output-store for adapter wiring (declared as
-    // `implementation` in the module's build script to keep PK's internal types out of
-    // the published ABI). See `M2_INSPECT_RECOVER_CANCEL_DESIGN.md` §2.1 for the
-    // segregation rationale.
+    // PK-R1 / CRIC-M2 — module split precondition (NOT a publication).
+    //
+    // `:pipeline-runtime-api` holds the four M2 verbs (RuntimeRecoverPort /
+    // RuntimeControlPort / RuntimeIntrospectionPort) plus the public pure decider
+    // RuntimeRecoverDecision and their sealed ADTs / option types. Its
+    // `dependencies { }` block is `api :pipeline-output` only — no `:pipeline-events`,
+    // no store-side module — so a future publication does not leak store dependencies
+    // into the published POM. It is NOT yet in `publishedContractModules`; this
+    // commit is the structural precondition only.
+    ":pipeline-runtime-api",
+    // M2: the runtime surface. The host-internal module that holds the three M2
+    // adapters and the store composition. Depends on the new `:pipeline-runtime-api`
+    // for the port interfaces (so adapter sources see the published types) and on
+    // the internal `:pipeline-events-store` / `:pipeline-output-store` for adapter
+    // wiring (declared as `implementation` in the module's build script to keep
+    // PK's internal types out of the published ABI). Not published.
     ":pipeline-runtime",
     ":pipeline-step-sdk:api",
     ":pipeline-step-sdk:runtime",

@@ -150,6 +150,12 @@ Tests M2 (24 casos) y M3 (27 casos) siguen verdes sin cambios; tests M1
 - ✅ `:pipeline-application:test --tests CapabilityRegistrationTest` 6/6 verde
 - ✅ `./gradlew publishSdkForExternalPlugin` 5 SDK coords + BOM a 0.53.0
 - ✅ `./gradlew :pipeline-application:distZip` `pipelinek-0.53.0.zip` (88.3 MB)
+- ✅ `git push -u origin release/cric-m6-v0.53.0-rc1` rama publicada
+- ✅ `git tag -a v0.53.0-rc1` + `git push origin v0.53.0-rc1` etiqueta publicada
+- ✅ `gh release create v0.53.0-rc1 --prerelease` Prerelease publicada con el ZIP asset
+
+**Estado actual:** `CANDIDATE_PUBLISHED` en GitHub.
+**Prerelease URL:** https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.53.0-rc1
 
 ## Pendiente
 

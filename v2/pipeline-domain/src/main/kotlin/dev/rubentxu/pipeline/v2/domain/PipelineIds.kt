@@ -23,6 +23,36 @@ value class RunId(val value: String) {
     }
 }
 
+/**
+ * PK-1 / ADR-PK1-IDENTITY — external-supplied correlation token.
+ *
+ * A [CorrelationId] is the identity an EXTERNAL invoker (CI, Fabric, a
+ * script) assigns to a single invocation. PipelineK preserves it through
+ * the durable state and emits it in:
+ *
+ *  - The [dev.rubentxu.pipeline.v2.events.RunCorrelated] event (before
+ *    the first [dev.rubentxu.pipeline.v2.events.RunStarted]).
+ *  - The `LaunchReceipt` JSON envelope on stdout.
+ *  - The `last-run.json` file in the control dir.
+ *
+ * A [CorrelationId] is NOT a [RunId] — two concurrent invocations with
+ * the same [CorrelationId] get different [RunId]s, because the
+ * [RunId] remains PK's authority. The [CorrelationId] is the
+ * invoker-side join key: it groups runs a single CI job initiated, or
+ * a single Fabric workflow executes.
+ *
+ * PK generates a UUIDv4 if the invoker does not supply one via
+ * `--correlation-id`. The value is opaque to PK; only the non-blank
+ * invariant is enforced.
+ */
+@JvmInline
+@Serializable
+value class CorrelationId(val value: String) {
+    init {
+        require(value.isNotBlank()) { "CorrelationId value must not be blank" }
+    }
+}
+
 /** Stable identity of one stage within a compiled pipeline definition. */
 @JvmInline
 @Serializable

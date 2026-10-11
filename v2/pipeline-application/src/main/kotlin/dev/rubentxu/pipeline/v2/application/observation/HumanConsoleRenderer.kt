@@ -52,6 +52,7 @@ import dev.rubentxu.pipeline.v2.events.RetryAttemptFinished
 import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
+import dev.rubentxu.pipeline.v2.events.RunCorrelated
 import dev.rubentxu.pipeline.v2.events.StageFinished
 import dev.rubentxu.pipeline.v2.events.StageMarkedUnstable
 import dev.rubentxu.pipeline.v2.events.StageSkipped
@@ -225,8 +226,14 @@ object HumanConsoleRenderer {
      */
     @Suppress("DEPRECATION") // AgentResolved has no producer but is part of the sealed hierarchy.
     internal fun line(event: DomainEvent, scope: Scope): Line = when (event) {
-        is RunStarted, is RunFinished, is CompilationStarted, is CompilationFinished ->
-            ConsoleFamilyLines.run(event)
+        is RunStarted, is RunFinished, is CompilationStarted, is CompilationFinished,
+        // PK-1 / ADR-PK1-IDENTITY: RunCorrelated is run-scoped metadata
+        // (not a lifecycle bookend). For the text console it shares the
+        // run-line rendering with the other run-family events; the
+        // correlationId is in the event data and surfaces through the
+        // observation view filter (correlation=<id>).
+        is RunCorrelated,
+        -> ConsoleFamilyLines.run(event)
 
         is StageStarted, is StageFinished, is StageSkipped, is StepStarted, is StepFinished,
         is ParallelBranchStarted, is ParallelBranchFinished,

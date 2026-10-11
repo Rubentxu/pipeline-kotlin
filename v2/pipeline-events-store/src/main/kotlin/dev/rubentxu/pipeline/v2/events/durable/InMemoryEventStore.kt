@@ -54,6 +54,7 @@ import dev.rubentxu.pipeline.v2.events.RetryAttemptFinished
 import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
+import dev.rubentxu.pipeline.v2.events.RunCorrelated
 import dev.rubentxu.pipeline.v2.events.StageFinished
 import dev.rubentxu.pipeline.v2.events.StageMarkedUnstable
 import dev.rubentxu.pipeline.v2.events.StageSkipped
@@ -103,6 +104,10 @@ class InMemoryEventStore : EventSink {
         }
         val eventWithSequence = when (event) {
             is RunStarted -> event.copy(sequence = assignedSequence)
+            // PK-1 / ADR-PK1-IDENTITY: RunCorrelated carries the assigned
+            // sequence just like every other durable event; it must
+            // appear in the when for the assignment to take effect.
+            is RunCorrelated -> event.copy(sequence = assignedSequence)
             is PluginEventEmitted -> event.copy(sequence = assignedSequence)
             is CompilationStarted -> event.copy(sequence = assignedSequence)
             is CompilationFinished -> event.copy(sequence = assignedSequence)

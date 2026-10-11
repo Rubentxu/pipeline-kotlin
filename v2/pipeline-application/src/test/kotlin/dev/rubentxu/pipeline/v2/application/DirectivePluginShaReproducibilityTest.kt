@@ -84,35 +84,34 @@ class DirectivePluginShaReproducibilityTest {
      * Run the plugin's `jar` task from a clean state with `--rerun-tasks --no-build-cache`.
      *
      * The SDK repo (where the plugin resolves its `dev.rubentxu.pipeline.v2:pipeline-domain`
-     * coordinate) lives at `v2/build/sdk-repo`. The SDK version is read by listing the published
-     * `pipeline-domain` artifact directory — that is the same version the parent
-     * `v2/build.gradle.kts` sets via `version = "..."`.
+     * coordinate) lives at `v2/build/sdk-repo`. The SDK version to use is the one this build just
+     * published — that is `project.version` from the parent `v2/build.gradle.kts`, injected into
+     * the test JVM as the `pipeline.domain.version` system property by
+     * `v2/pipeline-application/build.gradle.kts` `tasks.test { ... }`.
      *
-     * The test is skipped (via JUnit `assumeTrue`) when the SDK has not been published in the
-     * current module's build dir. `:pipeline-application:test` triggers `:publishSdkForExternalPlugin`
-     * before its test classpath is realized (see `compileTestKotlin` upstream), so by the time
-     * this test runs the SDK repo is normally populated.
+     * Reading the version from a system property (rather than from a directory listing of the
+     * `pipeline-domain` artifact) is the only stable answer on a checkout that has accumulated
+     * multiple published versions over time. The test is skipped (via JUnit `assumeTrue`) when
+     * the SDK has not been published at the expected version — that would mean the upstream
+     * `:publishSdkForExternalPlugin` (a transitive dep of `:buildExternalDirectivePlugin`, which
+     * `:pipeline-application:test` depends on) did not run before the test.
      */
     private fun runPluginBuild(label: String): String {
         val gradlew = pluginGradlew().toString()
         val repoRoot = repoRoot()
         val sdkRepo = repoRoot.resolve("v2/build/sdk-repo").toAbsolutePath()
         val domainRepoRoot = sdkRepo.resolve("dev/rubentxu/pipeline/v2/pipeline-domain")
-        assumeTrue(
-            Files.isDirectory(domainRepoRoot),
-            "BLOCK 2.5 test: SDK repo not published under $domainRepoRoot; " +
-                "this regression depends on `:pipeline-application:test` having previously run " +
-                "(`compileTestKotlin` upstream publishes via `:publishSdkForExternalPlugin`). " +
-                "Skipping $label.",
-        )
 
-        // The SDK version is whatever `pipeline-domain/` happens to be published at.
-        val sdkVersion = Files.newDirectoryStream(domainRepoRoot).use { stream ->
-            stream.filter { Files.isDirectory(it) }
-                .map { it.fileName.toString() }
-                .singleOrNull()
-                ?: error("BLOCK 2.5 test: no published pipeline-domain version under $domainRepoRoot")
-        }
+        val sdkVersion = System.getProperty("pipeline.domain.version")
+        assumeTrue(
+            sdkVersion != null && Files.isDirectory(domainRepoRoot.resolve(sdkVersion)),
+            "BLOCK 2.5 test: SDK not published at expected version under $domainRepoRoot; " +
+                "expected pipeline.domain.version system property to be set by " +
+                "`v2/pipeline-application/build.gradle.kts` `tasks.test { ... }` to " +
+                "project.version, and `:publishSdkForExternalPlugin` (transitive dep of " +
+                "`:buildExternalDirectivePlugin`, itself a dep of `:pipeline-application:test`) " +
+                "to have populated the artifact. Skipping $label.",
+        )
 
         val pluginDir = repoRoot.resolve("examples/example-directive-plugin").toAbsolutePath()
         val pb = ProcessBuilder(

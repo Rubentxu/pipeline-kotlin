@@ -14,6 +14,7 @@ import dev.rubentxu.pipeline.v2.events.StageFinished
 import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.StepFinished
+import dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -119,7 +120,18 @@ class UatEvt002MultiStepReplayTest {
 
         val cf = events[1] as CompilationFinished
         assertEquals("v1", cf.cacheKey.version, "cacheKey.version must be v1")
-        assertTrue(cf.diagnostics.isEmpty(), "CompilationFinished diagnostics must be empty: ${cf.diagnostics}")
+        // M1-F.1 (PK-R1 R1-B extension): the Kotlin 2.4.10 compiler confirms
+        // `-Xuse-fast-jar-file-system=false` with an INFO diagnostic. The diagnostic
+        // is NOT a failure — it is the observable confirmation that the option was
+        // accepted. The UAT asserts on ERROR/FATAL only, the user-actionable cases.
+        val errorCfDiags = cf.diagnostics.filter {
+            it.severity == ScriptDiagnosticSeverity.ERROR ||
+                it.severity == ScriptDiagnosticSeverity.FATAL
+        }
+        assertTrue(
+            errorCfDiags.isEmpty(),
+            "CompilationFinished diagnostics must have no ERROR/FATAL: ${cf.diagnostics}",
+        )
 
         // Use type-based queries to avoid brittle index dependencies
         val stageStartedEvents = events.filterIsInstance<StageStarted>()
@@ -177,7 +189,14 @@ class UatEvt002MultiStepReplayTest {
         assertTrue(events.last() is RunFinished, "events.last() must be RunFinished")
         val rf = events.last() as RunFinished
         assertEquals("success", rf.outcome, "RunFinished outcome must be success")
-        assertTrue(rf.diagnostics.isEmpty(), "RunFinished diagnostics must be empty: ${rf.diagnostics}")
+        val errorRfDiags = rf.diagnostics.filter {
+            it.severity == ScriptDiagnosticSeverity.ERROR ||
+                it.severity == ScriptDiagnosticSeverity.FATAL
+        }
+        assertTrue(
+            errorRfDiags.isEmpty(),
+            "RunFinished diagnostics must have no ERROR/FATAL: ${rf.diagnostics}",
+        )
     }
 
     /**

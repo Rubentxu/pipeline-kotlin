@@ -60,9 +60,16 @@ class FArchS0CPureBuilderConsumptionTest {
             outcome.executedStepCount,
             "no effect may be observed when the result is discarded (fail-closed before effects): ${outcome.summary}",
         )
+        // PK-R1 R1-B fix: the rejection diagnostic is the production message
+        // emitted by `rejectUnconsumedCarriers` in `StageScopeBuilders.kt`. It
+        // lives in the LAST event of the run (`StepFailed`, then again in
+        // `RunFinished.diagnostics`) — past the 600-char window the `summary`
+        // helper truncates for readability. Asserting against the
+        // untruncated `outcome.diagnostics` reads the actual rejection text
+        // and is what the witness always meant to check.
         assertTrue(
-            outcome.summary.contains("return value", ignoreCase = true) ||
-                outcome.summary.contains("must be used", ignoreCase = true),
+            outcome.diagnostics.contains("return value", ignoreCase = true) ||
+                outcome.diagnostics.contains("must be used", ignoreCase = true),
             "rejection must name the unconsumed result, not a generic failure: ${outcome.summary}",
         )
     }
@@ -104,9 +111,12 @@ class FArchS0CPureBuilderConsumptionTest {
                 "a consumed MUST_CONSUME builder must produce exactly one step, never zero and never two: ${outcome.summary}",
             )
         } else {
+            // PK-R1 R1-B fix: the diagnostic is the untruncated `outcome.diagnostics` (see the
+            // first row for why). `summary` is truncated at 600 chars and the rejection
+            // message lives past that window.
             assertTrue(
-                !outcome.summary.contains("must be used", ignoreCase = true) &&
-                    !outcome.summary.contains("return value", ignoreCase = true),
+                !outcome.diagnostics.contains("must be used", ignoreCase = true) &&
+                    !outcome.diagnostics.contains("return value", ignoreCase = true),
                 "a consumed builder must not be rejected for an UNCONSUMED result: ${outcome.summary}",
             )
         }
@@ -129,9 +139,10 @@ class FArchS0CPureBuilderConsumptionTest {
         // `git(..)` is defined as `checkout(scmGit(..).scm)`, so it CONSUMES the
         // carrier. It must therefore never trip the consumption gate. Whatever
         // the bridge decides about core.checkout is a separate concern.
+        // PK-R1 R1-B fix: assert against the untruncated `outcome.diagnostics` (see row 1).
         assertTrue(
-            !outcome.summary.contains("must be used", ignoreCase = true) &&
-                !outcome.summary.contains("return value", ignoreCase = true),
+            !outcome.diagnostics.contains("must be used", ignoreCase = true) &&
+                !outcome.diagnostics.contains("return value", ignoreCase = true),
             "git(..) consumes scmGit(..); the consumption gate must not fire on it: ${outcome.summary}",
         )
     }

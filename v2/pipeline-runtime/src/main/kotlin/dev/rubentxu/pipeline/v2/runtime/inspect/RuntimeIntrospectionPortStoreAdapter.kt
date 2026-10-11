@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.v2.runtime.inspect
 
-import dev.rubentxu.pipeline.v2.domain.AttemptId
+import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.events.durable.FileBackedRunExecutionLeaseStore
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
@@ -279,6 +279,246 @@ class RuntimeIntrospectionPortStoreAdapter(
         val cls = this::class.simpleName ?: this.javaClass.name
         val msg = message?.take(120)?.replace('\n', ' ')
         return if (msg.isNullOrBlank()) cls else "$cls: $msg"
+    }
+
+    // ── M6 (additive) — runStructure + inspectOperation ───────────────────
+    //
+    // The M6 design §C names the composition: every primitive the M6 methods
+    // call is one already composed by `inspect` (OperationJournal.listForRun,
+    // OperationJournal.get, OutputFrameIndex.streamsOfRun). The M6 methods do
+    // NOT introduce a new lease, a new scheduler, or a new query engine — they
+    // read the existing stores and project to the closed ADTs the M6 design
+    // names in §B.
+    //
+    // ## First-cut scope
+    //
+    // The M6 design's audit-cited group of operations by their enclosing
+    // stage / step would require reading the typed `StageStarted` / `StepStarted`
+    // events from the event plane. The published `PipelineEventEnvelope`
+    // projection strips the type-specific fields, exposing only `kind`,
+    // `occurredAt`, and `sequence`; the stageIndex / stepOrdinal / stageName
+    // are not on the envelope. A follow-up M-block (or M6.x patch) that
+    // exposes a typed event-shape read port can lift this limitation; until
+    // then, the M6 first cut uses a SYNTHETIC single-stage single-step view
+    // derived from the journal alone. The contract test
+    // `RuntimeIntrospectionPortStructureAdapterTest` pins the synthetic
+    // grouping explicitly; a future M-block that adds event-shape correlation
+    // will update the test to pin the event-driven grouping.
+    //
+    // The audit's I.6 PARTIAL closure is therefore "synthetic grouping in
+    // M6 first cut; event-driven grouping in a follow-up M-block". The
+    // PARTIAL is honest: a consumer that needs true event-driven grouping
+    // must wait for the follow-up, and the M6 candidate's release-receipt
+    // documents this.
+
+    override fun runStructure(
+        runId: String,
+        options: StructureRunOptions,
+    ): RunStructureResult {
+        return try {
+            // Page 1: read the journal rows (the operations of the run).
+            val journalOps: List<DurableOperation> = try {
+                journal.listForRun(runId)
+            } catch (e: Exception) {
+                return RunStructureResult.Refused(
+                    IntrospectionRefusal.StorageError(e.shortDiagnostic()),
+                )
+            }
+            if (journalOps.isEmpty()) {
+                return RunStructureResult.Structure(
+                    structure = RunStructure.Empty,
+                    cursor = null,
+                )
+            }
+            // M6 first cut: synthetic single-stage single-step view. The
+            // grouping is "every operation is in stage 0, step 0"; the
+            // pagination is per-operation (the cursor's `operationOrdinal`
+            // is the journal list index).
+            val startOpOrdinal: Int = options.cursor?.operationOrdinal ?: 0
+            if (startOpOrdinal >= journalOps.size) {
+                return RunStructureResult.Structure(
+                    structure = RunStructure.Stages(emptyList()),
+                    cursor = null,
+                )
+            }
+            val effectiveOps = journalOps.drop(startOpOrdinal).take(options.pageSize)
+            val stepStartedAtMs: Long = effectiveOps
+                .mapNotNull { startedAtMsOf(it) }
+                .minOrNull() ?: 0L
+            val stepFinishedAtMs: Long? = effectiveOps
+                .mapNotNull { endedAtMsOf(it) }
+                .maxOrNull()
+            val state = stateOf(effectiveOps)
+            val operationSummaries: List<OperationSummary> = effectiveOps.map { op ->
+                OperationSummary(
+                    operationId = op.id,
+                    attempt = op.attempt,
+                    status = op.status,
+                    startedAtMs = startedAtMsOf(op),
+                    endedAtMs = endedAtMsOf(op),
+                    fingerprint = op.fingerprint.hex,
+                    streams = streamsForOperation(
+                        runId = op.input.runId,
+                        operationId = op.id,
+                    ),
+                )
+            }
+            val stepSummary = StepSummary(
+                stepOrdinal = 0,
+                stepKey = "synthetic-step",
+                startedAtMs = stepStartedAtMs,
+                finishedAtMs = stepFinishedAtMs,
+                state = state,
+                operations = operationSummaries,
+            )
+            val stageSummary = StageSummary(
+                stageOrdinal = 0,
+                stageIndex = "synthetic-stage",
+                startedAtMs = stepStartedAtMs,
+                finishedAtMs = stepFinishedAtMs,
+                steps = listOf(stepSummary),
+            )
+            // Apply includeTerminalStages filter (the synthetic single stage
+            // either is or is not terminal depending on the operations it
+            // contains; the filter drops the synthetic stage when every
+            // operation is terminal and the caller asked for in-flight only).
+            val stages: List<StageSummary> = if (options.includeTerminalStages) {
+                listOf(stageSummary)
+            } else if (effectiveOps.any { !it.status.isTerminal }) {
+                listOf(stageSummary)
+            } else {
+                emptyList()
+            }
+            val lastOpOrdinalIncluded = startOpOrdinal + effectiveOps.size - 1
+            val nextCursor: StructureCursor? = if (lastOpOrdinalIncluded < journalOps.size - 1) {
+                StructureCursor(
+                    stageOrdinal = 0,
+                    stepOrdinal = 0,
+                    operationOrdinal = lastOpOrdinalIncluded + 1,
+                )
+            } else null
+            RunStructureResult.Structure(
+                structure = RunStructure.Stages(stages),
+                cursor = nextCursor,
+            )
+        } catch (e: Exception) {
+            RunStructureResult.Refused(
+                IntrospectionRefusal.StorageError(e.shortDiagnostic()),
+            )
+        }
+    }
+
+    override fun inspectOperation(
+        operationId: String,
+        attempt: Int,
+    ): OperationInspectionResult {
+        if (attempt < 1) {
+            return OperationInspectionResult.Refused(
+                IntrospectionRefusal.StorageError("attempt must be >= 1, got $attempt"),
+            )
+        }
+        return try {
+            val op: DurableOperation = try {
+                journal.get(operationId, attempt)
+            } catch (e: Exception) {
+                return OperationInspectionResult.Refused(
+                    IntrospectionRefusal.StorageError(e.shortDiagnostic()),
+                )
+            } ?: return OperationInspectionResult.Refused(
+                IntrospectionRefusal.StorageError(
+                    "no journal row for ($operationId, attempt=$attempt)",
+                ),
+            )
+            val runId = op.input.runId
+            val startedAtMs: Long? = try {
+                journal.getStartedAt(operationId, attempt)
+            } catch (e: Exception) {
+                return OperationInspectionResult.Refused(
+                    IntrospectionRefusal.StorageError(e.shortDiagnostic()),
+                )
+            }
+            val endedAtMs: Long? = try {
+                journal.getEndedAt(operationId, attempt)
+            } catch (e: Exception) {
+                return OperationInspectionResult.Refused(
+                    IntrospectionRefusal.StorageError(e.shortDiagnostic()),
+                )
+            }
+            val deadlineMs: Long? = try {
+                journal.getDeadlineMs(operationId, attempt)
+            } catch (e: Exception) {
+                return OperationInspectionResult.Refused(
+                    IntrospectionRefusal.StorageError(e.shortDiagnostic()),
+                )
+            }
+            val streams = streamsForOperation(runId, operationId)
+            OperationInspectionResult.Inspection(
+                OperationInspection(
+                    operationId = operationId,
+                    attempt = attempt,
+                    runId = runId,
+                    stageOrdinal = 0, // synthetic in M6 first cut
+                    stepOrdinal = 0,  // synthetic in M6 first cut
+                    status = op.status,
+                    startedAtMs = startedAtMs,
+                    endedAtMs = endedAtMs,
+                    deadlineMs = deadlineMs,
+                    fingerprint = op.fingerprint.hex,
+                    streams = streams,
+                ),
+            )
+        } catch (e: Exception) {
+            OperationInspectionResult.Refused(
+                IntrospectionRefusal.StorageError(e.shortDiagnostic()),
+            )
+        }
+    }
+
+    // ── M6 helpers (private) ──────────────────────────────────────────────
+
+    /**
+     * Read the declared stdout / stderr streams of an operation. Uses the
+     * existing [OutputFrameIndex.streamsOfRun] projection and matches by
+     * stream-name convention `runId::operationId::stdout` / `::stderr`.
+     * The convention is the M1 + M3 publish pattern; when a run has no
+     * declared streams, both fields are null.
+     */
+    private fun streamsForOperation(runId: String, operationId: String): OperationOutputStreams {
+        val streams = try {
+            frames.streamsOfRun(runId)
+        } catch (_: Exception) {
+            emptyList<OutputStreamId>()
+        }
+        val stdoutSuffix = "::$operationId::stdout"
+        val stderrSuffix = "::$operationId::stderr"
+        val stdout = streams.firstOrNull { it.value.endsWith(stdoutSuffix) }
+        val stderr = streams.firstOrNull { it.value.endsWith(stderrSuffix) }
+        return OperationOutputStreams(stdoutStream = stdout, stderrStream = stderr)
+    }
+
+    private fun startedAtMsOf(op: DurableOperation): Long? = try {
+        journal.getStartedAt(op.id, op.attempt)
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun endedAtMsOf(op: DurableOperation): Long? = try {
+        journal.getEndedAt(op.id, op.attempt)
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun stateOf(ops: List<DurableOperation>): StepState {
+        if (ops.isEmpty()) return StepState.Pending
+        val anyFailed = ops.firstOrNull {
+            it.status.name == "FAILED" || it.status.name == "FAILED_TIMEOUT" || it.status.name == "DIVERGENT"
+        }
+        if (anyFailed != null) return StepState.Failed(anyFailed.status.name)
+        if (ops.any { it.status.name == "RUNNING" }) return StepState.Running
+        if (ops.all { it.status.name == "SUCCEEDED" }) return StepState.Succeeded
+        if (ops.any { it.status.name == "ABORTED" }) return StepState.Cancelled
+        if (ops.any { it.status.name == "PENDING" }) return StepState.Pending
+        return StepState.Pending
     }
 }
 

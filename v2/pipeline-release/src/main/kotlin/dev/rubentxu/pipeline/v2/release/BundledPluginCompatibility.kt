@@ -39,14 +39,18 @@ import java.util.zip.ZipInputStream
 object BundledPluginCompatibility {
 
     /**
-     * The pattern that marks a JAR inside the distribution as a bundled
-     * plugin. The convention is `pipeline-step-sdk/<name>-<version>.jar`
-     * for the official plugins shipped from the build, and any JAR whose
-     * name starts with `pipeline-step-sdk-` (when flat) is also a bundled
-     * plugin. The first form is what `distZip` currently produces; the
-     * second is what `installDist` lays out.
+     * The path pattern that marks a JAR inside the distribution's `lib/`
+     * directory as a bundled plugin. The current build layout ships the
+     * official plugins as `<plugin>-<version>.jar` (e.g. `http-0.51.0.jar`,
+     * `scm-git-0.51.0.jar`, `junit-0.1.0.jar`); the `pipeline-step-sdk/`
+     * directory layout from earlier revisions has been replaced. The
+     * probe is therefore "every JAR under lib/ that carries a
+     * `META-INF/pipelinek/plugin-manifest.json`" — a content check, not
+     * a name check. The name is kept as a secondary filter so a future
+     * layout that names JARs `pipeline-step-sdk-*` keeps working.
      */
     private const val PLUGIN_JAR_HINT = "pipeline-step-sdk"
+    private const val LIB_DIR_HINT = "/lib/"
 
     /**
      * The manifest path inside a plugin JAR. Mirrors
@@ -103,8 +107,8 @@ object BundledPluginCompatibility {
             while (entry != null) {
                 val name = entry.name
                 if (!entry.isDirectory &&
-                    name.contains(PLUGIN_JAR_HINT) &&
-                    name.endsWith(".jar")
+                    name.endsWith(".jar") &&
+                    (name.contains(PLUGIN_JAR_HINT) || name.contains(LIB_DIR_HINT))
                 ) {
                     val bytes = outer.readBytes()
                     val manifestBytes = readResourceFromJar(bytes, PLUGIN_MANIFEST_RESOURCE)

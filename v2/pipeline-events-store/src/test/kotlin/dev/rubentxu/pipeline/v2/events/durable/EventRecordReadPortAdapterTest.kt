@@ -362,6 +362,8 @@ class EventRecordReadPortAdapterTest {
     inner class StorageError {
 
         @Test
+        // tempDir is provided by JUnit @TempDir injection; the body uses a throwing in-memory store and never touches the directory.
+        @Suppress("detekt:UnusedParameter")
         fun `10 a store that throws on readRecords surfaces Refused StorageError`(@TempDir tempDir: Path) {
             @Suppress("UNCHECKED_CAST")
             val failingStore = object : dev.rubentxu.pipeline.v2.events.EventStore {

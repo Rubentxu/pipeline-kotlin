@@ -164,6 +164,14 @@ tasks.test {
     dependsOn(tasks.named("jar"))
     useJUnitPlatform()
 
+    // BLOCK 2.5 / PK-R1: DirectivePluginShaReproducibilityTest rebuilds the example directive
+    // plugin from a clean state, and the rebuild resolves its pipeline-domain coordinate from
+    // v2/build/sdk-repo. Which version under that repo? The one this build just published via
+    // :publishSdkForExternalPlugin (a transitive dep of :buildExternalDirectivePlugin, listed above).
+    // Inject the version the build chose so the test does not have to guess from a directory listing
+    // that may carry forward older published versions from prior builds on the same checkout.
+    systemProperty("pipeline.domain.version", project.version.toString())
+
     // ── Cross-module inputs, declared ────────────────────────────────────────────
     //
     // A handful of tests here read OTHER modules on purpose, because the law they enforce is about

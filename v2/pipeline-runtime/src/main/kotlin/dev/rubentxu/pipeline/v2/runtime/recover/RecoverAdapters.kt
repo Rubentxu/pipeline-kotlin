@@ -96,6 +96,13 @@ class RuntimeRecoverPortStoreAdapter(
     },
 ) : RuntimeRecoverPort {
 
+    // recover() composes four contract surfaces — lease boundary, introspection,
+    // journal proof, and cursor replay — in a strict order; each stage's failure
+    // mode short-circuits to FailClosed with a typed refusal. Refactoring in this
+    // cycle would require re-deriving the same ordering inside extracted helpers
+    // without gaining isolation. The complexity and length are intrinsic to the
+    // four-stage contract.
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     override fun recover(runId: String, options: RecoverOptions): RecoverOutcome {
         val syntheticObserver: RunOwnerId = RunOwnerId.of(syntheticObserverId)
             ?: error("invalid syntheticObserverId $syntheticObserverId")

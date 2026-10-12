@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.step.Digest
 import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.ManifestSchemaVersion
 import dev.rubentxu.pipeline.v2.domain.step.PipelineKApiRange
+import dev.rubentxu.pipeline.v2.sdk.runtime.PluginCompatibilityResource
 import dev.rubentxu.pipeline.v2.domain.step.PluginContributions
 import dev.rubentxu.pipeline.v2.domain.step.PluginFamily
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifest
@@ -47,16 +48,16 @@ object UtilitiesPluginDeclaration {
     const val RELEASE_PROPERTIES_RESOURCE: String = "META-INF/utilities-release.properties"
 
     /**
-     * PipelineK versions this artifact supports.
-     *
-     * Exclusive upper bound: 0.49 is where support stops, not where the file stops parsing.
+     * PK-RC-PLUGIN-001 — the apiRange is no longer a literal. The policy in
+     * `buildSrc/PluginCompatibilityPolicy` reads `rootProject.version` and emits
+     * the resource this declaration reads at runtime. The literal moved out;
+     * a future product-version bump is observable from the build, not from a
+     * per-plugin edit. The previous hand-typed upper bound (0.52.0 / 0.53.0)
+     * drifted away from the product version on every release and the v0.56.0-rc3
+     * candidate shipped with `apiRange=[0.47.0, 0.53.0)` while the host was 0.56.0.
      */
-    /** Exclusive upper bound: 0.52 is where support stops, not where parsing stops.
-     *
-     * Extended from `[0.47.0, 0.49.0)` to `[0.47.0, 0.52.0)` as part of PK-R1: the 0.51.0
-     * consolidated train preserves every contract, manifest, and ABI this plugin reads. The
-     * extension is justified by `BuiltPluginManifestArtifactTest` on the real artefact. */
-    val API_RANGE: PipelineKApiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 53, 0))
+    val API_RANGE: PipelineKApiRange
+        get() = PluginCompatibilityResource.load(UtilitiesPluginDeclaration::class.java.classLoader)
 
     /**
      * Build-time provenance is consumed from [RELEASE_PROPERTIES_RESOURCE]

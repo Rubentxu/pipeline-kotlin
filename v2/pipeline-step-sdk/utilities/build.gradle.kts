@@ -1,3 +1,4 @@
+import dev.rubentxu.pipeline.build.PluginCompatibilityPolicy
 import dev.rubentxu.pipeline.build.ProvenanceDigest
 import java.io.ByteArrayOutputStream
 
@@ -88,7 +89,7 @@ val computeUtilitiesDigest = tasks.register("computeUtilitiesDigest") {
     val ver = utilitiesVersion
 
     outputs.file(utilitiesReleaseProps)
-    dependsOn("compileKotlin", "processResources")
+    dependsOn("compileKotlin", "processResources", "generatePluginCompatibilityMetadata")
 
     // Declared inputs, WITHOUT `skipWhenEmpty`: `inputs.dir + skipWhenEmpty` used to make Gradle
     // mark this NO-SOURCE on incremental builds. `inputs.files(fileTree(...))` keeps the task
@@ -133,7 +134,7 @@ val computeUtilitiesDigest = tasks.register("computeUtilitiesDigest") {
 }
 
 tasks.named("jar") {
-    dependsOn(computeUtilitiesDigest)
+    dependsOn(computeUtilitiesDigest, generateUtilitiesPluginCompatibility)
 }
 
 // ----------------------------------------------------------------------------
@@ -151,13 +152,32 @@ tasks.named("jar") {
 // manifest carrying it would have no fixed point.
 // ----------------------------------------------------------------------------
 
+val utilitiesCompatibilityResource = layout.buildDirectory
+    .file("resources/main/META-INF/pipelinek/plugin-compatibility.json")
+
+val generateUtilitiesPluginCompatibility = tasks.register("generatePluginCompatibilityMetadata") {
+    group = "utilities"
+    description = "PK-RC-PLUGIN-001: emit the policy-derived compatibility resource for the artifact."
+
+    inputs.property("productVersion", rootProject.version.toString())
+    outputs.file(utilitiesCompatibilityResource)
+
+    doLast {
+        val policy = PluginCompatibilityPolicy(rootProject.version.toString())
+        val out = utilitiesCompatibilityResource.get().asFile
+        out.parentFile.mkdirs()
+        out.writeText(policy.toJson())
+        println("utilities: compatibility metadata emitted to $out (apiRange=${policy.apiRange()})")
+    }
+}
+
 val utilitiesManifest = layout.buildDirectory.file("resources/main/META-INF/pipelinek/plugin-manifest.json")
 
 val emitUtilitiesManifest = tasks.register<JavaExec>("emitUtilitiesManifest") {
     group = "utilities"
     description = "S6/C: emit the machine-readable plugin manifest into the artifact."
 
-    dependsOn(computeUtilitiesDigest)
+    dependsOn(computeUtilitiesDigest, generateUtilitiesPluginCompatibility)
     mainClass.set("dev.rubentxu.pipeline.v2.sdk.utilities.step.UtilitiesPluginDeclarationKt")
 
     // The main reads META-INF/utilities-release.properties off ITS OWN classpath, so the
@@ -166,7 +186,7 @@ val emitUtilitiesManifest = tasks.register<JavaExec>("emitUtilitiesManifest") {
         files(layout.buildDirectory.dir("resources/main"))
 
     inputs.files(utilitiesReleaseProps)
-    inputs.property("apiRange", "[0.47.0, 0.52.0)")
+    inputs.files(utilitiesCompatibilityResource)
     outputs.file(utilitiesManifest)
 
     // Captured into a buffer rather than stdout: Gradle prints task output to the console,
@@ -201,6 +221,7 @@ val emitUtilitiesManifest = tasks.register<JavaExec>("emitUtilitiesManifest") {
 }
 
 tasks.named("processResources") {
+    dependsOn(generateUtilitiesPluginCompatibility)
     finalizedBy(emitUtilitiesManifest)
 }
 

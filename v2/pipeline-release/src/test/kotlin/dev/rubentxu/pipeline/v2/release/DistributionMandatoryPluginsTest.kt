@@ -87,6 +87,26 @@ class DistributionMandatoryPluginsTest {
     )
 
     /**
+     * PK-RELEASE-CONSOLIDATION H1.4 — three external example plugins that
+     * the brief makes MANDATORY in the release gate. These are the
+     * D1-independent builds (block, directive, uppercase) that derive
+     * their `apiRange` from the resolved SDK. Their pluginIds are part
+     * of the SDK's external plugin contract; a release without them
+     * is the same defect as a release without the official plugins.
+     *
+     * PK-NEXT R0.2 had four official plugins; the H1 brief requires
+     * SEVEN, not four. The union is the test surface, asserted
+     * together by [the distribution contains all seven mandatory plugins]
+     * and individually by [each example external plugin is admitted by
+     * the host].
+     */
+    private val mandatoryExternalIds: List<String> = listOf(
+        "example-block-plugin/plugin/repeat",
+        "example-directive-plugin/plugin/lock",
+        "example-uppercase-plugin/plugin/uppercase",
+    )
+
+    /**
      * The host version is derived from the version resource packaged
      * inside the application JAR, not a hardcoded literal. The resource
      * is `pipelinek-version.properties`, generated at build time from
@@ -159,6 +179,60 @@ class DistributionMandatoryPluginsTest {
                 "not in the catalogue; a re-ordering means the gate is not asserting the " +
                 "canonical list.",
         )
+    }
+
+    /**
+     * PK-RELEASE-CONSOLIDATION H1.4 — the SEVEN mandatory plugins.
+     *
+     * The brief makes the three external example plugins (block, directive,
+     * uppercase) obligatory alongside the four official ones. The D1
+     * independent build gives them their own `apiRange` derived from the
+     * resolved SDK, and the certifier must observe them in the distribution
+     * the same way it observes the official four.
+     */
+    @Test
+    fun `the distribution contains all seven mandatory plugins (4 official + 3 external)`() {
+        val entries = BundledPluginCompatibility.probeZip(zip)
+        val observedIds = entries.map { it.pluginId }
+        val required = (mandatoryIds + mandatoryExternalIds).sorted()
+        val actual = observedIds.toSet()
+        val missing = required.filterNot { it in actual }
+        val extra = observedIds.filterNot { it in required.toSet() }
+        assertTrue(
+            missing.isEmpty() && extra.isEmpty(),
+            "the distribution must carry the union of the official and the external " +
+                "mandatory plugins. missing=$missing extra=$extra observed=$observedIds. " +
+                "A missing official means a required surface was not shipped; a missing " +
+                "external means the D1 independent build was not staged; an extra id means " +
+                "the gate is not asserting the canonical seven.",
+        )
+    }
+
+    /**
+     * PK-RELEASE-CONSOLIDATION H1.4 — the three external plugins must
+     * admit the host, exactly as the four official plugins do. A
+     * release that ships an external plugin whose `apiRange` excludes
+     * the host version is the same defect as a release that ships an
+     * official plugin in that state, and the certifier must see the
+     * refusal here, not after download.
+     */
+    @Test
+    fun `each example external plugin admits the host version`() {
+        val entries = BundledPluginCompatibility.probeZip(zip)
+        val externalEntries = entries.filter { it.pluginId in mandatoryExternalIds }
+        for (external in externalEntries) {
+            val verdict = BundledPluginCompatibility.evaluate(
+                hostVersion,
+                listOf(external),
+            )
+            assertInstanceOf(
+                BundledPluginCompatibilityVerdict.Compatible::class.java,
+                verdict,
+                "external plugin ${external.pluginId} refuses the host $hostVersion. " +
+                    "The D1 independent build's apiRange must cover the host. " +
+                    "Verdict: ${verdict.render()}",
+            )
+        }
     }
 
     @Test
@@ -257,6 +331,60 @@ class DistributionMandatoryPluginsTest {
         }
     }
 
+    /**
+     * PK-RELEASE-CONSOLIDATION H1.4 — the LaunchReceipt contract is
+     * versioned by its `schema` token. Every run that emits a receipt
+     * MUST carry `pipelinek.launch/1`. The certifier must observe the
+     * token in the published application JAR, not a private copy, so
+     * a future schema migration cannot ship with a stale contract.
+     */
+    @Test
+    fun `the application JAR declares the published LaunchReceipt schema token`() {
+        val expectedSchema = "pipelinek.launch/1"
+        val appJar = extractApplicationJar()
+            ?: fail("could not stage the application JAR from the distribution ZIP")
+        val schema = readClassConstantString(
+            appJar,
+            "dev/rubentxu/pipeline/v2/application/LaunchReceipt.Companion",
+            expectedSchema,
+        )
+        assertEquals(
+            expectedSchema,
+            schema,
+            "LaunchReceipt.Companion.SCHEMA in the published application JAR must be " +
+                "'$expectedSchema'; the certifier learns the contract from this token. " +
+                "A different token means the JAR was built against a different contract " +
+                "than the one the gate is enforcing."
+        )
+    }
+
+    /**
+     * PK-RELEASE-CONSOLIDATION H1.4 — the SBOM must reference
+     * `pipeline-sdk-bom` at the host version. The BOM is a Bill of
+     * Materials that pins the four published contracts; if the SBOM
+     * names the BOM at a different version, a downstream consumer
+     * resolves through a different SDK than the host was built
+     * against, and the certifier must refuse the candidate.
+     */
+    @Test
+    fun `the distribution's SBOM references pipeline-sdk-bom at the host version`() {
+        val sbom = locateSbom()
+            ?: fail(
+                "the SBOM was not staged next to the distribution ZIP. " +
+                    "The gate requires an SBOM to assert SDK version alignment; " +
+                    "a missing SBOM is the same defect as a missing manifest."
+            )
+        val text = Files.readString(sbom)
+        val bomCoordinate = "dev.rubentxu.pipeline.v2:pipeline-sdk-bom:${hostVersion.value}"
+        assertTrue(
+            text.contains(bomCoordinate),
+            "the SBOM at $sbom does not reference '$bomCoordinate'. " +
+                "A consumer resolving the BOM at any other version would resolve " +
+                "the four contracts at a different SDK than the host. SBOM excerpt: " +
+                text.take(800)
+        )
+    }
+
     private fun readManifestJsonFromJar(jarName: String): String? {
         // Stage the inner JAR to a temp file because ZipFile's constructor
         // wants a File or Path. A byte-buffer view works too but file I/O is
@@ -291,6 +419,83 @@ class DistributionMandatoryPluginsTest {
             Files.deleteIfExists(tmp)
         }
         return result
+    }
+
+    /**
+     * Stage the application JAR (the one under `lib/pipeline-application-*.jar`)
+     * to a temp file and return its path. The schema check needs the
+     * bytecode because the constant lives in the class, not in a
+     * resource.
+     */
+    private fun extractApplicationJar(): Path? {
+        val tmp = Files.createTempFile("app-extracted-", ".jar")
+        try {
+            var found: Path? = null
+            ZipFile(zip.toFile()).use { outer ->
+                val entry = outer.entries().toList().firstOrNull { e ->
+                    !e.isDirectory && e.name.contains("/lib/pipeline-application-") && e.name.endsWith(".jar")
+                }
+                if (entry != null) {
+                    Files.copy(outer.getInputStream(entry), tmp,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                    found = tmp
+                }
+            }
+            return found
+        } catch (_: Exception) {
+            Files.deleteIfExists(tmp)
+            return null
+        }
+    }
+
+    /**
+     * Read a `public static final String NAME = "value"` constant from a
+     * class. This is a structural read of the constant pool, not a
+     * reflective getStatic — the latter would force the application JAR
+     * onto the test classpath, which would make the test's failure mode
+     * depend on whether the JAR happens to load. Reading the bytes
+     * directly keeps the check dependent only on the distribution bytes.
+     *
+     * Returns the value if the [expectedValue] string appears as a
+     * CONSTANT_Utf8_info entry in the [internalClassName] class file.
+     * The check is structural — it does not parse the constant pool to
+     * attribute the string to a specific field, because the only
+     * constant the contract cares about is the schema token, and any
+     * class file that carries `pipelinek.launch/1` is a class that
+     * SOMEONE declared it on. A more thorough check would resolve the
+     * exact field; that is future work and not on the H1.4 path.
+     */
+    private fun readClassConstantString(jar: Path, internalClassName: String, expectedValue: String): String? {
+        val classEntry = internalClassName.replace('.', '/') + ".class"
+        ZipFile(jar.toFile()).use { zf ->
+            val entry = zf.getEntry(classEntry) ?: return null
+            val bytes = zf.getInputStream(entry).use { it.readBytes() }
+            // Look for the expected value as a UTF-8 literal anywhere
+            // in the class bytes. This is a weak check (it can match a
+            // string used in a different context), but the schema token
+            // is unique enough in practice, and the alternative is a
+            // full constant-pool parser.
+            val haystack = String(bytes, Charsets.ISO_8859_1)
+            return if (haystack.contains(expectedValue)) expectedValue else null
+        }
+    }
+
+    /**
+     * Locate the SBOM that the `candidateAdmission` task stages next to
+     * the distribution ZIP. The probe looks for a sibling file whose
+     * name ends in `.sbom.json`, which is the convention the admission
+     * task uses. A missing SBOM is a hard fail.
+     */
+    private fun locateSbom(): Path? {
+        val parent = zip.parent ?: return null
+        val candidates = listOf(
+            "pipelinek-${hostVersion.value}.sbom.json",
+            "bom.json",
+        )
+        return candidates.mapNotNull { name ->
+            val p = parent.resolve(name)
+            if (Files.isRegularFile(p)) p else null
+        }.firstOrNull()
     }
 
     // ---- helpers --------------------------------------------------------------------

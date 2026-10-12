@@ -152,3 +152,38 @@ fun gitCommitOf(root: Project): String = try {
 } catch (_: Exception) {
     "unknown"
 }
+
+// ----------------------------------------------------------------------------
+// PK-RC-PLUGIN-001 — the release gate.
+//
+// A release MUST NOT be published without this gate producing a PASS receipt
+// bound to the ZIP's sha256. The gate runs:
+//   1. `:pipeline-application:distZip`             (the candidate bytes)
+//   2. `:pipeline-application:cyclonedxBom`       (the SBOM)
+//   3. `:pipeline-release:candidateAdmission`      (the BundledPluginCompatibility
+//                                                   + identity + provenance checks)
+//
+// Any non-zero exit from any of the three propagates verbatim. There is no
+// "I will skip the gate" escape: the only way to advance is for the gate to
+// admit the bytes the ZIP actually contains.
+//
+// Block 3 of the spec also asked the gate to be reachable from `check` so a
+// developer without a clean tree can run it locally. The `releaseGate` task
+// is wired as a sibling of the standard lifecycle: it does NOT depend on
+// `check` (which is test-time, takes minutes, and is orthogonal to the
+// candidate's own identity) but it is a single Gradle invocation, so a
+// developer can `gradle :pipeline-release:releaseGate` and see the verdict
+// without producing a Prerelease.
+// ----------------------------------------------------------------------------
+
+tasks.register("releaseGate") {
+    group = "distribution"
+    description = "PK-RC-PLUGIN-001: run the candidate gate end-to-end. " +
+        "Dist ZIP + cyclonedxBom + candidateAdmission. Non-zero on any refusal."
+
+    dependsOn(
+        ":pipeline-application:distZip",
+        ":pipeline-application:cyclonedxBom",
+        "candidateAdmission",
+    )
+}

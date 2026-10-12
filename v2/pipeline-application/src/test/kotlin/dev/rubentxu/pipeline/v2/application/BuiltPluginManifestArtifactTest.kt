@@ -74,19 +74,20 @@ class BuiltPluginManifestArtifactTest {
 
     @ParameterizedTest(name = "{0} is admitted at the running version")
     @MethodSource("artifacts")
-    @DisplayName("the gate ADMITS the real artifact at 0.47.0")
+    @DisplayName("the gate ADMITS the real artifact at the BUILD's RuntimeApiVersion")
     internal fun gateAdmitsTheRealArtifact(artifact: PluginArtifact) = withLoader(artifact) { loader ->
+        val running = RuntimeApiVersion.current()
         val result = PluginAdmissionGate.admitThenLoad(
             contributorClassName = artifact.contributorClass,
             classLoader = loader,
-            runtimeVersion = SemVer(0, 47, 0),
+            runtimeVersion = running,
             alreadyAdmitted = emptySet(),
             // strict stays ON: the manifest and the contributor class must come from the same
             // artifact, which is the substitution this check exists to refuse.
             strict = true,
         )
 
-        assertTrue(result is PluginAdmissionResult.Admitted, "${artifact.module} must be admitted; got $result")
+        assertTrue(result is PluginAdmissionResult.Admitted, "${artifact.module} must be admitted at $running; got $result")
         val admitted = (result as PluginAdmissionResult.Admitted).plugin
         assertEquals(
             artifact.expectedSteps,
@@ -97,8 +98,9 @@ class BuiltPluginManifestArtifactTest {
 
     @ParameterizedTest(name = "{0} is refused outside its declared apiRange")
     @MethodSource("artifacts")
-    @DisplayName("the same artifact is REFUSED at 0.60.0, outside [0.47.0, 0.53.0)")
+    @DisplayName("the same artifact is REFUSED at 0.60.0, outside the policy-derived range")
     internal fun realArtifactIsRefusedOutsideItsApiRange(artifact: PluginArtifact) = withLoader(artifact) { loader ->
+        val running = RuntimeApiVersion.current()
         val result = PluginAdmissionGate.admitThenLoad(
             contributorClassName = artifact.contributorClass,
             classLoader = loader,
@@ -109,7 +111,8 @@ class BuiltPluginManifestArtifactTest {
 
         assertTrue(
             result is PluginAdmissionResult.Refused,
-            "${artifact.module} declares [0.47.0, 0.53.0), so a 0.60.0 runtime must be refused; got $result",
+            "${artifact.module} at running=$running declares a range above 0.60.0's exclusive upper bound, " +
+                "so a 0.60.0 runtime must be refused; got $result",
         )
     }
 
@@ -124,9 +127,9 @@ class BuiltPluginManifestArtifactTest {
      * `:pipeline-application:test` failures it produced on the 0.51.0 build were the visible
      * symptom. This row is the row that was missing.
      */
-    @ParameterizedTest(name = "{0} is admitted at 0.51.0, the running runtime version")
+    @ParameterizedTest(name = "{0} is admitted at 0.51.0 (historical PK-R1 contract)")
     @MethodSource("artifacts")
-    @DisplayName("the gate ADMITS the real artifact at 0.51.0, the running runtime version")
+    @DisplayName("the gate ADMITS the real artifact at 0.51.0 (PK-R1 historical)")
     internal fun gateAdmitsTheRealArtifactAt051(artifact: PluginArtifact) = withLoader(artifact) { loader ->
         val result = PluginAdmissionGate.admitThenLoad(
             contributorClassName = artifact.contributorClass,
@@ -138,7 +141,7 @@ class BuiltPluginManifestArtifactTest {
 
         assertTrue(
             result is PluginAdmissionResult.Admitted,
-            "${artifact.module} declares [0.47.0, 0.53.0), so a 0.51.0 runtime must be admitted; got $result",
+            "${artifact.module} must be admitted at 0.51.0 (historical PK-R1 contract); got $result",
         )
     }
 

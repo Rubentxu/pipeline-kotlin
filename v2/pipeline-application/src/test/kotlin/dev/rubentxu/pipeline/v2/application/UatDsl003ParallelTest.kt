@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.DomainEvent
@@ -246,7 +248,22 @@ class UatDsl003ParallelTest {
         if (exitCode != expectedExit) {
             throw IllegalStateException("CLI exited with $exitCode, expected $expectedExit. output: $stdout")
         }
-        val events = JsonEventLog.decode(stdout)
+        // PK-NEXT R0.3: contract is decoded via the testkit. Stderr is
+        // not available from this helper's Pair return, so we use an
+        // empty string — the JSON view's stderr is diagnostics, not
+        // the receipt, and a missing receipt on stderr is not a
+        // contract violation for the JSON view.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = stdout,
+            stderr = "",
+            format = ObservationFormat.JSON,
+        )
+        if (contract.eventDocument.decodeError != null) {
+            throw IllegalStateException(
+                "JSON event document failed to decode: ${contract.eventDocument.decodeError}",
+            )
+        }
+        val events = contract.eventDocument.events
         return stdout to events
     }
     @Test

@@ -146,30 +146,60 @@ class BuiltPluginManifestArtifactTest {
     }
 
     /**
-     * Negative admission at 0.53.0 — the exclusive upper bound. A range `[from, until)` accepts
-     * up to but not including `until`, and the seam must hold the line at 0.53.0 itself, not at
-     * some later minor. The row was missing in the prior form, where the seam held at 0.49.0
-     * because the *declared* range held at 0.49.0; widening the range without this row would
-     * have left a known-incorrect gate wide open in *both* directions. The 0.52.0-rc1 train
-     * moved the upper bound from 0.52.0 to 0.53.0 (the per-train maintenance pattern the http
-     * plugin's KDoc documents), and this row tracks that move.
+     * Negative admission at the policy-derived exclusive upper bound, read from the manifest.
+     *
+     * The literal `0.53.0` from earlier trains is no longer the upper bound: the policy widened
+     * to `[0.47.0, 0.57.0)` on the PK-1 / PK-RC-PLUGIN-001 train, so 0.53.0 is ADMITTED and a
+     * row asserting refusal at 0.53.0 is now stale. The new oracle is the bound the manifest
+     * itself publishes — the test fails the build if the policy ever silently widens without
+     * updating the manifest, and a future bump to 0.57.0 widens the bound the test reads, not
+     * a literal.
      */
-    @ParameterizedTest(name = "{0} is refused at the exclusive upper bound 0.53.0")
+    @ParameterizedTest(name = "{0} is refused at the policy-derived exclusive upper bound")
     @MethodSource("artifacts")
-    @DisplayName("the gate REFUSES the real artifact at 0.53.0, the exclusive upper bound of [0.47.0, 0.53.0)")
+    @DisplayName("the gate REFUSES the real artifact at the policy-derived exclusive upper bound")
     internal fun realArtifactIsRefusedAtTheUpperBound(artifact: PluginArtifact) = withLoader(artifact) { loader ->
+        val manifestText = loader.getResource(PluginManifestCodec.RESOURCE_PATH)
+            ?.openStream()?.use { it.readBytes().toString(Charsets.UTF_8) }
+            ?: error("${artifact.module} ships no manifest at ${PluginManifestCodec.RESOURCE_PATH}")
+        val apiRange = extractApiRange(manifestText)
+            ?: error("${artifact.module} manifest does not parse a clean apiRange field")
+        val upperBound = parseExclusiveUpper(apiRange)
+            ?: error("${artifact.module} apiRange literal '$apiRange' is not '[X.Y.Z, A.B.C)'")
+
         val result = PluginAdmissionGate.admitThenLoad(
             contributorClassName = artifact.contributorClass,
             classLoader = loader,
-            runtimeVersion = SemVer(0, 53, 0),
+            runtimeVersion = upperBound,
             alreadyAdmitted = emptySet(),
             strict = true,
         )
 
         assertTrue(
             result is PluginAdmissionResult.Refused,
-            "${artifact.module} declares [0.47.0, 0.53.0), so a 0.53.0 runtime MUST be refused at the exclusive upper bound; got $result",
+            "${artifact.module} declares '$apiRange'; a runtime at the exclusive upper bound " +
+                "${upperBound.major}.${upperBound.minor}.${upperBound.patch} must be refused; got $result",
         )
+    }
+
+    /** Parse the apiRange field out of a manifest JSON. Test-only; production uses [PluginManifestCodec]. */
+    private fun extractApiRange(json: String): String? {
+        val key = "\"apiRange\""
+        val keyIdx = json.indexOf(key)
+        if (keyIdx < 0) return null
+        val colon = json.indexOf(':', keyIdx + key.length)
+        if (colon < 0) return null
+        val open = json.indexOf('"', colon + 1)
+        if (open < 0) return null
+        val close = json.indexOf('"', open + 1)
+        if (close < 0) return null
+        return json.substring(open + 1, close)
+    }
+
+    private val upperRegex = Regex("""\[\s*\d+\.\d+\.\d+\s*,\s*(\d+)\.(\d+)\.(\d+)\s*\)""")
+    private fun parseExclusiveUpper(raw: String): SemVer? {
+        val m = upperRegex.matchEntire(raw.trim()) ?: return null
+        return SemVer(m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].toInt())
     }
 
     companion object {

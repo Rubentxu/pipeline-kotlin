@@ -1,9 +1,11 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import dev.rubentxu.pipeline.v2.application.support.CliRun
 import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import dev.rubentxu.pipeline.v2.application.support.OwnedSubprocess
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.credentials.Certificate
@@ -26,6 +28,7 @@ import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -153,11 +156,22 @@ class CompatibilityCorpusTest {
         // the corpus reported "stdout must end with ']'" on fixtures that were perfectly green —
         // which is what a migration that does not preserve every observable the old code produced
         // looks like from the outside.
-        val stdout = completed.stdout.trim()
-        assertTrue(stdout.startsWith("[")) { "Fixture $name stdout must start with '['" }
-        assertTrue(stdout.endsWith("]")) { "Fixture $name stdout must end with ']'" }
+        //
+        // PK-NEXT R0.3: the contract is decoded via the testkit. Line 1
+        // is the LaunchReceipt and line 2 is the JSON event document; the
+        // "starts with '['" / "ends with ']'" assertions are wrong against
+        // this contract and the testkit replaces them.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = completed.stdout,
+            stderr = completed.stderr,
+            format = ObservationFormat.JSON,
+        )
+        assertNull(contract.eventDocument.decodeError) {
+            "Fixture $name: JSON event document failed to decode, got: " +
+                contract.eventDocument.decodeError
+        }
 
-        val events = JsonEventLog.decode(stdout)
+        val events = contract.eventDocument.events
         assertTrue(events.isNotEmpty()) { "Fixture $name produced no events" }
     }
 
@@ -226,7 +240,24 @@ class CompatibilityCorpusTest {
         val completed = result as CliRun.Completed
         val stdout = completed.stdout.trim()
 
-        return FixtureRun(completed.exitCode, stdout, completed.stderr, JsonEventLog.decode(stdout))
+        // PK-NEXT R0.3: the contract is decoded via the testkit. Line 1
+        // is the LaunchReceipt, line 2 is the JSON event document. A
+        // malformed document is a contract violation, not a silent skip.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = completed.stdout,
+            stderr = completed.stderr,
+            format = ObservationFormat.JSON,
+        )
+        assertNull(contract.eventDocument.decodeError) {
+            "fixture JSON event document failed to decode: ${contract.eventDocument.decodeError}"
+        }
+
+        return FixtureRun(
+            exitCode = completed.exitCode,
+            stdout = stdout,
+            stderr = completed.stderr,
+            events = contract.eventDocument.events,
+        )
     }
 
     /**
@@ -695,7 +726,16 @@ class CompatibilityCorpusTest {
         assertNotEquals(0, exitCode) {
             "Fixture $name must exit non-zero (typed USER failure on Zip Slip). Got exit=$exitCode"
         }
-        val events = JsonEventLog.decode(stdout)
+        // PK-NEXT R0.3: contract is decoded via the testkit.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = completed.stdout,
+            stderr = completed.stderr,
+            format = ObservationFormat.JSON,
+        )
+        assertNull(contract.eventDocument.decodeError) {
+            "fixture JSON event document failed to decode: ${contract.eventDocument.decodeError}"
+        }
+        val events = contract.eventDocument.events
         val stepFailed = events.filter { it.kind == "StepFailed" && it.javaClass.simpleName.contains("StepFailed", ignoreCase = false) }
         assertTrue(stepFailed.isNotEmpty()) {
             "Fixture $name must emit at least one StepFailed event. Got: ${events.map { it.kind }}"

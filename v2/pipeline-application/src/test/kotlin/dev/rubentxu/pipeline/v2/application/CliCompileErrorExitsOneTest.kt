@@ -1,18 +1,19 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import dev.rubentxu.pipeline.v2.application.support.Subprocess
 import dev.rubentxu.pipeline.v2.application.support.requireExited
-import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
-import dev.rubentxu.pipeline.v2.events.DomainEvent
-import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
-import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.RunFinished
-import dev.rubentxu.pipeline.v2.events.StepStarted
+import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.StepFinished
+import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -54,7 +55,6 @@ class CliCompileErrorExitsOneTest {
             command = listOf(appBin.toString(), "run", "--format", "json", fixture.toString()),
         ).requireExited()
         val exitCode = cliRun.exitCode
-        val stdout = cliRun.stdout.trim()
         val stderr = cliRun.stderr.trim()
 
         // Exit code must be 1
@@ -64,11 +64,20 @@ class CliCompileErrorExitsOneTest {
         assertTrue(stderr.contains("Pipeline finished with FAILURE"),
             "stderr must contain 'Pipeline finished with FAILURE', got: $stderr")
 
-        // stdout must be valid JSON events
-        assertTrue(stdout.startsWith("["), "stdout must be JSON array, got: ${stdout.take(100)}")
-        assertTrue(stdout.endsWith("]"), "stdout must end with ']'")
-
-        val events = JsonEventLog.decode(stdout)
+        // PK-NEXT R0.3: stdout is decoded by the contract testkit. Line 1
+        // is the LaunchReceipt, line 2 is the JSON event document. The
+        // testkit refuses malformed documents; "starts with '['" was the
+        // pre-R0.3 contract that the receipt violates on line 1.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = cliRun.stdout,
+            stderr = cliRun.stderr,
+            format = ObservationFormat.JSON,
+        )
+        assertNull(
+            contract.eventDocument.decodeError,
+            "the JSON event document must decode cleanly, got: ${contract.eventDocument.decodeError}",
+        )
+        val events = contract.eventDocument.events
 
         // Must have CompilationStarted and CompilationFinished
         val eventKinds = events.map { it.kind }
@@ -139,7 +148,6 @@ class CliCompileErrorExitsOneTest {
         ).requireExited()
         val exitCode = cliRun.exitCode
         val stderr = cliRun.stderr.trim()
-        val stdout = cliRun.stdout.trim()
 
         // Valid script should exit 0
         assertEquals(0, exitCode, "Valid script must exit 0, but got $exitCode. stderr: $stderr")
@@ -148,8 +156,14 @@ class CliCompileErrorExitsOneTest {
         assertTrue(stderr.contains("Pipeline finished with SUCCESS"),
             "stderr must contain 'Pipeline finished with SUCCESS', got: $stderr")
 
-        // stdout should have valid events including RunStarted and RunFinished
-        val events = JsonEventLog.decode(stdout)
+        // PK-NEXT R0.3: contract is decoded via the testkit.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = cliRun.stdout,
+            stderr = cliRun.stderr,
+            format = ObservationFormat.JSON,
+        )
+        assertNull(contract.eventDocument.decodeError)
+        val events = contract.eventDocument.events
         val eventKinds = events.map { it.kind }
         assertTrue(eventKinds.contains("RunStarted"), "Events must contain RunStarted: $eventKinds")
         assertTrue(eventKinds.contains("RunFinished"), "Events must contain RunFinished: $eventKinds")

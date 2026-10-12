@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.DomainEvent
@@ -273,7 +275,18 @@ class UatDsl005TimeoutGrammarTest {
         if (exitCode != 0) {
             throw IllegalStateException("CLI exited with $exitCode. stdout: $stdout. stderr: $stderr")
         }
-        return stdout.trim() to JsonEventLog.decode(stdout)
+        // PK-NEXT R0.3: contract is decoded via the testkit.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = stdout,
+            stderr = stderr,
+            format = ObservationFormat.JSON,
+        )
+        if (contract.eventDocument.decodeError != null) {
+            throw IllegalStateException(
+                "JSON event document failed to decode: ${contract.eventDocument.decodeError}",
+            )
+        }
+        return stdout.trim() to contract.eventDocument.events
     }
 
     private fun decodeOrThrow(result: Triple<Int, String, String>): List<DomainEvent> {
@@ -281,6 +294,17 @@ class UatDsl005TimeoutGrammarTest {
         if (exitCode != 0) {
             throw IllegalStateException("CLI exited with $exitCode. stdout: $stdout. stderr: $stderr")
         }
-        return JsonEventLog.decode(stdout)
+        // PK-NEXT R0.3: contract is decoded via the testkit.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = stdout,
+            stderr = stderr,
+            format = ObservationFormat.JSON,
+        )
+        if (contract.eventDocument.decodeError != null) {
+            throw IllegalStateException(
+                "JSON event document failed to decode: ${contract.eventDocument.decodeError}",
+            )
+        }
+        return contract.eventDocument.events
     }
 }

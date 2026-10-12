@@ -674,6 +674,95 @@ val buildExampleBlockPlugin by tasks.registering(Exec::class) {
     )
 }
 
+// PK-RELEASE-CONSOLIDATION H1.4 follow-up — stage the three external example
+// plugin JARs into the application distribution so the releaseGate (and
+// DistributionMandatoryPluginsTest) can observe them.
+//
+// The example plugins are independent builds outside v2/, so they cannot
+// be wired as project(":example-block-plugin") dependencies. The
+// staging task copies the built JARs into pipeline-application/lib/ so
+// the distZip and installDist both pick them up alongside the four
+// official :pipeline-step-sdk plugins.
+//
+// Each input is a single external JAR, declared as a file. The
+// external build must run first (the dependsOn below), and the
+// inputs force re-staging if the JARs change.
+val stageExternalExamples by tasks.registering {
+    group = "distribution"
+    description = "PK-RELEASE-CONSOLIDATION H1.4: stage the three external example " +
+        "plugins (block, directive, uppercase) into pipeline-application/lib/ so " +
+        "the distribution ZIP carries them as bundled plugins."
+
+    dependsOn(buildExamplePlugin, buildExternalDirectivePlugin, buildExampleBlockPlugin)
+
+    val appLibDir = file("pipeline-application/build/install/pipelinek/lib")
+    val targets = listOf(
+        file("../examples/example-uppercase-plugin/build/libs/example-uppercase-plugin-0.1.0.jar") to "example-uppercase-plugin-0.1.0.jar",
+        file("../examples/example-directive-plugin/build/libs/example-directive-plugin-0.1.0.jar") to "example-directive-plugin-0.1.0.jar",
+        file("../examples/example-block-plugin/build/libs/example-block-plugin-0.1.0.jar") to "example-block-plugin-0.1.0.jar",
+    )
+
+    inputs.files(targets.map { it.first })
+    outputs.files(targets.map { appLibDir.resolve(it.second) })
+
+    doLast {
+        appLibDir.mkdirs()
+        for ((src, name) in targets) {
+            if (!src.exists()) {
+                throw GradleException(
+                    "stageExternalExamples: expected external plugin JAR at $src but it " +
+                        "does not exist. Run the external build first: ./gradlew " +
+                        "${src.name.removeSuffix("-0.1.0.jar")}:jar -PsdkVersion=<host>."
+                )
+            }
+            val dst = appLibDir.resolve(name)
+            src.copyTo(dst, overwrite = true)
+            println("staged: ${src.name} -> ${dst.absolutePath}")
+        }
+    }
+}
+
+// The :pipeline-application:distZip task (and the installDist task it
+// depends on) must run AFTER the external JARs are built, because
+// pipeline-application/build.gradle.kts declares them as `runtimeOnly`
+// files. The implicit file dependency makes Gradle fail the build
+// with "Declare an explicit dependency ... using Task#mustRunAfter"
+// unless we declare the ordering here. Once the external JARs
+// exist, `installDist` stages them into `lib/` and `distZip` packages
+// the lib directory.
+//
+// `mustRunAfter` is necessary but not sufficient: Gradle would still
+// see installDist as UP-TO-DATE if the staged JARs are not declared as
+// inputs. The staged JARs are in `lib/`, which installDist does not
+// know about; the input declaration is the only way to make Gradle
+// re-run installDist when an external JAR changes.
+project(":pipeline-application").pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
+    val appProject = project(":pipeline-application")
+    val appLibDir = file("pipeline-application/build/install/pipelinek/lib")
+    val externalJars = listOf(
+        "example-uppercase-plugin-0.1.0.jar",
+        "example-directive-plugin-0.1.0.jar",
+        "example-block-plugin-0.1.0.jar",
+    )
+    val externalBuildTasks = listOf(
+        "buildExamplePlugin",
+        "buildExternalDirectivePlugin",
+        "buildExampleBlockPlugin",
+    )
+    appProject.tasks.matching {
+        it.name == "distZip" || it.name == "installDist" || it.name == "startScripts"
+    }.configureEach {
+        externalBuildTasks.forEach { name ->
+            dependsOn(":$name")
+        }
+        // Declare the staged JARs as inputs so Gradle invalidates
+        // installDist/distZip when an external JAR changes.
+        inputs.files(externalJars.map { appLibDir.resolve(it) })
+            .withPropertyName("externalExamplePlugins")
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+    }
+}
+
 /**
  * BLOCK 2: the independent consumer, run as a gate step.
  *

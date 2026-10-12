@@ -99,11 +99,17 @@ class DistributionMandatoryPluginsTest {
      * together by [the distribution contains all seven mandatory plugins]
      * and individually by [each example external plugin is admitted by
      * the host].
+     *
+     * Note: the [BundledPluginCompatibility.probeZip] returns the
+     * SHORT plugin name (it strips `/plugin/<x>` from the manifest's
+     * `plugin` field, e.g. `v1:plugin:example-block-plugin/plugin/repeat`
+     * becomes `example-block-plugin`). The mandatory ids below match
+     * that short form, not the full URN.
      */
     private val mandatoryExternalIds: List<String> = listOf(
-        "example-block-plugin/plugin/repeat",
-        "example-directive-plugin/plugin/lock",
-        "example-uppercase-plugin/plugin/uppercase",
+        "example-block-plugin",
+        "example-directive-plugin",
+        "example-uppercase-plugin",
     )
 
     /**
@@ -167,17 +173,20 @@ class DistributionMandatoryPluginsTest {
     }
 
     @Test
-    fun `the distribution contains exactly the four mandatory official plugins`() {
+    fun `the distribution contains the four mandatory official plugins alongside the three externals`() {
+        // PK-RELEASE-CONSOLIDATION H1.4: the test asserts the four official
+        // plugins are PRESENT in the distribution, not that the distribution
+        // is EXACTLY four plugins. The seven-plugin union is asserted
+        // separately; the four-official-presence assertion is the
+        // "is each official surface still shipped?" half of that check.
         val entries = BundledPluginCompatibility.probeZip(zip)
-        val observedIds = entries.map { it.pluginId }
-        assertEquals(
-            mandatoryIds,
-            observedIds,
-            "the distribution must carry exactly http, scm-git, junit, utilities, in that " +
-                "order. Observed: $observedIds. A missing plugin means a required surface " +
-                "was not shipped; an unexpected id means the build is shipping a plugin " +
-                "not in the catalogue; a re-ordering means the gate is not asserting the " +
-                "canonical list.",
+        val observedIds = entries.map { it.pluginId }.toSet()
+        val missing = mandatoryIds.filterNot { it in observedIds }
+        assertTrue(
+            missing.isEmpty(),
+            "the four official plugins $mandatoryIds must all be present. " +
+                "missing=$missing observed=$observedIds. A missing official " +
+                "means a required surface was not shipped."
         )
     }
 
@@ -290,26 +299,45 @@ class DistributionMandatoryPluginsTest {
     @Test
     fun `the host version parsed from the distribution's releaseVersion field matches the JAR version`() {
         // 3 of 4 official plugins carry the same product version as the host;
-        // junit is the one exception (its historical version is 0.1.0). For the
-        // other three, a mismatch is a build defect.
+        // junit is the one exception (its historical version is 0.1.0). The
+        // three external example plugins also declare 0.1.0, since their
+        // release cadence is independent of the host (D1: the apiRange is
+        // what matters, not the version stamp). The exceptions list is
+        // therefore { junit, example-block-plugin, example-directive-plugin,
+        // example-uppercase-plugin }.
+        val exceptions = setOf(
+            "pipeline.junit",
+            "example-block-plugin",
+            "example-directive-plugin",
+            "example-uppercase-plugin",
+        )
         val entries = BundledPluginCompatibility.probeZip(zip)
         val mismatched = entries
-            .filter { it.pluginId != "pipeline.junit" }
+            .filter { it.pluginId !in exceptions }
             .filter { it.releaseVersion != hostVersion.value }
         assertTrue(
             mismatched.isEmpty(),
             "the following bundled plugins declare a releaseVersion other than the host " +
-                "$hostVersion: ${mismatched.map { "${it.pluginId}@${it.releaseVersion}" }}",
+                "$hostVersion: ${mismatched.map { "${it.pluginId}@${it.releaseVersion}" }}. " +
+                "Plugins that ship at a different cadence (junit + the three D1 externals) are " +
+                "exempt because their compatibility with the host is the apiRange, not the " +
+                "version stamp."
         )
     }
 
     @Test
-    fun `each mandatory plugin's manifest is parseable to a PluginManifest with non-empty steps`() {
+    fun `each mandatory plugin's manifest is parseable to a PluginManifest with at least one contribution`() {
         // The codec-level check goes deeper than the apiRange shape. We open the
         // JAR, read the manifest JSON, decode it through PluginManifestCodec, and
-        // assert it produces a manifest with at least one Step contribution. A
-        // build that emits a syntactically valid but semantically empty manifest
-        // is broken and the gate must reject it.
+        // assert it produces a manifest with at least one contribution of ANY
+        // kind: steps, directives, or events. A build that emits a manifest
+        // with zero contributions is broken — the bundle exists, the codec
+        // accepts it, but it does nothing.
+        //
+        // PK-RELEASE-CONSOLIDATION H1.4: the directive plugin contributes
+        // directives, not steps; a "must have steps" assertion would have
+        // rejected it for the wrong reason. The surface is "any contribution",
+        // and the test names it as such.
         val entries = BundledPluginCompatibility.probeZip(zip)
         for (entry in entries) {
             val manifestJson = readManifestJsonFromJar(entry.jarName)
@@ -322,11 +350,16 @@ class DistributionMandatoryPluginsTest {
                         "The codec must accept a manifest the build emitted; a refusal here " +
                         "means the bundle is unparseable and the gate must reject the candidate.",
                 )
-                is PluginManifestDecodeResult.Accepted -> assertTrue(
-                    decoded.manifest.contributions.steps.isNotEmpty(),
-                    "${entry.pluginId} manifest decoded to zero Step contributions. " +
-                        "The bundle ships an empty plugin.",
-                )
+                is PluginManifestDecodeResult.Accepted -> {
+                    val c = decoded.manifest.contributions
+                    val total = c.steps.size + c.directives.size + c.events.size
+                    assertTrue(
+                        total > 0,
+                        "${entry.pluginId} manifest decoded to zero contributions of any kind " +
+                            "(steps=${c.steps.size}, directives=${c.directives.size}, " +
+                            "events=${c.events.size}). The bundle ships an empty plugin."
+                    )
+                }
             }
         }
     }
@@ -345,7 +378,7 @@ class DistributionMandatoryPluginsTest {
             ?: fail("could not stage the application JAR from the distribution ZIP")
         val schema = readClassConstantString(
             appJar,
-            "dev/rubentxu/pipeline/v2/application/LaunchReceipt.Companion",
+            "dev/rubentxu/pipeline/v2/application/LaunchReceipt",
             expectedSchema,
         )
         assertEquals(

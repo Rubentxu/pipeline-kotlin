@@ -39,12 +39,11 @@ object LockPluginDeclaration {
 
     const val RELEASE_PROPERTIES_RESOURCE: String = "META-INF/example-directive-release.properties"
 
-    /** Exclusive upper bound: 0.49 is where support stops, not where parsing stops. */
-    /** Extended from [0.47.0, 0.49.0) to [0.47.0, 0.52.0) as part of PK-R1: the example directive plugin
-     *  ships with the same reference PK code the official plugins ship with, so the
-     *  same range that admits http/scm-git/junit/utilities at 0.51.0 admits this
-     *  fixture too. The plugin stops being supported at 0.52.0. */
-    val API_RANGE: PipelineKApiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 53, 0))
+    /** Exclusive upper bound: the example directive plugin ships with the
+     *  same reference PK code the official plugins ship with. The official
+     *  plugins currently advertise [0.47.0, 0.57.0). Anything else makes this
+     *  fixture refuse the current runtime. */
+    val API_RANGE: PipelineKApiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 57, 0))
 
     private fun parseSemVer(raw: String): SemVer {
         val parts = raw.split("-")[0].split(".")

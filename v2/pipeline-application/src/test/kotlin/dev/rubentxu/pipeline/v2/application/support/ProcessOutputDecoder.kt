@@ -59,11 +59,17 @@ object ProcessOutputDecoder {
     /**
      * The detected protocol of a run. `Published` means the R0.3
      * channel-split protocol (the only one this testkit recognises as
-     * authoritative). `Unknown` means the bytes do not match any
-     * protocol this testkit knows about — a future opt-in protocol
-     * would have its own enum value.
+     * authoritative). `SeparatedV2` is the PK-0-57-RC1 opt-in
+     * protocol declared by [ADR-PK1-OUTPUT-FRAMING]: the receipt
+     * stays on stdout, the event array moves to stderr. `Unknown`
+     * means the bytes do not match any protocol this testkit knows
+     * about.
+     *
+     * The receipt's `schema` token is `pipelinek.launch/1` under
+     * both `Published` and `SeparatedV2`; the difference is the
+     * channel of the event array, not the schema of the receipt.
      */
-    enum class Protocol { Published, Unknown }
+    enum class Protocol { Published, SeparatedV2, Unknown }
 
     /**
      * A typed observation about the run output. The list of findings
@@ -150,20 +156,33 @@ object ProcessOutputDecoder {
      * caller asked the run to use. The decoder looks for the receipt
      * on the channel the published protocol defines for that format
      * and reports anything that does not match.
+     *
+     * [expectedProtocol] is the protocol the caller asked the run to
+     * use. When `null` (the default), the decoder falls back to the
+     * R0.3 published channel split — receipt on stdout for
+     * JSON/JSONL, on stderr for TEXT. When set to [Protocol.SeparatedV2],
+     * the event array is read from stderr instead of stdout (TEXT is
+     * unchanged). The receipt channel is the same under both
+     * protocols; only the event channel changes.
      */
     fun decode(
         stdout: String,
         stderr: String,
         expectedFormat: ObservationFormat,
+        expectedProtocol: Protocol? = null,
     ): DecodedProcessOutput {
         val findings = mutableListOf<Finding>()
         val diagnostics = stderrLinesExcludingReceipt(stderr, expectedFormat)
+        val protocol: Protocol = expectedProtocol ?: Protocol.Published
 
         // Receipt pass. The receipt, if present, is on a SPECIFIC
         // channel per the published contract. We do NOT sniff both:
         // the brief is explicit that the channel selection is the
         // contract. We also count duplicates to detect a regression
         // where the run emitted twice.
+        //
+        // The receipt channel is invariant under SeparatedV2: only
+        // the event array's channel changes.
         val receiptChannel = when (expectedFormat) {
             ObservationFormat.TEXT -> stderr
             ObservationFormat.JSON, ObservationFormat.JSON_LINES -> stdout
@@ -193,8 +212,19 @@ object ProcessOutputDecoder {
             }
         }
 
-        // Event document pass.
-        val eventDocument = decodeEventDocument(stdout, expectedFormat, findings)
+        // Event document pass. The source channel is decided by the
+        // protocol: under Published the event array sits on stdout
+        // (JSON / JSON_LINES) or in the stderr diagnostics
+        // (TEXT, no machine events). Under SeparatedV2 the event
+        // array moves to stderr for JSON / JSON_LINES; TEXT is
+        // unchanged because SeparatedV2 only affects machine output.
+        val eventDocument = decodeEventDocument(
+            stdout = stdout,
+            stderr = stderr,
+            expectedFormat = expectedFormat,
+            protocol = protocol,
+            findings = findings,
+        )
         // Correlation check: receipt.correlationId must equal the
         // first RunCorrelated event's correlationId.
         if (receipt != null && eventDocument.isWellFormed) {
@@ -230,8 +260,12 @@ object ProcessOutputDecoder {
             ObservationFormat.JSON, ObservationFormat.JSON_LINES -> emptyList()
         }
 
-        val protocol = if (receipt != null || stdout.isBlank() && stderr.isBlank()) {
-            Protocol.Published
+        val detectedProtocol: Protocol = if (receipt != null || stdout.isBlank() && stderr.isBlank()) {
+            // A run that produced a receipt (or no output at all) is
+            // assumed to have run under the protocol the caller
+            // asked for. Unknown only fires when the bytes do not
+            // look like either protocol.
+            protocol
         } else {
             // No receipt and non-empty stdout/stderr: the published
             // protocol mandates a receipt on the expected channel;
@@ -244,7 +278,7 @@ object ProcessOutputDecoder {
             stdout = stdout,
             stderr = stderr,
             expectedFormat = expectedFormat,
-            protocol = protocol,
+            protocol = detectedProtocol,
             receipt = receipt,
             receiptOccurrences = receiptLines.size,
             eventDocument = eventDocument,
@@ -297,12 +331,26 @@ object ProcessOutputDecoder {
 
     private fun decodeEventDocument(
         stdout: String,
+        stderr: String,
         format: ObservationFormat,
+        protocol: Protocol,
         findings: MutableList<Finding>,
     ): EventDocument {
-        val lines = stdout.lines()
-        // Skip the receipt line if present; the event document starts
-        // on the line after.
+        // The source channel for the event array depends on the
+        // protocol. Under Published the array sits on stdout (for
+        // JSON/JSON_LINES); under SeparatedV2 it moves to stderr.
+        // TEXT view is unchanged in both: human text is in the
+        // channel the format dictates (TEXT has no machine events).
+        val source = when {
+            format == ObservationFormat.TEXT -> stdout
+            protocol == Protocol.SeparatedV2 -> stderr
+            else -> stdout
+        }
+        val lines = source.lines()
+        // Skip the receipt line if present on the source; the event
+        // document starts on the line after. Under SeparatedV2 the
+        // receipt stays on stdout, so it never appears in the stderr
+        // source — but the filter is robust to either.
         val nonReceiptLines = lines.filterNot { isReceiptLine(it) }
         return when (format) {
             ObservationFormat.TEXT -> EventDocument(nonReceiptLines, emptyList(), null)

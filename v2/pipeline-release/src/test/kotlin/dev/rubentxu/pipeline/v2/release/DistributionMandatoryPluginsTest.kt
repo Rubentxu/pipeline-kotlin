@@ -46,8 +46,10 @@ class DistributionMandatoryPluginsTest {
     private val zip: Path = Paths.get(System.getenv("PIPELINEK_DIST_ZIP")!!)
 
     /**
-     * PK-RELEASE-CONSOLIDATION H1.4: the seven mandatory plugins the
-     * distribution must ship. They are NOT the same kind of obligation:
+     * PK-RELEASE-CONSOLIDATION H1.4: the mandatory plugins the
+     * distribution must ship. They are split into two groups by
+     * [mandatoryOfficial] and [mandatoryExamples] because they are
+     * NOT the same kind of obligation:
      *
      *  - The four **official** plugins (http, scm-git, junit, utilities)
      *    are the contract surface — the SDK promises the host API to

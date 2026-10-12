@@ -1,0 +1,103 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "dev.rubentxu.pipeline.v2",
+    "module": "pipeline-domain",
+    "version": "0.57.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.14.5"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 21,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-serialization-json",
+          "version": {
+            "requires": "1.11.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "pipeline-domain-0.57.0.jar",
+          "url": "pipeline-domain-0.57.0.jar",
+          "size": 1460040,
+          "sha512": "cc6df8c9d2c06f6d4e2ffdfedebd257bc7e3da77012ebcbc91e97ab80d7f4ddc96b51f2690d6ef5fbdd30b56c770b69569698cb3f7078fc32ee85720e13fb207",
+          "sha256": "e8181590c641662fc1b0b1d06a2d233f7baec2cd51fb4de6f160f992c054185a",
+          "sha1": "b3daecfc99890edb6b1cdf25001e993d09c42d7e",
+          "md5": "416ea7fe0fd129353a2c7884c27c7b58"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 21,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-core",
+          "version": {
+            "requires": "1.11.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-serialization-json",
+          "version": {
+            "requires": "1.11.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "pipeline-domain-0.57.0.jar",
+          "url": "pipeline-domain-0.57.0.jar",
+          "size": 1460040,
+          "sha512": "cc6df8c9d2c06f6d4e2ffdfedebd257bc7e3da77012ebcbc91e97ab80d7f4ddc96b51f2690d6ef5fbdd30b56c770b69569698cb3f7078fc32ee85720e13fb207",
+          "sha256": "e8181590c641662fc1b0b1d06a2d233f7baec2cd51fb4de6f160f992c054185a",
+          "sha1": "b3daecfc99890edb6b1cdf25001e993d09c42d7e",
+          "md5": "416ea7fe0fd129353a2c7884c27c7b58"
+        }
+      ]
+    }
+  ]
+}

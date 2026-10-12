@@ -15,7 +15,7 @@ import java.util.zip.ZipOutputStream
 
 /**
  * PK-NEXT R0.2 — the mandatory-plugin gate must REFUSE a distribution that
- * has been tampered with. Four mutations are tested:
+ * has been tampered with. Five mutations are tested:
  *
  *  1. **Withdraw a plugin.** A distribution missing one of the four
  *     mandatory plugins (http, scm-git, junit, utilities) is INCOMPLETE.
@@ -29,6 +29,15 @@ import java.util.zip.ZipOutputStream
  *  4. **Desync the apiRange.** A JAR whose declared `apiRange` excludes
  *     the host must produce a conflict (rc3-style drift). The gate
  *     refuses the distribution.
+ *  5. **Withdraw the example plugins.** A distribution shipping only the
+ *     four official plugins and none of the three independent examples
+ *     must be distinguishable from a distribution that is missing one of
+ *     the officials. The audit R1-F (audit fix) split the seven-plugin
+ *     set into two groups because the two failures are not the same kind
+ *     of violation. This mutation is the decoy the split is meant to
+ *     catch: a flat 7-of-7 set equality would have flagged it as a
+ *     generic count failure; the new tests must flag it with a message
+ *     that names the missing example group.
  *
  * Each test builds a synthetic distribution under @TempDir. The probe
  * runs the real `BundledPluginCompatibility` code path; a green test
@@ -263,6 +272,56 @@ class DistributionMandatoryPluginsMutationTest {
         assertTrue(
             rendered.contains("[0.47.0, 0.53.0)") && rendered.contains("pipeline.scm-git"),
             "the diagnostic must name the policy-violating range and the plugin. Got: $rendered",
+        )
+    }
+
+    @Test
+    fun `a distribution with the four officials but no example plugins exposes the audit split`() {
+        // Mutation: ship 4 of the 4 official plugins and 0 of the 3
+        // independent examples. The audit R1-F fix split the 7-mandatory
+        // set into two groups precisely because a missing official
+        // (contract violation) and a missing example (D1 closure
+        // violation) are not the same defect. This mutation tests
+        // that the probe and the gate SEE this as a 4-of-7 distribution
+        // (not 4-of-4) and that the verdict pins the missing examples as
+        // a separate failure surface.
+        val jars = listOf("http", "scm-git", "junit", "utilities").map { name ->
+            val pluginId = when (name) {
+                "http" -> "pipeline-plugin-http"
+                else -> "pipeline.$name"
+            }
+            tempDir.resolve("pipeline-step-sdk-$name-0.57.0.jar").also { jar ->
+                writePluginJar(jar, pluginId, "0.57.0", "[0.47.0, 0.58.0)")
+            }
+        }
+        val zip = writeDistZip("0.57.0", jars)
+
+        // The probe sees 4 distinct plugin ids — no examples, no duplicates.
+        val entries = BundledPluginCompatibility.probeZip(zip)
+        val distinctIds = entries.map { it.pluginId }.toSet()
+        assertEquals(
+            4,
+            distinctIds.size,
+            "the mutated distribution has 4 distinct plugin ids (all official, no examples). " +
+                "Observed: $distinctIds",
+        )
+        assertTrue(
+            "example-block-plugin" !in distinctIds &&
+                "example-directive-plugin" !in distinctIds &&
+                "example-uppercase-plugin" !in distinctIds,
+            "the example group is missing: the audit split must surface this " +
+                "as a separate failure from a missing official. Observed: $distinctIds",
+        )
+        // The four official ids are all present — the official-group test
+        // would go GREEN with this mutation. The example-group test is
+        // the one that would go RED. The split is the audit closure.
+        val mandatoryOfficial = setOf(
+            "pipeline-plugin-http", "pipeline.scm-git", "pipeline.junit", "pipeline.utilities",
+        )
+        assertTrue(
+            distinctIds.containsAll(mandatoryOfficial),
+            "the four official plugins are present; only the example group is " +
+                "missing. This is the diagnostic shape the split is meant to expose.",
         )
     }
 }

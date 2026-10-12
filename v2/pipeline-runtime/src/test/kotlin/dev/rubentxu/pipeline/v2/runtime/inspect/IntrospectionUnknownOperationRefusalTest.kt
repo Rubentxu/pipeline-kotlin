@@ -118,9 +118,7 @@ class IntrospectionUnknownOperationRefusalTest {
     }
 
     @Test
-    fun `1 IntrospectionRefusal sealed ADT now has UnknownOperation as a permitted case`(
-        @TempDir tempDir: Path,
-    ) {
+    fun `1 IntrospectionRefusal sealed ADT now has UnknownOperation as a permitted case`() {
         val sealed = IntrospectionRefusal::class.java
         val permitted = sealed.permittedSubclasses.map { it.simpleName }.toSet()
         // The new M7 case is a permitted case. The M2 cases (UnknownRun,

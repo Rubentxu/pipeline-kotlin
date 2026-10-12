@@ -202,7 +202,7 @@ class M1DCrossJvmFollowTest {
         store: SegmentOutputStore,
         runId: String,
         opId: String,
-        initialPayload: String,
+        @Suppress("UnusedParameter") initialPayload: String,
     ): OutputStreamId {
         store.recover()
         val frameIndex = store.frameIndex()

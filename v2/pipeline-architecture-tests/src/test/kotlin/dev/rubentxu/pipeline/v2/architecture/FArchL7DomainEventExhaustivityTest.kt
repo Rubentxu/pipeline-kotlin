@@ -12,21 +12,19 @@ import kotlin.reflect.full.memberProperties
  *
  * Architecture test that enforces DomainEvent sealed hierarchy is complete.
  *
- * The sealed hierarchy must contain exactly 44 variants:
- * - 23 existing (ML-R1 through ML-R6)
- * - 4 new for ML-R7 (FileWritten, FileRead, ArtifactArchived, ArtifactArchiveFailed)
- * - 6 new for ML-R9 T-06 (DirEntered, DirExited, DirDeleted, WsCleaned, CatchErrorTriggered, StageMarkedUnstable)
- * - 3 new for ML-R9 T-07 (WorkflowLoaded, WaitUntilPolled, WaitUntilCompleted)
- * - 2 new for ML-R9 T-07 (PwdResolved, UnixDetected)
- * - 2 new for ML-R9 T-09 (MilestoneReached, MilestoneAborted)
- * - 1 new for ML-R9 T-10 (TimeoutTriggered)
- * - 1 new for S2.5.7 / B1.2c3 (StepAdmissionObserved) — LB-01 spine consolidation, WU-1
+ * The sealed hierarchy must contain exactly 72 variants. The numbered list below
+ * is the source of truth: any new variant MUST add its entry here AND move
+ * [expectedCount] in `domain_event_sealed_hierarchy_has_72_variants` in the same
+ * commit. PK-RELEASE-CONSOLIDATION H1.1 enforced this rule after RunCorrelated
+ * (variant 72) shipped in R0.3 without moving the pin, which produced two fitness
+ * failures (one in :pipeline-events:test, one here) caught by the H1.1 matrix.
+ *
  * NOTE: ArtifactEntry is a nested data class, not a standalone DomainEvent
  *
  * This CLOSES the DomainEvent exhaustivity invariant from ADR-0046 §D2.
  *
- * RED: AssertionError (hierarchy count != 44)
- * GREEN: After S2.5.7 WU-1 addition, hierarchy count == 44
+ * RED: AssertionError (hierarchy count != 72)
+ * GREEN: When the KDoc list and the `expectedCount` are aligned to the actual count.
  */
 class FArchL7DomainEventExhaustivityTest {
 
@@ -105,45 +103,20 @@ class FArchL7DomainEventExhaustivityTest {
      * 69. HttpRequestFailed (RP6-C / WU-093 §5 — no response at all)
      * 70. ExecutionTargetResolved (RP7-SEM S3.1 — a target was granted or refused)
      * 71. PluginEventEmitted (P3 slice 2 — a plugin contributed an event through the registry)
+     * 72. RunCorrelated (PK-1 / R0.3 — the durable event the LaunchReceipt correlates against)
      */
     @Test
-    fun `domain_event_sealed_hierarchy_has_71_variants`() {
+    fun `domain_event_sealed_hierarchy_has_72_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
-        // 53 through S1-C, StageSkipped (S2-A), PostConditionSelected (S2-B),
-        // GateEvaluated (S2-C). S2-C missed this pin: it moved the sibling pin in
-        // DomainEventRoundTripTest but not this one, so the exhaustivity fitness
-        // stayed red until the L5 closure gate ran on the committed tree.
-        // +5 through RP6-A / WU-091 §6: the core.lock lifecycle, added when core.lock
-        // reached production routing (every step MUST emit its own typed events).
-        // +4 through RP6-B / WU-092 §6: the core.input lifecycle, added with the
-        // four sealed events in G1. Same lesson as S2-C, one tier down: the four
-        // variants shipped in 523ffb0a and this pin was only reached by the G3 gate,
-        // because the gate that ran for G1 never included this module.
-        // +4 through RP6-C / WU-093 §5: the http.request lifecycle, added with
-        // the four sealed events in G3. Third recurrence of this exact miss, so the
-        // rule is now stated rather than remembered: ANY sealed hierarchy growth MUST
-        // move this pin in the same commit that adds the variant. A pin that is
-        // renamed but not re-valued is a false green waiting for the next gate.
-        // +1 through RP7-SEM S3.1: ExecutionTargetResolved, the event that makes
-        // `agent` observable. This pin is the FOURTH copy of this count in the repo
-        // (the DomainEventRoundTripTest sibling in pipeline-events, this one in
-        // pipeline-architecture-tests, and the numbered KDoc list above all restate
-        // it), which is itself the defect: a hand-maintained integer in four places
-        // is a count that will be wrong again. It is left duplicated deliberately
-        // rather than "fixed" in a semantic-change commit — collapsing the copies
-        // is a governance WU of its own, and quietly deleting a pin here would
-        // trade a loud, dated failure for a silent one.
-        // +1 through P3 slice 2: PluginEventEmitted, the single closed carrier for events a
-        // plugin contributes through the open registry. FIFTH copy of this count missed, and the
-        // first one caught by a gate rather than by the surgical run that shipped the variant —
-        // because the surgical rung ran only :pipeline-events-store:test and this fitness lives
-        // in pipeline-architecture-tests. So the rule gains its operational half: the ladder is
-        // not "run the module you touched", it is "run the module you touched AND the fitness
-        // module", and the fitness module is a separate Gradle project that no per-module filter
-        // reaches.
-        val expectedCount = 71
+        // PK-RELEASE-CONSOLIDATION H1.1: pin 71→72 for RunCorrelated (PK-1 / R0.3).
+        // The hierarchy of the KDoc and the assertion stays in lockstep: every time a
+        // variant is added, the numbered KDoc list above AND this `expectedCount` move
+        // together, in the same commit. A pin that is renamed but not re-valued is a
+        // false green waiting for the next gate — that is the rule the old KDoc restated
+        // across five recurrences.
+        val expectedCount = 72
 
         assertEquals(
             expectedCount,

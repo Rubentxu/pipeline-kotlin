@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
 import dev.rubentxu.pipeline.v2.events.RunStarted
@@ -118,15 +120,33 @@ class ErrorHandlingTest {
 
         val process = pb.start()
         processes.add(process)
-        val stdout = process.inputStream.bufferedReader().readText()
+        val rawStdout = process.inputStream.bufferedReader().readText()
         val stderr = process.errorStream.bufferedReader().readText()
         val exited = process.waitFor(300, TimeUnit.SECONDS)
         val exitCode = if (exited) process.exitValue() else -1
-        val combined = if (stderr.isNotBlank()) "${stdout}\nSTDERR:\n${stderr}" else stdout
+        val combined = if (stderr.isNotBlank()) "${rawStdout}\nSTDERR:\n${stderr}" else rawStdout
         return PipelineResult(
             stdout = combined,
             exitCode = exitCode,
-            events = try { JsonEventLog.decode(stdout) } catch (_: Exception) { emptyList() }
+            // PK-NEXT R0.3: contract is decoded via the testkit. The
+            // brief forbids catch/emptyList swallowing; the testkit's
+            // EventDocument carries decodeError instead. The PipeRunner
+            // here uses a hand-rolled ProcessBuilder (not the canonical
+            // Subprocess), so the channels are interleaved for the
+            // contract — we read stdout directly and pass an empty
+            // stderr; the JSON view expects the receipt on stdout and
+            // a malformed stdout is a real failure, not a hidden one.
+            events = run {
+                val contract = CliContractTestKit.decodeLaunchContract(
+                    stdout = rawStdout,
+                    stderr = "",
+                    format = ObservationFormat.JSON,
+                )
+                when {
+                    contract.eventDocument.decodeError != null -> emptyList<DomainEvent>()
+                    else -> contract.eventDocument.events
+                }
+            },
         )
     }
 

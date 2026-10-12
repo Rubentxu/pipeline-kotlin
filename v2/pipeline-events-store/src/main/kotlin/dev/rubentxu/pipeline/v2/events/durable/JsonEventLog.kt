@@ -155,9 +155,10 @@ object JsonEventLog {
      * over this method in the read side fails the build.
      */
     fun decode(payload: String): List<DomainEvent> {
-        if (payload.isBlank() || payload == "[]") return emptyList()
+        val document = arrayBoundsOf(payload) ?: return emptyList()
+        if (payload.substring(document.first, document.last + 1) == "[]") return emptyList()
         val events = mutableListOf<DomainEvent>()
-        val eventStrings = splitArray(payload.substring(1, payload.length - 1))
+        val eventStrings = splitArray(payload.substring(document.first + 1, document.last))
         for (eventStr in eventStrings) {
             val trimmed = eventStr.trim()
             if (trimmed.isEmpty()) continue
@@ -378,6 +379,54 @@ object JsonEventLog {
         "StepAdmissionObserved", "PostConditionSelected", "StageSkipped",
         "PluginEventEmitted",
     )
+
+    /**
+     * Locates the JSON event array inside [payload], returning its `[` and `]` as indices.
+     *
+     * PK-RC-RENDER-001: `decode` assumed the array started at index 0 and ended at the last
+     * character. That is right for a document from [encode], but the CLI writes the
+     * `LaunchReceipt` (`pipelinek.launch/1`) to the same stream first, so positional slicing
+     * removed the receipt's `}` and the last progress line instead of the array's own brackets.
+     *
+     * Balance alone is not enough to find the array: the receipt and the progress lines contain
+     * `[` and `]`, and `[PipelineK] …` opens and closes a pair on one line. So each candidate
+     * pair is checked to actually hold a list of JSON objects, and the first that does is the
+     * array. Brackets inside JSON strings are skipped, so an event whose field contains a bracket
+     * cannot truncate the document, and an unterminated array is never read as a partial list.
+     */
+    private fun arrayBoundsOf(payload: String): IntRange? {
+        for (open in payload.indices) {
+            if (payload[open] != '[') continue
+            val close = closingBracketAt(payload, open) ?: continue
+            val inner = payload.substring(open + 1, close)
+            if (inner.isBlank() || splitArray(inner).all { it.trimStart().startsWith("{") }) {
+                return open..close
+            }
+        }
+        return null
+    }
+
+    /** Index of the `]` that closes the `[` at [open], or null if that bracket never closes. */
+    private fun closingBracketAt(payload: String, open: Int): Int? {
+        var depth = 0
+        var inString = false
+        var escape = false
+        for (i in open until payload.length) {
+            val ch = payload[i]
+            when {
+                escape -> escape = false
+                ch == '\\' && inString -> escape = true
+                ch == '"' -> inString = !inString
+                inString -> Unit
+                ch == '[' -> depth++
+                ch == ']' -> {
+                    depth--
+                    if (depth == 0) return i
+                }
+            }
+        }
+        return null
+    }
 
     /**
      * Splits a JSON array content into individual event strings.

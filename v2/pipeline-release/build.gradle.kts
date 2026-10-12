@@ -27,6 +27,14 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    // PK-RELEASE-CONSOLIDATION H1.4: the test task asserts the SBOM
+    // exists next to the distribution ZIP. The candidateAdmission task
+    // is what stages it there, and the test must depend on it (or on
+    // the cyclonedxBom that produces the source) so a developer
+    // running `:pipeline-release:test` directly observes the same
+    // staging the releaseGate does.
+    dependsOn(":pipeline-application:cyclonedxBom")
+    dependsOn("candidateAdmission")
     // Honour a system property override so CI can point the real-artifact
     // checks at a different build tree. Default: this module lives at
     // v2/pipeline-release/, so the parent is v2/.
@@ -178,10 +186,12 @@ fun gitCommitOf(root: Project): String = try {
 
 tasks.register("releaseGate") {
     group = "distribution"
-    description = "PK-RC-PLUGIN-001 + PK-RC-RENDER-001: run the candidate gate " +
-        "end-to-end. Dist ZIP + cyclonedxBom + candidateAdmission + renderer " +
-        "partition + application regression suite + mandatory-plugin test. " +
-        "Non-zero on any refusal."
+    description = "PK-RC-PLUGIN-001 + PK-RC-RENDER-001 + PK-NEXT R0.2 + PK-RELEASE-CONSOLIDATION H1.4: " +
+        "run the candidate gate end-to-end. Dist ZIP + cyclonedxBom + candidateAdmission + " +
+        "renderer partition + application regression suite + mandatory-plugin test (7 plugins: 4 " +
+        "official + 3 external) + LaunchReceipt contract + SDK BOM alignment. " +
+        "Non-zero on any refusal. The mandatory-plugin test fails (not skips) when " +
+        "PIPELINEK_DIST_ZIP is unset, so a missing distribution is a hard red."
 
     dependsOn(
         ":pipeline-application:distZip",
@@ -194,9 +204,34 @@ tasks.register("releaseGate") {
         // matching arm in `ConsoleFamilyLines.run(...)`.
         ":pipeline-architecture-tests:test",
         ":pipeline-application:test",
-        // PK-RC-PLUGIN-001: the mandatory-plugin test cannot skip. The
-        // gate wires `PIPELINEK_DIST_ZIP` so the test sees the distZip
-        // output that this same task just built.
+        // PK-RC-PLUGIN-001 / R0.2: the mandatory-plugin test must observe the
+        // distZip the gate just built. Wired below as both env var and
+        // system property (the test reads env first, then property).
+        // PK-RELEASE-CONSOLIDATION H1.4: this test class now asserts the
+        // seven-plugin surface (4 official + 3 external), the LaunchReceipt
+        // schema token, and the SBOM ↔ SDK BOM alignment. The mutation
+        // tests in DistributionMandatoryPluginsMutationTest run as part of
+        // the same `test` task and are NOT separately wired because they
+        // share the test runtime; the gate fails if any of them is
+        // missing or skipped.
         "test",
     )
+
+    doFirst {
+        val distZip = project(":pipeline-application").layout.buildDirectory
+            .file("distributions/pipelinek-${project.version}.zip").get().asFile
+        if (!distZip.isFile) {
+            throw GradleException(
+                "releaseGate: expected distribution ZIP at $distZip but it does not " +
+                    "exist. Run :pipeline-application:distZip first.",
+            )
+        }
+        // R0.2: the mandatory-plugin test reads System.getenv, so the gate
+        // MUST pass the path as an env var, not as a system property. The
+        // system property below is the same value re-published for the
+        // convenience of a developer running the test by hand.
+        val testTask = tasks.named("test") as Test
+        testTask.environment("PIPELINEK_DIST_ZIP", distZip.absolutePath)
+        testTask.systemProperty("release.dist.zip", distZip.absolutePath)
+    }
 }

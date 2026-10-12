@@ -178,10 +178,11 @@ fun gitCommitOf(root: Project): String = try {
 
 tasks.register("releaseGate") {
     group = "distribution"
-    description = "PK-RC-PLUGIN-001 + PK-RC-RENDER-001: run the candidate gate " +
-        "end-to-end. Dist ZIP + cyclonedxBom + candidateAdmission + renderer " +
-        "partition + application regression suite + mandatory-plugin test. " +
-        "Non-zero on any refusal."
+    description = "PK-RC-PLUGIN-001 + PK-RC-RENDER-001 + PK-NEXT R0.2: run the " +
+        "candidate gate end-to-end. Dist ZIP + cyclonedxBom + candidateAdmission + " +
+        "renderer partition + application regression suite + mandatory-plugin test. " +
+        "Non-zero on any refusal. The mandatory-plugin test fails (not skips) when " +
+        "PIPELINEK_DIST_ZIP is unset, so a missing distribution is a hard red."
 
     dependsOn(
         ":pipeline-application:distZip",
@@ -194,9 +195,27 @@ tasks.register("releaseGate") {
         // matching arm in `ConsoleFamilyLines.run(...)`.
         ":pipeline-architecture-tests:test",
         ":pipeline-application:test",
-        // PK-RC-PLUGIN-001: the mandatory-plugin test cannot skip. The
-        // gate wires `PIPELINEK_DIST_ZIP` so the test sees the distZip
-        // output that this same task just built.
+        // PK-RC-PLUGIN-001 / R0.2: the mandatory-plugin test must observe the
+        // distZip the gate just built. Wired below as both env var and
+        // system property (the test reads env first, then property).
         "test",
     )
+
+    doFirst {
+        val distZip = project(":pipeline-application").layout.buildDirectory
+            .file("distributions/pipelinek-${project.version}.zip").get().asFile
+        if (!distZip.isFile) {
+            throw GradleException(
+                "releaseGate: expected distribution ZIP at $distZip but it does not " +
+                    "exist. Run :pipeline-application:distZip first.",
+            )
+        }
+        // R0.2: the mandatory-plugin test reads System.getenv, so the gate
+        // MUST pass the path as an env var, not as a system property. The
+        // system property below is the same value re-published for the
+        // convenience of a developer running the test by hand.
+        val testTask = tasks.named("test") as Test
+        testTask.environment("PIPELINEK_DIST_ZIP", distZip.absolutePath)
+        testTask.systemProperty("release.dist.zip", distZip.absolutePath)
+    }
 }

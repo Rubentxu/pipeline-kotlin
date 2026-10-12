@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import dev.rubentxu.pipeline.v2.application.support.Subprocess
 import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
@@ -43,15 +45,21 @@ class UatEvt001ReplayTest {
     @Test
     fun `cli run emits parseable JSON array`() {
         // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
-        val stdout = Subprocess.run(
+        val cliRun = Subprocess.run(
             command = listOf(appBin.toString(), "run", "--format", "json", helloScript.toString()),
-        ).requireExited().stdout.trim()
+        ).requireExited()
+        val stdout = cliRun.stdout.trim()
         assertTrue(stdout.isNotEmpty(), "stdout must not be empty")
-        assertEquals("[", stdout.first().toString(), "stdout must start with '['")
-        assertEquals("]", stdout.last().toString(), "stdout must end with ']'")
-
-        // Should not throw
-        val events = JsonEventLog.decode(stdout)
+        // PK-NEXT R0.3: contract is decoded via the testkit. Line 1 is
+        // the LaunchReceipt, line 2 is the JSON event document. The
+        // "starts with '['" / "ends with ']'" assertions are wrong
+        // against this contract and the testkit replaces them.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = cliRun.stdout,
+            stderr = cliRun.stderr,
+            format = ObservationFormat.JSON,
+        )
+        val events = contract.eventDocument.events
         assertNotNull(events)
     }
 
@@ -164,7 +172,18 @@ class UatEvt001ReplayTest {
         if (exitCode != 0) {
             throw IllegalStateException("CLI exited with $exitCode. stderr: ${cliRun.stderr}")
         }
-        val events = JsonEventLog.decode(stdout)
+        // PK-NEXT R0.3: contract is decoded via the testkit.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = cliRun.stdout,
+            stderr = cliRun.stderr,
+            format = ObservationFormat.JSON,
+        )
+        if (contract.eventDocument.decodeError != null) {
+            throw IllegalStateException(
+                "JSON event document failed to decode: ${contract.eventDocument.decodeError}",
+            )
+        }
+        val events = contract.eventDocument.events
         return stdout to events
     }
 }

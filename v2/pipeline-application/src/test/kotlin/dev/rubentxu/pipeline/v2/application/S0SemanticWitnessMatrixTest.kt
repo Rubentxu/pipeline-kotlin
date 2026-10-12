@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import dev.rubentxu.pipeline.v2.application.support.Subprocess
 import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
@@ -28,6 +30,7 @@ import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
 import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -92,8 +95,16 @@ class S0SemanticWitnessMatrixTest {
         val exitCode = cliRun.exitCode
         val stdout = cliRun.stdout.trim()
         val stderr = cliRun.stderr
-        assertTrue(stdout.startsWith("[") && stdout.endsWith("]"), "event log must be a JSON array: $stdout$stderr")
-        return Triple(exitCode, JsonEventLog.decode(stdout), controlDir)
+        // PK-NEXT R0.3: contract is decoded via the testkit. The
+        // "starts with '['" / "ends with ']'" assertions are wrong
+        // against the R0.3 contract (line 1 is the receipt), and the
+        // testkit replaces them.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = cliRun.stdout,
+            stderr = cliRun.stderr,
+            format = ObservationFormat.JSON,
+        )
+        return Triple(exitCode, contract.eventDocument.events, controlDir)
     }
 
     /**
@@ -126,7 +137,20 @@ class S0SemanticWitnessMatrixTest {
             stdoutFile = stdoutFile,
         ).requireExited()
         assertEquals(0, cliRun.exitCode)
-        return cliRun.stdout.trim()
+        // PK-NEXT R0.3: contract is decoded via the testkit. The raw
+        // stdout now starts with the LaunchReceipt; the comparison the
+        // caller wants is the EVENT TIMELINE, not the document bytes.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = cliRun.stdout,
+            stderr = cliRun.stderr,
+            format = ObservationFormat.JSON,
+        )
+        assertNull(contract.eventDocument.decodeError) {
+            "S0 rawRun: event document failed to decode: ${contract.eventDocument.decodeError}"
+        }
+        return contract.eventDocument.events.joinToString(prefix = "[", postfix = "]") {
+            it.toString()
+        }
     }
 
     /** Removes run-unique fields so two timelines compare structurally. */

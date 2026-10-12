@@ -1356,6 +1356,30 @@ public final class dev/rubentxu/pipeline/v2/events/RetryAttemptStarted : dev/rub
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/events/RunCorrelated : dev/rubentxu/pipeline/v2/events/DomainEvent {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()Ljava/time/Instant;
+	public final fun component5-Cm40row ()Ljava/lang/String;
+	public final fun component6 ()Ljava/lang/String;
+	public final fun component7 ()J
+	public final fun copy-w27dj5o (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;J)Ldev/rubentxu/pipeline/v2/events/RunCorrelated;
+	public static synthetic fun copy-w27dj5o$default (Ldev/rubentxu/pipeline/v2/events/RunCorrelated;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/lang/String;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/RunCorrelated;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCorrelationId-Cm40row ()Ljava/lang/String;
+	public fun getEventId ()Ljava/lang/String;
+	public fun getKind ()Ljava/lang/String;
+	public fun getOccurredAt ()Ljava/time/Instant;
+	public final fun getOwnerId ()Ljava/lang/String;
+	public fun getRunId ()Ljava/lang/String;
+	public fun getSequence ()J
+	public final fun getStartedAtMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/events/RunFinished : dev/rubentxu/pipeline/v2/events/DomainEvent {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/String;Ljava/util/List;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -1933,6 +1957,181 @@ public final class dev/rubentxu/pipeline/v2/events/WsCleaned : dev/rubentxu/pipe
 	public fun toString ()Ljava/lang/String;
 }
 
+public abstract interface class dev/rubentxu/pipeline/v2/events/follow/EventFollowEvent {
+}
+
+public final class dev/rubentxu/pipeline/v2/events/follow/EventFollowEvent$Completed : dev/rubentxu/pipeline/v2/events/follow/EventFollowEvent {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/follow/EventFollowEvent$Completed;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/follow/EventFollowEvent$Page : dev/rubentxu/pipeline/v2/events/follow/EventFollowEvent {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/events/EventRecordSlice;Ldev/rubentxu/pipeline/v2/events/follow/EventFollowState;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/events/EventRecordSlice;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/events/follow/EventFollowState;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/events/EventRecordSlice;Ldev/rubentxu/pipeline/v2/events/follow/EventFollowState;)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowEvent$Page;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/follow/EventFollowEvent$Page;Ldev/rubentxu/pipeline/v2/events/EventRecordSlice;Ldev/rubentxu/pipeline/v2/events/follow/EventFollowState;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowEvent$Page;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getNewState ()Ldev/rubentxu/pipeline/v2/events/follow/EventFollowState;
+	public final fun getSlice ()Ldev/rubentxu/pipeline/v2/events/EventRecordSlice;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/follow/EventFollowEvent$Refused : dev/rubentxu/pipeline/v2/events/follow/EventFollowEvent {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal;)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowEvent$Refused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/follow/EventFollowEvent$Refused;Ldev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowEvent$Refused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRefusal ()Ldev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/follow/EventFollowEvent$StateChanged : dev/rubentxu/pipeline/v2/events/follow/EventFollowEvent {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/events/follow/EventFollowState;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/events/follow/EventFollowState;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/events/follow/EventFollowState;)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowEvent$StateChanged;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/follow/EventFollowEvent$StateChanged;Ldev/rubentxu/pipeline/v2/events/follow/EventFollowState;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowEvent$StateChanged;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getState ()Ldev/rubentxu/pipeline/v2/events/follow/EventFollowState;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/follow/EventFollowHandle : java/lang/AutoCloseable {
+	public abstract fun close ()V
+	public abstract fun iterator ()Ljava/util/Iterator;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/follow/EventFollowOptions {
+	public fun <init> ()V
+	public fun <init> (Ldev/rubentxu/pipeline/v2/events/identity/EventQuery;JILdev/rubentxu/pipeline/v2/events/follow/EventFollowUntil;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;Ljava/time/Duration;)V
+	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/events/identity/EventQuery;JILdev/rubentxu/pipeline/v2/events/follow/EventFollowUntil;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;Ljava/time/Duration;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/events/identity/EventQuery;
+	public final fun component2 ()J
+	public final fun component3 ()I
+	public final fun component4 ()Ldev/rubentxu/pipeline/v2/events/follow/EventFollowUntil;
+	public final fun component5 ()Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;
+	public final fun component6 ()Ljava/time/Duration;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/events/identity/EventQuery;JILdev/rubentxu/pipeline/v2/events/follow/EventFollowUntil;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;Ljava/time/Duration;)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowOptions;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/follow/EventFollowOptions;Ldev/rubentxu/pipeline/v2/events/identity/EventQuery;JILdev/rubentxu/pipeline/v2/events/follow/EventFollowUntil;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;Ljava/time/Duration;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowOptions;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAfter ()Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;
+	public final fun getLagReportInterval ()Ljava/time/Duration;
+	public final fun getMaxRecords ()I
+	public final fun getPollIntervalMs ()J
+	public final fun getQuery ()Ldev/rubentxu/pipeline/v2/events/identity/EventQuery;
+	public final fun getUntil ()Ldev/rubentxu/pipeline/v2/events/follow/EventFollowUntil;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal {
+}
+
+public final class dev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal$Cancelled : dev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal$Cancelled;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal$RetentionLost : dev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal {
+	public fun <init> (Ljava/lang/String;J)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun copy (Ljava/lang/String;J)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal$RetentionLost;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal$RetentionLost;Ljava/lang/String;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal$RetentionLost;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLastSeenSequence ()J
+	public final fun getRunId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal$UnknownRun : dev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal$UnknownRun;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal$UnknownRun;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal$UnknownRun;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRunId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/follow/EventFollowState {
+}
+
+public final class dev/rubentxu/pipeline/v2/events/follow/EventFollowState$Live : dev/rubentxu/pipeline/v2/events/follow/EventFollowState {
+	public fun <init> (J)V
+	public final fun component1 ()J
+	public final fun copy (J)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowState$Live;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/follow/EventFollowState$Live;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowState$Live;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLastSequence ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/follow/EventFollowState$RunFinished : dev/rubentxu/pipeline/v2/events/follow/EventFollowState {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/follow/EventFollowState$RunFinished;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/follow/EventFollowState$Unobservable : dev/rubentxu/pipeline/v2/events/follow/EventFollowState {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal;)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowState$Unobservable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/follow/EventFollowState$Unobservable;Ldev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowState$Unobservable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRefusal ()Ldev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/follow/EventFollowUntil {
+}
+
+public final class dev/rubentxu/pipeline/v2/events/follow/EventFollowUntil$Unbounded : dev/rubentxu/pipeline/v2/events/follow/EventFollowUntil {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/follow/EventFollowUntil$Unbounded;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/follow/EventFollowUntil$UntilRunFinished : dev/rubentxu/pipeline/v2/events/follow/EventFollowUntil {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowUntil$UntilRunFinished;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/follow/EventFollowUntil$UntilRunFinished;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowUntil$UntilRunFinished;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRunId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/follow/EventFollowUntil$UntilSequence : dev/rubentxu/pipeline/v2/events/follow/EventFollowUntil {
+	public fun <init> (J)V
+	public final fun component1 ()J
+	public final fun copy (J)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowUntil$UntilSequence;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/follow/EventFollowUntil$UntilSequence;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowUntil$UntilSequence;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLastSequence ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/follow/EventFollower {
+	public abstract fun open (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/follow/EventFollowOptions;)Ldev/rubentxu/pipeline/v2/events/follow/EventFollowHandle;
+}
+
 public final class dev/rubentxu/pipeline/v2/events/identity/CloudEventsCharacterization {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -2153,6 +2352,75 @@ public final class dev/rubentxu/pipeline/v2/events/identity/EventQuery$BySubject
 	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/identity/EventQuery$BySubject;Ldev/rubentxu/pipeline/v2/domain/identity/ResourceRef;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/identity/EventQuery$BySubject;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getSubject ()Ldev/rubentxu/pipeline/v2/domain/identity/ResourceRef;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/identity/EventRecordReadPort {
+	public abstract fun readRecords (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/identity/EventCursor;Ldev/rubentxu/pipeline/v2/events/identity/EventQuery;I)Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadResult;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal {
+}
+
+public final class dev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal$CursorBeyondTail : dev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal {
+	public fun <init> (Ljava/lang/String;JJ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun copy (Ljava/lang/String;JJ)Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal$CursorBeyondTail;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal$CursorBeyondTail;Ljava/lang/String;JJILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal$CursorBeyondTail;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRequestedSequence ()J
+	public final fun getRunId ()Ljava/lang/String;
+	public final fun getTailSequence ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal$StorageError : dev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal$StorageError;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal$StorageError;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal$StorageError;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCause ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal$UnknownRun : dev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal$UnknownRun;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal$UnknownRun;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal$UnknownRun;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRunId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/identity/EventRecordReadResult {
+}
+
+public final class dev/rubentxu/pipeline/v2/events/identity/EventRecordReadResult$Page : dev/rubentxu/pipeline/v2/events/identity/EventRecordReadResult {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/events/EventRecordSlice;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/events/EventRecordSlice;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/events/EventRecordSlice;)Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadResult$Page;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadResult$Page;Ldev/rubentxu/pipeline/v2/events/EventRecordSlice;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadResult$Page;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSlice ()Ldev/rubentxu/pipeline/v2/events/EventRecordSlice;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/identity/EventRecordReadResult$Refused : dev/rubentxu/pipeline/v2/events/identity/EventRecordReadResult {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal;)Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadResult$Refused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadResult$Refused;Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadResult$Refused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRefusal ()Ldev/rubentxu/pipeline/v2/events/identity/EventRecordReadRefusal;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -2510,5 +2778,227 @@ public final class dev/rubentxu/pipeline/v2/events/registry/RegistryEventEmitter
 	public fun <init> (Ldev/rubentxu/pipeline/v2/events/registry/EventRegistry;Ldev/rubentxu/pipeline/v2/events/EventSink;Ljava/time/Clock;)V
 	public final fun decode (Ldev/rubentxu/pipeline/v2/events/PluginEventEmitted;)Ldev/rubentxu/pipeline/v2/events/registry/PayloadDecode;
 	public final fun emit (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/registry/EmissionOutcome;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/shape/EventShapeCursor {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Ldev/rubentxu/pipeline/v2/events/shape/EventShapeCursor;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/shape/EventShapeCursor;IILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/shape/EventShapeCursor;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEventOrdinal ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/shape/EventShapeOptions {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/shape/EventShapeOptions$Companion;
+	public static final field DEFAULT_EVENT_SHAPE_PAGE_SIZE I
+	public static final field MAX_EVENT_SHAPE_PAGE_SIZE I
+	public fun <init> ()V
+	public fun <init> (ILdev/rubentxu/pipeline/v2/events/shape/EventShapeCursor;)V
+	public synthetic fun <init> (ILdev/rubentxu/pipeline/v2/events/shape/EventShapeCursor;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/events/shape/EventShapeCursor;
+	public final fun copy (ILdev/rubentxu/pipeline/v2/events/shape/EventShapeCursor;)Ldev/rubentxu/pipeline/v2/events/shape/EventShapeOptions;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/shape/EventShapeOptions;ILdev/rubentxu/pipeline/v2/events/shape/EventShapeCursor;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/shape/EventShapeOptions;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCursor ()Ldev/rubentxu/pipeline/v2/events/shape/EventShapeCursor;
+	public final fun getPageSize ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/shape/EventShapeOptions$Companion {
+	public final fun getDefault ()Ldev/rubentxu/pipeline/v2/events/shape/EventShapeOptions;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/shape/EventShapeReadPort {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/events/shape/EventShapeReadPort$Companion;
+	public static final field DEFAULT_EVENT_SHAPE_TIMEOUT_MS J
+	public abstract fun eventShapesForRun (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/shape/EventShapeOptions;)Ldev/rubentxu/pipeline/v2/events/shape/EventShapeResult;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/shape/EventShapeReadPort$Companion {
+	public static final field DEFAULT_EVENT_SHAPE_TIMEOUT_MS J
+}
+
+public final class dev/rubentxu/pipeline/v2/events/shape/EventShapeReadPortKt {
+	public static final fun eventShapesForRun (Ldev/rubentxu/pipeline/v2/events/shape/EventShapeReadPort;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/shape/EventShapeResult;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/shape/EventShapeReadPortStoreAdapter : dev/rubentxu/pipeline/v2/events/shape/EventShapeReadPort {
+	public fun <init> (Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)V
+	public fun eventShapesForRun (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/events/shape/EventShapeOptions;)Ldev/rubentxu/pipeline/v2/events/shape/EventShapeResult;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/shape/EventShapeReadPortStoreAdapterKt {
+	public static final fun eventShapeReadPortFromReader (Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Ldev/rubentxu/pipeline/v2/events/shape/EventShapeReadPort;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal {
+}
+
+public final class dev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal$NoEventStore : dev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal$NoEventStore;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal$StorageError : dev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal$StorageError;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal$StorageError;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal$StorageError;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCause ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal$UnknownRun : dev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal$UnknownRun;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal$UnknownRun;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal$UnknownRun;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRunId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/shape/EventShapeResult {
+}
+
+public final class dev/rubentxu/pipeline/v2/events/shape/EventShapeResult$Empty : dev/rubentxu/pipeline/v2/events/shape/EventShapeResult {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/events/shape/EventShapeResult$Empty;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/shape/EventShapeResult$Events : dev/rubentxu/pipeline/v2/events/shape/EventShapeResult {
+	public fun <init> (Ljava/util/List;Ldev/rubentxu/pipeline/v2/events/shape/EventShapeCursor;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/events/shape/EventShapeCursor;
+	public final fun copy (Ljava/util/List;Ldev/rubentxu/pipeline/v2/events/shape/EventShapeCursor;)Ldev/rubentxu/pipeline/v2/events/shape/EventShapeResult$Events;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/shape/EventShapeResult$Events;Ljava/util/List;Ldev/rubentxu/pipeline/v2/events/shape/EventShapeCursor;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/shape/EventShapeResult$Events;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCursor ()Ldev/rubentxu/pipeline/v2/events/shape/EventShapeCursor;
+	public final fun getEvents ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/shape/EventShapeResult$Refused : dev/rubentxu/pipeline/v2/events/shape/EventShapeResult {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal;)Ldev/rubentxu/pipeline/v2/events/shape/EventShapeResult$Refused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/shape/EventShapeResult$Refused;Ldev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/shape/EventShapeResult$Refused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRefusal ()Ldev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/shape/StageFinishedTyped : dev/rubentxu/pipeline/v2/events/shape/TypedEvent {
+	public fun <init> (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun component3 ()I
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/shape/StageFinishedTyped;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/shape/StageFinishedTyped;Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/shape/StageFinishedTyped;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOccurredAtMs ()J
+	public final fun getOutcome ()Ljava/lang/String;
+	public fun getRunId ()Ljava/lang/String;
+	public final fun getStageIndex ()Ljava/lang/String;
+	public final fun getStageOrdinal ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/shape/StageSkippedTyped : dev/rubentxu/pipeline/v2/events/shape/TypedEvent {
+	public fun <init> (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun component3 ()I
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/shape/StageSkippedTyped;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/shape/StageSkippedTyped;Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/shape/StageSkippedTyped;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOccurredAtMs ()J
+	public final fun getReason ()Ljava/lang/String;
+	public fun getRunId ()Ljava/lang/String;
+	public final fun getStageName ()Ljava/lang/String;
+	public final fun getStageOrdinal ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/shape/StageStartedTyped : dev/rubentxu/pipeline/v2/events/shape/TypedEvent {
+	public fun <init> (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun component3 ()I
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/shape/StageStartedTyped;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/shape/StageStartedTyped;Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/shape/StageStartedTyped;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOccurredAtMs ()J
+	public fun getRunId ()Ljava/lang/String;
+	public final fun getStageIndex ()Ljava/lang/String;
+	public final fun getStageName ()Ljava/lang/String;
+	public final fun getStageOrdinal ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/shape/StepFinishedTyped : dev/rubentxu/pipeline/v2/events/shape/TypedEvent {
+	public fun <init> (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun component3 ()I
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/shape/StepFinishedTyped;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/shape/StepFinishedTyped;Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/shape/StepFinishedTyped;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOccurredAtMs ()J
+	public final fun getOutcome ()Ljava/lang/String;
+	public fun getRunId ()Ljava/lang/String;
+	public final fun getStageOrdinal ()I
+	public final fun getStepKey ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/events/shape/StepStartedTyped : dev/rubentxu/pipeline/v2/events/shape/TypedEvent {
+	public fun <init> (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun component3 ()I
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/shape/StepStartedTyped;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/shape/StepStartedTyped;Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/shape/StepStartedTyped;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOccurredAtMs ()J
+	public fun getRunId ()Ljava/lang/String;
+	public final fun getStageOrdinal ()I
+	public final fun getStepKey ()Ljava/lang/String;
+	public final fun getStepName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/events/shape/TypedEvent {
+	public abstract fun getOccurredAtMs ()J
+	public abstract fun getRunId ()Ljava/lang/String;
 }
 

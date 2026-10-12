@@ -108,21 +108,74 @@ Pendiente R0.3:
 
 ## R0.4 — Investigar y cerrar la suite de aplicación
 
-- [ ] Ejecutar `:pipeline-application:test --rerun-tasks` y producir
-  matriz:
-  - clase, test, causa reproducible, primer commit divergente (si
-    determinable), categoría (producto/fixture/protocolo/entorno/test),
-    corrección, evidencia verde.
-- [ ] NO clasificar como "preexistente" sin causa demostrada.
-- [ ] Agrupar por familia de causa raíz:
-  - [ ] A: framing y LaunchReceipt (R0.3)
-  - [ ] B: feature-path y orden de eventos
-  - [ ] C: DSL y semántica de bloques
-  - [ ] D: workspace, ownership, operaciones destructivas
-  - [ ] E: recursos, tiempos, locks, inputs
-  - [ ] F: test harness, aislamiento, lifecycle de procesos
-- [ ] Corregir desde la autoridad real. No relajar aserciones, no
-  transformar FAIL en SKIP.
+Estado: **matriz parcial producida**; suite incompleta (daemon
+muerto antes de terminar todos los tests). R0.3 closed + 6
+stragglers de R0.3 cerrados; remaining fallos son producto/DSL
+reales que requieren investigación adicional.
+
+**Fix de producto de R0.4 (causa raíz de ~30 fallos):**
+- Los example plugins (`example-block-plugin`,
+  `example-directive-plugin`, `example-uppercase-plugin`) shipped
+  con `apiRange = [0.47.0, 0.53.0)` mientras que los plugins
+  oficiales ya están en `[0.47.0, 0.57.0)`. Los examples
+  rechazaban cargar contra el runtime 0.56.0 con
+  `IncompatibleApiRange`, exit 2. Bumped a `[0.47.0, 0.57.0)`.
+  Esto es corrección de version drift, no cambio funcional: el
+  Step body no cambió; solo el rango declarado.
+- `DirectivePluginContractSuiteTest`: el SHA hardcoded
+  (`d35e9fdf...`) correspondía a los bytes ANTIGUOS. Bumped a
+  `f45ab769...` con comentario explícito ("range correction, not
+  behaviour change"). Una re-certificación no es necesaria
+  porque el cambio es de versión, no de comportamiento.
+
+**R0.3 contract stragglers cerrados en R0.4:**
+- `RunDefaultIsHumanEndToEndTest.json`: el assertion
+  `startsWith("[{")` era contra el contrato viejo. Re-escrito
+  a través del testkit.
+- `S0SemanticWitnessMatrixTest.rawRun`: el helper devolvía stdout
+  raw; el caller comparaba dos strings. Después de R0.3 la línea
+  1 es el receipt; la comparación no medía lo que debía. Decodifica
+  por testkit y serializa la lista de eventos para `stripRunIdentity`.
+- `PureBuilderProbe`: el guard `startsWith([)/endsWith(])` significaba
+  0 eventos después de R0.3. Decodifica por testkit.
+
+**Matriz R0.4 (suite incompleta; 57 unique fallidos en último
+run):**
+
+| Familia | Clase | Fallos | Naturaleza |
+|---|---|---:|---|
+| A: framing | (closed by R0.3) | 0 | testkit + channel split |
+| A: residual | `DirectivePluginContractSuiteTest` | 1 | certified SHA bump (product fix) |
+| A: residual | `FArchS0CPureBuilderConsumptionTest` | 2 | (debería estar cerrado; ver run pK-next-r0.4-full3) |
+| A: residual | `FArchS3PureBuilderPurityWitnessTest` | 2 | (debería estar cerrado; mismo motivo) |
+| A: residual | `S0SemanticWitnessMatrixTest W-script` | 1 | (otro W-script test, no el de replay) |
+| A: residual | `RunIdDirectoryTest RUN-01` | 1 | product issue (no contract) |
+| B: feature-path | `UatDsl003ParallelTest` | 8 | parallel branch event order (product) |
+| B: feature-path | `UatDsl005TimeoutGrammarTest` | 2 | timeout+retry timeline (product) |
+| B: feature-path | `UatEvt001ReplayTest` | 1 | replay timeline (product) |
+| B: feature-path | `UatEvt002MultiStepReplayTest` | 1 | multi-step events (product) |
+| C: DSL | `UatLocal010SmokeE2ESandboxTest` | 3 | smoke fixtures (product/DSL) |
+| C: DSL | `UatStep001ShExecutionTest` | 2 | sh step (product) |
+| C: DSL | `UatStep001ShFailureStepFinishedCountTest` | 4 | sh failure event count (product) |
+| C: DSL | `UatStep003ErrorAbortTest` | 1 | error abort DSL (product) |
+| C: DSL | `UatLocal005RegressionGateTest` | 1 | regression smoke (product) |
+| D: workspace | `UatLocal008CredentialsTest` | 16 | credential binding lifecycle (product) |
+| D: workspace | `UatLocal009TopStepsTest` | 10 | env vars, file ops (product) |
+
+**Pendiente R0.4 (siguiente sesión / iteración):**
+- Investigar causa reproducible de cada cluster B/C/D, corregir
+  desde autoridad real, ejecutar suite completa para validar.
+- Suite actualmente killed by external daemon crash; el run
+  posterior confirmó 57 fallos únicos pero suite no terminó.
+- El conteo de 48 del brief del usuario era una estimación
+  parcial. La matriz real es más grande.
+
+**NO hechos (sin clasificar como preexistente):**
+- FArch: post-fix `PureBuilderProbe`, los FArch tests siguen
+  rojos en el log; puede ser que el compile no captó el fix o
+  hay un issue de producto. Re-correr para confirmar.
+- El resto de los clusters B/C/D requieren investigación de
+  producto, no de contract.
 
 ## R0.5 — Cerrar los 13 escenarios de certificación
 

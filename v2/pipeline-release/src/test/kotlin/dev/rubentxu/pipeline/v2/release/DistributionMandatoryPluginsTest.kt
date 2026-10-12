@@ -47,27 +47,39 @@ class DistributionMandatoryPluginsTest {
 
     /**
      * PK-RELEASE-CONSOLIDATION H1.4: the seven mandatory plugins the
-     * distribution must ship. The four official ones (http, scm-git,
-     * junit, utilities) are the contract surface; the three
-     * external examples (block, directive, uppercase) are the
-     * independent consumers that close the D1 derivation loop. A
-     * candidate missing any of the seven is RED — D1 says the
-     * example builds are part of the gate, not optional.
+     * distribution must ship. They are NOT the same kind of obligation:
+     *
+     *  - The four **official** plugins (http, scm-git, junit, utilities)
+     *    are the contract surface — the SDK promises the host API to
+     *    these plugins and they form the v0.57 compatibility boundary.
+     *  - The three **independent examples** (block, directive, uppercase)
+     *    are external consumer builds that close the D1 derivation loop:
+     *    they are compiled and packaged outside `v2/`, against the
+     *    published SDK, and their presence in the distribution is the
+     *    proof that the SDK supports a real third-party plugin.
+     *
+     * A missing official plugin is a contract violation. A missing
+     * example is a D1 closure violation. The audit R1-F (audit fix) makes
+     * the test treat them as two separate obligations: a candidate that
+     * ships the four officials but no examples, or vice versa, is RED
+     * for the right reason. Conflating the two in a single set would
+     * hide that.
      */
-    private val mandatory: Set<String> = setOf(
-        // four official plugins
+    private val mandatoryOfficial: Set<String> = setOf(
         "pipeline-plugin-http",
         "pipeline.scm-git",
         "pipeline.junit",
         "pipeline.utilities",
-        // three independent examples
+    )
+
+    private val mandatoryExamples: Set<String> = setOf(
         "example-block-plugin",
         "example-directive-plugin",
         "example-uppercase-plugin",
     )
 
     @Test
-    fun `the distribution contains exactly the seven mandatory plugins`() {
+    fun `the distribution contains exactly the four mandatory official plugins`() {
         val entries = BundledPluginCompatibility.probeZip(zip)
         // PK-RELEASE-CONSOLIDATION R1.2 (audit fix): the audit flagged
         // that a set-equality check does not detect two JARs shipping
@@ -84,13 +96,40 @@ class DistributionMandatoryPluginsTest {
                 "build is shipping the same surface twice, which silently masks the " +
                 "absence of another mandatory plugin. Found pluginIds: $pluginIds.",
         )
+        val officialIds = pluginIds.filter { it in mandatoryOfficial }.toSet()
         assertEquals(
-            mandatory,
-            pluginIds.toSet(),
-            "the distribution must carry exactly the four official plugins " +
-                "(http, scm-git, junit, utilities) and the three external examples " +
-                "(block, directive, uppercase). " +
-                "Found: $pluginIds. A missing plugin means a required surface was not shipped.",
+            mandatoryOfficial,
+            officialIds,
+            "the distribution must carry the four OFFICIAL plugins " +
+                "(http, scm-git, junit, utilities). These are the SDK contract " +
+                "surface; their absence is a contract violation, not a packaging slip. " +
+                "Missing from official set: ${mandatoryOfficial - pluginIds.toSet()}. " +
+                "Found: $pluginIds.",
+        )
+    }
+
+    @Test
+    fun `the distribution contains the three independent example plugins`() {
+        // PK-RELEASE-CONSOLIDATION R1-F (audit fix): the previous
+        // formulation lumped the four official plugins and the three
+        // example plugins into a single set of seven. That hid the
+        // difference between a contract violation (an official plugin
+        // missing) and a D1 closure violation (an example plugin
+        // missing). This test asserts the example group independently:
+        // a candidate that ships 4 officials and 0 examples is RED
+        // for the right reason, and vice versa.
+        val entries = BundledPluginCompatibility.probeZip(zip)
+        val pluginIds = entries.map { it.pluginId }.toSet()
+        val exampleIds = pluginIds.filter { it in mandatoryExamples }.toSet()
+        assertEquals(
+            mandatoryExamples,
+            exampleIds,
+            "the distribution must carry the three INDEPENDENT EXAMPLE plugins " +
+                "(block, directive, uppercase). These are external consumer builds " +
+                "that close the D1 derivation loop; their presence is the proof that " +
+                "the published SDK supports a real third-party plugin. " +
+                "Missing from example set: ${mandatoryExamples - pluginIds}. " +
+                "Found: $pluginIds.",
         )
     }
 

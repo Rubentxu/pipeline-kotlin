@@ -207,8 +207,22 @@ tasks.test {
     // semantics (no heartbeat/backoff/LOST classification); 2 parallel forks
     // halve wall time on 2-core CI runners. forkEvery recycles test JVMs that
     // accumulate CLI child processes.
-    maxParallelForks = 2
-    forkEvery = 40
+    //
+    // PK-0-57-RC1 (T3): the WU-RP-005 fork economy is PAUSED for this train.
+    // Two HF2 UATs that fork the installed `pipelinek` binary — WURp023
+    // (observation surfaces) and UatS2R0 (run ownership / cross-process
+    // lease) — wedge in futex_do_wait under host load > 5 when two
+    // Gradle test forks spawn `pipelinek` at the same time (BLOCK_E_RUN_21
+    // receipts document the load condition). The stable reproduction
+    // documented there requires `--max-workers=1 --no-daemon`. We honour
+    // that here at the per-test fork layer: one fork at a time, one
+    // fresh JVM per test class, so the loaded `pipelinek` child process
+    // never collides with another fork's classloader or DB file. The
+    // WU-RP-005 wall-time cost is the price of a green UAT gate for
+    // 0.57.0-rc1; re-measure in 0.58 with a tighter fork-every once the
+    // UAT wedge has a structural fix.
+    maxParallelForks = 1
+    forkEvery = 1
     // WU-RP-005 round 3: `--tests '!pkg.Class*'` negation on the command line
     // is silently IGNORED by Gradle in this configuration (verified locally:
     // the exact CI command still executed all 203 classes). CI now passes

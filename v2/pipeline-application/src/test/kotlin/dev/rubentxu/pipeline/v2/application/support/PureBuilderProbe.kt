@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.support
 
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.events.DomainEvent
-import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -83,10 +83,17 @@ object PureBuilderProbe {
         val stdout = cliRun.stdout.trim()
         val stderr = cliRun.stderr
 
-        val events: List<DomainEvent> = if (
-            stdout.startsWith("[") && stdout.endsWith("]")
-        ) {
-            runCatching { JsonEventLog.decode(stdout) }.getOrDefault(emptyList())
+        // PK-NEXT R0.3: contract is decoded via the testkit. Line 1
+        // is the LaunchReceipt, line 2 is the JSON event document. The
+        // "starts with '['" / "ends with ']'" check was wrong against
+        // the R0.3 contract and is replaced with the typed decode.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = cliRun.stdout,
+            stderr = cliRun.stderr,
+            format = ObservationFormat.JSON,
+        )
+        val events: List<DomainEvent> = if (contract.eventDocument.decodeError == null) {
+            contract.eventDocument.events
         } else {
             emptyList()
         }

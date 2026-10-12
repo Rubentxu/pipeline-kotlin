@@ -1,3 +1,4 @@
+import dev.rubentxu.pipeline.build.PluginCompatibilityPolicy
 import dev.rubentxu.pipeline.build.ProvenanceDigest
 import java.io.ByteArrayOutputStream
 
@@ -89,7 +90,7 @@ val computeJunitDigest = tasks.register("computeJunitDigest") {
     val ver = junitVersion
 
     outputs.file(junitReleaseProps)
-    dependsOn("compileKotlin", "processResources")
+    dependsOn("compileKotlin", "processResources", "generatePluginCompatibilityMetadata")
 
     // Declared inputs with RELATIVE path sensitivity, so the task's own up-to-date key is
     // checkout-independent too. An absolute up-to-date key would make Gradle re-run the
@@ -185,13 +186,32 @@ tasks.withType<Test>().configureEach {
 // this document, the same convention the release-properties file already uses.
 // ----------------------------------------------------------------------------
 
+val junitCompatibilityResource = layout.buildDirectory
+    .file("resources/main/META-INF/pipelinek/plugin-compatibility.json")
+
+val generateJUnitPluginCompatibility = tasks.register("generatePluginCompatibilityMetadata") {
+    group = "junit"
+    description = "PK-RC-PLUGIN-001: emit the policy-derived compatibility resource for the artifact."
+
+    inputs.property("productVersion", rootProject.version.toString())
+    outputs.file(junitCompatibilityResource)
+
+    doLast {
+        val policy = PluginCompatibilityPolicy(rootProject.version.toString())
+        val out = junitCompatibilityResource.get().asFile
+        out.parentFile.mkdirs()
+        out.writeText(policy.toJson())
+        println("junit: compatibility metadata emitted to $out (apiRange=${policy.apiRange()})")
+    }
+}
+
 val junitManifest = layout.buildDirectory.file("resources/main/META-INF/pipelinek/plugin-manifest.json")
 
 val emitJunitManifest = tasks.register<JavaExec>("emitJunitManifest") {
     group = "junit"
     description = "S6/C: emit the machine-readable plugin manifest into the artifact."
 
-    dependsOn(computeJunitDigest)
+    dependsOn(computeJunitDigest, generateJUnitPluginCompatibility)
     mainClass.set("dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitPluginDeclarationKt")
 
     // The main reads its release properties off ITS OWN classpath, so the freshly
@@ -199,7 +219,7 @@ val emitJunitManifest = tasks.register<JavaExec>("emitJunitManifest") {
     classpath = sourceSets["main"].runtimeClasspath + files(layout.buildDirectory.dir("resources/main"))
 
     inputs.files(junitReleaseProps)
-    inputs.property("apiRange", "[0.47.0, 0.52.0)")
+    inputs.files(junitCompatibilityResource)
     outputs.file(junitManifest)
 
     val out = junitManifest

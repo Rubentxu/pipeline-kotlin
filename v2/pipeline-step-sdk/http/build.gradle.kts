@@ -1,3 +1,4 @@
+import dev.rubentxu.pipeline.build.PluginCompatibilityPolicy
 import dev.rubentxu.pipeline.build.ProvenanceDigest
 import java.io.ByteArrayOutputStream
 
@@ -181,13 +182,32 @@ tasks.withType<Test>().configureEach {
 // this document, the same convention the release-properties file already uses.
 // ----------------------------------------------------------------------------
 
+val httpCompatibilityResource = layout.buildDirectory
+    .file("resources/main/META-INF/pipelinek/plugin-compatibility.json")
+
+val generateHttpPluginCompatibility = tasks.register("generatePluginCompatibilityMetadata") {
+    group = "http"
+    description = "PK-RC-PLUGIN-001: emit the policy-derived compatibility resource for the artifact."
+
+    inputs.property("productVersion", rootProject.version.toString())
+    outputs.file(httpCompatibilityResource)
+
+    doLast {
+        val policy = PluginCompatibilityPolicy(rootProject.version.toString())
+        val out = httpCompatibilityResource.get().asFile
+        out.parentFile.mkdirs()
+        out.writeText(policy.toJson())
+        println("http: compatibility metadata emitted to $out (apiRange=${policy.apiRange()})")
+    }
+}
+
 val httpManifest = layout.buildDirectory.file("resources/main/META-INF/pipelinek/plugin-manifest.json")
 
 val emitHttpManifest = tasks.register<JavaExec>("emitHttpManifest") {
     group = "http"
     description = "S6/C: emit the machine-readable plugin manifest into the artifact."
 
-    dependsOn(computeHttpDigest)
+    dependsOn(computeHttpDigest, generateHttpPluginCompatibility)
     mainClass.set("dev.rubentxu.pipeline.v2.sdk.http.HttpPluginDeclarationKt")
 
     // The main reads its release properties off ITS OWN classpath, so the freshly
@@ -195,7 +215,7 @@ val emitHttpManifest = tasks.register<JavaExec>("emitHttpManifest") {
     classpath = sourceSets["main"].runtimeClasspath + files(layout.buildDirectory.dir("resources/main"))
 
     inputs.files(httpReleaseProps)
-    inputs.property("apiRange", "[0.47.0, 0.52.0)")
+    inputs.files(httpCompatibilityResource)
     outputs.file(httpManifest)
 
     val out = httpManifest
@@ -223,6 +243,7 @@ val emitHttpManifest = tasks.register<JavaExec>("emitHttpManifest") {
 }
 
 tasks.named("processResources") {
+    dependsOn(generateHttpPluginCompatibility)
     finalizedBy(emitHttpManifest)
 }
 

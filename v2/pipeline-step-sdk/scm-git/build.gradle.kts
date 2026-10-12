@@ -1,3 +1,4 @@
+import dev.rubentxu.pipeline.build.PluginCompatibilityPolicy
 import dev.rubentxu.pipeline.build.ProvenanceDigest
 import java.io.ByteArrayOutputStream
 
@@ -135,7 +136,7 @@ tasks.named("jar") {
     // and so the runtime ordering naturally picks the file up). We
     // declare an explicit dependsOn for clarity even though Gradle's
     // default lifecycle would handle it.
-    dependsOn(computeScmGitDigest)
+    dependsOn(computeScmGitDigest, generateScmGitPluginCompatibility)
 }
 
 // Forward the release properties as system properties to every Test task so
@@ -190,13 +191,32 @@ tasks.withType<Test>().configureEach {
 // this document, the same convention the release-properties file already uses.
 // ----------------------------------------------------------------------------
 
+val scmGitCompatibilityResource = layout.buildDirectory
+    .file("resources/main/META-INF/pipelinek/plugin-compatibility.json")
+
+val generateScmGitPluginCompatibility = tasks.register("generatePluginCompatibilityMetadata") {
+    group = "scm-git"
+    description = "PK-RC-PLUGIN-001: emit the policy-derived compatibility resource for the artifact."
+
+    inputs.property("productVersion", rootProject.version.toString())
+    outputs.file(scmGitCompatibilityResource)
+
+    doLast {
+        val policy = PluginCompatibilityPolicy(rootProject.version.toString())
+        val out = scmGitCompatibilityResource.get().asFile
+        out.parentFile.mkdirs()
+        out.writeText(policy.toJson())
+        println("scm-git: compatibility metadata emitted to $out (apiRange=${policy.apiRange()})")
+    }
+}
+
 val scmGitManifest = layout.buildDirectory.file("resources/main/META-INF/pipelinek/plugin-manifest.json")
 
 val emitScmGitManifest = tasks.register<JavaExec>("emitScmGitManifest") {
     group = "scm-git"
     description = "S6/C: emit the machine-readable plugin manifest into the artifact."
 
-    dependsOn(computeScmGitDigest)
+    dependsOn(computeScmGitDigest, generateScmGitPluginCompatibility)
     mainClass.set("dev.rubentxu.pipeline.v2.sdk.scm.git.step.ScmGitPluginDeclarationKt")
 
     // The main reads its release properties off ITS OWN classpath, so the freshly
@@ -204,7 +224,7 @@ val emitScmGitManifest = tasks.register<JavaExec>("emitScmGitManifest") {
     classpath = sourceSets["main"].runtimeClasspath + files(layout.buildDirectory.dir("resources/main"))
 
     inputs.files(scmGitReleaseProps)
-    inputs.property("apiRange", "[0.47.0, 0.52.0)")
+    inputs.files(scmGitCompatibilityResource)
     outputs.file(scmGitManifest)
 
     val out = scmGitManifest
@@ -232,6 +252,7 @@ val emitScmGitManifest = tasks.register<JavaExec>("emitScmGitManifest") {
 }
 
 tasks.named("processResources") {
+    dependsOn(generateScmGitPluginCompatibility)
     finalizedBy(emitScmGitManifest)
 }
 

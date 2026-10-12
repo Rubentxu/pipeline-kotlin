@@ -81,7 +81,7 @@ class Pk1ContractSurfaceTest {
 
     @Test
     fun `CorrelationId is a value class accessible from the SDK`() {
-        // The consumer compiles against the SDK at -PsdkVersion=0.56.0.
+        // The consumer compiles against the SDK at -PsdkVersion=0.57.0.
         // If this test compiles, the SDK exposes CorrelationId.
         val id = dev.rubentxu.pipeline.v2.domain.CorrelationId(
             "00000000-0000-4000-8000-000000000001"

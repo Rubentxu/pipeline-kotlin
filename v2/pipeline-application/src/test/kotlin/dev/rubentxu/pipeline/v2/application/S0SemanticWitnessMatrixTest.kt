@@ -30,6 +30,7 @@ import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
 import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -136,7 +137,20 @@ class S0SemanticWitnessMatrixTest {
             stdoutFile = stdoutFile,
         ).requireExited()
         assertEquals(0, cliRun.exitCode)
-        return cliRun.stdout.trim()
+        // PK-NEXT R0.3: contract is decoded via the testkit. The raw
+        // stdout now starts with the LaunchReceipt; the comparison the
+        // caller wants is the EVENT TIMELINE, not the document bytes.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = cliRun.stdout,
+            stderr = cliRun.stderr,
+            format = ObservationFormat.JSON,
+        )
+        assertNull(contract.eventDocument.decodeError) {
+            "S0 rawRun: event document failed to decode: ${contract.eventDocument.decodeError}"
+        }
+        return contract.eventDocument.events.joinToString(prefix = "[", postfix = "]") {
+            it.toString()
+        }
     }
 
     /** Removes run-unique fields so two timelines compare structurally. */

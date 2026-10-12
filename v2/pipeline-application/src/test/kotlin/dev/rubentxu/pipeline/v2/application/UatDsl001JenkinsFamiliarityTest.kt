@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.DomainEvent
@@ -18,6 +20,7 @@ import dev.rubentxu.pipeline.v2.events.TimeoutScheduled
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -65,12 +68,22 @@ class UatDsl001JenkinsFamiliarityTest {
                 "not a verdict about the script."
         }
 
-        val stdout = (result as CliRun.Completed).stdout.trim()
+        val stdout = (result as CliRun.Completed).stdout
+        val stderr = (result as CliRun.Completed).stderr
         assertTrue(stdout.isNotEmpty(), "stdout must not be empty")
-        assertTrue(stdout.startsWith("["), "stdout must start with '['")
-        assertTrue(stdout.endsWith("]"), "stdout must end with ']'")
-
-        val events = JsonEventLog.decode(stdout)
+        // PK-NEXT R0.3: contract is decoded via the testkit. Line 1 is
+        // the LaunchReceipt, line 2 is the JSON event document. The
+        // "starts with '['" / "ends with ']'" assertions are wrong
+        // against this contract and the testkit replaces them.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = stdout,
+            stderr = stderr,
+            format = ObservationFormat.JSON,
+        )
+        assertNull(contract.eventDocument.decodeError) {
+            "the JSON event document failed to decode: ${contract.eventDocument.decodeError}"
+        }
+        val events = contract.eventDocument.events
         assertNotNull(events)
         assertTrue(events.isNotEmpty(), "events must not be empty")
     }
@@ -187,7 +200,18 @@ class UatDsl001JenkinsFamiliarityTest {
         if (completed.exitCode != 0) {
             throw IllegalStateException("CLI exited with ${completed.exitCode}. stderr: ${completed.stderr}")
         }
-        val events = JsonEventLog.decode(completed.stdout.trim())
+        // PK-NEXT R0.3: contract is decoded via the testkit.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = completed.stdout,
+            stderr = completed.stderr,
+            format = ObservationFormat.JSON,
+        )
+        if (contract.eventDocument.decodeError != null) {
+            throw IllegalStateException(
+                "JSON event document failed to decode: ${contract.eventDocument.decodeError}",
+            )
+        }
+        val events = contract.eventDocument.events
         return completed.stdout.trim() to events
     }
 

@@ -378,9 +378,11 @@ fun main(args: Array<String>) {
                 java.util.UUID.randomUUID().toString().take(8)
         )!!
         // PK-1 / ADR-PK1-IDENTITY: emit the RunCorrelated event and
-        // the LaunchReceipt on stdout now that the in-memory event
-        // store is wired and the runId + correlationId + owner are
-        // known.
+        // the LaunchReceipt. The receipt is durable machine-readable
+        // metadata, not a human message; in TEXT view it goes to
+        // stderr so the human console is not polluted. In JSON/JSONL
+        // view it is the first stdout line so a machine consumer can
+        // join the receipt to the event stream by line index.
         emitCorrelationAndReceipt(
             eventStore = eventStore,
             runId = dev.rubentxu.pipeline.v2.domain.RunId(runId),
@@ -388,6 +390,7 @@ fun main(args: Array<String>) {
             ownerId = syntheticOwner,
             startedAtMs = System.currentTimeMillis(),
             controlDir = controlDirRoot,
+            format = config.format,
         )
         val host = Kotlin24ScriptingHost(eventStore, runId)
         val dslClasspath = computeScriptClasspath(config.pluginJars)
@@ -706,6 +709,7 @@ fun main(args: Array<String>) {
         ownerId = requireNotNull(runOwner),
         startedAtMs = System.currentTimeMillis(),
         controlDir = controlDirRoot,
+        format = config.format,
     )
     val host = Kotlin24ScriptingHost(eventStore, runId)
     val dslClasspath = computeScriptClasspath(config.pluginJars)
@@ -1194,6 +1198,7 @@ private fun emitCorrelationAndReceipt(
     ownerId: dev.rubentxu.pipeline.v2.events.durable.RunOwnerId,
     startedAtMs: Long,
     controlDir: java.nio.file.Path,
+    format: ObservationFormat,
 ) {
     val correlatedEvent = RunCorrelated(
         eventId = "e-correlated-${System.nanoTime()}",
@@ -1212,6 +1217,22 @@ private fun emitCorrelationAndReceipt(
         startedAtMs = startedAtMs,
         controlDir = controlDir,
     )
-    System.out.write(LaunchReceipt.encode(receipt).toByteArray(Charsets.UTF_8))
-    System.out.flush()
+    val bytes = LaunchReceipt.encode(receipt).toByteArray(Charsets.UTF_8)
+    // ADR-PK-NEXT-R0.3: in TEXT view the receipt goes to stderr so the
+    // human console is not polluted. In JSON / JSON_LINES view the
+    // receipt is the first stdout line so a machine consumer can
+    // join it to the event stream by line index. Either way, the
+    // receipt is NOT a substitute for the durable RunCorrelated
+    // event; the certifier must validate the durable record, not
+    // trust the receipt alone.
+    when (format) {
+        ObservationFormat.TEXT -> {
+            System.err.write(bytes)
+            System.err.flush()
+        }
+        ObservationFormat.JSON, ObservationFormat.JSON_LINES -> {
+            System.out.write(bytes)
+            System.out.flush()
+        }
+    }
 }

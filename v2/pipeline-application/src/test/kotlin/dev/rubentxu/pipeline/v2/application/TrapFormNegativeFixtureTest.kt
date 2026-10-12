@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import dev.rubentxu.pipeline.v2.application.support.Subprocess
 import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
@@ -76,7 +78,15 @@ class TrapFormNegativeFixtureTest {
         //    only ever carried it while `sh` output was duplicated into EchoOutputCaptured;
         //    the bytes now live in the Output Plane and are read from there. The claim is
         //    identical — bash rejected the trap form, and that rejection is observable.
-        val decoded = dev.rubentxu.pipeline.v2.events.durable.JsonEventLog.decode(stdout)
+        //
+        // PK-NEXT R0.3: contract is decoded via the testkit. Line 1
+        // is the LaunchReceipt, line 2 is the JSON event document.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = cliRun.stdout,
+            stderr = cliRun.stderr,
+            format = ObservationFormat.JSON,
+        )
+        val decoded = contract.eventDocument.events
         val processOut = ConsolePlaneProbe.transcriptsOfSteps(
             controlDir,
             decoded,
@@ -94,8 +104,11 @@ class TrapFormNegativeFixtureTest {
         //    no longer "Kotlin accepts, bash rejects" — it is "Kotlin rejects",
         //    which is also fine but means the doc-comment fix is no longer
         //    load-bearing.
-        val stdoutStartsWithArray = stdout.startsWith("[")
-        assertTrue(stdoutStartsWithArray, "stdout must be a JSON array, got: ${stdout.take(100)}")
+        //
+        // PK-NEXT R0.3: the "starts with '['" assertion is wrong against
+        // the new contract (line 1 is the receipt), and the testkit
+        // already validates the document shape above. Nothing to assert
+        // here.
         // We expect at least one CompilationFinished in the events.  A
         // Kotlin compile error would emit CompilationFinished with
         // severity=ERROR diagnostics, but in this fixture there must be

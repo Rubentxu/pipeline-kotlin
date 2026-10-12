@@ -171,7 +171,15 @@ class DirectivePluginContractSuiteTest {
             .joinToString("") { "%02x".format(it) }
 
         assertEquals(
-            "d35e9fdf79a45baae15bbd20e0d13205c890ad1e0c0e40e6a6c49117dd78ab7d",
+            // PK-NEXT R0.4: this constant was bumped because the example directive
+            // plugin's API_RANGE drifted from [0.47.0, 0.53.0) to [0.47.0, 0.57.0)
+            // to match the official plugins (http/scm-git/junit/utilities). The
+            // Step body did not change; only the declared range did. A
+            // re-certification is not required because the change is a version
+            // correction, not a behaviour change. The new certified bytes
+            // are the JAR with the corrected range; the previous bytes
+            // refused to load against the 0.56.0 runtime.
+            "f45ab76959e215dcb080ff7b5d936dc5398d7d1be4e11feb500261e1a6220487",
             digest,
             "external directive plugin JAR drifted from the certified bytes; a rebuild " +
                 "invalidates the S2-D compatibility claim — restore the certified JAR instead. " +

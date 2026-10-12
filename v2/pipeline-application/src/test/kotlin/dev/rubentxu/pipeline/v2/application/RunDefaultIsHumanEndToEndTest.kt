@@ -1,8 +1,12 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -142,13 +146,23 @@ class RunDefaultIsHumanEndToEndTest {
         val result = runRaw("json", "--format", "json")
 
         assertEquals(0, result.exitCode, "CLI failed: ${result.stderr}")
-        assertTrue(
-            result.stdout.trimStart().startsWith("[{"),
-            "--format json keeps emitting the array. stdout: ${result.stdout}",
+        // PK-NEXT R0.3: contract is decoded via the testkit. Line 1
+        // is the LaunchReceipt, line 2 is the JSON event array. The
+        // "starts with '[{'" assertion is wrong against this contract
+        // and the testkit replaces it with a structural decode.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = result.stdout,
+            stderr = result.stderr,
+            format = ObservationFormat.JSON,
         )
+        assertNull(
+            contract.eventDocument.decodeError,
+            "--format json must keep emitting a parseable document. decodeError=${contract.eventDocument.decodeError}",
+        )
+        assertNotNull(contract.receipt, "the LaunchReceipt is required for the JSON view")
         assertTrue(
-            result.stdout.contains("\"kind\":\"RunStarted\""),
-            "--format json carries the machine fields. stdout: ${result.stdout}",
+            contract.eventDocument.events.any { it.kind == "RunStarted" },
+            "--format json carries the machine fields. events=${contract.eventDocument.events.map { it.kind }}",
         )
     }
 

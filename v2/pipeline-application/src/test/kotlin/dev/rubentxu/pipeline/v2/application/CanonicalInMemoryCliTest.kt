@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.RunStarted
@@ -88,7 +90,14 @@ class CanonicalInMemoryCliTest {
         val result = run(script, "--control-root", controlDir.toString())
 
         assertEquals(0, result.exitCode, "CLI failed: ${result.stderr}")
-        val runId = JsonEventLog.decode(result.stdout)
+        // PK-NEXT R0.3: contract is decoded via the testkit. Line 1 is
+        // the LaunchReceipt, line 2 is the JSON event document.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = result.stdout,
+            stderr = result.stderr,
+            format = ObservationFormat.JSON,
+        )
+        val runId = contract.eventDocument.events
             .filterIsInstance<RunStarted>()
             .single()
             .runId

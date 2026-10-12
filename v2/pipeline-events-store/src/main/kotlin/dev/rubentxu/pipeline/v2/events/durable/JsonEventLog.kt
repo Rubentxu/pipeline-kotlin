@@ -58,6 +58,7 @@ import dev.rubentxu.pipeline.v2.events.RetryAttemptFinished
 import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
+import dev.rubentxu.pipeline.v2.events.RunCorrelated
 import dev.rubentxu.pipeline.v2.events.StageFinished
 import dev.rubentxu.pipeline.v2.events.StageMarkedUnstable
 import dev.rubentxu.pipeline.v2.events.StageSkipped
@@ -350,7 +351,9 @@ object JsonEventLog {
      * drift.
      */
     private val KNOWN_KINDS: Set<String> = setOf(
-        "RunStarted", "CompilationStarted", "CompilationFinished", "RunFinished",
+        // PK-1 / ADR-PK1-IDENTITY: RunCorrelated carries the external
+        // correlationId + ownerId + startedAtMs bound to the runId.
+        "RunCorrelated", "RunStarted", "CompilationStarted", "CompilationFinished", "RunFinished",
         "StageStarted", "StageFinished", "StepStarted", "StepFinished",
         "AgentResolved", "ExecutionTargetResolved",
         "ParallelBranchStarted", "ParallelBranchFinished",
@@ -447,6 +450,32 @@ object JsonEventLog {
                     sequence = sequence,
                     occurredAt = occurredAt,
                     scriptPath = scriptPath,
+                )
+            }
+            // PK-1 / ADR-PK1-IDENTITY: decode the correlation event so
+            // the durable log can re-emit it on a replay / observe
+            // without losing the correlationId binding.
+            "RunCorrelated" -> {
+                val correlationIdStr = EventJsonFields.stringField(s, "correlationId")
+                    ?: return EventDecodeOutcome.Failed(
+                        EventDecodeFailure.UnreadableField("correlationId", "RunCorrelated"),
+                    )
+                val ownerId = EventJsonFields.stringField(s, "ownerId")
+                    ?: return EventDecodeOutcome.Failed(
+                        EventDecodeFailure.UnreadableField("ownerId", "RunCorrelated"),
+                    )
+                val startedAtMs = EventJsonFields.longField(s, "startedAtMs")
+                    ?: return EventDecodeOutcome.Failed(
+                        EventDecodeFailure.UnreadableField("startedAtMs", "RunCorrelated"),
+                    )
+                RunCorrelated(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    correlationId = dev.rubentxu.pipeline.v2.domain.CorrelationId(correlationIdStr),
+                    ownerId = ownerId,
+                    startedAtMs = startedAtMs,
                 )
             }
             "CompilationStarted" -> CompilationStarted(

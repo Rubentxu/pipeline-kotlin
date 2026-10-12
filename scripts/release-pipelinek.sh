@@ -98,6 +98,10 @@ fi
 
 # ----------------------------------------------------------------------------
 # 5. Tag + publish. The Prerelease URL is the receipt's permanent address.
+#    PK-NEXT R0.1: the ZIP is uploaded to the GitHub release asset store
+#    (NOT copied into the git tree). The git tree carries only the small
+#    text artefacts (manifest, future handoff). The ZIP is referenced by
+#    its digest in the release-receipt.
 # ----------------------------------------------------------------------------
 
 echo "release-pipelinek: gate PASSED. candidate_id = sha256:$LOCAL_SHA"
@@ -106,12 +110,24 @@ echo "release-pipelinek: creating tag ${PIPELINEK_RELEASE_TAG} on HEAD $(git rev
 git tag -a "${PIPELINEK_RELEASE_TAG}" -m "PipelineK ${PIPELINEK_RELEASE_TAG} (candidate_id sha256:${LOCAL_SHA})"
 git push origin "${PIPELINEK_RELEASE_TAG}"
 
-mkdir -p "docs/v2/07-uat/evidence/${PIPELINEK_RELEASE_TAG}"
-cp "$DIST_ZIP" "docs/v2/07-uat/evidence/${PIPELINEK_RELEASE_TAG}/${EXPECTED_ZIP_NAME}"
-cp "$RECEIPT" "docs/v2/07-uat/evidence/${PIPELINEK_RELEASE_TAG}/distribution-manifest.json"
-git add "docs/v2/07-uat/evidence/${PIPELINEK_RELEASE_TAG}/"
-git commit -m "docs(uat): ${PIPELINEK_RELEASE_TAG} release-receipt + ZIP + gate manifest"
-git push origin HEAD
+# Evidence directory: small text artefacts only. The ZIP itself lives as
+# the GitHub release asset, not in git.
+EVIDENCE_DIR="docs/v2/07-uat/evidence/${PIPELINEK_RELEASE_TAG}"
+mkdir -p "$EVIDENCE_DIR"
+cp "$RECEIPT" "${EVIDENCE_DIR}/distribution-manifest.json"
+
+# Sanity check the manifest's recorded digest matches the local ZIP. The
+# gate already enforced this; this is the operator-facing fail-closed.
+RECEIPT_DIGEST=$(python3 -c "
+import json, sys
+m = json.load(open(sys.argv[1]))
+print(m.get('asset', {}).get('sha256') or m.get('candidateId', '').removeprefix('sha256:'))
+" "${EVIDENCE_DIR}/distribution-manifest.json")
+if [ "$RECEIPT_DIGEST" != "$LOCAL_SHA" ]; then
+    echo "release-pipelinek: evidence manifest digest ($RECEIPT_DIGEST) != local ZIP digest ($LOCAL_SHA)" >&2
+    rm -rf "$EVIDENCE_DIR"
+    exit 1
+fi
 
 gh release create "${PIPELINEK_RELEASE_TAG}" \
     --prerelease \
@@ -120,6 +136,18 @@ gh release create "${PIPELINEK_RELEASE_TAG}" \
 gate: gradle :pipeline-release:releaseGate PASS
 distZip: ${DIST_ZIP}
 receipt: ${RECEIPT}" \
-    "docs/v2/07-uat/evidence/${PIPELINEK_RELEASE_TAG}/${EXPECTED_ZIP_NAME}"
+    "$DIST_ZIP"
+
+# Commit the evidence dir (no ZIP). This commit is a *post-publish*
+# documentation commit; it does not move the tag, because the tag was
+# already pushed before this commit. Reverting this commit does not
+# unpublish the release.
+git add "$EVIDENCE_DIR"
+if ! git diff --cached --quiet; then
+    git commit -m "docs(uat): ${PIPELINEK_RELEASE_TAG} release-receipt"
+    git push origin HEAD
+else
+    echo "release-pipelinek: no evidence changes to commit (manifest already present)"
+fi
 
 echo "release-pipelinek: PUBLISHED ${PIPELINEK_RELEASE_TAG} with candidate_id sha256:${LOCAL_SHA}"

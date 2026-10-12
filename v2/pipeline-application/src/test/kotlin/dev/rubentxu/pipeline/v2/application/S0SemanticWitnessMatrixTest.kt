@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import dev.rubentxu.pipeline.v2.application.support.Subprocess
 import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
@@ -92,8 +94,16 @@ class S0SemanticWitnessMatrixTest {
         val exitCode = cliRun.exitCode
         val stdout = cliRun.stdout.trim()
         val stderr = cliRun.stderr
-        assertTrue(stdout.startsWith("[") && stdout.endsWith("]"), "event log must be a JSON array: $stdout$stderr")
-        return Triple(exitCode, JsonEventLog.decode(stdout), controlDir)
+        // PK-NEXT R0.3: contract is decoded via the testkit. The
+        // "starts with '['" / "ends with ']'" assertions are wrong
+        // against the R0.3 contract (line 1 is the receipt), and the
+        // testkit replaces them.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = cliRun.stdout,
+            stderr = cliRun.stderr,
+            format = ObservationFormat.JSON,
+        )
+        return Triple(exitCode, contract.eventDocument.events, controlDir)
     }
 
     /**

@@ -84,7 +84,7 @@ object CliContractTestKit {
      */
     const val EXPECTED_RECEIPT_SCHEMA: String = LaunchReceipt.SCHEMA
 
-    private val RECEIPT_DECODER: Json = Json {
+    internal val RECEIPT_DECODER: Json = Json {
         ignoreUnknownKeys = true
         isLenient = false
     }

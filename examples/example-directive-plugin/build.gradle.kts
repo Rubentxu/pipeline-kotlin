@@ -31,6 +31,41 @@ val sdkVersion: String = requireNotNull(providers.gradleProperty("sdkVersion").o
     """.trimIndent()
 }
 
+// ----------------------------------------------------------------------------
+// PK-RELEASE-CONSOLIDATION D1 — the apiRange is derived from the resolved SDK.
+//
+// It used to be a Kotlin literal, `PipelineKApiRange(SemVer(0,47,0), SemVer(0,57,0))`, which went
+// stale the moment the host moved: 0.56.0 fell outside `[0.47.0, 0.57.0)` only by accident of how
+// the official plugins evolved, and the directive plugin would have stayed broken. A literal held
+// by a plugin that does not control the host's release cadence cannot stay correct.
+//
+// Two derivations, deliberately not one:
+//   - CEILING from sdkVersion, because the host version is the thing that moves.
+//   - FLOOR from `directiveApiRangeMin`, a property of THIS plugin, because how far back it works
+//     is a claim about this plugin that no other build can make.
+//
+// Fail-closed on a malformed version: a ceiling that silently became "0.0.0" would produce a
+// range that refuses every host, which looks like a plugin defect rather than a bad property.
+val sdkCore: Triple<Int, Int, Int> = sdkVersion.substringBefore("-").let { raw ->
+    val parts = raw.split(".")
+    require(parts.size == 3) {
+        "sdkVersion must be MAJOR.MINOR.PATCH[-qualifier] (got '$sdkVersion'); refusing to derive a range"
+    }
+    Triple(parts[0].toIntOrNull() ?: -1, parts[1].toIntOrNull() ?: -1, parts[2].toIntOrNull() ?: -1)
+}
+require(sdkCore.first >= 0 && sdkCore.second >= 0 && sdkCore.third >= 0) {
+    "sdkVersion has a non-numeric component (got '$sdkVersion'); refusing to derive a range"
+}
+
+// Next MINOR, not the version itself: `accepts()` is `runtime < untilExclusive`, so a ceiling
+// equal to sdkVersion would make this plugin refuse the host that loads it.
+val nextMinor: String = "${sdkCore.first}.${sdkCore.second + 1}.0"
+
+// D1 rule 3: the floor is the plugin's own property. D1 rule 4: with no measured evidence that
+// this plugin works against an older SDK, the conservative floor IS the resolved SDK version.
+val directiveApiRangeMin: String = providers.gradleProperty("directiveApiRangeMin").getOrElse(sdkVersion)
+val directiveApiRangeCeiling: String = nextMinor
+
 repositories {
     mavenCentral()
     maven {
@@ -164,9 +199,16 @@ val computeDirectiveRelease = tasks.register("computeDirectiveRelease") {
                 appendLine("pipeline.example.directive.namespace=${namespaceName.get()}")
                 appendLine("pipeline.example.directive.release.version=$releaseVersion")
                 appendLine("pipeline.example.directive.release.digest=sha256:$hex")
+                // PK-RELEASE-CONSOLIDATION D1: the compatibility range is DERIVED, not typed.
+                // The ceiling is the NEXT MINOR of the resolved SDK, not the resolved version itself:
+                // PipelineKApiRange.accepts() is `runtime < untilExclusive`, so a ceiling equal to
+                // sdkVersion would make the plugin refuse the very host that loads it. See ADR.
+                appendLine("pipeline.example.directive.compatibility.min=$directiveApiRangeMin")
+                appendLine("pipeline.example.directive.compatibility.untilExclusive=$nextMinor")
             },
         )
         println("directive: provenance written to $out (digest=sha256:${hex.take(16)}...)")
+        println("directive: apiRange=[$directiveApiRangeMin, $nextMinor) derived from sdkVersion=$sdkVersion")
     }
 }
 

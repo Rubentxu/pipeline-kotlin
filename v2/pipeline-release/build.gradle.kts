@@ -178,9 +178,10 @@ fun gitCommitOf(root: Project): String = try {
 
 tasks.register("releaseGate") {
     group = "distribution"
-    description = "PK-RC-PLUGIN-001 + PK-RC-RENDER-001 + PK-NEXT R0.2: run the " +
-        "candidate gate end-to-end. Dist ZIP + cyclonedxBom + candidateAdmission + " +
-        "renderer partition + application regression suite + mandatory-plugin test. " +
+    description = "PK-RC-PLUGIN-001 + PK-RC-RENDER-001 + PK-NEXT R0.2 + PK-RELEASE-CONSOLIDATION H1.4: " +
+        "run the candidate gate end-to-end. Dist ZIP + cyclonedxBom + candidateAdmission + " +
+        "renderer partition + application regression suite + mandatory-plugin test (7 plugins: 4 " +
+        "official + 3 external) + LaunchReceipt contract + SDK BOM alignment. " +
         "Non-zero on any refusal. The mandatory-plugin test fails (not skips) when " +
         "PIPELINEK_DIST_ZIP is unset, so a missing distribution is a hard red."
 
@@ -198,6 +199,13 @@ tasks.register("releaseGate") {
         // PK-RC-PLUGIN-001 / R0.2: the mandatory-plugin test must observe the
         // distZip the gate just built. Wired below as both env var and
         // system property (the test reads env first, then property).
+        // PK-RELEASE-CONSOLIDATION H1.4: this test class now asserts the
+        // seven-plugin surface (4 official + 3 external), the LaunchReceipt
+        // schema token, and the SBOM ↔ SDK BOM alignment. The mutation
+        // tests in DistributionMandatoryPluginsMutationTest run as part of
+        // the same `test` task and are NOT separately wired because they
+        // share the test runtime; the gate fails if any of them is
+        // missing or skipped.
         "test",
     )
 

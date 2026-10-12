@@ -554,7 +554,7 @@ class DistributionMandatoryPluginsTest {
 
     // ---- helpers --------------------------------------------------------------------
 
-    private val API_RANGE_REGEX = Regex("""\[\s*(\d+)\.(\d+)\.(\d+)\s*,\s*(\d+)\.(\d+)\.(\d+)\s*\)""")
+    private val apiRangeRegex = Regex("""\[\s*(\d+)\.(\d+)\.(\d+)\s*,\s*(\d+)\.(\d+)\.(\d+)\s*\)""")
 
     private data class ApiRangeBounds(
         val fromMajor: Int, val fromMinor: Int, val fromPatch: Int,
@@ -562,7 +562,7 @@ class DistributionMandatoryPluginsTest {
     )
 
     private fun parseApiRange(raw: String): ApiRangeBounds? {
-        val m = API_RANGE_REGEX.matchEntire(raw.trim()) ?: return null
+        val m = apiRangeRegex.matchEntire(raw.trim()) ?: return null
         return ApiRangeBounds(
             m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].toInt(),
             m.groupValues[4].toInt(), m.groupValues[5].toInt(), m.groupValues[6].toInt(),

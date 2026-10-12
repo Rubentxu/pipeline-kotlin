@@ -36,6 +36,7 @@ object MainSdkInfoCli {
     /**
      * @return 0 on success (always).
      */
+    @Suppress("UnusedParameter") // args is required by the JVM main signature.
     fun main(args: Array<String>): Int {
         val version = RuntimeApiVersion.readImplementationVersion() ?: "unknown"
         val obj: JsonObject = buildJsonObject {

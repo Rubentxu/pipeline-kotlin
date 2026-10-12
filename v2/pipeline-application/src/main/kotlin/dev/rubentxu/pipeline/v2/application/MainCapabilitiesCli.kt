@@ -23,6 +23,7 @@ object MainCapabilitiesCli {
     /**
      * @return 0 on success (always).
      */
+    @Suppress("UnusedParameter") // args is required by the JVM main signature.
     fun main(args: Array<String>): Int {
         val obj: JsonObject = buildJsonObject {
             put("schema", JsonPrimitive(SCHEMA))

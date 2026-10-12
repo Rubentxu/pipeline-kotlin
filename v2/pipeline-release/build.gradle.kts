@@ -39,28 +39,30 @@ tasks.test {
     dependsOn(":pipeline-application:cyclonedxBom")
     dependsOn("candidateAdmission")
     // PK-RELEASE-CONSOLIDATION R1.1 (audit fix, refined after M1.1
-    // mutation): the audit of 12c3ac17 flagged that releaseGate's
-    // previous wiring set PIPELINEK_DIST_ZIP inside doFirst on
-    // the aggregator task. By the time the doFirst ran, the test
-    // task it depends on had either already forked its JVM or
-    // completed, and the env var arrived too late. The first
-    // attempt at a fix (c1896473) wired the env var in the test
-    // task's own configuration with a provider, but used the
-    // distZip output unconditionally — a mutation test with
-    // PIPELINEK_DIST_ZIP=/tmp/nonexistent-zzz-999.zip on the
-    // command line was silently overridden by the build script,
-    // and the test green-passed against a path that did not
-    // exist. That mutation proved the wiring was over-riding
-    // the operator's intent.
+    // mutation, fixed after probe-env diagnostic): the audit of
+    // 12c3ac17 flagged that releaseGate's previous wiring set
+    // PIPELINEK_DIST_ZIP inside doFirst on the aggregator task.
+    // By the time the doFirst ran, the test task it depends on
+    // had either already forked its JVM or completed, and the
+    // env var arrived too late. The first attempt at a fix
+    // (c1896473) wired the env var in the test task's own
+    // configuration as a resolved String — the path of the
+    // distZip output — but the env var was unconditional: a
+    // mutation test with PIPELINEK_DIST_ZIP=/tmp/nonexistent-
+    // zzz-999.zip on the command line was silently overridden
+    // by the build script, and the test green-passed against
+    // a path that did not exist. That mutation proved the
+    // wiring was over-riding the operator's intent.
     //
-    // The refined wiring: the test task's configuration only
-    // ATTACHES the env var when the operator did not already
-    // set one. A pre-existing PIPELINEK_DIST_ZIP is preserved;
-    // a missing one defaults to the distZip this task
-    // dependsOn. The `orElse` chain keeps the contract from
-    // both sides: developers pointing at a different ZIP can
-    // still do so, and CI does not need to know about the
-    // internal distZip path.
+    // The refined wiring: resolve the provider chain to a
+    // String AT configuration time (so the JVM sees a real
+    // path, not a Provider.toString() literal — the latter
+    // would render as "or(valueof(...), fixed(/var/...))"
+    // and the test would read that literal as a path,
+    // breaking the test for a different reason). The chain
+    // still preserves the operator's value: a pre-existing
+    // PIPELINEK_DIST_ZIP is honoured; a missing one defaults
+    // to the distZip this task dependsOn.
     val distZipProvider: Provider<RegularFile> = project(":pipeline-application")
         .layout.buildDirectory
         .file("distributions/pipelinek-${project.version}.zip")
@@ -69,12 +71,14 @@ tasks.test {
         .withPropertyName("release.dist.zip.input")
         .withPathSensitivity(PathSensitivity.RELATIVE)
     val distZipPath = distZipProvider.get().asFile.absolutePath
-    val envValue = providers.environmentVariable("PIPELINEK_DIST_ZIP").orElse(distZipPath)
+    val envValue: String = providers.environmentVariable("PIPELINEK_DIST_ZIP")
+        .orElse(distZipPath)
+        .get()
     environment("PIPELINEK_DIST_ZIP", envValue)
-    systemProperty(
-        "release.dist.zip",
-        providers.systemProperty("release.dist.zip").orElse(distZipPath),
-    )
+    val sysPropValue: String = providers.systemProperty("release.dist.zip")
+        .orElse(distZipPath)
+        .get()
+    systemProperty("release.dist.zip", sysPropValue)
     // Honour a system property override so CI can point the real-artifact
     // checks at a different build tree. Default: this module lives at
     // v2/pipeline-release/, so the parent is v2/.

@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.DomainEvent
@@ -71,14 +73,19 @@ class UatEvt002MultiStepReplayTest {
 
     @Test
     fun `cli run with multi-step script emits parseable JSON array`() {
-        val (_, stdout, _) = runBinary("run", "--format", "json", multiStepScript.toString())
+        val (exitCode, stdout, stderr) = runBinary("run", "--format", "json", multiStepScript.toString())
         val output = stdout.trim()
+        assertEquals(0, exitCode, "the multi-step CLI run must succeed. stderr: $stderr")
         assertTrue(output.isNotEmpty(), "stdout must not be empty")
-        assertTrue(output.startsWith("["), "stdout must start with '['")
-        assertTrue(output.endsWith("]"), "stdout must end with ']'")
-
+        // PK-NEXT R0.3: contract is decoded via the testkit. Line 1
+        // is the LaunchReceipt, line 2 is the JSON event document.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = stdout,
+            stderr = stderr,
+            format = ObservationFormat.JSON,
+        )
         // Should not throw
-        val events = JsonEventLog.decode(output)
+        val events = contract.eventDocument.events
         assertNotNull(events)
     }
 
@@ -247,6 +254,17 @@ class UatEvt002MultiStepReplayTest {
         if (exitCode != 0) {
             throw IllegalStateException("CLI exited with $exitCode. stdout: $stdout. stderr: $stderr")
         }
-        return Triple(stdout, JsonEventLog.decode(stdout), controlDir)
+        // PK-NEXT R0.3: contract is decoded via the testkit.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = stdout,
+            stderr = stderr,
+            format = ObservationFormat.JSON,
+        )
+        if (contract.eventDocument.decodeError != null) {
+            throw IllegalStateException(
+                "JSON event document failed to decode: ${contract.eventDocument.decodeError}",
+            )
+        }
+        return Triple(stdout, contract.eventDocument.events, controlDir)
     }
 }

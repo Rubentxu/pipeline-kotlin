@@ -304,7 +304,16 @@ class CompatibilityCorpusTest {
             "Fixture $name exited with code ${completed.exitCode}. stderr: ${completed.stderr}"
         }
         val stdout = completed.stdout.trim()
-        val events = JsonEventLog.decode(stdout)
+        // PK-NEXT R0.3: contract is decoded via the testkit.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = completed.stdout,
+            stderr = completed.stderr,
+            format = ObservationFormat.JSON,
+        )
+        assertNull(contract.eventDocument.decodeError) {
+            "fixture JSON event document failed to decode: ${contract.eventDocument.decodeError}"
+        }
+        val events = contract.eventDocument.events
         assertTrue(events.isNotEmpty()) { "Fixture $name produced no events" }
 
         val fileRead = events.filterIsInstance<FileRead>().singleOrNull()
@@ -523,7 +532,16 @@ class CompatibilityCorpusTest {
                 "Fixture $name exited with code ${completed.exitCode}. stderr: ${completed.stderr} " +
                     "stdout tail: ${completed.stdout.takeLast(1200)}"
             }
-            val events = JsonEventLog.decode(completed.stdout.trim())
+            // PK-NEXT R0.3: contract is decoded via the testkit.
+            val contract = CliContractTestKit.decodeLaunchContract(
+                stdout = completed.stdout,
+                stderr = completed.stderr,
+                format = ObservationFormat.JSON,
+            )
+            assertNull(contract.eventDocument.decodeError) {
+                "fixture JSON event document failed to decode: ${contract.eventDocument.decodeError}"
+            }
+            val events = contract.eventDocument.events
             assertTrue(events.isNotEmpty()) { "Fixture $name produced no events" }
         } finally {
             storePath.toFile().delete()
@@ -556,7 +574,16 @@ class CompatibilityCorpusTest {
         val stdout = completed.stdout.trim()
 
         assertEquals(1, exitCode) { "Fixture 14 without store should exit 1 but got $exitCode" }
-        val events = JsonEventLog.decode(stdout)
+        // PK-NEXT R0.3: contract is decoded via the testkit.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = completed.stdout,
+            stderr = completed.stderr,
+            format = ObservationFormat.JSON,
+        )
+        assertNull(contract.eventDocument.decodeError) {
+            "fixture JSON event document failed to decode: ${contract.eventDocument.decodeError}"
+        }
+        val events = contract.eventDocument.events
         val stepFailed = events.filter { it.kind == "StepFailed" }
         assertTrue(stepFailed.isNotEmpty()) {
             "Credential-lease rejection must emit a typed StepFailed event. Events: ${events.map { it.kind }}"

@@ -11,24 +11,43 @@ import kotlinx.serialization.json.buildJsonObject
 import java.nio.file.Path
 
 /**
- * PK-1 / ADR-PK1-IDENTITY — typed, machine-verifiable receipt of a
- * pipeline invocation.
+ * PK-1 / ADR-PK1-IDENTITY + ADR-PK1-LAUNCHRECEIPT-MODES — typed,
+ * machine-verifiable receipt of a pipeline invocation.
  *
- * Emitted on **stdout** as a single line of JSON once durable state is
- * established (lease acquired, journal opened). A consumer that reads
- * the line is guaranteed that:
+ * Emitted on **stdout** as a single line of JSON once the launch
+ * sequence is complete. A consumer that reads the line is
+ * guaranteed that:
  *
  *  - The [runId] has been assigned by PK.
- *  - The [correlationId] has been bound to the [runId] in durable state
- *    and in the [dev.rubentxu.pipeline.v2.events.RunCorrelated] event.
- *  - The [ownerId] is the only writer authority for this run until the
- *    lease is released.
+ *  - The [correlationId] has been bound to the [runId] in the
+ *    [dev.rubentxu.pipeline.v2.events.RunCorrelated] event.
+ *  - The [ownerId] is the writer authority for this run.
+ *
+ * **Launched is a guarantee of LAUNCH, not of DURABILITY.**
+ * Two modes emit the same `pipelinek.launch/1` schema:
+ *
+ *  - **Durable mode** (`--db <path>`): the run is recorded in
+ *    a SQLite journal and an advisory FileChannel lease is
+ *    acquired on the control root. A subsequent process can
+ *    `--resume` against the same `--db` to find the run by
+ *    [runId] and continue from the last durable state.
+ *  - **Non-durable mode** (in-memory): no journal is written
+ *    and no lease is acquired. A crash of the process loses
+ *    the run; `--resume` has no state to find.
+ *
+ * Consumers that need the durable/non-durable distinction must
+ * infer it from the invocation (`--db <path>` was supplied) or
+ * from the [dev.rubentxu.pipeline.v2.output.OutputRefusal]
+ * stream's `recoveryGate`. The schema does not encode the
+ * mode; doing so would be a breaking change to consumers
+ * that already parse the receipt.
  *
  * The line is schema-versioned. The [SCHEMA] constant is the
  * authoritative version. Incompatible changes bump to
  * `pipelinek.launch/2`. Consumers MUST parse by [SCHEMA].
  *
- * @see ADR-PK1-IDENTITY for the design rationale.
+ * @see ADR-PK1-IDENTITY for the channel and schema rationale.
+ * @see ADR-PK1-LAUNCHRECEIPT-MODES for the durability semantics.
  */
 @Serializable
 data class LaunchReceipt(

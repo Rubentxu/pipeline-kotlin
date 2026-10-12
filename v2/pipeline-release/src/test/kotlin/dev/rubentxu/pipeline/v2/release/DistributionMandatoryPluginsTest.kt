@@ -45,22 +45,37 @@ class DistributionMandatoryPluginsTest {
 
     private val zip: Path = Paths.get(System.getenv("PIPELINEK_DIST_ZIP")!!)
 
-    /** The four mandatory plugins the distribution must ship. */
+    /**
+     * PK-RELEASE-CONSOLIDATION H1.4: the seven mandatory plugins the
+     * distribution must ship. The four official ones (http, scm-git,
+     * junit, utilities) are the contract surface; the three
+     * external examples (block, directive, uppercase) are the
+     * independent consumers that close the D1 derivation loop. A
+     * candidate missing any of the seven is RED — D1 says the
+     * example builds are part of the gate, not optional.
+     */
     private val mandatory: Set<String> = setOf(
+        // four official plugins
         "pipeline-plugin-http",
         "pipeline.scm-git",
         "pipeline.junit",
         "pipeline.utilities",
+        // three independent examples
+        "example-block-plugin",
+        "example-directive-plugin",
+        "example-uppercase-plugin",
     )
 
     @Test
-    fun `the distribution contains exactly the four mandatory official plugins`() {
+    fun `the distribution contains exactly the seven mandatory plugins`() {
         val entries = BundledPluginCompatibility.probeZip(zip)
         val pluginIds = entries.map { it.pluginId }.toSet()
         assertEquals(
             mandatory,
             pluginIds,
-            "the distribution must carry exactly http, scm-git, junit, utilities. " +
+            "the distribution must carry exactly the four official plugins " +
+                "(http, scm-git, junit, utilities) and the three external examples " +
+                "(block, directive, uppercase). " +
                 "Found: $pluginIds. A missing plugin means a required surface was not shipped; " +
                 "a duplicate means the build is shipping the same plugin under two identities.",
         )

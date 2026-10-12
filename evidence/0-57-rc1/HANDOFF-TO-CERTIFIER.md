@@ -14,24 +14,44 @@ anything.
 |---|---|
 | Train | 0.57.0-rc1 |
 | Work-item (local) | pk-0-57-rc1 |
-| Commit (HEAD) | `50a32acfd6fcf0474ca33c2f57fec563d383c0e0` (see `git-head.txt`) |
+| Commit (HEAD) | `16d32879be082c2684cfe980b9b79e624af49184` (see `git-head.txt`) |
 | Branch | `pk-release-0-57-consolidation` |
 | Base | `main` HEAD `05ce6236` (post-merge v0.56.0-rc5) |
 | Tree state at candidate build | clean (verified by candidateAdmission) |
+| Audit response | The audit of 12c3ac17 (R1.1, R1.2) is closed in this commit |
 
 ## Artefacts in this directory
 
 | File | Size | SHA-256 |
 |---|---|---|
 | `pipelinek-0.57.0.zip` | 88.5 MB | `0a29d5231be03cfb6b086c6bbd2820b7849a15b5e40fb3e36f2458adb1f40d1c` |
-| `pipelinek-0.57.0.sbom.json` | 1.3 MB | `b5afecbaf47f65a3bd3a9d1de23287126c071bbc8e18a03fbab2326c20022c66` |
+| `pipelinek-0.57.0.sbom.json` | 1.3 MB | `478f65981ee4167c5bee77ebb4560e62d5861dbffc5ed4f2ef6d65bd39c39131` |
 | `pipeline-sdk-bom-0.57.0.pom` | — | `54228c13c7aeb58ca17d6143563a4c045eb5401b84e64f728f1ae3c8b10affc7` |
 | `pipeline-domain-0.57.0.pom` | — | `232ebec04314e454da26acdd20fec168e86f1f0f1353fbaac8dcd87bac7b038d` |
 | `sdk-domain-0.57.0.module` | — | `10c91cb218c1e67dddaa9d0c4e55b4ba64f810bc119b341f4731c9a296a007c0` |
 | `pipeline-application-0.57.0.jar` | — | `45e174147e48173f540dee9e7bffc51230d29091c85cf7ea7f56f0cc6f76143b` |
-| `git-head.txt` | — | `4b036e44b3a02039c50bae191a9631cef62ec1498a9e2072922f17d811d91bc9` |
+| `git-head.txt` | — | `b0cbe591e5329bddbf2f2a1703b454a247a1648b10d6d53ce59f0967a9175b42` |
+| `HANDOFF-TO-CERTIFIER.md` | — | `d4e1102e5eba9595d31a88602c2fd4479cc44c42e00bd503c4b17b3488239212` |
 
 `SHA256SUMS` aggregates all of the above.
+
+## Audit response (R1.1, R1.2 closed in this commit)
+
+The audit of commit `12c3ac17` flagged two P0 defects; both are
+closed in this bundle:
+
+- **R1.1 (gate wiring race)**: `PIPELINEK_DIST_ZIP` is now attached
+  to the `:pipeline-release:test` task's OWN configuration with a
+  Provider that points at the distZip output. The previous wiring
+  set the env var in `releaseGate.doFirst`, which arrived too late
+  (the test task had already forked). Verified by running
+  `:pipeline-release:test` with `PIPELINEK_DIST_ZIP` unset in the
+  parent env — the test graph now picks up the configuration
+  before the JVM forks, and `candidateAdmission` runs.
+- **R1.2 (catalog vs compatibility)**: `DistributionMandatoryPluginsTest`
+  now detects duplicate `pluginId` (a structural check, not a set
+  equality). Two JARs shipping the same `pluginId` is a hard RED;
+  the test names the offending identity.
 
 ## What the gate verified (producer-side, this commit)
 

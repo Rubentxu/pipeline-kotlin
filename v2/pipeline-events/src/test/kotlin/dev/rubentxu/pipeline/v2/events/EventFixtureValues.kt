@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.events
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.events.PluginEventEmitted
+import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.CredentialsRef
 import dev.rubentxu.pipeline.v2.domain.FailureKind
@@ -91,11 +92,33 @@ internal fun entradaHtml(n: Int, k: Int): HtmlReportEntry = HtmlReportEntry(v(n,
  * dejar de coincidir, y la que dejara de coincidir seria la que nadie mira.
  */
 internal fun vocabulario(): List<DomainEvent> =
-    cicloDeEjecucion() + credencialesYScm() + ficherosYStash() + controlDeFlujo() + cerrojoEntradaYHttp() + eventosDePlugin()
+    cicloDeEjecucion() + credencialesYScm() + ficherosYStash() + controlDeFlujo() + cerrojoEntradaYHttp() + eventosDePlugin() + pk1()
 
 /** P3 slice 2 — el carrier cerrado de eventos de plugin, una instancia como las demas. */
 internal fun eventosDePlugin(): List<DomainEvent> = listOf(
     PluginEventEmitted(id(71), RUN_ID, l(71, 0), AT, v(71, 1), 1, v(71, 2), v(71, 3)),
+)
+
+/**
+ * PK-1 / R0.3 — the durable event the LaunchReceipt correlates against.
+ *
+ * The fixture historically stopped at slot 71; the [DomainEvent]
+ * hierarchy gained a 72nd variant with the PK-1 release without the
+ * fixture catching up. The mirror test in
+ * [FArchL7DomainEventExhaustivityTest] also had to move its pin from
+ * 71 to 72 in the same H1.1 commit, otherwise both the events suite
+ * and the architecture fitness stayed red.
+ */
+internal fun pk1(): List<DomainEvent> = listOf(
+    RunCorrelated(
+        eventId = id(72),
+        runId = RUN_ID,
+        sequence = l(72, 0),
+        occurredAt = AT,
+        correlationId = CorrelationId("corr-01987654-fedc-ba98-76543210fedc"),
+        ownerId = "o-01987654-3210-fedc-ba98-76543210fedc",
+        startedAtMs = 1_704_067_200_000L,
+    ),
 )
 
 @Suppress("DEPRECATION")

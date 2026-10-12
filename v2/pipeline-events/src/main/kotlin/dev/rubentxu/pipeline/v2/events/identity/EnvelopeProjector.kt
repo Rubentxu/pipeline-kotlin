@@ -57,6 +57,7 @@ import dev.rubentxu.pipeline.v2.events.RetryAttemptFinished
 import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
+import dev.rubentxu.pipeline.v2.events.RunCorrelated
 import dev.rubentxu.pipeline.v2.events.StageFinished
 import dev.rubentxu.pipeline.v2.events.PostConditionSelected
 import dev.rubentxu.pipeline.v2.events.StageSkipped
@@ -190,6 +191,10 @@ object EnvelopeProjector {
         is PluginEventEmitted -> runRef
         // RUN subject: run lifecycle / no finer stable identity in the event
         is RunStarted,
+        // PK-1 / ADR-PK1-IDENTITY: correlation event is also a run-scoped
+        // event; its subject is the run itself, the correlationId rides
+        // along in the envelope's data fields.
+        is RunCorrelated,
         is CompilationStarted,
         is CompilationFinished,
         is RunFinished,

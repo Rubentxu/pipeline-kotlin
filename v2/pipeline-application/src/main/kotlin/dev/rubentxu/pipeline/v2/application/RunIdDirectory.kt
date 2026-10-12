@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.DefinitionId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import java.nio.file.Files
@@ -7,50 +8,49 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 
 sealed interface StoredRunId {
-    data class Found(val runId: RunId) : StoredRunId
+    data class Found(val runId: RunId, val correlationId: CorrelationId? = null) : StoredRunId
     data object Missing : StoredRunId
 }
 
 /**
  * Persistent mapping from a pipeline [DefinitionId] to the [RunId] of its
- * most recent invocation (LF-0206).
+ * most recent invocation (LF-0206) and, since PK-1, the [CorrelationId]
+ * that the invoker supplied.
  *
- * ## Why this exists
+ * ## Storage format
  *
- * Per `CANONICAL_CONTRACTS_SPEC.md §Identity`, the script-derived
- * deterministic hash is a **DefinitionId**, and a **RunId is unique per
- * invocation**. Once fresh runs stop reusing the derived hash as their
- * run id, resume needs somewhere to discover the prior invocation's id:
- * this directory is that place. One file per definition, containing the
- * latest run id; written by the CLI **before** the run starts so that a
- * run killed mid-flight is still resumable.
+ * Each file is two lines:
  *
- * ## Storage
+ * ```
+ * <runId.value>
+ * <correlationId.value>     # optional; absent for legacy records
+ * ```
  *
- * A flat directory of small text files. The file name is the definition
- * id value; the content is the run id value. This is deliberately not a
- * SQLite table: the mapping is a single pointer per definition, written
- * atomically by one process at a time, and must remain readable even when
- * the journal database is corrupt or locked.
+ * The format is line-based, not JSON, because the file is read by other
+ * PK tools (the `--resume` path, the `pipeline observe` join, the
+ * `RunIdDirectory`-based correlation reattachment) and a two-line text
+ * file is robust to hand-fix and grep.
  *
- * ## Failure policy
- *
- * Everything fails closed: a missing record on `--resume`, a blank
- * record, or a definition id with characters unsafe for a file name are
- * all hard errors with actionable messages.
+ * Legacy records (one line, runId only) are accepted; their
+ * correlationId is `null`.
  */
 class RunIdDirectory(private val root: Path) {
 
     /**
      * Records [runId] as the latest invocation of [definitionId],
-     * replacing any previous record.
+     * replacing any previous record. Optionally records the
+     * [correlationId] supplied by the external invoker.
      *
      * @throws IllegalArgumentException if the definition id contains
      *         characters unsafe for a file name.
      * @throws java.io.UncheckedIOException if the directory or file cannot
      *         be written.
      */
-    fun record(definitionId: DefinitionId, runId: RunId) {
+    fun record(
+        definitionId: DefinitionId,
+        runId: RunId,
+        correlationId: CorrelationId? = null,
+    ) {
         // RUN-01 fix: write-to-temp + atomic rename replaces the previous `Files.writeString`
         // which was a non-atomic truncate-then-write that could leave the file partially written
         // if the process died mid-write. After this change, the file is either the prior value
@@ -65,7 +65,13 @@ class RunIdDirectory(private val root: Path) {
         val target = root.resolve(fileNameFor(definitionId))
         val temp = Files.createTempFile(root, ".${target.fileName}.", ".tmp")
         try {
-            Files.writeString(temp, runId.value)
+            val payload = buildString {
+                appendLine(runId.value)
+                if (correlationId != null) {
+                    appendLine(correlationId.value)
+                }
+            }
+            Files.writeString(temp, payload)
             Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
         } catch (t: Throwable) {
             Files.deleteIfExists(temp)
@@ -96,14 +102,19 @@ class RunIdDirectory(private val root: Path) {
         if (!Files.isRegularFile(file)) {
             return StoredRunId.Missing
         }
-        val recorded = Files.readString(file).trim()
-        if (recorded.isBlank()) {
+        val lines = Files.readString(file).lines()
+        val recordedRunId = lines.getOrNull(0)?.trim().orEmpty()
+        if (recordedRunId.isBlank()) {
             throw IllegalArgumentException(
                 "Recorded run id for this pipeline definition is blank; " +
                     "delete the corrupted record $file or run without --resume"
             )
         }
-        return StoredRunId.Found(RunId(recorded))
+        val recordedCorrelation = lines.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }
+        return StoredRunId.Found(
+            runId = RunId(recordedRunId),
+            correlationId = recordedCorrelation?.let { CorrelationId(it) },
+        )
     }
 
     private fun fileNameFor(definitionId: DefinitionId): String {

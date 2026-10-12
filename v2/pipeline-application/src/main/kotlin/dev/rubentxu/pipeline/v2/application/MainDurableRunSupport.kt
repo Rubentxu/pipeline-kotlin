@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.RunIdGenerator
 
 /**
@@ -14,27 +15,34 @@ import dev.rubentxu.pipeline.v2.domain.RunIdGenerator
  * Both helpers are stateless (no closures over Main.kt state), so they live
  * alongside the durable-run types ([DurableRunPolicy], [RunIdDirectory],
  * [StoredRunId], [DurableRunSelection], [RunIdGenerator]) in the same package.
+ *
+ * PK-1 / ADR-PK1-IDENTITY: a [CorrelationId] is plumbed through
+ * [selectDurableRun] and persisted alongside the [dev.rubentxu.pipeline.v2.domain.RunId]
+ * via [RunIdDirectory.record]. The correlation is durable and survives
+ * the durable run selection.
  */
 internal fun selectDurableRun(
     policy: DurableRunPolicy,
     runIdDirectory: RunIdDirectory,
     definitionId: dev.rubentxu.pipeline.v2.domain.DefinitionId,
     runIdGenerator: RunIdGenerator,
+    correlationId: CorrelationId? = null,
 ): DurableRunSelection = when (policy) {
     DurableRunPolicy.ReusePriorRun -> when (val stored = runIdDirectory.findLastRunId(definitionId)) {
-        is StoredRunId.Found -> DurableRunSelection.Reused(stored.runId)
-        StoredRunId.Missing -> startFreshRun(runIdDirectory, definitionId, runIdGenerator)
+        is StoredRunId.Found -> DurableRunSelection.Reused(stored.runId, stored.correlationId ?: correlationId)
+        StoredRunId.Missing -> startFreshRun(runIdDirectory, definitionId, runIdGenerator, correlationId)
     }
     DurableRunPolicy.ResumePriorRun -> DurableRunSelection.Reused(runIdDirectory.lastRunId(definitionId))
-    DurableRunPolicy.StartFreshRun -> startFreshRun(runIdDirectory, definitionId, runIdGenerator)
+    DurableRunPolicy.StartFreshRun -> startFreshRun(runIdDirectory, definitionId, runIdGenerator, correlationId)
 }
 
 internal fun startFreshRun(
     runIdDirectory: RunIdDirectory,
     definitionId: dev.rubentxu.pipeline.v2.domain.DefinitionId,
     runIdGenerator: RunIdGenerator,
+    correlationId: CorrelationId? = null,
 ): DurableRunSelection.StartedFresh {
     val runId = runIdGenerator.next()
-    runIdDirectory.record(definitionId, runId)
-    return DurableRunSelection.StartedFresh(runId)
+    runIdDirectory.record(definitionId, runId, correlationId)
+    return DurableRunSelection.StartedFresh(runId, correlationId)
 }

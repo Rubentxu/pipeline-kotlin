@@ -14,11 +14,11 @@ anything.
 |---|---|
 | Train | 0.57.0-rc1 |
 | Work-item (local) | pk-0-57-rc1 |
-| Commit (HEAD) | `16d32879be082c2684cfe980b9b79e624af49184` (see `git-head.txt`) |
+| Commit (HEAD) | `a95956b2...` (see `git-head.txt`) |
 | Branch | `pk-release-0-57-consolidation` |
 | Base | `main` HEAD `05ce6236` (post-merge v0.56.0-rc5) |
 | Tree state at candidate build | clean (verified by candidateAdmission) |
-| Audit response | The audit of 12c3ac17 (R1.1, R1.2) is closed in this commit |
+| Audit response | The audit of 12c3ac17 (R1.1, R1.2, R1.3, R1.4) is closed in this commit |
 
 ## Artefacts in this directory
 
@@ -35,23 +35,60 @@ anything.
 
 `SHA256SUMS` aggregates all of the above.
 
-## Audit response (R1.1, R1.2 closed in this commit)
+## Audit response (R1.1, R1.2, R1.3, R1.4 closed in this commit)
 
-The audit of commit `12c3ac17` flagged two P0 defects; both are
+The audit of commit `12c3ac17` flagged four defects; all four are
 closed in this bundle:
 
-- **R1.1 (gate wiring race)**: `PIPELINEK_DIST_ZIP` is now attached
-  to the `:pipeline-release:test` task's OWN configuration with a
-  Provider that points at the distZip output. The previous wiring
-  set the env var in `releaseGate.doFirst`, which arrived too late
-  (the test task had already forked). Verified by running
+- **R1.1 (gate wiring race, P0)**: `PIPELINEK_DIST_ZIP` is now
+  attached to the `:pipeline-release:test` task's OWN configuration
+  with a Provider that points at the distZip output. The previous
+  wiring set the env var in `releaseGate.doFirst`, which arrived too
+  late (the test task had already forked). Verified by running
   `:pipeline-release:test` with `PIPELINEK_DIST_ZIP` unset in the
   parent env — the test graph now picks up the configuration
   before the JVM forks, and `candidateAdmission` runs.
-- **R1.2 (catalog vs compatibility)**: `DistributionMandatoryPluginsTest`
+- **R1.2 (catalog vs compatibility, P0)**: `DistributionMandatoryPluginsTest`
   now detects duplicate `pluginId` (a structural check, not a set
   equality). Two JARs shipping the same `pluginId` is a hard RED;
   the test names the offending identity.
+- **R1.3 (no-op `assertNotNull(boolean)`, P0)**: the rc3 reproducer
+  had `assertNotNull(refused.render().contains(...), msg)`, which
+  checks the boxed reference (always non-null) and discards the
+  boolean. The assertion was a no-op. Replaced with `assertTrue`.
+  The rc3 reproducer still passes against the real rc3 ZIP, with
+  the boolean now actually exercised.
+- **R1.4 (host version literal, P0)**: the host identity
+  (`0.56.0`, re-anchored to `0.57.0` in T2b) was a literal in the
+  test. The fix derives the version from the ZIP filename via a
+  regex, so a drift between the declared version and the source
+  is now detectable by the test itself.
+
+**Audit points still open** (with honest status, not closed):
+
+- **H1.5 (full `./gradlew check`)** — deferred, blocked by host
+  load (12-15, above the < 5 limit documented in `BLOCK_E_RUN_21`).
+  Operator authorised running the critical suite only.
+- **R3 (WURp023 and UatS2R0 retry)** — same load constraint blocks
+  repeatable measurement.
+- **R4 (merge to `main` before tag)** — depends on R3 and on
+  operator-authorised merge.
+- **R5 (independent certification)** — certifier has not run the
+  13 R0.5 scenarios. This handoff is the input to that cycle.
+- **P1 — example plugins as part of the mandatory catalog**: the
+  audit noted that 4 official + 3 examples are different
+  categories. The 0.57 train bundles all seven, but the
+  "mandatory" boundary could be tightened in a future ADR: the
+  four official plugins are the product's contract; the three
+  examples are independent consumers that close the D1 loop.
+  Documented here so the certifier can decide whether the
+  seven-plugin gate is the right gate for 0.57 or only the
+  four-official gate is.
+- **P1 — semantically ambiguous `LaunchReceipt` in non-durable
+  mode**: the audit's observation is real (the in-memory path
+  emits `Launched` without a journal). The fix is a separate ADR
+  that explicitly differentiates durable and non-durable
+  `Launched`. Out of scope for this bundle.
 
 ## What the gate verified (producer-side, this commit)
 

@@ -69,15 +69,28 @@ class DistributionMandatoryPluginsTest {
     @Test
     fun `the distribution contains exactly the seven mandatory plugins`() {
         val entries = BundledPluginCompatibility.probeZip(zip)
-        val pluginIds = entries.map { it.pluginId }.toSet()
+        // PK-RELEASE-CONSOLIDATION R1.2 (audit fix): the audit flagged
+        // that a set-equality check does not detect two JARs shipping
+        // the SAME pluginId under different identities. The check is
+        // now structural: every pluginId must appear exactly once,
+        // and every entry must declare a unique identity.
+        val pluginIds = entries.map { it.pluginId }
+        val pluginIdCounts: Map<String, Int> = pluginIds.groupingBy { it }.eachCount()
+        val duplicates = pluginIdCounts.filterValues { it > 1 }
+        assertTrue(
+            duplicates.isEmpty(),
+            "the distribution ships the same pluginId under two or more identities. " +
+                "Duplicates: $duplicates. A duplicate pluginId is a build defect — the " +
+                "build is shipping the same surface twice, which silently masks the " +
+                "absence of another mandatory plugin. Found pluginIds: $pluginIds.",
+        )
         assertEquals(
             mandatory,
-            pluginIds,
+            pluginIds.toSet(),
             "the distribution must carry exactly the four official plugins " +
                 "(http, scm-git, junit, utilities) and the three external examples " +
                 "(block, directive, uppercase). " +
-                "Found: $pluginIds. A missing plugin means a required surface was not shipped; " +
-                "a duplicate means the build is shipping the same plugin under two identities.",
+                "Found: $pluginIds. A missing plugin means a required surface was not shipped.",
         )
     }
 

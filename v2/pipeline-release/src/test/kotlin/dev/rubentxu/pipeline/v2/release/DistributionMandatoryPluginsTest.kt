@@ -94,22 +94,45 @@ class DistributionMandatoryPluginsTest {
         )
     }
 
+    /**
+     * R1.4 helper. Reads the host version from the ZIP filename
+     * `pipelinek-X.Y.Z.zip`. The ZIP under test is the single source
+     * of truth for the host identity the gate polices; deriving it
+     * from a literal in the test file would let the test pass on a
+     * drift between the declared version and the source.
+     */
+    private fun hostVersionFromZip(zip: Path): String {
+        val name = zip.fileName.toString()
+        val match = Regex("^pipelinek-(\\d+\\.\\d+\\.\\d+)\\.zip$").matchEntire(name)
+            ?: error("ZIP filename does not match pipelinek-X.Y.Z.zip: $name. " +
+                "The gate cannot derive the host version. Either the artefact " +
+                "was misnamed or the distribution contract changed.")
+        return match.groupValues[1]
+    }
+
     @Test
     fun `each mandatory plugin admits the running version`() {
-        val running = SemVer(0, 57, 0)  // host identity, not derived: this test must be
-                                       // runnable against any ZIP; the gate's job is to
-                                       // admit or refuse the same running version the
-                                       // distribution itself declares.
+        // PK-RELEASE-CONSOLIDATION R1.4 (audit fix): the audit flagged
+        // that the host version was hard-coded to 0.56.0 (now 0.57.0
+        // after T2b). The test was supposed to be runnable against
+        // any ZIP, but the host identity was a literal, not a
+        // derivation. The fix is to read the host identity from the
+        // ZIP under test: the file name `pipelinek-X.Y.Z.zip` carries
+        // the version the gate must police. A drift between the
+        // declared version and the project's source is now detectable
+        // by the test itself.
+        val hostVersion = hostVersionFromZip(zip)
         val entries = BundledPluginCompatibility.probeZip(zip)
         val verdict = BundledPluginCompatibility.evaluate(
-            ProductVersion.parseOrNull("0.57.0")!!,
+            ProductVersion.parseOrNull(hostVersion)!!,
             entries,
         )
         assertInstanceOf(
             BundledPluginCompatibilityVerdict.Compatible::class.java,
             verdict,
             "rc3-style drift: at least one bundled plugin refuses the host. " +
-                "The build needs the policy-derived apiRange to cover 0.57.0. Verdict: ${verdict.render()}",
+                "The build needs the policy-derived apiRange to cover $hostVersion. " +
+                "Verdict: ${verdict.render()}",
         )
     }
 

@@ -1,0 +1,96 @@
+{
+  "_notice": "TEMPLATE ONLY; will fail gate until all measurements are real",
+  "schema_version": 1,
+  "milestone": "M1",
+  "pair_id": "M1-YYYYMMDD-pk-fabric",
+  "state": "BLOCKED",
+  "contract_sha256": "READ coordination/CONTRACT_SHA256.txt",
+  "releases": {
+    "pipelinek": {
+      "repository": "Rubentxu/pipeline-kotlin",
+      "commit": "ACTUAL_40_SHA",
+      "tag": "ACTUAL_REMOTE_TAG",
+      "changed": true,
+      "released_at": "2026-10-10T10:00:00Z",
+      "artifacts": [
+        {
+          "origin": "remote-published",
+          "coordinate": "REAL_PUBLISHED_PK_ARTIFACT",
+          "source_uri": "https://REAL_REGISTRY/ARTIFACT",
+          "path": "evidence/pk-artifact.bin",
+          "sha256": "REAL_64_SHA"
+        }
+      ]
+    },
+    "fabric": {
+      "repository": "Rubentxu/pipelinek-fabric",
+      "commit": "ACTUAL_40_SHA",
+      "tag": "ACTUAL_REMOTE_TAG",
+      "changed": true,
+      "released_at": "2026-10-10T11:00:00Z",
+      "artifacts": [
+        {
+          "origin": "remote-published",
+          "coordinate": "REAL_PUBLISHED_FABRIC_ARTIFACT",
+          "source_uri": "https://REAL_REGISTRY/ARTIFACT",
+          "path": "evidence/fabric-artifact.bin",
+          "sha256": "REAL_64_SHA"
+        }
+      ]
+    }
+  },
+  "interop": {
+    "pipelinek_artifact_sha256": "REAL_64_SHA",
+    "pipelinek_release_tag": "ACTUAL_REMOTE_TAG",
+    "resolved_from_remote": false,
+    "consumer_compiled": false,
+    "e2e_executed": false,
+    "path": "evidence/published-pair.log",
+    "sha256": "REAL_64_SHA"
+  },
+  "evidence": [
+    {
+      "id": "GATE-FAB-FULL-SUITE",
+      "status": "NOT_MEASURED",
+      "path": "evidence/full-suite.log",
+      "sha256": "REAL_64_SHA",
+      "pipelinek_commit": "ACTUAL_40_SHA",
+      "fabric_commit": "ACTUAL_40_SHA"
+    }
+  ],
+  "approvals": [
+    {
+      "role": "PK_PROVIDER",
+      "contract_sha256": "REAL_CONTRACT_SHA"
+    },
+    {
+      "role": "FAB_CONSUMER",
+      "contract_sha256": "REAL_CONTRACT_SHA"
+    },
+    {
+      "role": "PAIR_INTEGRATOR",
+      "contract_sha256": "REAL_CONTRACT_SHA"
+    }
+  ],
+  "rollback_pair": {
+    "last_known_good": "ACTUAL_PREVIOUS_PAIR_ID"
+  },
+  "integrator_reviewed": false,
+  "pipelinek_certification_receipt": {
+    "state": "NOT_RUN",
+    "sha256": "READ ~/.local/share/pipelinek-release-harness/candidates/<sha>/certification-result.json OR the file the certifier publishes alongside the released tag",
+    "scenario": "READ scenario/pipeline.kts path used by the certifier",
+    "evidence": [
+      {
+        "path": "evidence/certifier/<sha>/certification-result.json",
+        "sha256": "REAL_64_SHA"
+      }
+    ],
+    "signature": "sha256:OPTIONAL_CERTIFIER_SIGNATURE"
+  },
+  "previous_pair": {
+    "milestone": "M0",
+    "pair_id": "M0-ACTUAL",
+    "receipt_sha256": "SHA256_OF_PREVIOUS_RECEIPT"
+  }
+}

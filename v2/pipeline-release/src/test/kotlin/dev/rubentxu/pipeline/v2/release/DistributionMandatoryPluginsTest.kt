@@ -419,6 +419,11 @@ class DistributionMandatoryPluginsTest {
             )
         val text = Files.readString(sbom)
         val appCoordinate = "dev.rubentxu.pipeline.v2:pipeline-application:${hostVersion.value}"
+        // CycloneDX Gradle names the application component with a `purl`
+        // of the form `pkg:maven/<group>:<artifact>@<version>?type=jar`,
+        // not the bare Maven coordinate. The application is the
+        // root component, surfaced under `metadata.component.purl`.
+        val appPurl = "pkg:maven/dev.rubentxu.pipeline.v2/pipeline-application@${hostVersion.value}"
         assertTrue(
             text.contains("\"CycloneDX\""),
             "the SBOM at $sbom is not in CycloneDX format. A consumer " +
@@ -426,10 +431,10 @@ class DistributionMandatoryPluginsTest {
                 "SBOM excerpt: ${text.take(400)}"
         )
         assertTrue(
-            text.contains(appCoordinate),
-            "the SBOM at $sbom does not reference '$appCoordinate'. " +
-                "The SBOM must name the application at the host version so the " +
-                "certifier can verify the SBOM was produced for THIS candidate. " +
+            text.contains(appCoordinate) || text.contains(appPurl),
+            "the SBOM at $sbom does not reference '$appCoordinate' or its CycloneDX " +
+                "purl '$appPurl'. The SBOM must name the application at the host version " +
+                "so the certifier can verify the SBOM was produced for THIS candidate. " +
                 "SBOM excerpt: ${text.take(800)}"
         )
     }

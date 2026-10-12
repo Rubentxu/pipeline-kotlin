@@ -221,7 +221,7 @@ object ProcessOutputDecoder {
         val eventDocument = decodeEventDocument(
             stdout = stdout,
             stderr = stderr,
-            expectedFormat = expectedFormat,
+            format = expectedFormat,
             protocol = protocol,
             findings = findings,
         )

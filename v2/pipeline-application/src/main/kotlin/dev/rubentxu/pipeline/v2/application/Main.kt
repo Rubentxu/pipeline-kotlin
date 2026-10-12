@@ -1310,7 +1310,7 @@ private fun writeEventDocument(
     events: List<dev.rubentxu.pipeline.v2.events.DomainEvent>,
     view: dev.rubentxu.pipeline.v2.application.observation.ObservationView,
     format: ObservationFormat,
-    query: dev.rubentxu.pipeline.v2.application.observation.ObservationQuery?,
+    query: dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery,
     protocol: OutputProtocol,
 ) {
     val bytes = RunObservationOutput.encode(events, view, format, query).toByteArray(Charsets.UTF_8)

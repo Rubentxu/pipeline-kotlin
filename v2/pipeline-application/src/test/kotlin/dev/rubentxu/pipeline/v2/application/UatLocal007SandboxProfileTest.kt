@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.SystemClock
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.RunFinished
@@ -120,7 +122,7 @@ pipeline {
             extraArgs = arrayOf("--sandbox-profile", "local")
         )
 
-        val runFinished = findRunFinished(stdout)
+        val runFinished = findRunFinished(stdout, "")
         assertEquals("success", runFinished, "Pipeline should complete successfully. stdout=$stdout")
 
         // SB-S-001: pwd must report workspace directory, not control directory
@@ -167,7 +169,7 @@ pipeline {
 
         // SB-S-002: LOCAL is NOT a filesystem jail; write may succeed or fail
         // We just verify the pipeline ran (no crash) and documented the limitation
-        val runFinished = findRunFinished(stdout)
+        val runFinished = findRunFinished(stdout, "")
         assertTrue(
             runFinished == "success" || runFinished == "failure",
             "Pipeline should complete (success or failure) for write-outside-workspace. stdout=$stdout"
@@ -207,7 +209,7 @@ pipeline {
             extraArgs = arrayOf("--sandbox-profile", "local")
         )
 
-        val runFinished = findRunFinished(stdout)
+        val runFinished = findRunFinished(stdout, "")
         assertEquals("success", runFinished, "Pipeline should complete. stdout=$stdout")
 
         // SB-S-003: HOME should be unchanged (not rewritten by LOCAL)
@@ -254,7 +256,7 @@ pipeline {
             extraArgs = arrayOf("--sandbox-profile", "local")
         )
 
-        val runFinished = findRunFinished(stdout)
+        val runFinished = findRunFinished(stdout, "")
         assertEquals("success", runFinished, "Pipeline should complete. stdout=$stdout")
 
         // SB-S-004 corrected semantics:
@@ -307,7 +309,7 @@ pipeline {
             env = mapOf("PATH" to "/tmp/rogue:" + (System.getenv("PATH") ?: ""))
         )
 
-        val runFinished = findRunFinished(stdout)
+        val runFinished = findRunFinished(stdout, "")
         assertEquals("success", runFinished, "Pipeline should complete. stdout=$stdout")
 
         // SB-S-005: First PATH entry should NOT be /tmp/rogue
@@ -362,7 +364,7 @@ pipeline {
             extraArgs = arrayOf("--sandbox-profile", "none")
         )
 
-        val runFinished = findRunFinished(stdout)
+        val runFinished = findRunFinished(stdout, "")
         assertEquals("success", runFinished, "Pipeline should complete. stdout=$stdout")
 
         // SB-S-006: profile=none means deny-list is skipped; LD_PRELOAD preserved
@@ -503,7 +505,7 @@ pipeline {
         ).requireExited()
         val jvm2Out = jvm2.stdout
 
-        val runFinished = findRunFinished(jvm2Out)
+        val runFinished = findRunFinished(jvm2Out, "")
         assertEquals("success", runFinished, "Resume under LOCAL should re-attach and succeed. stdout=$jvm2Out")
 
         // NO re-execution: 'done' appears exactly once
@@ -567,7 +569,7 @@ pipeline {
             extraArgs = arrayOf("--sandbox-profile", "local")
         )
 
-        val runFinished = findRunFinished(stdout)
+        val runFinished = findRunFinished(stdout, "")
         assertEquals("success", runFinished, "Pipeline should complete. stdout=$stdout")
 
         // SB-S-008: each branch's pwd should resolve to its own workspace
@@ -625,7 +627,7 @@ pipeline {
             extraArgs = arrayOf("--sandbox-profile", "local")
         )
 
-        val runFinished = findRunFinished(stdout)
+        val runFinished = findRunFinished(stdout, "")
         assertEquals("success", runFinished, "Pipeline should complete. stdout=$stdout")
 
         // SB-S-009: First 2 PATH entries should be JAVA_HOME/bin and M2_HOME/bin
@@ -756,7 +758,7 @@ pipeline {
         // so a resume with a CHANGED profile must FAIL CLOSED (DivergenceException) —
         // it must NOT silently re-attach under different confinement semantics, and it
         // must NOT re-execute the step.
-        val jvm2Finished = findRunFinished(jvm2Out)
+        val jvm2Finished = findRunFinished(jvm2Out, "")
         assertEquals(
             "failure", jvm2Finished,
             "Resume with profile change (none->local) must fail closed per D4 fingerprint. stdout=$jvm2Out"
@@ -921,7 +923,7 @@ pipeline {
             ),
         )
         // Verify outcome is success (echoes ran without abort)
-        assertTrue(findRunFinished(output) == "success",
+        assertTrue(findRunFinished(output, "") == "success",
             "cap-local pipeline must finish successfully; output=$output")
         // Read the captured file and verify each contract line.
         // The script writes raw printenv output (one value per line), so the
@@ -980,10 +982,30 @@ pipeline {
         ).requireExited().stdout
     }
 
-    private fun findRunFinished(jsonText: String): String {
-        val events = JsonEventLog.decode(jsonText)
-        val runFinished = events.filterIsInstance<RunFinished>().firstOrNull()
-            ?: throw AssertionError("No RunFinished event in output: $jsonText")
+    /**
+     * Parses the JSON event stream and returns the RunFinished.outcome field.
+     *
+     * PK-NEXT R0.3: takes the raw `cliRun.stdout` and `cliRun.stderr`
+     * separately so the contract is decoded correctly. The previous
+     * shape accepted a single concatenated string, which is wrong
+     * against the R0.3 channel split: line 1 of stdout is the
+     * LaunchReceipt, line 2 is the event document.
+     */
+    private fun findRunFinished(stdout: String, stderr: String): String {
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = stdout,
+            stderr = stderr,
+            format = ObservationFormat.JSON,
+        )
+        if (contract.eventDocument.decodeError != null) {
+            throw AssertionError(
+                "JSON event document failed to decode: ${contract.eventDocument.decodeError}",
+            )
+        }
+        val runFinished = contract.eventDocument.events
+            .filterIsInstance<RunFinished>()
+            .firstOrNull()
+            ?: throw AssertionError("No RunFinished event in output: $stdout")
         return runFinished.outcome
     }
 

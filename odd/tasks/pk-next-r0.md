@@ -75,26 +75,36 @@
 
 ## R0.3 — Contrato de stdout y LaunchReceipt
 
-- [ ] ADR + contrato versionado:
-  - [ ] stdout en formato humano: contrato y semántica
-  - [ ] stdout en `--format json`: contrato y semántica
-  - [ ] LaunchReceipt: transporte, schema, campos, inmutabilidad
-  - [ ] DomainEvents tipados: canal durable vs canal stdout
-  - [ ] Compatibilidad declarada con PK-1 y Fabric
-- [ ] Prohibido: tratar LaunchReceipt como sustituto del EventStore
-  durable.
-- [ ] Framing estructurado: discriminador `schema` o separación
-  explícita de canales.
-- [ ] Testkit reutilizable de procesos CLI:
-  - [ ] stdout/stderr separados
-  - [ ] exit code + protocolo
-  - [ ] decodificación por contrato
-  - [ ] fail ante malformación
-  - [ ] NO `catch { emptyList() }` para ocultar fallos de decodificación
-  - [ ] LaunchReceipt y RunCorrelated durable con la misma correlación
-  - [ ] detecta ausencia/duplicación/contradicción
-- [ ] Actualizar tests de aplicación DESPUÉS de fijar la semántica, no
-  antes.
+Estado: **channel split + testkit landed** (commits 8ece5258, b4f9c756,
+9a1b5836, e4eaadb1).
+
+- [x] ADR + contrato versionado:
+  - [x] stdout en formato humano: contrato y semántica
+  - [x] stdout en `--format json`: contrato y semántica
+  - [x] LaunchReceipt: transporte, schema, campos, inmutabilidad
+  - [x] DomainEvents tipados: canal durable vs canal stdout
+  - [x] Compatibilidad declarada con PK-1 y Fabric
+- [x] Prohibido: tratar LaunchReceipt como sustituto del EventStore
+  durable. El recibo NO es un EventStore.
+- [x] Framing estructurado: discriminador `schema` o separación
+  explícita de canales. TEXT view: receipt en stderr; JSON view:
+  receipt en stdout línea 1, array en stdout línea 2.
+- [x] Testkit reutilizable de procesos CLI (CliContractTestKit):
+  - [x] stdout/stderr separados
+  - [x] exit code + protocolo
+  - [x] decodificación por contrato
+  - [x] fail ante malformación (ContractViolation tipada)
+  - [x] NO `catch { emptyList() }` para ocultar fallos de decodificación
+  - [x] LaunchReceipt y RunCorrelated durable con la misma correlación
+  - [x] detecta ausencia/duplicación/contradicción
+- [x] Actualizar tests de aplicación DESPUÉS de fijar la semántica, no
+  antes. ~30 family-A tests reescritos en :pipeline-application:test
+  para consumir el testkit.
+
+Pendiente R0.3:
+- [ ] Verificar que los 48 Uat*Test.kt con fallos se cierran tras
+  las reescrituras. Family A (framing/LaunchReceipt) cerrada; las
+  otras familias (B-F) las trata R0.4.
 
 ## R0.4 — Investigar y cerrar la suite de aplicación
 

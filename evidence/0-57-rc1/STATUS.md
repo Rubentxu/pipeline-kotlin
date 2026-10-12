@@ -1,7 +1,7 @@
 # Evidence bundle STATUS — 0.57.0-rc1
 
-**Última actualización:** 2026-10-12T21:30Z
-**HEAD actual:** `41727c5ea414f70921e56a7d5b42dfe0da698137`
+**Última actualización:** 2026-10-12T22:05Z
+**HEAD actual:** `31619155890fc711ead6e6047fa4bbbec3b18f7d`
 **Ciclo:** pk-release-0-57-consolidation
 
 ## Lo que el bundle contiene y de dónde viene

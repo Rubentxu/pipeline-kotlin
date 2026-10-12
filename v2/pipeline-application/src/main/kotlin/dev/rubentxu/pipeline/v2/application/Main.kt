@@ -200,6 +200,13 @@ fun main(args: Array<String>) {
         }
     }
 
+    // PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING: validate --output-protocol
+    // BEFORE the run starts. An unknown id is a fail-closed
+    // CliExit.InvalidArgument (exit 2); the server never falls back
+    // to Published on an unknown request, because that would be the
+    // silent-degradation defect the ADR was written to prevent.
+    val outputProtocol: OutputProtocol = negotiateOutputProtocolOrExit(config.outputProtocolTokens)
+
     val command = config.command
 
     // The parser already refused an unusable query (empty pattern, uncompilable
@@ -274,7 +281,13 @@ fun main(args: Array<String>) {
             dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.clear()
         }
         val events = store.eventsFor(validateRunId).toList()
-        print(RunObservationOutput.encode(events, config.view, config.format, compiledQuery))
+        writeEventDocument(
+            events = events,
+            view = config.view,
+            format = config.format,
+            query = compiledQuery,
+            protocol = outputProtocol,
+        )
         // TRAIN-DSL-HONESTY: a script that compiles but throws while building
         // its IR reaches here with isSuccess == true and no usable spec.
         // Reporting SUCCESS for it was the same DEFAULT_SUCCESS the run path
@@ -559,7 +572,13 @@ fun main(args: Array<String>) {
         // ADR-0088: human text was already streamed live by ConsolePrintingEventSink.
         // Only the machine formats still need a document at the end.
         if (config.format != ObservationFormat.TEXT) {
-            print(RunObservationOutput.encode(events, config.view, config.format, compiledQuery))
+            writeEventDocument(
+                events = events,
+                view = config.view,
+                format = config.format,
+                query = compiledQuery,
+                protocol = outputProtocol,
+            )
         }
         val exitFailure: Boolean = if (runOutcome != null) {
             when (runOutcome) {
@@ -1235,4 +1254,70 @@ private fun emitCorrelationAndReceipt(
             System.out.flush()
         }
     }
+}
+
+// ------------------------------------------------------------------------
+// PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING — opt-in output protocol helpers.
+// ------------------------------------------------------------------------
+
+/**
+ * Resolve the operator-supplied `--output-protocol` tokens to a
+ * concrete [OutputProtocol] or fail closed with
+ * [CliExit.InvalidArgument] (exit 2).
+ *
+ * Rules:
+ * - Empty list → [OutputProtocol.DEFAULT] (Published). No change
+ *   in behaviour for callers that did not opt in.
+ * - Last token wins on repetition. The earlier ones are ignored
+ *   (and not validated individually); the [ADR] permits clients
+ *   to declare a list because that is the wire shape of
+ *   negotiation, but our binary only emits one protocol per run
+ *   and we keep the resolution simple.
+ * - An unknown id exits with a typed envelope listing every
+ *   supported id. The server NEVER falls back to Published on an
+ *   unknown id — silent degradation is the exact defect the ADR
+ *   was written to prevent.
+ */
+private fun negotiateOutputProtocolOrExit(tokens: List<String>): OutputProtocol {
+    if (tokens.isEmpty()) return OutputProtocol.DEFAULT
+    val requested = tokens.last()
+    return OutputProtocol.fromId(requested) ?: run {
+        val supported = OutputProtocol.SUPPORTED_IDS.joinToString(", ")
+        val exit = CliExit.InvalidArgument(
+            message = "unsupported output protocol: '$requested'. Supported: $supported",
+            hint = "see ADR-PK1-OUTPUT-FRAMING for the negotiation contract",
+        )
+        System.err.write(exit.encodeEnvelope().toByteArray(Charsets.UTF_8))
+        System.err.flush()
+        System.exit(exit.code)
+        OutputProtocol.DEFAULT  // unreachable; satisfies the type system
+    }
+}
+
+/**
+ * Write the end-of-run event document to the channel the negotiated
+ * protocol dictates. The bytes do not change between protocols; the
+ * channel does.
+ *
+ * - [OutputProtocol.Published] (default) → stdout.
+ * - [OutputProtocol.SeparatedV2] → stderr (machine events go to
+ *   stderr; the receipt is unaffected and stays on stdout via
+ *   [emitCorrelationAndReceipt]).
+ * - TEXT view is unaffected in both protocols; this helper is
+ *   only called for JSON / JSON_LINES.
+ */
+private fun writeEventDocument(
+    events: List<dev.rubentxu.pipeline.v2.events.DomainEvent>,
+    view: dev.rubentxu.pipeline.v2.application.observation.ObservationView,
+    format: ObservationFormat,
+    query: dev.rubentxu.pipeline.v2.application.observation.ObservationQuery?,
+    protocol: OutputProtocol,
+) {
+    val bytes = RunObservationOutput.encode(events, view, format, query).toByteArray(Charsets.UTF_8)
+    val sink = when (protocol) {
+        OutputProtocol.Published -> System.out
+        OutputProtocol.SeparatedV2 -> System.err
+    }
+    sink.write(bytes)
+    sink.flush()
 }

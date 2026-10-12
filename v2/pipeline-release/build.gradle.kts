@@ -178,12 +178,25 @@ fun gitCommitOf(root: Project): String = try {
 
 tasks.register("releaseGate") {
     group = "distribution"
-    description = "PK-RC-PLUGIN-001: run the candidate gate end-to-end. " +
-        "Dist ZIP + cyclonedxBom + candidateAdmission. Non-zero on any refusal."
+    description = "PK-RC-PLUGIN-001 + PK-RC-RENDER-001: run the candidate gate " +
+        "end-to-end. Dist ZIP + cyclonedxBom + candidateAdmission + renderer " +
+        "partition + application regression suite + mandatory-plugin test. " +
+        "Non-zero on any refusal."
 
     dependsOn(
         ":pipeline-application:distZip",
         ":pipeline-application:cyclonedxBom",
         "candidateAdmission",
+        // PK-RC-RENDER-001: the renderer partition test would have caught
+        // the rc4 regression (`run: [RunCorrelated]`) if it had been in
+        // this gate. Adding it here is the structural reason a RunCorrelated
+        // added to the routing table cannot survive a release without a
+        // matching arm in `ConsoleFamilyLines.run(...)`.
+        ":pipeline-architecture-tests:test",
+        ":pipeline-application:test",
+        // PK-RC-PLUGIN-001: the mandatory-plugin test cannot skip. The
+        // gate wires `PIPELINEK_DIST_ZIP` so the test sees the distZip
+        // output that this same task just built.
+        "test",
     )
 }

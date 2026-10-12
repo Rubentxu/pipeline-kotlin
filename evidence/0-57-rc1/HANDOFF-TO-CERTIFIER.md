@@ -14,7 +14,7 @@ anything.
 |---|---|
 | Train | 0.57.0-rc1 |
 | Work-item (local) | pk-0-57-rc1 |
-| Commit (HEAD) | `a95956b2...` (see `git-head.txt`) |
+| Commit (HEAD) | see `git-head.txt` (canonical source; printed SHAs in this document go stale on the next commit) |
 | Branch | `pk-release-0-57-consolidation` |
 | Base | `main` HEAD `05ce6236` (post-merge v0.56.0-rc5) |
 | Tree state at candidate build | clean (verified by candidateAdmission) |
@@ -25,13 +25,14 @@ anything.
 | File | Size | SHA-256 |
 |---|---|---|
 | `pipelinek-0.57.0.zip` | 88.5 MB | `0a29d5231be03cfb6b086c6bbd2820b7849a15b5e40fb3e36f2458adb1f40d1c` |
-| `pipelinek-0.57.0.sbom.json` | 1.3 MB | `478f65981ee4167c5bee77ebb4560e62d5861dbffc5ed4f2ef6d65bd39c39131` |
+| `pipelinek-0.57.0.sbom.json` | 1.3 MB | `a98fd7b42c25c263ff7c49dce5e1a9ef639f8c6c087f06426219ecfd6ece8c19` |
 | `pipeline-sdk-bom-0.57.0.pom` | — | `54228c13c7aeb58ca17d6143563a4c045eb5401b84e64f728f1ae3c8b10affc7` |
 | `pipeline-domain-0.57.0.pom` | — | `232ebec04314e454da26acdd20fec168e86f1f0f1353fbaac8dcd87bac7b038d` |
 | `sdk-domain-0.57.0.module` | — | `10c91cb218c1e67dddaa9d0c4e55b4ba64f810bc119b341f4731c9a296a007c0` |
 | `pipeline-application-0.57.0.jar` | — | `45e174147e48173f540dee9e7bffc51230d29091c85cf7ea7f56f0cc6f76143b` |
-| `git-head.txt` | — | `b0cbe591e5329bddbf2f2a1703b454a247a1648b10d6d53ce59f0967a9175b42` |
-| `HANDOFF-TO-CERTIFIER.md` | — | `d4e1102e5eba9595d31a88602c2fd4479cc44c42e00bd503c4b17b3488239212` |
+| `git-head.txt` | — | `e51a40926e23d2f0081ab1534abb9eaa70d0944dcc9854adf6b3065ac9f19a16` |
+| `STATUS.md` | — | `1f4c1279c2956886fa11fb92a80dda60ac9efd57b416fb9855e19252dd93934b` |
+| `HANDOFF-TO-CERTIFIER.md` | — | `69caba7557a63e4df8f29f62a6767768d9fde9a0307787a9b260aef4dfcd86f0` |
 
 `SHA256SUMS` aggregates all of the above.
 

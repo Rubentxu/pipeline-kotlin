@@ -21,6 +21,11 @@ import java.nio.file.Paths
  * `BundledPluginCompatibility` gate would have refused that ZIP, but the
  * release script never invoked the gate against the published artefact.
  *
+ * PK-0-57-RC1 (T2): the current host is 0.57.0. The drift reproducer for
+ * the rc3 artefact remains as historical evidence; the in-tree host
+ * reference is updated to 0.57.0, so the gate must admit the bundled
+ * plugins against the same host identity the distribution declares.
+ *
  * This test makes the gate observable on the real distribution: it locates
  * the produced ZIP, probes it for the four mandatory plugins (http, scm-git,
  * junit, utilities), and asserts that each declares a range covering the
@@ -63,20 +68,20 @@ class DistributionMandatoryPluginsTest {
 
     @Test
     fun `each mandatory plugin admits the running version`() {
-        val running = SemVer(0, 56, 0)  // host identity, not derived: this test must be
+        val running = SemVer(0, 57, 0)  // host identity, not derived: this test must be
                                        // runnable against any ZIP; the gate's job is to
                                        // admit or refuse the same running version the
                                        // distribution itself declares.
         val entries = BundledPluginCompatibility.probeZip(zip)
         val verdict = BundledPluginCompatibility.evaluate(
-            ProductVersion.parseOrNull("0.56.0")!!,
+            ProductVersion.parseOrNull("0.57.0")!!,
             entries,
         )
         assertInstanceOf(
             BundledPluginCompatibilityVerdict.Compatible::class.java,
             verdict,
             "rc3-style drift: at least one bundled plugin refuses the host. " +
-                "The build needs the policy-derived apiRange to cover 0.56.0. Verdict: ${verdict.render()}",
+                "The build needs the policy-derived apiRange to cover 0.57.0. Verdict: ${verdict.render()}",
         )
     }
 

@@ -164,13 +164,13 @@ class DistributionMandatoryPluginsTest {
             "the rc3 ZIP must produce 4 conflicts (one per official plugin); got ${refused.conflicts.size}",
         )
         // PK-RELEASE-CONSOLIDATION R1.3 (audit fix): the previous form
-        // `assertNotNull(false, msg)`
+        // `assertNotNull(refused.render().contains("[0.47.0, 0.53.0)"), msg)`
         // was a no-op: assertNotNull on a Boolean checks the boxed
         // reference (always non-null), so the boolean was ignored and
         // the assertion always passed. assertTrue is the only
         // assertion that exercises the boolean contract.
         assertTrue(
-            false,
+            refused.render().contains("[0.47.0, 0.53.0)"),
             "diagnostic must name the policy-violating range: ${refused.render()}",
         )
     }

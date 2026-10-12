@@ -113,7 +113,16 @@ object ProcessOutputDecoder {
         val expectedFormat: ObservationFormat,
         val protocol: Protocol,
         val receipt: LaunchReceipt?,
-        val receiptDuplicates: Int,
+        /**
+         * Total number of receipt-shaped lines the decoder saw on the
+         * expected channel. 1 is the normal value (the run emitted its
+         * one receipt). >1 triggers [Finding.DuplicateReceipt]. 0
+         * triggers [Finding.MissingReceipt]. Named "occurrences", not
+         * "duplicates", because a single receipt is not a duplicate; the
+         * call site reads the count directly without off-by-one
+         * adjustment.
+         */
+        val receiptOccurrences: Int,
         val eventDocument: EventDocument,
         val humanText: List<String>,
         val diagnostics: List<String>,
@@ -169,8 +178,8 @@ object ProcessOutputDecoder {
                 findings.add(Finding.MissingReceipt(expectedFormat))
                 null
             }
-            receiptDuplicates > 1 -> {
-                findings.add(Finding.DuplicateReceipt(receiptDuplicates))
+            receiptLines.size > 1 -> {
+                findings.add(Finding.DuplicateReceipt(receiptLines.size))
                 receipts.first()
             }
             else -> receipts.first()
@@ -237,7 +246,7 @@ object ProcessOutputDecoder {
             expectedFormat = expectedFormat,
             protocol = protocol,
             receipt = receipt,
-            receiptDuplicates = receiptDuplicates,
+            receiptOccurrences = receiptLines.size,
             eventDocument = eventDocument,
             humanText = humanText,
             diagnostics = diagnostics,
@@ -302,6 +311,17 @@ object ProcessOutputDecoder {
                     return EventDocument(nonReceiptLines, emptyList(), null)
                 }
                 val document = nonReceiptLines.joinToString("\n").trim()
+                // The contract for the JSON view is "a single bracketed array".
+                // JsonEventLog.decode is structural and tolerates a missing array
+                // by returning an empty list, which would hide a real
+                // contract violation. Detect the missing-bracket shape BEFORE
+                // delegating to the codec.
+                if (!document.startsWith("[") || !document.endsWith("]")) {
+                    val msg = "JSON view: event document must be a single bracketed array, " +
+                        "got: ${document.take(80)}"
+                    findings.add(Finding.InvalidJson(msg))
+                    return EventDocument(nonReceiptLines, emptyList(), msg)
+                }
                 val events = runCatching { dev.rubentxu.pipeline.v2.events.durable.JsonEventLog.decode(document) }
                 events.fold(
                     onSuccess = { decoded -> EventDocument(nonReceiptLines, decoded, null) },

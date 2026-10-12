@@ -3,12 +3,16 @@ package dev.rubentxu.pipeline.v2.application.support
 import dev.rubentxu.pipeline.v2.application.LaunchReceipt
 import dev.rubentxu.pipeline.v2.application.LaunchStatus
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.domain.CorrelationId
+import dev.rubentxu.pipeline.v2.events.RunCorrelated
+import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.time.Instant
 
 /**
  * PK-RELEASE-CONSOLIDATION D2 + H1.3 — matrix tests for the
@@ -53,18 +57,39 @@ class ProcessOutputDecoderTest {
         return "[" + simpleEvents.joinToString(",") + "]"
     }
 
+    /**
+     * Build a real [RunCorrelated] from the typed API and encode it via
+     * [JsonEventLog], so the wire shape is whatever the codec writes.
+     * Tests that need a `RunCorrelated` in the array MUST go through
+     * this helper: a hand-typed string is not parseable by the codec.
+     */
+    private fun runCorrelated(
+        correlationId: String,
+        ownerId: String = "o-1",
+        runId: String = "r-1",
+    ): String {
+        val event = RunCorrelated(
+            eventId = "evt-rc-$correlationId",
+            runId = runId,
+            sequence = 100_000L,
+            occurredAt = Instant.parse("2024-01-01T00:00:00Z"),
+            correlationId = CorrelationId(correlationId),
+            ownerId = ownerId,
+            startedAtMs = 1_704_067_200_000L,
+        )
+        return JsonEventLog.encode(listOf(event)).removePrefix("[").removeSuffix("]")
+    }
+
     // -- Case 1: parser against the published protocol, happy path ---------
 
     @Test
     fun `JSON view — receipt line 1, array line 2, no findings`() {
-        val stdout = receiptJson() + "\n" + eventsArray(
-            """{"type":"RunCorrelated","correlationId":"c-1","runId":"r-1","ownerId":"o-1","occurredAt":"2024-01-01T00:00:00Z"}""",
-        )
+        val stdout = receiptJson() + "\n" + eventsArray(runCorrelated("c-1"))
         val out = ProcessOutputDecoder.decode(stdout, "", ObservationFormat.JSON)
         assertEquals(ProcessOutputDecoder.Protocol.Published, out.protocol)
         assertNotNull(out.receipt)
         assertEquals("c-1", out.receipt!!.correlationId)
-        assertEquals(0, out.receiptDuplicates)
+        assertEquals(1, out.receiptOccurrences)
         assertTrue(out.eventDocument.isWellFormed, "events should decode: ${out.eventDocument.decodeError}")
         assertTrue(out.findings.isEmpty(), "happy path must surface no findings, got ${out.findings}")
     }
@@ -87,7 +112,7 @@ class ProcessOutputDecoderTest {
         val r = receiptJson()
         val stdout = "$r\n$r\n[]"
         val out = ProcessOutputDecoder.decode(stdout, "", ObservationFormat.JSON)
-        assertEquals(2, out.receiptDuplicates)
+        assertEquals(2, out.receiptOccurrences)
         assertTrue(out.findings.any { it is ProcessOutputDecoder.Finding.DuplicateReceipt },
             "DuplicateReceipt not surfaced: ${out.findings}")
     }
@@ -97,7 +122,7 @@ class ProcessOutputDecoderTest {
     @Test
     fun `JSON view — receipt and durable RunCorrelated disagree triggers ContradictoryCorrelation finding`() {
         val stdout = receiptJson(correlationId = "c-receipt") + "\n" + eventsArray(
-            """{"type":"RunCorrelated","correlationId":"c-durable","runId":"r-1","ownerId":"o-1","occurredAt":"2024-01-01T00:00:00Z"}""",
+            runCorrelated("c-durable"),
         )
         val out = ProcessOutputDecoder.decode(stdout, "", ObservationFormat.JSON)
         val finding = out.findings.filterIsInstance<ProcessOutputDecoder.Finding.ContradictoryCorrelation>().firstOrNull()
@@ -120,7 +145,7 @@ class ProcessOutputDecoderTest {
     // -- Case 6: parser against the wrong format ---------------------------
 
     @Test
-    fun `TEXT view — receipt on stderr is read; stdout without receipt triggers MissingReceipt`() {
+    fun `TEXT view — receipt on stderr is read, stdout without receipt triggers MissingReceipt`() {
         // In TEXT the receipt is on stderr; the test should NOT confuse
         // stdout-empty with receipt-missing. Here the caller asked for
         // TEXT, so an empty stderr AND an empty stdout is a finding
@@ -144,15 +169,23 @@ class ProcessOutputDecoderTest {
 
     @Test
     fun `two independent decodings do not leak state`() {
-        val a = ProcessOutputDecoder.decode(receiptJson(runId = "r-a") + "\n[]", "", ObservationFormat.JSON)
-        val b = ProcessOutputDecoder.decode(receiptJson(runId = "r-b") + "\n[]", "", ObservationFormat.JSON)
+        val a = ProcessOutputDecoder.decode(
+            receiptJson(runId = "r-a", correlationId = "c-a") + "\n" + eventsArray(runCorrelated("c-a")),
+            "",
+            ObservationFormat.JSON,
+        )
+        val b = ProcessOutputDecoder.decode(
+            receiptJson(runId = "r-b", correlationId = "c-b") + "\n" + eventsArray(runCorrelated("c-b")),
+            "",
+            ObservationFormat.JSON,
+        )
         assertEquals("r-a", a.receipt?.runId)
         assertEquals("r-b", b.receipt?.runId)
         // No contamination: each decoding is independent. The findings
         // are per-decoding; cross-pollination would surface as either
         // a false DuplicateReceipt or as the wrong runId.
-        assertTrue(a.findings.isEmpty())
-        assertTrue(b.findings.isEmpty())
+        assertTrue(a.findings.isEmpty(), "a should have no findings: ${a.findings}")
+        assertTrue(b.findings.isEmpty(), "b should have no findings: ${b.findings}")
     }
 
     // -- Case 8: failure before launch (no receipt, no events) -------------

@@ -27,6 +27,14 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    // PK-RELEASE-CONSOLIDATION H1.4: the test task asserts the SBOM
+    // exists next to the distribution ZIP. The candidateAdmission task
+    // is what stages it there, and the test must depend on it (or on
+    // the cyclonedxBom that produces the source) so a developer
+    // running `:pipeline-release:test` directly observes the same
+    // staging the releaseGate does.
+    dependsOn(":pipeline-application:cyclonedxBom")
+    dependsOn("candidateAdmission")
     // Honour a system property override so CI can point the real-artifact
     // checks at a different build tree. Default: this module lives at
     // v2/pipeline-release/, so the parent is v2/.

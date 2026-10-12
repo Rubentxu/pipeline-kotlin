@@ -1,9 +1,12 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -256,8 +259,17 @@ class UatCompat001CorpusSmokeRunTest {
                 if (exitCode != 0) {
                     failures.add("$name: exit $exitCode, stderr: ${runResult.stderr}")
                 } else {
-                    val events = JsonEventLog.decode(stdout)
-                    if (events.isEmpty()) {
+                    // PK-NEXT R0.3: contract is decoded via the testkit. Line 1
+                    // is the LaunchReceipt, line 2 is the JSON event document.
+                    val contract = CliContractTestKit.decodeLaunchContract(
+                        stdout = runResult.stdout,
+                        stderr = runResult.stderr,
+                        format = ObservationFormat.JSON,
+                    )
+                    if (contract.eventDocument.decodeError != null) {
+                        failures.add("$name: event document failed to decode: " +
+                            contract.eventDocument.decodeError)
+                    } else if (contract.eventDocument.events.isEmpty()) {
                         failures.add("$name: no events produced")
                     }
                 }

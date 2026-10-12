@@ -1,0 +1,297 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:pipelinek-fabric:PAIR-RECEIPT:1",
+  "title": "Immutable pair certification receipt",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "pair_id",
+    "milestone",
+    "state",
+    "contract_sha256",
+    "releases",
+    "interop",
+    "evidence",
+    "approvals",
+    "rollback_pair",
+    "integrator_reviewed",
+    "pipelinek_certification_receipt"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "pair_id": {
+      "type": "string",
+      "pattern": "^M[0-7]-"
+    },
+    "milestone": {
+      "enum": [
+        "M0",
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+        "M5",
+        "M6",
+        "M7"
+      ]
+    },
+    "state": {
+      "const": "PAIR_CERTIFIED"
+    },
+    "contract_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "releases": {
+      "type": "object",
+      "required": [
+        "pipelinek",
+        "fabric"
+      ],
+      "properties": {
+        "pipelinek": {
+          "$ref": "#/$defs/release"
+        },
+        "fabric": {
+          "$ref": "#/$defs/release"
+        }
+      }
+    },
+    "interop": {
+      "type": "object",
+      "required": [
+        "pipelinek_artifact_sha256",
+        "pipelinek_release_tag",
+        "resolved_from_remote",
+        "consumer_compiled",
+        "e2e_executed",
+        "path",
+        "sha256"
+      ]
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "approvals": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "required": [
+          "role",
+          "contract_sha256"
+        ],
+        "properties": {
+          "role": {
+            "enum": [
+              "PK_PROVIDER",
+              "FAB_CONSUMER",
+              "PAIR_INTEGRATOR"
+            ]
+          },
+          "contract_sha256": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "rollback_pair": {
+      "type": "object"
+    },
+    "integrator_reviewed": {
+      "const": true
+    },
+    "pipelinek_certification_receipt": {
+      "type": "object",
+      "required": [
+        "state",
+        "sha256",
+        "scenario",
+        "evidence"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "CERTIFIED",
+            "CERTIFICATION_FAILED",
+            "NOT_RUN"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "scenario": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "sha256"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "description": "OPTIONAL certifier signature for cross-validation; this gate does not verify the signature cryptographically — it only checks that the receipt file is on disk, has a SHA-256 that matches, and that its state is CERTIFIED. Cryptographic verification of the signature is an independent operation, not a substitute for the gate."
+        }
+      }
+    },
+    "previous_pair": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "milestone": {
+          "type": "string"
+        },
+        "pair_id": {
+          "type": "string"
+        },
+        "receipt_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "contract_migration": {
+      "type": "object",
+      "required": [
+        "from_sha256",
+        "to_sha256",
+        "approved_by_both"
+      ],
+      "properties": {
+        "from_sha256": {
+          "type": "string"
+        },
+        "to_sha256": {
+          "type": "string"
+        },
+        "approved_by_both": {
+          "const": true
+        }
+      }
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "required": [
+        "path",
+        "sha256",
+        "origin",
+        "coordinate",
+        "source_uri"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "origin": {
+          "const": "remote-published"
+        },
+        "coordinate": {
+          "type": "string"
+        },
+        "source_uri": {
+          "type": "string"
+        }
+      }
+    },
+    "release": {
+      "type": "object",
+      "required": [
+        "repository",
+        "commit",
+        "tag",
+        "changed",
+        "released_at",
+        "artifacts"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "tag": {
+          "type": "string"
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "released_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "artifacts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "id",
+        "status",
+        "path",
+        "sha256",
+        "pipelinek_commit",
+        "fabric_commit"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "status": {
+          "const": "PASS"
+        },
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "pipelinek_commit": {
+          "type": "string"
+        },
+        "fabric_commit": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

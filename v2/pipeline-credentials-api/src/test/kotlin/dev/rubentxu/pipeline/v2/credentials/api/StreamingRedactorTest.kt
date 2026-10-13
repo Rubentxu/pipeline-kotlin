@@ -217,11 +217,16 @@ class StreamingRedactorTest {
             val maxLiteral = redactor.maxLiteralByteLength
 
             // WU-RP-022 perf rewrite: pending lookahead window is a primitive ring.
-            // Same invariant: lookahead never exceeds maxLiteralByteLength.
-            val pendingField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("ring").apply {
+            // R2.3(b) / TODO 3: the state moved from the inner class into a
+            // shared RedactorState. The invariant is unchanged: lookahead
+            // never exceeds maxLiteralByteLength.
+            val stateField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("state").apply {
                 isAccessible = true
             }
-            val ringCountField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("ringCount").apply {
+            val ringField = RedactorState::class.java.getDeclaredField("ring").apply {
+                isAccessible = true
+            }
+            val ringCountField = RedactorState::class.java.getDeclaredField("ringCount").apply {
                 isAccessible = true
             }
 
@@ -236,8 +241,9 @@ class StreamingRedactorTest {
             }
 
             @Suppress("UNCHECKED_CAST")
-            val ring = pendingField.get(wrapped) as ByteArray
-            val ringCount = ringCountField.get(wrapped) as Int
+            val state = stateField.get(wrapped) as RedactorState
+            val ring = ringField.get(state) as ByteArray
+            val ringCount = ringCountField.get(state) as Int
             assertTrue(
                 ringCount <= maxLiteral,
                 "Pending size $ringCount must not exceed maxLiteralByteLength $maxLiteral",
@@ -252,10 +258,16 @@ class StreamingRedactorTest {
 
             val redactor = StreamingRedactor(registry, chunkSize = 1024)
 
-            val outputField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("outputQueue").apply {
+            // R2.3(b) / TODO 3: the state moved to a RedactorState. The
+            // invariant is unchanged: outputQueue never exceeds the
+            // SCRUB_MARKER length during normal operation.
+            val stateField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("state").apply {
                 isAccessible = true
             }
-            val outputCountField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("outputCount").apply {
+            val outputField = RedactorState::class.java.getDeclaredField("outputQueue").apply {
+                isAccessible = true
+            }
+            val outputCountField = RedactorState::class.java.getDeclaredField("outputCount").apply {
                 isAccessible = true
             }
 
@@ -266,7 +278,8 @@ class StreamingRedactorTest {
             val readBuf = ByteArray(2) // Small read buffer to observe outputQueue
             while (wrapped.read(readBuf).also { /* consume */ } != -1) {
                 @Suppress("UNCHECKED_CAST")
-                val outputCount = outputCountField.get(wrapped) as Int
+                val state = stateField.get(wrapped) as RedactorState
+                val outputCount = outputCountField.get(state) as Int
                 // outputQueue should never grow beyond marker length
                 assertTrue(
                     outputCount <= SecretPatternRegistry.SCRUB_MARKER.length,
@@ -587,16 +600,21 @@ class StreamingRedactorTest {
 
         val redactor = StreamingRedactor(registry, chunkSize = 5)
 
-        val pendingField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("ring").apply {
+        // R2.3(b) / TODO 3: the state moved to a shared RedactorState; the
+        // reflection paths now go through `state` on the wrapper.
+        val stateField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("state").apply {
             isAccessible = true
         }
-        val ringCountField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("ringCount").apply {
+        val ringField = RedactorState::class.java.getDeclaredField("ring").apply {
             isAccessible = true
         }
-        val outputField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("outputQueue").apply {
+        val ringCountField = RedactorState::class.java.getDeclaredField("ringCount").apply {
             isAccessible = true
         }
-        val outputCountField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("outputCount").apply {
+        val outputField = RedactorState::class.java.getDeclaredField("outputQueue").apply {
+            isAccessible = true
+        }
+        val outputCountField = RedactorState::class.java.getDeclaredField("outputCount").apply {
             isAccessible = true
         }
         val inputField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("inputBuffer").apply {
@@ -616,11 +634,12 @@ class StreamingRedactorTest {
 
         // Buffers should be cleared: ring empty, output queue empty, input zeroed.
         // (WU-RP-022: representation is a primitive ring; invariant unchanged.)
-        val ring = pendingField.get(wrapped) as ByteArray
-        val ringCount = ringCountField.get(wrapped) as Int
         @Suppress("UNCHECKED_CAST")
-        val outputQueue = outputField.get(wrapped) as ByteArray
-        val outputCount = outputCountField.get(wrapped) as Int
+        val state = stateField.get(wrapped) as RedactorState
+        val ring = ringField.get(state) as ByteArray
+        val ringCount = ringCountField.get(state) as Int
+        val outputQueue = outputField.get(state) as ByteArray
+        val outputCount = outputCountField.get(state) as Int
         val inputBuffer = inputField.get(wrapped) as ByteArray
 
         assertTrue(ringCount == 0, "Pending should be empty after close()")

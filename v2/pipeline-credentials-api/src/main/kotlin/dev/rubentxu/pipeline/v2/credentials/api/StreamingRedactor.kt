@@ -35,11 +35,17 @@ class RedactorState internal constructor(
     internal lateinit var seamFirstBytes: ByteArray
 
     /**
-     * Output ring for SCRUB_MARKER bytes. Normal operation enqueues at most
-     * markerLength bytes before the next drain; [finish] may enqueue up to
-     * maxLiteral bytes (EOF pending drain), hence the capacity.
+     * Output ring for SCRUB_MARKER bytes. Capacity MUST accommodate the worst
+     * case of a single [feed] call: a [feed] with `len` input bytes can emit
+     * up to `len` bytes (one per input byte, when the lookahead ring is full),
+     * plus the SCRUB_MARKER expansion. The agent's read buffer is `chunkSize`,
+     * so a single feed can emit up to `chunkSize` bytes plus one SCRUB_MARKER.
+     * Without this, a large `feed` call wraps the output ring and overwrites
+     * bytes that the next [take] has not yet read — R2.3(b) / TODO 4 caught
+     * this as f04 "stdout garbled" (outputQueue=56, feed emits 8136 bytes,
+     * first 25 are clobbered before the take loop drains them).
      */
-    internal val outputQueue = ByteArray(maxOf(maxLiteral, SecretPatternRegistry.SCRUB_MARKER.length))
+    internal val outputQueue = ByteArray(maxOf(maxLiteral, chunkSize) + SecretPatternRegistry.SCRUB_MARKER.length)
     internal var outputHead = 0
     internal var outputCount = 0
 

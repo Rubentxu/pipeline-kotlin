@@ -83,6 +83,31 @@ class ObsPc208LevelBUatTest {
         controlRoot = Files.createDirectories(root.resolve("control"))
     }
 
+    /**
+     * Wait for any surviving ingest agent before the @TempDir cleanup tries
+     * to delete the temp dir. A live agent holds the Output Plane segment
+     * files open (via its FileChannel ownership lock), and JUnit's recursive
+     * delete fails if any file is locked — which surfaces as a
+     * "Failed to close extension context" rather than a test failure, and
+     * the suite ends RED even when every assertion was green.
+     *
+     * R2.3(b) / TODO 4: this is the price of the kill-the-runtime guarantee.
+     * Each HappyPath step that uses `kill -9` on the producer leaves the
+     * agent running until it sees the child exit + drain EOF; without this
+     * teardown the next test's @TempDir creation collides with the previous
+     * test's still-warming agent's warmup FileChannel.
+     */
+    @org.junit.jupiter.api.AfterEach
+    fun tearDown() {
+        try {
+            awaitNoAgentProcess(30)
+        } catch (_: Exception) {
+            // Best effort; the JUnit cleanup will still try to delete and
+            // may leave a stale agent, but the next test's @TempDir is a
+            // different directory and the agent's lock is on the old one.
+        }
+    }
+
     private fun opIdFormat() = OpId(runId, 0, 0).format()
 
     private fun committedBytes(): ByteArray {
@@ -656,6 +681,10 @@ class ObsPc208LevelBUatTest {
             awaitFile(doneA, 90, "op A never finished")
 
             // Start a second op in the same run after the first one finished.
+            // R2.3(b) / TODO 4: the second op's bytes may not have been
+            // committed by the agent at the moment the runtime's poll detects
+            // the child exit and returns. Wait for the plane to grow before
+            // asserting the extent.
             runProducer(
                 workspace = workspace,
                 barrier = null,
@@ -675,9 +704,17 @@ class ObsPc208LevelBUatTest {
             val streamB = OutputPlaneProvider.streamsOf(runId, OpId(runId, 0, 1).format()).stdout.stream
             val store = OutputPlaneProvider.storeForReading(controlRoot)
             val extentA = store.committedExtent(streamA) ?: 0
-            val extentB = store.committedExtent(streamB) ?: 0
+            // Wait for op B's agent to commit its bytes (the done file
+            // appears before the agent's final commit lands).
+            val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
+            var extentB = store.committedExtent(streamB) ?: 0
+            while (extentB == 0L && System.nanoTime() < deadline) {
+                Thread.sleep(100)
+                OutputPlaneProvider.forgetAll()
+                extentB = store.committedExtent(streamB) ?: 0
+            }
             assertTrue(extentA > 0, "f08: op A stream is non-empty")
-            assertTrue(extentB > 0, "f08: op B stream is non-empty")
+            assertTrue(extentB > 0, "f08: op B stream is non-empty (extent=$extentB)")
             // The two streams MUST be distinct OutputStreamIds.
             assertNotEquals(streamA, streamB, "f08: stream ids are distinct per opId")
         }

@@ -28,7 +28,7 @@ import java.util.Objects;
  * <h2>The rule (the only rule)</h2>
  *
  * The exclusive upper bound is the next minor of the product version: a
- * {@code 0.56.0} host is admitted by {@code [0.47.0, 0.57.0)}. The lower bound
+ * {@code 0.57.0} host is admitted by {@code [0.47.0, 0.58.0)}. The lower bound
  * is the minimum API range the maintainers have certified; bumping it requires
  * a deliberate edit to this file and a corresponding edit to the tests.
  *
@@ -64,7 +64,7 @@ public final class PluginCompatibilityPolicy {
     private final int hostPatch;
 
     /**
-     * @param productVersion the product version string (e.g. {@code "0.56.0"}).
+     * @param productVersion the product version string (e.g. {@code "0.57.0"}).
      *                       Must be exactly {@code MAJOR.MINOR.PATCH} with
      *                       non-negative components.
      * @throws IllegalArgumentException if the version is malformed or the
@@ -101,15 +101,15 @@ public final class PluginCompatibilityPolicy {
 
     /**
      * The exclusive upper bound as {@code "MAJOR.MINOR.PATCH"}: the next
-     * minor of the product version. A {@code 0.56.0} host produces
-     * {@code "0.57.0"}; a {@code 0.56.2} host also produces {@code "0.57.0"}
+     * minor of the product version. A {@code 0.57.0} host produces
+     * {@code "0.58.0"}; a {@code 0.57.2} host also produces {@code "0.58.0"}
      * (the upper bound is the next minor, not the next patch).
      */
     public String untilExclusive() {
         return hostMajor + "." + (hostMinor + 1) + ".0";
     }
 
-    /** The canonical apiRange literal, e.g. {@code "[0.47.0, 0.57.0)"}. */
+    /** The canonical apiRange literal, e.g. {@code "[0.47.0, 0.58.0)"}. */
     public String apiRange() {
         return "[" + minInclusive() + ", " + untilExclusive() + ")";
     }

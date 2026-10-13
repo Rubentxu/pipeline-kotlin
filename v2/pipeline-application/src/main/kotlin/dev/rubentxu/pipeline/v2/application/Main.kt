@@ -200,6 +200,13 @@ fun main(args: Array<String>) {
         }
     }
 
+    // PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING: validate --output-protocol
+    // BEFORE the run starts. An unknown id is a fail-closed
+    // CliExit.InvalidArgument (exit 2); the server never falls back
+    // to Published on an unknown request, because that would be the
+    // silent-degradation defect the ADR was written to prevent.
+    val outputProtocol: OutputProtocol = negotiateOutputProtocolOrExit(config.outputProtocolTokens)
+
     val command = config.command
 
     // The parser already refused an unusable query (empty pattern, uncompilable
@@ -274,7 +281,13 @@ fun main(args: Array<String>) {
             dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.clear()
         }
         val events = store.eventsFor(validateRunId).toList()
-        print(RunObservationOutput.encode(events, config.view, config.format, compiledQuery))
+        writeEventDocument(
+            events = events,
+            view = config.view,
+            format = config.format,
+            query = compiledQuery,
+            protocol = outputProtocol,
+        )
         // TRAIN-DSL-HONESTY: a script that compiles but throws while building
         // its IR reaches here with isSuccess == true and no usable spec.
         // Reporting SUCCESS for it was the same DEFAULT_SUCCESS the run path
@@ -378,9 +391,11 @@ fun main(args: Array<String>) {
                 java.util.UUID.randomUUID().toString().take(8)
         )!!
         // PK-1 / ADR-PK1-IDENTITY: emit the RunCorrelated event and
-        // the LaunchReceipt on stdout now that the in-memory event
-        // store is wired and the runId + correlationId + owner are
-        // known.
+        // the LaunchReceipt. The receipt is durable machine-readable
+        // metadata, not a human message; in TEXT view it goes to
+        // stderr so the human console is not polluted. In JSON/JSONL
+        // view it is the first stdout line so a machine consumer can
+        // join the receipt to the event stream by line index.
         emitCorrelationAndReceipt(
             eventStore = eventStore,
             runId = dev.rubentxu.pipeline.v2.domain.RunId(runId),
@@ -388,6 +403,7 @@ fun main(args: Array<String>) {
             ownerId = syntheticOwner,
             startedAtMs = System.currentTimeMillis(),
             controlDir = controlDirRoot,
+            format = config.format,
         )
         val host = Kotlin24ScriptingHost(eventStore, runId)
         val dslClasspath = computeScriptClasspath(config.pluginJars)
@@ -556,7 +572,13 @@ fun main(args: Array<String>) {
         // ADR-0088: human text was already streamed live by ConsolePrintingEventSink.
         // Only the machine formats still need a document at the end.
         if (config.format != ObservationFormat.TEXT) {
-            print(RunObservationOutput.encode(events, config.view, config.format, compiledQuery))
+            writeEventDocument(
+                events = events,
+                view = config.view,
+                format = config.format,
+                query = compiledQuery,
+                protocol = outputProtocol,
+            )
         }
         val exitFailure: Boolean = if (runOutcome != null) {
             when (runOutcome) {
@@ -706,6 +728,7 @@ fun main(args: Array<String>) {
         ownerId = requireNotNull(runOwner),
         startedAtMs = System.currentTimeMillis(),
         controlDir = controlDirRoot,
+        format = config.format,
     )
     val host = Kotlin24ScriptingHost(eventStore, runId)
     val dslClasspath = computeScriptClasspath(config.pluginJars)
@@ -1194,6 +1217,7 @@ private fun emitCorrelationAndReceipt(
     ownerId: dev.rubentxu.pipeline.v2.events.durable.RunOwnerId,
     startedAtMs: Long,
     controlDir: java.nio.file.Path,
+    format: ObservationFormat,
 ) {
     val correlatedEvent = RunCorrelated(
         eventId = "e-correlated-${System.nanoTime()}",
@@ -1212,6 +1236,95 @@ private fun emitCorrelationAndReceipt(
         startedAtMs = startedAtMs,
         controlDir = controlDir,
     )
-    System.out.write(LaunchReceipt.encode(receipt).toByteArray(Charsets.UTF_8))
-    System.out.flush()
+    val bytes = LaunchReceipt.encode(receipt).toByteArray(Charsets.UTF_8)
+    // ADR-PK-NEXT-R0.3: in TEXT view the receipt goes to stderr so the
+    // human console is not polluted. In JSON / JSON_LINES view the
+    // receipt is the first stdout line so a machine consumer can
+    // join it to the event stream by line index. Either way, the
+    // receipt is NOT a substitute for the durable RunCorrelated
+    // event; the certifier must validate the durable record, not
+    // trust the receipt alone.
+    when (format) {
+        ObservationFormat.TEXT -> {
+            System.err.write(bytes)
+            System.err.flush()
+        }
+        ObservationFormat.JSON, ObservationFormat.JSON_LINES -> {
+            System.out.write(bytes)
+            System.out.flush()
+        }
+    }
+}
+
+// ------------------------------------------------------------------------
+// PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING — opt-in output protocol helpers.
+// ------------------------------------------------------------------------
+
+/**
+ * Resolve the operator-supplied `--output-protocol` tokens to a
+ * concrete [OutputProtocol] or fail closed with
+ * [CliExit.InvalidArgument] (exit 2).
+ *
+ * Rules (ADR-PK1-OUTPUT-FRAMING):
+ * - Empty list → [OutputProtocol.DEFAULT] (Published). No change
+ *   in behaviour for callers that did not opt in.
+ * - The token list is the CLIENT'S PREFERENCE ORDER. The first id
+ *   in the list that intersects [OutputProtocol.SUPPORTED_IDS] wins.
+ *   Unknown ids in the list are SKIPPED, not rejected — clients
+ *   may declare more ids than this binary supports, as long as at
+ *   least one matches.
+ * - When NO id in the list intersects the supported set, the
+ *   process exits with [CliExit.InvalidArgument] (code 2) and an
+ *   envelope listing every supported id. The server NEVER falls
+ *   back to Published on an unknown request — silent degradation
+ *   is the exact defect the ADR was written to prevent.
+ *
+ * Resolution lives in [OutputProtocol.negotiate]; this wrapper
+ * only translates "no intersection" into the typed CLI envelope.
+ */
+private fun negotiateOutputProtocolOrExit(tokens: List<String>): OutputProtocol {
+    val resolved = OutputProtocol.negotiate(tokens)
+    if (resolved != null) return resolved
+    val supported = OutputProtocol.SUPPORTED_IDS.joinToString(", ")
+    val requested = tokens.joinToString(", ")
+    val exit = CliExit.InvalidArgument(
+        message = "no acceptable --output-protocol in [$requested]. Supported: $supported",
+        hint = "see ADR-PK1-OUTPUT-FRAMING for the negotiation contract",
+    )
+    System.err.write(exit.encodeEnvelope().toByteArray(Charsets.UTF_8))
+    System.err.flush()
+    System.exit(exit.code)
+    // unreachable; System.exit never returns control. The return
+    // statement below exists only to satisfy the Kotlin compiler's
+    // "missing return on a path" check on a function declared with a
+    // non-Unit return type.
+    return OutputProtocol.DEFAULT
+}
+
+/**
+ * Write the end-of-run event document to the channel the negotiated
+ * protocol dictates. The bytes do not change between protocols; the
+ * channel does.
+ *
+ * - [OutputProtocol.Published] (default) → stdout.
+ * - [OutputProtocol.SeparatedV2] → stderr (machine events go to
+ *   stderr; the receipt is unaffected and stays on stdout via
+ *   [emitCorrelationAndReceipt]).
+ * - TEXT view is unaffected in both protocols; this helper is
+ *   only called for JSON / JSON_LINES.
+ */
+private fun writeEventDocument(
+    events: List<dev.rubentxu.pipeline.v2.events.DomainEvent>,
+    view: dev.rubentxu.pipeline.v2.application.observation.ObservationView,
+    format: ObservationFormat,
+    query: dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery,
+    protocol: OutputProtocol,
+) {
+    val bytes = RunObservationOutput.encode(events, view, format, query).toByteArray(Charsets.UTF_8)
+    val sink = when (protocol) {
+        OutputProtocol.Published -> System.out
+        OutputProtocol.SeparatedV2 -> System.err
+    }
+    sink.write(bytes)
+    sink.flush()
 }

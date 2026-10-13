@@ -20,6 +20,17 @@ application {
     mainClass.set("dev.rubentxu.pipeline.v2.application.MainKt")
 }
 
+// PK-0-57-RC1: Gradle 8.14.5 strict validation flags the application
+// plugin's default `distZip` task for not declaring its dependency on
+// `installDist`. The implicit dependency existed in earlier Gradle
+// versions; the strict validator now requires an explicit declaration
+// for the output of `installDist` that `distZip` consumes.
+// Without this, `:pipeline-release:releaseGate` fails with
+// "Task ':pipeline-application:distZip' uses this output of task
+// ':pipeline-application:installDist' without declaring an explicit
+// or implicit dependency".
+tasks.named("distZip") { dependsOn(tasks.named("installDist")) }
+
 // WU-LPR-071: single-version provider contract — the jar manifest MUST carry
 // Implementation-Version populated from project.version (which is sourced from the
 // git tag at release time via v2/build.gradle.kts root). Without this, the
@@ -120,6 +131,23 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.sqlite.jdbc)
     implementation(libs.kotlinx.coroutines.core)
+
+    // PK-RELEASE-CONSOLIDATION H1.4 follow-up: the three external example
+    // plugins are mandatory in the release gate. Wiring them as
+    // `runtimeOnly` files puts their JARs on the runtime classpath of
+    // the application, which `installDist` then stages into `lib/`
+    // (and the `distZip` packages alongside the four official
+    // :pipeline-step-sdk plugins). The external JARs are produced by
+    // :buildExamplePlugin, :buildExternalDirectivePlugin, and
+    // :buildExampleBlockPlugin in the root build, all of which depend
+    // on `publishSdkForExternalPlugin` so the JARs exist before the
+    // application graph is wired. The test runtime uses the same JARs
+    // (see `testImplementation` further down) so the gate and the
+    // application suite observe the same bytes.
+    runtimeOnly(files(rootDir.resolve("../examples/example-uppercase-plugin/build/libs/example-uppercase-plugin-0.1.0.jar")))
+    runtimeOnly(files(rootDir.resolve("../examples/example-directive-plugin/build/libs/example-directive-plugin-0.1.0.jar")))
+    runtimeOnly(files(rootDir.resolve("../examples/example-block-plugin/build/libs/example-block-plugin-0.1.0.jar")))
+
     testImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit.jupiter)
     testImplementation(project(":pipeline-step-sdk:scm-git"))
@@ -207,8 +235,22 @@ tasks.test {
     // semantics (no heartbeat/backoff/LOST classification); 2 parallel forks
     // halve wall time on 2-core CI runners. forkEvery recycles test JVMs that
     // accumulate CLI child processes.
-    maxParallelForks = 2
-    forkEvery = 40
+    //
+    // PK-0-57-RC1 (T3): the WU-RP-005 fork economy is PAUSED for this train.
+    // Two HF2 UATs that fork the installed `pipelinek` binary — WURp023
+    // (observation surfaces) and UatS2R0 (run ownership / cross-process
+    // lease) — wedge in futex_do_wait under host load > 5 when two
+    // Gradle test forks spawn `pipelinek` at the same time (BLOCK_E_RUN_21
+    // receipts document the load condition). The stable reproduction
+    // documented there requires `--max-workers=1 --no-daemon`. We honour
+    // that here at the per-test fork layer: one fork at a time, one
+    // fresh JVM per test class, so the loaded `pipelinek` child process
+    // never collides with another fork's classloader or DB file. The
+    // WU-RP-005 wall-time cost is the price of a green UAT gate for
+    // 0.57.0-rc1; re-measure in 0.58 with a tighter fork-every once the
+    // UAT wedge has a structural fix.
+    maxParallelForks = 1
+    forkEvery = 1
     // WU-RP-005 round 3: `--tests '!pkg.Class*'` negation on the command line
     // is silently IGNORED by Gradle in this configuration (verified locally:
     // the exact CI command still executed all 203 classes). CI now passes

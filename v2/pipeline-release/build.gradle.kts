@@ -1,3 +1,6 @@
+import org.gradle.api.file.RegularFile
+import org.gradle.api.provider.Provider
+
 plugins {
     kotlin("jvm")
     // Matched to the Kotlin version (2.4.10), NOT the kotlinx-serialization
@@ -27,6 +30,55 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    // PK-RELEASE-CONSOLIDATION H1.4: the test task asserts the SBOM
+    // exists next to the distribution ZIP. The candidateAdmission task
+    // is what stages it there, and the test must depend on it (or on
+    // the cyclonedxBom that produces the source) so a developer
+    // running `:pipeline-release:test` directly observes the same
+    // staging the releaseGate does.
+    dependsOn(":pipeline-application:cyclonedxBom")
+    dependsOn("candidateAdmission")
+    // PK-RELEASE-CONSOLIDATION R1.1 (audit fix, refined after M1.1
+    // mutation, fixed after probe-env diagnostic): the audit of
+    // 12c3ac17 flagged that releaseGate's previous wiring set
+    // PIPELINEK_DIST_ZIP inside doFirst on the aggregator task.
+    // By the time the doFirst ran, the test task it depends on
+    // had either already forked its JVM or completed, and the
+    // env var arrived too late. The first attempt at a fix
+    // (c1896473) wired the env var in the test task's own
+    // configuration as a resolved String — the path of the
+    // distZip output — but the env var was unconditional: a
+    // mutation test with PIPELINEK_DIST_ZIP=/tmp/nonexistent-
+    // zzz-999.zip on the command line was silently overridden
+    // by the build script, and the test green-passed against
+    // a path that did not exist. That mutation proved the
+    // wiring was over-riding the operator's intent.
+    //
+    // The refined wiring: resolve the provider chain to a
+    // String AT configuration time (so the JVM sees a real
+    // path, not a Provider.toString() literal — the latter
+    // would render as "or(valueof(...), fixed(/var/...))"
+    // and the test would read that literal as a path,
+    // breaking the test for a different reason). The chain
+    // still preserves the operator's value: a pre-existing
+    // PIPELINEK_DIST_ZIP is honoured; a missing one defaults
+    // to the distZip this task dependsOn.
+    val distZipProvider: Provider<RegularFile> = project(":pipeline-application")
+        .layout.buildDirectory
+        .file("distributions/pipelinek-${project.version}.zip")
+    dependsOn(":pipeline-application:distZip")
+    inputs.file(distZipProvider)
+        .withPropertyName("release.dist.zip.input")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    val distZipPath = distZipProvider.get().asFile.absolutePath
+    val envValue: String = providers.environmentVariable("PIPELINEK_DIST_ZIP")
+        .orElse(distZipPath)
+        .get()
+    environment("PIPELINEK_DIST_ZIP", envValue)
+    val sysPropValue: String = providers.systemProperty("release.dist.zip")
+        .orElse(distZipPath)
+        .get()
+    systemProperty("release.dist.zip", sysPropValue)
     // Honour a system property override so CI can point the real-artifact
     // checks at a different build tree. Default: this module lives at
     // v2/pipeline-release/, so the parent is v2/.
@@ -178,10 +230,12 @@ fun gitCommitOf(root: Project): String = try {
 
 tasks.register("releaseGate") {
     group = "distribution"
-    description = "PK-RC-PLUGIN-001 + PK-RC-RENDER-001: run the candidate gate " +
-        "end-to-end. Dist ZIP + cyclonedxBom + candidateAdmission + renderer " +
-        "partition + application regression suite + mandatory-plugin test. " +
-        "Non-zero on any refusal."
+    description = "PK-RC-PLUGIN-001 + PK-RC-RENDER-001 + PK-NEXT R0.2 + PK-RELEASE-CONSOLIDATION H1.4: " +
+        "run the candidate gate end-to-end. Dist ZIP + cyclonedxBom + candidateAdmission + " +
+        "renderer partition + application regression suite + mandatory-plugin test (7 plugins: 4 " +
+        "official + 3 external) + LaunchReceipt contract + SDK BOM alignment. " +
+        "Non-zero on any refusal. The mandatory-plugin test fails (not skips) when " +
+        "PIPELINEK_DIST_ZIP is unset, so a missing distribution is a hard red."
 
     dependsOn(
         ":pipeline-application:distZip",
@@ -194,9 +248,35 @@ tasks.register("releaseGate") {
         // matching arm in `ConsoleFamilyLines.run(...)`.
         ":pipeline-architecture-tests:test",
         ":pipeline-application:test",
-        // PK-RC-PLUGIN-001: the mandatory-plugin test cannot skip. The
-        // gate wires `PIPELINEK_DIST_ZIP` so the test sees the distZip
-        // output that this same task just built.
+        // PK-RC-PLUGIN-001 / R0.2: the mandatory-plugin test now observes
+        // the distZip through the test task's own configuration (env var
+        // + system property), not through a doFirst on the aggregator
+        // (audit R1.1 fix). The dependsOn on distZip ensures the file
+        // exists before the test task is scheduled.
         "test",
     )
+
+    // PK-RELEASE-CONSOLIDATION R1.1 (audit fix): previously this doFirst
+    // called `testTask.environment("PIPELINEK_DIST_ZIP", ...)`. That
+    // arrived too late — by the time releaseGate's doFirst ran, the
+    // test task it depends on had either already forked or already
+    // completed. The env var is now attached to the test task's own
+    // configuration (above), so a developer running just
+    // `:pipeline-release:test` gets the same wiring as the gate.
+    //
+    // The doFirst is now a sanity check only: the dependency on
+    // :pipeline-application:distZip guarantees the file exists by the
+    // time the test JVM forks, but if a developer bypasses the graph
+    // (cleaning the build dir mid-run, for instance) we want a hard
+    // error rather than a confusing "zip not found" deep in the test.
+    doFirst {
+        val distZip = project(":pipeline-application").layout.buildDirectory
+            .file("distributions/pipelinek-${project.version}.zip").get().asFile
+        if (!distZip.isFile) {
+            throw GradleException(
+                "releaseGate: expected distribution ZIP at $distZip but it does not " +
+                    "exist. Run :pipeline-application:distZip first.",
+            )
+        }
+    }
 }

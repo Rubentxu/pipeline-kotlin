@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import dev.rubentxu.pipeline.v2.application.support.Subprocess
 import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.events.DomainEvent
@@ -66,7 +68,7 @@ pipeline {
         val stdout = runPipeline(javaHome, classpath, dbPath, controlRoot, scriptPath)
 
         // TMO-S-013: no timeout when absent — pipeline completes successfully
-        val runFinished = findRunFinished(stdout)
+        val runFinished = findRunFinished(stdout, "")
         assertEquals("success", runFinished,
             "Pipeline with no timeout should complete successfully (TMO-S-013). stdout=$stdout")
     }
@@ -107,7 +109,7 @@ pipeline {
         val stdout = runPipeline(javaHome, classpath, dbPath, controlRoot, scriptPath)
 
         // Verify pipeline failed
-        val runFinished = findRunFinished(stdout)
+        val runFinished = findRunFinished(stdout, "")
         assertEquals("failure", runFinished,
             "Pipeline with timeout should fail (watchdog fires). stdout=$stdout")
 
@@ -173,7 +175,7 @@ pipeline {
         val stdout = runPipeline(javaHome, classpath, dbPath, controlRoot, scriptPath)
 
         // Verify pipeline failed via JSON event stream
-        val runFinished = findRunFinished(stdout)
+        val runFinished = findRunFinished(stdout, "")
         assertEquals("failure", runFinished,
             "Pipeline with non-zero exit should fail (RunFinished.outcome). stdout=$stdout")
 
@@ -297,11 +299,28 @@ pipeline {
 
     /**
      * Parses the JSON event stream and returns the RunFinished.outcome field.
+     *
+     * PK-NEXT R0.3: takes the raw `cliRun.stdout` and `cliRun.stderr`
+     * separately so the contract is decoded correctly. The previous
+     * shape accepted a single concatenated string, which is wrong
+     * against the R0.3 channel split: line 1 of stdout is the
+     * LaunchReceipt, line 2 is the event document.
      */
-    private fun findRunFinished(jsonText: String): String {
-        val events = JsonEventLog.decode(jsonText)
-        val runFinished = events.filterIsInstance<RunFinished>().firstOrNull()
-            ?: throw AssertionError("No RunFinished event in output: $jsonText")
+    private fun findRunFinished(stdout: String, stderr: String): String {
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = stdout,
+            stderr = stderr,
+            format = ObservationFormat.JSON,
+        )
+        if (contract.eventDocument.decodeError != null) {
+            throw AssertionError(
+                "JSON event document failed to decode: ${contract.eventDocument.decodeError}",
+            )
+        }
+        val runFinished = contract.eventDocument.events
+            .filterIsInstance<RunFinished>()
+            .firstOrNull()
+            ?: throw AssertionError("No RunFinished event in output: $stdout")
         return runFinished.outcome
     }
 

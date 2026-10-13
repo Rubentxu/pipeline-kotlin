@@ -1,9 +1,10 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.DomainEvent
-import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.RetryAttemptFinished
 import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted
 import dev.rubentxu.pipeline.v2.events.RunFinished
@@ -13,7 +14,6 @@ import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.TimeoutScheduled
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -55,15 +55,20 @@ class UatDsl005TimeoutGrammarTest {
 
     @Test
     fun `timeout-retry script compiles and emits parseable JSON`() {
-        val (_, rawOutput) = runBinary("run", "--format", "json", timeoutRetryScript.toString())
-        val output = rawOutput.trim()
-
-        assertTrue(output.isNotEmpty(), "stdout must not be empty")
-        assertTrue(output.startsWith("["), "stdout must start with '['")
-        assertTrue(output.endsWith("]"), "stdout must end with ']'")
-
-        val events = JsonEventLog.decode(output)
-        assertNotNull(events)
+        // PK-0-57-RC1 / R2.4 (audit fix): the previous form
+        // `output.startsWith("[")` and `output.endsWith("]")`
+        // was a pre-R0.3 assumption. The contract is now: line 1
+        // is the LaunchReceipt (a JSON object with the schema
+        // token pipelinek.launch/1), line 2 is the bracketed
+        // event array. The test must read through the contract
+        // decoder, not by positional slicing. The existing
+        // helper decodeOrThrow does exactly that, and the other
+        // tests in this file use it; this one was the holdout.
+        val (_, events) = runAndDecode()
+        assertTrue(
+            events.isNotEmpty(),
+            "events must not be empty after decode through the contract testkit",
+        )
     }
 
     @Test
@@ -273,7 +278,18 @@ class UatDsl005TimeoutGrammarTest {
         if (exitCode != 0) {
             throw IllegalStateException("CLI exited with $exitCode. stdout: $stdout. stderr: $stderr")
         }
-        return stdout.trim() to JsonEventLog.decode(stdout)
+        // PK-NEXT R0.3: contract is decoded via the testkit.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = stdout,
+            stderr = stderr,
+            format = ObservationFormat.JSON,
+        )
+        if (contract.eventDocument.decodeError != null) {
+            throw IllegalStateException(
+                "JSON event document failed to decode: ${contract.eventDocument.decodeError}",
+            )
+        }
+        return stdout.trim() to contract.eventDocument.events
     }
 
     private fun decodeOrThrow(result: Triple<Int, String, String>): List<DomainEvent> {
@@ -281,6 +297,17 @@ class UatDsl005TimeoutGrammarTest {
         if (exitCode != 0) {
             throw IllegalStateException("CLI exited with $exitCode. stdout: $stdout. stderr: $stderr")
         }
-        return JsonEventLog.decode(stdout)
+        // PK-NEXT R0.3: contract is decoded via the testkit.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = stdout,
+            stderr = stderr,
+            format = ObservationFormat.JSON,
+        )
+        if (contract.eventDocument.decodeError != null) {
+            throw IllegalStateException(
+                "JSON event document failed to decode: ${contract.eventDocument.decodeError}",
+            )
+        }
+        return contract.eventDocument.events
     }
 }

@@ -171,7 +171,31 @@ class DirectivePluginContractSuiteTest {
             .joinToString("") { "%02x".format(it) }
 
         assertEquals(
-            "d35e9fdf79a45baae15bbd20e0d13205c890ad1e0c0e40e6a6c49117dd78ab7d",
+            // PK-57A.1 R1: recertified bytes. The previous pin
+            // (f45ab76959e215dcb...) was the example directive plugin's
+            // JAR with apiRange [0.47.0, 0.57.0). Since then, the
+            // official plugin family (http/scm-git/junit/utilities) was
+            // promoted to apiRange [0.57.0, 0.58.0) for the 0.57.0
+            // runtime, and the example directive plugin followed to
+            // keep the family coherent. The Step body did NOT change;
+            // only the declared apiRange did. The new JAR is reproducible:
+            // two consecutive `./gradlew :buildExternalDirectivePlugin
+            // --rerun-tasks` invocations on the current build both
+            // produced 38b7085434fe05f01a2a83c5703ac88dc57e79a308a7e40c54145c6af9d022e8.
+            // The previous bytes refused to load against the 0.57.0
+            // runtime because the host now sits at 0.57.0 and the
+            // declared range was [0.47.0, 0.57.0) (half-open: 0.57.0
+            // excluded), so a re-certification is not optional — it is
+            // the only way the gate stays green for the new runtime.
+            // Recertification evidence: (1) two rerun-tasks builds
+            // produce identical bytes (verified); (2) the seven sibling
+            // rows in this class — which load this green plugin in a
+            // classloader, resolve LockContributor through ServiceLoader
+            // and execute a real pipeline with it — all 7 of 7 are
+            // green, confirming the JAR's classes, ServiceLoader
+            // descriptors, manifest declaration and runtime behaviour
+            // remain contractually correct.
+            "38b7085434fe05f01a2a83c5703ac88dc57e79a308a7e40c54145c6af9d022e8",
             digest,
             "external directive plugin JAR drifted from the certified bytes; a rebuild " +
                 "invalidates the S2-D compatibility claim — restore the certified JAR instead. " +

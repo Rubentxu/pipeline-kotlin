@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import java.nio.file.Files
 import java.nio.file.Path
@@ -69,7 +71,7 @@ pipeline {
         val stdout = runPipeline(javaHome, classpath, dbPath, controlRoot, scriptPath)
 
         // Verify pipeline succeeded
-        val runFinished = findRunFinished(stdout)
+        val runFinished = findRunFinished(stdout, "")
         assertEquals("success", runFinished,
             "Pipeline with env containing = should complete successfully. stdout=$stdout")
 
@@ -116,7 +118,7 @@ pipeline {
 
         val stdout = runPipeline(javaHome, classpath, dbPath, controlRoot, scriptPath)
 
-        val runFinished = findRunFinished(stdout)
+        val runFinished = findRunFinished(stdout, "")
         assertEquals("success", runFinished,
             "Pipeline with newline in env should complete. stdout=$stdout")
 
@@ -162,7 +164,7 @@ pipeline {
 
         val stdout = runPipeline(javaHome, classpath, dbPath, controlRoot, scriptPath)
 
-        val runFinished = findRunFinished(stdout)
+        val runFinished = findRunFinished(stdout, "")
         assertEquals("success", runFinished,
             "Pipeline with unicode/metachars in env should complete. stdout=$stdout")
 
@@ -210,7 +212,7 @@ pipeline {
 
         val stdout = runPipeline(javaHome, classpath, dbPath, controlRoot, scriptPath)
 
-        val runFinished = findRunFinished(stdout)
+        val runFinished = findRunFinished(stdout, "")
         assertEquals("success", runFinished,
             "Pipeline with JAVA_HOME env should complete. stdout=$stdout")
 
@@ -255,7 +257,7 @@ pipeline {
 
         val stdout = runPipeline(javaHome, classpath, dbPath, controlRoot, scriptPath)
 
-        val runFinished = findRunFinished(stdout)
+        val runFinished = findRunFinished(stdout, "")
         assertEquals("success", runFinished,
             "Pipeline with M2_HOME env should complete. stdout=$stdout")
 
@@ -314,10 +316,30 @@ pipeline {
     /**
      * Parses the JSON event stream and returns the RunFinished.outcome field.
      */
-    private fun findRunFinished(jsonText: String): String {
-        val events = JsonEventLog.decode(jsonText)
-        val runFinished = events.filterIsInstance<RunFinished>().firstOrNull()
-            ?: throw AssertionError("No RunFinished event in output: $jsonText")
+    /**
+     * Parses the JSON event stream and returns the RunFinished.outcome field.
+     *
+     * PK-NEXT R0.3: takes the raw `cliRun.stdout` and `cliRun.stderr`
+     * separately so the contract is decoded correctly. The previous
+     * shape accepted a single concatenated string, which is wrong
+     * against the R0.3 channel split: line 1 of stdout is the
+     * LaunchReceipt, line 2 is the event document.
+     */
+    private fun findRunFinished(stdout: String, stderr: String): String {
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = stdout,
+            stderr = stderr,
+            format = ObservationFormat.JSON,
+        )
+        if (contract.eventDocument.decodeError != null) {
+            throw AssertionError(
+                "JSON event document failed to decode: ${contract.eventDocument.decodeError}",
+            )
+        }
+        val runFinished = contract.eventDocument.events
+            .filterIsInstance<RunFinished>()
+            .firstOrNull()
+            ?: throw AssertionError("No RunFinished event in output: $stdout")
         return runFinished.outcome
     }
 }

@@ -900,4 +900,161 @@ class JsonEventLogRoundTripTest {
                 "this payload as another plugin's event. Decoded: $decoded"
         }
     }
+
+    // PK-RC-RENDER-001 — the array is located by structure, not by position.
+    //
+    // Read DECODE-FIX-CORRECTION.md before reading these. The first version of this block was
+    // seven tests that all passed against the ORIGINAL `decode`, which is how a wrong fix almost
+    // shipped: they asserted what the codec should do, not what the old codec got wrong.
+    //
+    // What follows is the honest residue. Only `bracket in the receipt` and `escaped quote`
+    // fail against the original code, so only those two are regressions in the strict sense.
+    // The others pin behaviour that must survive the change — they would catch a future
+    // over-eager scanner, which is the real risk in this helper, and they are marked as
+    // guards rather than claimed as proof of the bug.
+    private fun runStartedEvent(runId: String = "bounds-run") = RunStarted(
+        eventId = "id-1",
+        runId = runId,
+        sequence = 1L,
+        occurredAt = Instant.parse("2026-08-23T10:00:00Z"),
+        scriptPath = "test.pipeline.kts",
+    )
+
+    /**
+     * The regression that is real, copied from the failing case in `CliCompileErrorExitsOneTest`.
+     *
+     * `pipeline run --format json` writes the receipt line first and the event array after it, and
+     * there is no `[PipelineK]` progress line in between, because the machine format streams no
+     * live text. The payload therefore does NOT begin with `[`: it begins with the receipt's `{`.
+     * Positional slicing stripped that `{` and the last line instead of the array's brackets, so
+     * every event was lost and the caller reported `Events must contain RunStarted: []` for a run
+     * that had exited 0. This is the case the other tests in this block failed to reproduce.
+     */
+    @Test
+    fun `decode reads the array when the receipt is first and there is no progress line`() {
+        val runId = "json-format-run"
+        val document = JsonEventLog.encode(
+            listOf(
+                runStartedEvent(runId),
+                EchoOutputCaptured(
+                    eventId = "id-2",
+                    runId = runId,
+                    sequence = 2L,
+                    occurredAt = Instant.parse("2026-08-23T10:00:01Z"),
+                    stepIndex = 0,
+                    content = "payload",
+                ),
+            ),
+        )
+        val stdout = "{\"schema\":\"pipelinek.launch/1\",\"runId\":\"$runId\"," +
+            "\"correlationId\":\"corr-1\",\"ownerId\":\"cli-inmem-1\"," +
+            "\"startedAtMs\":1791794694902,\"status\":\"Launched\"}\n" + document
+
+        assertTrue(stdout.startsWith("{\""), "the payload really does not start with '['")
+
+        val decoded = JsonEventLog.decode(stdout)
+
+        assertEquals(2, decoded.size, "the array after the receipt must decode: got $decoded")
+        assertEquals(runId, (decoded.first() as RunStarted).runId)
+        assertEquals("EchoOutputCaptured", decoded[1].kind)
+    }
+
+    @Test
+    fun `decode reads the array after the launch receipt line`() {
+        val document = JsonEventLog.encode(
+            listOf(
+                runStartedEvent(),
+                EchoOutputCaptured(
+                    eventId = "id-2",
+                    runId = "bounds-run",
+                    sequence = 2L,
+                    occurredAt = Instant.parse("2026-08-23T10:00:01Z"),
+                    stepIndex = 0,
+                    content = "payload",
+                ),
+            ),
+        )
+        // Shape copied from the recorded control run: a receipt line, four progress lines, the
+        // event array, then the closing line. Both details are load-bearing and were found the
+        // hard way. The trailing line matters because the real stream does not end at `]`, so a
+        // fixture that stopped there let the old slicing survive by accident. TWO events matter
+        // because with a single event the old code recovered it anyway: the pre-array text rode
+        // along inside the one comma-separated segment and `decodeEvent` still read the fields.
+        val stdout = "[PipelineK] Run correlated: bounds-run\n" +
+            "{\"schema\":\"pipelinek.launch/1\",\"runId\":\"bounds-run\",\"ownerId\":\"cli-inmem-1\"}\n" +
+            "[PipelineK] Compiling pipeline\n" +
+            "[PipelineK] Compilation finished with 0 diagnostic(s)\n" +
+            "Discovered external Step plugins: scm-git, http, junit, utilities\n" +
+            document +
+            "\nPipeline finished with SUCCESS"
+
+        val decoded = JsonEventLog.decode(stdout)
+
+        assertEquals(2, decoded.size, "the array after the receipt must still decode")
+        assertEquals("bounds-run", (decoded.first() as RunStarted).runId)
+    }
+
+    @Test
+    fun `decode is not confused by a bracket in the receipt text`() {
+        val document = JsonEventLog.encode(listOf(runStartedEvent()))
+        val stdout = "{\"schema\":\"pipelinek.launch/1\",\"note\":\"[truncated]\"}\n" + document
+
+        val decoded = JsonEventLog.decode(stdout)
+
+        assertEquals(1, decoded.size, "a bracket inside the receipt must not close the array early")
+    }
+
+    @Test
+    fun `decode is not confused by an escaped quote before the array`() {
+        val document = JsonEventLog.encode(listOf(runStartedEvent()))
+        val stdout = "{\"schema\":\"pipelinek.launch/1\",\"note\":\"say \\\"hi\\\" [now]\"}\n" + document
+
+        val decoded = JsonEventLog.decode(stdout)
+
+        assertEquals(1, decoded.size, "an escaped quote must not end string tracking")
+    }
+
+    @Test
+    fun `decode reads an event whose own text contains brackets`() {
+        val runId = "brackets-in-event"
+        val events = listOf(
+            runStartedEvent(runId),
+            EchoOutputCaptured(
+                eventId = "id-2",
+                runId = runId,
+                sequence = 2L,
+                occurredAt = Instant.parse("2026-08-23T10:00:01Z"),
+                stepIndex = 0,
+                content = "not an array [ ] { }",
+            ),
+        )
+
+        val decoded = JsonEventLog.decode(JsonEventLog.encode(events))
+
+        assertEquals(2, decoded.size, "brackets inside an event string must not truncate the document")
+        assertEquals("not an array [ ] { }", (decoded[1] as EchoOutputCaptured).content)
+    }
+
+    @Test
+    fun `decode still returns empty for a payload with no array`() {
+        assertTrue(
+            JsonEventLog.decode("[PipelineK] Run correlated: x\nno array here").isEmpty(),
+            "text without an event array is still no events"
+        )
+    }
+
+    @Test
+    fun `decode still returns empty for an unterminated array`() {
+        assertTrue(
+            JsonEventLog.decode("""[{"kind":"RunStarted"}""").isEmpty(),
+            "an array that never closes must not be read as a partial event list"
+        )
+    }
+
+    @Test
+    fun `decode of an untouched encode is unchanged`() {
+        val decoded = JsonEventLog.decode(JsonEventLog.encode(listOf(runStartedEvent())))
+
+        assertEquals(1, decoded.size, "the durable read path must be unaffected")
+    }
 }

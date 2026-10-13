@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputChannel
-import java.nio.channels.Channels
+import java.nio.ByteBuffer
 import java.nio.channels.SeekableByteChannel
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -192,60 +192,74 @@ object ObsPc2IngestAgent {
         System.err.println("pc2-agent-ready-marker-written pid=$agentPid")
 
         val threads = ProcessOutputChannel.all.map { channel ->
-            val input = Channels.newInputStream(channels.getValue(channel))
-            val redacted = StreamingRedactor(registry).wrap(input)
+            // R2.3(b) / TODO 3: the agent now uses the redactor's state
+            // machine directly. The previous design wrapped the FIFO
+            // channel in an InputStream and then a RedactingInputStream,
+            // which made "no more data" and "end of stream" the same
+            // event (close()). The state machine separates them: the
+            // agent reads from the channel, feeds raw bytes to feed(),
+            // takes sanitized bytes from take(), and only calls finish()
+            // when the channel returns EOF. The lookahead is then flushed
+            // through the same matcher used during feeding, so the
+            // secret that crossed the last chunk boundary is detected
+            // rather than silently dropped.
+            val ch = channels.getValue(channel)
+            val redactor = StreamingRedactor(registry)
+            val state = redactor.initialState()
             val sink = sinks.getValue(channel)
             Thread({
-                val buffer = ByteArray(8192)
+                val raw = ByteArray(8192)
+                val scratch = ByteArray(8192)
+                val rawBuffer = ByteBuffer.wrap(raw)
                 var totalReceived = 0L
-                var totalSanitized = 0L
                 var totalCommitted = 0L
                 var iter = 0L
                 try {
                     while (true) {
                         iter++
-                        val available = redacted.available()
-                        val ready = maxOf(1, minOf(buffer.size, available))
-                        val n = redacted.read(buffer, 0, ready)
+                        rawBuffer.clear()
+                        val n = ch.read(rawBuffer)
                         if (n < 0) {
+                            // Kernel-level EOF: the child has closed its
+                            // write end of the FIFO. Flush the redactor's
+                            // lookahead through the same matcher, then
+                            // emit the final bytes through the sink.
+                            val final = redactor.finish(state)
+                            if (final.isNotEmpty()) {
+                                sink.write(final, 0, final.size)
+                                totalCommitted += final.size.toLong()
+                            }
                             System.err.println(
                                 "pc2-agent-pump-eof channel=${channel.name.lowercase()} " +
-                                    "iter=$iter totalReceived=$totalReceived totalSanitized=$totalSanitized " +
-                                    "totalCommitted=$totalCommitted",
+                                    "iter=$iter totalReceived=$totalReceived " +
+                                    "totalCommitted=$totalCommitted " +
+                                    "finalFlushedBytes=${final.size}",
                             )
                             break
                         }
                         totalReceived += n.toLong()
-                        sink.write(buffer, 0, n)
-                        totalCommitted += n.toLong()
+                        // Feed raw bytes into the lookahead; whatever is
+                        // now decidable is in the output queue.
+                        redactor.feed(state, raw, 0, n)
+                        // Drain the decided bytes into the sink. The
+                        // state machine may emit fewer than `n` bytes
+                        // (lookahead holds some) or more (a matched
+                        // secret expands to the SCRUB_MARKER).
+                        var taken: Int
+                        while (true) {
+                            taken = redactor.take(state, scratch, 0, scratch.size)
+                            if (taken == 0) break
+                            sink.write(scratch, 0, taken)
+                            totalCommitted += taken.toLong()
+                        }
                         if (iter <= 5 || iter % 1000L == 0L) {
-                            // Frontier probe: a periodic sample of
-                            // the byte flow. NO payload content.
                             val refusal = sink.refusal()
                             System.err.println(
                                 "pc2-agent-pump-step channel=${channel.name.lowercase()} " +
                                     "iter=$iter n=$n totalReceived=$totalReceived " +
-                                    "totalCommitted=$totalCommitted refusal=" +
-                                    (refusal?.detail ?: "none"),
+                                    "totalCommitted=$totalCommitted " +
+                                    "refusal=" + (refusal?.detail ?: "none"),
                             )
-                        }
-                    }
-                    // Drain whatever is left in the redactor's
-                    // lookahead before declaring the channel done.
-                    // The redactor holds a small window of bytes to
-                    // detect secrets that cross chunk boundaries; the
-                    // window bytes are only safe to emit at EOF.
-                    runCatching {
-                        var drainN: Int
-                        var drainIter = 0
-                        while (true) {
-                            drainIter++
-                            val tailN = redacted.read(buffer, 0, buffer.size)
-                            if (tailN <= 0) break
-                            sink.write(buffer, 0, tailN)
-                            totalReceived += tailN.toLong()
-                            totalCommitted += tailN.toLong()
-                            if (drainIter > 1000) break // safety stop
                         }
                     }
                     val refusal = sink.refusal()

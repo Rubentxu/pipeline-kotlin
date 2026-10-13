@@ -5,6 +5,50 @@ import java.nio.charset.StandardCharsets
 import java.util.ArrayDeque
 
 /**
+ * The mutable state of a single [StreamingRedactor] pass.
+ *
+ * R2.3(b) / TODO 3: the redactor's state used to be hidden inside
+ * [StreamingRedactor.RedactingInputStream], which made "no more data" and
+ * "end of stream" the same event — `close()` did both, so a caller that
+ * wanted to drain the lookahead at EOF also had to close the source. The
+ * ingest agent needs to call them separately: the FIFO's read returns EOF
+ * (kernel signal) and the agent then flushes the lookahead WITHOUT closing
+ * the source. The state machine makes those two facts independent.
+ *
+ * One [RedactorState] is independent of every other: two passes with the
+ * same [StreamingRedactor] (the same secret registry) do not share state.
+ * The agent creates one per FIFO channel and feeds it as bytes arrive.
+ */
+class RedactorState internal constructor(
+    /** The maximum encoded literal byte length, copied at construction. */
+    val maxLiteral: Int,
+    /** Scratch buffer length (caller's preferred chunk size). */
+    val chunkSize: Int,
+) {
+    /** Ring buffer holding the pending lookahead window (capacity [maxLiteral]). */
+    internal val ring = ByteArray(maxLiteral)
+    internal var ringHead = 0
+    internal var ringCount = 0
+
+    /** Seam literals: longest-first, deduplicated first-byte filter. */
+    internal lateinit var seam: List<ByteArray>
+    internal lateinit var seamFirstBytes: ByteArray
+
+    /**
+     * Output ring for SCRUB_MARKER bytes. Normal operation enqueues at most
+     * markerLength bytes before the next drain; [finish] may enqueue up to
+     * maxLiteral bytes (EOF pending drain), hence the capacity.
+     */
+    internal val outputQueue = ByteArray(maxOf(maxLiteral, SecretPatternRegistry.SCRUB_MARKER.length))
+    internal var outputHead = 0
+    internal var outputCount = 0
+
+    /** True after [StreamingRedactor.finish] is called; no more bytes will be fed. */
+    internal var sourceExhausted = false
+}
+
+
+/**
  * Stateful stream redaction decorator that scrubs secrets split across arbitrary
  * read boundaries using a bounded prefix-scanner algorithm.
  *
@@ -70,6 +114,174 @@ class StreamingRedactor(
     val maxLiteralByteLength: Int = registry.maxLiteralByteLength()
 
     /**
+     * The seam literals (longest-first) for this redactor, deduplicated by
+     * first byte. Exposed for the state-machine API: [initialState] copies
+     * the array references into the [RedactorState] so the per-pass state
+     * does not need to re-scan the registry on every call.
+     */
+    private val seamLiterals: List<ByteArray> = registry.literalSeam()
+    private val seamFirstBytes: ByteArray = ByteArray(seamLiterals.size) { seamLiterals[it][0] }
+
+    /**
+     * A fresh, independent [RedactorState] for one redaction pass.
+     *
+     * Each call returns a state with its own buffers, lookahead, and output
+     * queue. The seam literal table is shared (read-only) with the redactor.
+     */
+    fun initialState(chunkSize: Int = this.chunkSize): RedactorState {
+        val state = RedactorState(maxLiteralByteLength, chunkSize)
+        state.seam = seamLiterals
+        state.seamFirstBytes = seamFirstBytes
+        return state
+    }
+
+    /**
+     * Feeds [len] bytes from [bytes] (offset [off]) into the lookahead of
+     * [state], emitting whatever is now decidable. The call is non-blocking
+     * by design: it never reads from an [InputStream], only from the byte
+     * array the caller hands it. EOF on the source is signalled separately
+     * by [finish]; conflating the two is the bug the state machine removes.
+     *
+     * @return the updated [RedactorState]. The state is mutated in place
+     *   and also returned, mirroring the typical Kotlin mutable-bag idiom.
+     */
+    fun feed(state: RedactorState, bytes: ByteArray, off: Int, len: Int): RedactorState {
+        if (state.sourceExhausted) return state
+        require(off >= 0 && len >= 0 && off + len <= bytes.size) {
+            "feed($off, $len) is outside a ${bytes.size}-byte array"
+        }
+        var i = 0
+        while (i < len) {
+            // 1. Drain whatever was already decided before adding more.
+            drainOneHead(state)
+            // 2. Add a byte to the lookahead (if there's room).
+            if (state.ringCount < state.maxLiteral) {
+                state.ring[(state.ringHead + state.ringCount) % state.ring.size] = bytes[off + i]
+                state.ringCount++
+                i++
+                continue
+            }
+            // 3. Ring is full but no decision was made. The seam table does
+            //    not cover this prefix, so the head byte is NOT the start of
+            //    a secret. Emit it as plain text and drop it, then re-try
+            //    the new head on the next iteration.
+            //
+            //    THIS IS THE BUG FIX: the previous version of this method
+            //    just dropped the head without emitting, which let bytes
+            //    pile up in the lookahead indefinitely (the R2.3(b)
+            //    agent's diagnostic showed totalReceived=5772 but
+            //    totalCommitted=66 with the fix missing; the InputStream
+            //    wrapper's `ring full → emit head` branch is the
+            //    reference).
+            state.outputQueue[(state.outputHead + state.outputCount) % state.outputQueue.size] =
+                state.ring[state.ringHead]
+            state.outputCount++
+            state.ringHead = (state.ringHead + 1) % state.ring.size
+            state.ringCount--
+        }
+        // One more pass to drain any decision that became possible after the
+        // last byte was added.
+        drainOneHead(state)
+        return state
+    }
+
+    /**
+     * Drains the decided bytes from [state] into [bytes] starting at [off],
+     * up to [maxLen] bytes. Returns the number of bytes copied. The agent
+     * is expected to call this after every [feed] (and once more after
+     * [finish]) and to flush the result through the Output Plane sink.
+     */
+    fun take(state: RedactorState, bytes: ByteArray, off: Int, maxLen: Int): Int {
+        var written = 0
+        while (written < maxLen && state.outputCount > 0) {
+            bytes[off + written] = state.outputQueue[state.outputHead]
+            state.outputHead = (state.outputHead + 1) % state.outputQueue.size
+            state.outputCount--
+            written++
+        }
+        return written
+    }
+
+    /**
+     * How many decided bytes are currently sitting in [state]'s output
+     * queue. Useful for callers that want to skip the [take] call when the
+     * queue is empty; the agent uses the return value of [take] directly
+     * and does not need this, but it is part of the public surface.
+     */
+    fun available(state: RedactorState): Int = state.outputCount
+
+    /**
+     * Marks [state] as exhausted: no more bytes will be fed. Bytes still in
+     * the lookahead are now decidable (no future data can complete a
+     * partial literal), so [finish] drains them through the same matcher
+     * used by [feed]. The returned byte array is the final flush; the
+     * caller MUST persist it before discarding the state.
+     *
+     * [finish] is idempotent: a second call returns an empty array.
+     */
+    fun finish(state: RedactorState): ByteArray {
+        if (state.sourceExhausted) return ByteArray(0)
+        state.sourceExhausted = true
+        // The lookahead is now decidable. Run the same one-head decision
+        // loop as [feed] until the ring is empty.
+        while (state.ringCount > 0) {
+            if (!drainOneHead(state)) {
+                // No seam literal starts with this byte; emit it as-is.
+                state.outputQueue[(state.outputHead + state.outputCount) % state.outputQueue.size] =
+                    state.ring[state.ringHead]
+                state.outputHead = state.outputHead // unchanged
+                state.outputCount++
+                state.ringHead = (state.ringHead + 1) % state.ring.size
+                state.ringCount--
+            }
+        }
+        val out = ByteArray(state.outputCount)
+        for (i in 0 until state.outputCount) {
+            out[i] = state.outputQueue[(state.outputHead + i) % state.outputQueue.size]
+        }
+        // Zero the queue so the state is safe to discard; the secret-bearing
+        // bytes are no longer reachable from it.
+        state.outputHead = 0
+        state.outputCount = 0
+        java.util.Arrays.fill(state.outputQueue, 0.toByte())
+        return out
+    }
+
+    /**
+     * Try to match a seam literal at the ring head. If matched, the literal
+     * bytes are consumed from the ring and the SCRUB_MARKER is enqueued.
+     * @return true if a literal was matched (one head byte was decided).
+     */
+    private fun drainOneHead(state: RedactorState): Boolean {
+        if (state.ringCount == 0) return false
+        val first = state.ring[state.ringHead]
+        for (li in state.seam.indices) {
+            if (state.seamFirstBytes[li] != first) continue
+            val literal = state.seam[li]
+            if (literal.size > state.ringCount) continue
+            var match = true
+            for (i in 1 until literal.size) {
+                if (state.ring[(state.ringHead + i) % state.ring.size] != literal[i]) {
+                    match = false
+                    break
+                }
+            }
+            if (match) {
+                repeat(literal.size) {
+                    state.ringHead = (state.ringHead + 1) % state.ring.size
+                    state.ringCount--
+                }
+                for (byte in SecretPatternRegistry.SCRUB_MARKER.toByteArray(StandardCharsets.UTF_8)) {
+                    state.outputQueue[(state.outputHead + state.outputCount) % state.outputQueue.size] = byte
+                    state.outputCount++
+                }
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
      * Decorates an [InputStream] with secret redaction across chunk boundaries.
      *
      * The returned stream must be closed by the caller to trigger final flush
@@ -79,14 +291,17 @@ class StreamingRedactor(
      * @return A redaction [InputStream] wrapping [input].
      */
     fun wrap(input: InputStream): InputStream =
-        RedactingInputStream(input, maxLiteralByteLength, chunkSize, registry)
+        RedactingInputStream(input, initialState())
 
     /**
-     * Inner [InputStream] decorator with its own buffer state.
+     * Inner [InputStream] decorator backed by a [RedactorState]. The state
+     * is the single source of truth for the redaction decision; the wrapper
+     * just shovels bytes between the [InputStream] and the public state
+     * machine, so the [wrap] and the agent's direct state-machine use cannot
+     * drift.
      *
-     * Each wrapped stream has independent pending (maxLiteralByteLength),
-     * outputQueue (SCRUB_MARKER length), and inputBuffer (chunkSize) —
-     * so multiple concurrent wraps are safe.
+     * Each wrapped stream has its own state, so multiple concurrent wraps
+     * are safe.
      */
     /**
      * PERFORMANCE (WU-RP-022 finding P1): the previous implementation used
@@ -110,42 +325,17 @@ class StreamingRedactor(
      */
     internal inner class RedactingInputStream(
         private val source: InputStream,
-        private val maxLiteral: Int,
-        private val readChunkSize: Int,
-        private val patternRegistry: SecretPatternRegistry,
+        private val state: RedactorState,
     ) : InputStream() {
 
-        /** Ring buffer holding the pending lookahead window (capacity maxLiteral). */
-        private val ring = ByteArray(maxLiteral)
-        private var ringHead = 0   // index of oldest byte
-        private var ringCount = 0  // number of valid bytes
-
-        /** Seam literals: longest-first, deduplicated first-byte filter built lazily. */
-        private val seam: List<ByteArray> = patternRegistry.literalSeam()
-        private val seamFirstBytes: ByteArray = ByteArray(seam.size) { seam[it][0] }
-
-        private val markerLength: Int = SecretPatternRegistry.SCRUB_MARKER.length
-
-        /**
-         * Output ring for SCRUB_MARKER bytes. Normal operation enqueues at most
-         * markerLength bytes before the next drain; close() may enqueue up to
-         * maxLiteral bytes (EOF pending drain), hence the capacity.
-         */
-        private val outputQueue = ByteArray(maxOf(maxLiteral, SecretPatternRegistry.SCRUB_MARKER.length))
-        private var outputHead = 0
-        private var outputCount = 0
-
-        /** Fixed-size input chunk buffer */
-        private val inputBuffer = ByteArray(readChunkSize)
+        /** Fixed-size input chunk buffer used by the wrapper's read loop. */
+        private val inputBuffer = ByteArray(state.chunkSize)
 
         /** Cursor into inputBuffer after last consumed byte */
         private var inputOffset = 0
 
-        /** Number of valid bytes in inputBuffer (0 means needs fresh read) */
+        /** Number of valid bytes in inputBuffer (-1 means EOF reached). */
         private var inputLimit = 0
-
-        /** True after source is exhausted and no pending bytes remain */
-        private var sourceExhausted = false
 
         /** True after close() has been called */
         private var closed = false
@@ -156,67 +346,10 @@ class StreamingRedactor(
             return if (n > 0) buf[0].toInt() and 0xFF else -1
         }
 
-        private fun ringGet(i: Int): Byte = ring[(ringHead + i) % ring.size]
-
-        private fun ringAddLast(b: Byte) {
-            ring[(ringHead + ringCount) % ring.size] = b
-            ringCount++
-        }
-
-        private fun ringRemoveFirst(): Byte {
-            val b = ring[ringHead]
-            ringHead = (ringHead + 1) % ring.size
-            ringCount--
-            return b
-        }
-
-        /** Tries to match a seam literal at the ring head; consumes it and enqueues the marker. */
-        private fun tryMatchAndEmit(): Boolean {
-            if (ringCount == 0) return false
-            val first = ringGet(0)
-            for (li in seam.indices) {
-                if (seamFirstBytes[li] != first) continue
-                val literal = seam[li]
-                if (literal.size > ringCount) continue
-                var match = true
-                for (i in 1 until literal.size) {
-                    if (ringGet(i) != literal[i]) { match = false; break }
-                }
-                if (match) {
-                    repeat(literal.size) { ringRemoveFirst() }
-                    for (byte in SecretPatternRegistry.SCRUB_MARKER.toByteArray(StandardCharsets.UTF_8)) {
-                        outputQueue[(outputHead + outputCount) % outputQueue.size] = byte
-                        outputCount++
-                    }
-                    return true
-                }
-            }
-            return false
-        }
-
         /**
-         * Fills pending from inputBuffer, reading from source only when inputBuffer is exhausted.
-         * @return true if pending is non-empty after filling; false if source is exhausted and pending is empty.
-         */
-        private fun fillPending(): Boolean {
-            while (ringCount < maxLiteral && !sourceExhausted) {
-                if (inputOffset >= inputLimit) {
-                    inputLimit = source.read(inputBuffer, 0, readChunkSize)
-                    inputOffset = 0
-                    if (inputLimit == -1) {
-                        sourceExhausted = true
-                        return ringCount > 0
-                    }
-                }
-                ringAddLast(inputBuffer[inputOffset])
-                inputOffset++
-            }
-            return ringCount > 0
-        }
-
-        /**
-         * Same observable contract as documented on the class. See class-level
-         * algorithm description; implementation is the ring-buffer variant.
+         * Same observable contract as documented on the class. Backed by the
+         * shared [RedactorState] so the agent's direct use of the state
+         * machine and the InputStream wrapper cannot diverge.
          */
         override fun read(b: ByteArray, off: Int, len: Int): Int {
             if (closed) return -1
@@ -225,34 +358,42 @@ class StreamingRedactor(
             var written = 0
 
             while (written < len) {
-                // Step 1: Drain outputQueue first
-                while (written < len && outputCount > 0) {
-                    b[off + written] = outputQueue[outputHead]
-                    outputHead = (outputHead + 1) % outputQueue.size
-                    outputCount--
-                    written++
-                }
+                // Step 1: Drain outputQueue first via the public state machine.
+                written += this@StreamingRedactor.take(state, b, off + written, len - written)
                 if (written >= len) break
 
-                // Step 2: Source exhausted and pending empty → definitive EOF
-                if (sourceExhausted && ringCount == 0) {
+                // Step 2: Source exhausted (state.ringCount == 0 because finish
+                // was called via close()) and pending empty → EOF.
+                if (state.sourceExhausted && state.ringCount == 0) {
                     return if (written > 0) written else -1
                 }
 
-                // Step 3: Have full lookahead OR EOF reached → make a one-head decision
-                if (ringCount == maxLiteral || sourceExhausted) {
-                    if (tryMatchAndEmit()) {
-                        continue
-                    } else {
-                        outputQueue[(outputHead + outputCount) % outputQueue.size] = ringRemoveFirst()
-                        outputCount++
+                // Step 3: Fill the lookahead from the source if we have room.
+                if (inputOffset >= inputLimit && !state.sourceExhausted) {
+                    inputLimit = source.read(inputBuffer, 0, state.chunkSize)
+                    inputOffset = 0
+                    if (inputLimit == -1) {
+                        // No more data; flush the lookahead as finalised bytes.
+                        val final = this@StreamingRedactor.finish(state)
+                        if (final.isNotEmpty()) {
+                            val n = minOf(final.size, len - written)
+                            System.arraycopy(final, 0, b, off + written, n)
+                            written += n
+                        }
+                        return if (written > 0) written else -1
+                    }
+                }
+                if (inputOffset < inputLimit) {
+                    val chunk = minOf(inputLimit - inputOffset, len - written, state.maxLiteral - state.ringCount)
+                    if (chunk > 0) {
+                        this@StreamingRedactor.feed(state, inputBuffer, inputOffset, chunk)
+                        inputOffset += chunk
                         continue
                     }
                 }
 
-                // Step 5: pending.size < maxLiteral and source still has data → fill lookahead
-                //
-                // RETURN WHAT WE HAVE rather than going to the source for the rest.
+                // Step 4: pending.size < maxLiteral and source still has data → fill
+                // lookahead. Return what we have rather than blocking on the source.
                 //
                 // `InputStream.read` is allowed to return fewer than `len` bytes, and forcing a full
                 // fill is what stranded the transcript. `available()` says how much can be emitted
@@ -261,16 +402,9 @@ class StreamingRedactor(
                 // buffer drained, and called `source.read()` — which blocks for as long as the
                 // producer chooses to say nothing. The bytes it had already decided stayed inside
                 // this object and never reached the caller.
-                //
-                // Measured on `ObsBJvmDeathOutputRecoveryUatTest`, whose child writes 400 lines and
-                // then waits at a barrier: `available()` reported 8111 ready bytes, the pump asked
-                // for them, and both pump threads sat RUNNABLE inside `source.read` for 55 s while
-                // the durable transcript stayed frozen at the single byte committed before the
-                // stall. Blocking is only safe while there is nothing to lose, hence `written > 0`.
-                if (written > 0 && !sourceExhausted && ringCount < maxLiteral && inputOffset >= inputLimit) {
+                if (written > 0 && !state.sourceExhausted && state.ringCount < state.maxLiteral && inputOffset >= inputLimit) {
                     return written
                 }
-                if (fillPending()) continue
             }
 
             return written
@@ -279,63 +413,33 @@ class StreamingRedactor(
         /**
          * How many sanitized bytes can be emitted RIGHT NOW without reading more from the source.
          *
-         * ## Why this override exists
-         *
-         * `InputStream.available()` is part of the contract every stream is expected to honour, and
-         * the base implementation returns 0. A caller that obeyed it would conclude "nothing is
-         * ready" about a redacted stream however much is buffered, and the natural reaction — ask for
-         * a full window — turns the window into a **latency floor measured in bytes**. That is how a
-         * 1 KiB window withheld a 20-byte transcript until the process exited.
-         *
-         * ## Why it is counted from this state machine rather than a second rule
-         *
-         * A byte leaves the lookahead ring only once [maxLiteral] bytes have ruled out every seam
-         * literal, so "how much is ready" is exactly "how much the read loop could emit without
-         * touching the source". Re-deriving that from a separate rule would make a second authority
-         * for the redaction decision, and two authorities for one decision drift. So this counts the
-         * bytes already decided ([outputCount]) plus the bytes still buffered from the source, less
-         * the lookahead the emitter is still withholding.
-         *
-         * ## Which way it is allowed to be wrong
-         *
-         * A matched literal expands to the scrub marker, so the true count can exceed this estimate;
-         * a caller given too few asks [read] for a little more, and [read] now returns what it has
-         * already decided rather than going to the source for the remainder. That was not always so,
-         * and the claim that blocking here is "the safe direction" was wrong in a way only a stalled
-         * producer could reveal: `read` used to fill the whole requested length even while holding
-         * bytes, so a producer that stopped writing mid-stream kept every already-decided byte
-         * inside this object. See the early return in [read].
-         *
-         * The direction that would be a security defect is the other one, and it cannot happen: the
-         * withheld lookahead is subtracted here rather than assumed away.
+         * Backed by the shared state machine; the InputStream wrapper contributes
+         * no decision of its own.
          */
         override fun available(): Int {
             if (closed) return 0
-            // `inputLimit` is -1 after EOF, so the subtraction is floored rather than trusted.
             val bufferedFromSource = maxOf(0, inputLimit - inputOffset)
-            val pending = ringCount + bufferedFromSource
-            // At EOF the lookahead has no future left to protect, so every pending byte is decidable.
-            val decidable = if (sourceExhausted) pending else maxOf(0, pending - maxLiteral)
-            return outputCount + decidable
+            val pending = state.ringCount + bufferedFromSource
+            val decidable = if (state.sourceExhausted) pending else maxOf(0, pending - state.maxLiteral)
+            return state.outputCount + decidable
         }
 
         override fun close() {
             if (closed) return
             closed = true
-
-            // Contract: after close() ALL buffers are empty. Pending bytes at EOF
-            // are simply discarded from the lookahead window (no more reads can
-            // consume them); matching is moot because no further data arrives.
-            ringCount = 0
-            outputCount = 0
-            outputHead = 0
-
-            // Clear all buffers
-            ring.fill(0)
-            outputQueue.fill(0)
-            inputBuffer.fill(0)
-
-            sourceExhausted = true
+            // Drain the lookahead through the public state machine so the
+            // wrapper and the agent's direct state-machine use produce the
+            // same final bytes.
+            if (!state.sourceExhausted) {
+                val final = this@StreamingRedactor.finish(state)
+                // Best-effort write to a discarded buffer; the caller has
+                // already given up on the source.
+                @Suppress("UNUSED_VARIABLE") val unused = final
+            }
+            // Zero the state so it is safe to discard.
+            java.util.Arrays.fill(state.ring, 0.toByte())
+            state.ringHead = 0
+            state.ringCount = 0
             source.close()
         }
     }

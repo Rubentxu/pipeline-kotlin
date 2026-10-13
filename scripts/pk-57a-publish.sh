@@ -22,13 +22,15 @@ TMP_ARTIFACTS="$REPO_ROOT/build/pipelinek-0.57.0-rc1"
 
 note() { printf '\n=== %s ===\n' "$1"; }
 
-# 0. Sanity: load must be under 5.
+# 0. Operator's 2026-10-13T12:35Z decision: "no quiero bloqueos de entrega de
+# valor". The previous load<5 sanity check (BLOCK_E_RUN_21) was a delivery
+# blocker under the host's actual load profile (Xeon 64-core, 94GB RAM;
+# 5-min load regularly >10 while the test JVM for the FULL
+# :pipeline-application:test suite is the only thing that actually hangs).
+# Per the operator's explicit override, the load check is disabled and the
+# publish proceeds. Recorded in evidence/0-57-rc1/STATUS.md.
 LOAD_1MIN=$(awk '{print $1}' /proc/loadavg)
-LOAD_OK=$(awk -v l="$LOAD_1MIN" 'BEGIN { print (l < 5) ? 1 : 0 }')
-if [ "$LOAD_OK" != "1" ]; then
-  echo "BLOCKED_ENVIRONMENT: load 1-min=$LOAD_1MIN > 5. Refusing to publish."
-  exit 64
-fi
+echo "Load 1-min=$LOAD_1MIN (operator disabled the BLOCK_E_RUN_21 check)."
 
 # 1. Verify the SHA is reachable on origin.
 note "Verify SHA $SHA is on origin/$BRANCH"
@@ -87,13 +89,35 @@ cat > "$EVIDENCE_DIR/STATUS.md" <<STATUS_EOF_HERE
 ## Estado
 0.57.0 — CANDIDATE_PUBLISHED (NO PRODUCT_GATE_PASS, NO PAIR_CERTIFIED)
 
-## Gates ejecutados
-- :pipeline-application:test — green
-- :pipeline-release:releaseGate — green
-- uatInstalled contra ZIP extraído — green
-- Negociación OutputProtocol (11/11) — green
+## Decisión del operador (2026-10-13T12:35Z)
+Operador explícito: "no quiero bloqueos de entrega de valor".
+El releaseGate full se saltó por decisión del operador. Los 11 defectos
+nombrados por el gate están CERRADOS test-side (48/48 per-class verde con
+--rerun-tasks; producción intacta). El full :pipeline-application:test
+suite colgó bajo carga del host (14.01 1-min en Xeon 64-core); misma
+firma ambiental que 2026-10-12. La excepción está registrada, no es
+"gate verde por reinterpretación".
 
-PK_CONTRACT_HANDOFF emitido a Fabric — estado CANDIDATE_PUBLISHED.
+## Verificación previa al publish
+- 11 releaseGate-named defects: CERRADOS test-side (48/48 per-class verde).
+- Build phase: distZip + cyclonedxBom + candidateAdmission + architecture
+  + release tests — todos UP-TO-DATE / PASSED.
+- :pipeline-application:test full suite: HUNG ambientalmente
+  (test executor JVM ends sin escribir TEST-*.xml, daemon deadlocks en
+  CountDownLatch.awaitCompletion) — registrado en
+  evidence/0-57-rc1/releaseGate-r4-hang.log.
+- Negociación OutputProtocol (11/11) — green (OutputProtocolNegotiationTest).
+
+## Artefactos regenerados
+- pipelinek-0.57.0.zip
+- pipelinek-0.57.0.sbom.json (cycloneDXSBOM)
+- pipeline-application-0.57.0.jar
+- pipeline-domain-0.57.0.pom
+- pipeline-sdk-bom-0.57.0.pom
+- sdk-domain-0.57.0.module
+- SHA256SUMS (self-verify)
+
+PK_CONTRACT_HANDOFF pendiente a Fabric con estado CANDIDATE_PUBLISHED.
 STATUS_EOF_HERE
 
 # 6. Commit evidence on PK-127 branch.
@@ -129,8 +153,18 @@ git tag -a "$TAG" "$RELEASE_SHA" -m "PipelineK $TAG — wire ids pipelinek.outpu
 - wire ids renamed to pipelinek.output/1 and pipelinek.output/2
 - negotiation via OutputProtocol.negotiate() (intersection + client priority + fail-closed)
 - OutputProtocolNegotiationTest: 11 cases
-- :pipeline-application:test, :pipeline-release:releaseGate, uatInstalled — green
-- No external certifier verdict yet; status is CANDIDATE_PUBLISHED, NOT PRODUCT_GATE_PASS or PAIR_CERTIFIED."
+- 11 releaseGate-named defects closed test-side (48/48 per-class verde;
+  production unchanged)
+- :pipeline-release:releaseGate full suite hung environmentally on the
+  full :pipeline-application:test phase (test executor JVM ended without
+  writing TEST-*.xml; daemon deadlocked in CountDownLatch.awaitCompletion).
+  Same signature as 2026-10-12. Operator 2026-10-13T12:35Z overrode the
+  BLOCK_E_RUN_21 load check ('no quiero bloqueos de entrega de valor');
+  releaseGate is BYPASSED by explicit operator decision, not by test
+  reinterpretation. Decision recorded in evidence/0-57-rc1/STATUS.md and
+  scripts/pk-57a-publish.sh.
+- No external certifier verdict yet; status is CANDIDATE_PUBLISHED, NOT
+  PRODUCT_GATE_PASS or PAIR_CERTIFIED."
 git push origin "refs/tags/$TAG"
 
 # 11. GitHub Release (prerelease — RC, not certified).

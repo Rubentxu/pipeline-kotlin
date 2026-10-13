@@ -1,0 +1,425 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:32b96ddf-dbc7-4573-9e89-5529cc6828ca",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "name": "pipeline-application",
+      "version": "0.57.0"
+    },
+    "tools": [
+      {
+        "vendor": "pipelinek-release-harness",
+        "name": "build_bom.py"
+      }
+    ]
+  },
+  "components": [
+    {
+      "group": "",
+      "name": "annotations",
+      "version": "23.0.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo annotations incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "api",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo api incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "bcpkix-jdk18on",
+      "version": "1.86",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo bcpkix-jdk18on incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "bcprov-jdk18on",
+      "version": "1.86",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo bcprov-jdk18on incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "bcutil-jdk18on",
+      "version": "1.86",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo bcutil-jdk18on incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "example-block-plugin",
+      "version": "0.1.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo example-block-plugin incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "example-directive-plugin",
+      "version": "0.1.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo example-directive-plugin incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "example-uppercase-plugin",
+      "version": "0.1.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo example-uppercase-plugin incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "files",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo files incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "http",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo http incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "junit",
+      "version": "0.1.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo junit incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "kotlin-build-tools-api",
+      "version": "2.4.10",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo kotlin-build-tools-api incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "kotlin-compiler-embeddable",
+      "version": "2.4.10",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo kotlin-compiler-embeddable incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "kotlin-daemon-embeddable",
+      "version": "2.4.10",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo kotlin-daemon-embeddable incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "kotlin-reflect",
+      "version": "1.6.10",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo kotlin-reflect incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "kotlin-script-runtime",
+      "version": "2.4.10",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo kotlin-script-runtime incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "kotlin-scripting-common",
+      "version": "2.4.10",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo kotlin-scripting-common incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "kotlin-scripting-compiler-embeddable",
+      "version": "2.4.10",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo kotlin-scripting-compiler-embeddable incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "kotlin-scripting-compiler-impl-embeddable",
+      "version": "2.4.10",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo kotlin-scripting-compiler-impl-embeddable incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "kotlin-scripting-jvm",
+      "version": "2.4.10",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo kotlin-scripting-jvm incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "kotlin-scripting-jvm-host",
+      "version": "2.4.10",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo kotlin-scripting-jvm-host incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "kotlin-stdlib",
+      "version": "2.4.10",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo kotlin-stdlib incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "kotlinx-coroutines-core-jvm",
+      "version": "1.11.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo kotlinx-coroutines-core-jvm incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "kotlinx-serialization-core-jvm",
+      "version": "1.11.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo kotlinx-serialization-core-jvm incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "kotlinx-serialization-json-jvm",
+      "version": "1.11.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo kotlinx-serialization-json-jvm incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "pipeline-application",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo pipeline-application incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "pipeline-artefacts-local",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo pipeline-artefacts-local incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "pipeline-credentials-api",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo pipeline-credentials-api incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "pipeline-credentials-executor",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo pipeline-credentials-executor incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "pipeline-credentials-local",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo pipeline-credentials-local incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "pipeline-credentials-multipart",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo pipeline-credentials-multipart incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "pipeline-domain",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo pipeline-domain incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "pipeline-event-harness",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo pipeline-event-harness incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "pipeline-events",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo pipeline-events incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "pipeline-events-store",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo pipeline-events-store incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "pipeline-output",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo pipeline-output incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "pipeline-output-store",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo pipeline-output-store incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "pipeline-scripting-api",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo pipeline-scripting-api incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "pipeline-scripting-kotlin24",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo pipeline-scripting-kotlin24 incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "runtime",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo runtime incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "scm-git",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo scm-git incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "snakeyaml",
+      "version": "2.3",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo snakeyaml incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "spring-core",
+      "version": "6.2.19",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo spring-core incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "spring-jcl",
+      "version": "6.2.19",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo spring-jcl incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "sqlite-jdbc",
+      "version": "3.46.1.3",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo sqlite-jdbc incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "utilities",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Modulo utilities incluido en pipelinek-0.57.0.zip"
+    },
+    {
+      "group": "",
+      "name": "pipeline-application",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Artefacto Maven publicado como asset del release (pipeline-application-0.57.0.jar)",
+      "purl": "pkg:maven/pipelinek/pipeline-application@0.57.0"
+    },
+    {
+      "group": "",
+      "name": "pipeline-domain",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Artefacto Maven publicado como asset del release (pipeline-domain-0.57.0.pom)",
+      "purl": "pkg:maven/pipelinek/pipeline-domain@0.57.0"
+    },
+    {
+      "group": "",
+      "name": "pipeline-sdk-bom",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Artefacto Maven publicado como asset del release (pipeline-sdk-bom-0.57.0.pom)",
+      "purl": "pkg:maven/pipelinek/pipeline-sdk-bom@0.57.0"
+    },
+    {
+      "group": "",
+      "name": "sdk-domain",
+      "version": "0.57.0",
+      "type": "library",
+      "scope": "provided",
+      "description": "Artefacto Maven publicado como asset del release (sdk-domain-0.57.0.module)",
+      "purl": "pkg:maven/pipelinek/sdk-domain@0.57.0"
+    }
+  ]
+}

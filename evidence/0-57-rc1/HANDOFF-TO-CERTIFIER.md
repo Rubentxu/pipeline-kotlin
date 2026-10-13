@@ -67,9 +67,9 @@ the seed for the next candidate.
 
 | File | Size | SHA-256 | Status |
 |---|---|---|---|
-| `pipelinek-0.57.0.sdk.zip` | 90.1 MB | `7e14e8f447c99fb09f4a692463fbc449d8a94ffc9a2702e6fcce2ac54f10f515` | in release, NOT in SHA256SUMS — `SHA256SUMS` should be regenerated to include this asset (or the asset should be removed from the release) |
-| `pipelinek-bom-0.57.0.json` | 12 KB | `55efc99987e16fd01f8f5f9cd1baa8cc1fd11307e8abdc0cbe58343461f2adc5` | in release, NOT in SHA256SUMS — same disposition as above |
-| `SHA256SUMS` (file in release) | 363 B | `37622bae4d27ddf411e20abf76880c2a67e860871dc5815e0aa2a9072550065a` | in release; differs from the local `SHA256SUMS` (808 B). Local `SHA256SUMS` is canonical. |
+| `pipelinek-0.57.0.sdk.zip` | 90.1 MB | `7e14e8f447c99fb09f4a692463fbc449d8a94ffc9a2702e6fcce2ac54f10f515` | **APPLIED (Option A):** included in `SHA256SUMS` after R0.2 follow-up; both local and release now contain the same 12-file SHA256SUMS |
+| `pipelinek-bom-0.57.0.json` | 12 KB | `55efc99987e16fd01f8f5f9cd1baa8cc1fd11307e8abdc0cbe58343461f2adc5` | **APPLIED (Option A):** included in `SHA256SUMS` after R0.2 follow-up |
+| `SHA256SUMS` (file in release) | 1070 B | `42e6c4cc716bb59046a8e29ab8bc17d514042d01d29beecd537a7d2cc58f3c79` | matches the local `SHA256SUMS` (12 files, 1070 B). Self-verifies 12/12. |
 
 ## What the certifier must do
 

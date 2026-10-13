@@ -20,6 +20,17 @@ application {
     mainClass.set("dev.rubentxu.pipeline.v2.application.MainKt")
 }
 
+// PK-0-57-RC1: Gradle 8.14.5 strict validation flags the application
+// plugin's default `distZip` task for not declaring its dependency on
+// `installDist`. The implicit dependency existed in earlier Gradle
+// versions; the strict validator now requires an explicit declaration
+// for the output of `installDist` that `distZip` consumes.
+// Without this, `:pipeline-release:releaseGate` fails with
+// "Task ':pipeline-application:distZip' uses this output of task
+// ':pipeline-application:installDist' without declaring an explicit
+// or implicit dependency".
+tasks.named("distZip") { dependsOn(tasks.named("installDist")) }
+
 // WU-LPR-071: single-version provider contract — the jar manifest MUST carry
 // Implementation-Version populated from project.version (which is sourced from the
 // git tag at release time via v2/build.gradle.kts root). Without this, the

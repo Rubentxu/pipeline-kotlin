@@ -1294,7 +1294,11 @@ private fun negotiateOutputProtocolOrExit(tokens: List<String>): OutputProtocol 
     System.err.write(exit.encodeEnvelope().toByteArray(Charsets.UTF_8))
     System.err.flush()
     System.exit(exit.code)
-    OutputProtocol.DEFAULT  // unreachable; satisfies the type system
+    // unreachable; System.exit never returns control. The return
+    // statement below exists only to satisfy the Kotlin compiler's
+    // "missing return on a path" check on a function declared with a
+    // non-Unit return type.
+    return OutputProtocol.DEFAULT
 }
 
 /**

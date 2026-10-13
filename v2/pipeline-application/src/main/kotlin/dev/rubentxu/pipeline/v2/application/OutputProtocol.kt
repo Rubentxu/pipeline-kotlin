@@ -19,11 +19,11 @@ package dev.rubentxu.pipeline.v2.application
  * `--output-protocol` behaves exactly as the R0.3 release did. No
  * silent migration, no surprise reroute.
  *
- * **Wire ids follow the `pipelinek.*/N` pattern.** [Published] is
+ * **Wire ids follow the `pipelinek.output/N` versioned family.** [Published] is
  * `pipelinek.output/1`; [SeparatedV2] is `pipelinek.output/2`. This
  * matches the `pipelinek.launch/1` schema family declared by
  * ADR-PK1-IDENTITY and the bump rule of ADR-PK1-OUTPUT-FRAMING
- * ("alineado con el patrón `pipelinek.*/N`. Bump sobre el canal, no
+ * ("alineado con el patrón `pipelinek.<family>/N`. Bump sobre el canal, no
  * sobre el recibo").
  *
  * **Negotiation is fail-closed.** [negotiate] returns `null` when

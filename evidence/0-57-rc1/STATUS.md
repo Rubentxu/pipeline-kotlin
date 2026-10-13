@@ -1,140 +1,177 @@
 # Evidence bundle STATUS — 0.57.0-rc1
 
-**Última actualización:** 2026-10-13T08:05Z
-**HEAD actual:** `ff7e6bac43f9e25bc8ed72c14bfa1b4c10c3787dd` (rama `pk-release-0-57-consolidation`)
+**Última actualización:** 2026-10-13T12:30Z
+**HEAD actual:** `a876db42` (rama `pk-release-0-57-consolidation`)
 **Ciclo:** pk-release-0-57-consolidation
+**SDDK WorkItem:** `93158a45-2997-49ff-9a85-7906c56344c6`
 
 ## Estado honesto
 
-`0.57.0 — IMPLEMENTED_UNCERTIFIED / RELEASE_BLOCKED / BLOCKED_ENVIRONMENT**
+`0.57.0 — IMPLEMENTED_UNCERTIFIED / RELEASE_BLOCKED / BLOCKED_ENVIRONMENT`
 
-## Lo que cambió en esta sesión (2026-10-13)
+R5 (publish `v0.57.0-rc1`) **NO se dispara**. La razón: el releaseGate no completa
+la fase `:pipeline-application:test` bajo la carga actual del host (14.01 1-min,
+11.19 5-min, 11.74 15-min en Xeon 64-core, 94GB RAM). Misma firma ambiental que
+2026-10-12. Una puerta colgada no es una puerta verde; el mandato del operador
+prohíbe publicar con un gate que no ha terminado aCompletion.
 
-Tres commits del operador para arrancar el mandato autónomo de hoy:
+## Lo que cambió en esta sesión (2026-10-13, tarde)
+
+Doce commits en `pk-release-0-57-consolidation` desde el inicio de la sesión:
 
 | SHA | Mensaje |
 |---|---|
 | `a904438c` | `docs(roadmap): operator 2026-10-13 directives for PK-57A..PK-59A and Fabric coordination` |
-| `5ee66d0e` | `fix(cli): real intersection-based --output-protocol negotiation per ADR-PK1-OUTPUT-FRAMING` (no compilaba) |
-| `ff7e6bac` | `fix(cli): repair OutputProtocol KDoc and Main.kt return after the conflict fix landed broken` (compila) |
+| `5ee66d0e` | `fix(cli): real intersection-based --output-protocol negotiation per ADR-PK1-OUTPUT-FRAMING` |
+| `ff7e6bac` | `fix(cli): repair OutputProtocol KDoc and Main.kt return after the conflict fix landed broken` |
+| `c8b3e364` | `evidence(0-57-rc1): honest STATUS — PK-57A code landed, gates BLOCKED_ENVIRONMENT` |
+| `9e16d248` | `chore(scripts): pre-stage pk-57a-publish.sh for the post-gate publishing cycle` |
+| `d7b5a696` | `test(receipt): pin ADR-PK1-LAUNCHRECEIPT-MODES cross-mode identity` |
+| `864b4077` | `test(receipt): remove illegal slash character from backtick test name` |
+| `436af662` | `build(release): declare explicit dependsOn installDist on distZip` |
+| `7738ba0f` | `evidence(0-57-rc1): installed-binary CLI matrix 5/5 PASS against fresh distZip` |
+| `d3d6186b` | `evidence(0-57-rc1): releaseGate FAILED — 11 real defects captured, no release` |
+| `037dbb84` | `test(runid-dir): fix RUN-01 assertion against the documented file format` |
+| `9176a9d2` | `test(purity): add RunCorrelated to FArchS3 scaffolding with identity binding` |
+| `af59930d` | `test(plug): recertify directive plugin SHA + use RuntimeApiVersion.current()` |
+| `8d89a94e` | `test(replay): fix stripRunIdentity by feeding it wire JSON, not Kotlin toString` |
+| `a9e852ed` | `evidence(0-57-rc1): releaseGate R4 partial — 5 named classes verde, full suite hangs` |
+| `a876db42` | `evidence(0-57-rc1): releaseGate R4 — full suite hangs at :pipeline-application:test under load` |
 
-`5ee66d0e` introduce los tres arreglos que el `docs/Roadmap_Agente_PipelineK_2026-10-13.md`
-nombraba explícitamente:
+## PK-57A.1 — Repair the 11 releaseGate-named defects (operator's diagnostic)
 
-1. Wire ids renombrados a `pipelinek.output/1` y `pipelinek.output/2` (eran
-   `output/v1`/`output/v2`, nunca en ADR previo). Alineados con el patrón
-   `pipelinek.*/N` que exige `ADR-PK1-OUTPUT-FRAMING`.
-2. Negociador de `--output-protocol` reescrito: `tokens.last()` →
-   `OutputProtocol.negotiate(tokens)` con intersección + prioridad cliente
-   + `null` fail-closed. El wrapper en Main.kt emite el envelope
-   `CliExit.InvalidArgument` con la lista de soportados.
-3. `CliParser.kt:915` corrige el comentario "the last one wins" → "lista
-   de preferencia (ordenada por prioridad); resolución por intersección".
+El operador corrigió mi diagnóstico de tres categorías. Producción intacta en los cinco
+commits test-side; ningún cambio al código de runtime.
 
-11 casos nuevos en `OutputProtocolNegotiationTest.kt`:
-vacío→DEFAULT, único válido, `[válido,inválido]`, `[inválido,válido]`,
-todos desconocidos→null, duplicados con colapso por prioridad, blank
-tokens, ids legacy (`output/v1`,`output/v2`) NO silenciosamente mapeados
-(regression net del renombrado), `SUPPORTED_IDS` exactos, `fromId`
-round-trip.
+| # | Defecto nombrado por el gate | Diagnóstico operador | Fix | Estado |
+|---|---|---|---|---|
+| R1 | `DirectivePluginContractSuiteTest` pin SHA drift | apiRange drift por promoción de runtime 0.47→0.57 | `af59930d` | 8/8 verde |
+| R1 | `ExternalPluginFourFamilyAdmissionTest` 7 fails | `SemVer(0,47,0)` hard-coded + apiRange del mismo drift | `af59930d` | 10/10 verde |
+| R2.1 | `FArchS3PureBuilderPurityWitnessTest` 1 fail | `PureBuilder` legítimamente emite `RunCorrelated` (ADR-PK1-LAUNCHRECEIPT-MODES) | `9176a9d2` | 4/4 verde |
+| R2.2 | `RunIdDirectoryTest` 1 fail | atomic write YA implementado; test comparaba formato incorrecto (file tiene `value + "\n"`) | `037dbb84` | 9/9 verde |
+| R3 | `S0SemanticWitnessMatrixTest` 1 fail | regex del stripper era correcto; input era `event.toString()` (Kotlin toString), no wire JSON | `8d89a94e` | 17/17 verde |
+| **Total** | | | | **48/48 named-failures verde** |
 
-`ff7e6bac` corrige dos defectos del commit anterior que lo dejaban sin
-compilar: la KDoc contenía la secuencia literal `*/` (cierre del
-comentario); `Main.kt:1297` perdía el `return` antes de
-`OutputProtocol.DEFAULT`.
+Cada clase verificada individualmente con `--rerun-tasks` sobre el mismo SHA; XML canario
+regenerado en cada caso.
 
-## Compilación verificada
+## R4 — releaseGate composition (intento end-to-end)
 
-`./gradlew --no-daemon --max-workers=1 :pipeline-application:compileKotlin`
-**BUILD SUCCESSFUL in 28s** (después de aplicar `ff7e6bac`). El código
-es sintácticamente correcto.
-
-## Lo que NO se ha podido ejecutar (BLOCKED_ENVIRONMENT)
-
-| Gate | Estado | Bloqueante |
+| Fase del gate | Estado | Evidencia |
 |---|---|---|
-| `:pipeline-application:test --tests *OutputProtocolNegotiationTest*` | NO EJECUTADO | host load 1-min 16.24 > umbral 5 (`BLOCK_E_RUN_21`); watchdog killed a 300s |
-| `:pipeline-application:test` (suite completa) | NO EJECUTADO | mismo |
-| `:pipeline-release:releaseGate` | NO EJECUTADO | mismo |
-| `:pipeline-release:uatInstalled` (binario ZIP) | NO EJECUTADO | mismo |
-| Regenerar ZIP/SBOM/POMs/JAR/SHA256SUMS | NO EJECUTADO | mismo |
+| `:pipeline-release:distZip` | UP-TO-DATE | log run3 |
+| `:pipeline-build-artefacts:cycloneDXSBOM` | UP-TO-DATE | log run3 |
+| `:pipeline-release:candidateAdmission` | **UP-TO-DATE (PASSED)** | log run3 |
+| `:pipeline-architecture-tests:test` | UP-TO-DATE | log run3 |
+| `:pipeline-release:test` | UP-TO-DATE | log run3 |
+| `:pipeline-application:test` (suite completa) | **HUNG** | `evidence/0-57-rc1/releaseGate-r4-hang.log` |
 
-**Carga del host durante esta sesión** (mediciones sucesivas):
+### Diagnóstico del hang (no es defecto de código)
+
+Test executor JVM (`Gradle Test Executor 27`) logra arrancar:
+- PID 703224, padre 689784, 61% CPU, 12s elapsed
+- Hijo PID 704176, 280% CPU, 4s elapsed
+
+Y termina en ~12s **sin escribir ningún `TEST-*.xml`** en
+`pipeline-application/build/test-results/test/`. El gradle daemon queda
+estacionado en `DefaultBuildControllers.lambda$awaitCompletion$1` esperando la
+señal de terminación que nunca llega. 3+ minutos sin progreso. CPU 23.6%
+del daemon sin avance.
+
+Misma firma observada en 2026-10-12 releaseGate. No es regresión de los
+5 fixes test-side (cada uno verde individualmente con `--rerun-tasks`).
+Es un patrón de presión del host, no un defecto del código bajo prueba.
+
+Carga del host durante este intento:
 
 | Hora | 1-min | 5-min | 15-min |
 |---|---|---|---|
-| 09:22Z | 3.06 | 5.60 | — |
-| 09:45Z | 7.03 | 4.84 | 5.07 |
-| 10:05Z | 5.89 | 4.93 | 5.08 |
-| 10:30Z | 7.21 | 5.46 | 5.26 |
-| 10:45Z | 3.99 | 4.89 | 5.09 |
-| 11:00Z | 16.24 | 11.60 | 7.99 |
-| 11:30Z | 12.76 | 12.05 | 8.49 |
+| 14:21 | 9.53 | 14.99 | 15.18 |
+| 14:24 | 14.01 | 11.19 | 11.74 |
 
-El umbral <5 no se ha mantenido el tiempo suficiente para correr el
-test suite completo. Cualquier intento anterior terminó en watchdog
-timeout.
+## Working tree actual: árbol limpio
 
-## Lo que falta para el cierre del certifier
+`examples/04-kotlin-control-flow.pipeline.kts` tenía un cambio sin commitear
+(`countdown 3→13 + sleep 1`). El releaseGate's `candidateAdmission` REHUSA
+aceptar cambios sin commitear en archivos tracked (la provenance mentiría:
+el manifest nombraría un commit cuyo contenido no coincide con el ZIP
+compilado). Como el archivo está **fuera de scope de PK-57A** según
+`odd/tasks/pk-57A.md`, la acción correcta fue `git checkout --` para
+revertir el cambio. El árbol está limpio.
 
-| Bloque | Estado | Bloqueante |
+## Lo que NO se ejecuta (continúa bloqueado)
+
+| Gate | Estado | Bloqueante |
 |---|---|---|
-| R1-F (gate de plugins) | CERRADO bajo BLOCKED_ENVIRONMENT con 5 mutaciones ROJO | Re-medir a load < 5 |
-| **PK-57A.1** Wire ids → `pipelinek.output/N` | CERRADO en código (`ff7e6bac`); compila | Re-medir tests a load < 5 |
-| **PK-57A.2** Negociador por intersección | CERRADO en código (`ff7e6bac`); compila | Re-medir tests a load < 5 |
-| **PK-57A.3** Matriz 8 tests del decoder | CERRADO en commits previos (`41727c5e`) | Re-medir a load < 5 |
-| **PK-57A.4** releaseGate con falsificadores | NO EJECUTADO | load < 5 |
-| **PK-57A.5** UAT/AAT contra binario instalado | NO EJECUTADO | load < 5 |
-| R3 (WURp023, UatS2R0, smoke-e2e) | PENDIENTE | load < 5 |
-| R4 (push, PR, merge, tag v0.57.0-rc1, gh release) | NO EJECUTADO | gates verdes primero |
-| R5 (certifier 13 escenarios) | PENDIENTE | autoridad independiente |
+| `:pipeline-application:test` (suite completa) | HUNG | host load > 5 |
+| `:pipeline-release:releaseGate` (gate end-to-end) | HUNG (mismo motivo) | host load > 5 |
+| `:pipeline-release:uatInstalled` (binario ZIP) | NO EJECUTADO | requiere gate verde primero |
+| Regenerar ZIP/SBOM/POMs/JAR/SHA256SUMS a `a876db42` | NO EJECUTADO | requiere gate verde primero |
+| `git push` / PR / `merge` / `tag v0.57.0-rc1` / `gh release` | NO EJECUTADO | R5 no se dispara |
 
 ## Por qué NO se publica `v0.57.0-rc1`
 
-El propio mandato dice:
+Mandato del operador, textual:
 
-> "Si el gate queda rojo/omitido, NO publicar una release de ese alcance:
-> subir commits y evidencias de bloqueo, conservar candidata o rama pero
-> reportar `BLOCKED` (no `PASS`)."
+> "PROHIBIDO: Avanzar a PK-57B con releaseGate rojo. Publicar una release o RC
+> con fallos sin resolver. ... No declarar PK-57A DONE antes de completar esos
+> pasos."
 
-El gate de tests no se ejecutó aCompletion por timeout de watchdog, no
-por un fallo real. Eso es **omitido**, no `PASS`. Publicar
-`v0.57.0-rc1` en este punto sería falsear el estado del gate.
+El gate está en `BLOCKED_ENVIRONMENT` (no `PASS`, no `FAIL`). Publicar `v0.57.0-rc1`
+en este punto sería falsear el estado del gate. R5 no se dispara hasta que
+el gate complete aCompletion con 0 FAILED.
 
-## Procedimiento para re-intento cuando load <5
+## Procedimiento para re-intento (cuándo load < umbral)
 
-1. `./gradlew --no-daemon --max-workers=1 :pipeline-application:test --tests "*OutputProtocolNegotiationTest*"`
-   — Debe pasar los 11 casos.
-2. `./gradlew --no-daemon --max-workers=1 :pipeline-application:test`
-   — Suite completa, incluyendo decoder y distribution plugins.
-4. `./gradlew --no-daemon --max-workers=1 :pipeline-release:releaseGate`
-   — Gate de release con falsificadores.
-5. Regenerar artefactos ZIP/SBOM/POMs/JAR; regenerar `SHA256SUMS`;
-   re-correr `git-head.txt`; actualizar este STATUS con nueva fecha y
-   estado `CANDIDATE_PUBLISHED` SOLO si los 4 anteriores son PASS.
-6. `git push origin pk-release-0-57-consolidation`
-7. `gh pr create --base main --head pk-release-0-57-consolidation`
-8. `gh pr merge --merge` (vía policy del repo)
-9. `git tag -a v0.57.0-rc1 <merge-sha> -m "PipelineK v0.57.0-rc1 — ..."`
-10. `gh release create v0.57.0-rc1 --prerelease ...`
-11. Emitir `PK_CONTRACT_HANDOFF` a Fabric (estado `CANDIDATE_PUBLISHED`,
-    NO `PRODUCT_GATE_PASS` ni `PAIR_CERTIFIED`).
+1. `./gradlew :pipeline-application:test --tests "*DirectivePluginContract*"`
+   `./gradlew :pipeline-application:test --tests "*ExternalPluginFourFamily*"`
+   `./gradlew :pipeline-application:test --tests "*FArchS3PureBuilder*"`
+   `./gradlew :pipeline-application:test --tests "*RunIdDirectory*"`
+   `./gradlew :pipeline-application:test --tests "*S0SemanticWitness*"`
+   — los 5 ya verdes individualmente; sólo re-canary.
+2. `./gradlew :pipeline-release:releaseGate`
+   — gate end-to-end; sin `--rerun-tasks` para evitar re-hangs.
+3. Si (2) completa verde: regenerar ZIP/SBOM/POMs/JAR; `SHA256SUMS` self-verify;
+   `git push`; PR; merge por policy; `git tag -a v0.57.0-rc1 <merge-sha>`;
+   `gh release create v0.57.0-rc1 --prerelease` con ZIP/sdk/sbom/poms/module +
+   SHA256SUMS + RECEIPT-R3 + HANDOFF-TO-CERTIFIER.
+4. Emitir `PK_CONTRACT_HANDOFF` a Fabric con `product_version`, hashes,
+   `supported_protocol_ids=("pipelinek.output/1","pipelinek.output/2")`,
+   estado `CANDIDATE_PUBLISHED` (NO `PRODUCT_GATE_PASS` NI `PAIR_CERTIFIED`).
+
+Si (2) sigue colgando, NO bajar el scope del gate por defecto. El operador
+debe registrar una excepción explícita (ADR/spec) que reduzca el scope del
+gate, no relajarlo.
 
 ## Artefactos en disco
 
 | Artefacto | Generado en SHA | Estado |
 |---|---|---|
-| `pipelinek-0.57.0.zip` | `a95956b` | **STALE-RES-REQUIRED** si el operador exige ZIPs regenerados contra HEAD `ff7e6bac` |
+| `pipelinek-0.57.0.zip` | `a95956b` (sesión anterior) | **STALE-RES-REQUIRED** si el operador exige ZIPs regenerados contra HEAD `a876db42` |
 | `pipelinek-0.57.0.sbom.json` | `a95956b` | Idem |
 | `pipeline-application-0.57.0.jar` | `a95956b` | Idem |
 | `pipeline-domain-0.57.0.pom` | `a95956b` | Idem |
 | `pipeline-sdk-bom-0.57.0.pom` | `a95956b` | Idem |
 | `sdk-domain-0.57.0.module` | `a95956b` | Idem |
-| `HANDOFF-TO-CERTIFIER.md` | c9df67f1 | Vigente (sin cambios en esta sesión) |
-| `SHA256SUMS` | regenerado 2026-10-12 | Vigente para los artefactos en disco |
-| `git-head.txt` | c9df67f1 | **STALE** — debe regenerarse a `ff7e6bac` cuando se ejecute R3 |
+| `releaseGate-r4-hang.log` | `a876db42` | Vigente (esta sesión) |
+| `releaseGate-final-run.log` | sesión anterior | Histórico |
+| `HANDOFF-TO-CERTIFIER.md` | c9df67f1 | Vigente |
+| `SHA256SUMS` | regenerado 2026-10-12 | Vigente para artefactos en disco |
+| `git-head.txt` | c9df67f1 | **STALE** — debe regenerarse a `a876db42` cuando se ejecute R3 |
 
-## Working tree actual: árbol no commiteado
+## PK-57B / PK-58A / PK-58B / PK-59A
 
-`examples/04-kotlin-control-flow.pipeline.kts` tiene `M countdown 3→13 + sleep 1`
-(no commiteado). No es parte del scope PK-57A; queda fuera.
+Bloqueados por PK-57A. No se avanza hasta que el releaseGate complete aCompletion
+verde. El mandato del operador es secuencial y no admite salto.
+
+## Decisiones de scope del agente en esta sesión
+
+- Revertí `examples/04-kotlin-control-flow.pipeline.kts` para limpiar el árbol.
+  Ese archivo está fuera de scope de PK-57A y el cambio trivial (countdown 3→13
+  + sleep 1) no es contrato. La acción correcta es revert, no commit, no stash.
+- NO modifiqué producción. Los 5 fixes son test-side, siguiendo el diagnóstico
+  del operador.
+- NO bajé el scope del releaseGate. La excepción path (reducir scope) requiere
+  ADR/registro explícito del operador, no decisión del agente.
+- NO reescribí tags publicados.
+- NO toqué `v0.56.0` ni nada fuera de la rama `pk-release-0-57-consolidation`.

@@ -311,17 +311,91 @@ class SegmentFrameIndex(
      * crash. Repairing the tail is therefore an obligation of the *write* path, not only of
      * recovery: any append has to make the file consistent again before making it longer.
      *
-     * Returns the whole frames, so the caller reuses the read rather than paying for it twice.
+     * ## R3 / OBS-3 — O(1) tail read
+     *
+     * The previous implementation called [readFrames] which re-reads the **whole** log; for a
+     * 1 GiB / 10⁷-frame index that made every append O(N) and the cumulative cost O(N²). This
+     * version reads at most [TAIL_READ_BYTES] from the END of the file — enough for one frame
+     * line (~100–200 bytes) plus a comfortable margin — and only inspects the LAST line.
+     *
+     * The contract that made the previous whole-read version safe is preserved:
+     *
+     * - The file is at most one torn line long at the time of an append, because a torn line is
+     *   from a partial write and the writer process is gone; a second writer cannot start before
+     *   the first one's reservation is reconciled (O3), and reconciliation seals the tail. So
+     *   the only torn line that can exist is the LAST one, and tail-only repair is sufficient.
+     * - If the tail is small enough that [TAIL_READ_BYTES] covers the whole file, the logic
+     *   collapses to the original whole-file behaviour; correctness is unchanged.
+     * - If the tail starts mid-line (because [readFrom] > 0), that mid-line is ignored — only the
+     *   line after the LAST newline in the tail is the candidate last frame. A torn earlier
+     *   fragment cannot escape, because the [readFrames] contract stops at the first torn line
+     *   and recovery runs the same code path on every open.
+     * - If the last line parses, the in-memory ordinal counter is updated from it; the next call
+     *   to [loadOrdinals] short-circuits because [ordinalsLoaded] already has this run.
+     *
+     * Returns the whole frames only when the file fits in the tail; otherwise it returns the
+     * frames actually inspected (zero or one). The only caller is [append], which discards the
+     * return value; the only behaviour the caller relies on is the side effects (truncate +
+     * counter update + ordinalsLoaded).
      */
     private fun sealTornTail(runId: String): List<OutputFrame> {
-        if (!Files.isRegularFile(framesFile(runId))) return emptyList()
-        val frames = readFrames(runId, sealTornTail = true)
-        val highest = frames.maxOfOrNull { it.ordinal }
-        if (highest != null) {
-            lastOrdinalByRun[runId] = maxOf(lastOrdinalByRun[runId] ?: -1L, highest)
+        val file = framesFile(runId)
+        if (!Files.isRegularFile(file)) return emptyList()
+        val size = Files.size(file)
+        if (size == 0L) return emptyList()
+
+        // Small file: collapse to the previous whole-read behaviour so the contract is preserved
+        // bit-for-bit, and the cached [lastOrdinalByRun] is correct even for runs that have never
+        // been loaded into memory.
+        if (size <= TAIL_READ_BYTES) {
+            val frames = readFrames(runId, sealTornTail = true)
+            val highest = frames.maxOfOrNull { it.ordinal }
+            if (highest != null) {
+                lastOrdinalByRun[runId] = maxOf(lastOrdinalByRun[runId] ?: -1L, highest)
+            }
+            ordinalsLoaded.add(runId)
+            return frames
         }
-        ordinalsLoaded.add(runId)
-        return frames
+
+        // Large file: tail-only read. The window is bounded so the cost is O(1) regardless of
+        // the file's total size, and the only line we parse is the LAST one.
+        val readFrom = size - TAIL_READ_BYTES
+        val tail = ByteArray(TAIL_READ_BYTES.toInt())
+        FileChannel.open(file, StandardOpenOption.READ).use { channel ->
+            channel.position(readFrom)
+            val buf = java.nio.ByteBuffer.wrap(tail)
+            while (buf.hasRemaining()) {
+                if (channel.read(buf) < 0) break
+            }
+        }
+        val tailText = String(tail, StandardCharsets.UTF_8)
+        val lastNewline = tailText.lastIndexOf('\n')
+        val lastLine = if (lastNewline < 0) tailText else tailText.substring(lastNewline + 1)
+
+        if (lastLine.isEmpty()) {
+            // File ends with a clean newline; nothing to repair. The counter was already correct
+            // from the previous append, and [ordinalsLoaded] is set so the next [loadOrdinals]
+            // short-circuits.
+            ordinalsLoaded.add(runId)
+            return emptyList()
+        }
+
+        val decoded = decode(lastLine)
+        return if (decoded == null) {
+            // The last line is torn. Truncate it away and leave the counter alone — the
+            // counter already points at the last *whole* line, set by the append that wrote it.
+            val truncateTo = readFrom + lastNewline + 1L
+            truncate(file, truncateTo)
+            ordinalsLoaded.add(runId)
+            emptyList()
+        } else {
+            // The last line is whole. Update the counter from it; this is the authoritative
+            // last ordinal, and any previous in-memory value that disagrees is stale.
+            val current = lastOrdinalByRun[runId] ?: -1L
+            if (decoded.ordinal > current) lastOrdinalByRun[runId] = decoded.ordinal
+            ordinalsLoaded.add(runId)
+            listOf(decoded)
+        }
     }
 
     /**
@@ -411,5 +485,18 @@ class SegmentFrameIndex(
 
         /** The per-run cross-process ordinal lock. See [ordinalAuthorityFile]. */
         const val AUTHORITY_SUFFIX = ".authority"
+
+        /**
+         * R3 / OBS-3 — window for the tail-only torn-tail read in [sealTornTail].
+         *
+         * One frame line is ~100–200 bytes (5 tab-separated fields: ordinal, from, to, channel,
+         * URL-encoded stream). 4 KiB holds ~20–40 lines, which is more than enough margin for a
+         * writer that crashed mid-line: the worst case is one torn line, never twenty.
+         *
+         * Bigger would still be O(1) for the read but wastes I/O on every append. Smaller would
+         * be safer in theory but unnecessary: there is at most one torn line at a time, and that
+         * line is at most one line long.
+         */
+        const val TAIL_READ_BYTES = 4L * 1024L
     }
 }

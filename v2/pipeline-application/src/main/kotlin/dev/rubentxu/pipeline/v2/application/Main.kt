@@ -1265,33 +1265,36 @@ private fun emitCorrelationAndReceipt(
  * concrete [OutputProtocol] or fail closed with
  * [CliExit.InvalidArgument] (exit 2).
  *
- * Rules:
+ * Rules (ADR-PK1-OUTPUT-FRAMING):
  * - Empty list → [OutputProtocol.DEFAULT] (Published). No change
  *   in behaviour for callers that did not opt in.
- * - Last token wins on repetition. The earlier ones are ignored
- *   (and not validated individually); the [ADR] permits clients
- *   to declare a list because that is the wire shape of
- *   negotiation, but our binary only emits one protocol per run
- *   and we keep the resolution simple.
- * - An unknown id exits with a typed envelope listing every
- *   supported id. The server NEVER falls back to Published on an
- *   unknown id — silent degradation is the exact defect the ADR
- *   was written to prevent.
+ * - The token list is the CLIENT'S PREFERENCE ORDER. The first id
+ *   in the list that intersects [OutputProtocol.SUPPORTED_IDS] wins.
+ *   Unknown ids in the list are SKIPPED, not rejected — clients
+ *   may declare more ids than this binary supports, as long as at
+ *   least one matches.
+ * - When NO id in the list intersects the supported set, the
+ *   process exits with [CliExit.InvalidArgument] (code 2) and an
+ *   envelope listing every supported id. The server NEVER falls
+ *   back to Published on an unknown request — silent degradation
+ *   is the exact defect the ADR was written to prevent.
+ *
+ * Resolution lives in [OutputProtocol.negotiate]; this wrapper
+ * only translates "no intersection" into the typed CLI envelope.
  */
 private fun negotiateOutputProtocolOrExit(tokens: List<String>): OutputProtocol {
-    if (tokens.isEmpty()) return OutputProtocol.DEFAULT
-    val requested = tokens.last()
-    return OutputProtocol.fromId(requested) ?: run {
-        val supported = OutputProtocol.SUPPORTED_IDS.joinToString(", ")
-        val exit = CliExit.InvalidArgument(
-            message = "unsupported output protocol: '$requested'. Supported: $supported",
-            hint = "see ADR-PK1-OUTPUT-FRAMING for the negotiation contract",
-        )
-        System.err.write(exit.encodeEnvelope().toByteArray(Charsets.UTF_8))
-        System.err.flush()
-        System.exit(exit.code)
-        OutputProtocol.DEFAULT  // unreachable; satisfies the type system
-    }
+    val resolved = OutputProtocol.negotiate(tokens)
+    if (resolved != null) return resolved
+    val supported = OutputProtocol.SUPPORTED_IDS.joinToString(", ")
+    val requested = tokens.joinToString(", ")
+    val exit = CliExit.InvalidArgument(
+        message = "no acceptable --output-protocol in [$requested]. Supported: $supported",
+        hint = "see ADR-PK1-OUTPUT-FRAMING for the negotiation contract",
+    )
+    System.err.write(exit.encodeEnvelope().toByteArray(Charsets.UTF_8))
+    System.err.flush()
+    System.exit(exit.code)
+    OutputProtocol.DEFAULT  // unreachable; satisfies the type system
 }
 
 /**

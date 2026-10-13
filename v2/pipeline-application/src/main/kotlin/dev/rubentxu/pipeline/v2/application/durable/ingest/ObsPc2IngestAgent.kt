@@ -141,6 +141,29 @@ object ObsPc2IngestAgent {
         val streams = OutputPlaneProvider.streamsOf(runId, opId)
         val frameIndex = store.frameIndex()
 
+        // R2.3(b) diagnostic: print lifecycle events to the agent's
+        // stdout. The runtime redirects stdout to controlDir/agent.log,
+        // so every println below is a probe line in that file. NO
+        // secrets or payloads are emitted — the diagnostics record
+        // the byte flow at the 5 frontiers the operator named:
+        //   ChildWritten → FifoReceived → Sanitized → OutputCommitted
+        // Each frontier is a separate println so the log can be
+        // diffed against the spike's `bytes_after_release` and the
+        // individual sinks' `refusal()` state.
+        val agentPid = ProcessHandle.current().pid()
+
+        // R2.3(b) diagnostic: the agent and the test must agree on the
+        // stream id and the control root. If either is wrong the
+        // "committed N bytes / reader saw 0" shape becomes silent. No
+        // payload, no secret: just the typed identity and the layout root.
+        System.err.println(
+            "pc2-agent-resolve pid=$agentPid runId=$runId opId=$opId " +
+                "controlDirRoot=$controlDirRoot " +
+                "stdoutStream=${streams.stdout.stream.value} " +
+                "stderrStream=${streams.stderr.stream.value} " +
+                "storeClass=${store.javaClass.simpleName}",
+        )
+
         val sinks = ProcessOutputChannel.all.associateWith { channel ->
             val address = when (channel) {
                 ProcessOutputChannel.STDOUT -> streams.stdout
@@ -149,6 +172,11 @@ object ObsPc2IngestAgent {
             RedactingOutputIngress({ store.open(address.stream) }, frameIndex, address)
         }
 
+        System.err.println(
+            "pc2-agent-start pid=$agentPid runId=$runId opId=$opId fifoDir=$fifoDir " +
+                "stdoutFifo=${fifoDir.resolve("stdout.fifo")} stderrFifo=${fifoDir.resolve("stderr.fifo")}",
+        )
+
         // O_RDWR on a FIFO: never blocks, and keeps this process a
         // writer so the read side never reports a spurious EOF
         // before the child has started.
@@ -156,10 +184,12 @@ object ObsPc2IngestAgent {
             ProcessOutputChannel.STDOUT to openRendezvous(fifoDir.resolve("stdout.fifo")),
             ProcessOutputChannel.STDERR to openRendezvous(fifoDir.resolve("stderr.fifo")),
         )
+        System.err.println("pc2-agent-fifos-opened pid=$agentPid")
 
         // Both descriptors are open. From here this process can
         // outlive the one that launched it.
         Files.writeString(readyMarker, "ready\n")
+        System.err.println("pc2-agent-ready-marker-written pid=$agentPid")
 
         val threads = ProcessOutputChannel.all.map { channel ->
             val input = Channels.newInputStream(channels.getValue(channel))
@@ -167,29 +197,74 @@ object ObsPc2IngestAgent {
             val sink = sinks.getValue(channel)
             Thread({
                 val buffer = ByteArray(8192)
+                var totalReceived = 0L
+                var totalSanitized = 0L
+                var totalCommitted = 0L
+                var iter = 0L
                 try {
                     while (true) {
-                        // Ask for what is READY, not for a whole
-                        // buffer — the same gate the production pump
-                        // uses. RedactingInputStream fills its own
-                        // input buffer before it decides anything, so
-                        // asking for 8 KiB when the child has written
-                        // 97 bytes and parked blocks forever. The
-                        // first version of this prototype did exactly
-                        // that, and the FIFO stayed full while the
-                        // plane stayed empty.
-                        val ready = maxOf(1, minOf(buffer.size, redacted.available()))
+                        iter++
+                        val available = redacted.available()
+                        val ready = maxOf(1, minOf(buffer.size, available))
                         val n = redacted.read(buffer, 0, ready)
-                        if (n < 0) break
+                        if (n < 0) {
+                            System.err.println(
+                                "pc2-agent-pump-eof channel=${channel.name.lowercase()} " +
+                                    "iter=$iter totalReceived=$totalReceived totalSanitized=$totalSanitized " +
+                                    "totalCommitted=$totalCommitted",
+                            )
+                            break
+                        }
+                        totalReceived += n.toLong()
                         sink.write(buffer, 0, n)
+                        totalCommitted += n.toLong()
+                        if (iter <= 5 || iter % 1000L == 0L) {
+                            // Frontier probe: a periodic sample of
+                            // the byte flow. NO payload content.
+                            val refusal = sink.refusal()
+                            System.err.println(
+                                "pc2-agent-pump-step channel=${channel.name.lowercase()} " +
+                                    "iter=$iter n=$n totalReceived=$totalReceived " +
+                                    "totalCommitted=$totalCommitted refusal=" +
+                                    (refusal?.detail ?: "none"),
+                            )
+                        }
                     }
+                    // Drain whatever is left in the redactor's
+                    // lookahead before declaring the channel done.
+                    // The redactor holds a small window of bytes to
+                    // detect secrets that cross chunk boundaries; the
+                    // window bytes are only safe to emit at EOF.
+                    runCatching {
+                        var drainN: Int
+                        var drainIter = 0
+                        while (true) {
+                            drainIter++
+                            val tailN = redacted.read(buffer, 0, buffer.size)
+                            if (tailN <= 0) break
+                            sink.write(buffer, 0, tailN)
+                            totalReceived += tailN.toLong()
+                            totalCommitted += tailN.toLong()
+                            if (drainIter > 1000) break // safety stop
+                        }
+                    }
+                    val refusal = sink.refusal()
+                    System.err.println(
+                        "pc2-agent-pump-drained channel=${channel.name.lowercase()} " +
+                            "totalReceived=$totalReceived totalCommitted=$totalCommitted " +
+                            "refusal=" + (refusal?.detail ?: "none"),
+                    )
+                    sink.close()
                 } catch (e: Exception) {
                     // NOT swallowed. A harness that discards the
                     // failing process's exception is a harness that
                     // cannot debug it, and this one already cost a run
                     // reading an empty log while the real cause sat in
                     // the catch block.
-                    System.err.println("pc2-agent-pump-${channel.name.lowercase()}-failed: $e")
+                    System.err.println(
+                        "pc2-agent-pump-failed channel=${channel.name.lowercase()} " +
+                            "iter=$iter totalReceived=$totalReceived totalCommitted=$totalCommitted ex=$e",
+                    )
                     System.err.println(e.stackTraceToString())
                 }
             }, "pc2-ingest-${channel.name.lowercase()}").apply {
@@ -239,7 +314,25 @@ object ObsPc2IngestAgent {
             "$path is not a FIFO. Draining it would accept a plaintext spool on disk, " +
                 "which ADR-OBS-003 excludes and which raw_secret_on_disk == 0 is meant to catch."
         }
-        return Files.newByteChannel(path, StandardOpenOption.READ, StandardOpenOption.WRITE)
+        // R2.3(b): open O_RDONLY. The O_RDONLY open on a named pipe blocks until
+        // a writer appears, which is exactly the rendezvous we want: the
+        // child opens the FIFO for write via `Redirect.to`, the kernel unblocks
+        // our open, and we start reading.
+        //
+        // The previous O_RDWR open made the agent itself a writer, so the
+        // pipe never reached a "zero writers" state when the child exited
+        // and the redactor blocked forever on the lookahead window,
+        // waiting for an EOF that could not arrive. With O_RDONLY the
+        // kernel's read returns EOF the moment the LAST writer closes its
+        // end, which is the honest signal the redactor needs to flush
+        // the lookahead and exit.
+        //
+        // The runtime pre-opens the FIFO in O_RDWR mode (a "warmup")
+        // before launching the agent. The warmup is a writer while the
+        // runtime JVM is alive; once the agent's O_RDONLY open succeeds,
+        // the runtime starts the child (which opens for write), the child
+        // is the only writer, and when the child exits the agent sees EOF.
+        return Files.newByteChannel(path, StandardOpenOption.READ)
     }
 
     /**

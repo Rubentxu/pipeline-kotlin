@@ -58,8 +58,8 @@ cd v2
 ./gradlew --no-daemon --max-workers=1 \
   :pipeline-application:distZip \
   :pipeline-application:cyclonedxBom
-ARTIFACTS_DIR="pipeline-application/build/distributions"
 cd ..
+ARTIFACTS_DIR="v2/pipeline-application/build/distributions"
 cp "$ARTIFACTS_DIR/pipelinek-0.57.0.zip"  "$EVIDENCE_DIR/pipelinek-0.57.0.zip"
 cp "$ARTIFACTS_DIR/pipelinek-0.57.0.sbom.json" "$EVIDENCE_DIR/pipelinek-0.57.0.sbom.json"
 # jar + poms + module are produced by the SDK multi-module build; locate

@@ -1,115 +1,93 @@
 # PK-58A — Lectura viva/recuperable y presupuesto de recursos
 
-**Última actualización:** 2026-10-13T13:00Z
-**Estado de entrada:** NO INICIADO (PK-57A publicado como CANDIDATE_PUBLISHED)
-**Rama prevista:** `pk-release-0-58-consolidation` (nueva, basada en `main` @ `a22734cc`)
-**Release objetivo:** `v0.58.0-rc1`
-**WorkItem SDDK:** (a registrar al autorizar)
+**Última actualización:** 2026-10-13T13:30Z
+**Estado:** T1 cerrado · Decisión recomendada: **NO_NEW_PORT** · T2/T3/T7 pendientes de autorización
+**Rama prevista:** `pk-release-0-58-consolidation` (nueva, basada en `main` @ `280e72fd`)
+**Release objetivo:** `v0.58.0-rc1` (publicable con `NO_NEW_PORT` si el operador lo autoriza)
+**T1 audit:** [`docs/v2/07-uat/PK-58A-ports-audit.md`](../../docs/v2/07-uat/PK-58A-ports-audit.md)
 
-## Estado de entrada (inventario)
+## Estado tras T1 (auditoría cerrada)
 
-### Puertos de lectura que YA EXISTEN (no recrear)
+**SPEC-01 PK-L1..PK-L7 contrastado contra `main@0a1e5c88`:** 6/7 cumplido, 1/7
+parcial (PK-L3 wakeup = opcional, no implementado por diseño, polling es la
+ruta actual a 25ms con `FOLLOW_IDLE_MILLIS`). Ver auditoría completa.
 
-| Puerto | Módulo | Estado |
-|---|---|---|
-| `OutputReadPort` | `:pipeline-output` | Existe. `read`, `readRange`, `readRangeDigested`; refusals ADT |
-| `OutputTailPort` | `:pipeline-output` | Existe. `Open(committedEnd)`, `Sealed(finalEnd)` sealed |
-| `OutputFrameIndex` | `:pipeline-output` | Existe |
-| `EventTail` | `:pipeline-events/identity/EventHistoryPorts` | Existe |
-| `EventRecordReadPort` | `:pipeline-events/identity` | Existe + adapter SQLite |
-| `EventShapeReadPort` | `:pipeline-events/shape` | Existe + adapter store |
-| `EventStore` (InMemory + SQLite) | `:pipeline-events` | Existe con tests de concurrencia y round-trip |
-| `SegmentOutputStore` | `:pipeline-output/store` | Existe con tests de crash y cross-process |
-| `CommitWakeupPort` | — | **NO EXISTE** (gap identificado por SPEC-01) |
+**Separación de planos (T2) ya implementada** en el grafo de módulos Gradle:
+- `:pipeline-output` — sólo `api` deps sobre stdlib; cero deps a events/domain
+- `:pipeline-output-store` — implementación local del write side
+- `:pipeline-events` — contratos read-only independientes
+- `:pipeline-events-store` — InMemory + SQLite EventStore
+- `:pipeline-application` — composición de followers y `ObservationWakeup`
 
-### Implementaciones de observación que YA EXISTEN
+**`ObservationWakeup` ya es correctamente ADT de orquestación** (KDoc:
+"a wakeup names a POSITION and nothing else"). No es autoridad durable.
 
-- `:pipeline-application/observation/`: `LiveOutputDrain`, `LiveOutputPresentation`,
-  `ObservationOutputReader`, `ObservationOutputFollower`, `ObservationQuery`,
-  `ObservationView`, `ObservationWakeup`, `RunObservationOutput`, etc.
-- OBS-PC evolutivo: `IMPLEMENTED_PARTIAL` / `NOT_PRODUCT_CERTIFIED`
-  (con 107 + 201..207 entradas implementadas; ver `OBS_PROGRESSIVE_CONSOLE_ROADMAP.md`)
+**Gap principal:** `OutputCommitWakeupPort` no existe. **Es opcional por
+SPEC-01.** El polling a 25ms con cursor durable + cross-process tests
+cumple correctness. Eficiencia de polling no está medida pero no es el
+camino crítico para un block RC.
 
-### Tests que YA EXISTEN (no rehacer)
+## Tareas (revisadas tras T1)
 
-- `ObsBLiveOutputIngressTest`, `ObsCChannelAndTailCharacterisationTest`,
-  `ObsE5TailTest`
-- `ObsGReaderRecoveryInterferenceUatTest`,
-  `ObsPcReadRecoveryOwnershipUatTest`,
-  `ObsPcReadRecoverySeamFitnessTest`
-- `SegmentFrameIndexCrashTest`, `SegmentFrameIndexCrossProcessOrdinalTest`
-- `DurableReadTruthFitnessTest` (gate de arquitectura)
-- `DurableReadTruthTest` (eventos)
+### Cerradas
 
-### Brecha con el mandato PK-58A
+- [x] **T1** Auditoría SPEC-01 PK-L1..PK-L7 contra código. Documentada en
+  `docs/v2/07-uat/PK-58A-ports-audit.md` con tabla per-requisito, mapa
+  de separación de planos, tabla implementadas/declaradas/ausentes, mapeo
+  UAT-PK-M1-001..008 / AAT-M1-01 contra tests OBS-PC existentes.
+  Commit `280e72fd`.
 
-PK-58A pide:
-1. **`CommitWakeupPort`** (SPEC-01 §"CommitWakeups read-side opcional"). NO EXISTE.
-2. **UAT-PK-001..008** y **AAT-01..04** etiquetados como tales. NO EXISTEN con esos
-   nombres (los tests OBS-PC cubren el dominio pero con naming distinto).
-3. **Medición de RSS/heap, FD, latencia p95, bytes escaneados** en streams
-   pequeños y grandes. NO EXISTE measurement harness.
-4. **Sin thread/proceso por frame/página**. Por verificar bajo carga.
-5. **Contrato de capacidad y compatibilidad ABI publicado**. Falta publicación
-   explícita (cambia la línea base 0.57 → 0.58).
-6. **`v0.58.0-rc1` publicado**. NO EXISTE.
+### Pendientes (decisión del operador)
 
-## Tareas (propuesta)
+- [ ] **T2** ADR-arquitectura descriptivo de la separación de planos
+  (`:pipeline-output` / `:pipeline-output-store` / `:pipeline-events` /
+  `:pipeline-events-store` / `:pipeline-application`). Documenta el estado
+  actual; no cambia código. **No requiere nueva autorización** porque
+  describe lo que ya existe.
+- [ ] **T3** `OutputCommitWakeupPort` opcional en `:pipeline-output`.
+  **Recomendación del audit: NO construible en este bloque sin baseline
+  de eficiencia que lo justifique** (PERFORMANCE_BUDGETS.md está
+  PROPOSED, sin baselines medidos).
+- [ ] **T4** Mapeo de tests OBS-PC a UAT-PK-M1-001..008 / AAT-M1-01 ya
+  documentado en el audit (sección 4). No requiere renombrar tests
+  existentes. **Gap:** AAT-M1-01 cross-JVM e2e no existe como test
+  separado. `M1_FOLLOW_DESIGN §10` cita `M1-D` como el e2e requerido.
 
-> Auditoría pre-impl. — no requiere Gradle.
+### Pendientes (release)
 
-- [ ] **T1** Inventario completo de read/tail/frame ports contra el spec SPEC-01
-  PK-L1..PK-L7. Documentar en `docs/v2/07-uat/PK-58A-ports-audit.md` qué
-  requisitos están cubiertos, cuáles parciales, cuáles ausentes. Sin tocar
-  código de producción.
-- [ ] **T2** Decidir si `CommitWakeupPort` se introduce como interface nuevo
-  (recomendado por SPEC-01) o se reusa `ObservationWakeup` que ya existe.
-  ADR-style decisión registrada; si se introduce, evitar acoplar dominios.
-
-> Implementación — Gradle requerido.
-
-- [ ] **T3** Si T2 decide interface nuevo: introducir `CommitWakeupPort` en
-  `:pipeline-output` con el contrato mínimo (hint coalescible, recheck +
-  polling). Tests del seam: `CommitWakeupPortTest`.
-- [ ] **T4** Etiquetar los tests OBS-PC existentes con los IDs UAT-PK-001..008
-  y AAT-01..04 que correspondan (o crear los tests que falten si hay gaps
-  no cubiertos por OBS-PC). Sin relajar cobertura.
-- [ ] **T5** Measurement harness: ejecutar el conjunto seleccionado
-  (pequeño: ~64KB stream, ~30 fps; grande: ~500MB stream, baja fps) y
-  capturar RSS/heap/FD/latencia p95/bytes escaneados. Sin tocar lógica de
-  producción; sólo el harness.
-- [ ] **T6** Verificar "no thread/proceso por frame/página" — invariante
-  asserted en un fitness test que cuenta threads antes y durante una
-  lectura sostenida.
-- [ ] **T7** Si T3..T6 cierran verde, regenerar artefactos a HEAD, regenerar
-  SHA256SUMS, push rama, PR, merge a main, tag `v0.58.0-rc1`, `gh release
-  create --prerelease` con zip/sdk/sbom/poms/module + SHA256SUMS + ABI note.
+- [ ] **T5** Regenerar artefactos ZIP/SBOM/POMs/JAR/MODULE a HEAD con
+  ABI documentada para la línea 0.58 (incluyendo el delta desde 0.57).
+- [ ] **T6** ReleaseGate end-to-end (`:pipeline-release:releaseGate`).
+  Con `NO_NEW_PORT`, el gate sigue siendo el del bloque anterior con
+  artefactos regenerados.
+- [ ] **T7** Push rama `pk-release-0-58-consolidation` → PR base=main →
+  merge → tag `v0.58.0-rc1` → `gh release create --prerelease` con
+  zip/sdk/sbom/poms/module + SHA256SUMS + ABI note 0.58.
 - [ ] **T8** `PK_CONTRACT_HANDOFF` a Fabric con `product_version=0.58.0-rc1`
-  y `abi_diff` (cambios publicados en la línea 0.57 → 0.58).
+  y `abi_diff` (delta 0.57 → 0.58 con `NO_NEW_PORT` documentado).
 
-## Criterios de salida
+## Decisión recomendada al operador
 
-- Todos los gates OBS-PC y los UAT-PK-001..008 / AAT-01..04 PASS sobre los
-  mismos bytes.
-- ABI publicado en `docs/v2/03-specifications/OUTPUT_READ_ABI_v0.58.md` y
-  `EVENT_READ_ABI_v0.58.md` (o similar).
-- `v0.58.0-rc1` publicado como **CANDIDATE_PUBLISHED** (NO `PRODUCT_GATE_PASS`,
-  NO `PAIR_CERTIFIED` — esos quedan para PK-58B con el veredicto
-  independiente del certifier).
+**NO_NEW_PORT en este bloque.** Razones:
+1. Correctness ya está cubierta (audit §1).
+2. Separación de planos ya implementada (audit §2).
+3. `OutputCommitWakeupPort` es opcional por SPEC-01.
+4. PERFORMANCE_BUDGETS.md sin baselines medidos; sin datos, no se justifica
+   construir un seam decorativo.
+5. La medición `polling-solo vs wakeup+polling` es T3, no se puede hacer
+   sin construir el wakeup. Costo: T3 entero para comparar. Beneficio si
+   polling cumple: ninguno. Beneficio si polling no cumple: documento
+   concreto para T3-bis en otro bloque.
 
-## Condiciones explícitas para NO avanzar
+**Publicación propuesta:** `v0.58.0-rc1` con la línea 0.58 ABI
+documentada (incluyendo `NO_NEW_PORT` como capacidad no construida, no
+como capacidad omitida).
 
-- Si un test OBS-PC pasa a rojo, NO relajar; clasificar y reparar.
-- Si el measurement harness revela regresión > budget declarado, NO avanzar
-  a publicación con la regresión abierta.
-- Si T2 decide reusar `ObservationWakeup` y el seam no cumple el contrato
-  del SPEC-01, NO forzar el reuso; introducir el interface nuevo.
-- Si el releaseGate end-to-end no completa verde, NO publicar `v0.58.0-rc1`.
+## Decisión pendiente
 
-## Decisiones pendientes
+1. ¿Confirmar `NO_NEW_PORT` y proceder con T2 (ADR) + T4-T8 (release)?
+2. ¿O autorizar T3 con un baseline medido explícito antes de T7?
 
-1. T2: ¿`CommitWakeupPort` interface nuevo o reuso de `ObservationWakeup`?
-2. ¿Cuántos de los UAT-PK-001..008 ya están cubiertos por OBS-PC-101..107,
-   201..207? Mapeo 1:1 o creación de tests que faltan.
-3. ¿El measurement harness es por-cambio (gate) o baseline-inmutable
-   (LPR-0)? El PERFORMANCE_BUDGETS.md lo marca como PROPOSED.
+Si la respuesta es 1, el bloque cierra con `v0.58.0-rc1` publicado
+como CANDIDATE_PUBLISHED, `OutputCommitWakeupPort` queda como capacidad
+**no construida con criterio de activación documentado** (futuro bloque).

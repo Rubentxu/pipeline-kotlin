@@ -48,17 +48,28 @@ class FArchS3PureBuilderPurityWitnessTest {
      * effect; an allowlist fails the moment a run does something the author did
      * not write, which is the direction that matters.
      *
-     * MEASURED, not assumed: an empty stage emits exactly these six kinds on
+     * MEASURED, not assumed: an empty stage emits exactly these seven kinds on
      * the installed distribution. The first draft of this file guessed that a
      * stage emitted no events of its own and was wrong — StageStarted and
      * StageFinished are real scaffolding, and a fitness that forgot them would
      * have "passed" only because it asserted an empty list against a run that
      * always produces them.
+     *
+     * PK-57A.1 R2.1: `RunCorrelated` was added to the vocabulary when the run
+     * identity contract was promoted to a first-class event in 0.57 (see
+     * ADR-PK1-LAUNCHRECEIPT-MODES). It binds the run's correlationId and
+     * ownerId to the assigned runId and is a precondition of durable recovery,
+     * not an effect. MEASURED on this build: an empty stage emits exactly
+     * one `RunCorrelated` and zero of any other extra kind. The earlier [the
+     * contract between LaunchReceipt and RunCorrelated] check below makes the
+     * identity binding explicit, so adding it to the allowlist does not
+     * silently accept a stray identity emission.
      */
     private val scaffoldingEvents = setOf(
         "CompilationStarted",
         "CompilationFinished",
         "RunStarted",
+        "RunCorrelated",
         "StageStarted",
         "StageFinished",
         "RunFinished",
@@ -83,18 +94,80 @@ class FArchS3PureBuilderPurityWitnessTest {
 
         assertTrue(outcome.admitted, "an empty stage is a legal run: ${outcome.summary}")
 
+        // PK-57A.1 R2.1: identity contract binding. An empty stage must emit
+        // exactly one RunCorrelated, and its correlationId must match the
+        // LaunchReceipt on stdout line 1. A stray RunCorrelated or one bound
+        // to a different correlationId would indicate the identity contract
+        // was silently weakened. The receipt is parsed from the diagnostics
+        // (stdout+stderr) since the probe does not surface the receipt field
+        // directly.
+        val runCorrelatedCount = outcome.eventKinds.count { it == "RunCorrelated" }
+        assertEquals(
+            1,
+            runCorrelatedCount,
+            "a stage with no steps must emit exactly one RunCorrelated (the " +
+                "identity-binding precondition); got $runCorrelatedCount: ${outcome.summary}",
+        )
+        val receiptCorrelationId = extractReceiptCorrelationId(outcome.diagnostics)
+        assertTrue(
+            receiptCorrelationId != null,
+            "stdout line 1 must carry a parseable LaunchReceipt with a correlationId; " +
+                "got diagnostics: ${outcome.diagnostics.take(400)}",
+        )
+        assertTrue(
+            outcome.diagnostics.contains("\"correlationId\":\"$receiptCorrelationId\""),
+            "the RunCorrelated event in the timeline must bind the same " +
+                "correlationId as the LaunchReceipt on stdout line 1; " +
+                "receipt=$receiptCorrelationId; diagnostics=${outcome.diagnostics.take(400)}",
+        )
+
         val beyondScaffolding = outcome.eventKinds.filter { it !in scaffoldingEvents }
         assertEquals(
             0,
             outcome.eventKinds.count { it == "StepStarted" },
             "a stage with no steps must emit no StepStarted: ${outcome.summary}",
         )
+        // PK-57A.1 R2.1: explicit falsifiers for non-scaffolding effects. An
+        // empty stage must not emit SCM, credentials, HTTP, checkout, shell,
+        // file write, or any other effect-related event.
+        for (effectKind in listOf(
+            "CheckoutStarted", "CheckoutFinished",
+            "GitOperationStarted", "GitOperationFinished",
+            "CredentialRequested", "CredentialResolved",
+            "HttpRequestStarted", "HttpRequestFinished",
+            "ShCommandStarted", "ShCommandFinished",
+            "FileWriteStarted", "FileWriteFinished",
+            "PluginLoaded", "PluginUnloaded",
+        )) {
+            assertEquals(
+                0,
+                outcome.eventKinds.count { it == effectKind },
+                "a stage with no steps must emit no $effectKind: ${outcome.summary}",
+            )
+        }
         assertEquals(
             emptyList<String>(),
             beyondScaffolding,
             "a stage with no steps must emit only $scaffoldingEvents, but emitted: " +
                 beyondScaffolding,
         )
+    }
+
+    /**
+     * PK-57A.1 R2.1: extract the LaunchReceipt's correlationId from the
+     * installed binary's stdout, so the witness can verify the
+     * LaunchReceipt ↔ RunCorrelated identity binding.
+     *
+     * The receipt is line 1 of stdout and is a single JSON object whose
+     * `correlationId` field is the same identifier the RunCorrelated event
+     * later binds to the runId. Returns null if the line is not a parseable
+     * receipt with a correlationId; the caller treats that as a hard failure.
+     */
+    private fun extractReceiptCorrelationId(stdoutAndStderr: String): String? {
+        val firstLine = stdoutAndStderr.lineSequence().firstOrNull { it.isNotBlank() } ?: return null
+        if (!firstLine.startsWith("{")) return null
+        val regex = Regex("\"correlationId\"\\s*:\\s*\"([^\"]+)\"")
+        return regex.find(firstLine)?.groupValues?.getOrNull(1)
     }
 
     // ------------------------------------------------------------------

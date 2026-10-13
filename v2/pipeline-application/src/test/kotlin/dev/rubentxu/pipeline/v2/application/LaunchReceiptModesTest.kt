@@ -265,10 +265,10 @@ class LaunchReceiptModesTest {
     }
 
     @Test
-    fun `SCHEMA constant is non-nullable, non-empty, and ends with /1`() {
-        // The /1 suffix is the load-bearing part of the contract:
-        // a future bump to /2 must change this string and the
-        // tests pin the family pattern.
+    fun `SCHEMA constant is non-nullable non-empty and ends with the slash-one suffix`() {
+        // The slash-one suffix is the load-bearing part of the
+        // contract: a future bump to slash-two must change this
+        // string and the tests pin the family pattern.
         assertEquals("pipelinek.launch/1", LaunchReceipt.SCHEMA)
         assertTrue(LaunchReceipt.SCHEMA.startsWith("pipelinek."))
         assertTrue(LaunchReceipt.SCHEMA.contains("/"))

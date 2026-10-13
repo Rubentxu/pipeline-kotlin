@@ -191,6 +191,26 @@ class DurableShellExecutor : DurableShellLaunching {
     )
 
     /**
+     * R2.3 / ADR-OBS-003 — the rendezvous between the child process and the
+     * ingest agent, plus the agent's own [Process] handle once launched.
+     *
+     * The child writes to [stdoutFifo] and [stderrFifo]; the agent opens
+     * the same files O_RDWR (no spurious EOF) and drains them. [readyMarker]
+     * is created by the agent once it has both FIFOs open, which is what
+     * the runtime (and the spike test) await to know "the agent is
+     * attached, the child is safe to start".
+     *
+     * [process] is `null` until [launchIngestAgent] populates it.
+     */
+    private data class AgentHandles(
+        val fifoDir: Path,
+        val stdoutFifo: Path,
+        val stderrFifo: Path,
+        val readyMarker: Path,
+        var process: Process?,
+    )
+
+    /**
      * Writes `script.sh`, its Jenkins-70874 copy, and `wrapper.sh`, and makes both executable.
      *
      * The copy exists because Jenkins itself keeps one, so dropping it would be a compatibility
@@ -204,6 +224,7 @@ class DurableShellExecutor : DurableShellLaunching {
         captureStdout: Boolean,
         opId: String,
         pumpedThroughJvm: Boolean,
+        pumpedViaAgent: Boolean = false,
     ): ShellFiles {
         val executable = java.util.EnumSet.of(
             java.nio.file.attribute.PosixFilePermission.OWNER_READ,
@@ -218,7 +239,15 @@ class DurableShellExecutor : DurableShellLaunching {
         val wrapperFile = controlDir.resolve("wrapper.sh")
         Files.writeString(
             wrapperFile,
-            buildWrapperContent(controlDir, scriptFile, config, captureStdout, opId, pumpedThroughJvm),
+            buildWrapperContent(
+                controlDir = controlDir,
+                scriptPath = scriptFile,
+                config = config,
+                captureStdout = captureStdout,
+                opId = opId,
+                transcriptPipedThroughJvm = pumpedThroughJvm,
+                pumpedViaAgent = pumpedViaAgent,
+            ),
         )
         Files.setPosixFilePermissions(wrapperFile, executable)
 
@@ -230,6 +259,129 @@ class DurableShellExecutor : DurableShellLaunching {
             resultTmp = controlDir.resolve("result.txt.tmp"),
             cookieFile = controlDir.resolve(".cookie"),
         )
+    }
+
+    /**
+     * R2.3 / ADR-OBS-003 — create the FIFO rendezvous under
+     * `controlDir/fifos/`. The directory and the FIFOs are owned by the
+     * runtime; the child writes to them, the agent reads from them.
+     *
+     * `java.nio.file` cannot create a FIFO, so we shell out to
+     * `mkfifo`. The mkfifo binary is the standard coreutils command and
+     * is present on every POSIX host the durable shell already requires
+     * (`LinuxRequiredException`).
+     */
+    private fun materialiseFifos(controlDir: Path): Path {
+        val fifoDir = controlDir.resolve("fifos")
+        Files.createDirectories(fifoDir)
+        val mkfifo = ProcessBuilder("mkfifo", "stdout.fifo", "stderr.fifo")
+            .directory(fifoDir.toFile())
+            .redirectErrorStream(true)
+            .start()
+        val exit = mkfifo.waitFor()
+        check(exit == 0) { "mkfifo failed with exit $exit in $fifoDir" }
+        return fifoDir
+    }
+
+    /**
+     * R2.3 / ADR-OBS-003 — launch the production
+     * ingest agent as a separate JVM that owns the FIFO read ends.
+     *
+     * The agent lives in
+     * `dev.rubentxu.pipeline.v2.application.durable.ingest.ObsPc2IngestAgent`
+     * (production, in `pipeline-application`). The runtime module
+     * cannot depend on `pipeline-application` (it would be a cycle:
+     * `application` already depends on `runtime`), so the agent is
+     * loaded by reflection on the class name. The class name is a
+     * string the runtime owns; if the class is missing the runtime
+     * fails the launch with a typed message rather than a
+     * `ClassNotFoundException` leaking the architectural boundary.
+     *
+     * The agent opens the FIFOs O_RDWR (no spurious EOF), redacts in
+     * memory, and commits sanitized bytes to the Output Plane. The
+     * runtime does NOT start its per-channel pump threads in this
+     * mode.
+     *
+     * ## Detachment
+     *
+     * The agent is launched with the same JVM as the runtime and
+     * inherits the runtime's session. The runtime keeps the [Process]
+     * handle so the run terminal can send `SIGTERM` and, after a
+     * 5-second grace, `SIGKILL`. Killing the runtime JVM does NOT
+     * automatically kill the agent: the agent owns the FIFO read
+     * ends and survives its writer's death, which is the whole point
+     * of the OBS-2 Level B design.
+     */
+    private fun launchIngestAgent(
+        controlDir: Path,
+        opId: String,
+        config: DurableShConfig,
+        handles: AgentHandles,
+    ) {
+        val runId = config.runId ?: error("runId must be set when pumpedViaAgent is true")
+        val controlDirRoot = controlDir.parent?.parent?.toString()
+            ?: error("controlDir $controlDir does not have the expected <root>/<runId>/<opId> shape")
+        val secret = config.agentSecret
+            ?: error("agentSecret must be set when pumpedViaAgent is true")
+
+        val argv: Array<String> = buildAgentArgv(
+            controlDirRoot = controlDirRoot,
+            runId = runId,
+            opId = opId,
+            fifoDir = handles.fifoDir,
+            readyMarker = handles.readyMarker,
+            secret = secret,
+        )
+
+        val javaBin = Path.of(System.getProperty("java.home"), "bin", "java").toString()
+        val classpath = System.getProperty("java.class.path")
+        val agentProcess = ProcessBuilder(javaBin, "-cp", classpath, AGENT_MAIN_CLASS, *argv)
+            .directory(controlDir.toFile())
+            .redirectErrorStream(true)
+            .start()
+        handles.process = agentProcess
+    }
+
+    /**
+     * Build the agent's argv in the order the agent's `main` expects.
+     * Duplicated locally so the runtime does not import the agent's
+     * `argv` helper (the import would pull `pipeline-application` into
+     * `pipeline-step-sdk:runtime`, which is a cycle).
+     *
+     * Order:
+     *  0. `controlDirRoot` — root of the Output Plane
+     *  1. `runId` — broader run identifier (streams are keyed by it)
+     *  2. `opId` — operation within the run
+     *  3. `fifoDir` — directory holding `stdout.fifo` / `stderr.fifo`
+     *  4. `readyMarker` — file the agent touches once it has both FIFOs open
+     *  5. `secret` — the secret the agent registers for in-memory redaction
+     */
+    private fun buildAgentArgv(
+        controlDirRoot: String,
+        runId: String,
+        opId: String,
+        fifoDir: Path,
+        readyMarker: Path,
+        secret: String,
+    ): Array<String> = arrayOf(
+        controlDirRoot,
+        runId,
+        opId,
+        fifoDir.toString(),
+        readyMarker.toString(),
+        secret,
+    )
+
+    private companion object {
+        /**
+         * Fully-qualified entry point of the production ingest agent. The
+         * runtime launches this class as a separate JVM when
+         * [DurableShConfig.pumpedViaAgent] is `true`. Reflection is used
+         * (not a direct import) to keep `pipeline-step-sdk:runtime` free
+         * of a backward dependency on `pipeline-application`.
+         */
+        const val AGENT_MAIN_CLASS: String =
+            "dev.rubentxu.pipeline.v2.application.durable.ingest.ObsPc2IngestAgent"
     }
 
     /**
@@ -366,6 +518,7 @@ class DurableShellExecutor : DurableShellLaunching {
             captureStdout = captureStdout,
             opId = opId,
             pumpedThroughJvm = pumpedThroughJvm,
+            pumpedViaAgent = config.pumpedViaAgent,
         )
         val scriptFile = shellFiles.scriptFile
         val logFile = shellFiles.logFile
@@ -431,6 +584,28 @@ class DurableShellExecutor : DurableShellLaunching {
             Files.newOutputStream(logFile).use { /* create/truncate */ }
         }
 
+        // R2.3 / ADR-OBS-003: when `pumpedViaAgent` is true, create the FIFO rendezvous and
+        // redirect the child to it. The agent is a separate JVM that owns the read end and drains
+        // the FIFO after redaction. The runtime does NOT start its per-channel pump threads in
+        // this mode (the agent is the pump).
+        val agentHandles: AgentHandles? = if (config.pumpedViaAgent && pumpedThroughJvm) {
+            val fifoDir = materialiseFifos(controlDir)
+            val stdoutFifo = fifoDir.resolve("stdout.fifo")
+            val stderrFifo = fifoDir.resolve("stderr.fifo")
+            val readyMarker = fifoDir.resolve("agent.ready")
+            pb.redirectOutput(ProcessBuilder.Redirect.to(stdoutFifo.toFile()))
+            pb.redirectError(ProcessBuilder.Redirect.to(stderrFifo.toFile()))
+            AgentHandles(
+                fifoDir = fifoDir,
+                stdoutFifo = stdoutFifo,
+                stderrFifo = stderrFifo,
+                readyMarker = readyMarker,
+                process = null,
+            )
+        } else {
+            null
+        }
+
             return try {
             val process = pb.start()
             // WU-LPR-011R2: drain the redirected streams through the redactor into the composed
@@ -443,9 +618,13 @@ class DurableShellExecutor : DurableShellLaunching {
             // attributed before it is persisted. It also means both pipes are drained concurrently,
             // so neither child stream can block on a full pipe while the other is being read — which
             // is the deadlock that made the old "wait, then read the other channel" shape unsafe.
-            if (pumpedThroughJvm) {
+            if (pumpedThroughJvm && !config.pumpedViaAgent) {
                 // In capture mode stdout is an exact redirect to the typed-value file, so the only
                 // piped channel is stderr. In plain mode both are piped and each gets its own pump.
+                //
+                // R2.3 / ADR-OBS-003: when the agent path is active, the runtime does NOT start
+                // its per-channel pump threads; the agent JVM owns the FIFO read ends and is the
+                // single durable authority.
                 val pumpedChannels: Map<ProcessOutputChannel, java.io.InputStream> =
                     if (captureStdout) {
                         mapOf(ProcessOutputChannel.STDERR to process.errorStream)
@@ -516,9 +695,14 @@ class DurableShellExecutor : DurableShellLaunching {
                 lastTranscriptPumps = pumps
                 lastTranscriptSinks = sinks
             }
-            val handle = process.toHandle()
+            // R2.3 / ADR-OBS-003: when an agent handle is active, launch the agent JVM and skip
+            // the runtime's per-channel pump threads. The agent owns the FIFO read ends and is
+            // the durable authority for the transcript under SIGKILL of the runtime.
+            if (agentHandles != null) {
+                launchIngestAgent(controlDir, opId, config, agentHandles)
+            }
 
-            // M1-F.2: the previous code printed "[DurableShellExecutor] Warning:
+            val handle = process.toHandle()
             // PID X is not a session leader" to stderr every time `setsid` had
             // forked before the JVM grabbed the ProcessHandle — which is the
             // expected behaviour of the `setsid` argv pattern (argv = [setsid,
@@ -735,6 +919,7 @@ class DurableShellExecutor : DurableShellLaunching {
         captureStdout: Boolean,
         opId: String,
         transcriptPipedThroughJvm: Boolean = false,
+        pumpedViaAgent: Boolean = false,
     ): String {
         val cookieFileEscaped = escapeForShell(controlDir.resolve(".cookie").toString())
         val logFileEscaped = escapeForShell(DurableShellFiles.consoleLog(controlDir).toString())
@@ -763,6 +948,13 @@ class DurableShellExecutor : DurableShellLaunching {
         // only sanitized bytes. Keeping the file write here as well is what would make the same
         // bytes durable in two places. For capture mode, stdout still tee's to output.txt (the
         // typed VALUE channel); stderr inherits the pipe.
+        //
+        // R2.3 (ADR-OBS-003 §2.3): when `pumpedViaAgent` is true the wrapper gains `trap '' PIPE`.
+        // The child's stdout/stderr are redirected to FIFOs owned by the ingest agent; if the
+        // agent dies, the next write returns `EPIPE` rather than killing the user's process.
+        // The `SIG_IGN` disposition is inherited across `exec`, so the user's script — and
+        // everything it spawns — runs with `SIGPIPE` ignored. ADR §2.3 ratifies this trade; see
+        // the config KDoc on `pumpedViaAgent`.
         val outerRedirect = when {
             transcriptPipedThroughJvm && captureStdout -> "> '$outputFileEscaped'"
             transcriptPipedThroughJvm -> ""
@@ -774,6 +966,12 @@ class DurableShellExecutor : DurableShellLaunching {
         // This is the value the watchdog looks for when scanning /proc/<pid>/environ
         return buildString {
             append("#!/bin/bash\n")
+            if (pumpedViaAgent) {
+                // R2.3 / ADR-OBS-003 §2.3: ignore SIGPIPE in the wrapper so the user's process
+                // survives when the ingest agent dies. The trap is the first non-comment line so
+                // it is in effect for every subsequent fork.
+                append("trap '' PIPE\n")
+            }
             // Embed the real cookie — watchdog scans /proc/PID/environ for this value
             append("export PIPELINE_OP_COOKIE='$opId'\n")
             append("COOKIE_FILE='$cookieFileEscaped'; ")

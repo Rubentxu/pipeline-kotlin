@@ -195,10 +195,21 @@ class DurableShellExecutor : DurableShellLaunching {
      * ingest agent, plus the agent's own [Process] handle once launched.
      *
      * The child writes to [stdoutFifo] and [stderrFifo]; the agent opens
-     * the same files O_RDWR (no spurious EOF) and drains them. [readyMarker]
-     * is created by the agent once it has both FIFOs open, which is what
-     * the runtime (and the spike test) await to know "the agent is
-     * attached, the child is safe to start".
+     * the same files O_RDONLY (so the kernel's read can return EOF when the
+     * last writer closes its end — O_RDWR would have made the agent itself
+     * a writer and the agent would never have seen EOF). [readyMarker] is
+     * created by the agent once it has both FIFOs open, which is what the
+     * runtime (and the spike test) await to know "the agent is attached,
+     * the child is safe to start".
+     *
+     * [warmup] is the runtime's pre-opened O_RDWR fd for each FIFO. The
+     * agent's O_RDONLY open on a FIFO with no writers BLOCKS until a
+     * writer appears; the warmup is that writer. The runtime holds the
+     * warmup open until the child has finished (after which the warmup is
+     * closed, the child has already closed its write end on exit, and the
+     * agent sees EOF). The kill-the-runtime path works too: the OS releases
+     * the warmup fds when the JVM dies, leaving the child as the only
+     * writer; the agent's read continues and sees EOF when the child exits.
      *
      * [process] is `null` until [launchIngestAgent] populates it.
      */
@@ -207,6 +218,7 @@ class DurableShellExecutor : DurableShellLaunching {
         val stdoutFifo: Path,
         val stderrFifo: Path,
         val readyMarker: Path,
+        val warmup: List<java.io.Closeable>,
         var process: Process?,
     )
 
@@ -344,8 +356,15 @@ class DurableShellExecutor : DurableShellLaunching {
         handles: AgentHandles,
     ) {
         val runId = config.runId ?: error("runId must be set when pumpedViaAgent is true")
-        val controlDirRoot = controlDir.parent?.parent?.toString()
-            ?: error("controlDir $controlDir does not have the expected <root>/<runId>/<opId> shape")
+        // R2.3(b): the control dir is `<root>/<opId>`, NOT `<root>/<runId>/<opId>`.
+        // ShExecution.kt:246 does `controlDirRoot.resolve(opId.format())`, so the
+        // hierarchy the agent needs to recover is exactly one level above the
+        // control dir. The previous `controlDir.parent?.parent` walked one level
+        // too high, putting the agent on `<test-tempdir>` while the test read
+        // from `<test-tempdir>/control` — the two stores never overlapped and
+        // every "committed N bytes / reader saw 0" row was silent.
+        val controlDirRoot = controlDir.parent?.toString()
+            ?: error("controlDir $controlDir does not have the expected <root>/<opId> shape")
         val secret = config.agentSecret
             ?: error("agentSecret must be set when pumpedViaAgent is true")
 
@@ -637,6 +656,14 @@ class DurableShellExecutor : DurableShellLaunching {
         // started before the agent attaches would deadlock on its first write; the
         // agent's `readyMarker` is the cross-process event the runtime uses to know
         // "the read ends are open, the child is safe to start".
+        //
+        // R2.3(b): the agent opens the FIFOs O_RDONLY (see ObsPc2IngestAgent
+        // openRendezvous), so the open BLOCKS until a writer appears. The
+        // runtime pre-opens the FIFOs in O_RDWR (a "warmup") so the agent's
+        // open succeeds immediately. The warmup is held open until the child
+        // has finished, then closed in executeCore's finally block. The
+        // sequence of writers is therefore: warmup only → warmup + child →
+        // child only (after warmup close) → 0 (after child exit) → agent EOF.
         val agentHandles: AgentHandles? = if (config.pumpedViaAgent && pumpedThroughJvm) {
             val fifoDir = materialiseFifos(controlDir)
             val stdoutFifo = fifoDir.resolve("stdout.fifo")
@@ -644,15 +671,29 @@ class DurableShellExecutor : DurableShellLaunching {
             val readyMarker = fifoDir.resolve("agent.ready")
             pb.redirectOutput(ProcessBuilder.Redirect.to(stdoutFifo.toFile()))
             pb.redirectError(ProcessBuilder.Redirect.to(stderrFifo.toFile()))
+            val warmup = listOf(
+                java.nio.channels.FileChannel.open(
+                    stdoutFifo,
+                    java.nio.file.StandardOpenOption.READ,
+                    java.nio.file.StandardOpenOption.WRITE,
+                ),
+                java.nio.channels.FileChannel.open(
+                    stderrFifo,
+                    java.nio.file.StandardOpenOption.READ,
+                    java.nio.file.StandardOpenOption.WRITE,
+                ),
+            )
             val handles = AgentHandles(
                 fifoDir = fifoDir,
                 stdoutFifo = stdoutFifo,
                 stderrFifo = stderrFifo,
                 readyMarker = readyMarker,
+                warmup = warmup,
                 process = null,
             )
             launchIngestAgent(controlDir, opId, config, handles)
             awaitAgentReady(handles)
+            lastAgentHandles = handles
             handles
         } else {
             null
@@ -1431,6 +1472,18 @@ class DurableShellExecutor : DurableShellLaunching {
     @Volatile
     private var lastTranscriptSinks: List<ProcessOutputSink> = emptyList()
 
+    /**
+     * R2.3(b) / ADR-OBS-003: the [AgentHandles] created by the most recent [launch] call
+     * when the agent path is active. Used by [executeCore] to release the warmup
+     * fds in its `finally` block, after the child has finished — at which point
+     * the warmup is the only writer on the FIFO and closing it lets the agent
+     * see EOF and exit cleanly.
+     *
+     * `null` in non-agent paths and after a `consume` call.
+     */
+    @Volatile
+    private var lastAgentHandles: AgentHandles? = null
+
     /** The first refusal any channel's sink accepted responsibility for and could not fulfil. */
     private fun transcriptRefusal(): ProcessOutputRefusal? =
         lastTranscriptSinks.firstNotNullOfOrNull { it.refusal() }
@@ -1647,6 +1700,24 @@ class DurableShellExecutor : DurableShellLaunching {
                 )
             }
         } finally {
+            // R2.3(b) / ADR-OBS-003: release the warmup fds so the agent can
+            // see EOF. The child has already exited (pollResult returned
+            // before we got here, or the failure path took over), so the
+            // child's O_WRONLY is already closed; the warmup is the only
+            // writer on the FIFO. Closing it leaves 0 writers, the agent's
+            // read returns EOF, and the agent exits cleanly.
+            //
+            // `kill -9` of the runtime (the spike test) skips this finally
+            // block. The OS releases the warmup fds on JVM death, so the
+            // invariant still holds: at the moment the runtime dies the
+            // child is alive (the test holds GO until after the kill), the
+            // child becomes the only writer, and the agent's read continues
+            // until the child exits and the kernel closes its O_WRONLY.
+            val agentHandles = lastAgentHandles
+            lastAgentHandles = null
+            if (agentHandles != null) {
+                agentHandles.warmup.forEach { runCatching { it.close() } }
+            }
             // Cleanup based on final state. A watchdog timeout is a failure, not a
             // success: the surviving wrapper can publish exit code 0 after its child
             // was SIGKILLed (WU-RP-005 r9, CI 35656479415/35657576105), so cleanup

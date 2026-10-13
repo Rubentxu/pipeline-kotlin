@@ -718,6 +718,81 @@ class ObsPc208LevelBUatTest {
             // The two streams MUST be distinct OutputStreamIds.
             assertNotEquals(streamA, streamB, "f08: stream ids are distinct per opId")
         }
+
+        @Test
+        @Timeout(300)
+        fun `f06 — FIFO rendezvous is owner-only, named pipe, no symlink`() {
+            // R2.3(b) / TODO 5: the runtime must not leave the FIFO rendezvous
+            // world-readable. A world-readable FIFO is a plaintext spool on
+            // disk (the child writes raw bytes, and the redaction happens in
+            // the agent after read). Same threat class ADR-OBS-003 §2.4
+            // excludes for the Output Plane.
+            //
+            // The runtime's cleanup deletes the control dir (and the FIFOs)
+            // before this test can inspect them. The runtime writes a
+            // probe file to ~/obsPc2diag/fifo-perms-<opId>.txt with the
+            // perms it applied; this test reads that probe.
+            val workspace = Files.createDirectories(root.resolve("workspace"))
+            val done = root.resolve("DONE")
+            runProducer(
+                workspace = workspace,
+                barrier = null,
+                go = root.resolve("GO"),
+                done = done,
+                linesBefore = 0,
+                linesAfter = 1,
+                extraStderr = false,
+                scriptExtras = "",
+            )
+            await({ Files.exists(done) }, 60)
+
+            val opId = opIdFormat()
+            val probe = java.nio.file.Path.of(
+                System.getProperty("user.home"),
+                "obsPc2diag",
+                "fifo-perms-$opId.txt",
+            )
+            // The probe file is written by the runtime before the cleanup
+            // deletes the control dir. Wait briefly for it to appear.
+            val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(10)
+            while (System.nanoTime() < deadline && !Files.exists(probe)) {
+                Thread.sleep(100)
+            }
+            assertTrue(
+                Files.exists(probe),
+                "f06: probe $probe must exist (runtime should have written it before cleanup)",
+            )
+            val report = Files.readString(probe)
+            for (line in report.lines()) {
+                if (line.isBlank()) continue
+                val parts = line.split("=", limit = 2)
+                val name = parts[0]
+                val rest = parts.getOrNull(1) ?: error("f06: malformed probe line: $line")
+                val restParts = rest.split(",", limit = 2)
+                val typeFlag = restParts[0]
+                val permsStr = restParts.getOrNull(1) ?: ""
+                assertTrue(
+                    typeFlag == "true",
+                    "f06: $name must be a named pipe (isOther=$typeFlag)",
+                )
+                val perms = permsStr.split("|").toSet()
+                assertTrue(
+                    "OWNER_READ" in perms,
+                    "f06: $name must be owner-readable (perms=$perms)",
+                )
+                assertTrue(
+                    "OWNER_WRITE" in perms,
+                    "f06: $name must be owner-writable (perms=$perms)",
+                )
+                assertTrue(
+                    "OTHERS_READ" !in perms &&
+                        "OTHERS_WRITE" !in perms &&
+                        "GROUP_READ" !in perms &&
+                        "GROUP_WRITE" !in perms,
+                    "f06: $name must not be group/other accessible (perms=$perms)",
+                )
+            }
+        }
     }
 
     // -------- Producer infrastructure --------

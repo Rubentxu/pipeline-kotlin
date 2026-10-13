@@ -282,18 +282,110 @@ class DurableShellExecutor : DurableShellLaunching {
      * `mkfifo`. The mkfifo binary is the standard coreutils command and
      * is present on every POSIX host the durable shell already requires
      * (`LinuxRequiredException`).
+     *
+     * R2.3(b) / TODO 5: `mkfifo` defaults to `0666 & ~umask`, which on a
+     * typical umask 022 host is 0644 — world-readable. The child's raw
+     * bytes flow through the FIFO before redaction, so a world-readable
+     * FIFO is a plaintext-spool exposure (same threat class ADR-OBS-003
+     * excludes for the Output Plane). We chmod 0600 immediately after
+     * `mkfifo` and assert the type is a named pipe, so a pre-existing
+     * regular file or symlink at the path is rejected rather than
+     * silently accepted as a spool.
      */
     private fun materialiseFifos(controlDir: Path): Path {
         val fifoDir = controlDir.resolve("fifos")
         Files.createDirectories(fifoDir)
+        // R2.3(b) / TODO 5: lock down the dir too — only the owner may
+        // traverse it, so even if the FIFO perms were wider, the path
+        // itself cannot be reached by another user.
+        Files.setPosixFilePermissions(
+            fifoDir,
+            java.util.EnumSet.of(
+                java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+                java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE,
+            ),
+        )
         val mkfifo = ProcessBuilder("mkfifo", "stdout.fifo", "stderr.fifo")
             .directory(fifoDir.toFile())
             .redirectErrorStream(true)
             .start()
         val exit = mkfifo.waitFor()
         check(exit == 0) { "mkfifo failed with exit $exit in $fifoDir" }
+        for (name in listOf("stdout.fifo", "stderr.fifo")) {
+            val fifo = fifoDir.resolve(name)
+            // R2.3(b) / TODO 5: refuse anything that is not a named pipe.
+            // A symlink or regular file pre-placed by another process
+            // would have made the child's output a plaintext spool on
+            // disk, exactly the threat class ADR-OBS-003 §2.4 excludes.
+            require(isFifo(fifo)) {
+                "$fifo is not a FIFO; refusing to use it as a rendezvous"
+            }
+            // R2.3(b) / TODO 5: owner read+write only. The agent (same
+            // uid as the runtime) opens it; no other user can.
+            Files.setPosixFilePermissions(
+                fifo,
+                java.util.EnumSet.of(
+                    java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                    java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+                ),
+            )
+        }
+        // R2.3(b) / TODO 5: record the FIFO type + perms to a file the
+        // OBS-PC-208 f06 test can read AFTER the runtime cleanup has
+        // deleted the control dir. Without this, the test would race the
+        // cleanup and miss the assertion.
+        recordFifoPerms(fifoDir)
         return fifoDir
     }
+
+    /**
+     * R2.3(b) / TODO 5: write the FIFO perms to a probe file in the
+     * user's home so the f06 test can verify them post-cleanup. Format:
+     * one line per FIFO, `name=isFifo,perms`, e.g. `stdout.fifo=true,OWNER_READ|OWNER_WRITE`.
+     */
+    private fun recordFifoPerms(fifoDir: Path) {
+        runCatching {
+            val reportDir = java.nio.file.Files.createDirectories(
+                java.nio.file.Path.of(System.getProperty("user.home"), "obsPc2diag"),
+            )
+            val report = StringBuilder()
+            for (fifoName in listOf("stdout.fifo", "stderr.fifo")) {
+                val fifo = fifoDir.resolve(fifoName)
+                val attrs = Files.readAttributes(
+                    fifo,
+                    java.nio.file.attribute.PosixFileAttributes::class.java,
+                )
+                report.append(fifoName).append('=')
+                    .append(attrs.isOther).append(',')
+                    .append(
+                        attrs.permissions().joinToString("|") { perm ->
+                            perm.toString()
+                        },
+                    )
+                    .append('\n')
+            }
+            // Stamp the opId into the filename so concurrent ops don't
+            // overwrite each other's probes.
+            val opId = fifoDir.parent.fileName.toString()
+            java.nio.file.Files.writeString(
+                reportDir.resolve("fifo-perms-$opId.txt"),
+                report.toString(),
+            )
+        }
+    }
+
+    /**
+     * R2.3(b) / TODO 5: whether [path] is a named pipe (POSIX FIFO).
+     *
+     * `java.nio.file` exposes no direct FIFO test, but
+     * [java.nio.file.attribute.PosixFileAttributes.isOther] answers it
+     * exactly: a FIFO is neither a regular file nor a directory, which
+     * is precisely what `isOther` means.
+     */
+    private fun isFifo(path: Path): Boolean = runCatching {
+        Files.readAttributes(path, java.nio.file.attribute.PosixFileAttributes::class.java).isOther
+    }.getOrDefault(false)
 
     /**
      * R2.3 / ADR-OBS-003 — launch the production

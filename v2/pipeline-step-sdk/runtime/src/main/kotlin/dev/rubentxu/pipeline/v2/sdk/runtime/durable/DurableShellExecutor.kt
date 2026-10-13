@@ -312,6 +312,31 @@ class DurableShellExecutor : DurableShellLaunching {
      * ends and survives its writer's death, which is the whole point
      * of the OBS-2 Level B design.
      */
+    /**
+     * Block until the agent's [AgentHandles.readyMarker] exists, with a
+     * bounded deadline. The agent touches the marker once it has both
+     * FIFOs open O_RDWR (no spurious EOF) and is ready to drain. The
+     * runtime MUST wait on the marker before starting the child:
+     * opening a FIFO for write blocks until a reader appears, so a
+     * child started before the agent attaches would deadlock on its
+     * first write.
+     */
+    private fun awaitAgentReady(handles: AgentHandles) {
+        val deadline = System.currentTimeMillis() + AGENT_READY_TIMEOUT_MILLIS
+        while (System.currentTimeMillis() < deadline) {
+            if (Files.exists(handles.readyMarker)) return
+            Thread.sleep(20L)
+        }
+        val agent = handles.process
+        val detail = if (agent != null && !agent.isAlive) {
+            " (agent process exited before attaching)"
+        } else {
+            " (readyMarker ${handles.readyMarker} not found within " +
+                "${AGENT_READY_TIMEOUT_MILLIS}ms)"
+        }
+        error("ingest agent failed to attach: readyMarker missing" + detail)
+    }
+
     private fun launchIngestAgent(
         controlDir: Path,
         opId: String,
@@ -335,9 +360,22 @@ class DurableShellExecutor : DurableShellLaunching {
 
         val javaBin = Path.of(System.getProperty("java.home"), "bin", "java").toString()
         val classpath = System.getProperty("java.class.path")
-        val agentProcess = ProcessBuilder(javaBin, "-cp", classpath, AGENT_MAIN_CLASS, *argv)
+        // R2.3 / ADR-OBS-003 §2.4: the agent MUST outlive the runtime JVM, so it is
+        // launched via `setsid` to create a new session. The default ProcessBuilder
+        // launch would put the agent in the runtime's process group, and a `kill -9`
+        // on the runtime would also kill the agent — defeating the whole point of
+        // OBS-2 Level B. `setsid` makes the agent its own session leader; the
+        // runtime killing its own process group does not take the agent down.
+        //
+        // The agent's output (including the `pc2-agent-pump-*-failed` lines the
+        // agent emits on its catch block) is captured to a log file in the control
+        // dir so the spike test can read it when the assertion fails. The runtime
+        // itself does not depend on this log; the FIFO is the contract.
+        val agentLog = controlDir.resolve("agent.log")
+        val agentProcess = ProcessBuilder("setsid", javaBin, "-cp", classpath, AGENT_MAIN_CLASS, *argv)
             .directory(controlDir.toFile())
             .redirectErrorStream(true)
+            .redirectOutput(ProcessBuilder.Redirect.to(agentLog.toFile()))
             .start()
         handles.process = agentProcess
     }
@@ -382,6 +420,15 @@ class DurableShellExecutor : DurableShellLaunching {
          */
         const val AGENT_MAIN_CLASS: String =
             "dev.rubentxu.pipeline.v2.application.durable.ingest.ObsPc2IngestAgent"
+
+        /**
+         * Bounded wait for the agent's `readyMarker`. The agent's class
+         * init + `mkfifo` + `Files.writeString(readyMarker, "ready\n")` is
+         * sub-second in practice; 10s is a generous upper bound that
+         * also surfaces a crashed agent JVM as a typed error rather
+         * than an infinite wait.
+         */
+        const val AGENT_READY_TIMEOUT_MILLIS: Long = 10_000L
     }
 
     /**
@@ -584,10 +631,12 @@ class DurableShellExecutor : DurableShellLaunching {
             Files.newOutputStream(logFile).use { /* create/truncate */ }
         }
 
-        // R2.3 / ADR-OBS-003: when `pumpedViaAgent` is true, create the FIFO rendezvous and
-        // redirect the child to it. The agent is a separate JVM that owns the read end and drains
-        // the FIFO after redaction. The runtime does NOT start its per-channel pump threads in
-        // this mode (the agent is the pump).
+        // R2.3 / ADR-OBS-003: when `pumpedViaAgent` is true, create the FIFO rendezvous,
+        // launch the agent JVM, and wait for the agent to attach BEFORE starting the
+        // child. Opening a FIFO for write blocks until a reader appears, so a child
+        // started before the agent attaches would deadlock on its first write; the
+        // agent's `readyMarker` is the cross-process event the runtime uses to know
+        // "the read ends are open, the child is safe to start".
         val agentHandles: AgentHandles? = if (config.pumpedViaAgent && pumpedThroughJvm) {
             val fifoDir = materialiseFifos(controlDir)
             val stdoutFifo = fifoDir.resolve("stdout.fifo")
@@ -595,13 +644,16 @@ class DurableShellExecutor : DurableShellLaunching {
             val readyMarker = fifoDir.resolve("agent.ready")
             pb.redirectOutput(ProcessBuilder.Redirect.to(stdoutFifo.toFile()))
             pb.redirectError(ProcessBuilder.Redirect.to(stderrFifo.toFile()))
-            AgentHandles(
+            val handles = AgentHandles(
                 fifoDir = fifoDir,
                 stdoutFifo = stdoutFifo,
                 stderrFifo = stderrFifo,
                 readyMarker = readyMarker,
                 process = null,
             )
+            launchIngestAgent(controlDir, opId, config, handles)
+            awaitAgentReady(handles)
+            handles
         } else {
             null
         }
@@ -695,12 +747,11 @@ class DurableShellExecutor : DurableShellLaunching {
                 lastTranscriptPumps = pumps
                 lastTranscriptSinks = sinks
             }
-            // R2.3 / ADR-OBS-003: when an agent handle is active, launch the agent JVM and skip
-            // the runtime's per-channel pump threads. The agent owns the FIFO read ends and is
-            // the durable authority for the transcript under SIGKILL of the runtime.
-            if (agentHandles != null) {
-                launchIngestAgent(controlDir, opId, config, agentHandles)
-            }
+            // R2.3 / ADR-OBS-003: the agent was launched BEFORE `pb.start()` (see the
+            // `agentHandles` block above) and the runtime waited on its `readyMarker`
+            // to know the read ends are open. The agent now owns the FIFO read ends
+            // and is the durable authority for the transcript under SIGKILL of the
+            // runtime. No per-channel pump threads run in this path.
 
             val handle = process.toHandle()
             // PID X is not a session leader" to stderr every time `setsid` had

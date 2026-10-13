@@ -191,18 +191,77 @@ class ObsPc2ProducerSurvivalSpikeTest {
         }
         Files.writeString(report, facts)
 
+        // R2.3 diagnostics: the runtime writes the agent's stdout/stderr to
+        // `controlDir/agent.log`. Walk the control root to find it (the opId
+        // format includes the runId + stage/step indices, so we don't know
+        // the exact path). Copy it to the report dir so a failed assertion
+        // still has the agent's stack trace, not a TempDir that the test
+        // runner has already deleted.
+        val agentLogCandidate: Path? = runCatching {
+            Files.walk(controlRoot).use { stream ->
+                stream.filter { it.fileName.toString() == "agent.log" }.findFirst().orElse(null)
+            }
+        }.getOrNull()
+        if (agentLogCandidate != null && Files.exists(agentLogCandidate)) {
+            Files.copy(
+                agentLogCandidate,
+                reportDir.resolve("LEVELB-AGENT-LOG.txt"),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+            )
+        }
+        // Also dump the fifo directory tree.
+        val fifoProbe = runCatching {
+            Files.walk(controlRoot).use { stream ->
+                stream.filter { it.fileName.toString() == "fifos" && Files.isDirectory(it) }
+                    .findFirst()
+                    .map { fifoDir ->
+                        Files.list(fifoDir).use { fs ->
+                            fs.toList().joinToString("\n") { p ->
+                                val type = runCatching {
+                                    Files.readAttributes(
+                                        p,
+                                        java.nio.file.attribute.PosixFileAttributes::class.java,
+                                    ).isOther
+                                }.getOrDefault(false)
+                                "${p.fileName} type=fifo=$type size=${runCatching { Files.size(p) }.getOrDefault(-1L)}"
+                            }
+                        }
+                    }.orElse("no fifos dir found under $controlRoot")
+            }
+        }.getOrDefault("walk failed")
+        Files.writeString(
+            reportDir.resolve("LEVELB-FIFO-PROBE.txt"),
+            "controlRoot=$controlRoot\nagentLog=$agentLogCandidate\n$fifoProbe\n",
+        )
+
         // The two Level A assertions above are OBS-B's, already green before this row existed.
         assertTrue(
             Files.exists(report),
             "the spike must always leave its observation on disk, even when the child dies",
         )
 
-        // ---- the defect characterisation -------------------------------------------------
+        // ---- the §4 inversion --------------------------------------------------------
         //
-        // These assertions pin what the spike MEASURED, not what the product should do. They are green
-        // today and a green row here must NOT be read as a passing guarantee: it is the defect held in
-        // place so that closing it becomes a deliberate inversion rather than a silent rewrite of what
-        // the test expects. Each message names the value a fix must produce.
+        // R2.3 / ADR-OBS-003 §4: the agent path is active (the producer opted in via
+        // ShOptions.pumpedViaAgent = true). Two claims are pinned:
+        //
+        //   (a) The agent OUTLIVES the runtime JVM. The runtime is `kill -9`'d; the
+        //       ingest agent, launched under `setsid`, is its own session leader and
+        //       keeps the FIFO read ends open. The child therefore does NOT block on
+        //       its post-kill writes (`EPIPE` is gone) and reaches 50/50 markers.
+        //       Pre-R2.3 this row was 0/50 (child died on its first stdout write
+        //       because the runtime's pump thread, which owned the pipe, was gone).
+        //
+        //   (b) The agent DRAINS the FIFO into the Output Plane. This is the
+        //       §4 byte-level claim and is the part the R2.3 plumbing does NOT yet
+        //       close. The redactor + O_RDWR FIFO + Channels.newInputStream
+        //       combination has a separate defect (the agent's drain threads block
+        //       on redacted.read) that the spike row surfaces as `bytes_after_release
+        //       == 0`. The remaining work is to fix the drain; once it does, the
+        //       byte assertion is the §4 inversion.
+        //
+        // The (a) assertion is what this commit flips: 0/50 → 50/50. The (b)
+        // assertion stays pinned as the held-in-place defect for the next slice.
         val resumed = Files.exists(workspace.resolve("RESUMED"))
         val aliveProof = Files.exists(workspace.resolve("ALIVE_MARK"))
         val written = afterLineMarkers(linesAfter)
@@ -218,21 +277,23 @@ class ObsPc2ProducerSurvivalSpikeTest {
                 "than the stdout pipe is killing it. The whole EPIPE reading rests on this being true.",
         )
         assertEquals(
-            0,
+            linesAfter,
             written,
-            "DEFECT OBSERVED — the child survives its JVM and dies on its first stdout write. " +
-                "The child wrote a file successfully moments ago (ALIVE_MARK) and then produced $written of " +
-                "$linesAfter output lines. The only thing between those two facts is fd 1: its write end " +
-                "is a pipe whose read end the dead JVM owned, so the kernel answered EPIPE and SIGPIPE " +
-                "terminated it. This is not 'output is lost', it is 'the user's process is killed'. " +
-                "A FIX MUST PRODUCE $linesAfter of $linesAfter here.",
+            "R2.3 §4 inversion (a) — the agent path is active and the child must produce ALL of its " +
+                "post-death lines ($linesAfter of $linesAfter). Pre-R2.3 this row was pinned at " +
+                "0/$linesAfter as the held-in-place defect; the inversion to $linesAfter/$linesAfter " +
+                "is the proof that the agent, launched under setsid, outlived the runtime's `kill -9` " +
+                "and the child did not block on its first post-kill write.",
         )
         assertEquals(
             afterKill.size,
             afterGo.size,
-            "DEFECT OBSERVED — the Output Plane gained nothing after the child was released. Whatever " +
-                "produced, the plane cannot receive it without an owner of the child's descriptors that " +
-                "outlives the JVM. A FIX MUST PRODUCE more committed bytes than $${afterKill.size} here.",
+            "DEFECT OBSERVED (R2.3 §4 (b)) — the Output Plane gained no new bytes after the child " +
+                "was released. The agent JVM is alive (50/50 lines reached the workspace markers) " +
+                "but the drain threads are blocked on redacted.read; the bytes the child wrote " +
+                "post-kill are in the pipe buffer and never reach the plane. A FIX MUST PRODUCE more " +
+                "committed bytes than ${afterKill.size} here. Pinned as the held-in-place defect " +
+                "until the drain plumbing is repaired.",
         )
     }
 

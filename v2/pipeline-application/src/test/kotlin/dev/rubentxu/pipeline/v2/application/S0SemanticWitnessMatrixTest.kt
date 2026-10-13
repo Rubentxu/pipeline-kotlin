@@ -125,12 +125,22 @@ class S0SemanticWitnessMatrixTest {
     private fun outcomeOf(events: List<DomainEvent>): String =
         (events.last() as RunFinished).outcome
 
-    /** Runs the CLI and returns the raw event-log stdout. */
+    /**
+     * Runs the CLI and returns the event timeline as wire-format JSON, the
+     * same form the store persists and the codec decodes. Round-trips through
+     * the production [JsonEventLog] encoder so the bytes we compare are the
+     * same bytes the persistence authority reads back.
+     *
+     * PK-57A.1 R3: the prior implementation returned
+     * `event.toString()` (Kotlin data-class toString), which is NOT the wire
+     * form. The downstream regex-based stripping then matched nothing,
+     * because Kotlin toString serialises fields as `name=value` while the
+     * stripper searched for `"name":"value"`. Two runs that differed only
+     * in identity fields compared different toStrings and the witness
+     * failed. Encoding via [JsonEventLog] makes the bytes match the regex.
+     */
     private fun rawRun(scriptPath: Path): String {
         val stdoutFile = Files.createTempFile("s0replay", ".json")
-        // RP034-Ic: same isolation as `run` — the script's own directory is the
-        // workspace, never the inherited JVM CWD.
-        // WAITFOR-3: as above -- stderr was a pipe read after an unbounded wait.
         val cliRun = Subprocess.run(
             command = listOf(appBin.toString(), "run", "--format", "json", scriptPath.toAbsolutePath().toString()),
             workingDirectory = scriptPath.parent,
@@ -148,17 +158,41 @@ class S0SemanticWitnessMatrixTest {
         assertNull(contract.eventDocument.decodeError) {
             "S0 rawRun: event document failed to decode: ${contract.eventDocument.decodeError}"
         }
-        return contract.eventDocument.events.joinToString(prefix = "[", postfix = "]") {
-            it.toString()
-        }
+        // Round-trip through the production wire codec. The decoder above
+        // gave us typed [DomainEvent] objects; the encoder below emits
+        // exactly what the store would persist. Comparing against this
+        // round-trip is what verifies the codec is byte-for-byte stable.
+        return JsonEventLog.encode(contract.eventDocument.events)
     }
 
-    /** Removes run-unique fields so two timelines compare structurally. */
+    /**
+     * Removes run-unique fields so two timelines compare by structural shape,
+     * not by identity. PK-57A.1 R3:
+     *
+     *  - Identity fields stripped: `runId`, `eventId`, `occurredAt`,
+     *    `correlationId`, `ownerId`, `startedAtMs`, `scriptPath`. These vary
+     *    legitimately between two invocations of the same source and must
+     *    not influence the structural comparison.
+     *  - Semantic fields kept: `kind`, `sequence`, `outcome`, and every
+     *    payload field that is part of the event's contract (the directive
+     *    name, the step outcome message, the retry attempt index, etc.).
+     *  - The substitution is keyed on the field name, so a payload value
+     *    that legitimately contains the same characters is not affected.
+     *
+     * After normalisation, two timelines of the same source are expected to
+     * compare equal. A divergence at this level means the codec or the
+     * pipeline mutated non-identity state, and the failure should be
+     * investigated as a real contract drift.
+     */
     private fun stripRunIdentity(raw: String): String = raw
-        .replace(Regex("\"runId\":\"[^\"]+\""), "\"runId\":\"<id>\"")
         .replace(Regex("\"eventId\":\"[^\"]+\""), "\"eventId\":\"<id>\"")
+        .replace(Regex("\"runId\":\"[^\"]+\""), "\"runId\":\"<id>\"")
         .replace(Regex("\"occurredAt\":\"[^\"]+\""), "\"occurredAt\":\"<ts>\"")
+        .replace(Regex("\"correlationId\":\"[^\"]+\""), "\"correlationId\":\"<id>\"")
+        .replace(Regex("\"ownerId\":\"[^\"]+\""), "\"ownerId\":\"<id>\"")
+        .replace(Regex("\"startedAtMs\":\\d+"), "\"startedAtMs\":<ts>")
         .replace(Regex("\"scriptPath\":\"[^\"]+\""), "\"scriptPath\":\"<path>\"")
+        .replace(Regex("\"controlDir\":\"[^\"]+\""), "\"controlDir\":\"<path>\"")
 
     // ------------------------------------------------------------------
     // W-script: sh + echo (the atomic spine)

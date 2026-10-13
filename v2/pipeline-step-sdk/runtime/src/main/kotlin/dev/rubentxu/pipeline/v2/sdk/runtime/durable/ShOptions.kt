@@ -80,6 +80,44 @@ data class ShOptions(
      * learns that `http.request` exists to ask it.
      */
     val networkEgress: NetworkEgressGate = DenyAll,
+    /**
+     * Pump the transcript through an external ingest agent
+     * (`ObsPc2IngestAgent`) instead of in-JVM pumps. ADR-OBS-003 §5
+     * recommends "one agent per run, spawned and supervised by
+     * PipelineK". R2.3 wires the flag; R2.3 part 2 (the §4
+     * inversion of the spike test) flips the assertion in
+     * `ObsPc2ProducerSurvivalSpikeTest` from `0/50` to `50/50`.
+     *
+     * ## What the flag does at the call site
+     *
+     * When `true`, `ShExecution.invokeShell` constructs a
+     * [DurableShConfig] with `pumpedViaAgent = true` and passes it
+     * to `DurableShellExecutor.executeTerminal`. The executor then:
+     *
+     *  - creates two FIFOs under `controlDir/fifos/`
+     *  - redirects the child's stdout/stderr to those FIFOs
+     *  - launches the production `ObsPc2IngestAgent` as a separate
+     *    JVM that owns the read ends, redacts in memory, and
+     *    commits sanitized bytes to the Output Plane
+     *  - the wrapper gains `trap '' PIPE` so the user's process
+     *    survives when the agent dies
+     *
+     * When `false` (the default), the existing in-JVM pump
+     * behaviour is preserved.
+     */
+    val pumpedViaAgent: Boolean = false,
+    /**
+     * The secret the ingest agent registers in its
+     * `SecretPatternRegistry` for in-memory redaction. Required when
+     * [pumpedViaAgent] is `true`; ignored otherwise. The runtime
+     * passes this value as the last argv to the agent JVM; the agent
+     * does not write it to disk.
+     *
+     * Production code resolves this from the per-step secret registry
+     * (see `ShExecution.invokeShell`'s plumbing). Tests can pass a
+     * single literal value to exercise the agent path.
+     */
+    val agentSecret: String? = null,
     // NOTE: a `Map<StepCapability, Any>` was briefly carried here so the
     // plugin seams would not have to reach CanonicalDurableRunCoordinator.
     // That was reverted: it turned this type — a carrier of FACTS and POLICIES

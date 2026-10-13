@@ -43,7 +43,17 @@ class ExternalPluginFourFamilyAdmissionTest {
             PluginAdmissionGate.admitThenLoad(
                 contributorClassName = contributorClass,
                 classLoader = loader,
-                runtimeVersion = SemVer(0, 47, 0),
+                // PK-57A.1 R1: use the running host version rather than a hard-coded
+                // literal. The example directive plugin's apiRange drifted from
+                // [0.47.0, 0.57.0) to [0.57.0, 0.58.0) when the official plugin
+                // family was promoted for the 0.57.0 runtime. The hard-coded
+                // SemVer(0, 47, 0) made every CONTROL run look like a range
+                // mismatch and every mutation look like it refused for the wrong
+                // reason. The contract this class exercises is the cross-check
+                // between manifest and implementation — apiRange correctness is
+                // a separate gate. Feeding the host version here keeps each
+                // gate answering the question it was built for.
+                runtimeVersion = RuntimeApiVersion.current(),
                 alreadyAdmitted = emptySet(),
                 strict = true,
             )
@@ -298,6 +308,42 @@ class ExternalPluginFourFamilyAdmissionTest {
                 "This row is a characterisation of a known gap: PluginManifestValidator checks the " +
                 "capability set but every plugin opts into calling it, and the gate does not. Update " +
                 "it to assert refusal once the gate takes ownership of that comparison. Got $result",
+        )
+    }
+
+    /**
+     * PK-57A.1 R1: apiRange is still a hard precondition. The CONTROL row uses
+     * [RuntimeApiVersion.current] (which sits inside the plugin's
+     * `[0.57.0, 0.58.0)` range), and that proves the cross-check works for the
+     * host that the binary will actually run against. This row proves the
+     * OTHER half of the apiRange contract: a host version OUTSIDE the
+     * declared range must be refused at the admission gate, not be carried
+     * into the cross-check. Without this row, switching the CONTROL to the
+     * real host would leave the out-of-range path uncovered.
+     *
+     * The host version 0.99.0 is outside every plugin's current range, so
+     * any plugin in this fixture produces the same refusal. We pick the
+     * unmutated plugin (not a mutant) because the cross-check is not the
+     * gate under test here — only the apiRange gate is.
+     */
+    @Test
+    @DisplayName("apiRange gate: a host version outside the declared range is refused")
+    fun hostVersionOutsideDeclaredRangeIsRefused() {
+        val outOfRangeHost = SemVer(0, 99, 0)
+        val jar = PluginArtifactFixture.builtExternalPluginJar()
+        val result = PluginArtifactFixture.withScopedLoader(jar) { loader ->
+            PluginAdmissionGate.admitThenLoad(
+                contributorClassName = contributorClass,
+                classLoader = loader,
+                runtimeVersion = outOfRangeHost,
+                alreadyAdmitted = emptySet(),
+                strict = true,
+            )
+        }
+        assertTrue(
+            result is PluginAdmissionResult.Refused,
+            "host 0.99.0 is outside the plugin's [0.57.0, 0.58.0) range; the apiRange " +
+                "gate must refuse BEFORE the cross-check runs. Got $result",
         )
     }
 }

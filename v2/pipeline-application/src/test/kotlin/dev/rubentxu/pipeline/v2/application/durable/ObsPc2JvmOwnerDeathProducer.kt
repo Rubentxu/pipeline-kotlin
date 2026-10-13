@@ -108,6 +108,15 @@ object ObsPc2JvmOwnerDeathProducer {
                     timeoutMs = 0,
                     env = emptyMap(),
                     sandbox = SandboxConfig.NONE,
+                    // R2.3 / ADR-OBS-003: opt into the agent path. The production
+                    // `ObsPc2IngestAgent` JVM owns the FIFO read ends after this, so
+                    // the child survives the runtime's `kill -9` and the bytes it
+                    // emits afterwards reach the Output Plane through the agent's
+                    // in-memory redaction. The pre-fix code path (pumpedThroughJvm
+                    // in the runtime's pump threads) would have lost every post-
+                    // death line to `EPIPE`/`SIGPIPE`.
+                    pumpedViaAgent = true,
+                    agentSecret = secret,
                 ),
                 controlDirRoot = controlDirRoot,
                 eventSink = InMemoryEventStore(),

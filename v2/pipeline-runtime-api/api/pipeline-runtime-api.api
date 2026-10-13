@@ -242,6 +242,19 @@ public final class dev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal$UnknownOperation : dev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal {
+	public fun <init> (Ljava/lang/String;I)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()I
+	public final fun copy (Ljava/lang/String;I)Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal$UnknownOperation;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal$UnknownOperation;Ljava/lang/String;IILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal$UnknownOperation;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAttempt ()I
+	public final fun getOperationId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal$UnknownRun : dev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal {
 	public fun <init> (Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -283,6 +296,98 @@ public final class dev/rubentxu/pipeline/v2/runtime/inspect/LeaseHolder {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/OperationInspection {
+	public fun <init> (Ljava/lang/String;ILjava/lang/String;IILdev/rubentxu/pipeline/v2/domain/durable/OperationStatus;Ljava/lang/Long;Ljava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationOutputStreams;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component10 ()Ljava/lang/String;
+	public final fun component11 ()Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationOutputStreams;
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()Ldev/rubentxu/pipeline/v2/domain/durable/OperationStatus;
+	public final fun component7 ()Ljava/lang/Long;
+	public final fun component8 ()Ljava/lang/Long;
+	public final fun component9 ()Ljava/lang/Long;
+	public final fun copy (Ljava/lang/String;ILjava/lang/String;IILdev/rubentxu/pipeline/v2/domain/durable/OperationStatus;Ljava/lang/Long;Ljava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationOutputStreams;)Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationInspection;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationInspection;Ljava/lang/String;ILjava/lang/String;IILdev/rubentxu/pipeline/v2/domain/durable/OperationStatus;Ljava/lang/Long;Ljava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationOutputStreams;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationInspection;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAttempt ()I
+	public final fun getDeadlineMs ()Ljava/lang/Long;
+	public final fun getEndedAtMs ()Ljava/lang/Long;
+	public final fun getFingerprint ()Ljava/lang/String;
+	public final fun getOperationId ()Ljava/lang/String;
+	public final fun getRunId ()Ljava/lang/String;
+	public final fun getStageOrdinal ()I
+	public final fun getStartedAtMs ()Ljava/lang/Long;
+	public final fun getStatus ()Ldev/rubentxu/pipeline/v2/domain/durable/OperationStatus;
+	public final fun getStepOrdinal ()I
+	public final fun getStreams ()Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationOutputStreams;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/inspect/OperationInspectionResult {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/OperationInspectionResult$Inspection : dev/rubentxu/pipeline/v2/runtime/inspect/OperationInspectionResult {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationInspection;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationInspection;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationInspection;)Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationInspectionResult$Inspection;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationInspectionResult$Inspection;Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationInspection;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationInspectionResult$Inspection;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getInspection ()Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationInspection;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/OperationInspectionResult$Refused : dev/rubentxu/pipeline/v2/runtime/inspect/OperationInspectionResult {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal;)Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationInspectionResult$Refused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationInspectionResult$Refused;Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationInspectionResult$Refused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRefusal ()Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/OperationOutputStreams {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-F_XoIoc ()Ljava/lang/String;
+	public final fun component2-F_XoIoc ()Ljava/lang/String;
+	public final fun copy-M20ovEQ (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationOutputStreams;
+	public static synthetic fun copy-M20ovEQ$default (Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationOutputStreams;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationOutputStreams;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getStderrStream-F_XoIoc ()Ljava/lang/String;
+	public final fun getStdoutStream-F_XoIoc ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/OperationSummary {
+	public fun <init> (Ljava/lang/String;ILdev/rubentxu/pipeline/v2/domain/durable/OperationStatus;Ljava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationOutputStreams;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()I
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/durable/OperationStatus;
+	public final fun component4 ()Ljava/lang/Long;
+	public final fun component5 ()Ljava/lang/Long;
+	public final fun component6 ()Ljava/lang/String;
+	public final fun component7 ()Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationOutputStreams;
+	public final fun copy (Ljava/lang/String;ILdev/rubentxu/pipeline/v2/domain/durable/OperationStatus;Ljava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationOutputStreams;)Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationSummary;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationSummary;Ljava/lang/String;ILdev/rubentxu/pipeline/v2/domain/durable/OperationStatus;Ljava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationOutputStreams;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationSummary;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAttempt ()I
+	public final fun getEndedAtMs ()Ljava/lang/Long;
+	public final fun getFingerprint ()Ljava/lang/String;
+	public final fun getOperationId ()Ljava/lang/String;
+	public final fun getStartedAtMs ()Ljava/lang/Long;
+	public final fun getStatus ()Ldev/rubentxu/pipeline/v2/domain/durable/OperationStatus;
+	public final fun getStreams ()Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationOutputStreams;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/runtime/inspect/OutputTailView {
 	public synthetic fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/inspect/TailState;Ljava/lang/Long;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1-_Q_Q91I ()Ljava/lang/String;
@@ -311,14 +416,81 @@ public final class dev/rubentxu/pipeline/v2/runtime/inspect/ProcessRef {
 	public fun toString ()Ljava/lang/String;
 }
 
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/inspect/RunStructure {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/RunStructure$Empty : dev/rubentxu/pipeline/v2/runtime/inspect/RunStructure {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructure$Empty;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/RunStructure$Stages : dev/rubentxu/pipeline/v2/runtime/inspect/RunStructure {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructure$Stages;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructure$Stages;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructure$Stages;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getStages ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/RunStructure$Unavailable : dev/rubentxu/pipeline/v2/runtime/inspect/RunStructure {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal;)Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructure$Unavailable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructure$Unavailable;Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructure$Unavailable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRefusal ()Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/inspect/RunStructureResult {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/RunStructureResult$Refused : dev/rubentxu/pipeline/v2/runtime/inspect/RunStructureResult {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal;)Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructureResult$Refused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructureResult$Refused;Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructureResult$Refused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRefusal ()Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionRefusal;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/RunStructureResult$Structure : dev/rubentxu/pipeline/v2/runtime/inspect/RunStructureResult {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructure;Ldev/rubentxu/pipeline/v2/runtime/inspect/StructureCursor;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructure;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/runtime/inspect/StructureCursor;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructure;Ldev/rubentxu/pipeline/v2/runtime/inspect/StructureCursor;)Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructureResult$Structure;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructureResult$Structure;Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructure;Ldev/rubentxu/pipeline/v2/runtime/inspect/StructureCursor;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructureResult$Structure;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCursor ()Ldev/rubentxu/pipeline/v2/runtime/inspect/StructureCursor;
+	public final fun getStructure ()Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructure;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/runtime/inspect/RuntimeIntrospectionPort {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/runtime/inspect/RuntimeIntrospectionPort$Companion;
 	public static final field DEFAULT_INSPECT_TIMEOUT_MS J
+	public static final field DEFAULT_STRUCTURE_TIMEOUT_MS J
 	public abstract fun inspect (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/inspect/RuntimeIntrospectionResult;
+	public abstract fun inspectOperation (Ljava/lang/String;I)Ldev/rubentxu/pipeline/v2/runtime/inspect/OperationInspectionResult;
+	public abstract fun runStructure (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/inspect/StructureRunOptions;)Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructureResult;
 }
 
 public final class dev/rubentxu/pipeline/v2/runtime/inspect/RuntimeIntrospectionPort$Companion {
 	public static final field DEFAULT_INSPECT_TIMEOUT_MS J
+	public static final field DEFAULT_STRUCTURE_TIMEOUT_MS J
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/RuntimeIntrospectionPort$DefaultImpls {
+	public static synthetic fun runStructure$default (Ldev/rubentxu/pipeline/v2/runtime/inspect/RuntimeIntrospectionPort;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/inspect/StructureRunOptions;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/inspect/RunStructureResult;
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/runtime/inspect/RuntimeIntrospectionResult {
@@ -408,6 +580,134 @@ public final class dev/rubentxu/pipeline/v2/runtime/inspect/RuntimeObservation$U
 	public final fun getReason ()Ldev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionFailure;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/StageSummary {
+	public fun <init> (ILjava/lang/String;JLjava/lang/Long;Ljava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()Ljava/lang/Long;
+	public final fun component5 ()Ljava/util/List;
+	public final fun copy (ILjava/lang/String;JLjava/lang/Long;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/runtime/inspect/StageSummary;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/inspect/StageSummary;ILjava/lang/String;JLjava/lang/Long;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/inspect/StageSummary;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFinishedAtMs ()Ljava/lang/Long;
+	public final fun getStageIndex ()Ljava/lang/String;
+	public final fun getStageOrdinal ()I
+	public final fun getStartedAtMs ()J
+	public final fun getSteps ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/inspect/StepState {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/StepState$Cancelled : dev/rubentxu/pipeline/v2/runtime/inspect/StepState {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/inspect/StepState$Cancelled;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/StepState$Failed : dev/rubentxu/pipeline/v2/runtime/inspect/StepState {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/inspect/StepState$Failed;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/inspect/StepState$Failed;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/inspect/StepState$Failed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFailureKind ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/StepState$Pending : dev/rubentxu/pipeline/v2/runtime/inspect/StepState {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/inspect/StepState$Pending;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/StepState$Running : dev/rubentxu/pipeline/v2/runtime/inspect/StepState {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/inspect/StepState$Running;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/StepState$Skipped : dev/rubentxu/pipeline/v2/runtime/inspect/StepState {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/inspect/StepState$Skipped;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/StepState$Succeeded : dev/rubentxu/pipeline/v2/runtime/inspect/StepState {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/inspect/StepState$Succeeded;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/StepSummary {
+	public fun <init> (ILjava/lang/String;JLjava/lang/Long;Ldev/rubentxu/pipeline/v2/runtime/inspect/StepState;Ljava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()Ljava/lang/Long;
+	public final fun component5 ()Ldev/rubentxu/pipeline/v2/runtime/inspect/StepState;
+	public final fun component6 ()Ljava/util/List;
+	public final fun copy (ILjava/lang/String;JLjava/lang/Long;Ldev/rubentxu/pipeline/v2/runtime/inspect/StepState;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/runtime/inspect/StepSummary;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/inspect/StepSummary;ILjava/lang/String;JLjava/lang/Long;Ldev/rubentxu/pipeline/v2/runtime/inspect/StepState;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/inspect/StepSummary;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFinishedAtMs ()Ljava/lang/Long;
+	public final fun getOperations ()Ljava/util/List;
+	public final fun getStartedAtMs ()J
+	public final fun getState ()Ldev/rubentxu/pipeline/v2/runtime/inspect/StepState;
+	public final fun getStepKey ()Ljava/lang/String;
+	public final fun getStepOrdinal ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/StructureCursor {
+	public fun <init> (III)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun copy (III)Ldev/rubentxu/pipeline/v2/runtime/inspect/StructureCursor;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/inspect/StructureCursor;IIIILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/inspect/StructureCursor;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOperationOrdinal ()I
+	public final fun getStageOrdinal ()I
+	public final fun getStepOrdinal ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/StructureRunOptions {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/runtime/inspect/StructureRunOptions$Companion;
+	public static final field DEFAULT_STRUCTURE_PAGE_SIZE I
+	public static final field MAX_STRUCTURE_PAGE_SIZE I
+	public fun <init> ()V
+	public fun <init> (ILdev/rubentxu/pipeline/v2/runtime/inspect/StructureCursor;Z)V
+	public synthetic fun <init> (ILdev/rubentxu/pipeline/v2/runtime/inspect/StructureCursor;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/runtime/inspect/StructureCursor;
+	public final fun component3 ()Z
+	public final fun copy (ILdev/rubentxu/pipeline/v2/runtime/inspect/StructureCursor;Z)Ldev/rubentxu/pipeline/v2/runtime/inspect/StructureRunOptions;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/inspect/StructureRunOptions;ILdev/rubentxu/pipeline/v2/runtime/inspect/StructureCursor;ZILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/inspect/StructureRunOptions;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCursor ()Ldev/rubentxu/pipeline/v2/runtime/inspect/StructureCursor;
+	public final fun getIncludeTerminalStages ()Z
+	public final fun getPageSize ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/inspect/StructureRunOptions$Companion {
+	public final fun getDefault ()Ldev/rubentxu/pipeline/v2/runtime/inspect/StructureRunOptions;
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/runtime/inspect/TailState {

@@ -81,6 +81,16 @@ data class CliFlags(
      */
     val format: ObservationFormat = ObservationFormat.TEXT,
     /**
+     * PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING: opt-in versioned output
+     * protocol. The parser holds the raw token(s) the operator
+     * supplied (last token wins on repetition). Validation happens
+     * in [dev.rubentxu.pipeline.v2.application.Main] which translates
+     * an unknown id to a typed CliExit.InvalidArgument. Empty list
+     * means "no opt-in", which falls back to [OutputProtocol.DEFAULT]
+     * in Main.
+     */
+    val outputProtocolTokens: List<String> = emptyList(),
+    /**
      * Normalized read-side selection (ADR-0088). Identity by default.
      *
      * ## The KDoc that used to say `channel` could not exist
@@ -437,6 +447,15 @@ private class ParseState(
      * rather than crashing the parser.
      */
     var correlationId: String? = null,
+    /**
+     * PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING: every `--output-protocol`
+     * token the operator supplied. The last one wins. Validation
+     * against [dev.rubentxu.pipeline.v2.application.OutputProtocol.SUPPORTED_IDS]
+     * happens in Main.kt — a missing or unknown id surfaces as
+     * `CliExit.InvalidArgument` (exit 2), never as silent
+     * degradation.
+     */
+    var outputProtocolTokens: List<String> = emptyList(),
     /** ADR-0088 `--view`. Resolved to a DELIVERABLE view at parse time. */
     var view: ObservationView = ObservationView.NORMAL,
     /**
@@ -598,6 +617,7 @@ object CliParser {
                 correlationId = state.correlationId,
                 view = state.view,
                 format = state.format,
+                outputProtocolTokens = state.outputProtocolTokens,
                 query = buildObservationQuery(
                     grepSelectors = state.grepSelectors,
                     grepInvert = state.grepInvert,
@@ -808,6 +828,12 @@ private enum class ValuedOption(val token: String) {
     // values via the same [MissingOptionValue] path as every
     // other valued flag.
     CORRELATION_ID("--correlation-id"),
+    // PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING: opt-in versioned
+    // output protocol. Repeating the flag collects the tokens;
+    // Main.kt validates the last-supplied id against
+    // [OutputProtocol.SUPPORTED_IDS] and exits InvalidArgument
+    // (exit 2) on an unknown id. No silent degradation.
+    OUTPUT_PROTOCOL("--output-protocol"),
     ;
 
     companion object {
@@ -883,6 +909,19 @@ private object ValuedOptions {
                 ApplyOutcome.Rejected(CliError.MissingOptionValue("--correlation-id"))
             } else {
                 state.correlationId = value
+                ApplyOutcome.Applied(index + 2)
+            }
+        }
+        // PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING: collect every supplied
+        // --output-protocol token in the order the operator passed them.
+        // The list is the client's priority for the negotiation. Resolution
+        // (intersection with OutputProtocol.SUPPORTED_IDS, fail-closed on
+        // no intersection) lives in Main.kt#negotiateOutputProtocolOrExit.
+        ValuedOption.OUTPUT_PROTOCOL -> {
+            if (value.isBlank()) {
+                ApplyOutcome.Rejected(CliError.MissingOptionValue("--output-protocol"))
+            } else {
+                state.outputProtocolTokens += value
                 ApplyOutcome.Applied(index + 2)
             }
         }

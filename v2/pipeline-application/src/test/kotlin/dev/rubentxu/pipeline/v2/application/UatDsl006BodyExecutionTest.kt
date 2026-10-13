@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import dev.rubentxu.pipeline.v2.application.support.Subprocess
 import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.events.DomainEvent
@@ -54,16 +56,16 @@ class UatDsl006BodyExecutionTest {
     }
 
     /**
-     * Runs the CLI and returns stdout + exit code.
+     * Runs the CLI and returns stdout + stderr + exit code.
      */
-    private fun runCli(script: Path): Pair<String, Int> {
+    private data class CliOutput(val stdout: String, val stderr: String, val exitCode: Int)
+
+    private fun runCli(script: Path): CliOutput {
         // WAITFOR-3: drained while the child runs; see support/Subprocess.kt.
         val cliRun = Subprocess.run(
             command = listOf(appBin.toString(), "run", "--format", "json", script.toString()),
         ).requireExited()
-        val exitCode = cliRun.exitCode
-        val stdout = cliRun.stdout
-        return stdout to exitCode
+        return CliOutput(cliRun.stdout, cliRun.stderr, cliRun.exitCode)
     }
 
     @Test
@@ -83,10 +85,19 @@ class UatDsl006BodyExecutionTest {
             }
         """.trimIndent())
 
-        val (stdout, exitCode) = runCli(script)
-        assertEquals(0, exitCode, "dir body execution should succeed. stderr: $stdout")
+        val result = runCli(script)
+        assertEquals(0, result.exitCode, "dir body execution should succeed. stderr: ${result.stderr}")
 
-        val events = JsonEventLog.decode(stdout)
+        // PK-NEXT R0.3: contract is decoded via the testkit.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = result.stdout,
+            stderr = result.stderr,
+            format = ObservationFormat.JSON,
+        )
+        require(contract.eventDocument.decodeError == null) {
+            "JSON event document failed to decode: ${contract.eventDocument.decodeError}"
+        }
+        val events = contract.eventDocument.events
         // The inner echo step should appear with a body-path-affected name
         val stepStarted = events.filterIsInstance<StepStarted>()
         assertTrue(stepStarted.any { it.stepType == "echo" && it.stepName.contains("dir-body") },
@@ -109,10 +120,19 @@ class UatDsl006BodyExecutionTest {
             }
         """.trimIndent())
 
-        val (stdout, exitCode) = runCli(script)
-        assertEquals(0, exitCode, "timeout body execution should succeed. stderr: $stdout")
+        val result = runCli(script)
+        assertEquals(0, result.exitCode, "timeout body execution should succeed. stderr: ${result.stderr}")
 
-        val events = JsonEventLog.decode(stdout)
+        // PK-NEXT R0.3: contract is decoded via the testkit.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = result.stdout,
+            stderr = result.stderr,
+            format = ObservationFormat.JSON,
+        )
+        require(contract.eventDocument.decodeError == null) {
+            "JSON event document failed to decode: ${contract.eventDocument.decodeError}"
+        }
+        val events = contract.eventDocument.events
         val stepStarted = events.filterIsInstance<StepStarted>()
         assertTrue(stepStarted.any { it.stepType == "echo" && it.stepName.contains("timeout-body") },
             "Expected inner echo step with timeout-body path in StepStarted events. Got: $stepStarted")
@@ -133,10 +153,19 @@ class UatDsl006BodyExecutionTest {
             }
         """.trimIndent())
 
-        val (stdout, exitCode) = runCli(script)
-        assertEquals(0, exitCode, "retry body execution should succeed. stderr: $stdout")
+        val result = runCli(script)
+        assertEquals(0, result.exitCode, "retry body execution should succeed. stderr: ${result.stderr}")
 
-        val events = JsonEventLog.decode(stdout)
+        // PK-NEXT R0.3: contract is decoded via the testkit.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = result.stdout,
+            stderr = result.stderr,
+            format = ObservationFormat.JSON,
+        )
+        require(contract.eventDocument.decodeError == null) {
+            "JSON event document failed to decode: ${contract.eventDocument.decodeError}"
+        }
+        val events = contract.eventDocument.events
         val stepStarted = events.filterIsInstance<StepStarted>()
         assertTrue(stepStarted.any { it.stepType == "echo" && it.stepName.contains("retry-body") },
             "Expected inner echo step with retry-body path in StepStarted events. Got: $stepStarted")
@@ -159,10 +188,19 @@ class UatDsl006BodyExecutionTest {
             }
         """.trimIndent())
 
-        val (stdout, exitCode) = runCli(script)
-        assertEquals(0, exitCode, "nested block body execution should succeed. stderr: $stdout")
+        val result = runCli(script)
+        assertEquals(0, result.exitCode, "nested block body execution should succeed. stderr: ${result.stderr}")
 
-        val events = JsonEventLog.decode(stdout)
+        // PK-NEXT R0.3: contract is decoded via the testkit.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = result.stdout,
+            stderr = result.stderr,
+            format = ObservationFormat.JSON,
+        )
+        require(contract.eventDocument.decodeError == null) {
+            "JSON event document failed to decode: ${contract.eventDocument.decodeError}"
+        }
+        val events = contract.eventDocument.events
         val stepStarted = events.filterIsInstance<StepStarted>()
         // Both inner steps should appear with their body-path-affected names
         assertTrue(stepStarted.any { it.stepName.contains("retry-body") && it.stepName.contains("dir-body") },

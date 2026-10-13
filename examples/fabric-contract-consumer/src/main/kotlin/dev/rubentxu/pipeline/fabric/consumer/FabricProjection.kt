@@ -112,6 +112,28 @@ internal fun explain(refusal: OutputRefusal): String = when (refusal) {
     is OutputRefusal.InvalidRange -> "range [${refusal.from}, ${refusal.to}) is not a forward range"
     is OutputRefusal.RecoveryNotCompleted -> "the store has not finished recovery"
     is OutputRefusal.DanglingCommit -> "${refusal.readableBytes} readable bytes back a commit claiming ${refusal.requestedEnd}"
+    // PK-0-57-RC1 / R2: the SDK 0.57.0 surface added seven new
+    // refusal variants. The consumer's explain() function must
+    // enumerate them or the build refuses to compile against the
+    // new SDK. Each branch is named for the typed refusal the
+    // store surfaces; a consumer that cannot name it will either
+    // crash at runtime or collapse it into a message that hides
+    // the difference. The KDoc of OutputRefusal already names the
+    // distinction each branch is for.
+    is OutputRefusal.StreamLostRetention ->
+        "stream ${refusal.stream.value} lost retention; last committed byte was ${refusal.lastCommitted}"
+    is OutputRefusal.FollowCancelled ->
+        "follow handle for run ${refusal.runId} was cancelled; the close is the final event"
+    is OutputRefusal.StorageError ->
+        "underlying storage fault during read: ${refusal.cause}"
+    is OutputRefusal.RetentionGap ->
+        "stream ${refusal.stream.value} crossed a retention gap at offset ${refusal.lastCommitted}; the read can resume from there"
+    is OutputRefusal.Corrupt ->
+        "stream ${refusal.stream.value} bytes in [${refusal.requestedRange.first}, ${refusal.requestedRange.last}] are unparseable: ${refusal.reason}"
+    is OutputRefusal.Unavailable ->
+        "the output store cannot answer right now; wait for a wakeup or escalate"
+    is OutputRefusal.RangeLostRetention ->
+        "stream ${refusal.stream.value} lost the requested range [${refusal.requestedRange.first}, ${refusal.requestedRange.last}]; the last retained byte was ${refusal.lastCommitted}"
 }
 
 /** One page of history, reduced to what a stage view renders. */

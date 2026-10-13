@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit
 import dev.rubentxu.pipeline.v2.application.support.Subprocess
 import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
@@ -206,12 +208,17 @@ class Lfc2WaitUntilCanonicalReentryFitnessTest {
             "CLI must exit 0 on successful waitUntil. stderr: ${cliRun.stderr}",
         )
 
-        // Parse events from stdout
-        val jsonStart = stdout.indexOf('[')
-        val jsonEnd = stdout.lastIndexOf(']') + 1
-        assertTrue(jsonStart >= 0 && jsonEnd > jsonStart, "stdout must contain a JSON array")
-
-        val events = JsonEventLog.decode(stdout.substring(jsonStart, jsonEnd))
+        // PK-NEXT R0.3: contract is decoded via the testkit. Line 1
+        // is the LaunchReceipt, line 2 is the JSON event document. The
+        // "find '['" / "find ']'" substring approach is wrong against
+        // the new contract — the testkit decodes both channels
+        // explicitly and is the single source of truth.
+        val contract = CliContractTestKit.decodeLaunchContract(
+            stdout = cliRun.stdout,
+            stderr = cliRun.stderr,
+            format = ObservationFormat.JSON,
+        )
+        val events = contract.eventDocument.events
 
         val polledEvents = events.filterIsInstance<WaitUntilPolled>()
         assertTrue(

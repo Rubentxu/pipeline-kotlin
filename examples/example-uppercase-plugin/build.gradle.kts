@@ -37,6 +37,36 @@ val sdkVersion: String = requireNotNull(providers.gradleProperty("sdkVersion").o
     """.trimIndent()
 }
 
+// ----------------------------------------------------------------------------
+// PK-RELEASE-CONSOLIDATION D1 — the apiRange is derived from the resolved SDK.
+//
+// Two derivations, deliberately not one:
+//   - CEILING from sdkVersion, because the host version is the thing that moves.
+//   - FLOOR from `uppercaseApiRangeMin`, a property of THIS plugin, because how far back it works
+//     is a claim about this plugin that no other build can make.
+//
+// Fail-closed on a malformed version: a ceiling that silently became "0.0.0" would produce a
+// range that refuses every host, which looks like a plugin defect rather than a bad property.
+val sdkCore: Triple<Int, Int, Int> = sdkVersion.substringBefore("-").let { raw ->
+    val parts = raw.split(".")
+    require(parts.size == 3) {
+        "sdkVersion must be MAJOR.MINOR.PATCH[-qualifier] (got '$sdkVersion'); refusing to derive a range"
+    }
+    Triple(parts[0].toIntOrNull() ?: -1, parts[1].toIntOrNull() ?: -1, parts[2].toIntOrNull() ?: -1)
+}
+require(sdkCore.first >= 0 && sdkCore.second >= 0 && sdkCore.third >= 0) {
+    "sdkVersion has a non-numeric component (got '$sdkVersion'); refusing to derive a range"
+}
+
+// Next MINOR, not the version itself: `accepts()` is `runtime < untilExclusive`, so a ceiling
+// equal to sdkVersion would make this plugin refuse the host that loads it.
+val nextMinor: String = "${sdkCore.first}.${sdkCore.second + 1}.0"
+
+// D1 rule 3: the floor is the plugin's own property. D1 rule 4: with no measured evidence that
+// this plugin works against an older SDK, the conservative floor IS the resolved SDK version.
+val uppercaseApiRangeMin: String = providers.gradleProperty("uppercaseApiRangeMin").getOrElse(sdkVersion)
+val uppercaseApiRangeCeiling: String = nextMinor
+
 repositories {
     mavenCentral()
     maven {
@@ -168,9 +198,16 @@ val computeUppercaseRelease = tasks.register("computeUppercaseRelease") {
                 appendLine("pipeline.example.uppercase.namespace=${namespaceName.get()}")
                 appendLine("pipeline.example.uppercase.release.version=$releaseVersion")
                 appendLine("pipeline.example.uppercase.release.digest=sha256:$hex")
+                // PK-RELEASE-CONSOLIDATION D1: the compatibility range is DERIVED, not typed.
+                // The ceiling is the NEXT MINOR of the resolved SDK, not the resolved version itself:
+                // PipelineKApiRange.accepts() is `runtime < untilExclusive`, so a ceiling equal to
+                // sdkVersion would make the plugin refuse the very host that loads it. See ADR.
+                appendLine("pipeline.example.uppercase.compatibility.min=$uppercaseApiRangeMin")
+                appendLine("pipeline.example.uppercase.compatibility.untilExclusive=$nextMinor")
             },
         )
         println("uppercase: provenance written to $out (digest=sha256:${hex.take(16)}...)")
+        println("uppercase: apiRange=[$uppercaseApiRangeMin, $nextMinor) derived from sdkVersion=$sdkVersion")
     }
 }
 

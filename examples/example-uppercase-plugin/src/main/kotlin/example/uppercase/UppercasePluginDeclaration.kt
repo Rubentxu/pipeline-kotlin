@@ -42,12 +42,35 @@ object UppercasePluginDeclaration {
 
     const val RELEASE_PROPERTIES_RESOURCE: String = "META-INF/example-uppercase-release.properties"
 
-    /** Exclusive upper bound: 0.49 is where support stops, not where parsing stops. */
-    /** Extended from [0.47.0, 0.49.0) to [0.47.0, 0.52.0) as part of PK-R1: the example uppercase plugin
-     *  ships with the same reference PK code the official plugins ship with, so the
-     *  same range that admits http/scm-git/junit/utilities at 0.51.0 admits this
-     *  fixture too. The plugin stops being supported at 0.52.0. */
-    val API_RANGE: PipelineKApiRange = PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 53, 0))
+    /**
+     * Compatibility range, DERIVED at build time from the resolved SDK.
+     *
+     * It used to be `PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 57, 0))`, a literal that had
+     * already gone stale once: at host 0.56.0 it declared a range the host sits outside, and
+     * admission refused this plugin on its own distribution. A literal held by a plugin that does
+     * not control the host's release cadence cannot stay correct, so the values come from the
+     * same release-properties resource that already carries this plugin's provenance — one
+     * authority, read once, fail-closed.
+     *
+     * Fail-closed rather than defaulted: a missing range key must refuse the plugin, because a
+     * silent fallback to a guessed range would admit it against hosts nobody measured.
+     */
+    val API_RANGE: PipelineKApiRange by lazy {
+        val props = releaseProperties(UppercasePluginDeclaration::class.java)
+        val minRaw = props["pipeline.example.uppercase.compatibility.min"]
+            ?: error(
+                "Missing apiRange floor (no pipeline.example.uppercase.compatibility.min in " +
+                    "$RELEASE_PROPERTIES_RESOURCE). The plugin refuses to declare a range it " +
+                    "cannot prove.",
+            )
+        val ceilingRaw = props["pipeline.example.uppercase.compatibility.untilExclusive"]
+            ?: error(
+                "Missing apiRange ceiling (no pipeline.example.uppercase.compatibility.untilExclusive " +
+                    "in $RELEASE_PROPERTIES_RESOURCE). The plugin refuses to declare a range it " +
+                    "cannot prove.",
+            )
+        PipelineKApiRange(parseSemVer(minRaw), parseSemVer(ceilingRaw))
+    }
 
     /**
      * What the Steps collectively demand, and it is written as the union of the three contracts
@@ -80,7 +103,7 @@ object UppercasePluginDeclaration {
     fun provider(
         classLoader: ClassLoader = UppercasePluginDeclaration::class.java.classLoader,
     ): StepProviderMetadata {
-        val props = releaseProperties(classLoader)
+        val props = releaseProperties(UppercasePluginDeclaration::class.java)
         val publisher = System.getProperty("pipeline.example.uppercase.publisher")
             ?: props["pipeline.example.uppercase.publisher"]
             ?: error(
@@ -151,9 +174,54 @@ object UppercasePluginDeclaration {
         )
     }
 
-    internal fun releaseProperties(classLoader: ClassLoader): Map<String, String> {
+    internal fun releaseProperties(ownClass: Class<*>): Map<String, String> {
+        // PK-RELEASE-CONSOLIDATION D1.9: the resource MUST come from THIS plugin's JAR, not from
+        // whichever JAR happens to be first on the system classpath with the same path. `getResource`
+        // on the system classloader walks the URL chain in classpath order, and a sibling JAR that
+        // also contains `META-INF/example-uppercase-release.properties` would silently win.
+        // Measured: a forged sibling JAR with `compatibility.min=9.9.9` overrides the plugin's real
+        // value the instant it lands earlier on the classpath.
+        //
+        // Resolving through the `ProtectionDomain` of the plugin's own class pins the read to the
+        // exact JAR the JVM loaded this `object` from. If the class was loaded from a directory
+        // (test classpath, exploded jar) the URL is a `file:` entry, and the resource is read from
+        // the directory the JVM itself used — which is what `getResource` would have done, but
+        // pinned by the class, not by the path.
+        val pluginJar = ownJarUrl(ownClass)
+            ?: return readFromClassLoader(ownClass.classLoader)
+        return readFromJar(pluginJar, RELEASE_PROPERTIES_RESOURCE)
+            ?: readFromClassLoader(ownClass.classLoader)
+    }
+
+    private fun readFromClassLoader(classLoader: ClassLoader): Map<String, String> {
         val resource = classLoader.getResource(RELEASE_PROPERTIES_RESOURCE) ?: return emptyMap()
         val text = resource.openStream().use { it.readBytes().toString(Charsets.UTF_8) }
+        return parseProperties(text)
+    }
+
+    private fun readFromJar(jarUrl: java.net.URL, resourcePath: String): Map<String, String>? {
+        // PK-RELEASE-CONSOLIDATION D1.9: open the JAR by file path, not by JarURLConnection.
+        // A `file:` URL that points at a `.jar` is NOT a `JarURLConnection`; casting throws
+        // ClassCastException, the catch swallows it, and we fall back to the system classloader
+        // — which is exactly the lookup that returns the wrong (forged) resource. Open the file
+        // directly so the read is pinned to this path, regardless of classpath order.
+        return try {
+            val path = java.nio.file.Paths.get(jarUrl.toURI())
+            val text = java.util.jar.JarFile(path.toFile()).use { jar ->
+                val entry = jar.getJarEntry(resourcePath) ?: return@use null
+                jar.getInputStream(entry).use { it.readBytes().toString(Charsets.UTF_8) }
+            } ?: return null
+            parseProperties(text)
+        } catch (_: java.io.IOException) {
+            null
+        } catch (_: java.net.URISyntaxException) {
+            null
+        } catch (_: java.lang.IllegalArgumentException) {
+            null
+        }
+    }
+
+    private fun parseProperties(text: String): Map<String, String> {
         val map = linkedMapOf<String, String>()
         for (line in text.lineSequence()) {
             val trimmed = line.trim()
@@ -162,6 +230,16 @@ object UppercasePluginDeclaration {
             if (idx > 0) map[trimmed.substring(0, idx).trim()] = trimmed.substring(idx + 1).trim()
         }
         return map
+    }
+
+    private fun ownJarUrl(klass: Class<*>): java.net.URL? {
+        val domain = klass.protectionDomain ?: return null
+        val codeSource = domain.codeSource ?: return null
+        val url = codeSource.location ?: return null
+        // The class must have been loaded from a JAR; from a directory the
+        // own-jar path does not apply and we fall back to the classloader
+        // resource lookup.
+        return if (url.protocol == "jar" || url.path.endsWith(".jar")) url else null
     }
 }
 

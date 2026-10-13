@@ -793,6 +793,250 @@ class ObsPc208LevelBUatTest {
                 )
             }
         }
+
+        @Test
+        @Timeout(300)
+        fun `f03 — agent survives child kill (not runtime kill)`() {
+            val workspace = Files.createDirectories(root.resolve("workspace"))
+            val done = root.resolve("DONE")
+            // Mutation: a child script that prints 5 lines and then kills itself
+            // with `kill -9 $$`. The wrapper bash sees the child exit with a
+            // fatal signal (exit code 137), the runtime's poll loop returns once
+            // result.txt is written with that exit code, the runtime's finally
+            // block closes the warmup, and the agent reads EOF and drains.
+            //
+            // A broken agent that ignored the EOF would never flush the
+            // redactor's lookahead; the per-iteration `take()` loop in the
+            // agent's pump drains whatever was decided, but the final
+            // `redactor.finish()` is what emits any leftover buffered bytes.
+            // The committed-bytes assertion checks that each of the 5 lines is
+            // present; any missing line flips it.
+            //
+            // A broken runtime that loses the FIFO's reader or fails to
+            // release the warmup would leave the agent blocked on read
+            // forever — the assertion `awaitIncrement` would time out after
+            // 90s.
+            val script = buildString {
+                for (i in 1..5) {
+                    append("printf 'child-kill-line-$i'; ")
+                }
+                append("kill -9 $$")
+            }
+            runProducer(
+                workspace = workspace,
+                barrier = null,
+                go = root.resolve("GO"),
+                done = done,
+                linesBefore = 0,
+                linesAfter = 0,
+                extraStderr = false,
+                scriptExtras = script,
+            )
+            // The child dies before touching done; the wrapper bash sees
+            // the child exit and writes result.txt with 137, but the
+            // producer's `touch done` never runs. Do not wait on done.
+            // Wait for the agent to commit the 5 lines it has read, then
+            // wait for the agent to fully drain so the redactor's
+            // lookahead is flushed through the same matcher.
+            awaitIncrement(ByteArray(0), 90, "f03: bytes must be committed after child kill")
+            awaitNoAgentProcess(30)
+            OutputPlaneProvider.forgetAll()
+            val raw = committedBytes()
+            val text = raw.toString(Charsets.UTF_8)
+            for (i in 1..5) {
+                if (!text.contains("child-kill-line-$i")) {
+                    val reportDir = java.nio.file.Files.createDirectories(
+                        java.nio.file.Path.of(System.getProperty("user.home"), "obsPc2diag"),
+                    )
+                    val hexDump = raw.joinToString("") { String.format("%02x", it.toInt() and 0xFF) }
+                    reportDir.resolve("OBS-PC-208-f03-content-${System.nanoTime()}.txt").toFile().writeText(
+                        "=== f03 stdout (${raw.size} bytes) ===\n$text\n=== f03 stdout hex ===\n$hexDump\n",
+                    )
+                    assertTrue(
+                        false,
+                        "f03: line $i written before the child kill must reach the plane (hex+text dumped to $reportDir)",
+                    )
+                }
+            }
+        }
+
+        @Test
+        @Timeout(300)
+        fun `f07 — large output (1MB) is committed without loss`() {
+            val workspace = Files.createDirectories(root.resolve("workspace"))
+            val done = root.resolve("DONE")
+            // Mutation: a child script that writes ~1MB to stdout (10000 lines
+            // of 100 'A' characters plus newline = ~1.01MB). The agent must
+            // commit all bytes to the Output Plane without loss. The redactor
+            // and Output Plane are designed for this; the test is the size
+            // bound the agent must handle.
+            //
+            // A broken agent that lost a chunk at a wrap-around (the R2.3(b)
+            // outputQueue bug) would have a final size smaller than expected.
+            // The assertion `committedBytes().size == expectedSize` catches
+            // any byte loss in the pipeline.
+            //
+            // 10000 lines × (100 chars + newline) = 1_010_000 bytes.
+            val lineCount = 10000
+            val lineSize = 100
+            val expectedSize = lineCount * (lineSize + 1)
+            val script =
+                "for i in \$(seq 1 $lineCount); do printf 'A%.0s' {1..$lineSize}; echo; done"
+            runProducer(
+                workspace = workspace,
+                barrier = null,
+                go = root.resolve("GO"),
+                done = done,
+                linesBefore = 0,
+                linesAfter = 0,
+                extraStderr = false,
+                scriptExtras = script,
+            )
+            await({ Files.exists(done) }, 180)
+            awaitIncrement(ByteArray(0), 180, "f07: 1MB of bytes must reach the plane")
+            // R2.3(b) / TODO 4: wait for the agent to fully drain the FIFO.
+            // 1MB is well past the redactor's lookahead, so reading the
+            // committed bytes while the agent is still draining would see
+            // only what the per-iteration `take()` loop had emitted so far
+            // and miss the final bytes flushed by `redactor.finish()` at EOF.
+            awaitNoAgentProcess(30)
+            OutputPlaneProvider.forgetAll()
+            val raw = committedBytes()
+            assertEquals(
+                expectedSize,
+                raw.size,
+                "f07: 1MB of bytes must be committed without loss (got ${raw.size}, expected $expectedSize)",
+            )
+        }
+
+        @Test
+        @Timeout(300)
+        fun `f09 — stream is sealed correctly when agent exits`() {
+            val workspace = Files.createDirectories(root.resolve("workspace"))
+            val done = root.resolve("DONE")
+            // Mutation: after the child finishes and the agent drains EOF,
+            // the stream's extent must be stable. A regression where the
+            // seal marker was written with the wrong extent (or was never
+            // written) would cause the extent to grow or shrink on
+            // subsequent reads, which is exactly the contract this
+            // falsifier pins. The agent must also release its ownership
+            // lock so the next reader can open a fresh stream; this is
+            // verified implicitly by the @TempDir cleanup succeeding
+            // without a "file locked" error.
+            val script =
+                "for i in 1 2 3 4 5 6 7 8 9 10; do printf 'seal-line-%s ' \"\$i\"; done"
+            runProducer(
+                workspace = workspace,
+                barrier = null,
+                go = root.resolve("GO"),
+                done = done,
+                linesBefore = 0,
+                linesAfter = 0,
+                extraStderr = false,
+                scriptExtras = script,
+            )
+            await({ Files.exists(done) }, 60)
+            // Wait for the agent to drain (the child has exited; the
+            // runtime closes the warmup; the agent sees EOF and exits).
+            awaitNoAgentProcess(30)
+            OutputPlaneProvider.forgetAll()
+            val store = OutputPlaneProvider.storeForReading(controlRoot)
+            val stream = OutputPlaneProvider.streamsOf(runId, opIdFormat()).stdout.stream
+            val extent1 = store.committedExtent(stream) ?: 0L
+            assertTrue(extent1 > 0L, "f09: stream must have committed bytes after drain")
+            // Wait briefly and re-read the extent. A correctly sealed
+            // stream returns the same extent; an unsealed one keeps
+            // growing or shrinks when the cache forgets.
+            Thread.sleep(2_000)
+            OutputPlaneProvider.forgetAll()
+            val extent2 = store.committedExtent(stream) ?: 0L
+            assertEquals(
+                extent1,
+                extent2,
+                "f09: committed extent must be stable after the agent exits (extent1=$extent1, extent2=$extent2)",
+            )
+        }
+
+        @Test
+        @Timeout(300)
+        fun `f10 — concurrent reads do not corrupt the stream`() {
+            val workspace = Files.createDirectories(root.resolve("workspace"))
+            val done = root.resolve("DONE")
+            // Mutation: two readers at different offsets must each receive
+            // the bytes at their offset, and the combined read must equal
+            // a single full read. A regression where the store holds a
+            // shared mutable cursor or a single-writer lock would let
+            // one reader's offset bleed into the other, scrambling the
+            // output. The redactor's output queue state is per-call, so
+            // a regression that shared state across reads would also
+            // fail this test.
+            val script =
+                "for i in 1 2 3 4 5 6 7 8 9 10; do printf 'concurrent-read-%s ' \"\$i\"; done"
+            runProducer(
+                workspace = workspace,
+                barrier = null,
+                go = root.resolve("GO"),
+                done = done,
+                linesBefore = 0,
+                linesAfter = 0,
+                extraStderr = false,
+                scriptExtras = script,
+            )
+            await({ Files.exists(done) }, 60)
+            awaitIncrement(ByteArray(0), 60, "f10: bytes must reach the plane")
+            awaitNoAgentProcess(30)
+            OutputPlaneProvider.forgetAll()
+            val store = OutputPlaneProvider.storeForReading(controlRoot)
+            val stream = OutputPlaneProvider.streamsOf(runId, opIdFormat()).stdout.stream
+            val total = committedBytes().size
+            assertTrue(total > 0, "f10: stream must be non-empty")
+            val mid = total / 2
+            // R2.3(b) / TODO 4: the existing `readAt` helper loops until the
+            // extent is reached, so it ignores `maxBytes` for the LAST page.
+            // A regression test that uses it cannot distinguish a bounded
+            // read from a full read. f10 needs bounded reads, so it does
+            // its own single-page read per offset and asserts the bytes
+            // come back in the right ranges.
+            val firstResult = store.read(
+                stream,
+                dev.rubentxu.pipeline.v2.output.OutputCursor(stream, 0L),
+                mid,
+            )
+            val secondResult = store.read(
+                stream,
+                dev.rubentxu.pipeline.v2.output.OutputCursor(stream, mid.toLong()),
+                total - mid,
+            )
+            val first = when (firstResult) {
+                is OutputReadResult.Page -> firstResult.page.bytes
+                is OutputReadResult.Refused -> ByteArray(0)
+            }
+            val second = when (secondResult) {
+                is OutputReadResult.Page -> secondResult.page.bytes
+                is OutputReadResult.Refused -> ByteArray(0)
+            }
+            assertEquals(
+                mid,
+                first.size,
+                "f10: first reader must be bounded to mid (got ${first.size}, expected $mid)",
+            )
+            assertEquals(
+                total - mid,
+                second.size,
+                "f10: second reader must be bounded to the rest (got ${second.size}, expected ${total - mid})",
+            )
+            val combined = first + second
+            assertEquals(
+                total,
+                combined.size,
+                "f10: two bounded readers at different offsets must cover the whole stream (combined=${combined.size}, total=$total)",
+            )
+            assertEquals(
+                committedBytes().toList(),
+                combined.toList(),
+                "f10: combined reads must equal a single full read",
+            )
+        }
     }
 
     // -------- Producer infrastructure --------

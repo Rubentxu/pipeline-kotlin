@@ -57,15 +57,21 @@ mkdir -p "$TMP_ARTIFACTS"
 cd v2
 ./gradlew --no-daemon --max-workers=1 \
   :pipeline-application:distZip \
-  :pipeline-build-artefacts:cycloneDXSBOM \
-  -PbuildArtefactsOut="$TMP_ARTIFACTS"
+  :pipeline-application:cyclonedxBom
+ARTIFACTS_DIR="pipeline-application/build/distributions"
 cd ..
-cp "$TMP_ARTIFACTS/pipelinek-0.57.0.zip"  "$EVIDENCE_DIR/pipelinek-0.57.0.zip"
-cp "$TMP_ARTIFACTS/pipelinek-0.57.0.sbom.json" "$EVIDENCE_DIR/pipelinek-0.57.0.sbom.json"
-cp "$TMP_ARTIFACTS/pipeline-application-0.57.0.jar" "$EVIDENCE_DIR/pipeline-application-0.57.0.jar"
-cp "$TMP_ARTIFACTS/pipeline-domain-0.57.0.pom" "$EVIDENCE_DIR/pipeline-domain-0.57.0.pom"
-cp "$TMP_ARTIFACTS/pipeline-sdk-bom-0.57.0.pom" "$EVIDENCE_DIR/pipeline-sdk-bom-0.57.0.pom"
-cp "$TMP_ARTIFACTS/sdk-domain-0.57.0.module" "$EVIDENCE_DIR/sdk-domain-0.57.0.module"
+cp "$ARTIFACTS_DIR/pipelinek-0.57.0.zip"  "$EVIDENCE_DIR/pipelinek-0.57.0.zip"
+cp "$ARTIFACTS_DIR/pipelinek-0.57.0.sbom.json" "$EVIDENCE_DIR/pipelinek-0.57.0.sbom.json"
+# jar + poms + module are produced by the SDK multi-module build; locate
+# them in the standard gradle output locations.
+PIPELINE_DOMAIN_POM=$(find v2 -name 'pipeline-domain-0.57.0.pom' -not -path '*/wrapper/*' 2>/dev/null | head -1)
+PIPELINE_SDK_BOM_POM=$(find v2 -name 'pipeline-sdk-bom-0.57.0.pom' -not -path '*/wrapper/*' 2>/dev/null | head -1)
+SDK_DOMAIN_MODULE=$(find v2 -name 'sdk-domain-0.57.0.module' -not -path '*/wrapper/*' 2>/dev/null | head -1)
+PIPELINE_APP_JAR=$(find v2 -name 'pipeline-application-0.57.0.jar' -not -path '*/wrapper/*' 2>/dev/null | head -1)
+[ -n "$PIPELINE_DOMAIN_POM" ] && cp "$PIPELINE_DOMAIN_POM" "$EVIDENCE_DIR/pipeline-domain-0.57.0.pom"
+[ -n "$PIPELINE_SDK_BOM_POM" ] && cp "$PIPELINE_SDK_BOM_POM" "$EVIDENCE_DIR/pipeline-sdk-bom-0.57.0.pom"
+[ -n "$SDK_DOMAIN_MODULE" ] && cp "$SDK_DOMAIN_MODULE" "$EVIDENCE_DIR/sdk-domain-0.57.0.module"
+[ -n "$PIPELINE_APP_JAR" ] && cp "$PIPELINE_APP_JAR" "$EVIDENCE_DIR/pipeline-application-0.57.0.jar"
 printf '%s\n' "$SHA" > "$EVIDENCE_DIR/git-head.txt"
 
 # 4. SHA256SUMS (self-verify excludes itself).

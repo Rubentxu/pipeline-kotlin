@@ -1,285 +1,307 @@
-# PK-58A — T1 Audit: Puertos de lectura viva y presupuesto de recursos
+# PK-58A — T1 Audit (CORREGIDA) — Matriz F1–F6
 
-**Auditor:** Agente PipelineK · **Fecha:** 2026-10-13
-**Inputs:** SPEC-01-PIPELINEK-LIVE-PLANES.md, M1_FOLLOW_DESIGN.md,
-`v2/pipeline-output/...`, `v2/pipeline-application/.../observation/`,
-`v2/pipeline-events/.../identity/`, OBS_PROGRESSIVE_CONSOLE_ROADMAP.md
-**SHA de auditoría:** `0a1e5c88` (HEAD de `main` en este punto)
-**Estado de PK-58A:** T1 cerrado. Decisión T2/T3 pendiente de medición.
+**Auditor:** Agente PipelineK · **Fecha:** 2026-10-13T13:55Z
+**Inputs:** SHA `280e72fd` (revisión de código), `main@c88f35cf` (HEAD actual)
+**Estado:** T1 reabierto, no se inicia otra línea de implementación hasta
+clasificar F1–F6.
+**Acción inmediata:** corregir el audit previo; ningún ADR ni T2/T3 hasta
+clasificar.
 
-## 0. Conclusión ejecutiva
+## 0. Resumen ejecutivo (cambios respecto al audit anterior)
 
-El estado actual del Output Plane **cumple el contrato de SPEC-01** sin necesidad
-de un nuevo puerto de wakeup en este momento. La separación de planos que el
-operador exige para T2 ya está implementada en el grafo de módulos
-(`:pipeline-output`, `:pipeline-events`, `:pipeline-application`). El seam
-`OutputCommitWakeupPort` que T3 podría introducir es **una optimización de
-eficiencia**, no una corrección de correctness, y la medición de latencia
-prevista en T1.6 es la que debe decidir si la optimización se justifica.
+El audit previo (`280e72fd`) tuvo **5 errores de los 6 que el operador
+señaló**. Reclasificación:
 
-Recomendación al operador: **NO_NEW_PORT en este bloque**, registrar la
-decisión con datos, y dejar el seam `OutputCommitWakeupPort` como capacidad
-**no construida** con un ADR-arquitectura que documente el criterio
-(medición + presupuesto) que la activaría en un futuro bloque si la
-eficiencia de polling deja de satisfacer el presupuesto.
+| F | Diagnóstico operador | Clasificación correcta |
+|---|---|---|
+| F1 | `framesOfRun` y `append` hacen O(n) read del log completo | **CONFIRMADO — PK-L4 era `CUMPLIDO`, debe ser `PARTIAL/FAILED_PERFORMANCE`** |
+| F2 | `handlePage` emite `Completed` en `hasMore=false` sin `RunFinished` | **CONFIRMADO — clasificar como `NEEDS_FIX` con falsificadores** |
+| F3 | Cross-JVM e2e ya existe como `M1DCrossJvmFollowTest` | **CONFIRMADO — mi audit afirmó que no existía, era incorrecto** |
+| F4 | OBS-PC-208 = prototipo, OBS-2 Nivel B sin decidir | **CONFIRMADO — clasificar OBS-PC-208 como `PROTOTYPE` (no `IMPLEMENTED`)** |
+| F5 | Digests en HANDOFF-TO-CERTIFIER.md body ≠ assets reales | **CONFIRMADO — 6/9 digests en el body NO coinciden con los assets publicados** |
+| F6 | 0.57 publicada por excepción al gate | **CONFIRMADO — full releaseGate nunca completó; certifier externo no ha corrido** |
 
-## 1. Auditoría PK-L1..PK-L7 contra el código
+El audit previo no midió PK-L4 antes de declararlo cumplido, asumió
+incorrectamente que AAT-M1-01 no existía, y no detectó las
+discrepancias de integridad del release. Estos son los efectos del
+vicio declarado en `HARNESS FIDELITY LAW §2` (no re-derivar valores
+que la autoridad productiva ya posee): clasificar sin medir es
+clasificar sin evidencia.
 
-### PK-L1 — bytes observables por canal, parciales sin `\n`, `returnStdout` tipado
+## 1. F1 — `SegmentFrameIndex` con O(n) por append y por poll
 
-**Estado:** CUMPLIDO.
+**Confirmado.** Lectura del código en
+`v2/pipeline-output-store/src/main/kotlin/dev/rubentxu/pipeline/v2/output/store/SegmentFrameIndex.kt`:
 
-- `OutputStreamAddress(runId, operationId, channel)` con `channel: OutputChannel`
-  enum distingue `STDOUT/STDERR` (en `:pipeline-output/OutputChannel.kt`).
-- `OutputPage(bytes, stream, from, next, committedEnd)` con cursor byte-addressed
-  — un chunk sin `\n` es una página válida; no se exige terminador.
-- `OutputRefusal.{OffsetBeyondCommitted, RecoveryNotCompleted, DanglingCommit,
-  StreamLostRetention, …}` ADT exhaustivo (en `:pipeline-output/OutputRefusal.kt`).
-- `returnStdout` está tipado como `String?` en el contrato del Step (`core.sh`
-  y similares), sin exportación implícita al event plane.
-- M1_FOLLOW_DESIGN §0.7: UTF-8 fragmentado entre páginas es una responsabilidad
-  del consumidor; el contrato garantiza orden de bytes sin truncar dentro de
-  un codepoint a nivel de offset.
+- `append(stream, channel, from, to)` (línea 100) llama a
+  `sealTornTail(runId)` (línea 316), que llama a `readFrames(runId,
+  sealTornTail = true)` (línea 334).
+- `readFrames` abre el archivo `framesFile(runId)` con `BufferedReader`,
+  lee cada línea, decodifica cada `OutputFrame`, mantiene la lista en
+  memoria. **O(n) en bytes del log por cada append.**
+- `framesOfRun(runId, afterOrdinal, limit)` (línea 123) llama a
+  `readFrames(runId, sealTornTail = false)`, luego filtra en memoria y
+  toma `limit` resultados. **O(n) en bytes del log por cada poll/follow.**
 
-**Falsificadores (existentes):**
-- `ObsPc2LevelAUatTest` — 20 000 líneas por canal sin deadlock, mutación M-A3
-  la tumba 1:1.
-- `ObsBLiveOutputIngressTest` — fragmentación por `\n` y atribución por canal.
-- Mutaciones M-A1 / M-A4 referenciadas en OBS_PROGRESSIVE_CONSOLE_ROADMAP §204..206.
+**Clasificación de PK-L4:** antes `CUMPLIDO`, ahora
+`PARTIAL/FAILED_PERFORMANCE`. El contrato funcional de
+"páginas posteriores a ordinal sin escanear todo el run" no se cumple:
+toda llamada a `framesOfRun` y a `append` lee el log completo.
 
-### PK-L2 — read side externo no puede recovery destructivo, multijvm con `Open`/`Sealed`/`Unavailable`/`RecoveryNotCompleted`
+**Lo que falta medir antes de reclamar eficiencia (T1.6 del operador):**
+- Bytes físicos inspeccionados por poll (p50, p95) para tamaños de log
+  pequeño / mediano / grande.
+- Latencia p50/p95 de `append` y de `framesOfRun` con historiales
+  crecientes.
+- RSS/heap de un follower sostenido durante 1 hora.
+- Diferencia bytes inspeccionados entre polling-solo y wakeup+polling
+  (una vez construido el wakeup, si T3 se autoriza).
 
-**Estado:** CUMPLIDO.
+**Lo que el audit previo no hizo:** ninguna de estas medidas. Declaró
+"PK-L4 cumplido" sin evidencia de bytes/latencia. **Reclasificar.**
 
-- `OutputReadPort` y `OutputTailPort` son interfaces read-only (en
-  `:pipeline-output/`); el write side y la autoridad de recovery viven en
-  `:pipeline-output-store` y no son accesibles desde el contrato publicado.
-- `OutputTailState.{Open(committedEnd), Sealed(finalEnd)}` ADT exhaustivo
-  (en `:pipeline-output/OutputTailState.kt:42-69`).
-- `OutputRefusal.Unavailable` y `OutputRefusal.RecoveryNotCompleted` son
-  refusals explícitos, no se transforman en página vacía exitosa.
-- Test cross-process: `SegmentFrameIndexCrashTest` y
-  `SegmentFrameIndexCrossProcessOrdinalTest` (en `:pipeline-output/store/`).
-- Test de interferencia entre lectores: `ObsGReaderRecoveryInterferenceUatTest`
-  (un lector muerto no altera el resultado de la run ni los bytes de otro).
+## 2. F2 — `SqliteEventFollowHandle` emite `Completed` sin `RunFinished`
 
-**Gap:** Ninguno. La separación read-side / write-side es contractual.
+**Confirmado.** Lectura del código en
+`v2/pipeline-events-store/src/main/kotlin/dev/rubentxu/pipeline/v2/events/durable/SqliteEventFollowHandle.kt`
+línea 436:
 
-### PK-L3 — cursors durables, páginas acotadas, wakeup como hint coalescible con recheck + polling
-
-**Estado:** PARCIAL (cumple correctness; wakeup no implementado).
-
-- `OutputCursor` con codificación wire estable `out-cursor-v1:` (en
-  `:pipeline-output/OutputCursor.kt:77-104`). Resumption es exacta tras crash.
-- Páginas acotadas por `OutputFollowOptions.pageMaxBytes` y
-  `OutputFollowOptions.maxRecords` (en `OutputFollower.kt`).
-- **Wakeup no implementado:** `M1_FOLLOW_DESIGN.md` §0.3 explícitamente cita
-  `MainObserveCli.kt:255-258`: "There is no `EventsCommitted` emitter yet
-  (OBS-D bis)". El polling es la única ruta actual.
-- Cadencia: `FOLLOW_IDLE_MILLIS = 25L` (en `:pipeline-output/follow/`).
-
-**Gap identificado:** T2/T3 introducen `OutputCommitWakeupPort` opcional,
-aditivo, no rompe el contrato actual. La eficacia depende de medición
-(T1.6).
-
-### PK-L4 — `OutputFrameIndex` con páginas por ordinal sin escanear todo el run; UTF-8 entre frames incremental
-
-**Estado:** CUMPLIDO.
-
-- `OutputFrameIndex.framesOfRun(runId, afterOrdinal, limit)` retorna páginas
-  acotadas por ordinal, sin escaneo lineal (en
-  `:pipeline-output/OutputFrameIndex.kt:148`).
-- UTF-8: el contrato (M1_FOLLOW_DESIGN §0.7) garantiza orden de bytes; la
-  reconstrucción de codepoints es del consumidor. Sin `String` por chunk en
-  el core (el KDoc de `OutputFrame` lo establece como invariante).
-
-**Falsificadores (existentes):**
-- `SegmentFrameIndexCrashTest` — recovery no produce frames en
-  rango corrupto.
-- `SegmentFrameIndexCrossProcessOrdinalTest` — ordinal es el mismo
-  en JVMs distintas.
-
-### PK-L5 — pumps independientes y redactor streaming antes de commit; redactor con lookahead
-
-**Estado:** CUMPLIDO.
-
-- `RedactingOutputIngress` (en `:pipeline-application/durable/`) es la
-  implementación de redacción streaming con lookahead.
-- OBS_PROGRESSIVE_CONSOLE_ROADMAP §203: secretos partidos entre ventanas y
-  canales — IMPLEMENTED.
-- M1_FOLLOW_DESIGN §0.6: buffer bounded, sin propagación de presión desde
-  renderer.
-
-**Gap:** Ninguno contractual. La medición de T1.6 capturará memoria del
-lector bajo carga.
-
-### PK-L6 — `OperationJournal` autoridad de recovery; EventStore/salida no autorizan replay; sellado independiente
-
-**Estado:** CUMPLIDO.
-
-- `OperationJournal` (en `:pipeline-events/durable/`) es la autoridad
-  durable; el Output Plane no la consulta para inferir recovery.
-- Terminal de run ≠ EOF de output streams: un run puede terminar con streams
-  todavía `Open` (sellado es por stream, no por run).
-- Test: `ObsPcReadRecoveryOwnershipUatTest` (OBS-PC-106, IMPLEMENTED).
-
-**Gap:** Ninguno.
-
-### PK-L7 — contexto de operación/stage/step sin reescribir payload; joins explícitos
-
-**Estado:** CUMPLIDO.
-
-- `OutputStreamAddress(runId, operationId, channel)` y
-  `EventEnvelope.operationId / stageId / stepKey` permiten joins explícitos.
-- `ObservationView` (en `:pipeline-application/observation/`) es el join
-  explícito; `event?.stage` no se usa como aproximación.
-
-**Gap:** Ninguno.
-
-## 2. Separación de planos (T2 — ya implementada)
-
-El grafo de módulos Gradle del repositorio **ya satisface** la separación
-de planos que el operador exige para T2:
-
-```
-:pipeline-output          → read contracts (OutputReadPort, OutputTailPort,
-                            OutputFrameIndex, OutputFollower). Cero deps a
-                            :pipeline-events o :pipeline-domain (sólo
-                            `api` deps sobre stdlib).
-:pipeline-output-store    → implementación local del write side, índices
-                            y recovery (SegmentOutputStore, SegmentFrameIndex).
-:pipeline-events          → contratos read-only de eventos (EventRecordReadPort,
-                            EventShapeReadPort, EventTail) + EventStore.
-:pipeline-events-store    → implementación local de InMemoryEventStore y
-                            SqliteEventStore.
-:pipeline-application     → composición de followers y modelo
-                            ObservationWakeup. Adaptador a Flow (interno,
-                            no publicado).
+```kotlin
+// 3e. Tail reached: a page with `hasMore=false` is the
+// natural end of currently available history. For an
+// empty history (no rows yet), this is the natural-end
+// emission the design §4 composition rule names for an
+// empty run: `Completed` after the first poll. The
+// consumer decides whether to reopen with `after =
+// nextCursor` to keep following a run that may still be
+// live.
+if (!boundedSlice.hasMore && !completedEmitted) {
+    completedEmitted = true
+    return queueCompleted()
+}
 ```
 
-`ObservationWakeup` (en `:pipeline-application/observation/`) es un ADT de
-**orquestación y plegado**, no una autoridad durable. Su KDoc lo establece
-explícitamente: "A wakeup names a POSITION and nothing else — no bytes, no
-events, no records."
+**Problema:** el contrato trata `hasMore=false` como terminal del
+follow aunque el run siga vivo. Un observador externo que ve
+`Completed` y no reabre con `after = nextCursor` pierde todos los
+eventos publicados después de ese poll.
 
-**No hay inversión de dependencias.** Esto cumple la regla T2 del operador.
+**Por qué el cross-JVM test no detectó esto:** el test escribe los
+eventos antes de abrir el follow, no en medio. El observador siempre ve
+`hasMore=false` cuando el run ya no producirá más eventos. La
+observación del operador: el test debe diseñar **falsificadores** en
+los que el proceso externo empieza a observar, llega al tail y
+después el productor publica eventos nuevos.
 
-## 3. Capacidades ya implementadas, declaradas, y ausentes
+**Clasificación:** `NEEDS_FIX`. No publicar `v0.58.0-rc1` con este
+comportamiento. La fix correcta (per SPEC-01 y el contrato del
+handle) es: el estado natural-tail sin `RunFinished` debe ser un
+estado distinguible, no un `Completed`. El `Completed` debe estar
+reservado a: (a) `UntilSequence` satisfecho, (b) `RunFinished`
+observado.
 
-### Implementadas y operativas
+**Falsificadores obligatorios (heredados del directive del operador):**
+- Commit entre registro y primera lectura.
+- Commit entre lectura y entrada en espera.
+- Stream `Open` frente a `Sealed`.
+- Run terminado con output todavía pendiente de sellado.
+- Lectura desde otra JVM después de un poll vacío.
+- Reabrir con `after = nextCursor` tras un `Completed` falso.
 
-| Capacidad | Ubicación | Evidencia |
-|---|---|---|
-| Read incremental con cursor byte | `OutputReadPort` | `output/OutputReadPort.kt` |
-| Tail state por stream | `OutputTailPort` | `output/OutputTailState.kt` |
-| Frame index por ordinal | `OutputFrameIndex` | `output/OutputFrameIndex.kt` |
-| Follow pull-style (no Flow) | `OutputFollower` | `output/follow/OutputFollower.kt` |
-| Read de eventos tipados | `EventRecordReadPort` | `events/identity/EventRecordReadPort.kt` |
-| Almacén durable de eventos | `EventStore` (InMemory + SQLite) | `events/durable/*` |
-| Segment store con recovery | `SegmentOutputStore` | `output/store/` |
-| Redacción streaming | `RedactingOutputIngress` | `application/durable/` |
-| Cross-process ordinal | — | `SegmentFrameIndexCrossProcessOrdinalTest` |
-| Interferencia entre lectores | — | `ObsGReaderRecoveryInterferenceUatTest` |
-| OBS-PC-101..107 + 201..207 | — | `OBS_PROGRESSIVE_CONSOLE_ROADMAP.md` |
+## 3. F3 — Cross-JVM e2e ya existe como `M1DCrossJvmFollowTest`
 
-### Declaradas pero no construidas (gaps explícitos en código)
+**Confirmado.** El test existe en
+`v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/follow/M1DCrossJvmFollowTest.kt`
+con 6 métodos `@Test` y 996 líneas. **Mi audit previo dijo que
+"AAT-M1-01 cross-JVM e2e no existe como test separado" — es
+incorrecto, el test existe.**
 
-| Capacidad | Referencia | Estado |
-|---|---|---|
-| Emisor real de `EventsCommitted` / `OutputAdvanced` | `MainObserveCli.kt:255-258`: "There is no `EventsCommitted` emitter yet (OBS-D bis)" | NO IMPLEMENTADO — explícitamente diferido en M1_FOLLOW_DESIGN |
-| `OutputCommitWakeupPort` en `:pipeline-output` | SPEC-01 §"CommitWakeups read-side opcional" | NO IMPLEMENTADO — T3 del operador, opcional |
-| Wakeup de eventos en `:pipeline-events` | — | NO IMPLEMENTADO — opcional por plano |
-| Measurement harness (RSS, heap, FD, latencia p95, bytes escaneados) | — | NO IMPLEMENTADO |
-| UAT-PK-M1-001..008 / AAT-M1-01..04 con esos IDs | M1_FOLLOW_DESIGN §1.3 | NO IMPLEMENTADO con esos IDs (los existentes usan OBS-PC-XXX / ObsPc / ObsE / ObsG) |
+**Lo que el audit previo no hizo:** no buscó en `application/follow/`
+antes de declarar el gap. **Reclasificar** AAT-M1-01 de `NO EXISTE` a
+`EXISTE` y revisar qué cubre exactamente para no proponer cobertura
+duplicada.
 
-### Capacidad faltante: presupuesto declarado
+**Acción derivada:** leer el test, mapear sus `@DisplayName`s contra
+los UAT-PK-M1-001..008 que se propusieron en el audit anterior;
+corregir la matriz de trazabilidad. No duplicar; no renombrar.
 
-`docs/v2/03-specifications/PERFORMANCE_BUDGETS.md` está marcado **PROPOSED**:
-"Performance is a release property. Functional green without
-streaming/performance gates cannot close LPR-O." No hay baselines medidos
-todavía. LPR-0 (baselines inmutables) no se ha ejecutado.
+## 4. F4 — OBS-PC-208 = prototipo, no `IMPLEMENTED`
 
-## 4. Mapeo a UAT/AAT (convención de IDs M1)
+**Confirmado.** Inventario en código:
 
-M1_FOLLOW_DESIGN §1.3 establece que `UAT-PK-001` / `-003` / `-004` / `-007`
-son **propiedad del repositorio Fabric coordinated-evolution** y NO se
-reutilizan. Los IDs de aceptación M1 son `UAT-PK-M1-NNN` y `AAT-M1-NN`.
+- `v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/durable/ObsPc2IngestAgent.kt`
+  — el agente es un `object` declarado en `src/test/`, no producción.
+  Es un **fixture de test**, no un componente del producto.
+- `v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/durable/ObsPc2IngestAgentPrototypeUatTest.kt`
+  — el test se llama a sí mismo **"prototipo"** en su `@DisplayName`:
+  `"OBS-PC-208 — prototipo: un drenador que sobrevive a su runtime
+  sigue entregando bytes"`.
+- `docs/v2/04-adrs/ADR-OBS-003-child-output-descriptor-ownership.md`:
+  "OBS-PC-208 is unblocked; its acceptance criterion is §4" — el ADR
+  dice que el test está **unblocked** (puede escribirse), pero el
+  criterio de aceptación del producto (§4) es lo que decide si
+  cuenta como `IMPLEMENTED` o sigue en `PROTOTYPE`.
+- Misma ADR: "OBS-PC-208 cannot be written until the shape of that
+  guarantee is decided, and the shape cannot be chosen until the
+  failure is measured."
 
-**Mapeo actual (los tests OBS-PC existentes NO se renombran):**
+**Clasificación:** `PROTOTYPE` (no `IMPLEMENTED`). El test existe como
+prototipo pero el OBS-2 Nivel B (supervivencia del drenador al morir
+la JVM del step) no está decidido, no está medido, y el `IngestAgent`
+vive en `src/test/` — no es parte del producto entregado.
 
-| ID M1 | Subtema | Test existente | Estado |
+**Lo que falta para que pase a `IMPLEMENTED`:**
+- Mover `ObsPc2IngestAgent` (o su sucesor) a `src/main/`.
+- Decidir y documentar el contrato de OBS-2 Nivel B en §4 del ADR.
+- Medir el escenario de "JVM del step muere durante escritura" contra
+  el contrato.
+- Diseñar y ejecutar un falsificador que reproduzca el escenario
+  adverso y verifique la supervivencia.
+
+## 5. F5 — Discrepancias de integridad en el release `v0.57.0-rc1`
+
+**Confirmado y crítico.** La descripción pública del release en
+GitHub contiene **digests que no coinciden con los assets
+publicados**.
+
+Comparación de los 9 digests listados en el body de
+`HANDOFF-TO-CERTIFIER.md` (visible en el release) contra los SHA-256
+reales de los archivos en `evidence/0-57-rc1/`:
+
+| Archivo | Digest en el body | Digest real | Estado |
 |---|---|---|---|
-| UAT-PK-M1-001 | Output Plane: stream `Open`/`Sealed` | `ObsBLiveOutputIngressTest` | IMPLEMENTED |
-| UAT-PK-M1-002 | Output Plane: rechazo de cursores ajenos | `SegmentFrameIndexCrashTest` | IMPLEMENTED |
-| UAT-PK-M1-003 | Output Plane: cross-process ordinal | `SegmentFrameIndexCrossProcessOrdinalTest` | IMPLEMENTED |
-| UAT-PK-M1-004 | Output Plane: interferencia entre lectores | `ObsGReaderRecoveryInterferenceUatTest` | IMPLEMENTED |
-| UAT-PK-M1-005 | Output Plane: doble sealing (run terminado, output pendiente) | `ObsPcReadRecoveryOwnershipUatTest` (`RECOVER-2`) | IMPLEMENTED |
-| UAT-PK-M1-006 | Output Plane: cursor estable tras recovery, sin duplicar rangos | `ObsPcReadRecoveryOwnershipUatTest` | IMPLEMENTED |
-| UAT-PK-M1-007 | Output Plane: refusal cuando storage/recovery falla | `ObsPcReadRecoverySeamFitnessTest` | IMPLEMENTED |
-| UAT-PK-M1-008 | Output Plane: canalización stdout/stderr sin deadlock, 20 000 líneas | `ObsPc2LevelAUatTest` | IMPLEMENTED |
-| AAT-M1-01 | Mismo escenario ejecutado por proceso externo (cross-JVM) | **NO EXISTE como AAT separado** | GAP — pendiente T4 |
+| `pipelinek-0.57.0.zip` | `0a29d52…` | `1b33728…` | **MISMATCH** |
+| `pipelinek-0.57.0.sbom.json` | `a98fd7b…` | `c50109e…` | **MISMATCH** |
+| `pipeline-application-0.57.0.jar` | `45e1741…` | `8184a72…` | **MISMATCH** |
+| `git-head.txt` (hash del archivo) | `e51a409…` | `ac0582a…` | **MISMATCH** |
+| `STATUS.md` | `1f4c127…` | `cd2695d…` (post-update) | **MISMATCH** |
+| `HANDOFF-TO-CERTIFIER.md` | `69caba7…` | `e2ed4ce…` (post-update) | **MISMATCH** |
+| `pipeline-sdk-bom-0.57.0.pom` | `54228c1…` | `54228c1…` | match |
+| `pipeline-domain-0.57.0.pom` | `232ebec…` | `232ebec…` | match |
+| `sdk-domain-0.57.0.module` | `10c91cb…` | `10c91cb…` | match |
 
-## 5. Decisión T1 → T2
+**Diagnóstico:** el body de `HANDOFF-TO-CERTIFIER.md` fue copiado
+de un candidato anterior. Los 3 archivos que coinciden son los
+poms/módulo que el script regenera sin alterar; los 6 que NO
+coinciden son los artefactos que cambian entre commits.
 
-### Latencia base observada (sin wakeup, polling a 25ms)
+**Además:**
+- `git-head.txt` contiene `f6eb1ebb` (commit de evidence) pero el
+  tag `v0.57.0-rc1` apunta al merge commit `51f654e3`. **El
+  release está tagueado sobre un commit y la evidence apunta a
+  otro.**
+- El release en GitHub tiene 2 assets extra (`pipelinek-0.57.0.sdk.zip`
+  y `pipelinek-bom-0.57.0.json`) subidos a las 13:04Z que no
+  aparecen en el `SHA256SUMS` local ni en la tabla del body.
 
-- Cadencia de polling: `FOLLOW_IDLE_MILLIS = 25L`.
-- Latencia de commit → observación en el peor caso: ~25 ms (un ciclo de poll).
-- Bytes escaneados por ciclo: bounded por `OutputFollowOptions.pageMaxBytes`.
+**Acciones derivadas (sin sustituir bytes silenciosamente, per
+directive):**
+1. Reconstruir trazabilidad honesta: el body del release debe
+   listar **los digests reales de los assets que están en el
+   release**, no los de un candidato anterior.
+2. Reemplazar el body del release con uno que liste los SHA-256
+   de los assets actualmente subidos.
+3. Reemplazar `HANDOFF-TO-CERTIFIER.md` en el release con la
+   versión `e2ed4ce…` que sí está en disco (si la local difiere
+   de la del release, aclarar el delta sin sustituir bytes).
+4. Eliminar los 2 assets extra que no están en `SHA256SUMS`, o
+   añadirlos al `SHA256SUMS` con sus digests.
+5. `git-head.txt` debe reescribirse con el commit del tag
+   (`51f654e3`), no con el commit de evidence (`f6eb1ebb`).
+6. No reescribir el tag; añadir una **nota de release** con la
+   corrección de la trazabilidad. Si la corrección invalida el
+   tag, abrir una nueva RC (`v0.57.0-rc2`) en lugar de
+   re-tagear.
 
-**Medición a ejecutar (T1.6 antes de T3):**
-1. Latencia p50/p95 de commit → observación con `FOLLOW_IDLE_MILLIS=25`.
-2. Latencia p50/p95 con `FOLLOW_IDLE_MILLIS=100` (peor caso).
-3. RSS y heap de productor + 1 consumidor sostenido durante 1 hora.
-4. Número de threads y FDs bajo la misma carga.
-5. Bytes escaneados en un run de 500 MB con output pequeño + grande.
+## 6. F6 — `v0.57.0-rc1` publicado por excepción al gate
 
-### Criterio para activar T3 (operator-supplied):
+**Confirmado.** El full `:pipeline-application:test` no completó
+(la phase de tests cuelga bajo carga; mismo signature que
+2026-10-12). El publish se ejecutó por override del operador
+registrado en el tag message y en `STATUS.md`.
 
-Si la **latencia p95** del polling puro supera el presupuesto declarado en
-PERFORMANCE_BUDGETS.md (aún PROPOSED), o si el **CPU en reposo con muchos
-observadores** supera el 5% por observador en 16 cores, entonces T3
-(`OutputCommitWakeupPort` opcional) se justifica.
+**Lo que falta para que la línea 0.57 quede certificada:**
+1. Reproducir el gate en entorno de carga controlada (host
+   load < 5 o workaround explícito).
+2. Diagnosticar por qué el `:pipeline-application:test` cuelga
+   bajo load (¿gradle daemon contention? ¿forked JVM con OOM
+   silencioso?).
+3. Ejecutar el certifier externo sobre `v0.57.0-rc1` y publicar
+   el `CERTIFIER-VERDICT.md` con los 13 escenarios R0.5.
+4. No usar el override histórico de PK-57A como precedente para
+   que PK-58A publique en las mismas condiciones. **Cada
+   bloque exige gate verde end-to-end, no excepción heredada.**
 
-### Recomendación al operador (pendiente de medición)
+## 7. Matriz `implementado / probado / certificado / pendiente`
 
-`NO_NEW_PORT` en este bloque PK-58A, basado en:
+| Capacidad | Implementado | Probado | Certificado | Pendiente |
+|---|---|---|---|---|
+| PK-L1 bytes por canal, sin `\n` | sí | sí (ObsPc, ObsB) | NO | — |
+| PK-L2 read-only ports cross-JVM | sí | sí (ObsG, SegmentCrash) | NO | — |
+| PK-L3 durable cursor + bounded pages | sí | sí (M1DCrossJvm) | NO | wakeup opcional (DEFER) |
+| PK-L4 frame index por ordinal sin scan | **NO** (O(n) read) | sí (contrato) | NO | **F1: medir y/o indexar** |
+| PK-L5 pumps + redaction streaming | sí | sí (ObsPc2) | NO | — |
+| PK-L6 journal authority, sealed independent | sí | sí (ObsPc) | NO | — |
+| PK-L7 joins explícitos | sí | sí (ObservationView) | NO | — |
+| AAT-M1-01 cross-JVM e2e (live, no work-around) | parcial | sí (M1DCrossJvmFollowTest) | NO | **F2: handlePage emite Completed sin RunFinished** |
+| OBS-PC-208 (OBS-2 Nivel B) | **NO** (PROTOTYPE en `src/test/`) | parcial (PrototypeUatTest) | NO | **F4: decidir contrato §4, mover a `src/main/`, medir** |
+| F5 — integridad de release 0.57 | parcial | NO | NO | **CRÍTICO: corregir trazabilidad del body de v0.57.0-rc1** |
+| F6 — gate completo en 0.57 | NO | NO | NO | **reproducción en load controlada + certifier externo** |
+| Performance baselines LPR-0 | NO | NO | NO | **medición antes de cualquier decisión T3** |
 
-1. **Correctness ya está cubierta** por polling + cursor durable + cross-process
-   tests. La spec SPEC-01 hace el wakeup opcional.
-2. **Separación de planos ya existe** en el grafo de módulos Gradle.
-3. **Eficiencia de polling (25 ms)** es adecuada para UAT/AAT humanos y
-   consumers externos con SLA ≥100 ms. Si Fabric necesita < 25 ms, ese es
-   un bloque posterior (PK-58B o PK-59A) con un ADR específico.
-4. **No construir infraestructura decorativa.** Si T3 no se justifica con
-   datos, no se introduce.
+## 8. Acciones inmediatas (en orden de prioridad)
 
-T2 (ADR de separación de responsabilidades) ya está implementado por el
-grafo de módulos; el ADR-arquitectura que se solicita es un documento
-**descriptivo del estado actual**, no un cambio.
+### P0 — crítico, no avanza a T2/T3 ni a publicación de 0.58 sin cerrar
 
-T3 (puerto de wakeup) queda como capacidad **no construida con criterio de
-activación documentado**. Si una medición posterior lo justifica, se
-introduce como un bloque nuevo (no en PK-58A).
+1. **F5** Corregir la trazabilidad del release `v0.57.0-rc1`:
+   - Reemplazar el body del release con los SHA-256 reales.
+   - Reemplazar `HANDOFF-TO-CERTIFIER.md` en el release con la
+     versión de disco.
+   - Eliminar o justificar los 2 assets extra.
+   - Documentar en el body que `git-head.txt` reescrito al tag
+     commit (no al evidence commit).
+2. **F6** Reproducir `:pipeline-application:test` en load
+   controlada, diagnosticar el cuelgue, o documentar el workaround
+   en el override del gate.
+3. **F2** Fix del `handlePage` (no publicar 0.58 con el bug).
 
-## 6. Lo que el agente NO hará en PK-58A sin medición explícita
+### P1 — antes de T3
 
-- No introducirá `OutputCommitWakeupPort` sin baseline medido que lo justifique.
-- No renombrará los tests OBS-PC a UAT-PK-M1-XXX (la matriz de trazabilidad
-  documenta la equivalencia; el renombre es decorativo).
-- No cambiará la firma de `OutputReadPort` ni `OutputTailPort` (rompería
-  ABI publicada).
-- No introducirá `Flow` ni `kotlinx-coroutines` en el SDK de Output ni de
-  Events.
-- No publicará `v0.58.0-rc1` sin:
-  - Measurement harness ejecutado contra los mismos bytes.
-  - ABI de Output Read v0.58 publicado.
-  - ReleaseGate end-to-end verde.
+4. **F1** Implementar el measurement harness para `framesOfRun` /
+   `append` con historiales creciente; producir tabla de bytes
+   inspeccionados y latencia p50/p95 por tamaño de log.
+5. **F4** Decidir el contrato OBS-2 Nivel B en §4 del ADR-OBS-003.
+   Si se decide producto: mover `ObsPc2IngestAgent` (o sucesor) a
+   `src/main/`, diseñar el falsificador, ejecutar la medición.
+6. **F3** Revisar `M1DCrossJvmFollowTest` para mapear sus
+   `@DisplayName` contra UAT-PK-M1-001..008; corregir la matriz
+   de trazabilidad; no duplicar.
 
-## 7. Cierre T1
+### P2 — antes de T7
 
-T1 está completo. T2 no requiere implementación (la separación ya existe);
-requiere un ADR descriptivo. T3 queda condicional a medición. El operador
-debe decidir si PK-58A cierra aquí como `NO_NEW_PORT` (con v0.58.0-rc1
-publicado bajo la línea 0.58 con ABI documentada pero sin wakeup) o si
-autoriza T3 con un baseline explícito.
+7. Performance baselines LPR-0 con la suite medición.
+8. ABI documentada de Output Read v0.58 con delta 0.57 → 0.58.
+9. ReleaseGate end-to-end verde (`:pipeline-release:releaseGate`).
+10. Push + PR + merge + tag `v0.58.0-rc1` + `gh release create
+    --prerelease` con body trazable.
+
+## 9. Conclusión para el operador
+
+El audit previo **no era fiable para tomar la decisión
+NO_NEW_PORT**. Las 6 Findings del operador son reales y
+cambian la matriz:
+
+- F5 y F6 invalidan la confianza en el release 0.57 publicado.
+- F2 es un bug del follow de eventos que no debe arrastrarse a
+  0.58.
+- F1 invalida la clasificación de PK-L4 y obliga a medir antes
+  de cualquier decisión de eficiencia.
+- F3 invalida la propuesta de AAT-M1-01 como gap a cerrar.
+- F4 invalida la propuesta de OBS-PC-208 como `IMPLEMENTED`.
+
+**Recomendación revisada:** NO_NEW_PORT se mantiene como
+recomendación **a priori** (no hay justificación para T3 sin
+medición), pero T2/T3/T7 no avanzan hasta que F1, F2, F4, F5
+y F6 estén cerrados. El bloque PK-58A abre con tres frentes
+críticos (integridad, fix del follow, decisión OBS-2 Nivel B)
+antes de cualquier publicación de la línea 0.58.

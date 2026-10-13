@@ -913,8 +913,10 @@ private object ValuedOptions {
             }
         }
         // PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING: collect every supplied
-        // --output-protocol token; the last one wins. Validation
-        // (unknown id → CliExit.InvalidArgument) lives in Main.kt.
+        // --output-protocol token in the order the operator passed them.
+        // The list is the client's priority for the negotiation. Resolution
+        // (intersection with OutputProtocol.SUPPORTED_IDS, fail-closed on
+        // no intersection) lives in Main.kt#negotiateOutputProtocolOrExit.
         ValuedOption.OUTPUT_PROTOCOL -> {
             if (value.isBlank()) {
                 ApplyOutcome.Rejected(CliError.MissingOptionValue("--output-protocol"))

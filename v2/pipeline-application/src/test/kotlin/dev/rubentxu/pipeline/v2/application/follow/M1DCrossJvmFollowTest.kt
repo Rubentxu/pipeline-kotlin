@@ -712,6 +712,134 @@ class M1DCrossJvmFollowTest {
         )
     }
 
+    // -------------------------------------------------------------- 7 UAT-PK-M1-007
+
+    @Test
+    fun `7 UAT-PK-M1-007 events follower crosses the natural tail cross-JVM without emitting Completed`(
+        @TempDir root: Path,
+    ) {
+        // The cross-JVM counterpart of the in-process F2 falsifier
+        // (`SqliteEventFollowLiveTailTest.followAtNaturalTailKeepsPolling`).
+        // The contract the audit F2 raised was that an in-process follow
+        // would emit Completed at the natural tail; a cross-JVM proof is
+        // still required because the natural-tail behaviour is decided by
+        // the store-side handle and a process boundary is a different
+        // authority source. If the bug were to re-appear under cross-JVM
+        // (a shared in-memory cache between the Follower and the store,
+        // for example), this test would catch it.
+        //
+        // Choreography:
+        //   1. Parent writes one event (RunStarted) and spawns the child.
+        //   2. Child opens the follow and emits READY; its first poll sees
+        //      RunStarted, then it sits at the natural tail polling.
+        //   3. Parent writes three more events after READY: a StageStarted,
+        //      a StageFinished, and a RunFinished.
+        //   4. The follow MUST pick up the new events (no spurious
+        //      Completed at the natural tail — pre-fix behaviour) and
+        //      terminate via the RunFinished path (post-fix behaviour).
+        val runId = "uat-m1-007-${shortId()}"
+        val dbPath = root.resolve("events.db").toAbsolutePath().toString()
+        val log = root.resolve("child-events.log")
+
+        val parentDb = SqliteEventStore(dbPath)
+        try {
+            // Single event before the child spawns; the follow will reach
+            // the natural tail of the durable database on its first poll.
+            declareEventRun(parentDb, runId)
+            val child = spawnChild(
+                listOf(
+                    runId,
+                    "events",
+                    dbPath,
+                    log.toAbsolutePath().toString(),
+                    "16", // maxEvents: child exits after at most 16 events
+                    "unbounded",
+                ),
+            )
+            try {
+                // Wait for the child to be subscribed to the follow and
+                // to have drained its first page. The post-fix handle
+                // (R1.1 F2) does NOT emit Completed at the natural tail:
+                // the child's iterator keeps polling until either
+                // RunFinished arrives or `maxEvents` is reached.
+                awaitMarker(child, "READY", 30_000)
+                // Yield long enough that the child's first `drainOnce`
+                // has run and is now sitting in its poll loop with an
+                // empty `pending` queue. The pre-fix handle would have
+                // already emitted Completed by now; the post-fix handle
+                // is alive and waiting for new events.
+                Thread.sleep(150)
+                // The producer publishes three more events AFTER the
+                // child reached the natural tail. The follow must
+                // deliver all of them.
+                writeEvent(parentDb, stageStarted(runId))
+                writeEvent(parentDb, stageFinished(runId))
+                writeEvent(parentDb, runFinished(runId))
+                // The follow's RunFinished-detection path (handlePage
+                // step 3d) emits StateChanged(RunFinished) THEN
+                // Completed in the same poll cycle, so the child exits
+                // promptly after seeing RunFinished.
+                child.waitFor(30, TimeUnit.SECONDS)
+                assertEquals(0, child.exitValue(), "child exited non-zero; child log:\n${Files.readString(log)}")
+            } finally {
+                runCatching { child.destroyForcibly() }
+                runCatching { child.waitFor(5, TimeUnit.SECONDS) }
+            }
+        } finally {
+            parentDb.close()
+        }
+
+        val lines = readChildLog(log)
+        // Central property: the child observed EVERY event the parent
+        // wrote, including the three published after READY. If the
+        // pre-fix `Completed on hasMore=false` behaviour had survived,
+        // the child's first poll would have ended in Completed and
+        // the three post-READY writes would have been missed.
+        val pageLines = lines.filter { it.startsWith("PAGE ") }
+        val observed = pageLines.flatMap { pageSeqs(it) }
+        // RunStarted is seq 1; the parent's three post-READY writes
+        // are seqs 2, 3, 4. All four must reach the child.
+        assertTrue(
+            observed.contains(1L),
+            "the child must observe the pre-READY RunStarted (seq=1); got $observed",
+        )
+        assertTrue(
+            observed.contains(2L),
+            "the child must observe the StageStarted published AFTER it reached the natural tail (seq=2); " +
+                "this is the cross-JVM falsifier for the F2 fix; got $observed",
+        )
+        assertTrue(
+            observed.contains(3L),
+            "the child must observe the StageFinished published AFTER it reached the natural tail (seq=3); " +
+                "this is the cross-JVM falsifier for the F2 fix; got $observed",
+        )
+        assertTrue(
+            observed.contains(4L),
+            "the child must observe the RunFinished published AFTER it reached the natural tail (seq=4); " +
+                "this is the cross-JVM falsifier for the F2 fix; got $observed",
+        )
+        // Completed arrives exactly once, and only via the RunFinished
+        // path (not via the natural-tail path that was removed in R1.1).
+        val completedCount = lines.count { it == "COMPLETED" }
+        assertEquals(
+            1, completedCount,
+            "Completed must be emitted exactly once; got $completedCount:\n$lines",
+        )
+        val runFinishedStateCount = lines.count { it == "STATE_RUNFINISHED" }
+        assertEquals(
+            1, runFinishedStateCount,
+            "the StateChanged(RunFinished) must be emitted exactly once " +
+                "(via the post-fix 3d path, not the pre-fix 3e path); got $runFinishedStateCount:\n$lines",
+        )
+        // No Refused events: the follow was clean, the run was known,
+        // the cursor stayed within known history. A pre-fix bug that
+        // surfaced as Refused would also be a contract violation.
+        assertTrue(
+            lines.none { it.startsWith("REFUSED") },
+            "a clean follow must NOT emit Refused; got:\n$lines",
+        )
+    }
+
     // -------------------------------------------------------------- log-line helpers
 
     /**

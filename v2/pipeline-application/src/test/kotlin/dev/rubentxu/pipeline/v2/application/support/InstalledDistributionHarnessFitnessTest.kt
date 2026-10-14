@@ -329,7 +329,12 @@ class InstalledDistributionHarnessFitnessTest {
             "dev/rubentxu/pipeline/v2/application/cli/WURp019GradleRealUatTest.kt",
             "dev/rubentxu/pipeline/v2/application/cli/WURp020MavenRealUatTest.kt",
             "dev/rubentxu/pipeline/v2/application/cli/WURp021NodeRealUatTest.kt",
-            "dev/rubentxu/pipeline/v2/application/cli/WURp023ObservationModesUatTest.kt",
+            // WURp023ObservationModesUatTest was retired from KNOWN_DEBT after the detector was
+            // re-run against the file: its only remaining `ProcessBuilder` mention sits in KDoc,
+            // which stripComments removes, and it launches through OwnedSubprocess.run. This was
+            // inventory debt, not a migration defect, so the entry was removed rather than the
+            // file weakened. If a raw launch is ever reintroduced the `unexpected` assertion
+            // below names it again on its own; no allowlist is needed to keep the law honest.
         )
     }
 }

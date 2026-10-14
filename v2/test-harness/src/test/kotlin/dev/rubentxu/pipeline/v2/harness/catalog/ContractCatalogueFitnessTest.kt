@@ -174,6 +174,26 @@ class ContractCatalogueFitnessTest {
     }
 
     @Test
+    @DisplayName("no row names a test file as if it were product code")
+    fun noTestFilesAreClassifiedAsProduction() {
+        // Added after this slice catalogued AppBinSupport.kt, which lives in src/test. The path
+        // fitness caught it as a missing file, but the real defect was sharper: a TEST helper was
+        // registered as a product guarantee, so editing a helper would have demanded distribution
+        // fidelity it cannot bear, and the product's own provenance boundary went uncovered.
+        //
+        // This pins the category, not the instance. Adding a row that names a helper must fail
+        // here for the same reason the first one did.
+        val testPaths = ContractCatalogue.CONTRACTS
+            .flatMap { it.sourcePaths }
+            .filter { it.contains("/src/test/") }
+        assertTrue(
+            testPaths.isEmpty(),
+            "these catalogue rows name test sources as product code. A harness helper is not a " +
+                "product guarantee: $testPaths",
+        )
+    }
+
+    @Test
     @DisplayName("the catalogue records a distinct owner per capability")
     fun ownersAreRecorded() {
         val blank = ContractCatalogue.CONTRACTS.filter { it.owningModule.isBlank() }

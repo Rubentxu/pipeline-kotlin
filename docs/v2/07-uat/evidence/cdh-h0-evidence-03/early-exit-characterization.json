@@ -1,0 +1,72 @@
+{
+  "work_unit": "CDH-H0-EVIDENCE-02-followup",
+  "source_sha": "16272584b5ca00e894384ff10ecc3e2bb4a0a699",
+  "reporter_sha256": "2c94019f041cfb522d1b4a4310339158501db8add634463f1cae8065c21541c2",
+  "question": "Does every early exit honour --json, so a machine consumer always receives a typed verdict rather than an empty stdout?",
+  "cases": [
+    {
+      "path": "no_xml_at_all",
+      "classification": "CHARACTERIZATION_NOT_CERTIFICATION",
+      "argv": [
+        "/usr/bin/python3",
+        "/var/home/rubentxu/.herdr/worktrees/pipeline-kotlin/worktree-test-harnes-evolutivo/scripts/run-scoped-junit-report.py",
+        "--head",
+        "16272584b5ca00e894384ff10ecc3e2bb4a0a699",
+        "--results-dir",
+        "/home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/early-exit/no_xml_at_all-5rlrvk5b/v2",
+        "--json"
+      ],
+      "exit_code": 2,
+      "stdout_bytes": 0,
+      "stdout_is_parseable_json": false,
+      "json_parse_error": null,
+      "json_verdict": null,
+      "json_keys": [],
+      "stderr_first_line": "No JUnit XML under /home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/early-exit/no_xml_at_all-5rlrvk5b/v2. The run produced no evidence; refusing to report a green gate."
+    },
+    {
+      "path": "xml_outside_boundary",
+      "classification": "CHARACTERIZATION_NOT_CERTIFICATION",
+      "argv": [
+        "/usr/bin/python3",
+        "/var/home/rubentxu/.herdr/worktrees/pipeline-kotlin/worktree-test-harnes-evolutivo/scripts/run-scoped-junit-report.py",
+        "--head",
+        "16272584b5ca00e894384ff10ecc3e2bb4a0a699",
+        "--results-dir",
+        "/home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/early-exit/xml_outside_boundary-xdhd5zsh/v2",
+        "--boundary-file",
+        "/home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/early-exit/xml_outside_boundary-xdhd5zsh/.boundary",
+        "--json"
+      ],
+      "exit_code": 2,
+      "stdout_bytes": 0,
+      "stdout_is_parseable_json": false,
+      "json_parse_error": null,
+      "json_verdict": null,
+      "json_keys": [],
+      "stderr_first_line": "FAIL: no XML falls inside the run boundary, so this report would certify zero tests. The boundary file was almost certainly created after the run; it must be created BEFORE the build starts."
+    },
+    {
+      "path": "head_mismatch",
+      "classification": "CHARACTERIZATION_NOT_CERTIFICATION",
+      "argv": [
+        "/usr/bin/python3",
+        "/var/home/rubentxu/.herdr/worktrees/pipeline-kotlin/worktree-test-harnes-evolutivo/scripts/run-scoped-junit-report.py",
+        "--head",
+        "0000000000000000000000000000000000000000",
+        "--results-dir",
+        "/home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/early-exit/head_mismatch-d3we2pte/v2",
+        "--boundary-file",
+        "/home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/early-exit/head_mismatch-d3we2pte/.boundary",
+        "--json"
+      ],
+      "exit_code": 2,
+      "stdout_bytes": 0,
+      "stdout_is_parseable_json": false,
+      "json_parse_error": null,
+      "json_verdict": null,
+      "json_keys": [],
+      "stderr_first_line": "FAIL: --head 0000000000000000000000000000000000000000 does not match HEAD 16272584b5ca00e894384ff10ecc3e2bb4a0a699. A report bound to a SHA that is not the tree that ran is worse than no report."
+    }
+  ]
+}

@@ -31,6 +31,10 @@ Usage
     python3 scripts/run-scoped-junit-report.py --head "$(git rev-parse HEAD)" \\
         --results-dir v2 -- --tests 'Foo*'
 
+    # Attesting completeness: declare what the run was asked to execute.
+    python3 scripts/run-scoped-junit-report.py --head "$(git rev-parse HEAD)" \\
+        --results-dir v2 --expected-catalog build/harness/runs/R1/catalog.json
+
 The boundary is taken from the `--boundary-file` if given (a file created
 immediately before the run), otherwise from the newest XML mtime minus
 `--grace-seconds`. Both are reported; when they disagree the report says so
@@ -38,13 +42,15 @@ rather than silently preferring one.
 
 Exit codes
 ----------
-0  PASS: the run's evidence is valid and reports no failures or errors.
-1  FAIL: the run's evidence is valid and reports at least one failure or error.
+0  PASS: the evidence is valid, no failures or errors, and completeness is
+   either attested against `--expected-catalog` or was never claimed.
+1  FAIL: the evidence is valid and reports at least one failure or error.
 2  INVALID_EVIDENCE: the tool refuses to report a verdict. Either no evidence
-   exists, the boundary excludes the whole run, `HEAD` does not match, or at
-   least one FRESH result file is not readable JUnit XML. A gate that cannot
-   read its own evidence has no verdict, and a zero it computed from an
-   unreadable file is not a green gate.
+   exists, the boundary excludes the whole run, `HEAD` does not match, at
+   least one FRESH result file is not readable JUnit XML, or a declared
+   catalog has classes the results tree never produced. A gate that cannot read
+   its own evidence has no verdict, and a zero it computed from an unreadable
+   file is not a green gate.
 
 Fresh vs carried-over
 --------------------
@@ -67,12 +73,45 @@ stand in for the second case, and a non-integer attribute silently counted as
 zero. Both directions read as a green gate over fewer tests than were claimed.
 The counters are therefore validated where they are parsed, and an invalid
 counter invalidates the file instead of being repaired.
+
+Completeness is a separate question from validity
+--------------------------------------------------
+Every number this tool reports describes the files that ARRIVED. None of them
+says what was ASKED FOR. Before this option existed, three classes dispatched
+and two delivered produced `PASS` with `fresh_files: 2` and no field anywhere
+saying the third was missing: a green gate over an unknown subset.
+
+So completeness is a third input, `--expected-catalog`, and it must be
+declared from OUTSIDE the results tree. A catalog computed by walking
+`build/test-results` is the arrived set wearing a different name, and using it
+would make the check unfalsifiable.
+
+The verdict is therefore three cases, not two:
+
+    INVALID_EVIDENCE  the evidence cannot be trusted (unreadable file, head
+                      mismatch, boundary excluding everything, or a shortfall
+                      against a declared catalog)
+    NOT_ATTESTABLE    no catalog was declared, so this report certifies only
+                      that what arrived was green. It does NOT say the run was
+                      complete, and it must not be read as if it did.
+    PASS / FAIL       what arrived was green or red, over a catalog whose
+                      completeness is attested (`expected_files == fresh_files`)
+
+`NOT_ATTESTABLE` exists because the alternative was worse: either keep saying
+`PASS` and let the caller guess, or invent a completeness claim out of the
+arrived files. A tool that cannot answer a question should name the question
+instead of answering it wrongly.
+
+Files whose XML is readable but whose suite name is absent from the result
+tree are indistinguishable from a class that never ran, so an absent suite is
+invalid evidence, exactly as SPEC-06 requires.
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -114,6 +153,58 @@ class Totals:
         return len(self.invalid)
 
 
+@dataclass(frozen=True)
+class Catalog:
+    """What the run was asked to execute, declared from outside the results.
+
+    `suites` holds logical suite identities, not paths: a JUnit file names a
+    class, and the catalog names the same thing. Comparing paths instead would
+    make the check depend on where Gradle happened to put the file.
+    """
+
+    suites: frozenset[str]
+    source: str
+
+    @property
+    def size(self) -> int:
+        return len(self.suites)
+
+
+# The catalog is either declared or not. There is no third shape, so no caller
+# can read "we did not check" as "we checked and found nothing missing".
+CatalogRead = Catalog | InvalidEvidence
+
+
+# Completeness is its own question with its own four answers, kept separate from
+# the validity of the evidence that arrived. Collapsing them would mean either
+# silently claiming completeness or refusing every report that omits a catalog.
+@dataclass(frozen=True)
+class NotAttestable:
+    """No catalog was declared, so this report says nothing about completeness."""
+
+
+@dataclass(frozen=True)
+class CatalogUnreadable:
+    """A catalog was declared and could not be read."""
+
+    reason: str
+
+
+@dataclass(frozen=True)
+class Shortfall:
+    """Declared suites this run produced no result file for."""
+
+    suites: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Complete:
+    """Every declared suite produced a fresh result file."""
+
+
+Completeness = NotAttestable | CatalogUnreadable | Shortfall | Complete
+
+
 def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     """Split our own flags from a trailing `-- <gradle argv>` passthrough."""
     passthrough: list[str] = []
@@ -139,6 +230,15 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
         "--json",
         action="store_true",
         help="emit machine-readable JSON instead of the text report",
+    )
+    p.add_argument(
+        "--expected-catalog",
+        help=(
+            "JSON file declaring the suites this run was asked to execute "
+            "({\"suites\": [\"Foo\", \"Bar\"]}). Declared from outside the "
+            "results tree on purpose: a catalog derived from the results is "
+            "the arrived set renamed, and would make the check unfalsifiable."
+        ),
     )
     p.add_argument("--skip-tree-check", action="store_true")
     return p.parse_args(ours), passthrough
@@ -219,6 +319,61 @@ def totals(paths: list[str]) -> Totals:
     return Totals(counts=acc, invalid=tuple(invalid))
 
 
+def suite_identity(path: str) -> str:
+    """The logical suite a result file names, stripped of Gradle's `TEST-` prefix.
+
+    This is the identity the catalog is compared against. It is derived from the
+    path rather than the XML attribute because the attribute is optional and the
+    file name is what every JUnit writer in this ecosystem actually sets.
+    """
+    base = os.path.basename(path)
+    if base.startswith("TEST-") and base.endswith(".xml"):
+        base = base[len("TEST-") : -len(".xml")]
+    return base
+
+
+def read_catalog(path: str) -> CatalogRead:
+    """Read a declared catalog as a closed result.
+
+    An unreadable, malformed or empty catalog is `InvalidEvidence`, never an
+    empty `Catalog`. The distinction decides the verdict: a catalog nobody could
+    read must not silently degrade into "expected nothing, therefore complete".
+    """
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+    except OSError as exc:
+        return InvalidEvidence(path, f"catalog is not readable: {exc}")
+    try:
+        document = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return InvalidEvidence(path, f"catalog is not valid JSON: {exc}")
+    if not isinstance(document, dict):
+        return InvalidEvidence(path, "catalog is not a JSON object")
+    suites = document.get("suites")
+    if not isinstance(suites, list):
+        return InvalidEvidence(path, 'catalog has no "suites" list')
+    if any(not isinstance(s, str) or not s for s in suites):
+        return InvalidEvidence(path, "catalog suites must all be non-empty strings")
+    if not suites:
+        return InvalidEvidence(
+            path, "catalog declares no suites: it could not attest anything"
+        )
+    return Catalog(suites=frozenset(suites), source=path)
+
+
+def shortfall(catalog: Catalog, delivered: list[str]) -> tuple[str, ...]:
+    """Catalog suites with no result file, as suite identities.
+
+    Pure: it takes the declared set and the arrived paths and returns a value.
+    A carried-over file does not satisfy the catalog, because the catalog
+    describes what THIS run was asked to produce and only fresh evidence
+    counts.
+    """
+    arrived = {suite_identity(p) for p in delivered}
+    return tuple(sorted(catalog.suites - arrived))
+
+
 def git(*args: str) -> str:
     try:
         return subprocess.run(
@@ -263,20 +418,108 @@ def describe(invalid: tuple[InvalidEvidence, ...]) -> list[dict[str, str]]:
     return [{"path": bad.path, "reason": bad.reason} for bad in invalid]
 
 
-def decide(fresh: Totals) -> tuple[str, int]:
-    """Pure: typed evidence -> (verdict, exit code). No I/O, no clock.
+def assess_completeness(
+    declared: str | None, delivered: list[str]
+) -> tuple[Completeness, int | None]:
+    """Read the declared catalog and decide what this report can attest.
+
+    Returns the typed case plus the catalog size when one was declared, so the
+    report can state `expected_files` honestly without re-reading the file.
+
+    The unreadable-catalog case is deliberately NOT the same as no catalog:
+    passing no catalog is a caller who never claimed completeness, while an
+    unreadable catalog is a caller who did claim it and whose claim cannot be
+    checked. The second is invalid evidence.
+    """
+    if declared is None:
+        return (NotAttestable(), None)
+    read = read_catalog(declared)
+    if isinstance(read, InvalidEvidence):
+        return (CatalogUnreadable(read.reason), None)
+    missing = shortfall(read, delivered)
+    if missing:
+        return (Shortfall(missing), read.size)
+    return (Complete(), read.size)
+
+
+def decide(fresh: Totals, completeness: Completeness) -> tuple[str, int]:
+    """Pure: typed evidence + typed completeness -> (verdict, exit code).
+
+    No I/O, no clock, no filesystem. Both decisions are made here and nowhere
+    else, which is what lets the tests drive every case without constructing a
+    results tree.
 
     The invalid case is checked FIRST and is not reachable by a count of zero.
     That ordering is the whole point: the previous implementation computed
     `failures == 0 and errors == 0` over a total that had already subtracted
     every file it could not parse, so unreadable evidence produced exactly the
     verdict a clean run produces.
+
+    `NOT_ATTESTABLE` keeps exit 0. It is not a failure: the run's own results
+    were green, and a gate reading a nonzero exit as "the run failed" must not
+    be made to fail on a property of its own invocation. What changes is the
+    verdict NAME, so the report can no longer be quoted as proving the run was
+    complete when nothing declared what completeness meant.
     """
     if fresh.invalid:
         return ("INVALID_EVIDENCE", 2)
-    if fresh.counts["failures"] == 0 and fresh.counts["errors"] == 0:
-        return ("PASS", 0)
-    return ("FAIL", 1)
+    match completeness:
+        case CatalogUnreadable():
+            return ("INVALID_EVIDENCE", 2)
+        case Shortfall():
+            return ("INVALID_EVIDENCE", 2)
+        case NotAttestable():
+            if fresh.counts["failures"] == 0 and fresh.counts["errors"] == 0:
+                return ("NOT_ATTESTABLE", 0)
+            return ("FAIL", 1)
+        case Complete():
+            if fresh.counts["failures"] == 0 and fresh.counts["errors"] == 0:
+                return ("PASS", 0)
+            return ("FAIL", 1)
+
+
+def describe_completeness(completeness: Completeness) -> dict[str, object]:
+    """Render the typed completeness case for machine consumption.
+
+    Every case states `attested`. A consumer that only reads that boolean still
+    gets the right answer: `true` for `Complete`, `false` for all three others,
+    including the ones that are not failures.
+    """
+    match completeness:
+        case NotAttestable():
+            return {
+                "case": "NOT_ATTESTABLE",
+                "attested": False,
+                "reason": (
+                    "no --expected-catalog was declared, so this report "
+                    "describes only the results that arrived"
+                ),
+                "missing_suites": [],
+            }
+        case CatalogUnreadable(reason=reason):
+            return {
+                "case": "CATALOG_UNREADABLE",
+                "attested": False,
+                "reason": reason,
+                "missing_suites": [],
+            }
+        case Shortfall(suites=suites):
+            return {
+                "case": "SHORTFALL",
+                "attested": False,
+                "reason": (
+                    f"{len(suites)} declared suite(s) produced no fresh result "
+                    "file, so the green covers an unknown subset of the run"
+                ),
+                "missing_suites": list(suites),
+            }
+        case Complete():
+            return {
+                "case": "COMPLETE",
+                "attested": True,
+                "reason": "every declared suite produced a fresh result file",
+                "missing_suites": [],
+            }
 
 
 def tree_state() -> str:
@@ -339,14 +582,13 @@ def main(argv: list[str]) -> int:
         )
         return 2
 
-    # Decision first, interpretation second. The verdict is a closed three-case
-    # result decided from the typed evidence, and only then rendered.
-    verdict, exit_code = decide(fresh_t)
+    # Decision first, interpretation second. The verdict is a closed result over
+    # two typed inputs, and only then rendered.
+    completeness, expected_files = assess_completeness(args.expected_catalog, fresh)
+    verdict, exit_code = decide(fresh_t, completeness)
     digest = fresh_set_digest(args.results_dir, fresh)
 
     if args.json:
-        import json
-
         print(
             json.dumps(
                 {
@@ -364,6 +606,9 @@ def main(argv: list[str]) -> int:
                     "fresh_invalid_evidence": describe(fresh_t.invalid),
                     "carried_over_invalid_evidence": describe(stale_t.invalid),
                     "fresh_set_sha256": digest,
+                    "expected_catalog": args.expected_catalog,
+                    "expected_files": expected_files,
+                    "completeness": describe_completeness(completeness),
                     "verdict": verdict,
                     "exit_code": exit_code,
                 },
@@ -413,6 +658,34 @@ def main(argv: list[str]) -> int:
             "tests are EXCLUDED. Reporting them as this run's result is the W4 "
             "defect."
         )
+    match completeness:
+        case NotAttestable():
+            print(
+                "COMPLETENESS: not attested. No --expected-catalog was declared, "
+                "so this report says the results that arrived were green and "
+                "nothing about whether the run executed everything it was asked "
+                "to. Pass --expected-catalog to make it attestable."
+            )
+        case Complete():
+            print(
+                f"COMPLETENESS: attested. All {expected_files} declared suite(s) "
+                "produced a fresh result file."
+            )
+        case Shortfall(suites=suites):
+            print(
+                f"COMPLETENESS: REFUSED. {len(suites)} of {expected_files} declared "
+                f"suite(s) produced no fresh result file: {', '.join(suites)}. The "
+                "green above covers an unknown subset of what the run was asked "
+                "to execute, so it cannot certify the run.",
+                file=sys.stderr,
+            )
+        case CatalogUnreadable(reason=reason):
+            print(
+                f"COMPLETENESS: REFUSED. The declared catalog could not be read: "
+                f"{reason}. An unreadable completeness claim is not evidence of "
+                "completeness.",
+                file=sys.stderr,
+            )
     print(f"VERDICT: {verdict}")
     if not head_matches:
         print("FAIL: --head does not match the tree that produced these results.")

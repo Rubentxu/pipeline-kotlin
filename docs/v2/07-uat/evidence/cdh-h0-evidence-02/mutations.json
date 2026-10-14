@@ -1,0 +1,242 @@
+{
+  "work_unit": "CDH-H0-EVIDENCE-02",
+  "source_sha": "6db038fc2c952defe859afc97cee9de4921fa60d",
+  "tool": "scripts/run-scoped-junit-report.py",
+  "production_sha256": "2c94019f041cfb522d1b4a4310339158501db8add634463f1cae8065c21541c2",
+  "restored_sha256": "2c94019f041cfb522d1b4a4310339158501db8add634463f1cae8065c21541c2",
+  "restored_identical": true,
+  "control": {
+    "id": "CONTROL",
+    "rows_killed": [],
+    "suite_exit": 0,
+    "green": true
+  },
+  "mutations": [
+    {
+      "id": "M8",
+      "claim": "a shortfall against a declared catalog is invalid evidence",
+      "reason": "reproduces the exact historical false green this slice closes",
+      "status": "KILLED",
+      "discriminating": true,
+      "mutated_sha256": "5e792f98ba464e3150c1ad05d736b7b75f64ceec8681d3b02067b6544f1b7506",
+      "must_kill": [
+        "test_one_missing_declared_suite_is_invalid_evidence",
+        "test_a_carried_over_suite_does_not_satisfy_the_catalog",
+        "test_the_text_report_states_completeness_outside_json"
+      ],
+      "may_kill": [],
+      "rows_killed": [
+        "test_a_carried_over_suite_does_not_satisfy_the_catalog",
+        "test_one_missing_declared_suite_is_invalid_evidence",
+        "test_the_text_report_states_completeness_outside_json"
+      ],
+      "killed_expected": [
+        "test_a_carried_over_suite_does_not_satisfy_the_catalog",
+        "test_one_missing_declared_suite_is_invalid_evidence",
+        "test_the_text_report_states_completeness_outside_json"
+      ],
+      "killed_unattributed": [],
+      "survived_its_claim": [],
+      "suite_exit": 1
+    },
+    {
+      "id": "M9",
+      "claim": "an unreadable catalog is invalid evidence, not an empty catalog",
+      "reason": "the degradation into an empty Catalog is what turns a broken input into a green gate",
+      "status": "KILLED",
+      "discriminating": false,
+      "mutated_sha256": "ecd029745a988328b00c8656403b033c8df02d0ba131931f8409a0e2916eb2b3",
+      "must_kill": [
+        "test_unreadable_catalog_is_invalid_evidence_not_an_empty_one",
+        "test_missing_catalog_file_is_invalid_evidence"
+      ],
+      "may_kill": [
+        "test_an_empty_catalog_is_refused_rather_than_trivially_satisfied"
+      ],
+      "rows_killed": [
+        "test_an_empty_catalog_is_refused_rather_than_trivially_satisfied",
+        "test_missing_catalog_file_is_invalid_evidence",
+        "test_unreadable_catalog_is_invalid_evidence_not_an_empty_one"
+      ],
+      "killed_expected": [
+        "test_an_empty_catalog_is_refused_rather_than_trivially_satisfied",
+        "test_missing_catalog_file_is_invalid_evidence",
+        "test_unreadable_catalog_is_invalid_evidence_not_an_empty_one"
+      ],
+      "killed_unattributed": [],
+      "survived_its_claim": [],
+      "suite_exit": 1
+    },
+    {
+      "id": "M10",
+      "claim": "no catalog means the report cannot attest completeness",
+      "reason": "restores the pre-change wording every report used to carry",
+      "status": "KILLED",
+      "discriminating": true,
+      "mutated_sha256": "8f40329e500e9f0e6d4dbc53797a0f1e20d4b7ca482c468516eb709c45db677c",
+      "must_kill": [
+        "test_no_catalog_is_not_a_green_completeness_claim",
+        "test_skips_do_not_make_the_verdict_fail",
+        "test_unreadable_carried_over_is_warned_not_fatal",
+        "test_the_text_report_announces_an_unattested_green"
+      ],
+      "may_kill": [],
+      "rows_killed": [
+        "test_no_catalog_is_not_a_green_completeness_claim",
+        "test_skips_do_not_make_the_verdict_fail",
+        "test_the_text_report_announces_an_unattested_green",
+        "test_unreadable_carried_over_is_warned_not_fatal"
+      ],
+      "killed_expected": [
+        "test_no_catalog_is_not_a_green_completeness_claim",
+        "test_skips_do_not_make_the_verdict_fail",
+        "test_the_text_report_announces_an_unattested_green",
+        "test_unreadable_carried_over_is_warned_not_fatal"
+      ],
+      "killed_unattributed": [],
+      "survived_its_claim": [],
+      "suite_exit": 1
+    },
+    {
+      "id": "M11",
+      "claim": "an empty catalog is refused rather than trivially satisfied",
+      "reason": "without the rejection, expected-zero suites yields shortfall-zero, which reads as COMPLETE",
+      "status": "KILLED",
+      "discriminating": true,
+      "mutated_sha256": "374c9462e3c6e99facf1ec0b22c681a5745dbebd717343cd59d8c9ec3674c5c5",
+      "must_kill": [
+        "test_an_empty_catalog_is_refused_rather_than_trivially_satisfied"
+      ],
+      "may_kill": [],
+      "rows_killed": [
+        "test_an_empty_catalog_is_refused_rather_than_trivially_satisfied"
+      ],
+      "killed_expected": [
+        "test_an_empty_catalog_is_refused_rather_than_trivially_satisfied"
+      ],
+      "killed_unattributed": [],
+      "survived_its_claim": [],
+      "suite_exit": 1
+    },
+    {
+      "id": "M12",
+      "claim": "the catalog is compared against the FRESH set, not the whole tree",
+      "reason": "lets a previous run's carried-over file satisfy this run's catalog",
+      "status": "KILLED",
+      "discriminating": true,
+      "mutated_sha256": "e1ae97daf3daf6e9f8b5451d0fc047d0adb99e29b39ed9e40924e524a6d354ae",
+      "must_kill": [
+        "test_a_carried_over_suite_does_not_satisfy_the_catalog"
+      ],
+      "may_kill": [],
+      "rows_killed": [
+        "test_a_carried_over_suite_does_not_satisfy_the_catalog"
+      ],
+      "killed_expected": [
+        "test_a_carried_over_suite_does_not_satisfy_the_catalog"
+      ],
+      "killed_unattributed": [],
+      "survived_its_claim": [],
+      "suite_exit": 1
+    },
+    {
+      "id": "M13",
+      "claim": "the catalog names suites, not paths",
+      "reason": "makes the check depend on which module Gradle put the file in",
+      "status": "KILLED",
+      "discriminating": false,
+      "mutated_sha256": "0406a15915440a7a919bdc11f7b15c8df2ace2786b3fd90221efb7c9d200de27",
+      "must_kill": [
+        "test_suite_identity_ignores_the_module_directory"
+      ],
+      "may_kill": [
+        "test_declared_and_fully_delivered_attests_completeness",
+        "test_one_missing_declared_suite_is_invalid_evidence",
+        "test_a_carried_over_suite_does_not_satisfy_the_catalog",
+        "test_a_failing_run_with_a_complete_catalog_is_still_red"
+      ],
+      "rows_killed": [
+        "test_a_carried_over_suite_does_not_satisfy_the_catalog",
+        "test_a_failing_run_with_a_complete_catalog_is_still_red",
+        "test_declared_and_fully_delivered_attests_completeness",
+        "test_one_missing_declared_suite_is_invalid_evidence",
+        "test_suite_identity_ignores_the_module_directory"
+      ],
+      "killed_expected": [
+        "test_a_carried_over_suite_does_not_satisfy_the_catalog",
+        "test_a_failing_run_with_a_complete_catalog_is_still_red",
+        "test_declared_and_fully_delivered_attests_completeness",
+        "test_one_missing_declared_suite_is_invalid_evidence",
+        "test_suite_identity_ignores_the_module_directory"
+      ],
+      "killed_unattributed": [],
+      "survived_its_claim": [],
+      "suite_exit": 1
+    },
+    {
+      "id": "M14",
+      "claim": "a red run stays red even with a satisfied catalog",
+      "reason": "the strongest possible green gate: a satisfied catalog over a red run",
+      "status": "KILLED",
+      "discriminating": true,
+      "mutated_sha256": "3f302168de4dd0e9daea7aa545224df0eeded7bdc101327e7dbed9e80fa3b340",
+      "must_kill": [
+        "test_a_failing_run_with_a_complete_catalog_is_still_red"
+      ],
+      "may_kill": [],
+      "rows_killed": [
+        "test_a_failing_run_with_a_complete_catalog_is_still_red"
+      ],
+      "killed_expected": [
+        "test_a_failing_run_with_a_complete_catalog_is_still_red"
+      ],
+      "killed_unattributed": [],
+      "survived_its_claim": [],
+      "suite_exit": 1
+    },
+    {
+      "id": "M15",
+      "claim": "the text report states completeness outside JSON",
+      "reason": "a guard that exists only in the machine contract can be routed around by whoever reads the operator-facing report",
+      "status": "KILLED",
+      "discriminating": true,
+      "mutated_sha256": "dce8f5473cb85121820c8558d202960ac365b85ad9ed186a098a03675aacae61",
+      "must_kill": [
+        "test_the_text_report_announces_an_unattested_green"
+      ],
+      "may_kill": [],
+      "rows_killed": [
+        "test_the_text_report_announces_an_unattested_green"
+      ],
+      "killed_expected": [
+        "test_the_text_report_announces_an_unattested_green"
+      ],
+      "killed_unattributed": [],
+      "survived_its_claim": [],
+      "suite_exit": 1
+    },
+    {
+      "id": "M16",
+      "claim": "the text report refuses a shortfall outside JSON",
+      "reason": "the operator-facing refusal is the one a human reads; if only the JSON carries it, the human gate reports a green over a subset",
+      "status": "KILLED",
+      "discriminating": true,
+      "mutated_sha256": "de97180ecf8b837fc00571ba7946f84241e50d34833f2982a1e7df5600f1a692",
+      "must_kill": [
+        "test_the_text_report_states_completeness_outside_json"
+      ],
+      "may_kill": [],
+      "rows_killed": [
+        "test_the_text_report_states_completeness_outside_json"
+      ],
+      "killed_expected": [
+        "test_the_text_report_states_completeness_outside_json"
+      ],
+      "killed_unattributed": [],
+      "survived_its_claim": [],
+      "suite_exit": 1
+    }
+  ],
+  "verdict": "ALL_KILLED",
+  "failures": []
+}

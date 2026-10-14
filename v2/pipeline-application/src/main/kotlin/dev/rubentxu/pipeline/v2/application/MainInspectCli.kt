@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
 import dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader
 import dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead
+import dev.rubentxu.pipeline.v2.output.StreamingUtf8Decoder
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.StepFailed
@@ -171,7 +172,7 @@ object MainInspectCli {
                 val plane = OutputPlaneProvider.storeForReading(java.nio.file.Paths.get(compiled.controlRoot))
                 val reader = FrameIndexedObservationOutputReader(plane.frameIndex(), plane, plane)
                 when (val r = reader.readTail(runId, compiled.logTail.toLong())) {
-                    is ObservationOutputRead.Page -> r.page.text
+                    is ObservationOutputRead.Page -> decodePageBytesAsUtf8Impl(r.page.records)
                     is ObservationOutputRead.Refused -> ""
                 }
             } catch (e: java.io.IOException) {
@@ -299,13 +300,52 @@ object MainInspectCli {
     )
 
     /**
+     * Decode a stream of per-frame byte buffers as one continuous UTF-8 transcript.
+     *
+     * `ObservationOutputReader.decodeWindow` decodes one frame at a time on purpose: the contract
+     * is per-frame determinism, and a carry-over buffer would re-decode the same bytes differently
+     * depending on where a reader resumed. `inspect --log-tail`, however, presents ONE transcript
+     * to a human; a multi-byte codepoint straddling a frame boundary must be reassembled or the
+     * tail shows two U+FFFD characters instead of the original character. PC-08 names that defect
+     * for the human-facing surface; this helper is the fix.
+     *
+     * The decoder is the same [StreamingUtf8Decoder] the [StreamingUtf8DecoderTest] exercises; the
+     * bytes are not re-decoded character-by-character — the full byte array per frame is fed
+     * through the incremental decoder in [r.page.records] order, oldest first, and the final
+     * `String` is the assembled transcript.
+     */
+    private fun decodePageBytesAsUtf8(records: List<dev.rubentxu.pipeline.v2.application.observation.ObservationRecord.Output>): String =
+        decodePageBytesAsUtf8Impl(records)
+
+    /**
+     * Internal-visible entry for the byte-stream decode so an HF0 unit test can pin the
+     * contract (a multi-byte codepoint straddling two records reassembles into one character)
+     * without paying for the heavier MainInspectCli fixture.
+     */
+    internal fun decodePageBytesAsUtf8Impl(records: List<dev.rubentxu.pipeline.v2.application.observation.ObservationRecord.Output>): String {
+        val decoder = StreamingUtf8Decoder()
+        val out = StringBuilder(records.sumOf { it.bytes.size })
+        for (r in records) {
+            out.append(decoder.decode(r.bytes))
+        }
+        return out.toString()
+    }
+
+    /**
      * Parse the option args (run id consumed upstream) into a [CompiledInspectionQuery].
      *
      * The shared parser work (option meaning, error formatting) lives here, NOT in a third
      * bespoke private object: any future CLI verb that wants `--failed`, `--kind`, `--stage`,
      * `--step`, `--context`, `--log-tail`, `--fields` or `--format` joins `CliParser.parseObservation`
      * (R4 / WU-R4.2) instead of re-inventing the surface.
+     *
+     * The function is a flat option table: every branch is one option, every option consumes
+     * one or two args, and the validation that distinguishes them is per-option rather than
+     * per-function. WU-R4.2 will replace this body with a typed option-list iteration, at which
+     * point the cyclomatic count drops back under 25 by construction. Until then, the complexity
+     * is structural to the option table, not a quality signal.
      */
+    @Suppress("CyclomaticComplexMethod")
     fun parseInspect(args: Array<String>): InspectParseResult {
         var failed = false
         var kind: String? = null

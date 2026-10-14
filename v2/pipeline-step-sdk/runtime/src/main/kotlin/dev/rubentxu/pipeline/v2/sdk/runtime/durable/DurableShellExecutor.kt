@@ -906,8 +906,24 @@ class DurableShellExecutor : DurableShellLaunching {
                 val window = ByteArray(TRANSCRIPT_LIVE_WINDOW_BYTES)
                 try {
                     while (true) {
-                        val ready = maxOf(1, minOf(window.size, redacted.available()))
-                        val n = redacted.read(window, 0, ready)
+                        // TD-R4.2 — the pump's read sizing, after the operator's note.
+                        //
+                        // The previous shape was
+                        //   `ready = maxOf(1, minOf(window.size, redacted.available()))`
+                        // which is a busy-loop with `available() == 0` and a forced one-byte
+                        // read the rest of the time, producing 1..N small frames per window
+                        // on an empty-registry redactor ring (262 frames for 1024 bytes is
+                        // measured; the operator's "median 1 byte per frame" is the same
+                        // shape, just with a larger sample).
+                        //
+                        // The fix is structural: read directly from the redacting stream
+                        // with the whole window, and let it block until at least one byte
+                        // is available, then return as many as the source can give. That
+                        // removes the `available()` call as the loop's progress signal —
+                        // the loop only ever consults `redacted.read`, which is the
+                        // canonical "have at least one byte or block" primitive the
+                        // `RedactingInputStream` already implements.
+                        val n = redacted.read(window, 0, window.size)
                         if (n < 0) break
                         guarded.write(window, 0, n)
                     }

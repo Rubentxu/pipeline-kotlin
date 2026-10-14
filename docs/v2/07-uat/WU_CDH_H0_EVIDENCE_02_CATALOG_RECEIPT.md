@@ -395,11 +395,16 @@ Unidades cerradas hasta aquí, en orden de commit:
 
 Trabajo autorizado y disponible a continuación, en este orden:
 
-1. **Ejecutar el reporter contra un árbol real más amplio**, al menos
-   `:pipeline-application:test`, que tiene módulos con clases de nombre repetido.
-   Es lo único que puede producir basenames duplicados entre módulos, y el
-   árbol de `pipeline-events` no tenía ninguno, así que esa rama del catálogo
-   sigue sin verificar contra el productor real.
+1. **RETRACTADO por `WU_CDH_H0_EVIDENCE_03_REFUSAL_TYPED_RECEIPT.md`.** Este punto
+   recomendaba ejecutar `:pipeline-application:test` porque «tiene módulos con clases
+   de nombre repetido», y afirmaba que era lo único que podía producir basenames
+   duplicados entre módulos. **Es falso.** Un escaneo estático de los 773 ficheros de
+   test del repositorio, en 22 módulos, encontró 773 basenames distintos y **cero
+   colisiones, incluidas cero colisiones entre módulos**. Esa verificación no puede
+   fallar porque no hay colisión que producir. La rama del catálogo queda sin
+   verificar contra un productor con basenames duplicados, y seguirá así salvo que
+   aparezca una colisión real; no se debe reejecutar `:pipeline-application:test`
+   esperando encontrarla.
 2. Defecto 6 de SPEC-06, que exige directorio único por run y no se resuelve
    con más executions: sigue siendo un cambio estructural.
 3. Adopción del paquete CDH. **Bloqueada** a la espera de decisión del operador

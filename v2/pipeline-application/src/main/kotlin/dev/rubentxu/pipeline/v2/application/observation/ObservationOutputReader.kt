@@ -108,6 +108,29 @@ interface ObservationOutputReader {
      * not read.
      */
     fun readTail(runId: String, tailBytes: Long): ObservationOutputRead
+
+    /**
+     * R4 / WU-R4.1.3 — per-operation readTail.
+     *
+     * Reads the last [tailBytes] of one operation's output, scoped by the operation's
+     * stream-id prefix. Where [readTail] returns the trailing bytes of the WHOLE run, this
+     * overload returns the trailing bytes of one operation, so an inspect consumer can
+     * attach a step's tail to that step's `StepFailed` record (CON-2.x).
+     *
+     * Frames whose [OutputFrame.stream] does NOT carry [opId] as a segment are skipped.
+     * The stream id format is `<runId>/<operationId>/<channel>` (see [OutputStreamAddress]),
+     * so the opId appears as a literal segment between run and channel. Frames with
+     * stream ids from BEFORE the durable-task v1 minting shape (the pre-ADR-0088
+     * `<runId>/<opId>/transcript` exception) carry the same shape; this is honest about
+     * the indexing it can prove.
+     *
+     * The semantics match [readTail]: oldest frame included is narrowed, never dropped,
+     * never invented. A frame that straddles the byte budget keeps its ordinal and is
+     * re-issued with `from` moved forward. A future slice can re-derive opId from a
+     * [durable]/[events] cross-reference; this overload accepts the opId as input on
+     * purpose, so the resolution lives at the caller (which has both lanes).
+     */
+    fun readTail(runId: String, opId: String, tailBytes: Long): ObservationOutputRead
 }
 
 /** One bounded page of the output lane, or the reason there isn't one. */
@@ -227,6 +250,84 @@ class FrameIndexedObservationOutputReader(
                 moreFrames = false,
             ),
         )
+    }
+
+    /**
+     * R4 / WU-R4.1.3 — per-operation readTail overload.
+     *
+     * Filters the run's frames to those whose stream id carries [opId] as a middle segment
+     * (`<runId>/<opId>/<channel>`), then applies the same tail-budget walk as the
+     * run-wide [readTail]. The shape of the returned page is identical; only the input
+     * scope differs.
+     *
+     * An opId that has no frames (e.g., a step that emitted no console output) yields an
+     * empty page with `lastOrdinal = -1L` and `moreFrames = false`. This is distinct from
+     * a refusal: the opId is real, the run is real, the page is just empty. A caller that
+     * asked for the tail of an op knows there is nothing to show.
+     */
+    override fun readTail(runId: String, opId: String, tailBytes: Long): ObservationOutputRead {
+        require(tailBytes > 0) { "tailBytes must be positive, got $tailBytes" }
+        require(opId.isNotBlank()) { "opId must not be blank" }
+
+        val allFrames = runFramesNewestFirst(runId)
+        if (allFrames.isEmpty()) {
+            return ObservationOutputRead.Page(ObservationOutputPage(emptyList(), -1L, moreFrames = false))
+        }
+        val opFrames = allFrames.filter { frame -> frame.stream.value.contains("/$opId/") }
+        if (opFrames.isEmpty()) {
+            return ObservationOutputRead.Page(ObservationOutputPage(emptyList(), -1L, moreFrames = false))
+        }
+        // opFrames is newest-first. Reverse for tailFrames' oldest-first contract, then call
+        // the same walk. The walk returns a list of OutputFrame, oldest first.
+        val oldestFirst = opFrames.asReversed()
+        val tail = tailFramesFromOldestFirst(oldestFirst, tailBytes)
+        val records = ArrayList<ObservationRecord.Output>(tail.size)
+        for (frame in tail) {
+            when (val read = readFrameBytes(frame)) {
+                is ReadOutcome.Refused -> return ObservationOutputRead.Refused(read.reason)
+                is ReadOutcome.Bytes -> records += ObservationRecord.Output(frame, read.bytes, read.text)
+            }
+        }
+        return ObservationOutputRead.Page(
+            ObservationOutputPage(
+                records = records,
+                lastOrdinal = records.lastOrNull()?.frame?.ordinal ?: -1L,
+                moreFrames = false,
+            ),
+        )
+    }
+
+    /** All frames of [runId], newest first, filtered to known ordinals via [index.lastOrdinal]. */
+    private fun runFramesNewestFirst(runId: String): List<OutputFrame> {
+        val last = index.lastOrdinal(runId) ?: return emptyList()
+        return index.framesOfRun(runId, afterOrdinal = -1L, limit = (last + 1).toInt()).asReversed()
+    }
+
+    /**
+     * Run [tailFrames] over a list of frames already known to be oldest-first. Same
+     * byte-budget semantics as the run-wide path; the only difference is that we do
+     * not re-query the index, which is what makes the per-op tail bounded by the op's
+     * own bytes rather than the whole run's.
+     */
+    private fun tailFramesFromOldestFirst(
+        frames: List<OutputFrame>,
+        tailBytes: Long,
+    ): List<OutputFrame> {
+        if (frames.isEmpty()) return emptyList()
+        var covered = 0L
+        var keep = frames.size
+        while (keep > 0 && covered + frames[keep - 1].length <= tailBytes) {
+            covered += frames[keep - 1].length
+            keep--
+        }
+        if (covered >= tailBytes) return frames.drop(keep)
+        if (keep == 0) return frames
+        // Narrow the oldest frame to fit the budget exactly. Same shape as the run-wide path.
+        val includeFrom = keep - 1
+        val overhang = covered + frames[includeFrom].length - tailBytes
+        return frames.drop(includeFrom).mapIndexed { position, frame ->
+            if (position == 0) frame.copy(from = frame.from + overhang) else frame
+        }
     }
 
     /**

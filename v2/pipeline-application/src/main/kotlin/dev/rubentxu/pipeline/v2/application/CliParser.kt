@@ -1005,12 +1005,16 @@ object CliParser {
         var frames = false
         var frameLimit: String? = null
         var afterOrdinal: String? = null
+        var follow = false
+        var followPollInterval: String? = null
+        var followMaxPolls: String? = null
         var index = 0
         while (index < args.size) {
             val arg = args[index]
             when (arg) {
                 "--control-dir", "--max-bytes", "--after-cursor", "--range",
-                "--frame-limit", "--after-ordinal", "--format" -> {
+                "--frame-limit", "--after-ordinal", "--format",
+                "--follow-poll-interval", "--follow-max-polls" -> {
                     val value = args.getOrNull(index + 1)
                         ?: return ConsoleCliParseResult.Rejected(ConsoleCliRefusal.MissingOptionValue(arg))
                     when (arg) {
@@ -1021,10 +1025,13 @@ object CliParser {
                         "--frame-limit" -> frameLimit = value
                         "--after-ordinal" -> afterOrdinal = value
                         "--format" -> formatToken = value
+                        "--follow-poll-interval" -> followPollInterval = value
+                        "--follow-max-polls" -> followMaxPolls = value
                     }
                     index++
                 }
                 "--frames" -> frames = true
+                "--follow" -> follow = true
                 else -> {
                     val refusal = consolePositional(arg, runId, opId)
                     if (refusal != null) return ConsoleCliParseResult.Rejected(refusal)
@@ -1033,7 +1040,10 @@ object CliParser {
             }
             index++
         }
-        return consoleValidate(controlDir, runId, opId, maxBytes, afterCursor, range, formatToken, frames, frameLimit, afterOrdinal)
+        return consoleValidate(
+            controlDir, runId, opId, maxBytes, afterCursor, range, formatToken,
+            frames, frameLimit, afterOrdinal, follow, followPollInterval, followMaxPolls,
+        )
     }
 
     private fun consolePositional(arg: String, runId: String?, opId: String?): ConsoleCliRefusal? = when {
@@ -1053,6 +1063,9 @@ object CliParser {
         frames: Boolean,
         frameLimit: String?,
         afterOrdinal: String?,
+        follow: Boolean,
+        followPollInterval: String?,
+        followMaxPolls: String?,
     ): ConsoleCliParseResult {
         val cd = controlDir ?: return consoleReject(ConsoleCliRefusal.MissingArgument)
         val rid = runId ?: return consoleReject(ConsoleCliRefusal.MissingArgument)
@@ -1079,6 +1092,14 @@ object CliParser {
             }
         }
 
+        // R4 / WU-CON-2.3 — `--follow` requires `--frames`. Refused rather than defaulted: a
+        // `--follow` against the byte path would silently emit the merged page once and then
+        // poll forever on a byte cursor, which is a different contract from what the operator
+        // asked for.
+        if (follow && !frames) {
+            return consoleReject(ConsoleCliRefusal.FollowRequiresFrames)
+        }
+
         val format = formatToken?.let { token ->
             MainConsoleCli.ConsoleFormat.parse(token)
                 ?: return consoleReject(
@@ -1089,6 +1110,7 @@ object CliParser {
                 )
         } ?: MainConsoleCli.ConsoleFormat.TEXT
 
+        if (follow) return consoleAdmitFollowFrames(cd, rid, oid, frameLimit, afterOrdinal, followPollInterval, followMaxPolls, format)
         if (frames) return consoleAdmitFrames(cd, rid, oid, frameLimit, afterOrdinal, format)
         if (range != null) return consoleAdmitRange(cd, rid, oid, range, format)
         return consoleAdmitPage(cd, rid, oid, maxBytes, afterCursor, format)
@@ -1154,6 +1176,66 @@ object CliParser {
 
         return ConsoleCliParseResult.Admitted(
             ConsoleReadRequest.Frames(controlDir, runId, opId, ordinal, limit, format),
+        )
+    }
+
+    /**
+     * R4 / WU-CON-2.3 — admit the [ConsoleReadRequest.FollowFrames] request.
+     *
+     * The per-poll bound (`--frame-limit`) and the resume cursor (`--after-ordinal`) share their
+     * parsing with [consoleAdmitFrames]; only the [FollowConfig] payload is new. Both new
+     * valued options refuse rather than default to match the policy the rest of the console
+     * parser applies: a malformed `--follow-*` is a typed refusal, not a silent degradation.
+     *
+     * Closed payload: [FollowConfig] constructor refuses non-positive values, so a
+     * `0` or negative `--follow-poll-interval` / `--follow-max-polls` is a typed refusal
+     * BEFORE the constructor runs — the [NotAnInteger] refusal covers the "not an integer"
+     * shape, and the constructor covers the "parsed but non-positive" shape.
+     */
+    private fun consoleAdmitFollowFrames(
+        controlDir: String,
+        runId: String,
+        opId: String,
+        frameLimit: String?,
+        afterOrdinal: String?,
+        followPollInterval: String?,
+        followMaxPolls: String?,
+        format: MainConsoleCli.ConsoleFormat,
+    ): ConsoleCliParseResult {
+        val limit = frameLimit?.let { value ->
+            value.toIntOrNull()?.takeIf { it > 0 }
+                ?: return consoleReject(ConsoleCliRefusal.NotAnInteger("--frame-limit", value))
+        } ?: ConsoleReadService.DEFAULT_FRAME_LIMIT
+
+        val ordinal = afterOrdinal?.let { value ->
+            value.toLongOrNull()?.takeIf { it >= -1L }
+                ?: return consoleReject(ConsoleCliRefusal.NotAnInteger("--after-ordinal", value))
+        } ?: -1L
+
+        val pollIntervalMillis = followPollInterval?.let { value ->
+            val n = value.toLongOrNull()
+                ?: return consoleReject(ConsoleCliRefusal.NotAnInteger("--follow-poll-interval", value))
+            n.takeIf { it > 0L }
+                ?: return consoleReject(ConsoleCliRefusal.NotAnInteger("--follow-poll-interval", value))
+        } ?: FollowConfig.DEFAULT_POLL_INTERVAL_MILLIS
+
+        val maxPolls = followMaxPolls?.let { value ->
+            val n = value.toIntOrNull()
+                ?: return consoleReject(ConsoleCliRefusal.NotAnInteger("--follow-max-polls", value))
+            n.takeIf { it > 0 }
+                ?: return consoleReject(ConsoleCliRefusal.NotAnInteger("--follow-max-polls", value))
+        } ?: FollowConfig.DEFAULT_MAX_POLLS
+
+        return ConsoleCliParseResult.Admitted(
+            ConsoleReadRequest.FollowFrames(
+                controlDir,
+                runId,
+                opId,
+                ordinal,
+                limit,
+                FollowConfig(pollIntervalMillis, maxPolls),
+                format,
+            ),
         )
     }
 

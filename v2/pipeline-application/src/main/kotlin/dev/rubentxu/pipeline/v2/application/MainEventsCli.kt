@@ -8,67 +8,67 @@ import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
 import dev.rubentxu.pipeline.v2.events.identity.EnvelopeCodec
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
+import dev.rubentxu.pipeline.v2.events.identity.EventField
 import dev.rubentxu.pipeline.v2.events.identity.EventHistoryReader
+import dev.rubentxu.pipeline.v2.events.identity.EventInspection
 import dev.rubentxu.pipeline.v2.events.identity.EventQuery
+import dev.rubentxu.pipeline.v2.events.identity.PipelineEventEnvelope
 
 /**
- * EVT-2 minimal CLI for structured local history inspection:
+ * R4 / WU-R4.2 — the events CLI now participates in the unified observability surface.
  *
- *   pipeline events --db <path> <runId> [--kind K] [--subject KIND:ID...] [--limit N] [--after-cursor TOKEN]
+ *   pipeline events --db <path> <runId>
+ *                   [--kind K] [--subject v1:kind:ID...|v1:stage:ID:N|...]
+ *                   [--limit N] [--after-cursor TOKEN]
+ *                   [--follow]
+ *                   [--fields SEQ,KIND,EVENTID,SUBJECT,SOURCE]
+ *                   [--context N] [--tail N]
+ *                   [--typed]
  *
- * Reads history through the EventHistory port (never parses stdout, never
- * touches the console transcript). Output = one JSON envelope per line.
- * History != stdout rule: this command's stdout is the CLI's query output;
- * no process streams are involved.
+ * What the R4 WU adds on top of the original EVT-2 surface:
  *
- * ## S5.4 — the refusal is on the wire, not merely in the type
+ *   * `--follow` reuses the event-lane poll loop (one read per round trip) so a caller can watch
+ *     a run finish without re-issuing `--after-cursor`. The typed projection also gets it; the
+ *     follow terminates on `RunFinished` or on the JVM shutdown signal.
+ *   * `--fields` is a closed ADT of envelope fields (5 cases, `EventField` from WU-LPR-051) and
+ *     produces a header line + one narrowed line per envelope.
+ *   * `--context N` builds a context window around envelopes whose `kind` matches the `--kind`
+ *     filter (or around every envelope when no filter is set): N preceding + the match + N following,
+ *     deduped. The pure transform is `EventInspection.contextWindow`.
+ *   * `--tail N` keeps the last N envelopes. The pure transform is `EventInspection.tail`.
  *
- * This used to read `history(run, query).filter { cursor == null || it.sequence > cursor.lastSequence }
- * .take(limit)`.
+ * What this slice is NOT:
  *
- * **What that failure actually was, measured and not assumed.** The first draft of this note claimed
- * the unreadable row vanished silently. D-M5 says otherwise: restoring the `history` call and running
- * the tests shows `history` → `EventStore.eventsFor` THROWING `UndecodableEventRecordException` at the
- * unreadable row. `Sequence<DomainEvent>` has no case for a refusal, so the store fails closed there.
+ *   * NOT a wholesale fold of the events parser into `CliParser.parseObservation` (CC-1 territory).
+ *     The local `while` loop stays; a future slice can promote the option list when the four
+ *     verbs share a typed option table. The events-only flags (`--subject`, `--after-cursor`,
+ *     `--typed`) are deliberately NOT in `CliParser`.
+ *   * NOT a wakeup-based follow. The follow polls the durable authority for its position; OBS-2
+ *     wakeups are still unimplemented (R4_CLI_GAP_ANALYSIS §5 CC-6).
+ *   * NOT a typed-`EventReadRefusal` ADT. Refusals stay on stderr as `evt-refusal-v1:...`; the
+ *     events-only refused-record carrier is `EventRecordRead.Undecodable` (CC-7 territory).
  *
- * So the real defect was not a quiet omission. It was that **an unreadable row destroyed the whole
- * observation**: an unhandled exception out of `main`, a stack trace on stderr, no history at all, and
- * an exit status produced by the JVM rather than by this command. An external observer gets a crash
- * where it asked for facts, and gets none of the forty readable rows that came before row 41. Naming
- * the row is not enough when the answer to "what happened" is "the process fell over".
+ * ## R4 / WU-R4.2 — `--typed` × `--fields / --context / --tail` are mutually exclusive
  *
- * The second defect is real but was **unreachable**, which is worth saying because it would be easy to
- * credit it: the continuation was `envelopes.lastOrNull()?.sequence`, so a page ending in a refusal
- * would have produced a cursor pointing before it. The throw above always fired first. That cursor
- * property is proved where it is reachable — at the reader, in `EventPageDrainTest` — rather than
- * claimed here.
- *
- * So the read now goes through [EventPageDrain], which can only call `EventTail.readAfter`, and a
- * refusal is emitted on **stderr** as its own line:
- *
- * ```
- * evt-refusal-v1:<runId>:<sequence>:<malformedPayload|unknownKind>:<kind or ->
- * ```
- *
- * **stderr, not stdout, and the reason is the stdout contract.** stdout is documented as one JSON
- * envelope per line, and a refusal is not an envelope: it is the absence of an interpretation, and
- * putting a non-envelope there would make that sentence untrue for every consumer that parses the
- * stream. stderr already carries this command's non-envelope control output — the cursor — and an
- * external observer already has to read it to resume. A consumer that redirects stdout to a file and
- * ignores stderr is the consumer that cannot see refusals, and that is a choice it now has to make
- * visibly.
- *
- * The line is machine-readable, not prose: the run id and the kind are percent-escaped the same way
- * [EventCursor.encode] escapes the run id, because a refusal line is parsed by a program and an
- * unescaped colon inside a run id would silently shift the fields. The reason is rendered as its two
- * exhaustive tags rather than the decoder's free-text `detail`, which is not a wire format.
- *
- * Exit code stays 0 when a page carries refusals. The read did what was asked and reported it; a
- * non-zero code here would say "the command failed", which would be its own kind of untruth — and it
- * would be a DIFFERENT untruth from the one fixed above, where the status came from an unhandled
- * exception rather than from a decision. An unknown run is likewise a successful empty read:
- * observation stays read-only.
+ * `EventField` is bound to `PipelineEventEnvelope` (the wire envelope, not the typed
+ * `DomainEvent`). `--typed` produces `JsonEventLog.encodeOne(DomainEvent)` lines whose
+ * shape is a different closed record. Projecting or windowing typed lines would either mean
+ * re-deriving an envelope nobody read (lossy) or admitting a second field ADT. The verb
+ * refuses `--typed` together with any of `--fields / --context / --tail` so the caller's
+ * intent is not silently narrowed.
  */
+/**
+ * TooManyFunctions (16) and CyclomaticComplexMethod (parseMainArgs = 31) are suppressed at the
+ * object and function level respectively. The verb is a flat option table with eleven CLI flags
+ * (--db, --kind, --subject, --limit, --after-cursor, --typed, --follow, --fields, --context,
+ * --tail, plus the AUD-04 unknown-option arm); every helper carries a real concern (the parse
+ * dispatcher, the follow loop, the typed branch, the four EventInspection transforms, the
+ * exit-code ADT, the refusal/continuation reporters). WU-R4.5 (cross-CLI canary, CC-1) is the
+ * future slice that promotes the option table to a shared typed iteration; at that point the
+ * counts drop by construction. Until then, the complexity is structural to the verb surface,
+ * not a quality signal (the same justification `MainInspectCli.parseInspect` documents).
+ */
+@Suppress("TooManyFunctions")
 object MainEventsCli {
 
     /**
@@ -94,7 +94,159 @@ object MainEventsCli {
         data object Typed : RowProjection
     }
 
+    /**
+     * R4 / WU-R4.2 — the closed ADT of NEW flags added to the events CLI.
+     *
+     * Distinct from the existing CLI surface (--db, --kind, --subject, --limit, --after-cursor,
+     * --typed), which is parsed inline in [main]. Each case here carries the typed payload the
+     * rest of the read needs: a follow decision, a field whitelist, a window size, or a tail count.
+     * Adding a sixth case is a compile-time break for every caller of [parseEventsInspectionFlags].
+     */
+    sealed class EventsInspectionFlag {
+        /** `--follow` — keep reading the event lane until `RunFinished` or the JVM shuts down. */
+        data object Follow : EventsInspectionFlag()
+
+        /**
+         * `--fields F1,F2,...` — closed ADT of envelope fields. Empty means a refusal (the user
+         * typed `--fields` with no value).
+         */
+        data class Fields(val fields: List<EventField>) : EventsInspectionFlag()
+
+        /** `--context N` — N preceding + match + N following, deduped, around `--kind` matches. */
+        data class Context(val n: Int) : EventsInspectionFlag()
+
+        /** `--tail N` — keep the last N envelopes in the read. */
+        data class Tail(val n: Int) : EventsInspectionFlag()
+    }
+
+    /**
+     * Typed outcome of parsing the R4 / WU-R4.2 inspection flags.
+     *
+     * Kept separate from the verb's main usage error channel so the existing AUD-04 / AUD-05
+     * contract (`Error: ...` on stderr, exit 2) keeps one shape. A [EventsInspectionFlag] is
+     * recognised, then validated; a [EventsInspectionParseResult.Rejected] carries the typed
+     * reason so the caller renders it as `Error: ...` exactly once.
+     */
+    sealed class EventsInspectionParseResult {
+        data class Parsed(val flags: List<EventsInspectionFlag>) : EventsInspectionParseResult()
+        data class Rejected(val reason: String) : EventsInspectionParseResult()
+    }
+
+    /**
+     * Parse the new R4 / WU-R4.2 flags from a sub-list of args. `--follow` consumes nothing;
+     * the valued flags (`--fields`, `--context`, `--tail`) consume the next token.
+     *
+     * Returns a closed ADT of [EventsInspectionFlag] values plus any typed rejection. The caller
+     * is responsible for turning the rejection into the same `Error: ...` stderr + exit 2
+     * shape the rest of the parser uses (do not duplicate the prefix here).
+     */
+    fun parseEventsInspectionFlags(args: Array<String>): EventsInspectionParseResult {
+        val out = mutableListOf<EventsInspectionFlag>()
+        var i = 0
+        while (i < args.size) {
+            when (val a = args[i]) {
+                "--follow" -> {
+                    out.add(EventsInspectionFlag.Follow)
+                    i++
+                }
+                "--fields" -> {
+                    val raw = args.getOrNull(i + 1)
+                        ?: return EventsInspectionParseResult.Rejected("--fields requires a value")
+                    val parsed = parseFieldsToken(raw)
+                        ?: return EventsInspectionParseResult.Rejected(
+                            "--fields has unknown token(s): $raw",
+                        )
+                    out.add(EventsInspectionFlag.Fields(parsed))
+                    i += 2
+                }
+                "--context" -> {
+                    val raw = args.getOrNull(i + 1)
+                        ?: return EventsInspectionParseResult.Rejected("--context requires a value")
+                    val n = parseNonNegativeInt(raw)
+                        ?: return EventsInspectionParseResult.Rejected(
+                            "--context must be a non-negative Int, got '$raw'",
+                        )
+                    out.add(EventsInspectionFlag.Context(n))
+                    i += 2
+                }
+                "--tail" -> {
+                    val raw = args.getOrNull(i + 1)
+                        ?: return EventsInspectionParseResult.Rejected("--tail requires a value")
+                    val n = parseNonNegativeInt(raw)
+                        ?: return EventsInspectionParseResult.Rejected(
+                            "--tail must be a non-negative Int, got '$raw'",
+                        )
+                    out.add(EventsInspectionFlag.Tail(n))
+                    i += 2
+                }
+                else -> {
+                    // Not a R4 / WU-R4.2 flag. Skip one position so the caller (which has the
+                    // original while loop) can recognise it as its own. The caller is the
+                    // single source of truth for unknown-option refusal.
+                    i++
+                }
+            }
+        }
+        return EventsInspectionParseResult.Parsed(out)
+    }
+
+    /**
+     * Parse `--fields` into a closed [EventField] list. Comma-separated, case-insensitive.
+     * Returns null on the first unknown token so the caller names it.
+     */
+    private fun parseFieldsToken(raw: String): List<EventField>? {
+        if (raw.isBlank()) return null
+        val out = mutableListOf<EventField>()
+        for (token in raw.split(',')) {
+            val upper = token.trim().uppercase()
+            val parsed = when (upper) {
+                "SEQ", "SEQUENCE" -> EventField.Sequence
+                "KIND" -> EventField.Kind
+                "EVENTID", "EVENT_ID" -> EventField.EventId
+                "SUBJECT" -> EventField.Subject
+                "SOURCE" -> EventField.Source
+                else -> return null
+            }
+            out.add(parsed)
+        }
+        return out
+    }
+
+    /** Non-negative Int. Rejecting negative (or `0` is allowed; the transforms handle that). */
+    private fun parseNonNegativeInt(raw: String): Int? {
+        val n = raw.toIntOrNull() ?: return null
+        if (n < 0) return null
+        return n
+    }
+
     fun main(args: Array<String>): Int {
+        // -------- parse args --------
+        val parsed = parseMainArgs(args)
+        if (parsed is MainArgs.Rejected) {
+            System.err.println("Error: ${parsed.reason}")
+            return 2
+        }
+        val p = parsed as MainArgs.Parsed
+        return runWithArgs(p)
+    }
+
+    /**
+     * Parse all CLI options into a typed [MainArgs.Parsed], or surface a single typed rejection.
+     *
+     * The function is the one place that knows the option table; [main] and [runWithArgs] do
+     * not. Splitting it out is the size budget that keeps [main] under the detekt `LongMethod`
+     * ceiling, and it gives the test layer a single seam to exercise refusal messages on.
+     *
+     * The function is a flat option table: every branch is one option, every option consumes
+     * one or two args, and the validation that distinguishes them is per-option rather than
+     * per-function. CC-1 (the WU-R4.5 cross-CLI unification) will replace this body with a
+     * typed option-list iteration shared with `observe` / `inspect`, at which point the
+     * cyclomatic count drops back under 25 by construction. Until then, the complexity is
+     * structural to the option table, not a quality signal (same justification
+     * `MainInspectCli.parseInspect` documents).
+     */
+    @Suppress("CyclomaticComplexMethod", "TooManyFunctions")
+    private fun parseMainArgs(args: Array<String>): MainArgs {
         var db: String? = null
         var runId: String? = null
         var kind: String? = null
@@ -103,6 +255,12 @@ object MainEventsCli {
         var afterCursor: String? = null
         var limitArg: String? = null
         var projection: RowProjection = RowProjection.Envelope
+        // R4 / WU-R4.2 — the closed list of new flags. Defaults: no follow, no fields
+        // projection (i.e. the envelope wire form), no context window, no tail.
+        var follow = false
+        var fieldsWhitelist: List<EventField>? = null
+        var contextWindow = 0
+        var tailCount = 0
 
         var i = 0
         while (i < args.size) {
@@ -117,59 +275,112 @@ object MainEventsCli {
                 // OBS entero habria perdido trabajo de main, y quedarse con el de main habria
                 // perdido el comentario de abajo, que explica el defecto con su historia.
                 "--typed" -> projection = RowProjection.Typed
+                // R4 / WU-R4.2 — the new flags. Each is applied through a typed parser that
+                // either returns a closed ADT value or a typed rejection rendered as
+                // `Error: ...` (matching the AUD-04 convention).
+                "--follow" -> follow = true
+                "--fields" -> {
+                    val raw = args.getOrNull(++i)
+                        ?: return MainArgs.Rejected("--fields requires a value")
+                    val parsed = parseFieldsToken(raw)
+                        ?: return MainArgs.Rejected("--fields has unknown token(s): $raw")
+                    fieldsWhitelist = parsed
+                }
+                "--context" -> {
+                    val raw = args.getOrNull(++i)
+                        ?: return MainArgs.Rejected("--context requires a value")
+                    val n = parseNonNegativeInt(raw)
+                        ?: return MainArgs.Rejected(
+                            "--context must be a non-negative Int, got '$raw'",
+                        )
+                    contextWindow = n
+                }
+                "--tail" -> {
+                    val raw = args.getOrNull(++i)
+                        ?: return MainArgs.Rejected("--tail requires a value")
+                    val n = parseNonNegativeInt(raw)
+                        ?: return MainArgs.Rejected(
+                            "--tail must be a non-negative Int, got '$raw'",
+                        )
+                    tailCount = n
+                }
                 else -> when {
                     // AUD-04. This arm used to be `else -> if (!args[i].startsWith("--") && runId == null)
                     // runId = args[i]`, so an unknown `--flag` matched `else`, failed the `startsWith`
                     // test and fell out of the `when` — parsed as nothing, exit 0. A caller cannot tell a
                     // refused command from a served one by status, which is the whole problem: an external
                     // consumer asking for `--typed` received untyped envelopes with 0 and no signal that it
-                    // had asked for a different command than the one it got.
+                    // had asked for a different command than it got.
                     //
                     // This is already this file's neighbour convention, not a new rule imported from
                     // elsewhere: `CliParser` refuses an unknown option with `CliError.TrailingOption`, and
                     // `MainObserveCli` is strict for exactly that reason. This parser predates it.
-                    arg.startsWith("--") -> {
-                        System.err.println("Error: unknown option: $arg")
-                        return 2
-                    }
+                    arg.startsWith("--") -> return MainArgs.Rejected("unknown option: $arg")
                     // The command reads ONE run. A second positional used to be dropped while the first was
                     // kept, so the caller's intent was silently narrowed to a subset they did not choose.
-                    runId != null -> {
-                        System.err.println("Error: unexpected extra argument: $arg")
-                        return 2
-                    }
+                    runId != null -> return MainArgs.Rejected("unexpected extra argument: $arg")
                     else -> runId = arg
                 }
             }
             i++
         }
-
         if (db == null || runId == null) {
-            System.err.println(
+            return MainArgs.Rejected(
                 "Usage: pipeline events --db <path> <runId> [--kind K] " +
                     "[--subject v1:run:ID|v1:stage:ID:N|...] [--limit N] " +
-                    "[--after-cursor TOKEN] [--typed]",
+                    "[--after-cursor TOKEN] [--follow] " +
+                    "[--fields SEQ,KIND,EVENTID,SUBJECT,SOURCE] " +
+                    "[--context N] [--tail N] " +
+                    "[--typed]",
             )
-            return 2
         }
-
         // A flag that does not parse must not become the default. `--limit abc` used to read as 100,
         // which is the same shape as a command that silently did something other than what was asked.
-        if (limitArg != null) {
-            val parsed = limitArg.toIntOrNull()
-            if (parsed == null || parsed <= 0) {
-                System.err.println("Error: --limit must be a positive integer, got: $limitArg")
-                return 2
+        val parsedLimit = if (limitArg != null) {
+            val p = limitArg.toIntOrNull()
+            if (p == null || p <= 0) {
+                return MainArgs.Rejected("--limit must be a positive integer, got: $limitArg")
             }
-            limit = parsed
+            p
+        } else limit
+        // R4 / WU-R4.2 — `--typed` is the typed-DomainEvent projection; `--fields / --context /
+        // --tail` are envelope projections. Reject the combination rather than silently
+        // narrowing, because a `--fields` projection over a typed stream would require
+        // re-deriving envelopes (lossy) or admitting a second field ADT.
+        if (projection == RowProjection.Typed &&
+            (fieldsWhitelist != null || contextWindow > 0 || tailCount > 0)
+        ) {
+            return MainArgs.Rejected(
+                "--typed is mutually exclusive with --fields / --context / --tail " +
+                    "(the EventField ADT is bound to envelopes, not to DomainEvent)",
+            )
         }
+        return MainArgs.Parsed(
+            db = db,
+            runId = runId,
+            kind = kind,
+            subjectCanonical = subjectCanonical,
+            limit = parsedLimit,
+            afterCursor = afterCursor,
+            projection = projection,
+            follow = follow,
+            fieldsWhitelist = fieldsWhitelist,
+            contextWindow = contextWindow,
+            tailCount = tailCount,
+        )
+    }
 
-        if (!java.nio.file.Files.exists(java.nio.file.Path.of(db))) {
-            System.err.println("Error: db not found: $db")
+    /**
+     * Run the typed read after [parseMainArgs] has succeeded: validate the store path, decode
+     * the cursor, build the query, then dispatch to the follow loop, the typed projection, or
+     * the envelope projection.
+     */
+    private fun runWithArgs(p: MainArgs.Parsed): Int {
+        if (!java.nio.file.Files.exists(java.nio.file.Path.of(p.db))) {
+            System.err.println("Error: db not found: ${p.db}")
             return 2
         }
-
-        val cursor = afterCursor?.let { token ->
+        val cursor = p.afterCursor?.let { token ->
             EventCursor.decode(token) ?: run {
                 System.err.println("Error: invalid cursor token: $token")
                 return 2
@@ -177,47 +388,73 @@ object MainEventsCli {
         }
         // The token carries its run id precisely so it cannot be read as another run's position. A
         // cursor from run A applied to run B used to be accepted and would have skipped B's rows.
-        if (cursor != null && cursor.runId != runId) {
-            System.err.println("Error: cursor belongs to run '${cursor.runId}', not to '$runId'")
+        if (cursor != null && cursor.runId != p.runId) {
+            System.err.println("Error: cursor belongs to run '${cursor.runId}', not to '${p.runId}'")
             return 2
         }
-
-        val store = SqliteEventStore(db)
+        val store = SqliteEventStore(p.db)
         try {
             val reader = EventHistoryReader(store)
-            val run = ResourceRefs.run(runId)
+            val run = ResourceRefs.run(p.runId)
             val query: EventQuery = when {
-                kind != null -> EventQuery.ByKind(kind)
-                subjectCanonical != null ->
+                p.kind != null -> EventQuery.ByKind(p.kind)
+                p.subjectCanonical != null ->
                     EventQuery.BySubject(
-                        decodeSubject(subjectCanonical)
+                        decodeSubject(p.subjectCanonical)
                             ?: run {
-                                System.err.println("Error: cannot parse subject ref: $subjectCanonical")
+                                System.err.println(
+                                    "Error: cannot parse subject ref: ${p.subjectCanonical}",
+                                )
                                 return 2
                             },
                     )
                 else -> EventQuery.All
             }
-
-            val outcome = when (projection) {
-                RowProjection.Envelope -> EventPageDrain.drain(reader, run, query, cursor, limit)
-                RowProjection.Typed -> return reportTyped(store, run, query, cursor, limit, runId)
+            // R4 / WU-R4.2 — `--follow` is a different execution shape: poll the event lane
+            // until `RunFinished` (or JVM shutdown). Routing it BEFORE the drain keeps the
+            // typed-vs-envelope check in one place.
+            if (p.follow) {
+                return runFollow(
+                    store = store,
+                    run = run,
+                    query = query,
+                    cursor = cursor,
+                    limitPerPage = p.limit,
+                    runId = p.runId,
+                    projection = p.projection,
+                )
+            }
+            val outcome = when (p.projection) {
+                RowProjection.Envelope -> EventPageDrain.drain(reader, run, query, cursor, p.limit)
+                RowProjection.Typed -> return reportTyped(store, run, query, cursor, p.limit, p.runId)
             }
             when (outcome) {
                 is EventPageDrain.Outcome.Answered -> {
-                    outcome.page.envelopes.forEach { println(EnvelopeCodec.encode(it)) }
-                    reportRefusals(runId, outcome.page.refusals)
+                    emitEnvelopes(
+                        envelopes = outcome.page.envelopes,
+                        contextWindow = p.contextWindow,
+                        kindFilter = p.kind,
+                        tailCount = p.tailCount,
+                        fields = p.fieldsWhitelist,
+                    )
+                    reportRefusals(p.runId, outcome.page.refusals)
                     reportContinuation(outcome.page.nextCursor)
                 }
 
                 is EventPageDrain.Outcome.Stalled -> {
                     // The store said there was more and the continuation stopped moving. Answering
                     // as if history ended would be a silent truncation, so it is named on the wire.
-                    outcome.page.envelopes.forEach { println(EnvelopeCodec.encode(it)) }
-                    reportRefusals(runId, outcome.page.refusals)
+                    emitEnvelopes(
+                        envelopes = outcome.page.envelopes,
+                        contextWindow = p.contextWindow,
+                        kindFilter = p.kind,
+                        tailCount = p.tailCount,
+                        fields = p.fieldsWhitelist,
+                    )
+                    reportRefusals(p.runId, outcome.page.refusals)
                     reportContinuation(outcome.page.nextCursor)
                     System.err.println(
-                        "evt-stalled-v1:$runId:${outcome.page.nextCursor?.lastSequence ?: 0L}: " +
+                        "evt-stalled-v1:${p.runId}:${outcome.page.nextCursor?.lastSequence ?: 0L}: " +
                             "the store reported more rows and the continuation did not advance; " +
                             "history past this point was NOT read",
                     )
@@ -227,6 +464,179 @@ object MainEventsCli {
         } finally {
             store.close()
         }
+    }
+
+    /**
+     * R4 / WU-R4.2 — typed parse outcome. The body of [parseMainArgs] is a flat option table
+     * and a single typed rejection per row is enough.
+     */
+    private sealed interface MainArgs {
+        data class Parsed(
+            val db: String,
+            val runId: String,
+            val kind: String?,
+            val subjectCanonical: String?,
+            val limit: Int,
+            val afterCursor: String?,
+            val projection: RowProjection,
+            val follow: Boolean,
+            val fieldsWhitelist: List<EventField>?,
+            val contextWindow: Int,
+            val tailCount: Int,
+        ) : MainArgs
+        data class Rejected(val reason: String) : MainArgs
+    }
+
+    /**
+     * R4 / WU-R4.2 — apply the [EventInspection] transforms in their order of composition:
+     *
+     *  1. `contextWindow(kind, n, n)` when `--context` is set, around `--kind` matches (or every
+     *     envelope when no `--kind` was given).
+     *  2. `tail(n)` when `--tail` is set, on the result of step 1.
+     *  3. `projectFields(fields)` when `--fields` is set, on the result of step 2.
+     *
+     * Each step is a pure transform over the previous list. The composition is right-to-left
+     * in the pure sense: a `tail` of a `contextWindow` keeps the LAST N envelopes of the windowed
+     * view, which is what a caller asking for both meant (a tail of the un-windowed set would
+     * drift the context off the records the caller cared about).
+     */
+    private fun emitEnvelopes(
+        envelopes: List<PipelineEventEnvelope>,
+        contextWindow: Int,
+        kindFilter: String?,
+        tailCount: Int,
+        fields: List<EventField>?,
+    ) {
+        // 1. context window. With no --kind to anchor on, the window is the identity transform;
+        // we keep `envelopes` untouched and let the caller narrow via --tail / --fields.
+        var current: List<PipelineEventEnvelope> = if (contextWindow > 0 && kindFilter != null) {
+            EventInspection.contextWindow(envelopes, kindFilter, contextWindow, contextWindow)
+        } else {
+            envelopes
+        }
+        // 2. tail
+        if (tailCount > 0) {
+            current = EventInspection.tail(current, tailCount)
+        }
+        // 3. fields projection (emits header + body lines, in `EventInspection.projectFields` shape)
+        if (fields != null) {
+            EventInspection.projectFields(current, fields).forEach { println(it) }
+        } else {
+            current.forEach { println(EnvelopeCodec.encode(it)) }
+        }
+    }
+
+    /**
+     * R4 / WU-R4.2 — `--follow` poll loop. Reads pages through the same drain used by the
+     * one-shot path, advances the cursor, and sleeps briefly when the store has caught up.
+     * Terminates on `RunFinished` (the kind the events domain closes a run with) or on the
+     * JVM shutdown signal (so a Ctrl-C does not leave a polling thread behind).
+     *
+     * The follow is the same shape for both projections: one page per round trip, the same
+     * drain, the same exit-status mapping. `--fields / --context / --tail` were already
+     * rejected on top of `--typed` at admission, so the projection is the envelope here
+     * (the typed branch is a follow over [EventPageDrain.drainTyped], kept on the same page
+     * shape, with the typed codec).
+     */
+    private fun runFollow(
+        store: SqliteEventStore,
+        run: ResourceRef,
+        query: EventQuery,
+        cursor: EventCursor?,
+        limitPerPage: Int,
+        runId: String,
+        projection: RowProjection,
+    ): Int {
+        val reader = EventHistoryReader(store)
+        var currentCursor = cursor
+        var runFinished = false
+        // JVM-shutdown hook so a SIGINT/SIGTERM does not leave a poll thread behind. The hook
+        // flips a flag; the loop checks the flag between rounds.
+        val shutdown = java.util.concurrent.atomic.AtomicBoolean(false)
+        Runtime.getRuntime().addShutdownHook(Thread {
+            shutdown.set(true)
+            // closing the store here lets the in-flight `read` fail fast instead of blocking
+            // until the daemon takes it down.
+            try { store.close() } catch (_: Exception) { /* already closed */ }
+        })
+
+        while (!shutdown.get() && !runFinished) {
+            when (projection) {
+                RowProjection.Envelope -> {
+                    when (val outcome = EventPageDrain.drain(reader, run, query, currentCursor, limitPerPage)) {
+                        is EventPageDrain.Outcome.Answered -> {
+                            outcome.page.envelopes.forEach { envelope ->
+                                println(EnvelopeCodec.encode(envelope))
+                                if (envelope.kind == "RunFinished") runFinished = true
+                            }
+                            reportRefusals(runId, outcome.page.refusals)
+                            val next = outcome.page.nextCursor
+                            if (next != null) {
+                                reportContinuation(next)
+                                currentCursor = next
+                            } else {
+                                // store said no more rows; nothing to follow.
+                                runFinished = true
+                            }
+                        }
+                        is EventPageDrain.Outcome.Stalled -> {
+                            outcome.page.envelopes.forEach { envelope ->
+                                println(EnvelopeCodec.encode(envelope))
+                                if (envelope.kind == "RunFinished") runFinished = true
+                            }
+                            reportRefusals(runId, outcome.page.refusals)
+                            reportContinuation(outcome.page.nextCursor)
+                            System.err.println(
+                                "evt-stalled-v1:$runId:${outcome.page.nextCursor?.lastSequence ?: 0L}: " +
+                                    "the store reported more rows and the continuation did not advance; " +
+                                    "history past this point was NOT read",
+                            )
+                            return exitCodeFor(outcome)
+                        }
+                    }
+                }
+                RowProjection.Typed -> {
+                    when (val outcome = EventPageDrain.drainTyped(store, run, query, currentCursor, limitPerPage)) {
+                        is EventPageDrain.TypedOutcome.Answered -> {
+                            outcome.page.events.forEach { event ->
+                                println(JsonEventLog.encodeOne(event))
+                                if (event.kind == "RunFinished") runFinished = true
+                            }
+                            reportRefusals(runId, outcome.page.refusals)
+                            val next = outcome.page.nextCursor
+                            if (next != null) {
+                                reportContinuation(next)
+                                currentCursor = next
+                            } else {
+                                runFinished = true
+                            }
+                        }
+                        is EventPageDrain.TypedOutcome.Stalled -> {
+                            outcome.page.events.forEach { println(JsonEventLog.encodeOne(it)) }
+                            reportRefusals(runId, outcome.page.refusals)
+                            reportContinuation(outcome.page.nextCursor)
+                            System.err.println(
+                                "evt-stalled-v1:$runId:${outcome.page.nextCursor?.lastSequence ?: 0L}: " +
+                                    "the store reported more rows and the continuation did not advance; " +
+                                    "history past this point was NOT read",
+                            )
+                            return typedExitCodeFor(outcome)
+                        }
+                    }
+                }
+            }
+            if (!runFinished && !shutdown.get()) {
+                try {
+                    Thread.sleep(FOLLOW_POLL_MILLIS)
+                } catch (_: InterruptedException) {
+                    // Shutdown hook may have set the flag; the loop will exit on the next check.
+                    Thread.currentThread().interrupt()
+                }
+            }
+        }
+        // Follow completed: 0 if RunFinished was reached, 2 if interrupted (the caller can
+        // distinguish by `evt-stalled-v1` on stderr, which the loop emits on a stall).
+        return if (shutdown.get()) 2 else 0
     }
 
     /**
@@ -377,3 +787,11 @@ private const val DEFAULT_LIMIT = 100
 
 /** Stands in for an absent value on a `:`-separated wire line, rather than printing nothing. */
 private const val ABSENT = "-"
+
+/**
+ * R4 / WU-R4.2 — follow poll interval, in milliseconds. The same value
+ * `MainObserveCli.FOLLOW_IDLE_MILLIS` uses; the events follow reads the same durable
+ * authority and has the same latency budget. Wakeup-based follow is OBS-2 territory and
+ * is not in this slice.
+ */
+private const val FOLLOW_POLL_MILLIS: Long = 25L

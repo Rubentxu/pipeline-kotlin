@@ -227,26 +227,111 @@ nombre habría fijado también el vocabulario, que no es lo que esas filas defie
 El control completo sigue verde y ahora **atestigua**. Las 7 comprobaciones del
 harness son `true`.
 
-## 4. Lo que este slice NO demuestra
+## 4. Verificación contra un árbol real de Gradle
+
+Esta sección cierra el hueco que §5 declaraba abierto. Se ejecutó **después** del
+commit de implementación, y sobre su mismo SHA.
+
+### 4.1 El árbol
+
+No existía ningún `build/test-results` en el worktree (`find` → 0 XML), así que
+hubo que producirlo. Se eligió `:pipeline-events:test` como módulo más barato con
+tests reales: depende sólo de `pipeline-domain` y `pipeline-scripting-api`, sin
+protobuf ni JDBC.
+
+```text
+cd v2 && ./gradlew -p . :pipeline-events:test --console=plain
+→ BUILD SUCCESSFUL in 10s   (12 actionable tasks: 8 executed, 4 from cache)
+```
+
+Log: `evidence/cdh-h0-evidence-02/gradle-test-run.log`. El boundary se creó
+**antes** del build, condición que el propio reporter exige.
+
+**Primer Gradle ejecutado en esta rama.** `v2 check`, `releaseGate`, la batería
+UAT y la cobertura siguen `NOT_RUN`; lo que se reclama es exactamente una tarea
+de test de un módulo.
+
+### 4.2 El arnés se equivocó primero, y eso es lo más instructivo del slice
+
+La primera ejecución del arnés comparó `suite_identity()` contra
+`<testsuite name="...">` y reportó **19 discrepancias sobre 33 ficheros**. Un
+número confiado y equivocado.
+
+Leyendo los valores reales se vio la causa:
+
+```text
+file   : TEST-...EventRecordReadPortTest$CursorShape.xml
+xmlname: cursor encoding                       ← @DisplayName, una frase
+xmlname: S5.4 — el rechazo llega a la pagina   ← otra etiqueta humana
+```
+
+`name` es la etiqueta de `@DisplayName`, elegida por quien escribe el test. No es
+una identidad. Gradle escribe la clase en `<testcase classname="...">`.
+
+Las 19 discrepancias eran una propiedad del supuesto equivocado del arnés, no del
+reporter. El arnés se corrigió para comparar contra `classname`, que es la
+autoridad real del productor, y **el primer número se conserva en el recibo**
+porque un arnés que produce un número confiado y falso es la clase de defecto más
+cara de este repositorio.
+
+### 4.3 Resultado sobre el árbol real
+
+`evidence/cdh-h0-evidence-02/real-gradle-tree.json`,
+`reporter_sha256 = 2c94019f…` (idéntico al de `4132653`).
+
+```text
+ficheros                        33
+clases distintas (classname)    33
+basenames distintos             33
+discrepancias de identidad       0
+classname ausente                0
+basenames con clase anidada ($)  21
+basenames duplicados             0
+evidencia inválida en fresh       0
+```
+
+Y las dos invocaciones del reporter sobre el árbol real:
+
+| Invocación | Exit | Veredicto | `fresh_files` | `fresh` |
+| --- | --- | --- | --- | --- |
+| catálogo desde `classname` del productor | 0 | `PASS` | 33 | 148 tests, 0 fallos |
+| sin catálogo | 0 | `NOT_ATTESTABLE` | 33 | 148 tests, 0 fallos |
+
+Las **7 comprobaciones** del arnés son `true`, incluidas las dos que importan:
+la identidad del reporter coincide con la autoridad del productor, y el catálogo
+construido desde esa autoridad atestigua `COMPLETE` sin déficit inventado.
+
+### 4.4 El detalle que hacía falta verificar
+
+21 de los 33 ficheros son **clases anidadas** y su nombre contiene `$`:
+
+```text
+TEST-dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPortTest$CursorShape.xml
+classname="dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPortTest$CursorShape"
+```
+
+El `$` sobrevive intacto en ambas rutas, así que `suite_identity()` casa. Eso no
+era deducible del XML sintético de la suite: si Gradle codificara el `$` de otra
+forma, la identidad habría discrepado en más de la mitad del árbol real sin que
+ninguna fila lo detectara. **Era el riesgo concreto que este slice existía para
+descartar.**
+
+## 5. Lo que este slice NO demuestra
 
 Honestidad de alcance, no formato:
 
-- **No hay ejecución sobre un árbol real de Gradle.** Todas las filas usan XML
-  sintético. El reporter nunca se ha corrido contra un `build/test-results`
-  verdadero, y por tanto la suposición de que los nombres de fichero de Gradle
-  casan con lo que un catálogo declararía está **sin verificar contra el
-  productor real**. Es el hueco más relevante que queda abierto.
-- **`Gradle`, `v2 check`, `releaseGate`, batería UAT, cobertura y la medición de
-  900 s: `NOT_RUN`.** Este slice no toca Kotlin, así que esos gates no lo
-  requieren, pero no se reclama nada de ellos.
-- **Sigue sin resolverse** el segundo defecto abierto de SPEC-06: la ambigüedad de
-  `mtime` entre corridas concurrentes y `UP-TO-DATE` indistinguible de ejecución
-  fresca. Ninguna fila de este slice lo toca.
+- **Un solo módulo.** `:pipeline-events:test` con 33 clases. No se ejecutó
+  `v2 check` completo, ni `releaseGate`, ni la batería UAT, ni cobertura: siguen
+  `NOT_RUN`. Un árbol real de un módulo es evidencia del productor para *ese*
+  módulo; no es el árbol de la RC.
+- **Sin `mtime` concurrente.** El árbol se produjo sin ningún escritor
+  competidor, así que la ambigüedad entre carreras —el defecto 6— no queda
+  tocada por esta sección.
 - `NOT_ATTESTABLE` es un **nombre nuevo** en el vocabulario del veredicto. Nadie
-  lo consume hoy (§5), pero es un cambio de contrato público para cualquier
+  lo consume hoy (§6), pero es un cambio de contrato público para cualquier
   llamante futuro que compare el veredicto por igualdad con `"PASS"`.
 
-## 5. Consumidores
+## 6. Consumidores
 
 `rg` sobre el árbol: los únicos sitios que nombran esta herramienta son la propia
 herramienta, su suite, dos recibos previos, y los documentos del paquete CDH no
@@ -257,7 +342,7 @@ Eso es lo que permitió endurecer el contrato sin romper nada, y es una
 afirmación verificada en este slice, no una suposición heredada de la
 reconciliación.
 
-## 6. Estado de los seis defectos de SPEC-06
+## 7. Estado de los seis defectos de SPEC-06
 
 Actualizado respecto de la reconciliación. `5/6` cerrados, **no ratificado**:
 
@@ -273,7 +358,7 @@ Actualizado respecto de la reconciliación. `5/6` cerrados, **no ratificado**:
 El defecto 6 sigue abierto y **no** se puede cerrar sin un directorio único por
 run, que es un cambio estructural, no un parche de este reporter.
 
-## 7. Clasificación del slice
+## 8. Clasificación del slice
 
 ```text
 Reference implementation consulted: ninguno. Un gate que certifica su propia
@@ -292,9 +377,12 @@ Security implications reviewed: n/a. Sin credenciales, sin red, sin ejecución d
                                  y vocabulario de veredicto.
 Tests demonstrating the contract: scripts/test_run_scoped_junit_report.py
                                    (36 filas; 12 en CompletenessAttestation)
+Verificación contra el productor: :pipeline-events:test → 33 clases / 148 tests,
+                                   0 discrepancias de identidad, 7/7 checks
+                                   (evidence/cdh-h0-evidence-02/real-gradle-tree.json)
 ```
 
-## 8. Cierre
+## 9. Cierre
 
 Unidades cerradas hasta aquí, en orden de commit:
 
@@ -307,10 +395,12 @@ Unidades cerradas hasta aquí, en orden de commit:
 
 Trabajo autorizado y disponible a continuación, en este orden:
 
-1. **Ejecutar el reporter contra un árbol real `build/test-results` de Gradle.**
-   Es el único hueco que convertiría estas filas en evidencia del productor y no
-   sólo caracterización. Y es la única forma de verificar el supuesto de nombres
-   de fichero sobre el que descansa `suite_identity()`.
-2. Defecto 6 de SPEC-06, que exige directorio único por run.
+1. **Ejecutar el reporter contra un árbol real más amplio**, al menos
+   `:pipeline-application:test`, que tiene módulos con clases de nombre repetido.
+   Es lo único que puede producir basenames duplicados entre módulos, y el
+   árbol de `pipeline-events` no tenía ninguno, así que esa rama del catálogo
+   sigue sin verificar contra el productor real.
+2. Defecto 6 de SPEC-06, que exige directorio único por run y no se resuelve
+   con más executions: sigue siendo un cambio estructural.
 3. Adopción del paquete CDH. **Bloqueada** a la espera de decisión del operador
    sobre los cuatro `ADR-CDH-*` propuestos.

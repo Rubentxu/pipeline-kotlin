@@ -90,6 +90,55 @@ interface EventFollower {
  * [EventFollowOptions.after]: a consumer that crashed and restarted
  * opens a new handle with `after = lastCursor` and the implementation
  * begins polling from there.
+ *
+ * ## Live follow vs snapshot (R1.3 contract differentiation)
+ *
+ * The follow is ALWAYS live while the handle is open. The first event
+ * the iterator returns is a [EventFollowEvent.StateChanged] declaring
+ * the open-boundary state, then [EventFollowEvent.Page]s as the
+ * follow observes new events. There is no separate "snapshot mode"
+ * flag; the differentiation is a consumer-side pattern:
+ *
+ * | Consumer intent | Pattern | Terminal event? |
+ * | --- | --- | --- |
+ * | **Live follow** (default) | keep the handle open and the iterator polling; the implementation re-polls while alive. | [EventFollowEvent.Completed] only at the two terminal conditions: [EventFollowUntil.UntilSequence] satisfied (3c) or a [dev.rubentxu.pipeline.v2.events.RunFinished] observed in the page (3d). |
+ * | **Snapshot** (one-shot) | open, drain pages until the first empty `Page` (or any `Page` whose `slice.records` is empty), call [close]. | None emitted. The handle terminates by the consumer's `close` call, not by an in-band `Completed`. |
+ * | **Bounded live** | open with [EventFollowUntil.UntilSequence] or [EventFollowUntil.UntilRunFinished]; the follow terminates on the bound. | [EventFollowEvent.Completed] at the bound. |
+ *
+ * **A page with `hasMore = false` is NOT a terminal condition.** The
+ * pre-R1.1 handle conflated "no new data right now" with "the run is
+ * finished" and emitted `Completed` on the first quiet page; that
+ * conflated snapshot with live follow and was the F2 finding from the
+ * PK-58A T1 audit. The natural tail is now a state the follow re-polls
+ * past while the handle is open. The falsifiers that pin this
+ * contract are:
+ *
+ * - `dev.rubentxu.pipeline.v2.events.durable.SqliteEventFollowLiveTailTest`
+ *   (in-process, R1.1)
+ * - `dev.rubentxu.pipeline.v2.application.follow.M1DCrossJvmFollowTest.7 UAT-PK-M1-007`
+ *   (cross-JVM, R1.2)
+ *
+ * ## Refusal and cursor past tail
+ *
+ * Opening a follow with a cursor past the durable tail of the run
+ * surfaces as a single [EventFollowEvent.Refused] carrying
+ * [EventFollowRefusal.UnknownRun] (the closed event-follow refusal
+ * hierarchy has no `CursorBeyondTail` case; the M1-A adapter translates
+ * that condition to the same refusal the open boundary emits for an
+ * unknown run, because both mean "the cursor points past known
+ * history"). After a `Refused`, the iterator returns no further events
+ * and the consumer MUST close the handle.
+ *
+ * A single undecodable row in a page is surfaced inside the page via
+ * [dev.rubentxu.pipeline.v2.events.EventRecordSlice.refusals]; the
+ * follow itself does not refuse on a single bad row.
+ *
+ * ## Cancellation
+ *
+ * [close] is the only cancellation path. After `close`, the iterator
+ * returns `false` from [Iterator.hasNext] promptly (the close path
+ * wakes any in-flight poll). There is no `Refused(Cancelled)` event;
+ * cancellation is a local lifecycle operation, not a follow outcome.
  */
 interface EventFollowHandle : AutoCloseable {
 

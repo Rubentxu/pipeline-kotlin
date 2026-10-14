@@ -29,6 +29,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EnvModel
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputChannel
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputSink
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
 import dev.rubentxu.pipeline.v2.output.store.SealOutcome
@@ -293,11 +294,28 @@ object ShExecution {
             // P2: env injected via pb.environment().putAll (not argv) in DurableShellExecutor.launch()
             // Timeout threaded via timeoutMs parameter (TMO-S-013: 0 = no timeout)
             // workspaceRoot threaded via effectiveOptions.workspaceRoot (DEC-1 cwd flip)
+            //
+            // R2.3 / ADR-OBS-003: when the caller opts into the agent path
+            // (`pumpedViaAgent = true` in ShOptions), build a DurableShConfig
+            // that flips the same flag and carries the secret the agent uses
+            // for in-memory redaction. The default config
+            // (`pumpedViaAgent = false`) preserves the existing in-JVM pump
+            // behaviour.
+            val durableConfig = if (effectiveOptions.pumpedViaAgent) {
+                DurableShConfig.fromSystemProperties().copy(
+                    pumpedViaAgent = true,
+                    runId = runId,
+                    agentSecret = effectiveOptions.agentSecret,
+                )
+            } else {
+                DurableShConfig.fromSystemProperties()
+            }
             val terminal = DurableShellExecutor().executeTerminal(
                 controlDir = controlDir,
                 scriptContent = command.script,
                 opId = opId.format(),
                 shOptions = envOptions,
+                config = durableConfig,
                 // WU-LPR-011R2 (Gate-1 at-rest closure): the durable authority receives ONLY
                 // already-redacted bytes. The wrap factory is built per launch; each
                 // StreamingRedactor instance carries independent boundary state.

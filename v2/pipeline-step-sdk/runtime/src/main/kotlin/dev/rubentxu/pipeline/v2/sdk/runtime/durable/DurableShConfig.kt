@@ -57,13 +57,83 @@ data class DurableShConfig(
      * Default READ_THEN_DELETE (single-flight read).
      */
     val captureRetainPolicy: CaptureRetainPolicy = CAPTURE_RETAIN_POLICY_DEFAULT,
+
+    /**
+     * Pump the transcript through an external ingest agent (ADR-OBS-003)
+     * instead of in-JVM pumps.
+     *
+     * ## What this flag changes
+     *
+     * When `true`, [dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor.launch]
+     * creates two FIFOs in `controlRoot/<runId>/fifos/`, redirects the
+     * child's stdout/stderr to those FIFOs, and launches the production
+     * `dev.rubentxu.pipeline.v2.application.durable.ingest.ObsPc2IngestAgent`
+     * as a separate JVM that owns the read ends. The runtime does NOT
+     * start its per-channel pump threads in this mode.
+     *
+     * When `false` (the default), the existing in-JVM pump behaviour is
+     * preserved: `Redirect.PIPE` + daemon pump threads inside the
+     * runtime. This is OBS-2 Level A only; the child is killed by
+     * `SIGPIPE` if the runtime JVM dies mid-step.
+     *
+     * ## §2.3 compatibility cost
+     *
+     * The wrapper gains `trap '' PIPE` when this flag is `true`. The
+     * `SIG_IGN` disposition is inherited across `exec`, so the user's
+     * script — and everything it spawns — runs with `SIGPIPE` ignored.
+     * A script that pipes internally (`yes | head -n1`) currently kills
+     * its producer with `SIGPIPE`; with the trap, the producer receives
+     * `EPIPE` and may exit non-zero instead. ADR-OBS-003 §2.3 ratifies
+     * this trade and accepts it.
+     *
+     * ## Default
+     *
+     * `false`. Switching this on is the R2.3 wiring step; the spike at
+     * `ObsPc2ProducerSurvivalSpikeTest` is the proof.
+     */
+    val pumpedViaAgent: Boolean = PUMPED_VIA_AGENT_DEFAULT,
+
+    /**
+     * Secret the ingest agent registers in its `SecretPatternRegistry`
+     * when [pumpedViaAgent] is `true`. The agent is responsible for
+     * redacting this secret from the child's stdout/stderr in memory
+     * before committing to the Output Plane.
+     *
+     * Required when [pumpedViaAgent] is `true`; ignored otherwise. The
+     * runtime passes this value as the last argv to the agent JVM; the
+     * agent does not write it to disk.
+     */
+    val agentSecret: String? = null,
+
+    /**
+     * The broader run identifier for the step being launched.
+     *
+     * Required when [pumpedViaAgent] is `true` (the agent uses
+     * `OutputPlaneProvider.streamsOf(runId, opId)` to find the run's
+     * streams). Optional otherwise; when absent the executor uses
+     * `opId` as a stand-in, which is correct for tests that drive a
+     * single opId per run.
+     */
+    val runId: String? = null,
 ) {
+    init {
+        require(!(pumpedViaAgent && (agentSecret == null || agentSecret.isEmpty()))) {
+            "agentSecret must be non-empty when pumpedViaAgent is true"
+        }
+        require(!(pumpedViaAgent && runId == null)) {
+            "runId must be set when pumpedViaAgent is true"
+        }
+    }
+
     companion object {
         const val HEARTBEAT_CHECK_INTERVAL_PROPERTY = "pipeline.durable.heartbeat.check.interval"
         const val HEARTBEAT_MINIMUM_DELTA_PROPERTY = "pipeline.durable.heartbeat.minimum.delta"
         const val CLEANUP_RETAIN_ON_FAILURE_PROPERTY = "pipeline.durable.cleanup.retain.on.failure"
         const val RETURN_STDOUT_PROPERTY = "dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor.CAPTURE_STDOUT"
         const val CAPTURE_RETAIN_POLICY_PROPERTY = "dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor.CAPTURE_RETAIN_POLICY"
+        const val PUMPED_VIA_AGENT_PROPERTY = "dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor.PUMPED_VIA_AGENT"
+        const val AGENT_SECRET_PROPERTY = "dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor.AGENT_SECRET"
+        const val RUN_ID_PROPERTY = "dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor.RUN_ID"
 
         /** Default: 300 seconds (5 minutes) */
         const val HEARTBEAT_CHECK_INTERVAL_DEFAULT = 300L
@@ -79,6 +149,9 @@ data class DurableShConfig(
 
         /** Default: READ_THEN_DELETE (single-flight capture) */
         val CAPTURE_RETAIN_POLICY_DEFAULT = CaptureRetainPolicy.READ_THEN_DELETE
+
+        /** Default: false (R2.3 ships the flag off; spike flips it on for the proof). */
+        const val PUMPED_VIA_AGENT_DEFAULT = false
 
         /**
          * Loads configuration from system properties with defaults.
@@ -116,6 +189,15 @@ data class DurableShConfig(
                         CAPTURE_RETAIN_POLICY_DEFAULT
                     }
                 } ?: CAPTURE_RETAIN_POLICY_DEFAULT,
+
+                pumpedViaAgent = System.getProperty(
+                    PUMPED_VIA_AGENT_PROPERTY,
+                    PUMPED_VIA_AGENT_DEFAULT.toString(),
+                ).toBooleanStrictOrNull() ?: PUMPED_VIA_AGENT_DEFAULT,
+
+                agentSecret = System.getProperty(AGENT_SECRET_PROPERTY)?.takeIf { it.isNotEmpty() },
+
+                runId = System.getProperty(RUN_ID_PROPERTY)?.takeIf { it.isNotEmpty() },
             )
         }
     }

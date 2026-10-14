@@ -1124,74 +1124,22 @@ object CliParser {
         runOverride: String?,
         dbPath: String?,
     ): ConsoleCliParseResult {
+        // The shape: four orthogonal validators, each a single `if refused return`, then a final
+        // "admit" dispatcher that knows every read verb. Splitting them keeps each method under
+        // detekt's complexity ceiling and makes the refusal surface of every axis visible at a
+        // glance — which is what an operator trying to debug a typed rejection needs.
         val cd = controlDir ?: return consoleReject(ConsoleCliRefusal.MissingArgument)
         val hasFilter = stages.isNotEmpty() || steps.isNotEmpty() || kinds.isNotEmpty()
 
-        // R4 / WU-CON-2.2 — `--run` replaces the positional <runId>; both is a category error
-        // that the verb main has no honest answer to, so it is refused at admission.
-        if (runOverride != null && runId != null) {
-            return consoleReject(ConsoleCliRefusal.MutuallyExclusiveRunId(runId, runOverride))
-        }
-        // Either a positional runId or a `--run` override is required; the existing
-        // MissingArgument refusal covers "neither" and is reused unchanged.
-        val effectiveRunId = runId ?: runOverride ?: return consoleReject(ConsoleCliRefusal.MissingArgument)
-        // R4 / WU-RC3 — the opId positional is REQUIRED for an unfiltered read and OPTIONAL when
-        // a content filter is present.
-        //
-        // It was required unconditionally, which made `--stage`/`--step`/`--kind` unable to select
-        // among operations at all: the read was scoped to ONE operation before any filter ran, so
-        // `--stage build` could never reach an operation the positional had not already named.
-        // The filter and the positional are two constraints on the same question, and requiring
-        // one of them made the other nearly meaningless.
-        //
-        // Supplying both is an INTERSECTION — the positional names one operation and the filter
-        // may only remove from it — which is why `null` is a real request state rather than a
-        // missing argument.
+        val runAxis = resolveRunAxis(runId, runOverride)
+        if (runAxis is ResolvedRunAxis.Refused) return consoleReject(runAxis.refusal)
+        val effectiveRunId = (runAxis as ResolvedRunAxis.Admitted).effectiveRunId
         val oid = opId ?: if (hasFilter) null else return consoleReject(ConsoleCliRefusal.MissingArgument)
 
-        val incompatible = when {
-            range == null -> null
-            afterCursor != null -> "--after-cursor"
-            else -> "--max-bytes".takeIf { maxBytes != null }
-        }
-        if (range != null && incompatible != null) {
-            return consoleReject(ConsoleCliRefusal.IncompatibleWithRange(incompatible))
-        }
-
-        if (frames) {
-            val framesIncompatible = when {
-                range != null -> "--range"
-                maxBytes != null -> "--max-bytes"
-                afterCursor != null -> "--after-cursor"
-                else -> null
-            }
-            if (framesIncompatible != null) {
-                return consoleReject(ConsoleCliRefusal.IncompatibleWithFrames(framesIncompatible))
-            }
-        }
-
-        // R4 / WU-CON-2.3 — `--follow` requires `--frames`. Refused rather than defaulted: a
-        // `--follow` against the byte path would silently emit the merged page once and then
-        // poll forever on a byte cursor, which is a different contract from what the operator
-        // asked for. Fires BEFORE the filter check so the caller that typed both gets the
-        // follow-shaped refusal, not the filter-shaped one.
-        if (follow && !frames) {
-            return consoleReject(ConsoleCliRefusal.FollowRequiresFrames)
-        }
-        // R4 / WU-CON-2.2 — a content filter without `--frames` is a category error: filters
-        // operate on per-frame records, and the byte-budgeted (Paged) and byte-span (Range)
-        // paths produce no per-frame records. The refusal names every offending flag so the
-        // caller adds `--frames` rather than guessing why their filter did not narrow the
-        // answer. The check sits AFTER the IncompatibleWithFrames table so a caller that
-        // mixed `--frames` with `--range` still gets the per-frame conflict first.
-        if (hasFilter && !frames) {
-            val offending = buildList {
-                if (stages.isNotEmpty()) add("--stage")
-                if (steps.isNotEmpty()) add("--step")
-                if (kinds.isNotEmpty()) add("--kind")
-            }
-            return consoleReject(ConsoleCliRefusal.FilterRequiresFrames(offending))
-        }
+        validateRangeIncompatibilities(range, maxBytes, afterCursor)?.let { return it }
+        validateFramesIncompatibilities(frames, range, maxBytes, afterCursor)?.let { return it }
+        validateFollowShape(follow, frames)?.let { return it }
+        validateFilterShape(hasFilter, frames, stages, steps, kinds)?.let { return it }
 
         val format = formatToken?.let { token ->
             MainConsoleCli.ConsoleFormat.parse(token)
@@ -1203,16 +1151,147 @@ object CliParser {
                 )
         } ?: MainConsoleCli.ConsoleFormat.TEXT
 
-        // R4 / WU-RC3 — audit P0-4. `--follow` used to be dispatched FIRST, so
-        // `--frames --follow --stage build` admitted a filterless FollowFrames and dropped the
-        // filter in silence: the operator asked for one stage, was shown the whole run, and got
-        // exit 0. Filters and following are INDEPENDENT axes — following is how long you read,
-        // filtering is what you read — so there is no reason for one to shadow the other and the
-        // only thing that has to be decided is which SHAPE the request takes.
-        //
-        // `--follow` + a filter is therefore a [ConsoleReadRequest.FollowFrames] CARRYING the
-        // filters, and it is the same selection the single read consults. One decision, two
-        // interpreters.
+        return consoleDecideVerb(
+            cd = cd,
+            effectiveRunId = effectiveRunId,
+            oid = oid,
+            range = range,
+            frames = frames,
+            hasFilter = hasFilter,
+            stages = stages,
+            steps = steps,
+            kinds = kinds,
+            format = format,
+            frameLimit = frameLimit,
+            afterOrdinal = afterOrdinal,
+            follow = follow,
+            followPollInterval = followPollInterval,
+            followMaxPolls = followMaxPolls,
+            maxBytes = maxBytes,
+            afterCursor = afterCursor,
+            dbPath = dbPath,
+        )
+    }
+
+    /**
+     * The result of resolving the run id axis: either an effective run id, or a refusal.
+     *
+     * `Either<Refusal, String>` would say the same thing; this is a `when`-friendly sealed pair
+     * with a `refusal()` accessor so the call site can `?: return refusal`.
+     */
+    private sealed interface ResolvedRunAxis {
+        fun refusal(): ConsoleCliRefusal
+        data class Admitted(val effectiveRunId: String) : ResolvedRunAxis {
+            override fun refusal(): ConsoleCliRefusal = throw IllegalStateException("admitted")
+        }
+        data class Refused(val refusal: ConsoleCliRefusal) : ResolvedRunAxis {
+            override fun refusal(): ConsoleCliRefusal = refusal
+        }
+    }
+
+    private fun resolveRunAxis(runId: String?, runOverride: String?): ResolvedRunAxis? {
+        // R4 / WU-CON-2.2 — `--run` replaces the positional <runId>; both is a category error
+        // that the verb main has no honest answer to, so it is refused at admission.
+        if (runOverride != null && runId != null) {
+            return ResolvedRunAxis.Refused(ConsoleCliRefusal.MutuallyExclusiveRunId(runId, runOverride))
+        }
+        // Either a positional runId or a `--run` override is required; the existing
+        // MissingArgument refusal covers "neither" and is reused unchanged.
+        val effective = runId ?: runOverride
+            ?: return ResolvedRunAxis.Refused(ConsoleCliRefusal.MissingArgument)
+        return ResolvedRunAxis.Admitted(effective)
+    }
+
+    private fun validateRangeIncompatibilities(
+        range: String?,
+        maxBytes: String?,
+        afterCursor: String?,
+    ): ConsoleCliParseResult? {
+        val incompatible = when {
+            range == null -> null
+            afterCursor != null -> "--after-cursor"
+            else -> "--max-bytes".takeIf { maxBytes != null }
+        }
+        if (range != null && incompatible != null) {
+            return consoleReject(ConsoleCliRefusal.IncompatibleWithRange(incompatible))
+        }
+        return null
+    }
+
+    private fun validateFramesIncompatibilities(
+        frames: Boolean,
+        range: String?,
+        maxBytes: String?,
+        afterCursor: String?,
+    ): ConsoleCliParseResult? {
+        if (!frames) return null
+        val framesIncompatible = when {
+            range != null -> "--range"
+            maxBytes != null -> "--max-bytes"
+            afterCursor != null -> "--after-cursor"
+            else -> null
+        }
+        return framesIncompatible?.let { consoleReject(ConsoleCliRefusal.IncompatibleWithFrames(it)) }
+    }
+
+    private fun validateFollowShape(follow: Boolean, frames: Boolean): ConsoleCliParseResult? {
+        // R4 / WU-CON-2.3 — `--follow` requires `--frames`. Refused rather than defaulted: a
+        // `--follow` against the byte path would silently emit the merged page once and then
+        // poll forever on a byte cursor, which is a different contract from what the operator
+        // asked for.
+        return if (follow && !frames) consoleReject(ConsoleCliRefusal.FollowRequiresFrames) else null
+    }
+
+    private fun validateFilterShape(
+        hasFilter: Boolean,
+        frames: Boolean,
+        stages: Set<String>,
+        steps: Set<String>,
+        kinds: Set<String>,
+    ): ConsoleCliParseResult? {
+        if (!hasFilter || frames) return null
+        // R4 / WU-CON-2.2 — a content filter without `--frames` is a category error: filters
+        // operate on per-frame records, and the byte-budgeted (Paged) and byte-span (Range)
+        // paths produce no per-frame records. The refusal names every offending flag so the
+        // caller adds `--frames` rather than guessing why their filter did not narrow the
+        // answer.
+        val offending = buildList {
+            if (stages.isNotEmpty()) add("--stage")
+            if (steps.isNotEmpty()) add("--step")
+            if (kinds.isNotEmpty()) add("--kind")
+        }
+        return consoleReject(ConsoleCliRefusal.FilterRequiresFrames(offending))
+    }
+
+    /**
+     * Selects which [ConsoleReadRequest] shape the call admits, after every axis validator has
+     * accepted the input.
+     *
+     * R4 / WU-RC3 — audit P0-4. `--follow` used to be dispatched FIRST, so
+     * `--frames --follow --stage build` admitted a filterless FollowFrames and dropped the
+     * filter in silence. Filters and following are INDEPENDENT axes — following is how long you
+     * read, filtering is what you read — so there is no reason for one to shadow the other.
+     */
+    private fun consoleDecideVerb(
+        cd: String,
+        effectiveRunId: String,
+        oid: String?,
+        range: String?,
+        frames: Boolean,
+        hasFilter: Boolean,
+        stages: Set<String>,
+        steps: Set<String>,
+        kinds: Set<String>,
+        format: MainConsoleCli.ConsoleFormat,
+        frameLimit: String?,
+        afterOrdinal: String?,
+        follow: Boolean,
+        followPollInterval: String?,
+        followMaxPolls: String?,
+        maxBytes: String?,
+        afterCursor: String?,
+        dbPath: String?,
+    ): ConsoleCliParseResult {
         if (follow) {
             return consoleAdmitFollowFrames(
                 cd, effectiveRunId, oid, frameLimit, afterOrdinal, followPollInterval, followMaxPolls, format,

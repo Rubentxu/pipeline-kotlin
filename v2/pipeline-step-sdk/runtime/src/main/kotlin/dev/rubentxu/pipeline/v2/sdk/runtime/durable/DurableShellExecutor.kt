@@ -821,92 +821,14 @@ class DurableShellExecutor : DurableShellLaunching {
                 // R2.3 / ADR-OBS-003: when the agent path is active, the runtime does NOT start
                 // its per-channel pump threads; the agent JVM owns the FIFO read ends and is the
                 // single durable authority.
-                val pumpedChannels: Map<ProcessOutputChannel, java.io.InputStream> =
-                    if (captureStdout) {
-                        mapOf(ProcessOutputChannel.STDERR to process.errorStream)
-                    } else {
-                        mapOf(
-                            ProcessOutputChannel.STDOUT to process.inputStream,
-                            ProcessOutputChannel.STDERR to process.errorStream,
-                        )
-                    }
-
-                val pumps = mutableListOf<Thread>()
-                val sinks = mutableListOf<ProcessOutputSink>()
-
-                // Without a composed sink the destination is the control-dir file, which keeps the
-                // legacy/test composition working exactly as it did. With one, the file is not a
-                // second copy: it is simply absent.
-                for ((channel, raw) in pumpedChannels) {
-                    val redacted = transcriptRedactor?.invoke(raw) ?: raw
-                    val target: ProcessOutputSink = channelSinks[channel]
-                        ?: StreamProcessOutputSink(
-                            java.io.BufferedOutputStream(java.nio.file.Files.newOutputStream(logFile, java.nio.file.StandardOpenOption.APPEND)),
-                        )
-                    // WU-B: the guard is the ONLY place a thrown failure becomes a refusal, and the
-                    // pump writes and closes through it rather than through the bare sink. A broken
-                    // destination, a redactor that cannot read, and a `close` that could not publish
-                    // the final reservation are three different losses with one consequence — a
-                    // transcript that stops mid-stream and says nothing — so they share one report.
-                    val guarded = GuardedProcessOutputSink(target)
-                    val pump = Thread {
-                        val window = ByteArray(TRANSCRIPT_LIVE_WINDOW_BYTES)
-                        try {
-                            while (true) {
-                                // Ask for what is READY, not for a whole window.
-                                //
-                                // `RedactingInputStream.read` returns only at `len` bytes or EOF, so
-                                // asking for a full window made the window a LATENCY FLOOR measured
-                                // in bytes: a step that printed 20 bytes and then kept running showed
-                                // nothing at all until it ended, because 20 < 1024. Measured against
-                                // the installed distribution, 4 KiB appeared live and 20 bytes did
-                                // not, which is a quantised console rather than a live one.
-                                //
-                                // What remains after this is the redactor's lookahead — `maxLiteral`
-                                // bytes, which is at least MIN_SECRET_WINDOW and grows with the
-                                // longest registered secret. That floor is redaction correctness
-                                // rather than tuning: a byte inside the lookahead could still turn
-                                // out to begin a secret, so emitting it early is a leak.
-                                //
-                                // The floor of 1 keeps the read BLOCKING rather than polling. An
-                                // empty `available()` means "nothing decided yet", and the read
-                                // returns as soon as one byte is emittable; a `Thread.sleep` here
-                                // would add a latency the product does not owe anyone, and a busy
-                                // loop would burn a core on every silent step.
-                                val ready = maxOf(1, minOf(window.size, redacted.available()))
-                                val n = redacted.read(window, 0, ready)
-                                if (n < 0) break
-                                guarded.write(window, 0, n)
-                            }
-                        } catch (t: Throwable) {
-                            // A child killed mid-flight closes the pipe and is a NORMAL end for this
-                            // thread; an exception thrown by the redaction seam or the destination
-                            // is not, and used to be discarded here with only a comment. It is now
-                            // recorded on the same channel as every other lost byte.
-                            guarded.recordPumpFailure("read", t)
-                        } finally {
-                            // Close the redacting stream FIRST: its pending buffer
-                            // (EOF drain) is what flushes the final sanitized bytes.
-                            // Both closes run THROUGH the guard, because `target.close()` is where a
-                            // store-backed sink commits its last reservation — a failure there is the
-                            // permanent, silent loss of the transcript's tail.
-                            try {
-                                redacted.close()
-                            } catch (t: Throwable) {
-                                // The EOF drain lives in this close, so a failure here means the final
-                                // sanitized bytes were never produced. That is a lost tail like any
-                                // other, and it is reported on the same channel.
-                                guarded.recordPumpFailure("redaction-close", t)
-                            }
-                            guarded.close()
-                        }
-                    }
-                    pump.isDaemon = true
-                    pump.name = "durable-sh-transcript-pump-$opId-${channel.name.lowercase()}"
-                    pump.start()
-                    pumps += pump
-                    sinks += guarded
-                }
+                val (pumps, sinks) = startTranscriptPumps(
+                    process = process,
+                    opId = opId,
+                    captureStdout = captureStdout,
+                    transcriptRedactor = transcriptRedactor,
+                    channelSinks = channelSinks,
+                    fallbackLogFile = logFile,
+                )
                 lastTranscriptPumps = pumps
                 lastTranscriptSinks = sinks
             }
@@ -936,6 +858,77 @@ class DurableShellExecutor : DurableShellLaunching {
         } catch (e: Exception) {
             throw IllegalStateException("Failed to launch durable shell for $opId", e)
         }
+    }
+
+    /**
+     * Starts the per-channel transcript pumps for [process] and returns them alongside their
+     * [GuardedProcessOutputSink]s.
+     *
+     * Extracted from [launch] so the launch body itself only resolves a configuration: this is the
+     * WU-B pump-by-pump thread loop, kept as a single function so a future channel addition
+     * (or a future test that exercises one channel in isolation) has ONE place to look.
+     *
+     * The shape of the loop is OBS-C2.3: one thread per channel, writing through the
+     * [GuardedProcessOutputSink] so every `Throwable` becomes a [ProcessOutputRefusal] on the same
+     * channel. The capture-mode case pipes only stderr because stdout is an exact redirect to the
+     * typed-value file; the plain-mode case pipes both. The `pumpedViaAgent` case never reaches
+     * here because the agent JVM owns the FIFO read ends.
+     */
+    private fun startTranscriptPumps(
+        process: Process,
+        opId: String,
+        captureStdout: Boolean,
+        transcriptRedactor: ((java.io.InputStream) -> java.io.InputStream)?,
+        channelSinks: Map<ProcessOutputChannel, ProcessOutputSink>,
+        fallbackLogFile: Path,
+    ): Pair<List<Thread>, List<ProcessOutputSink>> {
+        val pumpedChannels: Map<ProcessOutputChannel, java.io.InputStream> =
+            if (captureStdout) {
+                mapOf(ProcessOutputChannel.STDERR to process.errorStream)
+            } else {
+                mapOf(
+                    ProcessOutputChannel.STDOUT to process.inputStream,
+                    ProcessOutputChannel.STDERR to process.errorStream,
+                )
+            }
+
+        val pumps = mutableListOf<Thread>()
+        val sinks = mutableListOf<ProcessOutputSink>()
+
+        for ((channel, raw) in pumpedChannels) {
+            val redacted = transcriptRedactor?.invoke(raw) ?: raw
+            val target: ProcessOutputSink = channelSinks[channel]
+                ?: StreamProcessOutputSink(
+                    java.io.BufferedOutputStream(java.nio.file.Files.newOutputStream(fallbackLogFile, java.nio.file.StandardOpenOption.APPEND)),
+                )
+            val guarded = GuardedProcessOutputSink(target)
+            val pump = Thread {
+                val window = ByteArray(TRANSCRIPT_LIVE_WINDOW_BYTES)
+                try {
+                    while (true) {
+                        val ready = maxOf(1, minOf(window.size, redacted.available()))
+                        val n = redacted.read(window, 0, ready)
+                        if (n < 0) break
+                        guarded.write(window, 0, n)
+                    }
+                } catch (t: Throwable) {
+                    guarded.recordPumpFailure("read", t)
+                } finally {
+                    try {
+                        redacted.close()
+                    } catch (t: Throwable) {
+                        guarded.recordPumpFailure("redaction-close", t)
+                    }
+                    guarded.close()
+                }
+            }
+            pump.isDaemon = true
+            pump.name = "durable-sh-transcript-pump-$opId-${channel.name.lowercase()}"
+            pump.start()
+            pumps += pump
+            sinks += guarded
+        }
+        return pumps to sinks
     }
 
     /**

@@ -104,7 +104,7 @@ internal class RedactingOutputIngress(
             // separate attribution from the bytes it describes.
             frameIndex.append(address.stream, address.channel, committedEnd - length, committedEnd)
         } catch (t: Throwable) {
-            refusal = ProcessOutputRefusal(
+            refusal = ProcessOutputRefusal.WriteFailed(
                 detail = "the transcript could not be persisted to stream ${handle.stream.value}",
                 cause = t,
             )

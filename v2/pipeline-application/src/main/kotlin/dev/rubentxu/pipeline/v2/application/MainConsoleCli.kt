@@ -1,8 +1,11 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
+import dev.rubentxu.pipeline.v2.application.observation.FollowDecision
 import dev.rubentxu.pipeline.v2.application.observation.ObservationJsonLines
+import dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead
 import dev.rubentxu.pipeline.v2.application.observation.ObservationRecord
+import dev.rubentxu.pipeline.v2.application.observation.followDecision
 import dev.rubentxu.pipeline.v2.output.OutputChannel
 import dev.rubentxu.pipeline.v2.output.OutputCursor
 import dev.rubentxu.pipeline.v2.output.OutputFrame
@@ -14,6 +17,7 @@ import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import java.io.PrintStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * M1-P3 — the consumable read side: console output, addressed by [OutputCursor].
@@ -375,6 +379,72 @@ sealed interface ConsoleReadRequest {
             require(afterOrdinal >= -1L) { "afterOrdinal must be -1 (from start) or non-negative, got $afterOrdinal" }
         }
     }
+
+    /**
+     * R4 / WU-CON-2.3 — `--follow` over the per-frame path.
+     *
+     * A thin loop over [Frames] reads. Each poll re-reads with
+     * `afterOrdinal = (last seen ordinal) + 1` (or `-1` for the first poll), emits any new
+     * frames, and continues until either:
+     *
+     *   - the read returns 0 new frames AND every known output stream is [Sealed]
+     *     (the durable authority for "the writer closed this stream") — EOF, exit 0;
+     *   - the [followConfig] has been polled [FollowConfig.maxPolls] times — exit 0;
+     *   - the JVM receives a SIGINT/SIGTERM — exit 2.
+     *
+     * The cursor between polls is local state, fully reconstructible from the durable
+     * authority ([afterOrdinal] + [frameLimit]); it is NOT journaled (DR-5 in AGENTS.md).
+     * A fresh process invocation starts over from [afterOrdinal]; a follow does NOT resume
+     * across runs.
+     *
+     * The follow is reading, not deciding: PAR-D (ADR-0076) is in force. The typed decision
+     * ([FollowFrames]) is what reaches the loop; the loop is a pure interpreter of that
+     * decision and must not mutate any journal state.
+     */
+    data class FollowFrames(
+        override val controlDir: String,
+        override val runId: String,
+        override val opId: String,
+        val afterOrdinal: Long,
+        val frameLimit: Int,
+        val followConfig: FollowConfig,
+        override val format: MainConsoleCli.ConsoleFormat,
+    ) : ConsoleReadRequest {
+        init {
+            require(frameLimit > 0) { "frameLimit must be positive, got $frameLimit" }
+            require(afterOrdinal >= -1L) { "afterOrdinal must be -1 (from start) or non-negative, got $afterOrdinal" }
+        }
+    }
+}
+
+/**
+ * R4 / WU-CON-2.3 — the bounded knobs that turn a [ConsoleReadRequest.Frames] read into a loop.
+ *
+ * A closed payload rather than a flag bag: [pollIntervalMillis] is the wait between rounds,
+ * [maxPolls] is the loop bound. The constructor refuses non-positive values so a malformed
+ * `--follow-*` is a typed refusal at admission, not a silent degradation at runtime.
+ *
+ * The defaults (1000 ms / 60 polls) make one `--follow` invocation roughly a minute of
+ * follow time, which is the budget the events verb established and which we keep here
+ * for parity. The CLI surface admits `--follow-poll-interval` and `--follow-max-polls`
+ * explicitly so an operator can tune them.
+ */
+data class FollowConfig(
+    val pollIntervalMillis: Long,
+    val maxPolls: Int,
+) {
+    init {
+        require(pollIntervalMillis > 0) { "pollIntervalMillis must be positive, got $pollIntervalMillis" }
+        require(maxPolls > 0) { "maxPolls must be positive, got $maxPolls" }
+    }
+
+    companion object {
+        /** One poll per second, bounded to one minute by default. The events verb's defaults. */
+        val DEFAULT_POLL_INTERVAL_MILLIS: Long = 1000L
+        val DEFAULT_MAX_POLLS: Int = 60
+
+        val DEFAULT: FollowConfig = FollowConfig(DEFAULT_POLL_INTERVAL_MILLIS, DEFAULT_MAX_POLLS)
+    }
 }
 
 /**
@@ -447,6 +517,21 @@ sealed interface ConsoleCliRefusal {
      * rather than guessing which one.
      */
     data class UnknownFormat(val value: String, val accepted: List<String>) : ConsoleCliRefusal
+
+    /**
+     * R4 / WU-CON-2.3 — `--follow` was supplied without `--frames`.
+     *
+     * The follow is a loop over the per-frame read; without `--frames` it would be a loop over
+     * nothing. Refused rather than defaulted: a `--follow` against the legacy byte-budgeted path
+     * would silently emit the merged page once and then poll forever on `OutputCursor`, which is
+     * a different contract from what the operator asked for.
+     */
+    data object FollowRequiresFrames : ConsoleCliRefusal {
+        override fun toString(): String =
+            "FollowRequiresFrames: --follow requires --frames; the per-frame path is the only " +
+                "one a follow can resume on, because the byte path advances by byte cursor and " +
+                "the follow would lose frame attribution on the resume."
+    }
 }
 
 /** One stable line per refusal, so a script can branch on the reason. */
@@ -468,6 +553,7 @@ fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal)
     is ConsoleCliRefusal.IncompatibleWithFrames -> "Error: ${refusal.toString()}"
     is ConsoleCliRefusal.UnknownFormat ->
         "Error: --format must be one of ${refusal.accepted.joinToString("|")}, got: ${refusal.value}"
+    ConsoleCliRefusal.FollowRequiresFrames -> "Error: ${ConsoleCliRefusal.FollowRequiresFrames}"
 }
 
 /**
@@ -551,6 +637,11 @@ object MainConsoleCli {
                 when (request) {
                     is ConsoleReadRequest.Frames ->
                         emitFrames(readFrames(request, root), request, System.out, System.err)
+                    // R4 / WU-CON-2.3 — `--follow`. A loop over the per-frame path; the loop
+                    // is a pure interpreter of [ConsoleReadRequest.FollowFrames] and does not
+                    // mutate any journal state.
+                    is ConsoleReadRequest.FollowFrames ->
+                        runFollowFrames(request, root, System.out, System.err)
                     is ConsoleReadRequest.Paged,
                     is ConsoleReadRequest.Range ->
                         emit(execute(request, root), request, System.out, System.err)
@@ -645,6 +736,144 @@ object MainConsoleCli {
     }
 
     /**
+     * R4 / WU-CON-2.3 — `--follow` interpreter. A pure interpreter of [ConsoleReadRequest.FollowFrames].
+     *
+     * The loop is reading, not deciding: PAR-D (ADR-0076) is in force. The typed decision
+     * ([FollowFrames]) is what reached this method; the loop interprets it and walks the
+     * durable authority via the per-frame reader.
+     *
+     * CTX-P is in force too: the `afterOrdinal` cursor is local state threaded as a parameter,
+     * never a global or thread-local. Each poll derives a fresh `afterOrdinal` from the previous
+     * one; the durable authority is unchanged by the loop.
+     *
+     * ## Exit conditions
+     *
+     * The loop exits when any of:
+     *
+     *  - **`followDecision` returns [FollowDecision.Finished].** That is: the page returned no
+     *    new frames AND every known stream this run owns is [Sealed]. The durable authority
+     *    promises nothing more will arrive on this run.
+     *  - **`maxPolls` reached.** Bounded at admission; an op that owns no stream (e.g.
+     *    `sh("true")`) cannot be Finished because no stream exists to seal, and the bound
+     *    is what stops the loop on a silent op.
+     *  - **SIGINT/SIGTERM.** Shutdown hook flips a flag; the loop checks it between rounds.
+     *
+     * ## Status mapping
+     *
+     *  - 0 on Finished, on maxPolls reached, and on normal exit through the read path.
+     *  - 1 on a read-plane refusal: the store refused to answer the call in flight.
+     *  - 2 on a SIGINT/SIGTERM (so a `Ctrl-C` is distinguishable from a finished follow).
+     */
+    fun runFollowFrames(
+        request: ConsoleReadRequest.FollowFrames,
+        root: Path,
+        out: PrintStream,
+        err: PrintStream,
+    ): Int {
+        val store = OutputPlaneProvider.storeForReading(root)
+        val reader = dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader(
+            index = store.frameIndex(),
+            bytes = store,
+            tails = store,
+        )
+
+        // JVM-shutdown hook so a SIGINT/SIGTERM does not leave a poll thread behind. The hook
+        // flips a flag; the loop checks it between rounds.
+        val shutdown = AtomicBoolean(false)
+        val hook = Thread { shutdown.set(true) }
+        Runtime.getRuntime().addShutdownHook(hook)
+
+        var ordinal = request.afterOrdinal
+        val maxPolls = request.followConfig.maxPolls
+        val pollIntervalMillis = request.followConfig.pollIntervalMillis
+
+        try {
+            for (poll in 0 until maxPolls) {
+                if (shutdown.get()) return 2
+
+                val page = when (val read = reader.readOutput(request.runId, ordinal, request.frameLimit)) {
+                    is ObservationOutputRead.Refused -> {
+                        err.println(ConsoleReadService.renderRefusal(read.reason))
+                        return 1
+                    }
+                    is ObservationOutputRead.Page -> read.page
+                }
+
+                if (page.records.isNotEmpty()) {
+                    emitFollowPage(page.records, request.format, out, err)
+                    // The next read starts AFTER the last record we just emitted. An ordinal
+                    // is monotonic, and asking the index for the same ordinal again would re-emit
+                    // the frame we already showed.
+                    ordinal = page.records.last().frame.ordinal + 1L
+                }
+
+                // EOF detection. Three facts, each from a different authority:
+                //  - moreFrames: did the index know there were frames beyond what it gave us
+                //    (a window-shape fact);
+                //  - tailStates: what the durable stores say about each stream this run owns
+                //    (whether more bytes can ever arrive on it);
+                //  - runFinished: not consulted — the console verb does not have event-plane
+                //    access and the only authority it has is the output plane; a silent run
+                //    that owns no streams is bounded by maxPolls, not by an answer the run
+                //    plane cannot give.
+                val tails = reader.tailStatesOf(request.runId)
+                val decision = followDecision(
+                    moreFrames = page.moreFrames,
+                    tailStates = tails,
+                    runFinished = false,
+                )
+                when (decision) {
+                    FollowDecision.Finished -> return 0
+                    FollowDecision.ReadAgain -> {
+                        // Only sleep between rounds. The last iteration need not sleep.
+                        if (poll < maxPolls - 1) {
+                            try {
+                                Thread.sleep(pollIntervalMillis)
+                            } catch (_: InterruptedException) {
+                                Thread.currentThread().interrupt()
+                                return if (shutdown.get()) 2 else 2
+                            }
+                        }
+                    }
+                }
+            }
+            return 0
+        } finally {
+            try { Runtime.getRuntime().removeShutdownHook(hook) } catch (_: IllegalStateException) { /* shutdown in flight */ }
+        }
+    }
+
+    /**
+     * R4 / WU-CON-2.3 — emit one [ObservationOutputPage] of records to stdout, in the requested format.
+     *
+     * The follow path does not emit a continuation token to stderr: the per-poll ordinal is a
+     * local cursor that does not survive the process (DR-5; the spec for `--follow`). A consumer
+     * that needs to recover from a clip would re-invoke `pipelinek console --follow --after-ordinal
+     * <N>` directly, the same way it started.
+     */
+    private fun emitFollowPage(
+        records: List<ObservationRecord.Output>,
+        format: ConsoleFormat,
+        out: PrintStream,
+        err: PrintStream,
+    ) {
+        when (format) {
+            ConsoleFormat.TEXT -> {
+                for (record in records) out.write(record.bytes)
+                out.flush()
+            }
+            ConsoleFormat.JSONL -> {
+                java.io.OutputStreamWriter(out, StandardCharsets.UTF_8).use { writer ->
+                    dev.rubentxu.pipeline.v2.application.observation.ObservationJsonLines.writeTo(
+                        records,
+                        writer,
+                    )
+                }
+            }
+        }
+    }
+
+    /**
      * R4 / WU-R4.6 — frame-ordinal continuation token, distinct from [OutputCursor.TOKEN_PREFIX].
      *
      * The byte path encodes `out-cursor-v1:<stream>:<offset>`; the per-frame path encodes
@@ -693,6 +922,12 @@ object MainConsoleCli {
             // closed [ConsoleReadRequest] ADT explicit to the type-checker.
             is ConsoleReadRequest.Frames ->
                 error("unreachable: Frames requests bypass execute() and use readFrames+emitFrames instead")
+
+            // `FollowFrames` is handled in [main] via [runFollowFrames] before [execute]
+            // is reached. Same shape as `Frames`: the dispatch in `main` reads the request
+            // type and routes accordingly; [execute] is only the byte-budgeted path.
+            is ConsoleReadRequest.FollowFrames ->
+                error("unreachable: FollowFrames requests bypass execute() and use runFollowFrames instead")
         }
 
     /**

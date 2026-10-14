@@ -1,0 +1,117 @@
+{
+  "classification": "CROSSES_PRODUCER_AUTHORITY",
+  "question": "Does the reporter agree with the suite identities Gradle itself recorded, on a tree Gradle actually produced?",
+  "source_sha": "413265359346fc66291e4449e8b7d90b47ee4ab8",
+  "reporter_sha256": "2c94019f041cfb522d1b4a4310339158501db8add634463f1cae8065c21541c2",
+  "results_dir": "v2/pipeline-events",
+  "boundary_file": "/home/rubentxu/.jcode/scratch/gradle-boundary-01",
+  "observed_at": "2026-10-14T16:00:11.763773+00:00",
+  "xml_file_count": 33,
+  "suite_name": {
+    "identity_source": "<testcase classname=...>, not <testsuite name=...>",
+    "files": 33,
+    "distinct_producer_classnames": 33,
+    "distinct_basenames": 33,
+    "producer_classnames_absent": 0,
+    "identity_disagreements": 0,
+    "identity_disagreement_examples": [],
+    "nested_class_basenames": 21,
+    "nested_class_examples": [
+      "dev.rubentxu.pipeline.v2.events.identity.EnvelopeProjectionTest$Projection",
+      "dev.rubentxu.pipeline.v2.events.identity.EnvelopeProjectionTest$Roundtrip",
+      "dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPortTest$CursorShape",
+      "dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPortTest$RefusalHierarchy",
+      "dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPortTest$ResultWrapper"
+    ],
+    "duplicate_basenames_across_modules": {},
+    "display_labels_sample": {
+      "TEST-dev.rubentxu.pipeline.v2.events.EventSchemaNoMapStringStringTest.xml": "dev.rubentxu.pipeline.v2.events.EventSchemaNoMapStringStringTest",
+      "TEST-dev.rubentxu.pipeline.v2.events.EventVocabularyTest.xml": "dev.rubentxu.pipeline.v2.events.EventVocabularyTest",
+      "TEST-dev.rubentxu.pipeline.v2.events.NullEventSinkLawsTest.xml": "dev.rubentxu.pipeline.v2.events.NullEventSinkLawsTest"
+    }
+  },
+  "runs": {
+    "declared_catalog": {
+      "argv": [
+        "/usr/bin/python3",
+        "/var/home/rubentxu/.herdr/worktrees/pipeline-kotlin/worktree-test-harnes-evolutivo/scripts/run-scoped-junit-report.py",
+        "--head",
+        "413265359346fc66291e4449e8b7d90b47ee4ab8",
+        "--results-dir",
+        "v2/pipeline-events",
+        "--boundary-file",
+        "/home/rubentxu/.jcode/scratch/gradle-boundary-01",
+        "--expected-catalog",
+        "/home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/real-tree/catalog-from-gradle-names.json",
+        "--json"
+      ],
+      "exit_code": 0,
+      "verdict": "PASS",
+      "completeness": {
+        "attested": true,
+        "case": "COMPLETE",
+        "missing_suites": [],
+        "reason": "every declared suite produced a fresh result file"
+      },
+      "fresh_files": 33,
+      "expected_files": 33,
+      "fresh": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 148
+      },
+      "fresh_invalid_evidence": [],
+      "carried_over_files": 0,
+      "fresh_set_sha256": "25ce47decab98b00c9e13eee48b9cf1364d324595efca21185b84c9bf89e3e17"
+    },
+    "no_catalog": {
+      "argv": [
+        "/usr/bin/python3",
+        "/var/home/rubentxu/.herdr/worktrees/pipeline-kotlin/worktree-test-harnes-evolutivo/scripts/run-scoped-junit-report.py",
+        "--head",
+        "413265359346fc66291e4449e8b7d90b47ee4ab8",
+        "--results-dir",
+        "v2/pipeline-events",
+        "--boundary-file",
+        "/home/rubentxu/.jcode/scratch/gradle-boundary-01",
+        "--json"
+      ],
+      "exit_code": 0,
+      "verdict": "NOT_ATTESTABLE",
+      "completeness": {
+        "attested": false,
+        "case": "NOT_ATTESTABLE",
+        "missing_suites": [],
+        "reason": "no --expected-catalog was declared, so this report describes only the results that arrived"
+      },
+      "fresh_files": 33,
+      "fresh": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 148
+      }
+    }
+  },
+  "checks": {
+    "identity_agrees_with_producer": true,
+    "every_file_declared_a_classname": true,
+    "catalog_from_producer_attests_complete": true,
+    "absent_run_is_not_attestable": true,
+    "both_runs_agree_on_arrived_files": true,
+    "both_runs_agree_on_counts": true,
+    "no_invalid_evidence_in_fresh": true
+  },
+  "status": "OBSERVED"
+}
+
+checks={
+  "identity_agrees_with_producer": true,
+  "every_file_declared_a_classname": true,
+  "catalog_from_producer_attests_complete": true,
+  "absent_run_is_not_attestable": true,
+  "both_runs_agree_on_arrived_files": true,
+  "both_runs_agree_on_counts": true,
+  "no_invalid_evidence_in_fresh": true
+}

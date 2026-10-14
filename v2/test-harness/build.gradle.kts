@@ -66,6 +66,55 @@ val validationPlan by tasks.registering(JavaExec::class) {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// H1 — the gate. `validationPlan` above computes and PRINTS the selection; it never runs anything
+// and never looks at what ran, so a plan nobody discharges still builds green. This task closes
+// that loop: it resolves the same plan, dispatches it as Gradle invocations, runs them, reads the
+// JUnit XML they produced, and refuses unless the evidence discharges the selection.
+//
+// It is a separate task rather than extra behaviour on `validationPlan` on purpose. Selection,
+// execution and adjudication are three decisions; a task that both selects and certifies can be
+// trusted for none of them, because a narrowing of the selection and a narrowing of the run look
+// identical from the outside.
+//
+// `-PvalidationCommit=<sha>` is the commit the evidence must be bound to, and
+// `-PvalidationObservedCommit=<sha>` is what the installed binary reports. Both are explicit
+// because the gate must never infer its own identity: an omitted observed commit is UNKNOWN, and
+// unknown refuses rather than matching.
+// ---------------------------------------------------------------------------------------------
+
+val validationCommit: String? = findProperty("validationCommit") as String?
+
+val validationObservedCommit: String? = findProperty("validationObservedCommit") as String?
+
+val validationGate by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Run the suites the plan selected and refuse unless their evidence discharges it."
+
+    mainClass.set("dev.rubentxu.pipeline.v2.harness.plan.GateCliKt")
+    classpath = sourceSets["main"].runtimeClasspath
+
+    // onlyIf is evaluated before doFirst, so the commit is appended here rather than in a doFirst:
+    // a task whose arguments depend on a condition should not build them in an action block.
+    onlyIf {
+        if (validationCommit == null) {
+            logger.lifecycle(
+                "validationGate: SKIPPED — pass -PvalidationCommit=<sha> to bind the evidence. " +
+                    "This task does not guess a commit, and an unbound receipt certifies nothing.",
+            )
+            false
+        } else {
+            args(validationBase, validationCommit!!, validationObservedCommit ?: "")
+            logger.lifecycle(
+                "validationGate: binding evidence to ${validationCommit} against $validationBase. " +
+                    "The working tree must be clean: uncommitted work is not in " +
+                    "$validationBase...HEAD and cannot be attributed to that commit.",
+            )
+            true
+        }
+    }
+}
+
 tasks.named("check") {
     // The planner runs before the suites, so a change that cannot be classified never pays for a
     // full test run. dependsOn rather than finalizedBy: the plan is an input to validation, not a

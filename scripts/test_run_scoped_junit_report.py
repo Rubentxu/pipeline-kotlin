@@ -55,6 +55,18 @@ class Harness(unittest.TestCase):
     def boundary(self) -> str:
         return self._boundary
 
+    def catalog(self, suites: list[str], name: str = "catalog.json") -> str:
+        """Write a DECLARED catalog outside the results tree and return it.
+
+        Outside is the point: a catalog derived from `build/test-results` is the
+        arrived set renamed, and the completeness check it feeds would then be
+        unfalsifiable by construction.
+        """
+        p = os.path.join(self.root, name)
+        with open(p, "w", encoding="utf-8") as fh:
+            json.dump({"suites": suites}, fh)
+        return p
+
     def run_raw(self, *extra: str) -> subprocess.CompletedProcess:
         """Run the tool without assuming it produced JSON on stdout."""
         head = subprocess.run(
@@ -192,7 +204,12 @@ class FailClosed(Harness):
         self.xml("m1", "Skipped", t=5, s=5)
         code, out = self.run_tool("--boundary-file", self.boundary())
         self.assertEqual(code, 0)
-        self.assertEqual(out["verdict"], "PASS")
+        # No catalog was declared, so the verdict names that fact instead of
+        # claiming completeness it cannot know. The CLAIM under test is "skips
+        # are not a red gate", and that is `code == 0`, not the verdict string:
+        # asserting the string would pin the completeness wording too.
+        self.assertEqual(out["verdict"], "NOT_ATTESTABLE")
+        self.assertEqual(out["completeness"]["attested"], False)
         self.assertEqual(out["fresh"]["skipped"], 5)
 
 
@@ -471,7 +488,9 @@ class MalformedInput(Harness):
         )
         code, out = self.run_tool("--boundary-file", self.boundary())
         self.assertEqual(code, 0, "stale evidence must not void a valid run")
-        self.assertEqual(out["verdict"], "PASS")
+        # Same reasoning as the skips row: the claim is "stale evidence is not
+        # fatal", which is exit 0, and the verdict names the undeclared catalog.
+        self.assertEqual(out["verdict"], "NOT_ATTESTABLE")
         self.assertEqual(out["fresh"]["tests"], 2)
         self.assertEqual(len(out["carried_over_invalid_evidence"]), 1)
 
@@ -600,6 +619,222 @@ class MalformedInput(Harness):
         _, out = self.run_tool("--boundary-file", self.boundary())
         self.assertEqual(out["fresh"]["tests"], 1)
         self.assertEqual(out["fresh_files"], 1)
+
+
+class CompletenessAttestation(Harness):
+    """Completeness is a SEPARATE claim from validity, and needs a separate input.
+
+    Every number the tool reports without a catalog describes the files that
+    arrived. These rows pin that a report can no longer be read as "the run
+    executed everything it was asked to" unless something declared what that
+    was, and that a declared-but-unmet catalog refuses rather than reports green
+    over a subset.
+    """
+
+    def test_declared_and_fully_delivered_attests_completeness(self) -> None:
+        """Claim: a catalog every declared suite satisfies yields PASS.
+
+        Mutation: always take the `NotAttestable()` branch in `decide`, ignoring
+        the catalog. Every report then names its undeclared catalog and no run
+        can ever attest completeness, which is a different silent lie.
+        """
+        self.xml("m1", "Alpha", t=2)
+        self.xml("m1", "Beta", t=3)
+        cat = self.catalog(["Alpha", "Beta"])
+        code, out = self.run_tool(
+            "--boundary-file", self.boundary(), "--expected-catalog", cat
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(out["verdict"], "PASS")
+        self.assertEqual(out["completeness"]["case"], "COMPLETE")
+        self.assertEqual(out["completeness"]["attested"], True)
+        self.assertEqual(out["expected_files"], 2)
+        self.assertEqual(out["expected_catalog"], cat)
+
+    def test_one_missing_declared_suite_is_invalid_evidence(self) -> None:
+        """Claim: a green over a subset of what the run was asked to do refuses.
+
+        This is the historical false green, reproduced: three classes
+        dispatched, two delivered, and nothing in the report admitting the third
+        was missing. Measured before the fix at SHA 6db038fc as PASS / exit 0.
+
+        Mutation: compare the catalog against the WHOLE results tree instead of
+        the fresh set. A carried-over file from a previous run then satisfies
+        the catalog and the shortfall re-opens silently.
+        """
+        self.xml("m1", "Alpha", t=2)
+        self.xml("m1", "Beta", t=3)
+        cat = self.catalog(["Alpha", "Beta", "Gamma"])
+        code, out = self.run_tool(
+            "--boundary-file", self.boundary(), "--expected-catalog", cat
+        )
+        self.assertEqual(code, 2, "a shortfall must not report a green gate")
+        self.assertEqual(out["verdict"], "INVALID_EVIDENCE")
+        self.assertEqual(out["completeness"]["case"], "SHORTFALL")
+        self.assertEqual(out["completeness"]["missing_suites"], ["Gamma"])
+        self.assertEqual(out["completeness"]["attested"], False)
+        self.assertEqual(out["expected_files"], 3)
+        self.assertEqual(out["fresh_files"], 2)
+
+    def test_a_carried_over_suite_does_not_satisfy_the_catalog(self) -> None:
+        """Claim: only THIS run's evidence can satisfy what this run was asked.
+
+        A stale file for Gamma exists, from a previous run. It must not count:
+        the catalog describes what this run was asked to produce, and reporting
+        over a previous run's results is the W4 defect this tool exists to
+        prevent.
+
+        Mutation: satisfy the catalog from the discovered paths rather than the
+        fresh split.
+        """
+        self.xml("m1", "Alpha", t=2)
+        self.xml("m1", "Gamma", t=9, age_s=3600)
+        cat = self.catalog(["Alpha", "Gamma"])
+        code, out = self.run_tool(
+            "--boundary-file", self.boundary(), "--expected-catalog", cat
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(out["completeness"]["case"], "SHORTFALL")
+        self.assertEqual(out["completeness"]["missing_suites"], ["Gamma"])
+        self.assertEqual(out["carried_over_files"], 1)
+
+    def test_no_catalog_is_not_a_green_completeness_claim(self) -> None:
+        """Claim: without a catalog the report names that it cannot attest.
+
+        Mutation: keep the verdict string `PASS` for the undeclared case, as
+        before this change. Every report is then quotable as proof the run was
+        complete, which is precisely the false green this row exists to close.
+        """
+        self.xml("m1", "Alpha", t=2)
+        code, out = self.run_tool("--boundary-file", self.boundary())
+        self.assertEqual(code, 0, "an undeclared catalog must not fail the gate")
+        self.assertEqual(out["verdict"], "NOT_ATTESTABLE")
+        self.assertEqual(out["completeness"]["case"], "NOT_ATTESTABLE")
+        self.assertEqual(out["completeness"]["attested"], False)
+        self.assertIsNone(out["expected_files"])
+        self.assertIsNone(out["expected_catalog"])
+
+    def test_unreadable_catalog_is_invalid_evidence_not_an_empty_one(self) -> None:
+        """Claim: a catalog nobody could read is not evidence of completeness.
+
+        If this degraded into an empty `Catalog`, the shortfall would be empty,
+        the verdict would be PASS, and a broken input would become a green gate.
+        That is the W4 arithmetic one layer up.
+
+        Mutation: treat an unreadable catalog as `Catalog(frozenset())`.
+        """
+        self.xml("m1", "Alpha", t=2)
+        cat = self.catalog(["Alpha"], name="catalog.json")
+        with open(cat, "w", encoding="utf-8") as fh:
+            fh.write("{ this is not json")
+        code, out = self.run_tool(
+            "--boundary-file", self.boundary(), "--expected-catalog", cat
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(out["verdict"], "INVALID_EVIDENCE")
+        self.assertEqual(out["completeness"]["case"], "CATALOG_UNREADABLE")
+        self.assertEqual(out["completeness"]["attested"], False)
+
+    def test_missing_catalog_file_is_invalid_evidence(self) -> None:
+        """Claim: a declared catalog that does not exist is not completeness.
+
+        Mutation: fall back to the no-catalog branch when the path cannot be
+        opened, which reports NOT_ATTESTABLE where the caller explicitly asked
+        for an attestation.
+        """
+        self.xml("m1", "Alpha", t=2)
+        code, out = self.run_tool(
+            "--boundary-file",
+            self.boundary(),
+            "--expected-catalog",
+            os.path.join(self.root, "absent.json"),
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(out["completeness"]["case"], "CATALOG_UNREADABLE")
+
+    def test_an_empty_catalog_is_refused_rather_than_trivially_satisfied(self) -> None:
+        """Claim: a catalog declaring nothing attests nothing and is refused.
+
+        The tempting reading is "expected zero suites, shortfall zero, complete".
+        That makes the strongest possible completeness claim reachable from the
+        weakest possible input.
+
+        Mutation: drop the `if not suites` rejection in `read_catalog`.
+        """
+        self.xml("m1", "Alpha", t=2)
+        cat = self.catalog([], name="empty.json")
+        code, out = self.run_tool(
+            "--boundary-file", self.boundary(), "--expected-catalog", cat
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(out["completeness"]["case"], "CATALOG_UNREADABLE")
+        self.assertIn("no suites", out["completeness"]["reason"])
+
+    def test_suite_identity_ignores_the_module_directory(self) -> None:
+        """Claim: the catalog names suites, not paths.
+
+        Two modules can legitimately hold suites with the same basename; the
+        catalog declares the class, not the module that produced it.
+
+        Mutation: compare catalog entries against the full relative path.
+        """
+        self.xml("m1", "Shared", t=1)
+        self.xml("m2", "Shared", t=1)
+        cat = self.catalog(["Shared"])
+        code, out = self.run_tool(
+            "--boundary-file", self.boundary(), "--expected-catalog", cat
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(out["completeness"]["case"], "COMPLETE")
+        self.assertEqual(out["expected_files"], 1)
+        self.assertEqual(out["fresh_files"], 2)
+
+    def test_a_failing_run_with_a_complete_catalog_is_still_red(self) -> None:
+        """Claim: completeness never overrides the observed outcome.
+
+        Mutation: return PASS whenever the catalog is satisfied, ignoring
+        `failures` and `errors`. That is the strongest possible green gate over
+        a red run.
+        """
+        self.xml("m1", "Red", t=2, f=1)
+        cat = self.catalog(["Red"])
+        code, out = self.run_tool(
+            "--boundary-file", self.boundary(), "--expected-catalog", cat
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(out["verdict"], "FAIL")
+        self.assertEqual(out["completeness"]["attested"], True)
+
+    def test_the_text_report_states_completeness_outside_json(self) -> None:
+        """Claim: the guard exists in both output modes.
+
+        A guard that exists only in the JSON can be routed around by anyone
+        reading the human report, which is what an operator reads when a gate
+        refuses.
+
+        Mutation: delete the `match completeness` block from the text branch.
+        """
+        self.xml("m1", "Alpha", t=2)
+        self.xml("m1", "Beta", t=2)
+        cat = self.catalog(["Alpha", "Beta", "Gamma"])
+        r = self.run_text(
+            "--boundary-file", self.boundary(), "--expected-catalog", cat
+        )
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("COMPLETENESS: REFUSED", r.stderr)
+        self.assertIn("Gamma", r.stderr)
+        self.assertIn("VERDICT: INVALID_EVIDENCE", r.stdout)
+
+    def test_the_text_report_announces_an_unattested_green(self) -> None:
+        """Claim: an undeclared catalog is visible on stdout, not just in JSON.
+
+        Mutation: drop the `NotAttestable` branch from the text report.
+        """
+        self.xml("m1", "Alpha", t=2)
+        r = self.run_text("--boundary-file", self.boundary())
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("COMPLETENESS: not attested", r.stdout)
+        self.assertIn("VERDICT: NOT_ATTESTABLE", r.stdout)
 
 
 if __name__ == "__main__":

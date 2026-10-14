@@ -60,16 +60,121 @@ interface ProcessOutputSink {
 }
 
 /**
- * A process-output write the sink could not make durable.
+ * A process-output write the sink could not make durable, or a drain it could not finish.
  *
- * @property detail operator-facing description of what failed
- * @property cause the underlying failure, kept for diagnostics
+ * ## Why this is a sealed set and not one type with a nullable cause
+ *
+ * The two shapes fail for unrelated reasons and carry unrelated evidence. A write failed and there
+ * is a `Throwable` worth keeping; a pump was still alive when the budget expired and there is no
+ * failure at all — it is an absence. Collapsing them into one class would force one of the two to
+ * carry a field it does not have, and the only honest filler would be a fabricated exception,
+ * which is precisely the "make the type lie so the call site compiles" shape the constitution
+ * forbids. Each case carries its own payload and nothing else.
+ *
+ * ## What `detail` may contain
+ *
+ * An operator-facing description of WHAT failed, and never a process byte. `detail` reaches a step
+ * failure message, an event and a journal record, so a refusal that quoted the transcript would
+ * publish the secret the redaction seam exists to withhold — through the diagnostic channel rather
+ * than through the Output Plane.
  */
-data class ProcessOutputRefusal(
-    val detail: String,
-    val cause: Throwable,
-) {
-    override fun toString(): String = "ProcessOutputRefusal($detail)"
+sealed interface ProcessOutputRefusal {
+
+    /** What failed, in words that identify the failure without reproducing any process output. */
+    val detail: String
+
+    /**
+     * The sink accepted bytes it could not make durable, or its stream failed underneath it.
+     *
+     * The bytes left the pipe when the sink was handed them, so nothing can recover them: this is
+     * the "short, ordered, plausible transcript" failure and it has to be reported, never repaired.
+     */
+    data class WriteFailed(
+        override val detail: String,
+        val cause: Throwable,
+    ) : ProcessOutputRefusal {
+        override fun toString(): String = "ProcessOutputRefusal.WriteFailed($detail)"
+    }
+
+    /**
+     * The pump was asked to stop and had not, within its budget.
+     *
+     * This is not a sink failure: the sink may have accepted every byte it was given. It is the
+     * *completion* claim that cannot be made — the drain is the thing that makes "the transcript is
+     * complete" true, and a pump still holding the read end means the step must not be reported as
+     * finished with a transcript. [waitedMs] is the budget that elapsed, so the diagnostic says how
+     * long the runtime was willing to wait rather than implying an unbounded hang.
+     */
+    data class DrainIncomplete(
+        override val detail: String,
+        val waitedMs: Long,
+    ) : ProcessOutputRefusal {
+        override fun toString(): String = "ProcessOutputRefusal.DrainIncomplete($detail)"
+    }
+}
+
+/**
+ * The single place an exception becomes a refusal.
+ *
+ * ## Why the pump needs this at all
+ *
+ * The pump runs on a daemon thread whose entire purpose is to survive the child, so it cannot
+ * propagate anything to the caller — and its `catch` used to discard everything it caught, with a
+ * comment saying the bytes already persisted were worth keeping. That is true of the bytes that
+ * arrived and silent about the ones that did not, and a transcript missing its tail is
+ * indistinguishable at the read side from a step that never printed one. Worse, the paths that throw
+ * here include `close()` — which is exactly where a store-backed sink commits its final
+ * reservation, so a failure there loses the tail permanently and silently.
+ *
+ * Wrapping rather than widening each sink is the point: every composition gets the same guarantee,
+ * including [StreamProcessOutputSink], whose contract was previously "a stream write either throws
+ * to the pump or succeeds, and the pump's own handling covers that" — a sentence describing the bug.
+ *
+ * ## What it does not do
+ *
+ * It does not retry, reorder, or re-read. A refused write leaves the pipe; the refusal is the whole
+ * answer this seam can honestly give.
+ */
+internal class GuardedProcessOutputSink(
+    private val delegate: ProcessOutputSink,
+) : ProcessOutputSink {
+
+    @Volatile
+    private var failure: ProcessOutputRefusal.WriteFailed? = null
+
+    /** First failure wins: later ones are consequences of the same broken destination. */
+    fun recordPumpFailure(stage: String, t: Throwable) {
+        if (failure == null) {
+            failure = ProcessOutputRefusal.WriteFailed(
+                detail = "process output was lost at $stage (${t.javaClass.simpleName})",
+                cause = t,
+            )
+        }
+    }
+
+    override fun write(bytes: ByteArray, offset: Int, length: Int) {
+        // Once refused, further writes cannot be honoured. Continuing would append to a transcript
+        // that already has an unexplained hole in it, which reads as complete and is not.
+        if (failure != null) return
+        try {
+            delegate.write(bytes, offset, length)
+        } catch (t: Throwable) {
+            recordPumpFailure("write", t)
+        }
+    }
+
+    override fun refusal(): ProcessOutputRefusal? = failure ?: delegate.refusal()
+
+    override fun close() {
+        // Never short-circuited on an existing refusal: `close` is where a store-backed sink
+        // publishes its final reservation, so skipping it would turn a recoverable write failure
+        // into an additional, unreported loss of the tail.
+        try {
+            delegate.close()
+        } catch (t: Throwable) {
+            recordPumpFailure("close", t)
+        }
+    }
 }
 
 /**
@@ -197,11 +302,24 @@ data class ProcessOutputSinks(
 const val TRANSCRIPT_LIVE_WINDOW_BYTES: Int = 64 * 1024
 
 /**
+ * WU-B: the failure code carried when a transcript could not be persisted or could not be drained.
+ *
+ * It lives here, next to the refusal it describes, so the runtime that PRODUCES it and the caller
+ * that acts on it cannot drift onto two spellings of the same fact. A caller branching on this must
+ * name the constant, never the literal.
+ */
+const val OUTPUT_PERSISTENCE_REFUSED: String = "OUTPUT_PERSISTENCE_REFUSED"
+
+/**
  * A [ProcessOutputSink] over a plain stream, for compositions that have not supplied one.
  *
  * It exists so the pump has ONE write path rather than two, and so the legacy/test composition
- * that has no durable authority still produces a transcript. It never refuses: a stream write
- * either throws to the pump or succeeds, and the pump's own handling covers that.
+ * that has no durable authority still produces a transcript.
+ *
+ * It never refuses of its own accord: a stream write either throws or succeeds. That is not a gap,
+ * because the pump wraps every sink in a [GuardedProcessOutputSink], and it is the guard — not each
+ * sink, and not the pump's `catch` — that turns a thrown failure into a [ProcessOutputRefusal]. One
+ * implementation, every composition.
  */
 internal class StreamProcessOutputSink(
     private val stream: java.io.OutputStream,

@@ -27,6 +27,7 @@ import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.sdk.StepContext
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EnvModel
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.OUTPUT_PERSISTENCE_REFUSED
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputChannel
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig
@@ -59,6 +60,21 @@ import java.util.UUID
  * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
  * @see <a href="ADR-0047">ADR-0047 — FAILED_TIMEOUT Terminal State</a>
  */
+/**
+ * Whether the terminal itself says the transcript could not be completed.
+ *
+ * WU-B. The runtime refuses to claim a complete transcript for exactly one reason and reports it
+ * with exactly one code; the caller that must not seal reads the SAME constant from the SAME module
+ * rather than matching a string literal. There is one producer of the fact and one consumer of it,
+ * so a rename cannot leave half the contract behind.
+ *
+ * Pure and therefore testable at HF0: it is a predicate over the terminal ADT, and pretending more
+ * is needed to check it would mean inventing a process.
+ */
+internal fun terminalDeclaresTranscriptIncomplete(terminal: DurableTaskTerminal): Boolean =
+    terminal is DurableTaskTerminal.LaunchFailed &&
+        terminal.failure.code == OUTPUT_PERSISTENCE_REFUSED
+
 object ShExecution {
 
 
@@ -374,9 +390,21 @@ object ShExecution {
             val terminalResult = classifyShellTerminal(terminal, command.returnMode)
             // controlDirRoot is non-null from this point: the function
             // checked it at the top and returned early otherwise.
-            val sealFailure: PipelineFailure? = sealOperationTail(controlDirRoot, runId, opId.format())
-            sealFailure?.let { failure ->
-                return ShellInvocationResult.Failed(failure)
+            //
+            // WU-B: a seal is the durable statement "this operation's output is complete", and it is
+            // the statement `console --follow` terminates on. So it MUST NOT be made for a
+            // transcript the runtime has just declared it could not complete: a sink that lost a
+            // write, or a pump still holding the read end at the drain budget. Sealing there would
+            // tell every downstream reader that a short, ordered, plausible transcript is the final
+            // one — which is the exact artifact this whole path exists to refuse.
+            //
+            // The terminal fact is still known and still reported (the step fails with an explicit
+            // INFRASTRUCTURE cause). What is withheld is the completeness claim, and only that.
+            if (!terminalDeclaresTranscriptIncomplete(terminal)) {
+                val sealFailure: PipelineFailure? = sealOperationTail(controlDirRoot, runId, opId.format())
+                sealFailure?.let { failure ->
+                    return ShellInvocationResult.Failed(failure)
+                }
             }
             terminalResult
         } catch (e: dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException) {
@@ -428,6 +456,15 @@ object ShExecution {
         controlDirRoot = controlDirRoot,
         eventSink = eventSink,
     ).toStepOutcome()
+
+    /**
+     * Whether the terminal itself says the transcript could not be completed.
+     *
+     * WU-B. The runtime refuses to claim a complete transcript for exactly one reason, and it
+     * reports it with exactly one code; the caller that must not seal reads the SAME constant from
+     * the SAME module rather than matching a string literal. There is one production of the fact and
+     * one consumer of it, so a rename cannot leave half of the contract behind.
+     */
 
     /**
      * Seals the operation's per-channel output tails and decides which

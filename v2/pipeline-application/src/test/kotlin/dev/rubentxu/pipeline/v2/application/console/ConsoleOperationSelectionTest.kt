@@ -303,5 +303,45 @@ class ConsoleOperationSelectionTest {
         is OperationSelection.IndexOnly -> error("IndexOnly is index-shaped; this row needs opIds")
     }
 
+    /**
+     * RC3-10 — a ONE-SHOT sequence resolves, because that is what the real journal hands over.
+     *
+     * `SqliteEventStore.eventsFor` returns a sequence that can be consumed only once. The resolver
+     * used to traverse it twice — once for stages, once for steps — and the second traversal threw
+     * `IllegalStateException: This sequence can be consumed only once`.
+     *
+     * It could not have been caught by the rows above, and that is the point of this one: they all
+     * pass `journal.asSequence()`, which is NOT constrained, so the function looked total. The
+     * crash was reachable only through the product, and it took `--stage NAME` and `--kind` down
+     * with it. A unit row that mirrors the real source's constraint is the only thing that closes
+     * that gap.
+     */
+    @Test
+    fun `RC3-10 a sequence that can be consumed only once still resolves`() {
+        val oneShot = java.util.stream.StreamSupport.stream(journal.spliterator(), false)
+            .iterator() as Iterator<DomainEvent>
+        val oneShotSequence = generateSequence { if (oneShot.hasNext()) oneShot.next() else null }
+            .constrainOnce()
+
+        val outcome = ConsoleOperationSelection.resolve(
+            runId, setOf("build"), setOf("compile"), setOf("sh"), oneShotSequence,
+        )
+
+        assertEquals(
+            setOf(opId(0, 0)),
+            selected(selectedOf(outcome)),
+            "a constrained-once sequence must resolve exactly like a re-iterable one",
+        )
+    }
+
+    private fun selectedOf(outcome: SelectionOutcome) =
+        assertInstanceOf(SelectionOutcome.Selected::class.java, outcome, "expected a selection, got $outcome").selection
+
+    private fun selected(selection: OperationSelection): Set<String> = when (selection) {
+        OperationSelection.AllOperations -> error("expected an explicit selection")
+        is OperationSelection.Operations -> selection.opIds
+        is OperationSelection.IndexOnly -> error("expected opIds, got an index-shaped selection")
+    }
+
     private fun opId(stage: Int, step: Int) = OpId(runId = runId, stageIndex = stage, stepIndex = step).format()
 }

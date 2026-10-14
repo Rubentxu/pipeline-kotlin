@@ -22,11 +22,27 @@ import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue
  * "nothing to do, therefore fine", which is exactly the false green the H0 mandate forbids. The
  * refusal names the path so the operator can add a row.
  *
- * Non-production changes (docs, the harness's own tests, tooling) are deliberately NOT refused.
- * A refused plan for a README edit would train operators to ignore refusals, and a gate nobody
- * believes is worse than no gate.
+ * Non-production changes (docs, the harness's own tests and sources, tooling) are deliberately NOT
+ * refused. A refused plan for a README edit — or for the harness editing its own catalogue — would
+ * train operators to ignore refusals, and a gate nobody believes is worse than no gate.
+ *
+ * That exemption is scoped to [SELF_OWNED_PREFIXES] rather than applied by a wildcard, because a
+ * blanket "anything under test-harness is fine" would also excuse a genuine product change that
+ * happened to land in the wrong module.
  */
 object ImpactResolver {
+
+    /**
+     * Path prefixes whose changes cannot invalidate a product guarantee.
+     *
+     * The harness's own sources and its build file are in here, and the reasoning is asymmetric on
+     * purpose: a defect in the harness makes the harness over-report, which is noisy but safe,
+     * whereas a defect that makes it under-report is the silent green this whole line of work
+     * exists to prevent. So the harness is exempt from the catalogue, never the product.
+     */
+    val SELF_OWNED_PREFIXES: List<String> = listOf(
+        "v2/test-harness/",
+    )
 
     /**
      * Paths that are production code, i.e. paths whose change invalidates a guarantee.
@@ -34,12 +50,14 @@ object ImpactResolver {
      * A path is production when it is a `src/main` source or a Gradle build file. Everything else
      * — `src/test`, `docs/`, `*.md` — selects nothing and refuses nothing.
      */
-    fun isProductionPath(path: String): Boolean =
-        path.endsWith(".gradle.kts") ||
+    fun isProductionPath(path: String): Boolean {
+        if (SELF_OWNED_PREFIXES.any { path.startsWith(it) }) return false
+        return path.endsWith(".gradle.kts") ||
             (
                 path.contains("/src/main/") &&
                     (path.endsWith(".kt") || path.endsWith(".java"))
             )
+    }
 
     /**
      * Resolve [changedPaths] into a plan.

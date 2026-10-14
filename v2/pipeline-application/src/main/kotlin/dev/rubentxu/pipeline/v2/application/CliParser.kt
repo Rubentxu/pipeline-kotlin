@@ -1020,6 +1020,10 @@ object CliParser {
         var steps: MutableSet<String> = LinkedHashSet()
         var kinds: MutableSet<String> = LinkedHashSet()
         var runOverride: String? = null
+        // R4 / WU-RC3 — the events journal. It is the ONLY authority that knows a stage/step
+        // NAME or a step's kind; without it those axes are refused rather than ignored. It is a
+        // path here and an opened store in `main`, so admission still performs no effect.
+        var dbPath: String? = null
         var index = 0
         while (index < args.size) {
             val arg = args[index]
@@ -1027,7 +1031,7 @@ object CliParser {
                 "--control-dir", "--max-bytes", "--after-cursor", "--range",
                 "--frame-limit", "--after-ordinal", "--format",
                 "--follow-poll-interval", "--follow-max-polls",
-                "--stage", "--step", "--kind", "--run" -> {
+                "--stage", "--step", "--kind", "--run", "--db" -> {
                     val value = args.getOrNull(index + 1)
                         ?: return ConsoleCliParseResult.Rejected(ConsoleCliRefusal.MissingOptionValue(arg))
                     when (arg) {
@@ -1044,6 +1048,7 @@ object CliParser {
                         "--step" -> steps += value
                         "--kind" -> kinds += value
                         "--run" -> runOverride = value
+                        "--db" -> dbPath = value
                     }
                     index++
                 }
@@ -1083,7 +1088,7 @@ object CliParser {
             controlDir, runId, opId, maxBytes, afterCursor, range, formatToken,
             frames, frameLimit, afterOrdinal,
             follow, followPollInterval, followMaxPolls,
-            stages, steps, kinds, runOverride,
+            stages, steps, kinds, runOverride, dbPath,
         )
     }
 
@@ -1117,6 +1122,7 @@ object CliParser {
         steps: Set<String>,
         kinds: Set<String>,
         runOverride: String?,
+        dbPath: String?,
     ): ConsoleCliParseResult {
         val cd = controlDir ?: return consoleReject(ConsoleCliRefusal.MissingArgument)
         val hasFilter = stages.isNotEmpty() || steps.isNotEmpty() || kinds.isNotEmpty()
@@ -1129,7 +1135,19 @@ object CliParser {
         // Either a positional runId or a `--run` override is required; the existing
         // MissingArgument refusal covers "neither" and is reused unchanged.
         val effectiveRunId = runId ?: runOverride ?: return consoleReject(ConsoleCliRefusal.MissingArgument)
-        val oid = opId ?: return consoleReject(ConsoleCliRefusal.MissingArgument)
+        // R4 / WU-RC3 — the opId positional is REQUIRED for an unfiltered read and OPTIONAL when
+        // a content filter is present.
+        //
+        // It was required unconditionally, which made `--stage`/`--step`/`--kind` unable to select
+        // among operations at all: the read was scoped to ONE operation before any filter ran, so
+        // `--stage build` could never reach an operation the positional had not already named.
+        // The filter and the positional are two constraints on the same question, and requiring
+        // one of them made the other nearly meaningless.
+        //
+        // Supplying both is an INTERSECTION — the positional names one operation and the filter
+        // may only remove from it — which is why `null` is a real request state rather than a
+        // missing argument.
+        val oid = opId ?: if (hasFilter) null else return consoleReject(ConsoleCliRefusal.MissingArgument)
 
         val incompatible = when {
             range == null -> null
@@ -1185,18 +1203,37 @@ object CliParser {
                 )
         } ?: MainConsoleCli.ConsoleFormat.TEXT
 
-        if (follow) return consoleAdmitFollowFrames(
-            cd, effectiveRunId, oid, frameLimit, afterOrdinal, followPollInterval, followMaxPolls, format,
-        )
+        // R4 / WU-RC3 — audit P0-4. `--follow` used to be dispatched FIRST, so
+        // `--frames --follow --stage build` admitted a filterless FollowFrames and dropped the
+        // filter in silence: the operator asked for one stage, was shown the whole run, and got
+        // exit 0. Filters and following are INDEPENDENT axes — following is how long you read,
+        // filtering is what you read — so there is no reason for one to shadow the other and the
+        // only thing that has to be decided is which SHAPE the request takes.
+        //
+        // `--follow` + a filter is therefore a [ConsoleReadRequest.FollowFrames] CARRYING the
+        // filters, and it is the same selection the single read consults. One decision, two
+        // interpreters.
+        if (follow) {
+            return consoleAdmitFollowFrames(
+                cd, effectiveRunId, oid, frameLimit, afterOrdinal, followPollInterval, followMaxPolls, format,
+                stages = stages, steps = steps, kinds = kinds, dbPath = dbPath,
+            )
+        }
         if (hasFilter) {
             return consoleAdmitFramesFiltered(
                 cd, effectiveRunId, oid, frameLimit, afterOrdinal, format,
-                stages, steps, kinds,
+                stages, steps, kinds, dbPath = dbPath,
             )
         }
         if (frames) return consoleAdmitFrames(cd, effectiveRunId, oid, frameLimit, afterOrdinal, format)
-        if (range != null) return consoleAdmitRange(cd, effectiveRunId, oid, range, format)
-        return consoleAdmitPage(cd, effectiveRunId, oid, maxBytes, afterCursor, format)
+        // The byte paths address ONE operation by construction — a cursor, a range and a page are
+        // all positions WITHIN an operation's stream, so "which operation" is not a question they
+        // can answer differently. `oid` is null only when a filter was admitted, and a filter
+        // without `--frames` was already refused above, so this cannot fire; it is written out
+        // rather than assumed so the invariant is visible where it is relied on.
+        val byteScopedOpId = oid ?: return consoleReject(ConsoleCliRefusal.MissingArgument)
+        if (range != null) return consoleAdmitRange(cd, effectiveRunId, byteScopedOpId, range, format)
+        return consoleAdmitPage(cd, effectiveRunId, byteScopedOpId, maxBytes, afterCursor, format)
     }
 
     private fun consoleReject(refusal: ConsoleCliRefusal): ConsoleCliParseResult =
@@ -1242,7 +1279,7 @@ object CliParser {
     private fun consoleAdmitFrames(
         controlDir: String,
         runId: String,
-        opId: String,
+        opId: String?,
         frameLimit: String?,
         afterOrdinal: String?,
         format: MainConsoleCli.ConsoleFormat,
@@ -1278,12 +1315,16 @@ object CliParser {
     private fun consoleAdmitFollowFrames(
         controlDir: String,
         runId: String,
-        opId: String,
+        opId: String?,
         frameLimit: String?,
         afterOrdinal: String?,
         followPollInterval: String?,
         followMaxPolls: String?,
         format: MainConsoleCli.ConsoleFormat,
+        stages: Set<String>,
+        steps: Set<String>,
+        kinds: Set<String>,
+        dbPath: String?,
     ): ConsoleCliParseResult {
         val limit = frameLimit?.let { value ->
             value.toIntOrNull()?.takeIf { it > 0 }
@@ -1318,9 +1359,30 @@ object CliParser {
                 limit,
                 FollowConfig(pollIntervalMillis, maxPolls),
                 format,
+                filters = consoleFilters(stages, steps, kinds),
+                dbPath = dbPath,
             ),
         )
     }
+
+    /**
+     * Lower the three raw token sets into the closed [ConsoleFrameFilters] ADT.
+     *
+     * One function so `--follow` and a single filtered read cannot disagree about what a filter
+     * IS. All-empty axes produce [ConsoleFrameFilters.None] rather than an `Active` with nothing
+     * in it — the closed ADT refuses that, correctly, because "no axis constrains" and "a filter
+     * is active" are different claims.
+     */
+    private fun consoleFilters(
+        stages: Set<String>,
+        steps: Set<String>,
+        kinds: Set<String>,
+    ): ConsoleFrameFilters =
+        if (stages.isEmpty() && steps.isEmpty() && kinds.isEmpty()) {
+            ConsoleFrameFilters.None
+        } else {
+            ConsoleFrameFilters.Active(stages, steps, kinds)
+        }
 
     /**
      * R4 / WU-CON-2.2 — admit a filtered per-frame read.
@@ -1333,13 +1395,14 @@ object CliParser {
     private fun consoleAdmitFramesFiltered(
         controlDir: String,
         runId: String,
-        opId: String,
+        opId: String?,
         frameLimit: String?,
         afterOrdinal: String?,
         format: MainConsoleCli.ConsoleFormat,
         stages: Set<String>,
         steps: Set<String>,
         kinds: Set<String>,
+        dbPath: String?,
     ): ConsoleCliParseResult {
         if (stages.isEmpty() && steps.isEmpty() && kinds.isEmpty()) {
             // The `hasFilter` check at the call site already guarantees a non-empty axis;
@@ -1360,7 +1423,9 @@ object CliParser {
 
         val filters = ConsoleFrameFilters.Active(stages, steps, kinds)
         return ConsoleCliParseResult.Admitted(
-            ConsoleReadRequest.FramesFiltered(controlDir, runId, opId, ordinal, limit, filters, format),
+            ConsoleReadRequest.FramesFiltered(
+                controlDir, runId, opId, ordinal, limit, filters, format, dbPath = dbPath,
+            ),
         )
     }
 

@@ -156,10 +156,27 @@ object ContractCatalogue {
             ),
             minFidelity = Fidelity.HF2,
         ),
+        Contract(
+            capability = "Provenance.build.identity",
+            owningModule = ":pipeline-application",
+            sourcePaths = listOf(
+                "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/RuntimeApiVersion.kt",
+                "v2/pipeline-application/build.gradle.kts",
+            ),
+            minFidelity = Fidelity.HF2,
+        ),
     )
 
     /** Changes that escalate the required level rather than only selecting contracts. */
     val ESCALATIONS: List<EscalationRule> = listOf(
+        EscalationRule(
+            capability = "Provenance.build.identity",
+            from = Fidelity.HF2,
+            to = Fidelity.HF2,
+            reason =
+                "A change to the build file invalidates the identity of every artefact built " +
+                    "before it, so prior evidence is stale by construction and must be re-earned.",
+        ),
         EscalationRule(
             capability = "OutputPlane.read.cursor",
             from = Fidelity.HF2,

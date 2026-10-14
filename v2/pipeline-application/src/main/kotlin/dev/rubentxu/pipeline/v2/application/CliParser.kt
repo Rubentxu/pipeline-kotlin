@@ -1005,16 +1005,29 @@ object CliParser {
         var frames = false
         var frameLimit: String? = null
         var afterOrdinal: String? = null
+        // R4 / WU-CON-2.3 — `--follow` over the per-frame path. Boolean gates the dispatch;
+        // the two valued options (`--follow-poll-interval`, `--follow-max-polls`) carry into
+        // [consoleAdmitFollowFrames] via [consoleValidate] and become [FollowConfig].
         var follow = false
         var followPollInterval: String? = null
         var followMaxPolls: String? = null
+        // R4 / WU-CON-2.2 — content filters on the per-frame path. Repeated flags OR within an
+        // axis; the three axes AND together (a frame must satisfy every non-empty axis). The
+        // sets are populated here and lowered into the closed [ConsoleFrameFilters.Active] ADT
+        // in [consoleValidate]. `--run` is the only one of the four that is not a filter — it
+        // is an alternative to the positional `<runId>` and is mutually exclusive with it.
+        var stages: MutableSet<String> = LinkedHashSet()
+        var steps: MutableSet<String> = LinkedHashSet()
+        var kinds: MutableSet<String> = LinkedHashSet()
+        var runOverride: String? = null
         var index = 0
         while (index < args.size) {
             val arg = args[index]
             when (arg) {
                 "--control-dir", "--max-bytes", "--after-cursor", "--range",
                 "--frame-limit", "--after-ordinal", "--format",
-                "--follow-poll-interval", "--follow-max-polls" -> {
+                "--follow-poll-interval", "--follow-max-polls",
+                "--stage", "--step", "--kind", "--run" -> {
                     val value = args.getOrNull(index + 1)
                         ?: return ConsoleCliParseResult.Rejected(ConsoleCliRefusal.MissingOptionValue(arg))
                     when (arg) {
@@ -1027,28 +1040,62 @@ object CliParser {
                         "--format" -> formatToken = value
                         "--follow-poll-interval" -> followPollInterval = value
                         "--follow-max-polls" -> followMaxPolls = value
+                        "--stage" -> stages += value
+                        "--step" -> steps += value
+                        "--kind" -> kinds += value
+                        "--run" -> runOverride = value
                     }
                     index++
                 }
                 "--frames" -> frames = true
                 "--follow" -> follow = true
                 else -> {
-                    val refusal = consolePositional(arg, runId, opId)
+                    // R4 / WU-CON-2.2 — `--run` and a positional `<runId>` are mutually
+                    // exclusive, and a positional that follows `--run` is interpreted as
+                    // the opId (the runId comes from the flag). The second positional,
+                    // if any, IS a positional runId: the user typed it after the opId
+                    // they meant, and the two would collide on the runId slot. Refuse
+                    // before [consoleValidate] so the typed `MutuallyExclusiveRunId`
+                    // surfaces with both tokens named.
+                    val refusal = consolePositional(arg, runId, opId, runOverride != null)
                     if (refusal != null) return ConsoleCliParseResult.Rejected(refusal)
-                    if (runId == null) runId = arg else opId = arg
+                    if (runOverride != null) {
+                        if (opId == null) {
+                            opId = arg
+                        } else {
+                            // opId is already set, so this second positional is a
+                            // positional runId; `--run` and the positional are
+                            // mutually exclusive.
+                            return ConsoleCliParseResult.Rejected(
+                                ConsoleCliRefusal.MutuallyExclusiveRunId(runId = arg, runOverride = runOverride),
+                            )
+                        }
+                    } else if (runId == null) {
+                        runId = arg
+                    } else {
+                        opId = arg
+                    }
                 }
             }
             index++
         }
         return consoleValidate(
             controlDir, runId, opId, maxBytes, afterCursor, range, formatToken,
-            frames, frameLimit, afterOrdinal, follow, followPollInterval, followMaxPolls,
+            frames, frameLimit, afterOrdinal,
+            follow, followPollInterval, followMaxPolls,
+            stages, steps, kinds, runOverride,
         )
     }
 
-    private fun consolePositional(arg: String, runId: String?, opId: String?): ConsoleCliRefusal? = when {
+    private fun consolePositional(arg: String, runId: String?, opId: String?, hasRunOverride: Boolean): ConsoleCliRefusal? = when {
         arg.startsWith("--") -> ConsoleCliRefusal.UnknownOption(arg)
-        runId != null && opId != null -> ConsoleCliRefusal.UnexpectedArgument(arg)
+        // Without `--run`, the slots are runId then opId. Both filled → unexpected.
+        !hasRunOverride && runId != null && opId != null -> ConsoleCliRefusal.UnexpectedArgument(arg)
+        // With `--run`, the slot is opId only. A second positional is the runId conflict
+        // and the main loop in [parseConsole] handles it as [MutuallyExclusiveRunId] rather
+        // than as a generic unexpected argument, so the refusal names both tokens. The
+        // positional-pivot here only needs to admit the FIRST positional under `--run`.
+        hasRunOverride && opId != null -> null
         else -> null
     }
 
@@ -1066,9 +1113,22 @@ object CliParser {
         follow: Boolean,
         followPollInterval: String?,
         followMaxPolls: String?,
+        stages: Set<String>,
+        steps: Set<String>,
+        kinds: Set<String>,
+        runOverride: String?,
     ): ConsoleCliParseResult {
         val cd = controlDir ?: return consoleReject(ConsoleCliRefusal.MissingArgument)
-        val rid = runId ?: return consoleReject(ConsoleCliRefusal.MissingArgument)
+        val hasFilter = stages.isNotEmpty() || steps.isNotEmpty() || kinds.isNotEmpty()
+
+        // R4 / WU-CON-2.2 — `--run` replaces the positional <runId>; both is a category error
+        // that the verb main has no honest answer to, so it is refused at admission.
+        if (runOverride != null && runId != null) {
+            return consoleReject(ConsoleCliRefusal.MutuallyExclusiveRunId(runId, runOverride))
+        }
+        // Either a positional runId or a `--run` override is required; the existing
+        // MissingArgument refusal covers "neither" and is reused unchanged.
+        val effectiveRunId = runId ?: runOverride ?: return consoleReject(ConsoleCliRefusal.MissingArgument)
         val oid = opId ?: return consoleReject(ConsoleCliRefusal.MissingArgument)
 
         val incompatible = when {
@@ -1095,9 +1155,24 @@ object CliParser {
         // R4 / WU-CON-2.3 — `--follow` requires `--frames`. Refused rather than defaulted: a
         // `--follow` against the byte path would silently emit the merged page once and then
         // poll forever on a byte cursor, which is a different contract from what the operator
-        // asked for.
+        // asked for. Fires BEFORE the filter check so the caller that typed both gets the
+        // follow-shaped refusal, not the filter-shaped one.
         if (follow && !frames) {
             return consoleReject(ConsoleCliRefusal.FollowRequiresFrames)
+        }
+        // R4 / WU-CON-2.2 — a content filter without `--frames` is a category error: filters
+        // operate on per-frame records, and the byte-budgeted (Paged) and byte-span (Range)
+        // paths produce no per-frame records. The refusal names every offending flag so the
+        // caller adds `--frames` rather than guessing why their filter did not narrow the
+        // answer. The check sits AFTER the IncompatibleWithFrames table so a caller that
+        // mixed `--frames` with `--range` still gets the per-frame conflict first.
+        if (hasFilter && !frames) {
+            val offending = buildList {
+                if (stages.isNotEmpty()) add("--stage")
+                if (steps.isNotEmpty()) add("--step")
+                if (kinds.isNotEmpty()) add("--kind")
+            }
+            return consoleReject(ConsoleCliRefusal.FilterRequiresFrames(offending))
         }
 
         val format = formatToken?.let { token ->
@@ -1110,10 +1185,18 @@ object CliParser {
                 )
         } ?: MainConsoleCli.ConsoleFormat.TEXT
 
-        if (follow) return consoleAdmitFollowFrames(cd, rid, oid, frameLimit, afterOrdinal, followPollInterval, followMaxPolls, format)
-        if (frames) return consoleAdmitFrames(cd, rid, oid, frameLimit, afterOrdinal, format)
-        if (range != null) return consoleAdmitRange(cd, rid, oid, range, format)
-        return consoleAdmitPage(cd, rid, oid, maxBytes, afterCursor, format)
+        if (follow) return consoleAdmitFollowFrames(
+            cd, effectiveRunId, oid, frameLimit, afterOrdinal, followPollInterval, followMaxPolls, format,
+        )
+        if (hasFilter) {
+            return consoleAdmitFramesFiltered(
+                cd, effectiveRunId, oid, frameLimit, afterOrdinal, format,
+                stages, steps, kinds,
+            )
+        }
+        if (frames) return consoleAdmitFrames(cd, effectiveRunId, oid, frameLimit, afterOrdinal, format)
+        if (range != null) return consoleAdmitRange(cd, effectiveRunId, oid, range, format)
+        return consoleAdmitPage(cd, effectiveRunId, oid, maxBytes, afterCursor, format)
     }
 
     private fun consoleReject(refusal: ConsoleCliRefusal): ConsoleCliParseResult =
@@ -1236,6 +1319,48 @@ object CliParser {
                 FollowConfig(pollIntervalMillis, maxPolls),
                 format,
             ),
+        )
+    }
+
+    /**
+     * R4 / WU-CON-2.2 — admit a filtered per-frame read.
+     *
+     * Reuses the per-frame integer rules from [consoleAdmitFrames] and lowers the three filter
+     * sets into the closed [ConsoleFrameFilters.Active] ADT. The closed ADT
+     * rejects an "active with no axis set" at construction; we gate the call here so the
+     * failure shows up as a parser-level refusal rather than a runtime exception.
+     */
+    private fun consoleAdmitFramesFiltered(
+        controlDir: String,
+        runId: String,
+        opId: String,
+        frameLimit: String?,
+        afterOrdinal: String?,
+        format: MainConsoleCli.ConsoleFormat,
+        stages: Set<String>,
+        steps: Set<String>,
+        kinds: Set<String>,
+    ): ConsoleCliParseResult {
+        if (stages.isEmpty() && steps.isEmpty() && kinds.isEmpty()) {
+            // The `hasFilter` check at the call site already guarantees a non-empty axis;
+            // this branch is the typed "Active with all-empty axes" guard the closed ADT
+            // itself enforces. Kept here for symmetry with the ClosedValueOptions
+            // dispatch; the call-site check is the one that fires on the user's input.
+            return consoleReject(ConsoleCliRefusal.MissingArgument)
+        }
+        val limit = frameLimit?.let { value ->
+            value.toIntOrNull()?.takeIf { it > 0 }
+                ?: return consoleReject(ConsoleCliRefusal.NotAnInteger("--frame-limit", value))
+        } ?: ConsoleReadService.DEFAULT_FRAME_LIMIT
+
+        val ordinal = afterOrdinal?.let { value ->
+            value.toLongOrNull()?.takeIf { it >= -1L }
+                ?: return consoleReject(ConsoleCliRefusal.NotAnInteger("--after-ordinal", value))
+        } ?: -1L
+
+        val filters = ConsoleFrameFilters.Active(stages, steps, kinds)
+        return ConsoleCliParseResult.Admitted(
+            ConsoleReadRequest.FramesFiltered(controlDir, runId, opId, ordinal, limit, filters, format),
         )
     }
 

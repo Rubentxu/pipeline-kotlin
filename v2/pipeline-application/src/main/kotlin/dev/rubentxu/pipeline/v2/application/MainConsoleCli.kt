@@ -1,7 +1,11 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
+import dev.rubentxu.pipeline.v2.application.observation.ObservationJsonLines
+import dev.rubentxu.pipeline.v2.application.observation.ObservationRecord
+import dev.rubentxu.pipeline.v2.output.OutputChannel
 import dev.rubentxu.pipeline.v2.output.OutputCursor
+import dev.rubentxu.pipeline.v2.output.OutputFrame
 import dev.rubentxu.pipeline.v2.output.OutputPage
 import dev.rubentxu.pipeline.v2.output.OutputReadResult
 import dev.rubentxu.pipeline.v2.output.OutputRefusal
@@ -313,6 +317,7 @@ sealed interface ConsoleReadRequest {
     val controlDir: String
     val runId: String
     val opId: String
+    val format: MainConsoleCli.ConsoleFormat
 
     /** Continue after [after] (`null` starts at the beginning), emitting at most [maxBytes] bytes. */
     data class Paged(
@@ -321,6 +326,7 @@ sealed interface ConsoleReadRequest {
         override val opId: String,
         val after: OutputCursor?,
         val maxBytes: Int,
+        override val format: MainConsoleCli.ConsoleFormat,
     ) : ConsoleReadRequest
 
     /** The committed span `[from, to)` of the merged offset space. No continuation is produced. */
@@ -330,6 +336,7 @@ sealed interface ConsoleReadRequest {
         override val opId: String,
         val from: Long,
         val to: Long,
+        override val format: MainConsoleCli.ConsoleFormat,
     ) : ConsoleReadRequest
 }
 
@@ -373,13 +380,25 @@ sealed interface ConsoleCliRefusal {
                 "is expressed with a cursor and a span across two channel streams has no single one. " +
                 "Drop '$option', or read a page with --after-cursor '$option' instead."
     }
+
+    /**
+     * R4 / WU-R4.3 — `--format` was given a value that is neither `text` nor `jsonl`.
+     *
+     * Distinct from [UnknownOption] (which is about a flag the verb does not recognise) and from
+     * [MissingOptionValue] (the flag had no value). The closed [MainConsoleCli.ConsoleFormat] ADT
+     * has exactly two cases; this refusal names the offending value so the caller edits one token
+     * rather than guessing which one.
+     */
+    data class UnknownFormat(val value: String, val accepted: List<String>) : ConsoleCliRefusal
 }
 
 /** One stable line per refusal, so a script can branch on the reason. */
 fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal) {
     ConsoleCliRefusal.MissingArgument ->
         "Usage: pipeline console --control-dir <path> <runId> <opId> " +
-            "[--max-bytes N] [--after-cursor TOKEN] | --range FROM:TO"
+            "[--max-bytes N] [--after-cursor TOKEN] " +
+            "[--format text|jsonl] " +
+            "| --range FROM:TO [--format text|jsonl]"
     is ConsoleCliRefusal.UnknownOption -> "Error: unknown option: ${refusal.option}"
     is ConsoleCliRefusal.UnexpectedArgument -> "Error: unexpected extra argument: ${refusal.value}"
     is ConsoleCliRefusal.NotAnInteger ->
@@ -389,6 +408,8 @@ fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal)
     is ConsoleCliRefusal.ControlDirNotFound -> "Error: control dir not found: ${refusal.path}"
     is ConsoleCliRefusal.MissingOptionValue -> "Error: ${refusal.option} requires a value"
     is ConsoleCliRefusal.IncompatibleWithRange -> "Error: ${refusal.toString()}"
+    is ConsoleCliRefusal.UnknownFormat ->
+        "Error: --format must be one of ${refusal.accepted.joinToString("|")}, got: ${refusal.value}"
 }
 
 /**
@@ -397,6 +418,7 @@ fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal)
  * ```text
  * pipeline console --control-dir <path> <runId> <opId> [--max-bytes N] [--after-cursor TOKEN]
  * pipeline console --control-dir <path> <runId> <opId> --range FROM:TO
+ * pipeline console --control-dir <path> <runId> <opId> --format text|jsonl ...
  * ```
  *
  * The console transcript goes to **stdout as bytes**, not as a rendered line, because a consumer
@@ -404,6 +426,19 @@ fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal)
  * continuation token goes to **stderr**, which is the convention [MainEventsCli] already uses and
  * keeps the two planes from colliding. A refusal is therefore also stderr-only: it must never reach
  * stdout, because a consumer reading bytes there cannot tell a refusal from an empty transcript.
+ *
+ * ## R4 / WU-R4.3 — `--format text | jsonl`
+ *
+ * The default is `text` (raw bytes to stdout, unchanged from M1-P3). `--format jsonl` switches
+ * the emitter to [ObservationJsonLines]: one record per page, with the canonical
+ * `{type:"output", channel, operation, ordinal, from, to, text/base64}` shape, the same one
+ * `pipelinek observe --view console --format jsonl` already produces. Stdout stays the protocol
+ * surface (one record per line, newline-terminated, flushed); the continuation token still
+ * goes to stderr, so a script can resume without parsing the jsonl stream for control bytes.
+ *
+ * The jsonl path is bounded to the operation's merged page; a future slice can wire per-frame
+ * records through `FrameIndexedObservationOutputReader` once the per-operation index is
+ * available (CON-2.1/2.2 follow-up).
  *
  * ## Three steps, in that order
  *
@@ -413,6 +448,26 @@ fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal)
  * should delete. [MainConsoleCli.execute] interprets the admitted request.
  */
 object MainConsoleCli {
+
+    /**
+     * R4 / WU-R4.3 — the closed ADT of console output formats.
+     *
+     * `TEXT` is the legacy raw-bytes path (unchanged from M1-P3). `JSONL` is the canonical
+     * machine-readable projection [ObservationJsonLines] emits. Adding a third case is a
+     * compile-time break for every caller of [ConsoleReadRequest.format] and for the emit
+     * dispatch in [MainConsoleCli.emit].
+     */
+    enum class ConsoleFormat(val token: String) {
+        /** Raw bytes to stdout. Default. */
+        TEXT("text"),
+        /** One [ObservationJsonLines] record per line. */
+        JSONL("jsonl"),
+        ;
+
+        companion object {
+            fun parse(token: String): ConsoleFormat? = values().firstOrNull { it.token == token }
+        }
+    }
 
     fun main(args: Array<String>): Int = when (val admitted = MainConsoleCliAdmission.admit(args)) {
         is ConsoleCliAdmission.Rejected -> {
@@ -431,7 +486,7 @@ object MainConsoleCli {
                 )
                 2
             } else {
-                emit(execute(request, root), System.out, System.err)
+                emit(execute(request, root), request, System.out, System.err)
             }
         }
     }
@@ -456,22 +511,81 @@ object MainConsoleCli {
             )
         }
 
-    /** Emit the result. Split out so a test drives it without capturing the real process streams. */
-    fun emit(result: ConsoleReadService.Result, out: PrintStream, err: PrintStream): Int =
-        when (result) {
-            is ConsoleReadService.Result.Refused -> {
-                err.println(ConsoleReadService.renderRefusal(result.reason))
-                1
-            }
-            is ConsoleReadService.Result.Page -> {
-                // Raw bytes. The transcript is not text-shaped in general and re-encoding it here
-                // would corrupt anything that is not valid UTF-8.
-                out.write(result.page.bytes)
-                out.flush()
-                result.page.next?.let { err.println(it.encode()) }
-                0
+    /**
+     * Emit the result. Split out so a test drives it without capturing the real process streams.
+     *
+     * R4 / WU-R4.3 — the format dispatch is a `when` over the closed [ConsoleFormat] ADT (two
+     * cases: `TEXT` raw bytes, `JSONL` envelope). The `JSONL` path builds a synthetic
+     * [ObservationRecord.Output] from the page so the existing [ObservationJsonLines] writer
+     * stays the only encoder; an [ObservationFrameOrdinal] of `0` and a synthetic
+     * [OutputFrame] are honest about the fact that the merged page is one reader-side
+     * projection, not a kernel-recorded frame.
+     */
+    fun emit(
+        result: ConsoleReadService.Result,
+        request: ConsoleReadRequest,
+        out: PrintStream,
+        err: PrintStream,
+    ): Int = when (result) {
+        is ConsoleReadService.Result.Refused -> {
+            err.println(ConsoleReadService.renderRefusal(result.reason))
+            1
+        }
+        is ConsoleReadService.Result.Page -> {
+            when (request.format) {
+                ConsoleFormat.TEXT -> {
+                    // Raw bytes. The transcript is not text-shaped in general and re-encoding it
+                    // here would corrupt anything that is not valid UTF-8.
+                    out.write(result.page.bytes)
+                    out.flush()
+                    result.page.next?.let { err.println(it.encode()) }
+                    0
+                }
+                ConsoleFormat.JSONL -> emitJsonlPage(result.page, out, err)
             }
         }
+    }
+
+    /**
+     * R4 / WU-R4.3 — emit one [ObservationJsonLines] record for a merged [OutputPage].
+     *
+     * The page names one stream (`page.stream`) and a byte range (`page.from..page.committedEnd`).
+     * We construct an [ObservationRecord.Output] carrying the page's bytes so the existing
+     * encoder handles the text/base64 split (`ObservationJsonLines.encodeOutputLine`). The
+     * ordinal is `0L` (synthetic) and the [OutputFrame] is named from the page's reported
+     * stream and range; the page's "next" cursor still goes to stderr so a `--follow` consumer
+     * can resume without parsing the jsonl stream for control bytes.
+     */
+    private fun emitJsonlPage(
+        page: OutputPage,
+        out: PrintStream,
+        err: PrintStream,
+    ): Int {
+        // The merged page's stream id names the channel that contributed the FIRST byte
+        // (see [ConsoleReadService.read]). `OutputStreamAddress.parse` reads it back; an
+        // unknown shape falls back to STDOUT because a `null` channel would be a fact a
+        // consumer would have to invent a default for, and `STDOUT` is the honest answer
+        // when the read could not name anything else.
+        val address = OutputStreamAddress.parse(page.stream)
+        val channel = address?.channel ?: OutputChannel.STDOUT
+        val syntheticFrame = OutputFrame(
+            ordinal = 0L,
+            stream = page.stream,
+            channel = channel,
+            from = page.from,
+            to = page.committedEnd,
+        )
+        val record = ObservationRecord.Output(
+            frame = syntheticFrame,
+            bytes = page.bytes,
+            text = String(page.bytes, StandardCharsets.UTF_8),
+        )
+        val writer = java.io.PrintWriter(java.io.OutputStreamWriter(out, StandardCharsets.UTF_8), true)
+        ObservationJsonLines.writeTo(listOf(record), writer)
+        writer.flush()
+        page.next?.let { err.println(it.encode()) }
+        return 0
+    }
 
     /** Convenience for a consumer that wants the whole stream; bounded by the store, not by memory. */
     fun readWholeStream(
@@ -525,6 +639,8 @@ private data class ConsoleCliTokens(
     val maxBytes: String? = null,
     val afterCursor: String? = null,
     val range: String? = null,
+    /** R4 / WU-R4.3 — `--format` value as written; validated in [MainConsoleCliAdmission.validate]. */
+    val formatToken: String? = null,
 )
 
 private sealed interface ConsoleCliParse {
@@ -566,6 +682,7 @@ private object MainConsoleCliAdmission {
         var maxBytes: String? = null
         var afterCursor: String? = null
         var range: String? = null
+        var formatToken: String? = null
         var index = 0
         while (index < args.size) {
             val arg = args[index]
@@ -575,14 +692,15 @@ private object MainConsoleCliAdmission {
                 // present and its value is missing — a different fact from the flag being absent.
                 // Reading both as null applied the default page size to a command that never
                 // supplied one, and left the caller unable to tell which command they had run.
-                "--control-dir", "--max-bytes", "--after-cursor", "--range" -> {
+                "--control-dir", "--max-bytes", "--after-cursor", "--range", "--format" -> {
                     val value = args.getOrNull(index + 1)
                         ?: return ConsoleCliParse.Rejected(ConsoleCliRefusal.MissingOptionValue(arg))
                     when (arg) {
                         "--control-dir" -> controlDir = value
                         "--max-bytes" -> maxBytes = value
                         "--after-cursor" -> afterCursor = value
-                        else -> range = value
+                        "--range" -> range = value
+                        "--format" -> formatToken = value
                     }
                     index++
                 }
@@ -597,7 +715,7 @@ private object MainConsoleCliAdmission {
             index++
         }
         return ConsoleCliParse.Collected(
-            ConsoleCliTokens(controlDir, runId, opId, maxBytes, afterCursor, range),
+            ConsoleCliTokens(controlDir, runId, opId, maxBytes, afterCursor, range, formatToken),
         )
     }
 
@@ -623,18 +741,37 @@ private object MainConsoleCliAdmission {
             return rejected(ConsoleCliRefusal.IncompatibleWithRange(incompatible))
         }
 
-        if (range != null) return admitRange(controlDir, runId, opId, range)
-        return admitPage(controlDir, runId, opId, tokens)
+        // R4 / WU-R4.3 — parse `--format` into the closed [MainConsoleCli.ConsoleFormat] ADT
+        // (two cases: text, jsonl). An unknown value refuses with a typed reason that names
+        // the accepted list, so a caller edits one token rather than guessing.
+        val format = tokens.formatToken?.let { token ->
+            MainConsoleCli.ConsoleFormat.parse(token)
+                ?: return rejected(
+                    ConsoleCliRefusal.UnknownFormat(
+                        value = token,
+                        accepted = MainConsoleCli.ConsoleFormat.values().map { it.token },
+                    ),
+                )
+        } ?: MainConsoleCli.ConsoleFormat.TEXT
+
+        if (range != null) return admitRange(controlDir, runId, opId, range, format)
+        return admitPage(controlDir, runId, opId, tokens, format)
     }
 
-    private fun admitRange(controlDir: String, runId: String, opId: String, range: String): ConsoleCliAdmission {
+    private fun admitRange(
+        controlDir: String,
+        runId: String,
+        opId: String,
+        range: String,
+        format: MainConsoleCli.ConsoleFormat,
+    ): ConsoleCliAdmission {
         val bounds = range.split(':')
         val from = bounds.getOrNull(0)?.toLongOrNull()
         val to = bounds.getOrNull(1)?.toLongOrNull()
         if (bounds.size != 2 || from == null || to == null) {
             return rejected(ConsoleCliRefusal.NotARange(range))
         }
-        return ConsoleCliAdmission.Admitted(ConsoleReadRequest.Range(controlDir, runId, opId, from, to))
+        return ConsoleCliAdmission.Admitted(ConsoleReadRequest.Range(controlDir, runId, opId, from, to, format))
     }
 
     private fun admitPage(
@@ -642,6 +779,7 @@ private object MainConsoleCliAdmission {
         runId: String,
         opId: String,
         tokens: ConsoleCliTokens,
+        format: MainConsoleCli.ConsoleFormat,
     ): ConsoleCliAdmission {
         val maxBytes = tokens.maxBytes?.let { value ->
             value.toIntOrNull()?.takeIf { it > 0 }
@@ -654,7 +792,9 @@ private object MainConsoleCliAdmission {
             OutputCursor.decode(token) ?: return rejected(ConsoleCliRefusal.NotACursorToken(token))
         }
 
-        return ConsoleCliAdmission.Admitted(ConsoleReadRequest.Paged(controlDir, runId, opId, after, maxBytes))
+        return ConsoleCliAdmission.Admitted(
+            ConsoleReadRequest.Paged(controlDir, runId, opId, after, maxBytes, format),
+        )
     }
 
     private fun rejected(refusal: ConsoleCliRefusal): ConsoleCliAdmission =

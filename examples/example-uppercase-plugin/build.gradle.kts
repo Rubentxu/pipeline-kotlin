@@ -157,6 +157,12 @@ val computeUppercaseRelease = tasks.register("computeUppercaseRelease") {
     val namespaceName = uppercaseNamespace
     val releaseVersion = version.toString()
 
+    // R4 / WU-R4.0.0 — declare sdkVersion as an explicit input so the
+    // apiRange is regenerated when the host version changes (see
+    // example-block-plugin for the same change with the full story).
+    inputs.property("sdkVersion", sdkVersion)
+    inputs.property("uppercaseApiRangeMin", uppercaseApiRangeMin)
+
     dependsOn("compileKotlin", "processResources")
     outputs.file(propsFile)
 

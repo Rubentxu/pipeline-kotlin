@@ -150,6 +150,18 @@ val computeBlockRelease = tasks.register("computeBlockRelease") {
     val namespaceName = blockNamespace
     val releaseVersion = version.toString()
 
+    // R4 / WU-R4.0.0 — declare sdkVersion as an explicit input. Without this, the
+    // `release-properties` document (and downstream the apiRange in
+    // `plugin-manifest.json`) goes STALE when the host version changes but the
+    // SDK jar content does not: Gradle's default fingerprint does not see the
+    // `-PsdkVersion=...` Gradle property, so a host version bump from 0.59.0 to
+    // 0.60.0 with no source change produced a build whose apiRange was still
+    // [0.59.0, 0.60.0). The shipped installDist then refused the example
+    // plugins for IncompatibleApiRange, which made every `pipelinek run` exit
+    // 2 BEFORE the run body compiled.
+    inputs.property("sdkVersion", sdkVersion)
+    inputs.property("blockApiRangeMin", blockApiRangeMin)
+
     dependsOn("compileKotlin", "processResources")
     outputs.file(propsFile)
 

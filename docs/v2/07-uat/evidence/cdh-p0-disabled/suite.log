@@ -1,0 +1,26 @@
+test_brand_new_disabled_class_is_extracted (__main__.ExtractionStillWorks.test_brand_new_disabled_class_is_extracted)
+Claim: extraction sees a disabled method with no history. ... /var/home/rubentxu/.herdr/worktrees/pipeline-kotlin/worktree-test-harnes-evolutivo/scripts/gen-disabled-inventory.py:109: ResourceWarning: unclosed file <_io.TextIOWrapper name='/home/rubentxu/.jcode/scratch/tmpxgxu3a3g/Fresh.kt' mode='r' encoding='utf-8'>
+  src = open(abs_path, encoding="utf-8").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_generator_exits_nonzero_on_the_real_tree (__main__.TheGeneratorRefusesToPublish.test_generator_exits_nonzero_on_the_real_tree)
+Claim: the current repository has untriaged entries and says so. ... ok
+test_generator_names_the_untriaged_entries (__main__.TheGeneratorRefusesToPublish.test_generator_names_the_untriaged_entries)
+Claim: the diagnostic is actionable, not a bare count. ... ok
+test_inventory_written_marks_unknown_as_blocking (__main__.TheGeneratorRefusesToPublish.test_inventory_written_marks_unknown_as_blocking)
+Claim: the published document does not claim the gate is clear. ... ok
+test_declared_entries_still_resolve (__main__.UnknownIsRefused.test_declared_entries_still_resolve)
+Claim: the table still wins for entries it declares. ... ok
+test_historical_is_reachable_only_by_declaration (__main__.UnknownIsRefused.test_historical_is_reachable_only_by_declaration)
+Claim: HISTORICAL exists as a category but is never inferred. ... ok
+test_unknown_is_not_one_of_the_normal_categories (__main__.UnknownIsRefused.test_unknown_is_not_one_of_the_normal_categories)
+Claim: UNKNOWN is a distinct outcome, not a sixth routine category. ... ok
+test_untriaged_blocks_gate_1 (__main__.UnknownIsRefused.test_untriaged_blocks_gate_1)
+Claim: an untriaged disabled test is not a green gate. ... ok
+test_untriaged_is_not_historical (__main__.UnknownIsRefused.test_untriaged_is_not_historical)
+Claim: an undeclared entry is UNKNOWN, never HISTORICAL. ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.487s
+
+OK

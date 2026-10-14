@@ -1,0 +1,34 @@
+original_sha256=c6889a78553d86a87ef6dbc59aa3925811c3716ad1f8d076477709d54ffcaa9d
+
+== CONTROL
+  suite_exit=0  Ran 9 tests in 0.395s
+
+== M24: restore the unconditional HISTORICAL default
+  suite_exit=1  Ran 9 tests in 0.397s
+  KILLED  by 'untriaged_is_not_historical'
+  restored: c6889a78553d86a87ef6dbc59aa3925811c3716ad1f8d076477709d54ffcaa9d
+
+== M25: UNKNOWN is classified but no longer blocks Gate-1
+  suite_exit=1  Ran 9 tests in 0.449s
+  KILLED  by 'untriaged_blocks_gate_1'
+  restored: c6889a78553d86a87ef6dbc59aa3925811c3716ad1f8d076477709d54ffcaa9d
+
+== M26: generator exits 0 while untriaged entries exist
+  suite_exit=1  Ran 9 tests in 0.398s
+  KILLED  by 'generator_exits_nonzero'
+  restored: c6889a78553d86a87ef6dbc59aa3925811c3716ad1f8d076477709d54ffcaa9d
+
+== M27: UNKNOWN excluded from the mandatory Gate-1 total
+  suite_exit=1  Ran 9 tests in 0.395s
+  KILLED  by 'inventory_written_marks_unknown_as_blocking'
+  restored: c6889a78553d86a87ef6dbc59aa3925811c3716ad1f8d076477709d54ffcaa9d
+
+== M28: classify() ignores CLASSIFICATION and always returns UNKNOWN
+  suite_exit=1  Ran 9 tests in 0.396s
+  KILLED  by 'declared_entries_still_resolve'
+  restored: c6889a78553d86a87ef6dbc59aa3925811c3716ad1f8d076477709d54ffcaa9d
+
+== SUMMARY
+  control: green (0)
+  mutations: 5/5 killed
+  RESULT: every claim is discriminating

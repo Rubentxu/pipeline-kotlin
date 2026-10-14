@@ -12,23 +12,57 @@ Categories (classification law, WU-LPR-061):
   EXPERIMENTAL         non-gating research surface
   OBSOLETE             to be deleted (must name its live replacement)
 
+The classification is fail-closed
+----------------------------------
+An @Disabled entry that CLASSIFICATION does not name is classified UNKNOWN,
+and UNKNOWN **blocks Gate-1**. It is never silently HISTORICAL.
+
+That distinction is the whole point of this generator, and it was not what the
+code did. `classify()` ended in an unconditional
+
+    return "HISTORICAL", "Archived migration/cycle snapshot evidence", "no"
+
+so every new `@Disabled` a contributor wrote in passing was filed as archived
+evidence of a closed cycle and stopped blocking the gate. Measured on a
+brand-new class with no history whatsoever, the generator returned
+category='HISTORICAL', blocks_gate_1='no', and exited 0. The comment above
+CLASSIFICATION claimed "the generator fails the run"; it never did, because
+there was no failure path to take.
+
+HISTORICAL is still reachable, but only by being declared. An archived entry is
+a fact about a closed cycle and belongs in the table with its cycle named, where
+a reviewer can see it. Silence is not evidence of archiving.
+
 Usage: python3 scripts/gen-disabled-inventory.py
 """
 import os
 import re
 import subprocess
+import sys
 from datetime import datetime, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEST_ROOT = os.path.join(ROOT, "v2")
 OUT = os.path.join(ROOT, "docs", "v2", "07-uat", "WU_LPR_061_DISABLED_INVENTORY.md")
 
+# Every category the generator can emit, plus the one that means "nobody
+# triaged this". UNKNOWN is deliberately NOT in the same family as the rest: it
+# is the fail-closed outcome, it blocks Gate-1, and it is the only category that
+# makes the generator exit non-zero.
+CATEGORIES = (
+    "MANDATORY_SUPPORTED",
+    "COMPATIBILITY",
+    "HISTORICAL",
+    "EXPERIMENTAL",
+    "OBSOLETE",
+)
+UNTRIAGED = "UNKNOWN"
+
 # file -> (category, reason-summary, decision) classification table.
-# Everything NOT listed here defaults to HISTORICAL (the archived migration
-# snapshot pattern dominates: "@Disabled(\"Historical ...\" / \"Archived ...").
-# A default would silently mask new misclassified entries, so new non-historical
-# @Disabled entries MUST be added to CLASSIFICATION below or the generator
-# fails the run.
+# A @Disabled entry NOT listed here is UNKNOWN and blocks Gate-1. Declaring an
+# entry HISTORICAL is a positive claim about a closed cycle and belongs here,
+# where it is reviewable; the previous unconditional HISTORICAL default made
+# every new disabled test non-gating without anyone deciding that.
 CLASSIFICATION = {
     # COMPATIBILITY: DSL classpath surface for CredentialsId inside .pipeline.kts.
     "v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UatLocal008CredentialsTest.kt": [
@@ -50,13 +84,25 @@ def module_of(rel: str) -> str:
 
 
 def classify(rel: str, method: str) -> tuple:
+    """Return (category, reason, blocks_gate_1) for one @Disabled entry.
+
+    The default is UNKNOWN, not HISTORICAL. A disabled test nobody triaged is
+    an open question, and an open question must not pass for a closed cycle.
+    """
     for f, entries in CLASSIFICATION.items():
         if rel == f:
             for meth, cat, reason, blocking in entries:
                 if meth in method:
                     return cat, reason, blocking
-    # default: archived snapshot evidence
-    return "HISTORICAL", "Archived migration/cycle snapshot evidence (verbatim traceability)", "no"
+    # Untriaged: fail closed. This entry blocks Gate-1 until a human declares
+    # what it is, and the run below refuses to publish an inventory that hides
+    # it.
+    return (
+        UNTRIAGED,
+        "No CLASSIFICATION entry declares this @Disabled; it must be triaged "
+        "before it can be counted as anything else",
+        "yes",
+    )
 
 
 def extract_entries(rel_path: str, abs_path: str):
@@ -81,8 +127,8 @@ def extract_entries(rel_path: str, abs_path: str):
 
 def main():
     rows = []
-    counts = {"MANDATORY_SUPPORTED": 0, "COMPATIBILITY": 0, "HISTORICAL": 0,
-              "EXPERIMENTAL": 0, "OBSOLETE": 0}
+    counts = dict.fromkeys(CATEGORIES + (UNTRIAGED,), 0)
+    untriaged = []
     for dirpath, _dirs, files in os.walk(TEST_ROOT):
         for f in files:
             if not f.endswith(".kt"):
@@ -96,12 +142,18 @@ def main():
             cls = f
             for target, reason in extract_entries(rel, abs_path):
                 cat, cat_reason, blocking = classify(rel, target)
-                counts[cat] += 1
+                counts[cat] = counts.get(cat, 0) + 1
+                if cat == UNTRIAGED:
+                    untriaged.append(f"{rel} :: {target}")
                 rows.append((module_of(rel), cls, target, cat, cat_reason or reason, "pipeline-kotlin maintainers", blocking))
 
     sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=ROOT).stdout.strip()
-    mandatory = counts["MANDATORY_SUPPORTED"]
-    gate = "OPEN (mandatory disabled > 0)" if mandatory > 0 else "not blocked by @Disabled inventory"
+    # UNKNOWN blocks Gate-1 exactly like MANDATORY_SUPPORTED does: an untriaged
+    # disabled test is an unverified hole, and an unverified hole must not be
+    # green. It is counted separately so the report does not conflate "nobody
+    # triaged this" with "triaged and found mandatory".
+    mandatory = counts["MANDATORY_SUPPORTED"] + counts[UNTRIAGED]
+    gate = "OPEN (mandatory or untriaged disabled > 0)" if mandatory > 0 else "not blocked by @Disabled inventory"
     lines = [
         "# WU-LPR-061 — @Disabled Inventory (GENERATED, do not hand-edit counts)",
         "",
@@ -125,14 +177,31 @@ def main():
         "",
         "Regenerate: `python3 scripts/gen-disabled-inventory.py`",
         "",
-        "Law: Gate-1 cannot be GREEN while mandatory-disabled > 0. A new",
-        "non-HISTORICAL @Disabled entry MUST be added to CLASSIFICATION in the",
-        "generator or the inventory silently miscounts it as HISTORICAL.",
+        "Law: Gate-1 cannot be GREEN while mandatory-disabled > 0.",
+        f"`{UNTRIAGED}` counts toward that total and is the fail-closed",
+        "default: a @Disabled entry no CLASSIFICATION row declares is",
+        "UNTRIAGED, never HISTORICAL. Declaring HISTORICAL is a positive",
+        "claim about a closed cycle and must appear in CLASSIFICATION, where",
+        "it is reviewable. An unclassified entry also makes this generator",
+        "exit non-zero, so the inventory cannot be regenerated while hiding one.",
     ]
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     open(OUT, "w", encoding="utf-8").write("\n".join(lines) + "\n")
-    print("\n".join(lines[-14:]))
+    print("\n".join(lines[-16:]))
+
+    if untriaged:
+        print("\n".join([
+            "",
+            f"FAIL: {len(untriaged)} @Disabled entr(y/ies) not declared in CLASSIFICATION.",
+            "An unclassified entry is UNKNOWN and blocks Gate-1. Add a row to",
+            "CLASSIFICATION in scripts/gen-disabled-inventory.py naming its real",
+            "category, or the inventory is not trustworthy:",
+            *[f"  - {u}" for u in sorted(untriaged)[:20]],
+            *([f"  ... and {len(untriaged) - 20} more"] if len(untriaged) > 20 else []),
+        ]), file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

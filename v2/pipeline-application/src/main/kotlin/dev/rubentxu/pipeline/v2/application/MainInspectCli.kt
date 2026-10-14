@@ -345,109 +345,14 @@ object MainInspectCli {
     /**
      * Parse the option args (run id consumed upstream) into a [CompiledInspectionQuery].
      *
-     * The shared parser work (option meaning, error formatting) lives here, NOT in a third
-     * bespoke private object: any future CLI verb that wants `--failed`, `--kind`, `--stage`,
-     * `--step`, `--context`, `--log-tail`, `--fields` or `--format` joins `CliParser.parseObservation`
-     * (R4 / WU-R4.2) instead of re-inventing the surface.
-     *
-     * The function is a flat option table: every branch is one option, every option consumes
-     * one or two args, and the validation that distinguishes them is per-option rather than
-     * per-function. WU-R4.2 will replace this body with a typed option-list iteration, at which
-     * point the cyclomatic count drops back under 25 by construction. Until then, the complexity
-     * is structural to the option table, not a quality signal.
+     * CC-1 / R4 / WU-R4.7 — delegates to [CliParser.parseInspect]; the body that used to live here
+     * moved into [CliParser] as part of the four-verb parser unification. This signature stays so the
+     * existing test surface (`MainInspectCli.parseInspect`) keeps compiling without changes.
+     * `MainInspectCli.parseInspect` is the test seam; `CliParser.parseInspect` is the production
+     * entry point. Both return the same typed [InspectParseResult].
      */
     @Suppress("CyclomaticComplexMethod")
-    fun parseInspect(args: Array<String>): InspectParseResult {
-        var failed = false
-        var kind: String? = null
-        var stage: String? = null
-        var step: Long? = null
-        var context = 0
-        var logTail = 0
-        var opId: String? = null
-        var fields: List<InspectField>? = null
-        var format: InspectFormat = InspectFormat.TEXT
-        var controlRoot: String? = null
-        var dbPath: String? = null
-
-        var i = 0
-        while (i < args.size) {
-            val a = args[i]
-            when (a) {
-                "--failed" -> failed = true
-                "--kind" -> {
-                    kind = args.getOrNull(++i) ?: return reject("--kind requires a value")
-                }
-                "--stage" -> {
-                    stage = args.getOrNull(++i) ?: return reject("--stage requires a value")
-                }
-                "--step" -> {
-                    val raw = args.getOrNull(++i) ?: return reject("--step requires a value")
-                    step = raw.toLongOrNull() ?: return reject("--step must be a Long, got '$raw'")
-                }
-                "--context" -> {
-                    val raw = args.getOrNull(++i) ?: return reject("--context requires a value")
-                    context = raw.toIntOrNull() ?: return reject("--context must be an Int, got '$raw'")
-                    if (context < 0) return reject("--context must be >= 0, got $context")
-                }
-                "--log-tail" -> {
-                    val raw = args.getOrNull(++i) ?: return reject("--log-tail requires a value")
-                    logTail = raw.toIntOrNull() ?: return reject("--log-tail must be an Int, got '$raw'")
-                    if (logTail < 0) return reject("--log-tail must be >= 0, got $logTail")
-                }
-                "--log-tail-op" -> {
-                    val raw = args.getOrNull(++i) ?: return reject("--log-tail-op requires a value")
-                    if (raw.isBlank()) return reject("--log-tail-op must not be blank")
-                    opId = raw
-                }
-                "--fields" -> {
-                    val raw = args.getOrNull(++i) ?: return reject("--fields requires a value")
-                    fields = raw.split(',').map { token ->
-                        val upper = token.trim().uppercase()
-                        InspectField.parse(upper)
-                            ?: return reject("--fields has unknown token '$token'")
-                    }
-                }
-                "--format" -> {
-                    val raw = args.getOrNull(++i) ?: return reject("--format requires a value")
-                    format = InspectFormat.parse(raw) ?: return reject(
-                        "--format must be one of ${InspectFormat.values().joinToString { it.cli }}",
-                    )
-                }
-                "--control-root" -> {
-                    controlRoot = args.getOrNull(++i) ?: return reject("--control-root requires a value")
-                }
-                "--db" -> {
-                    dbPath = args.getOrNull(++i) ?: return reject("--db requires a value")
-                }
-                else -> if (a.startsWith("--")) {
-                    return reject("unknown option '$a'")
-                } else {
-                    return reject("unexpected positional argument '$a'")
-                }
-            }
-            i++
-        }
-
-        return InspectParseResult.Parsed(
-            CompiledInspectionQuery(
-                failed = failed,
-                kind = kind,
-                stage = stage,
-                step = step,
-                context = context,
-                logTail = logTail,
-                opId = opId,
-                fields = fields,
-                format = format,
-                controlRoot = controlRoot,
-                dbPath = dbPath,
-            ),
-        )
-    }
-
-    private fun reject(message: String): InspectParseResult.Rejected =
-        InspectParseResult.Rejected(message)
+    fun parseInspect(args: Array<String>): InspectParseResult = CliParser.parseInspect(args)
 }
 
 /** Parsed inspection query. Immutable data class. */

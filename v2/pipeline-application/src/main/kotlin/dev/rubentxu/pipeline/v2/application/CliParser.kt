@@ -17,7 +17,18 @@ import dev.rubentxu.pipeline.v2.application.observation.resolveView
 import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.output.OutputChannel
+import dev.rubentxu.pipeline.v2.output.OutputCursor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
+import dev.rubentxu.pipeline.v2.events.identity.EventField
+
+// CC-1 — parser unification. The four verb mains used to own their own admission
+// parsers; their bodies lived next to the verb and drifted the moment a flag gained
+// a case. `parseConsole`, `parseEvents`, `parseInspect` are now the single entry
+// point for argv-to-typed-request conversion; the verb mains translate the typed
+// result into the wire format they have always used. Refusal prefixes
+// (`console-refused:`, `evt-refusal-v1:`, `Error:`) live in the renderer / the
+// verb main, NOT in the parser — preserving them is a property of the call site.
+// R4 / WU-R4.7 — CC-1.
 
 const val NON_CANONICAL_CANONICAL_BRIDGE_ERROR: String =
     "Error: script uses non-canonical plugins; canonical bridge requires " +
@@ -519,7 +530,19 @@ private class ParseState(
     val channels: MutableSet<OutputChannel> = sortedSetOf(),
 )
 
-/** Pure parser for the application CLI. */
+/**
+ * Pure parser for the application CLI.
+ *
+ * CC-1 (R4 / WU-R4.7) added three more public entry points — [parseConsole], [parseEvents],
+ * [parseInspect] — alongside the original [parse] / [parseObservation]. The object now exposes
+ * five verb parsers; the per-verb private helpers (one per verb) keep each verb's
+ * CyclomaticComplexMethod under the configured ceiling. The five public functions plus
+ * `applyOption` push the object flavour of [TooManyFunctions] past the default 11; that is
+ * structural to the unification — a CC-1 parser owns every verb's argv-to-typed-request
+ * translation, and a sub-object per verb would re-introduce the multi-authority defect the
+ * slice exists to remove.
+ */
+@Suppress("TooManyFunctions")
 object CliParser {
     fun parse(args: Array<String>): CliParseResult {
         if (args.isEmpty()) return CliParseResult.Rejected(CliError.MissingCommand)
@@ -709,6 +732,431 @@ object CliParser {
         }
     }
 
+    // --------------------------------------------------------------- CC-1 verb parsers
+
+    /**
+     * CC-1 / R4 / WU-R4.7 — `pipelinek inspect <runId> [opts]`.
+     *
+     * Body verbatim from [MainInspectCli.parseInspect]; the verb main now calls this and translates
+     * the typed result into the `inspect: ...` stderr line + exit 2 it has always used. The
+     * `Error:` prefix is not the inspect prefix — inspect prefixes with `inspect:`, and this
+     * separation is intentional (events and console share `Error:` as their CLI-admission prefix).
+     *
+     * Body kept inline rather than delegated so the cyclomatic cost [MainInspectCli.parseInspect]
+     * used to wear is gone with it; the same option-table layout justifies the same
+     * `@Suppress("CyclomaticComplexMethod")`. See [MainInspectCli.parseInspect] for the option
+     * table and the per-option rationale.
+     */
+    @Suppress("CyclomaticComplexMethod")
+    fun parseInspect(args: Array<String>): InspectParseResult {
+        var failed = false
+        var kind: String? = null
+        var stage: String? = null
+        var step: Long? = null
+        var context = 0
+        var logTail = 0
+        var opId: String? = null
+        var fields: List<MainInspectCli.InspectField>? = null
+        var format: MainInspectCli.InspectFormat = MainInspectCli.InspectFormat.TEXT
+        var controlRoot: String? = null
+        var dbPath: String? = null
+
+        var i = 0
+        while (i < args.size) {
+            val a = args[i]
+            when (a) {
+                "--failed" -> failed = true
+                "--kind" -> {
+                    kind = args.getOrNull(++i) ?: return rejectInspect("--kind requires a value")
+                }
+                "--stage" -> {
+                    stage = args.getOrNull(++i) ?: return rejectInspect("--stage requires a value")
+                }
+                "--step" -> {
+                    val raw = args.getOrNull(++i) ?: return rejectInspect("--step requires a value")
+                    step = raw.toLongOrNull() ?: return rejectInspect("--step must be a Long, got '$raw'")
+                }
+                "--context" -> {
+                    val raw = args.getOrNull(++i) ?: return rejectInspect("--context requires a value")
+                    context = raw.toIntOrNull() ?: return rejectInspect("--context must be an Int, got '$raw'")
+                    if (context < 0) return rejectInspect("--context must be >= 0, got $context")
+                }
+                "--log-tail" -> {
+                    val raw = args.getOrNull(++i) ?: return rejectInspect("--log-tail requires a value")
+                    logTail = raw.toIntOrNull() ?: return rejectInspect("--log-tail must be an Int, got '$raw'")
+                    if (logTail < 0) return rejectInspect("--log-tail must be >= 0, got $logTail")
+                }
+                "--log-tail-op" -> {
+                    val raw = args.getOrNull(++i) ?: return rejectInspect("--log-tail-op requires a value")
+                    if (raw.isBlank()) return rejectInspect("--log-tail-op must not be blank")
+                    opId = raw
+                }
+                "--fields" -> {
+                    val raw = args.getOrNull(++i) ?: return rejectInspect("--fields requires a value")
+                    fields = raw.split(',').map { token ->
+                        val upper = token.trim().uppercase()
+                        MainInspectCli.InspectField.parse(upper)
+                            ?: return rejectInspect("--fields has unknown token '$token'")
+                    }
+                }
+                "--format" -> {
+                    val raw = args.getOrNull(++i) ?: return rejectInspect("--format requires a value")
+                    format = MainInspectCli.InspectFormat.parse(raw) ?: return rejectInspect(
+                        "--format must be one of ${MainInspectCli.InspectFormat.values().joinToString { it.cli }}",
+                    )
+                }
+                "--control-root" -> {
+                    controlRoot = args.getOrNull(++i)
+                        ?: return rejectInspect("--control-root requires a value")
+                }
+                "--db" -> {
+                    dbPath = args.getOrNull(++i) ?: return rejectInspect("--db requires a value")
+                }
+                else -> if (a.startsWith("--")) {
+                    return rejectInspect("unknown option '$a'")
+                } else {
+                    return rejectInspect("unexpected positional argument '$a'")
+                }
+            }
+            i++
+        }
+
+        return InspectParseResult.Parsed(
+            CompiledInspectionQuery(
+                failed = failed,
+                kind = kind,
+                stage = stage,
+                step = step,
+                context = context,
+                logTail = logTail,
+                opId = opId,
+                fields = fields,
+                format = format,
+                controlRoot = controlRoot,
+                dbPath = dbPath,
+            ),
+        )
+    }
+
+    private fun rejectInspect(message: String): InspectParseResult.Rejected =
+        InspectParseResult.Rejected(message)
+
+    /**
+     * CC-1 / R4 / WU-R4.7 — `pipelinek events --db <path> <runId> [opts]`.
+     *
+     * Body verbatim from [MainEventsCli.parseMainArgs]; the verb main calls this and renders the
+     * typed rejection as `Error: <reason>` (the AUD-04 / AUD-05 contract the events verb has used
+     * since WU-R4.2). The follow-up flags (`--follow`, `--fields`, `--context`, `--tail`) ride on
+     * [MainEventsCli.parseEventsInspectionFlags], which stays in the verb because it has its own
+     * closed ADT (`EventsInspectionFlag`) the existing tests exercise directly.
+     */
+    @Suppress("CyclomaticComplexMethod")
+    fun parseEvents(args: Array<String>): EventsCliParseResult {
+        var db: String? = null
+        var runId: String? = null
+        var kind: String? = null
+        var subjectCanonical: String? = null
+        var limit = EVENTS_DEFAULT_LIMIT
+        var afterCursor: String? = null
+        var limitArg: String? = null
+        var projection: EventsRowProjection = EventsRowProjection.Envelope
+        var follow = false
+        var fieldsWhitelist: List<EventField>? = null
+        var contextWindow = 0
+        var tailCount = 0
+
+        var i = 0
+        while (i < args.size) {
+            val arg = args[i]
+            when (arg) {
+                "--db" -> db = args.getOrNull(++i)
+                "--kind" -> kind = args.getOrNull(++i)
+                "--subject" -> subjectCanonical = args.getOrNull(++i)
+                "--limit" -> limitArg = args.getOrNull(++i)
+                "--after-cursor" -> afterCursor = args.getOrNull(++i)
+                "--typed" -> projection = EventsRowProjection.Typed
+                "--follow" -> follow = true
+                "--fields" -> {
+                    val raw = args.getOrNull(++i)
+                        ?: return EventsCliParseResult.Rejected("--fields requires a value")
+                    val parsed = parseEventsFieldsToken(raw)
+                        ?: return EventsCliParseResult.Rejected("--fields has unknown token(s): $raw")
+                    fieldsWhitelist = parsed
+                }
+                "--context" -> {
+                    val raw = args.getOrNull(++i)
+                        ?: return EventsCliParseResult.Rejected("--context requires a value")
+                    val n = parseEventsNonNegativeInt(raw)
+                        ?: return EventsCliParseResult.Rejected(
+                            "--context must be a non-negative Int, got '$raw'",
+                        )
+                    contextWindow = n
+                }
+                "--tail" -> {
+                    val raw = args.getOrNull(++i)
+                        ?: return EventsCliParseResult.Rejected("--tail requires a value")
+                    val n = parseEventsNonNegativeInt(raw)
+                        ?: return EventsCliParseResult.Rejected(
+                            "--tail must be a non-negative Int, got '$raw'",
+                        )
+                    tailCount = n
+                }
+                else -> when {
+                    arg.startsWith("--") -> return EventsCliParseResult.Rejected("unknown option: $arg")
+                    runId != null -> return EventsCliParseResult.Rejected("unexpected extra argument: $arg")
+                    else -> runId = arg
+                }
+            }
+            i++
+        }
+        if (db == null || runId == null) {
+            return EventsCliParseResult.Rejected(
+                "Usage: pipeline events --db <path> <runId> [--kind K] " +
+                    "[--subject v1:run:ID|v1:stage:ID:N|...] [--limit N] " +
+                    "[--after-cursor TOKEN] [--follow] " +
+                    "[--fields SEQ,KIND,EVENTID,SUBJECT,SOURCE] " +
+                    "[--context N] [--tail N] " +
+                    "[--typed]",
+            )
+        }
+        val parsedLimit = if (limitArg != null) {
+            val p = limitArg.toIntOrNull()
+            if (p == null || p <= 0) {
+                return EventsCliParseResult.Rejected("--limit must be a positive integer, got: $limitArg")
+            }
+            p
+        } else limit
+        if (projection == EventsRowProjection.Typed &&
+            (fieldsWhitelist != null || contextWindow > 0 || tailCount > 0)
+        ) {
+            return EventsCliParseResult.Rejected(
+                "--typed is mutually exclusive with --fields / --context / --tail " +
+                    "(the EventField ADT is bound to envelopes, not to DomainEvent)",
+            )
+        }
+        return EventsCliParseResult.Parsed(
+            EventsCliArgs(
+                db = db,
+                runId = runId,
+                kind = kind,
+                subjectCanonical = subjectCanonical,
+                limit = parsedLimit,
+                afterCursor = afterCursor,
+                projection = projection,
+                follow = follow,
+                fieldsWhitelist = fieldsWhitelist,
+                contextWindow = contextWindow,
+                tailCount = tailCount,
+            ),
+        )
+    }
+
+    /**
+     * CC-1 / R4 / WU-R4.7 — `--fields` token parse for the events verb. Kept private on the
+     * parser; the closed vocabulary is the parser's contract, not the verb's.
+     */
+    private fun parseEventsFieldsToken(raw: String): List<EventField>? {
+        if (raw.isBlank()) return null
+        val out = mutableListOf<EventField>()
+        for (token in raw.split(',')) {
+            val upper = token.trim().uppercase()
+            val parsed = when (upper) {
+                "SEQ", "SEQUENCE" -> EventField.Sequence
+                "KIND" -> EventField.Kind
+                "EVENTID", "EVENT_ID" -> EventField.EventId
+                "SUBJECT" -> EventField.Subject
+                "SOURCE" -> EventField.Source
+                else -> return null
+            }
+            out.add(parsed)
+        }
+        return out
+    }
+
+    /** CC-1 — non-negative Int parse for `--context` / `--tail`. */
+    private fun parseEventsNonNegativeInt(raw: String): Int? {
+        val n = raw.toIntOrNull() ?: return null
+        if (n < 0) return null
+        return n
+    }
+
+    /**
+     * CC-1 / R4 / WU-R4.7 — `pipelinek console --control-dir <path> <runId> <opId> [opts]`.
+     *
+     * Body verbatim from the now-removed [MainConsoleCliAdmission]. The verb main calls this and
+     * renders the typed [ConsoleCliRefusal] through [renderConsoleCliRefusal], which produces the
+     * `Error: ...` wire line for argument refusals. The data-plane refusals
+     * (`console-refused: foreign-stream ...`, etc.) are produced by [ConsoleReadService.renderRefusal]
+     * at the read boundary and are NOT touched here — they are independent observable contracts.
+     *
+     * `--range`, `--frames`, `--after-cursor`, `--max-bytes`, `--after-ordinal` and `--frame-limit`
+     * remain exclusive in the combinations [validate] documents; CC-1 is a relocation, not a
+     * relaxation.
+     */
+    @Suppress("CyclomaticComplexMethod")
+    fun parseConsole(args: Array<String>): ConsoleCliParseResult {
+        var controlDir: String? = null
+        var runId: String? = null
+        var opId: String? = null
+        var maxBytes: String? = null
+        var afterCursor: String? = null
+        var range: String? = null
+        var formatToken: String? = null
+        var frames = false
+        var frameLimit: String? = null
+        var afterOrdinal: String? = null
+        var index = 0
+        while (index < args.size) {
+            val arg = args[index]
+            when (arg) {
+                "--control-dir", "--max-bytes", "--after-cursor", "--range",
+                "--frame-limit", "--after-ordinal", "--format" -> {
+                    val value = args.getOrNull(index + 1)
+                        ?: return ConsoleCliParseResult.Rejected(ConsoleCliRefusal.MissingOptionValue(arg))
+                    when (arg) {
+                        "--control-dir" -> controlDir = value
+                        "--max-bytes" -> maxBytes = value
+                        "--after-cursor" -> afterCursor = value
+                        "--range" -> range = value
+                        "--frame-limit" -> frameLimit = value
+                        "--after-ordinal" -> afterOrdinal = value
+                        "--format" -> formatToken = value
+                    }
+                    index++
+                }
+                "--frames" -> frames = true
+                else -> {
+                    val refusal = consolePositional(arg, runId, opId)
+                    if (refusal != null) return ConsoleCliParseResult.Rejected(refusal)
+                    if (runId == null) runId = arg else opId = arg
+                }
+            }
+            index++
+        }
+        return consoleValidate(controlDir, runId, opId, maxBytes, afterCursor, range, formatToken, frames, frameLimit, afterOrdinal)
+    }
+
+    private fun consolePositional(arg: String, runId: String?, opId: String?): ConsoleCliRefusal? = when {
+        arg.startsWith("--") -> ConsoleCliRefusal.UnknownOption(arg)
+        runId != null && opId != null -> ConsoleCliRefusal.UnexpectedArgument(arg)
+        else -> null
+    }
+
+    private fun consoleValidate(
+        controlDir: String?,
+        runId: String?,
+        opId: String?,
+        maxBytes: String?,
+        afterCursor: String?,
+        range: String?,
+        formatToken: String?,
+        frames: Boolean,
+        frameLimit: String?,
+        afterOrdinal: String?,
+    ): ConsoleCliParseResult {
+        val cd = controlDir ?: return consoleReject(ConsoleCliRefusal.MissingArgument)
+        val rid = runId ?: return consoleReject(ConsoleCliRefusal.MissingArgument)
+        val oid = opId ?: return consoleReject(ConsoleCliRefusal.MissingArgument)
+
+        val incompatible = when {
+            range == null -> null
+            afterCursor != null -> "--after-cursor"
+            else -> "--max-bytes".takeIf { maxBytes != null }
+        }
+        if (range != null && incompatible != null) {
+            return consoleReject(ConsoleCliRefusal.IncompatibleWithRange(incompatible))
+        }
+
+        if (frames) {
+            val framesIncompatible = when {
+                range != null -> "--range"
+                maxBytes != null -> "--max-bytes"
+                afterCursor != null -> "--after-cursor"
+                else -> null
+            }
+            if (framesIncompatible != null) {
+                return consoleReject(ConsoleCliRefusal.IncompatibleWithFrames(framesIncompatible))
+            }
+        }
+
+        val format = formatToken?.let { token ->
+            MainConsoleCli.ConsoleFormat.parse(token)
+                ?: return consoleReject(
+                    ConsoleCliRefusal.UnknownFormat(
+                        value = token,
+                        accepted = MainConsoleCli.ConsoleFormat.values().map { it.token },
+                    ),
+                )
+        } ?: MainConsoleCli.ConsoleFormat.TEXT
+
+        if (frames) return consoleAdmitFrames(cd, rid, oid, frameLimit, afterOrdinal, format)
+        if (range != null) return consoleAdmitRange(cd, rid, oid, range, format)
+        return consoleAdmitPage(cd, rid, oid, maxBytes, afterCursor, format)
+    }
+
+    private fun consoleReject(refusal: ConsoleCliRefusal): ConsoleCliParseResult =
+        ConsoleCliParseResult.Rejected(refusal)
+
+    private fun consoleAdmitRange(
+        controlDir: String,
+        runId: String,
+        opId: String,
+        range: String,
+        format: MainConsoleCli.ConsoleFormat,
+    ): ConsoleCliParseResult {
+        val bounds = range.split(':')
+        val from = bounds.getOrNull(0)?.toLongOrNull()
+        val to = bounds.getOrNull(1)?.toLongOrNull()
+        if (bounds.size != 2 || from == null || to == null) {
+            return consoleReject(ConsoleCliRefusal.NotARange(range))
+        }
+        return ConsoleCliParseResult.Admitted(ConsoleReadRequest.Range(controlDir, runId, opId, from, to, format))
+    }
+
+    private fun consoleAdmitPage(
+        controlDir: String,
+        runId: String,
+        opId: String,
+        maxBytes: String?,
+        afterCursor: String?,
+        format: MainConsoleCli.ConsoleFormat,
+    ): ConsoleCliParseResult {
+        val max = maxBytes?.let { value ->
+            value.toIntOrNull()?.takeIf { it > 0 }
+                ?: return consoleReject(ConsoleCliRefusal.NotAnInteger("--max-bytes", value))
+        } ?: ConsoleReadService.DEFAULT_PAGE_BYTES
+
+        val after = afterCursor?.let { token ->
+            OutputCursor.decode(token) ?: return consoleReject(ConsoleCliRefusal.NotACursorToken(token))
+        }
+        return ConsoleCliParseResult.Admitted(
+            ConsoleReadRequest.Paged(controlDir, runId, opId, after, max, format),
+        )
+    }
+
+    private fun consoleAdmitFrames(
+        controlDir: String,
+        runId: String,
+        opId: String,
+        frameLimit: String?,
+        afterOrdinal: String?,
+        format: MainConsoleCli.ConsoleFormat,
+    ): ConsoleCliParseResult {
+        val limit = frameLimit?.let { value ->
+            value.toIntOrNull()?.takeIf { it > 0 }
+                ?: return consoleReject(ConsoleCliRefusal.NotAnInteger("--frame-limit", value))
+        } ?: ConsoleReadService.DEFAULT_FRAME_LIMIT
+
+        val ordinal = afterOrdinal?.let { value ->
+            value.toLongOrNull()?.takeIf { it >= -1L }
+                ?: return consoleReject(ConsoleCliRefusal.NotAnInteger("--after-ordinal", value))
+        } ?: -1L
+
+        return ConsoleCliParseResult.Admitted(
+            ConsoleReadRequest.Frames(controlDir, runId, opId, ordinal, limit, format),
+        )
+    }
+
     private val EXECUTION_ONLY_OPTIONS: Set<String> =
         (EXECUTION_ONLY_FLAGS.map { it.token } + EXECUTION_ONLY_VALUED.map { it.token }).toSet()
 
@@ -764,6 +1212,9 @@ object CliParser {
             }
         }
     }
+
+    /** CC-1 — events verb default page size; the same value [MainEventsCli] used locally. */
+    private const val EVENTS_DEFAULT_LIMIT: Int = 100
 }
 
 /** The execution-only half of each table. Split by arity because the two enums are distinct types. */
@@ -1054,4 +1505,70 @@ private object TextFilterOptions {
         into += value
         return ApplyOutcome.Applied(index + 2)
     }
+}
+
+// ====================================================================== CC-1 types
+
+/**
+ * CC-1 / R4 / WU-R4.7 — typed result of [CliParser.parseConsole].
+ *
+ * Same shape the verb used locally; promoted to a top-level type so the parser and the verb main
+ * share one result algebra. The wire prefixes (`Error:` for argument refusals,
+ * `console-refused:` for data-plane refusals) are NOT carried here — they belong to
+ * [renderConsoleCliRefusal] and [ConsoleReadService.renderRefusal] respectively, and the parser
+ * does not decide what the caller sees on stderr.
+ */
+sealed interface ConsoleCliParseResult {
+    data class Admitted(val request: ConsoleReadRequest) : ConsoleCliParseResult
+    data class Rejected(val refusal: ConsoleCliRefusal) : ConsoleCliParseResult
+}
+
+/**
+ * CC-1 / R4 / WU-R4.7 — closed ADT of what `pipelinek events` may emit per row.
+ *
+ * Same shape [MainEventsCli.RowProjection] had locally; promoted to a top-level type because the
+ * parser and the verb main now share the type. The two cases are deliberately separate: a future
+ * projection (e.g. a CSV shape) is a compile-time break here and at every consumer of this ADT,
+ * which is the discipline that keeps `--typed` from re-introducing a third wire shape.
+ */
+sealed interface EventsRowProjection {
+    /** The V1 envelope wire form. Byte-for-byte unchanged by `--typed`. */
+    data object Envelope : EventsRowProjection
+
+    /** The stored [dev.rubentxu.pipeline.v2.events.DomainEvent], one JSON object per line. */
+    data object Typed : EventsRowProjection
+}
+
+/**
+ * CC-1 / R4 / WU-R4.7 — typed arguments [CliParser.parseEvents] hands the verb main.
+ *
+ * Every field is the value the runtime needs to issue a [dev.rubentxu.pipeline.v2.events.identity.EventQuery],
+ * a follow, or a typed projection; nothing here is a positional placeholder. The fields mirror
+ * the legacy `MainArgs.Parsed` shape, with no semantic change. Rejecting events on any of these
+ * would be a separate audit; CC-1 is relocation, not relaxation.
+ */
+data class EventsCliArgs(
+    val db: String,
+    val runId: String,
+    val kind: String?,
+    val subjectCanonical: String?,
+    val limit: Int,
+    val afterCursor: String?,
+    val projection: EventsRowProjection,
+    val follow: Boolean,
+    val fieldsWhitelist: List<EventField>?,
+    val contextWindow: Int,
+    val tailCount: Int,
+)
+
+/**
+ * CC-1 / R4 / WU-R4.7 — typed result of [CliParser.parseEvents].
+ *
+ * Same two-case shape as the verb's local `MainArgs`. The verb main translates a [Rejected] into
+ * `Error: <reason>` on stderr; a [Parsed] flows into the typed [runWithArgs] path the events
+ * verb has used since WU-R4.2.
+ */
+sealed interface EventsCliParseResult {
+    data class Parsed(val args: EventsCliArgs) : EventsCliParseResult
+    data class Rejected(val reason: String) : EventsCliParseResult
 }

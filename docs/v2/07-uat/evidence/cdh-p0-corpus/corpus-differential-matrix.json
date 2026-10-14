@@ -1,0 +1,189 @@
+{
+  "work_unit": "CDH-P0-CORPUS-MATRIX",
+  "classification": "CHARACTERISATION_NOT_CERTIFICATION",
+  "question": "Do UatCompat001CorpusSmokeRunTest and CompatibilityCorpusTest run the same 31 fixtures with equivalent strength, as the consolidation plan states?",
+  "fixtures_on_disk": 31,
+  "named_in_compatibility_corpus_test": 28,
+  "real_test_methods_corpus_test": 25,
+  "real_test_methods_uat_compat_001": 1,
+  "grep_at_test_occurrences_corpus_test": 30,
+  "grep_overstates_because_kdoc_quotes_examples": true,
+  "on_disk_but_not_named_in_corpus_test": [
+    "21-milestone.pipeline.kts",
+    "31-stash-unstash.pipeline.kts",
+    "32-publish-html.pipeline.kts"
+  ],
+  "identical_coverage": false,
+  "exclusive_mechanics_uat_compat_001": {
+    "seeds_credentials_store": true,
+    "exports_store_passphrase_env": true,
+    "single_sweep_method": true,
+    "stages_every_fixture_into_workspace": true,
+    "declares_15_and_28_as_deliberate_failures": true
+  },
+  "exclusive_mechanics_corpus_test": {
+    "one_method_per_fixture": true,
+    "typed_file_read_event_assertions": true,
+    "typed_step_started_assertions": true,
+    "output_plane_transcript_probe": true,
+    "negative_fixture14_without_store": true,
+    "negative_fixture28_zip_slip": true
+  },
+  "rows": [
+    {
+      "fixture": "01-basic.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "02-environment.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "03-stages.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "04-sh.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "05-scripted-if.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "06-loop.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "08-withEnv-pipeline.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "09-sh-then-echo.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "10-smoke-e2e.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "11-workflow-control.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "12-error-handling.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "13-workspace-helpers.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "14-credentials-bindings.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "15-error.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "16-sleep.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "17-writeFile.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "18-cleanWs.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "19-isunix.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "20-pwd-tmp.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "21-milestone.pipeline.kts",
+      "compatibility_corpus_test_names_it": false,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "22-wait-until.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "23-readfile.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "24-utilities-roundtrip.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "25-yaml-roundtrip.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "26-find-files.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "27-zip-unzip.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "28-zip-slip-defense.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "29-mixed-utilities.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "30-artifact-query-bridge.pipeline.kts",
+      "compatibility_corpus_test_names_it": true,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "31-stash-unstash.pipeline.kts",
+      "compatibility_corpus_test_names_it": false,
+      "uat_compat_001_sweeps_it": true
+    },
+    {
+      "fixture": "32-publish-html.pipeline.kts",
+      "compatibility_corpus_test_names_it": false,
+      "uat_compat_001_sweeps_it": true
+    }
+  ]
+}

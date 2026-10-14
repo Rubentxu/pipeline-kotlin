@@ -35,14 +35,19 @@ class ObservationOutputFollower(
     private val reader: ObservationOutputReader,
     private val frameLimit: Int,
     /**
-     * Whether the durable EXECUTION authority says this run reached a terminal state.
+     * What the durable EXECUTION authority can say about this run.
      *
      * The output plane cannot answer it. A run that finished writing nothing has no stream to seal
      * and no frame to read, so from here it is indistinguishable from a run that has not started.
-     * Defaulting to `false` keeps a caller that cannot answer in the SAFE direction — keep reading —
-     * and a caller that can answer must say so rather than let silence stand in for the fact.
+     *
+     * Three states, not a `Boolean`, and the default is the one that names the absence rather
+     * than guessing at it: a caller with no execution authority must say
+     * [RunPlane.Unavailable] — "I cannot ask" — rather than [RunPlane.Live], which would keep this
+     * follower reading a finished run forever. A caller that CAN see its run's events passes
+     * [RunPlane.Completed] or [RunPlane.Live] so a follow over a live run does not end at the seam
+     * between two steps just because every known stream happens to be sealed.
      */
-    private val runFinished: (String) -> Boolean = { false },
+    private val runPlane: (String) -> RunPlane = { RunPlane.Unavailable },
 ) {
 
     init {
@@ -107,7 +112,7 @@ class ObservationOutputFollower(
                     decision = followDecision(
                         moreFrames = false,
                         tailStates = reader.tailStatesOf(runId),
-                        runFinished = runFinished(runId),
+                        runPlane = runPlane(runId),
                     ),
                 )
             }

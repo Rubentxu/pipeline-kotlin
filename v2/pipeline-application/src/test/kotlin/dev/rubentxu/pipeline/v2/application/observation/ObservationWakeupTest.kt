@@ -35,6 +35,8 @@ import java.nio.file.Path
  * WAKE-4   a coalesced position recovers exactly what the un-coalesced ones would have
  * WAKE-5   a wakeup carries no irreplaceable payload, so dropping all of them loses nothing
  * FOLLOW-1 finished only when nothing is pending and every known stream is Sealed
+ * FOLLOW-1b a sealed stream is NOT enough while the run plane says Live (the two-step seam)
+ * FOLLOW-1c the Boolean overload maps false to Unavailable, so legacy callers still terminate
  * FOLLOW-2 an unknown stream keeps the follower going; null is not Sealed
  * FOLLOW-3 a stream never observed is not evidence that the run ended
  * ```
@@ -199,6 +201,83 @@ class ObservationWakeupTest {
         )
     }
 
+    /**
+     * R4 / WU-RC3 — the seam between two steps, and the reason [RunPlane] is a closed ADT.
+     *
+     * Between two steps of a LIVE pipeline there is a moment when the finished step's stream
+     * is sealed and the next step's has not been declared yet. Every KNOWN stream is sealed at
+     * that instant, and the run is still going. With sealing alone the decision returned
+     * `Finished`, which ended `console --follow` with exit 0 over a transcript that stopped
+     * mid-pipeline — indistinguishable from a run that genuinely ended.
+     *
+     * The naive repair — make `runFinished` a conjunct — is what FOLLOW-6 exists to reject, and
+     * it would trade this defect for an unterminatable follow. So all THREE answers are pinned
+     * here, against the SAME sealed stream: only [RunPlane] distinguishes them, and a test that
+     * asserted only one of the two terminal answers would have accepted either defect.
+     *
+     * HF0: [followDecision] reads no clock, no filesystem and no ambient state.
+     *
+     * Mutation FOLLOW-M3: promote the run plane to a conjunct (`runPlane != Completed ->
+     * ReadAgain` before the sealed test) — killed by the third assertion, and simultaneously
+     * re-introduces the defect FOLLOW-6 documents. Mutation FOLLOW-M4: collapse
+     * `Unavailable` into `Live` — killed by the second assertion, and that is the mutation that
+     * makes a console-only follow hang.
+     */
+    @Test
+    fun `FOLLOW-1b every known stream sealed is NOT enough while the run is alive`() {
+        val sealed = listOf(OutputTailState.Sealed(10))
+
+        assertEquals(
+            FollowDecision.ReadAgain,
+            followDecision(moreFrames = false, tailStates = sealed, runPlane = RunPlane.Live),
+            "all known streams sealed is a fact about the STREAMS, not about the RUN. Between two " +
+                "steps of a live pipeline the previous stream is sealed and the next has not been " +
+                "declared yet, so every known stream is sealed while the run is very much alive. " +
+                "Finishing here ends the follow with exit 0 over a truncated transcript.",
+        )
+        assertEquals(
+            FollowDecision.Finished,
+            followDecision(moreFrames = false, tailStates = sealed, runPlane = RunPlane.Unavailable),
+            "but a lane that CANNOT ask (no event store — `--view console --follow`, which has " +
+                "none) must still terminate. Reading 'I do not know' as 'still going' is the same " +
+                "class of error: it hangs a consumer instead of ending it.",
+        )
+        assertEquals(
+            FollowDecision.Finished,
+            followDecision(moreFrames = false, tailStates = sealed, runPlane = RunPlane.Completed),
+            "and with the run actually finished, the SAME sealed stream is complete. The " +
+                "discriminator is the run's terminal fact, never the stream's state.",
+        )
+    }
+
+    /**
+     * The `Boolean` overload's `false` means `Unavailable`, not `Live`.
+     *
+     * This is the whole reason the overload exists and the reason it is pinned: a `Boolean`
+     * cannot say "still going" apart from "cannot ask", and mapping its `false` to `Live` would
+     * silently break every console-only follow the moment this overload was written. It is the
+     * one property that keeps the legacy callers safe while they migrate to the tri-state.
+     */
+    @Test
+    fun `FOLLOW-1c the Boolean overload maps false to Unavailable so legacy callers still terminate`() {
+        assertEquals(
+            followDecision(moreFrames = false, tailStates = listOf(OutputTailState.Sealed(3)), runPlane = RunPlane.Unavailable),
+            followDecision(moreFrames = false, tailStates = listOf(OutputTailState.Sealed(3)), runFinished = false),
+            "a legacy caller's `runFinished = false` must keep the FOLLOW-6 behaviour. The " +
+                "Boolean could not distinguish 'still going' from 'cannot ask', so its false " +
+                "projects to Unavailable — the safe degradation, not the hanging one.",
+        )
+        assertEquals(
+            FollowDecision.Finished,
+            followDecision(moreFrames = false, tailStates = listOf(OutputTailState.Sealed(3)), runFinished = false),
+            "stated directly, because the projection is invisible in the signature and this is " +
+                "the property that keeps --view console --follow terminatable.",
+        )
+        assertTrue(RunPlane.Completed.asBoolean(), "Completed projects to true")
+        assertTrue(!RunPlane.Live.asBoolean(), "Live projects to false — same as Unavailable, and " +
+            "that is exactly why the Boolean was not expressive enough to keep")
+    }
+
     @Test
     fun `FOLLOW-2 an unknown stream keeps the follower going because null is not Sealed`() {
         assertEquals(
@@ -345,11 +424,19 @@ class ObservationWakeupTest {
      * output plane has nothing, and IGNORED when sealing already answered. A one-sided test would
      * have accepted either error.
      *
+     * This row still holds after the [RunPlane] ADT was introduced, because the `Boolean`
+     * overload projects `false` to `RunPlane.Unavailable` — and `Unavailable` is precisely "the
+     * run plane has no opinion", which is what a console-only lane means. FOLLOW-1c pins that
+     * projection; FOLLOW-1b pins what a lane that CAN answer does with each of the three states.
+     * Between them the two failure directions are both pinned by an assertion rather than by a
+     * comment, which is the only thing that kept this mistake from shipping twice.
+     *
      * HF0 Pure Contract, same level as FOLLOW-5. `ObsE5ObserveFollowTest.FOLLOW-2` covers the same
      * property one level up, through `MainObserveCli.follow`, and both are kept: the unit row states
      * the rule, the integration row states that the CLI actually reaches it.
      *
-     * Mutation FOLLOW-M3: promote `runFinished` to a conjunct — killed by the first assertion.
+     * Mutation FOLLOW-M3: promote the run plane to a conjunct — killed by the first assertion here
+     * and by the third of FOLLOW-1b.
      */
     @Test
     fun `FOLLOW-6 a sealed stream ends the output lane without asking whether the run ended`() {

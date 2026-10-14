@@ -319,11 +319,11 @@ class ConsoleMultiOpInstallCanaryTest {
         return stdout to stderr
     }
 
-    private val RUN_ID_REGEX: Regex = Regex("\"runId\"\\s*:\\s*\"([0-9a-fA-F-]{36})\"")
+    private val runIdRegex: Regex = Regex("\"runId\"\\s*:\\s*\"([0-9a-fA-F-]{36})\"")
 
     private fun extractRunId(stdout: String, stderr: String): String? =
-        RUN_ID_REGEX.find(stdout)?.groupValues?.get(1)
-            ?: RUN_ID_REGEX.find(stderr)?.groupValues?.get(1)
+        runIdRegex.find(stdout)?.groupValues?.get(1)
+            ?: runIdRegex.find(stderr)?.groupValues?.get(1)
 
     /**
      * Reassembles the per-record `text` fields of a JSONL stream into the payload the user sees.

@@ -50,7 +50,8 @@ Exit codes
    least one FRESH result file is not readable JUnit XML, or a declared
    catalog has classes the results tree never produced. A gate that cannot read
    its own evidence has no verdict, and a zero it computed from an unreadable
-   file is not a green gate.
+   file is not a green gate. With `--json` a refusal still emits the report
+   shape, carrying `verdict`, `exit_code` and `refused{case,reason}`.
 
 Fresh vs carried-over
 --------------------
@@ -105,6 +106,29 @@ instead of answering it wrongly.
 Files whose XML is readable but whose suite name is absent from the result
 tree are indistinguishable from a class that never ran, so an absent suite is
 invalid evidence, exactly as SPEC-06 requires.
+
+Refusals are values too
+----------------------
+A run can be absent for more than one reason, and they are not the same
+failure. No XML anywhere is one thing; XML present but nothing inside the
+boundary is another, and the second is exactly what an UP-TO-DATE Gradle task
+looks like from here: every result file still exists, none of them is new. The
+previous message blamed the boundary for both, which sends the reader to fix the
+wrong file.
+
+Every refusal therefore carries a closed discriminant, and every refusal goes
+through ONE emitter:
+
+    NO_EVIDENCE                the results directory holds nothing
+    NOTHING_INSIDE_BOUNDARY    files exist, none of them belongs to this run
+    HEAD_MISMATCH              the report would be bound to a tree that did not run
+
+Before that emitter existed, four early exits wrote a sentence to stderr and
+returned 2, ignoring `--json` entirely. Measured against a real UP-TO-DATE run:
+a gate invoking this tool with `--json` received 0 bytes on stdout, so
+`json.loads` raised instead of reading a verdict, and the tool could not be told
+apart from a crash. A refusal now emits the same JSON shape as a report, with
+`verdict`, `exit_code` and `refused` always present.
 """
 
 from __future__ import annotations
@@ -527,6 +551,49 @@ def tree_state() -> str:
     return "dirty" if dirty else "clean"
 
 
+# Why a report could not be produced. A closed set, so a machine consumer gets a
+# discriminant and a reason instead of a non-zero exit and silence.
+#
+# `NoEvidence` and `NothingInsideBoundary` are the two ways a run can be absent,
+# and they are NOT the same failure. The second is what an UP-TO-DATE Gradle run
+# looks like from here: every result file still exists, none of them is new, and
+# the tool used to blame the boundary for it.
+@dataclass(frozen=True)
+class Refusal:
+    case: str
+    reason: str
+
+    def payload(self, **extra: object) -> dict[str, object]:
+        """The JSON a machine consumer receives when a report is refused.
+
+        Always carries `verdict`, `exit_code` and `refused` so a consumer never
+        has to infer the outcome from the process status alone.
+        """
+        return {
+            "verdict": "INVALID_EVIDENCE",
+            "exit_code": 2,
+            "refused": {"case": self.case, "reason": self.reason},
+            **extra,
+        }
+
+
+def emit(args: argparse.Namespace, refusal: Refusal, **extra: object) -> int:
+    """The single exit point for every refusal.
+
+    Before this existed, four early returns wrote a sentence to stderr and
+    returned 2, ignoring `--json` entirely. A gate invoking the tool with
+    `--json` therefore received an EMPTY stdout on the most important paths, and
+    `json.loads` raised instead of reading a verdict. The tool could not be
+    distinguished from a crash.
+
+    Measured on a real UP-TO-DATE Gradle run: 0 bytes on stdout, exit 2.
+    """
+    if args.json:
+        print(json.dumps(refusal.payload(**extra), indent=2, sort_keys=True))
+    print(f"FAIL: {refusal.reason}", file=sys.stderr)
+    return 2
+
+
 def main(argv: list[str]) -> int:
     args, gradle_argv = parse_args(argv)
 
@@ -536,12 +603,16 @@ def main(argv: list[str]) -> int:
     else:
         paths = discover(args.results_dir)
         if not paths:
-            print(
-                f"No JUnit XML under {args.results_dir}. The run produced no "
-                "evidence; refusing to report a green gate.",
-                file=sys.stderr,
+            return emit(
+                args,
+                Refusal(
+                    "NO_EVIDENCE",
+                    f"No JUnit XML under {args.results_dir}. The run produced "
+                    "no evidence; refusing to report a green gate.",
+                ),
+                head=git("rev-parse", "HEAD"),
+                results_dir=args.results_dir,
             )
-            return 2
         boundary = max(os.path.getmtime(p) for p in paths) - args.grace_seconds
         boundary_source = (
             f"newest XML mtime minus {args.grace_seconds}s (NO boundary file was "
@@ -550,37 +621,61 @@ def main(argv: list[str]) -> int:
 
     paths = discover(args.results_dir)
     if not paths:
-        print("No JUnit XML found; nothing to report.", file=sys.stderr)
-        return 2
+        return emit(
+            args,
+            Refusal(
+                "NO_EVIDENCE",
+                "No JUnit XML found under the results directory; nothing to report.",
+            ),
+            head=git("rev-parse", "HEAD"),
+            results_dir=args.results_dir,
+        )
 
     fresh, stale = split_fresh(paths, boundary)
     fresh_t, stale_t = totals(fresh), totals(stale)
 
-    # A boundary created AFTER the results silently excludes the run it was meant
-    # to capture, yielding an empty "THIS RUN" row and a PASS over zero tests.
-    # That is the dangerous direction: the number looks fine and proves nothing.
-    # Measured while writing the harness, where the boundary file was created
-    # after the XML instead of before it.
+    # Result files exist but none is inside the boundary. Two causes, and they
+    # are not the same: the boundary was created after the run, or the build
+    # never re-executed and nothing is new. An UP-TO-DATE Gradle task lands here,
+    # and the previous message blamed the boundary for it, which sends the reader
+    # to fix the wrong thing.
     if not fresh:
-        print(
-            "FAIL: no XML falls inside the run boundary, so this report would "
-            "certify zero tests. The boundary file was almost certainly created "
-            "after the run; it must be created BEFORE the build starts.",
-            file=sys.stderr,
+        return emit(
+            args,
+            Refusal(
+                "NOTHING_INSIDE_BOUNDARY",
+                f"No XML falls inside the run boundary: {len(paths)} result file(s) "
+                "exist under the results directory and none of them is inside it, "
+                "so this report would certify zero tests. Either the boundary file "
+                "was created AFTER the build instead of before it, or the build did "
+                "not re-execute (an UP-TO-DATE task produces no new evidence). "
+                "Both refuse; the distinction decides where to look.",
+            ),
+            head=git("rev-parse", "HEAD"),
+            results_dir=args.results_dir,
+            boundary_source=boundary_source,
+            result_files_present=len(paths),
+            result_files_inside_boundary=0,
+            carried_over_files=len(stale),
         )
-        return 2
     head = git("rev-parse", "HEAD")
     subject = git("log", "-1", "--pretty=%s")
     branch = git("rev-parse", "--abbrev-ref", "HEAD")
 
     head_matches = head == args.head
     if not head_matches and not args.skip_tree_check:
-        print(
-            f"FAIL: --head {args.head} does not match HEAD {head}. A report bound "
-            "to a SHA that is not the tree that ran is worse than no report.",
-            file=sys.stderr,
+        return emit(
+            args,
+            Refusal(
+                "HEAD_MISMATCH",
+                f"--head {args.head} does not match HEAD {head}. A report bound "
+                "to a SHA that is not the tree that ran is worse than no report.",
+            ),
+            head=head,
+            requested_head=args.head,
+            head_matches=False,
+            results_dir=args.results_dir,
         )
-        return 2
 
     # Decision first, interpretation second. The verdict is a closed result over
     # two typed inputs, and only then rendered.

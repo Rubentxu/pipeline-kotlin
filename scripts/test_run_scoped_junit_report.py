@@ -174,10 +174,19 @@ class FailClosed(Harness):
         """Claim: no evidence is not evidence of success.
 
         Mutation: return 0 with zero counts when the directory is empty.
+
+        TRANSITION (this row previously asserted `r.stdout.strip() == ""`, which
+        encoded the defect rather than the intent). The claim was always "a
+        refusal must not print a report body": a report body is a fresh/verdict/
+        completeness block. Emitting a typed refusal instead of silence is not a
+        report body, so the intent is now asserted directly: no report-shaped
+        keys, and the refusal carries its own discriminant. Asserting the empty
+        stdout would have kept pinning a machine-unreadable exit.
         """
         r = self.run_raw()
         self.assertEqual(r.returncode, 2, "an empty results directory must not report PASS")
-        self.assertEqual(r.stdout.strip(), "", "a refusal must not print a report body")
+        self.assertNotIn("fresh", r.stdout, "a refusal must not print a report body")
+        self.assertNotIn("PASS", r.stdout)
 
     def test_boundary_after_the_run_fails_closed(self) -> None:
         """Claim: a boundary created after the results cannot certify zero tests.
@@ -599,11 +608,12 @@ class MalformedInput(Harness):
         with open(os.path.join(d, "TEST-NotAResult.xml"), "w", encoding="utf-8") as fh:
             fh.write(SUITE.format(name="x", t=99, s=0, f=0, e=0))
         # No real results exist, so the tool refuses rather than reporting an
-        # empty PASS. Asserting JSON here would demand the very false green the
-        # guard exists to prevent.
+        # empty PASS. Asserting a report body here would demand the very false
+        # green the guard exists to prevent; asserting an empty stdout would
+        # pin the machine-unreadable exit that the refusal emitter removed.
         r = self.run_raw("--boundary-file", self.boundary())
         self.assertEqual(r.returncode, 2)
-        self.assertEqual(r.stdout.strip(), "")
+        self.assertNotIn("fresh", r.stdout)
 
     def test_non_results_tree_is_not_evidence(self) -> None:
         """Claim: a TEST-*.xml outside build/test-results is not a result.
@@ -835,6 +845,141 @@ class CompletenessAttestation(Harness):
         self.assertEqual(r.returncode, 0)
         self.assertIn("COMPLETENESS: not attested", r.stdout)
         self.assertIn("VERDICT: NOT_ATTESTABLE", r.stdout)
+
+
+class RefusalIsAValue(Harness):
+    """A refusal must be a typed value, never an exit code plus silence.
+
+    Measured against a real UP-TO-DATE Gradle run: four early exits returned 2
+    and wrote nothing to stdout, so `--json` produced 0 bytes and `json.loads`
+    raised. A gate could not tell "the run produced no evidence" from "the tool
+    crashed". These rows pin the machine contract on every refusal path.
+    """
+
+    def test_no_evidence_refusal_is_json(self) -> None:
+        """Claim: an empty results directory yields a parseable refusal.
+
+        Mutation: restore `print(..., file=sys.stderr); return 2` on this path,
+        which is what every early exit did before this change.
+        """
+        code, out = self.run_tool("--json")
+        self.assertEqual(code, 2)
+        self.assertEqual(out["verdict"], "INVALID_EVIDENCE")
+        self.assertEqual(out["exit_code"], 2)
+        self.assertEqual(out["refused"]["case"], "NO_EVIDENCE")
+        self.assertTrue(out["refused"]["reason"])
+
+    def test_nothing_inside_boundary_is_json_and_distinguishes_the_cause(self) -> None:
+        """Claim: files that exist but are all carried-over are their own case.
+
+        This is the UP-TO-DATE shape: results still on disk, none of them new.
+        Reporting it as NO_EVIDENCE would send the reader to fix the wrong thing.
+
+        Mutation: reuse the `NO_EVIDENCE` refusal for this path.
+        """
+        self.xml("m1", "Old", t=3, age_s=3600)
+        code, out = self.run_tool("--boundary-file", self.boundary(), "--json")
+        self.assertEqual(code, 2)
+        self.assertEqual(out["verdict"], "INVALID_EVIDENCE")
+        self.assertEqual(out["refused"]["case"], "NOTHING_INSIDE_BOUNDARY")
+        self.assertEqual(out["result_files_present"], 1)
+        self.assertEqual(out["result_files_inside_boundary"], 0)
+        self.assertEqual(out["carried_over_files"], 1)
+
+    def test_head_mismatch_refusal_is_json(self) -> None:
+        """Claim: a report bound to the wrong SHA is refused as a typed value.
+
+        Mutation: return 2 before the JSON block, leaving stdout empty.
+        """
+        self.xml("m1", "Fresh", t=1)
+        r = subprocess.run(
+            [
+                sys.executable,
+                TOOL,
+                "--head",
+                "0" * 40,
+                "--results-dir",
+                self.results,
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+        )
+        self.assertEqual(r.returncode, 2)
+        out = json.loads(r.stdout)
+        self.assertEqual(out["refused"]["case"], "HEAD_MISMATCH")
+        self.assertFalse(out["head_matches"])
+        self.assertEqual(out["requested_head"], "0" * 40)
+
+    def test_every_refusal_carries_the_same_minimum_contract(self) -> None:
+        """Claim: a consumer can rely on these keys without reading the code.
+
+        Mutation: drop `exit_code` from `Refusal.payload`, forcing a consumer to
+        re-derive the outcome from the process status.
+        """
+        self.xml("m1", "Old", t=3, age_s=3600)
+        _, out = self.run_tool("--boundary-file", self.boundary(), "--json")
+        for key in ("verdict", "exit_code", "refused"):
+            self.assertIn(key, out)
+        for key in ("case", "reason"):
+            self.assertIn(key, out["refused"])
+        self.assertEqual(out["exit_code"], 2)
+        self.assertEqual(out["verdict"], "INVALID_EVIDENCE")
+
+    def test_json_always_agrees_with_the_exit_code(self) -> None:
+        """Claim: with `--json`, stdout is never empty and the payload's
+        `exit_code` always equals the process status.
+
+        The bug being pinned is exactly this: `json.loads("")` raises, so a gate
+        read a parse failure instead of a verdict, and could not tell "the run
+        produced no evidence" from "the tool crashed".
+
+        Both variants are on this row on purpose. WITH a stale explicit boundary
+        the run is refused (`NOTHING_INSIDE_BOUNDARY`, exit 2). WITHOUT one the
+        boundary is inferred as `newest XML mtime - grace`, which makes every
+        file fresh by construction, so the run reports `NOT_ATTESTABLE` at exit
+        0. That inference is an unmeasured boundary and closing it is the open
+        provenance slice; this row does not pretend it is settled. What must
+        hold on BOTH paths is that a machine consumer gets a verdict and that the
+        verdict agrees with the exit code.
+
+        Mutation: return None from `emit` when `args.json`, so the caller exits 0
+        on an empty stdout.
+        """
+        for label, boundary_arg, case in (
+            ("stale_explicit_boundary", True, "NOTHING_INSIDE_BOUNDARY"),
+            ("inferred_boundary", False, None),
+        ):
+            with self.subTest(boundary=label):
+                # Two files, both an hour old. With an explicit boundary older
+                # than both, nothing is fresh.
+                self.xml("m1", "OldA", t=2, age_s=3600)
+                self.xml("m1", "OldB", t=2, age_s=3600)
+                extra = ["--boundary-file", self.boundary()] if boundary_arg else []
+                raw = self.run_raw(*extra, "--json")
+                self.assertTrue(raw.stdout.strip(), "stdout must never be empty")
+                payload = json.loads(raw.stdout)
+                self.assertEqual(raw.returncode, payload["exit_code"])
+                if case is None:
+                    self.assertEqual(payload["verdict"], "NOT_ATTESTABLE")
+                    self.assertEqual(raw.returncode, 0)
+                else:
+                    self.assertEqual(payload["verdict"], "INVALID_EVIDENCE")
+                    self.assertEqual(payload["refused"]["case"], case)
+                    self.assertEqual(raw.returncode, 2)
+
+    def test_the_text_mode_still_explains_itself(self) -> None:
+        """Claim: the human report names both possible causes.
+
+        Mutation: restore the old single-cause sentence blaming the boundary.
+        """
+        self.xml("m1", "Old", t=3, age_s=3600)
+        r = self.run_text("--boundary-file", self.boundary())
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("FAIL", r.stderr)
+        self.assertIn("UP-TO-DATE", r.stderr)
+        self.assertIn("AFTER the build", r.stderr)
 
 
 if __name__ == "__main__":

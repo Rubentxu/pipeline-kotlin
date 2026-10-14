@@ -94,6 +94,13 @@ remedio externo compartido con B0-F4.
 
 **Orden obligatorio:** RP-0 → RP-1 → RP-2 → RP-3 → RP-4 → RP-5 (Gate local) → RP-6 (ecosistema) → RP-7 (local-first ampliado) → RP-8 (controller/worker remoto) → RP-9 (Jenkins y capacidades distribuidas). Los spikes sin cambios públicos pueden adelantarse; su implementación NO puede adelantar el gate del que depende.
 
+**Iniciativa externa en evaluación, sin autoridad propia.** `docs/pipelinek_cd_harness_package/`
+(sin trackear) propone una infraestructura de pruebas transversal con cuatro `ADR-CDH-*` en estado
+`PROPOSED`. No abre una secuencia paralela ni adelanta este orden. Sus límites actuales están
+registrados en `docs/v2/07-uat/WU_CDH_H0_RECONCILE_01_BOUNDARY_RECEIPT.md`: qué coincide con un
+documento vigente y qué sigue sin ratificar. En particular, el techo de 900 s es **medición
+pendiente**, no un gate aplicado, y la certificación de candidatas sigue siendo del harness externo.
+
 ## 2. RP-0 — Restaurar CI y verdad del repositorio (P0; primera WU)
 
 **Objetivo:** un checkout limpio del SHA auditado ejecuta realmente todas las validaciones requeridas.

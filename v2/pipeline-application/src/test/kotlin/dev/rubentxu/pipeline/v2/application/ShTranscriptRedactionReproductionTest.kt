@@ -143,18 +143,6 @@ class ShTranscriptRedactionReproductionTest {
      * what the CLI does on every run. With a registry present the transcript is lost.
      */
     @Test
-    @org.junit.jupiter.api.Disabled(
-        "RED — characterised defect. A real sh transcript is never persisted when a " +
-            "SecretPatternRegistry is composed, which the CLI does on EVERY run (Main.kt wires " +
-            "the registry object unconditionally; only the canary secrets are conditional). " +
-            "Measured with this harness: with an EMPTY registry the stream is never even " +
-            "declared (`console-refused: unknown-stream ...`); with a registered secret exactly " +
-            "ONE byte of a 16-byte transcript lands. Product symptom: ~16s wall against a 0.21s " +
-            "JVM baseline, no output-plane/frames directory, so console --frames and " +
-            "console --follow have nothing to read. " +
-            "See docs/v2/07-uat/R4_WU_RC2_FRAME_INTEGRITY_RECEIPT.md § 'The fourth defect'. " +
-            "Delete this @Disabled and promote its assertion once the redactor composition is fixed.",
-    )
     fun `REDACTOR-2 a real sh transcript is lost when a registry is composed`() {
         // An EMPTY registry, on purpose. `Main.kt` wires the registry object into every run
         // regardless of whether any secret was registered (canaries are added conditionally at
@@ -182,11 +170,6 @@ class ShTranscriptRedactionReproductionTest {
      * for the plumbing and not for the redaction.
      */
     @Test
-    @org.junit.jupiter.api.Disabled(
-        "RED — same defect as REDACTOR-2 with a secret actually registered; one byte of a " +
-            "16-byte transcript lands. See " +
-            "docs/v2/07-uat/R4_WU_RC2_FRAME_INTEGRITY_RECEIPT.md § 'The fourth defect'.",
-    )
     fun `REDACTOR-3 a real sh transcript is lost when a registry with a secret is composed`() {
         val registry = SecretPatternRegistry()
         registry.addSecret(SecretHandle.plain("a-sufficiently-long-registered-secret"))

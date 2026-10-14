@@ -171,19 +171,7 @@ class StreamingRedactor(
             //    not cover this prefix, so the head byte is NOT the start of
             //    a secret. Emit it as plain text and drop it, then re-try
             //    the new head on the next iteration.
-            //
-            //    THIS IS THE BUG FIX: the previous version of this method
-            //    just dropped the head without emitting, which let bytes
-            //    pile up in the lookahead indefinitely (the R2.3(b)
-            //    agent's diagnostic showed totalReceived=5772 but
-            //    totalCommitted=66 with the fix missing; the InputStream
-            //    wrapper's `ring full → emit head` branch is the
-            //    reference).
-            state.outputQueue[(state.outputHead + state.outputCount) % state.outputQueue.size] =
-                state.ring[state.ringHead]
-            state.outputCount++
-            state.ringHead = (state.ringHead + 1) % state.ring.size
-            state.ringCount--
+            emitHeadAsPlain(state)
         }
         // One more pass to drain any decision that became possible after the
         // last byte was added.
@@ -231,7 +219,9 @@ class StreamingRedactor(
         // The lookahead is now decidable. Run the same one-head decision
         // loop as [feed] until the ring is empty.
         while (state.ringCount > 0) {
-            if (!drainOneHead(state)) {
+            // `atEof = true`: no more bytes can arrive, so a literal longer than what is buffered
+            // must be matched by the prefix that IS present rather than deferred forever.
+            if (!drainOneHead(state, atEof = true)) {
                 // No seam literal starts with this byte; emit it as-is.
                 state.outputQueue[(state.outputHead + state.outputCount) % state.outputQueue.size] =
                     state.ring[state.ringHead]
@@ -254,17 +244,63 @@ class StreamingRedactor(
     }
 
     /**
+     * WU-B FIX 1 — the only way out of a full ring with nothing decidable.
+     *
+     * Emit the ring head as plain text. It is emitted rather than dropped because a byte inside
+     * the lookahead has to reach the Output Plane eventually, and it is emitted NOW because the
+     * alternative is a stall: see [RedactingInputStream.read].
+     *
+     * Called from two places, and that is the whole point. [feed] reached it while it still had
+     * input to consume; the InputStream wrapper needs it too, because the wrapper's feed is
+     * bounded by the ring's FREE SPACE — so when the ring is already full the wrapper can never
+     * call `feed` at all, and without this method it has no branch that makes progress.
+     */
+    private fun relieveFullRing(state: RedactorState) {
+        if (state.ringCount < state.maxLiteral) return
+        if (drainOneHead(state)) return
+        emitHeadAsPlain(state)
+    }
+
+    /** Move the ring head to the output queue verbatim, and make room in the ring. */
+    private fun emitHeadAsPlain(state: RedactorState) {
+        state.outputQueue[(state.outputHead + state.outputCount) % state.outputQueue.size] =
+            state.ring[state.ringHead]
+        state.outputCount++
+        state.ringHead = (state.ringHead + 1) % state.ring.size
+        state.ringCount--
+    }
+
+    /**
      * Try to match a seam literal at the ring head. If matched, the literal
      * bytes are consumed from the ring and the SCRUB_MARKER is enqueued.
      * @return true if a literal was matched (one head byte was decided).
      */
-    private fun drainOneHead(state: RedactorState): Boolean {
+    private fun drainOneHead(state: RedactorState, atEof: Boolean = false): Boolean {
         if (state.ringCount == 0) return false
         val first = state.ring[state.ringHead]
         for (li in state.seam.indices) {
             if (state.seamFirstBytes[li] != first) continue
             val literal = state.seam[li]
-            if (literal.size > state.ringCount) continue
+            if (literal.size > state.ringCount) {
+                // WU-A FIX 4 — a literal that does not FIT yet means the head is UNDECIDED, and
+                // undecided must not fall through to a shorter literal.
+                //
+                // This used to `continue`, so the scan went on to the next literal. When two
+                // secrets share a prefix (`SECRET-AB` and `SECRET-ABCDEFGH`) and the ring held
+                // fewer bytes than the longer one, the longer was skipped and the SHORTER matched
+                // — so the real secret was replaced by `****` and its own tail, `CDEFGH`, was
+                // written to the Output Plane in the clear:
+                //
+                //   input   SECRET-ABCDEFGH;SECRET-AB;SECRET-ABCDEFGH
+                //   output  ****CDEFGH;****;****          <- the tail of a real secret, in clear
+                //
+                // The ring is sized to the LONGEST literal, so a full ring is always decidable and
+                // this arm is only reachable with a partly filled ring — which is the normal state
+                // while the source is still producing. At EOF no more bytes can arrive, so the
+                // scan proceeds and takes the longest literal that fits; `finish` passes atEof.
+                if (!atEof) return false
+                continue
+            }
             var match = true
             for (i in 1 until literal.size) {
                 if (state.ring[(state.ringHead + i) % state.ring.size] != literal[i]) {
@@ -346,6 +382,18 @@ class StreamingRedactor(
         /** True after close() has been called */
         private var closed = false
 
+        /**
+         * WU-B FIX 2 — the part of the EOF flush this call could not hand back.
+         *
+         * `finish` empties the state's output queue and zeroes it, so a flush that does not fit
+         * the caller's buffer is otherwise **gone**: the bytes left the pipe, the state was
+         * cleared, and the next `read` would have said "no more data" about a transcript that had
+         * more in it. Held here so the next call serves the remainder, which is the only
+         * difference between "a small read" and "truncated output".
+         */
+        private var finalFlush: ByteArray = ByteArray(0)
+        private var finalFlushOffset = 0
+
         override fun read(): Int {
             val buf = ByteArray(1)
             val n = read(buf, 0, 1)
@@ -364,6 +412,21 @@ class StreamingRedactor(
             var written = 0
 
             while (written < len) {
+                // Step 0 — serve the retained EOF flush BEFORE anything else.
+                //
+                // It is first because it is the only step that can still have bytes: `finish`
+                // empties and zeroes the state, so once it has run the queue is gone for good.
+                // The old code copied `min(final.size, len - written)` and returned, throwing
+                // the remainder away — a one-byte read at EOF truncated the transcript by
+                // everything it could not hold.
+                if (finalFlushOffset < finalFlush.size) {
+                    val n = minOf(finalFlush.size - finalFlushOffset, len - written)
+                    System.arraycopy(finalFlush, finalFlushOffset, b, off + written, n)
+                    finalFlushOffset += n
+                    written += n
+                    continue
+                }
+
                 // Step 1: Drain outputQueue first via the public state machine.
                 written += this@StreamingRedactor.take(state, b, off + written, len - written)
                 if (written >= len) break
@@ -379,23 +442,37 @@ class StreamingRedactor(
                     inputLimit = source.read(inputBuffer, 0, state.chunkSize)
                     inputOffset = 0
                     if (inputLimit == -1) {
-                        // No more data; flush the lookahead as finalised bytes.
-                        val final = this@StreamingRedactor.finish(state)
-                        if (final.isNotEmpty()) {
-                            val n = minOf(final.size, len - written)
-                            System.arraycopy(final, 0, b, off + written, n)
-                            written += n
-                        }
-                        return if (written > 0) written else -1
+                        // No more data; flush the lookahead as finalised bytes. The WHOLE flush is
+                        // retained, and Step 0 hands back whatever this call cannot take.
+                        finalFlush = this@StreamingRedactor.finish(state)
+                        finalFlushOffset = 0
+                        continue
                     }
                 }
                 if (inputOffset < inputLimit) {
-                    val chunk = minOf(inputLimit - inputOffset, len - written, state.maxLiteral - state.ringCount)
-                    if (chunk > 0) {
+                    val space = state.maxLiteral - state.ringCount
+                    if (space > 0) {
+                        val chunk = minOf(inputLimit - inputOffset, len - written, space)
                         this@StreamingRedactor.feed(state, inputBuffer, inputOffset, chunk)
                         inputOffset += chunk
                         continue
                     }
+                    // WU-B FIX 1 — the ring is FULL and nothing is decidable at its head.
+                    //
+                    // This is the branch that used to not exist. The feed above is bounded by the
+                    // ring's FREE SPACE, so a full ring means the wrapper can never call `feed`,
+                    // and the early-return below requires room to return. Every path through the
+                    // loop then left `written` unchanged: a busy loop at 100% CPU that consumed
+                    // nothing while the child kept writing. An empty registry made it near-certain,
+                    // because with no secrets almost no head is ever decidable and the ring fills
+                    // after a handful of bytes.
+                    //
+                    // Emitting the head is the only way out, and it is SAFE: the head is being
+                    // emitted precisely because no literal starts with it, so no secret can span
+                    // it. It is also not optional for correctness — a redactor that cannot emit a
+                    // byte it has already decided is not withholding anything a secret needs.
+                    this@StreamingRedactor.relieveFullRing(state)
+                    continue
                 }
 
                 // Step 4: pending.size < maxLiteral and source still has data → fill
@@ -442,7 +519,20 @@ class StreamingRedactor(
                 // already given up on the source.
                 @Suppress("UNUSED_VARIABLE") val unused = final
             }
-            // Zero the state so it is safe to discard.
+            // Zero the state so it is safe to discard. The retained EOF flush is zeroed for the
+            // same reason: it is decided output, and decided output can still be secret-shaped.
+            //
+            // `inputBuffer` is zeroed too, and that is not incidental. It holds RAW bytes straight
+            // off the pipe — including any that were never fed, because the ring filled first —
+            // so leaving them in a discarded object is exactly the leak the whole class exists to
+            // prevent. This was already asserted by "close clears all buffers"; WU-B made it
+            // reachable by letting the read loop leave the buffer partly consumed.
+            java.util.Arrays.fill(inputBuffer, 0.toByte())
+            inputOffset = 0
+            inputLimit = 0
+            if (finalFlush.isNotEmpty()) java.util.Arrays.fill(finalFlush, 0.toByte())
+            finalFlush = ByteArray(0)
+            finalFlushOffset = 0
             java.util.Arrays.fill(state.ring, 0.toByte())
             state.ringHead = 0
             state.ringCount = 0

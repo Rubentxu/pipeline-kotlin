@@ -159,10 +159,19 @@ class SecretPatternRegistry {
      */
     internal fun literalSeam(): List<ByteArray> {
         if (registeredSecrets.isEmpty()) {
-            // Return a sentinel that cannot match any real data — the marker itself
-            // has length 4, which is shorter than any real pattern (min is hex-16 for 8-byte secret).
-            // This keeps maxLiteralByteLength correct even when no secrets exist.
-            return listOf(SCRUB_MARKER.toByteArray(Charsets.UTF_8))
+            // WU-B FIX 3 — an EMPTY registry is a PASSTHROUGH, and it says so by having no
+            // literals at all.
+            //
+            // This used to return `listOf(SCRUB_MARKER)` — a synthetic four-byte literal. The
+            // comment claimed it "cannot match any real data", which was wrong in a way that
+            // mattered twice over: real output DOES contain `****` (it is what the marker looks
+            // like, and it is a perfectly ordinary thing for a child process to print), and the
+            // sentinel forced a MIN_SECRET_WINDOW lookahead on a stream that had no secret to
+            // look for. With no literals every head is undecidable, so the redactor held bytes it
+            // did not have to hold — and a full ring is exactly the state that used to spin.
+            //
+            // A registry with nothing to redact has nothing to decide, so it decides nothing.
+            return emptyList()
         }
 
         val seam = mutableListOf<ByteArray>()
@@ -198,7 +207,14 @@ class SecretPatternRegistry {
      * @return Maximum literal byte length, floored at [MIN_SECRET_WINDOW]
      */
     internal fun maxLiteralByteLength(): Int {
-        if (registeredSecrets.isEmpty()) return MIN_SECRET_WINDOW
+        // WU-B FIX 3 — with no literals the lookahead is ONE byte, not MIN_SECRET_WINDOW.
+        //
+        // A one-byte ring is fully decided the moment its byte arrives (no literal can start
+        // with it, because there are no literals), so the ring never fills and never withholds.
+        // That is what "a registry without secrets preserves the bytes exactly" needs, and it is
+        // why 1 rather than 0: a zero-length ring has no byte to hold, and feed/take would have
+        // nothing to move.
+        if (registeredSecrets.isEmpty()) return 1
 
         var maxLen = 0
         for (secret in registeredSecrets) {

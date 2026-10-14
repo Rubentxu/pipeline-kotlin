@@ -553,17 +553,20 @@ class ConsoleFrameFiltersTest {
      * interpreted. That is the "semantic drop" the Semantic Constitution §2 forbids: a flag
      * accepted, never read, whose result is indistinguishable from a filter that worked.
      *
-     * `@Disabled` rather than deleted or rewritten, per the migration rule in AGENTS.md. When
-     * the block's own suite replaces it the transition must be explicit, never a silent rewrite
-     * of what is expected — the replacement rows are
+     * `@Disabled` rather than deleted or rewritten, per the migration rule in AGENTS.md. The
+     * defect it pins is now CLOSED, so this row stays disabled permanently: there is no correct
+     * expectation left for it, because its whole claim is that an unrecognised kind matches
+     * everything, and the shipped answer is a refusal. The replacement rows are
      * `ConsoleOperationSelectionTest.RC3-4` (a real kind selects the steps whose `stepType` it
-     * names) and `RC3-5` (an unknown kind selects NOTHING and is refused).
+     * names) and `RC3-5` (an unknown kind selects NOTHING and is refused) — verified against the
+     * real distribution, where an unknown name answers
+     * `Error: no stage named 'nope' in this run (known: main)`.
      *
      * Receipt: docs/v2/07-uat/R4_WU_RC3_CONSOLE_SELECTION_RECEIPT.md
      */
     @Test
     @org.junit.jupiter.api.Disabled(
-        "RED — pins the `--kind` semantic drop: rc1 computed `kindOk = true`, so ANY kind matched " +
+        "RED — pins the `--kind` semantic drop, which is now CLOSED. rc1 computed `kindOk = true`, so ANY kind matched " +
             "every frame with exit 0. Superseded by ConsoleOperationSelectionTest RC3-4/RC3-5, " +
             "where a kind selects the steps whose stepType it names and an unknown kind is REFUSED. " +
             "See docs/v2/07-uat/R4_WU_RC3_CONSOLE_SELECTION_RECEIPT.md.",

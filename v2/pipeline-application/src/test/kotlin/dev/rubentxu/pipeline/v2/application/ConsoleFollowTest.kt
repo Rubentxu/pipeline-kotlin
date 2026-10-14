@@ -467,27 +467,25 @@ class ConsoleFollowTest {
      * (parser + wire shape). This row is the lifecycle row: a real installDist binary must
      * accept the `--follow --frames` flag combination, drive the loop, and exit 0 without
      * crashing. The frame CONTENT is what the harness verifies on the next slice.
+     *
+     * ## RE-ENABLED (WU-A/B) — and it is the reason the fourth defect was findable
+     *
+     * This row was `@Disabled` after R4/WU-RC4, and the reason is worth keeping: it had been
+     * GREEN while observing nothing. A real run left the Output Plane empty, the follow fell
+     * through to `--follow-max-polls`, and the old contract returned 0 for both "finished" and
+     * "out of polls" — so the missing transcript and the lying exit code cancelled each other
+     * out. RC4 separated those two outcomes, which turned the row RED and made the cause
+     * visible.
+     *
+     * The cause is now fixed (`StreamingRedactor` fed only into the ring's free space, so a full
+     * ring with nothing decidable had no branch that advanced — a 100% CPU spin that lost the
+     * whole transcript). With a populated Output Plane this row passes on its own terms:
+     * 22 tests, 0 skipped.
+     *
+     * It is a disabled-test lesson worth stating plainly: a `@Disabled` row is not a passing
+     * gate, and neither is a green one whose assertions never fired.
      */
     @Test
-    @org.junit.jupiter.api.Disabled(
-        "RED — was green for the WRONG reason, and the reason is now visible. " +
-            "Measured before disabling: exit 3 with `stdout=` EMPTY and " +
-            "`last frame ordinal -1`, i.e. the Output Plane held no frames at all. That is the " +
-            "fourth defect (a real `pipelinek run` never populates the Output Plane when a " +
-            "SecretPatternRegistry is composed — see " +
-            "docs/v2/07-uat/R4_WU_RC2_FRAME_INTEGRITY_RECEIPT.md § 'The fourth defect'), and it " +
-            "meant this follow had nothing to observe and fell through to --follow-max-polls. " +
-            "The old lifecycle contract returned 0 for BOTH 'finished' and 'maxPolls reached', " +
-            "so the missing frames and the lying exit code cancelled each other out and this row " +
-            "passed over a product that observed nothing at all. WU-RC4 separated those two " +
-            "outcomes into `FollowExit.Completed` (0) and `FollowExit.PollBudgetExhausted` (3), " +
-            "which is what exposed it. " +
-            "Re-enable when the fourth defect closes: the assertion below is correct and must " +
-            "stay exit 0, because a real run with real sealed frames DOES reach Completed. " +
-            "Do not relax it to '0 or 3' — that is the defect it was written to catch. " +
-            "Also still carries the pre-existing `assumeTrue(installDist)` skip flagged by the " +
-            "rc1 audit as evidence that cannot be claimed when the skip fires.",
-    )
     fun `installed distribution follows a real run to its terminal state and exits 0`(@TempDir root: Path) {
         val binary: File? = dev.rubentxu.pipeline.v2.application.support.AppBinSupport.discover().toFile()
         assumeTrue(

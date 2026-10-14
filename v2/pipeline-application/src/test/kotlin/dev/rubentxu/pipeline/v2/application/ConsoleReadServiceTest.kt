@@ -222,6 +222,17 @@ class ConsoleReadServiceTest {
             PrintStream(err, true, StandardCharsets.UTF_8).use { e ->
                 MainConsoleCli.emit(
                     ConsoleReadService.read(controlDirRoot, runId, opId.format(), after = null, maxBytes = 256),
+                    // R4 / WU-R4.3 — the emit dispatch reads the request's format; the existing
+                    // raw-bytes path is `--format text` (default). A synthetic request of the
+                    // same shape the parser would have admitted is enough for the test.
+                    ConsoleReadRequest.Paged(
+                        controlDir = controlDirRoot.toString(),
+                        runId = runId,
+                        opId = opId.format(),
+                        after = null,
+                        maxBytes = 256,
+                        format = MainConsoleCli.ConsoleFormat.TEXT,
+                    ),
                     o,
                     e,
                 )
@@ -249,6 +260,17 @@ class ConsoleReadServiceTest {
             PrintStream(err, true, StandardCharsets.UTF_8).use { e ->
                 MainConsoleCli.emit(
                     ConsoleReadService.Result.Refused(OutputRefusal.UnknownStream(MainConsoleCli.streamIdFor("nope", "op", OutputChannel.STDOUT))),
+                    // R4 / WU-R4.3 — a Refused result short-circuits the format dispatch, so
+                    // the request here is a placeholder. The shape is what the parser would
+                    // have admitted; the format value is never read.
+                    ConsoleReadRequest.Paged(
+                        controlDir = controlDirRoot.toString(),
+                        runId = "nope",
+                        opId = "op",
+                        after = null,
+                        maxBytes = 256,
+                        format = MainConsoleCli.ConsoleFormat.TEXT,
+                    ),
                     o,
                     e,
                 )

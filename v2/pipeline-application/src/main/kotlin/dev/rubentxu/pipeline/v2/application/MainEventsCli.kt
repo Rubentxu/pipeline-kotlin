@@ -58,41 +58,18 @@ import dev.rubentxu.pipeline.v2.events.identity.PipelineEventEnvelope
  * intent is not silently narrowed.
  */
 /**
- * TooManyFunctions (16) and CyclomaticComplexMethod (parseMainArgs = 31) are suppressed at the
- * object and function level respectively. The verb is a flat option table with eleven CLI flags
- * (--db, --kind, --subject, --limit, --after-cursor, --typed, --follow, --fields, --context,
- * --tail, plus the AUD-04 unknown-option arm); every helper carries a real concern (the parse
- * dispatcher, the follow loop, the typed branch, the four EventInspection transforms, the
- * exit-code ADT, the refusal/continuation reporters). WU-R4.5 (cross-CLI canary, CC-1) is the
- * future slice that promotes the option table to a shared typed iteration; at that point the
- * counts drop by construction. Until then, the complexity is structural to the verb surface,
- * not a quality signal (the same justification `MainInspectCli.parseInspect` documents).
+ * TooManyFunctions (16) and CyclomaticComplexMethod are suppressed at the
+ * object and function level respectively. CC-1 (R4 / WU-R4.7) moved the option table to
+ * [CliParser.parseEvents], which now owns the parser cyclomatic count; this verb still carries
+ * eleven CLI flags (--db, --kind, --subject, --limit, --after-cursor, --typed, --follow,
+ * --fields, --context, --tail, plus the AUD-04 unknown-option arm) and every helper carries a
+ * real concern (the [parseEventsInspectionFlags] sub-parser, the follow loop, the typed branch,
+ * the four EventInspection transforms, the exit-code ADT, the refusal/continuation reporters).
+ * The complexity is structural to the verb surface, not a quality signal (the same
+ * justification `MainInspectCli.parseInspect` documents).
  */
 @Suppress("TooManyFunctions")
 object MainEventsCli {
-
-    /**
-     * What the command prints per row: the identity projection, or the typed event itself.
-     *
-     * This is a closed pair on purpose. It is a choice of CODEC, not of reader: both cases read the
-     * same [EventPageDrain.Outcome] through the same store, with the same query, the same cursor and
-     * the same exit status. Adding a third projection must be a decision here rather than a flag
-     * threaded through the drain, because a projection is the only thing `--typed` is allowed to
-     * change and the reason it cannot be allowed to change anything else.
-     */
-    private sealed interface RowProjection {
-        /** The V1 envelope wire form. Byte-for-byte unchanged by the existence of `--typed`. */
-        data object Envelope : RowProjection
-
-        /**
-         * The stored [dev.rubentxu.pipeline.v2.events.DomainEvent], one JSON object per line.
-         *
-         * This is the projection that carries `stageName`, `stepName`, `stepType` and `outcome`.
-         * Those values are not reconstructed: they are read from the record, because the envelope
-         * that the same drain also produces does not hold them.
-         */
-        data object Typed : RowProjection
-    }
 
     /**
      * R4 / WU-R4.2 — the closed ADT of NEW flags added to the events CLI.
@@ -220,162 +197,26 @@ object MainEventsCli {
     }
 
     fun main(args: Array<String>): Int {
-        // -------- parse args --------
-        val parsed = parseMainArgs(args)
-        if (parsed is MainArgs.Rejected) {
+        // CC-1 / R4 / WU-R4.7 — admission is [CliParser.parseEvents]. The wire prefix `Error:`
+        // (the AUD-04 / AUD-05 contract for events argument refusals) is preserved here in the
+        // translation, exactly as before. Refusal of the data-plane read (a different concern, the
+        // one [MainEventsCli.reportRefusals] emits on stdout / stderr as `evt-refusal-v1:` /
+        // `evt-refusals-v1:`) is downstream of this and unchanged.
+        val parsed = CliParser.parseEvents(args)
+        if (parsed is EventsCliParseResult.Rejected) {
             System.err.println("Error: ${parsed.reason}")
             return 2
         }
-        val p = parsed as MainArgs.Parsed
+        val p = (parsed as EventsCliParseResult.Parsed).args
         return runWithArgs(p)
     }
 
     /**
-     * Parse all CLI options into a typed [MainArgs.Parsed], or surface a single typed rejection.
-     *
-     * The function is the one place that knows the option table; [main] and [runWithArgs] do
-     * not. Splitting it out is the size budget that keeps [main] under the detekt `LongMethod`
-     * ceiling, and it gives the test layer a single seam to exercise refusal messages on.
-     *
-     * The function is a flat option table: every branch is one option, every option consumes
-     * one or two args, and the validation that distinguishes them is per-option rather than
-     * per-function. CC-1 (the WU-R4.5 cross-CLI unification) will replace this body with a
-     * typed option-list iteration shared with `observe` / `inspect`, at which point the
-     * cyclomatic count drops back under 25 by construction. Until then, the complexity is
-     * structural to the option table, not a quality signal (same justification
-     * `MainInspectCli.parseInspect` documents).
-     */
-    @Suppress("CyclomaticComplexMethod", "TooManyFunctions")
-    private fun parseMainArgs(args: Array<String>): MainArgs {
-        var db: String? = null
-        var runId: String? = null
-        var kind: String? = null
-        var subjectCanonical: String? = null
-        var limit = DEFAULT_LIMIT
-        var afterCursor: String? = null
-        var limitArg: String? = null
-        var projection: RowProjection = RowProjection.Envelope
-        // R4 / WU-R4.2 — the closed list of new flags. Defaults: no follow, no fields
-        // projection (i.e. the envelope wire form), no context window, no tail.
-        var follow = false
-        var fieldsWhitelist: List<EventField>? = null
-        var contextWindow = 0
-        var tailCount = 0
-
-        var i = 0
-        while (i < args.size) {
-            val arg = args[i]
-            when (arg) {
-                "--db" -> db = args.getOrNull(++i)
-                "--kind" -> kind = args.getOrNull(++i)
-                "--subject" -> subjectCanonical = args.getOrNull(++i)
-                "--limit" -> limitArg = args.getOrNull(++i)
-                "--after-cursor" -> afterCursor = args.getOrNull(++i)
-                // MAIN: opcion anadida en origin/main. OBS no la tenia; quedarse con el lado de
-                // OBS entero habria perdido trabajo de main, y quedarse con el de main habria
-                // perdido el comentario de abajo, que explica el defecto con su historia.
-                "--typed" -> projection = RowProjection.Typed
-                // R4 / WU-R4.2 — the new flags. Each is applied through a typed parser that
-                // either returns a closed ADT value or a typed rejection rendered as
-                // `Error: ...` (matching the AUD-04 convention).
-                "--follow" -> follow = true
-                "--fields" -> {
-                    val raw = args.getOrNull(++i)
-                        ?: return MainArgs.Rejected("--fields requires a value")
-                    val parsed = parseFieldsToken(raw)
-                        ?: return MainArgs.Rejected("--fields has unknown token(s): $raw")
-                    fieldsWhitelist = parsed
-                }
-                "--context" -> {
-                    val raw = args.getOrNull(++i)
-                        ?: return MainArgs.Rejected("--context requires a value")
-                    val n = parseNonNegativeInt(raw)
-                        ?: return MainArgs.Rejected(
-                            "--context must be a non-negative Int, got '$raw'",
-                        )
-                    contextWindow = n
-                }
-                "--tail" -> {
-                    val raw = args.getOrNull(++i)
-                        ?: return MainArgs.Rejected("--tail requires a value")
-                    val n = parseNonNegativeInt(raw)
-                        ?: return MainArgs.Rejected(
-                            "--tail must be a non-negative Int, got '$raw'",
-                        )
-                    tailCount = n
-                }
-                else -> when {
-                    // AUD-04. This arm used to be `else -> if (!args[i].startsWith("--") && runId == null)
-                    // runId = args[i]`, so an unknown `--flag` matched `else`, failed the `startsWith`
-                    // test and fell out of the `when` — parsed as nothing, exit 0. A caller cannot tell a
-                    // refused command from a served one by status, which is the whole problem: an external
-                    // consumer asking for `--typed` received untyped envelopes with 0 and no signal that it
-                    // had asked for a different command than it got.
-                    //
-                    // This is already this file's neighbour convention, not a new rule imported from
-                    // elsewhere: `CliParser` refuses an unknown option with `CliError.TrailingOption`, and
-                    // `MainObserveCli` is strict for exactly that reason. This parser predates it.
-                    arg.startsWith("--") -> return MainArgs.Rejected("unknown option: $arg")
-                    // The command reads ONE run. A second positional used to be dropped while the first was
-                    // kept, so the caller's intent was silently narrowed to a subset they did not choose.
-                    runId != null -> return MainArgs.Rejected("unexpected extra argument: $arg")
-                    else -> runId = arg
-                }
-            }
-            i++
-        }
-        if (db == null || runId == null) {
-            return MainArgs.Rejected(
-                "Usage: pipeline events --db <path> <runId> [--kind K] " +
-                    "[--subject v1:run:ID|v1:stage:ID:N|...] [--limit N] " +
-                    "[--after-cursor TOKEN] [--follow] " +
-                    "[--fields SEQ,KIND,EVENTID,SUBJECT,SOURCE] " +
-                    "[--context N] [--tail N] " +
-                    "[--typed]",
-            )
-        }
-        // A flag that does not parse must not become the default. `--limit abc` used to read as 100,
-        // which is the same shape as a command that silently did something other than what was asked.
-        val parsedLimit = if (limitArg != null) {
-            val p = limitArg.toIntOrNull()
-            if (p == null || p <= 0) {
-                return MainArgs.Rejected("--limit must be a positive integer, got: $limitArg")
-            }
-            p
-        } else limit
-        // R4 / WU-R4.2 — `--typed` is the typed-DomainEvent projection; `--fields / --context /
-        // --tail` are envelope projections. Reject the combination rather than silently
-        // narrowing, because a `--fields` projection over a typed stream would require
-        // re-deriving envelopes (lossy) or admitting a second field ADT.
-        if (projection == RowProjection.Typed &&
-            (fieldsWhitelist != null || contextWindow > 0 || tailCount > 0)
-        ) {
-            return MainArgs.Rejected(
-                "--typed is mutually exclusive with --fields / --context / --tail " +
-                    "(the EventField ADT is bound to envelopes, not to DomainEvent)",
-            )
-        }
-        return MainArgs.Parsed(
-            db = db,
-            runId = runId,
-            kind = kind,
-            subjectCanonical = subjectCanonical,
-            limit = parsedLimit,
-            afterCursor = afterCursor,
-            projection = projection,
-            follow = follow,
-            fieldsWhitelist = fieldsWhitelist,
-            contextWindow = contextWindow,
-            tailCount = tailCount,
-        )
-    }
-
-    /**
-     * Run the typed read after [parseMainArgs] has succeeded: validate the store path, decode
+     * Run the typed read after [CliParser.parseEvents] has succeeded: validate the store path, decode
      * the cursor, build the query, then dispatch to the follow loop, the typed projection, or
      * the envelope projection.
      */
-    private fun runWithArgs(p: MainArgs.Parsed): Int {
+    private fun runWithArgs(p: EventsCliArgs): Int {
         if (!java.nio.file.Files.exists(java.nio.file.Path.of(p.db))) {
             System.err.println("Error: db not found: ${p.db}")
             return 2
@@ -425,8 +266,8 @@ object MainEventsCli {
                 )
             }
             val outcome = when (p.projection) {
-                RowProjection.Envelope -> EventPageDrain.drain(reader, run, query, cursor, p.limit)
-                RowProjection.Typed -> return reportTyped(store, run, query, cursor, p.limit, p.runId)
+                EventsRowProjection.Envelope -> EventPageDrain.drain(reader, run, query, cursor, p.limit)
+                EventsRowProjection.Typed -> return reportTyped(store, run, query, cursor, p.limit, p.runId)
             }
             when (outcome) {
                 is EventPageDrain.Outcome.Answered -> {
@@ -464,27 +305,6 @@ object MainEventsCli {
         } finally {
             store.close()
         }
-    }
-
-    /**
-     * R4 / WU-R4.2 — typed parse outcome. The body of [parseMainArgs] is a flat option table
-     * and a single typed rejection per row is enough.
-     */
-    private sealed interface MainArgs {
-        data class Parsed(
-            val db: String,
-            val runId: String,
-            val kind: String?,
-            val subjectCanonical: String?,
-            val limit: Int,
-            val afterCursor: String?,
-            val projection: RowProjection,
-            val follow: Boolean,
-            val fieldsWhitelist: List<EventField>?,
-            val contextWindow: Int,
-            val tailCount: Int,
-        ) : MainArgs
-        data class Rejected(val reason: String) : MainArgs
     }
 
     /**
@@ -545,7 +365,7 @@ object MainEventsCli {
         cursor: EventCursor?,
         limitPerPage: Int,
         runId: String,
-        projection: RowProjection,
+        projection: EventsRowProjection,
     ): Int {
         val reader = EventHistoryReader(store)
         var currentCursor = cursor
@@ -562,7 +382,7 @@ object MainEventsCli {
 
         while (!shutdown.get() && !runFinished) {
             when (projection) {
-                RowProjection.Envelope -> {
+                EventsRowProjection.Envelope -> {
                     when (val outcome = EventPageDrain.drain(reader, run, query, currentCursor, limitPerPage)) {
                         is EventPageDrain.Outcome.Answered -> {
                             outcome.page.envelopes.forEach { envelope ->
@@ -595,7 +415,7 @@ object MainEventsCli {
                         }
                     }
                 }
-                RowProjection.Typed -> {
+                EventsRowProjection.Typed -> {
                     when (val outcome = EventPageDrain.drainTyped(store, run, query, currentCursor, limitPerPage)) {
                         is EventPageDrain.TypedOutcome.Answered -> {
                             outcome.page.events.forEach { event ->
@@ -782,8 +602,6 @@ object MainEventsCli {
         }
     }
 }
-
-private const val DEFAULT_LIMIT = 100
 
 /** Stands in for an absent value on a `:`-separated wire line, rather than printing nothing. */
 private const val ABSENT = "-"

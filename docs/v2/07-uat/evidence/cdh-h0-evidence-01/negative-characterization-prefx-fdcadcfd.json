@@ -1,0 +1,52 @@
+[
+  {
+    "case": "corrupt-xml",
+    "classification": "CHARACTERIZATION_NOT_CERTIFICATION",
+    "source_sha": "fdcadcfdbbef7f9ccffead425543603f75dfca4a",
+    "reporter_sha256": "a50db8565c2f490036bb713203076b873a5b960f940a277ceacd7277f56a4e02",
+    "fixture": "<testsuite tests=\"1\"",
+    "fixture_sha256": "457a94fe25f25073dc8a8c2ea3a741a82c74c146d7ee1a5fae90079041d52d15",
+    "argv": [
+      "/usr/bin/python3",
+      "/var/home/rubentxu/.herdr/worktrees/pipeline-kotlin/worktree-test-harnes-evolutivo/scripts/run-scoped-junit-report.py",
+      "--head",
+      "fdcadcfdbbef7f9ccffead425543603f75dfca4a",
+      "--results-dir",
+      "/home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/corrupt-xml-648eyz_l",
+      "--boundary-file",
+      "/home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/corrupt-xml-648eyz_l/run-start.boundary",
+      "--json"
+    ],
+    "exit_code": 0,
+    "stdout_sha256": "1166c02639e82dd5e7fcf18d2ade12e4df017f80f8d5c2b29b66f90b3e75bec0",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "expected": "reject invalid evidence with nonzero exit",
+    "observed": "PASS",
+    "result": "FAIL_FAIL_CLOSED_CONTRACT"
+  },
+  {
+    "case": "invalid-failure-counter",
+    "classification": "CHARACTERIZATION_NOT_CERTIFICATION",
+    "source_sha": "fdcadcfdbbef7f9ccffead425543603f75dfca4a",
+    "reporter_sha256": "a50db8565c2f490036bb713203076b873a5b960f940a277ceacd7277f56a4e02",
+    "fixture": "<testsuite tests=\"1\" skipped=\"0\" failures=\"not-a-number\" errors=\"0\"><testcase name=\"row\"/></testsuite>",
+    "fixture_sha256": "367b5455d73cf63816ebd5aec932765af22abda3b17cf8aacd44ebf536d9378f",
+    "argv": [
+      "/usr/bin/python3",
+      "/var/home/rubentxu/.herdr/worktrees/pipeline-kotlin/worktree-test-harnes-evolutivo/scripts/run-scoped-junit-report.py",
+      "--head",
+      "fdcadcfdbbef7f9ccffead425543603f75dfca4a",
+      "--results-dir",
+      "/home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/invalid-failure-counter-9g8y4e34",
+      "--boundary-file",
+      "/home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/invalid-failure-counter-9g8y4e34/run-start.boundary",
+      "--json"
+    ],
+    "exit_code": 0,
+    "stdout_sha256": "f64a6a30d38ec2ab653bdc611e1f7297a04f2157bb726f0a0a8b400742882f98",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "expected": "reject invalid evidence with nonzero exit",
+    "observed": "PASS",
+    "result": "FAIL_FAIL_CLOSED_CONTRACT"
+  }
+]

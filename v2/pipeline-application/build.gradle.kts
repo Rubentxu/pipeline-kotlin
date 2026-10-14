@@ -1,3 +1,5 @@
+import java.util.concurrent.TimeUnit
+
 plugins {
     kotlin("jvm")
     application
@@ -68,7 +70,42 @@ tasks.named<Jar>("jar") {
 val generateVersionResource by tasks.registering {
     val outputDir = layout.buildDirectory.dir("generated/version-resources")
     val versionValue = project.version.toString()
+    // H1.4 — provenance, recorded by the build that produced the bytes.
+    //
+    // A product version names a release LINE, not a commit: every commit on 0.60.0 reports
+    // `pipeline 0.60.0`. So a harness holding two binaries cannot separate them by asking the
+    // binary, and that is not hypothetical — the five corpus failures in
+    // CDH_PLANE_DIAGNOSTIC_RECEIPT.md were a stale binary reporting the correct version.
+    //
+    // Read through a Provider so the value is resolved at execution time and participates in
+    // up-to-date checking. When the commit cannot be read the build still succeeds and records
+    // nothing: a working-tree or exported-source build legitimately has no provenance, and the
+    // candidate gate is where refusing that belongs. Failing the whole build here would break
+    // ordinary development to protect a property only certification needs.
+    val buildCommit = providers.provider {
+        val head = providers.environmentVariable("PIPELINEK_BUILD_COMMIT").orNull
+        if (!head.isNullOrBlank()) {
+            return@provider head.trim()
+        }
+        val process = runCatching {
+            ProcessBuilder("git", "rev-parse", "HEAD")
+                .directory(rootDir)
+                .redirectErrorStream(true)
+                .start()
+        }.getOrNull() ?: return@provider ""
+        val output = process.inputStream.bufferedReader().readText().trim()
+        val finished = runCatching { process.waitFor(30, TimeUnit.SECONDS) }
+            .getOrDefault(false)
+        if (!finished) {
+            process.destroyForcibly()
+            return@provider ""
+        }
+        // A 40-hex full SHA, or nothing. A truncated or non-SHA value would be a worse answer
+        // than absence, because it would look like provenance while not being any.
+        if (process.exitValue() == 0 && output.matches(Regex("[0-9a-f]{40}"))) output else ""
+    }
     inputs.property("version", versionValue)
+    inputs.property("buildCommit", buildCommit)
     outputs.dir(outputDir)
     doLast {
         val target = outputDir.get()
@@ -79,7 +116,10 @@ val generateVersionResource by tasks.registering {
             "# Generated from project.version. Do not edit; see build.gradle.kts.\n" +
                 "# The runtime reads THIS, because Package.getImplementationVersion() is null\n" +
                 "# whenever the CLI runs from a classes directory instead of a jar.\n" +
-                "version=$versionValue\n",
+                "version=$versionValue\n" +
+                "# Provenance. Absent when the build could not resolve a commit, which is a\n" +
+                "# legitimate working-tree build and an unacceptable candidate.\n" +
+                "buildCommit=${buildCommit.get()}\n",
         )
     }
 }

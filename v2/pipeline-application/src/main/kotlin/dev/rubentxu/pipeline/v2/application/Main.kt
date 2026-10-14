@@ -79,7 +79,7 @@ fun main(args: Array<String>) {
     // defect, NOT a fallback case.
     // Fail-closed: print an explicit error and exit non-zero so CI cannot ship an
     // unversioned artifact.
-    if (args.firstOrNull() == "version") {
+    if (args.firstOrNull() == "version" && args.getOrNull(1) != "--json") {
         // S6-COMPOSITION: ONE authority for "what version is this". Admission reads the same value
         // through RuntimeApiVersion, so the number a plugin is judged against and the number the
         // CLI reports cannot come from two readers free to disagree.
@@ -99,6 +99,31 @@ fun main(args: Array<String>) {
             return
         }
         println("pipeline $manifestVersion")
+        System.exit(0)
+        return
+    }
+
+    // H1.4 — the same authority, reported as a machine-readable object.
+    //
+    // `version` prints a line a human reads and a version that identifies a release LINE. Neither
+    // answers "which commit is this binary", and a harness must be able to ask. Emitting the
+    // provenance as JSON keeps the report machine-checkable and keeps the product version as the
+    // release identity it actually is, without overloading it into a fake commit identity.
+    //
+    // Absent provenance is reported as `null`, not as an empty string and not as an error: a
+    // working-tree build has no commit to report, and the candidate gate decides whether that is
+    // acceptable for what it is certifying.
+    if (args.firstOrNull() == "version" && args.getOrNull(1) == "--json") {
+        val identity = RuntimeApiVersion.buildIdentity()
+        val commitField = when (identity) {
+            is RuntimeApiVersion.BuildIdentity.Recorded -> "\"${identity.commit}\""
+            RuntimeApiVersion.BuildIdentity.Absent -> "null"
+        }
+        val versionField =
+            RuntimeApiVersion.readImplementationVersion()?.let { "\"$it\"" } ?: "null"
+        println(
+            """{"productVersion":$versionField,"buildCommit":$commitField}""",
+        )
         System.exit(0)
         return
     }

@@ -772,7 +772,12 @@ object MainConsoleCli {
             bytes = store,
             tails = store,
         )
-        return reader.readOutput(request.runId, request.afterOrdinal, request.frameLimit)
+        // R4 / WU-RC2 (P0 frame integrity) — pass opId to the reader so the per-frame walk
+        // is scoped to ONE operation, not the whole run. The opId-less overload is still
+        // there for callers that legitimately want every frame in a run (observe --view
+        // console, the live drain). The console verb addresses one op at a time and gets
+        // the opId-scoped read.
+        return reader.readOutput(request.runId, request.opId, request.afterOrdinal, request.frameLimit)
     }
 
     /**
@@ -795,7 +800,8 @@ object MainConsoleCli {
             bytes = store,
             tails = store,
         )
-        return reader.readOutput(request.runId, request.afterOrdinal, request.frameLimit)
+        // R4 / WU-RC2 (P0 frame integrity) — opId-scoped read; see readFrames.
+        return reader.readOutput(request.runId, request.opId, request.afterOrdinal, request.frameLimit)
     }
 
     /**
@@ -975,7 +981,8 @@ object MainConsoleCli {
             for (poll in 0 until maxPolls) {
                 if (shutdown.get()) return 2
 
-                val page = when (val read = reader.readOutput(request.runId, ordinal, request.frameLimit)) {
+                // R4 / WU-RC2 (P0 frame integrity) — opId-scoped read; see readFrames.
+                val page = when (val read = reader.readOutput(request.runId, request.opId, ordinal, request.frameLimit)) {
                     is ObservationOutputRead.Refused -> {
                         err.println(ConsoleReadService.renderRefusal(read.reason))
                         return 1
@@ -985,10 +992,13 @@ object MainConsoleCli {
 
                 if (page.records.isNotEmpty()) {
                     emitFollowPage(page.records, request.format, out, err)
-                    // The next read starts AFTER the last record we just emitted. An ordinal
-                    // is monotonic, and asking the index for the same ordinal again would re-emit
-                    // the frame we already showed.
-                    ordinal = page.records.last().frame.ordinal + 1L
+                    // The next read starts at the last ordinal we just emitted. The reader is
+                    // strictly `ordinal > afterOrdinal` (see SegmentFrameIndex.framesOfRun), so
+                    // passing the last-delivered ordinal is what resumes at the NEXT frame, not
+                    // at the one after the next. Adding +1 here would skip a frame between
+                    // polls. Empty pages leave the cursor where it is so the next poll reads
+                    // the same window and can see anything new.
+                    ordinal = page.records.last().frame.ordinal
                 }
 
                 // EOF detection. Three facts, each from a different authority:
@@ -1035,6 +1045,26 @@ object MainConsoleCli {
      * that needs to recover from a clip would re-invoke `pipelinek console --follow --after-ordinal
      * <N>` directly, the same way it started.
      */
+    /**
+     * R4 / WU-RC2 (P0) — test seam for the follow-page emitter.
+     *
+     * The emitter's stream-lifetime contract is the defect the rc1 audit found (it closed
+     * the caller's `System.out` after the first page), and a stream-lifetime contract
+     * cannot be verified from outside a process: the row has to write two pages through
+     * the same stream and observe whether the second one lands. That needs a seam, not a
+     * forked JVM per assertion.
+     *
+     * It delegates to the private [emitFollowPage]; it does not re-implement it, so the
+     * row tests the shipped code path rather than a copy of it.
+     */
+    internal fun emitFollowPageForTest(
+        records: List<ObservationRecord.Output>,
+        format: ConsoleFormat,
+        out: PrintStream,
+    ) {
+        emitFollowPage(records, format, out, PrintStream(java.io.OutputStream.nullOutputStream()))
+    }
+
     private fun emitFollowPage(
         records: List<ObservationRecord.Output>,
         format: ConsoleFormat,
@@ -1047,12 +1077,25 @@ object MainConsoleCli {
                 out.flush()
             }
             ConsoleFormat.JSONL -> {
-                java.io.OutputStreamWriter(out, StandardCharsets.UTF_8).use { writer ->
-                    dev.rubentxu.pipeline.v2.application.observation.ObservationJsonLines.writeTo(
-                        records,
-                        writer,
-                    )
+                // DO NOT wrap `out` in a writer and call `.use {}` on it: OutputStreamWriter's
+                // close() closes the underlying stream by default, and a `.use` block calls
+                // close() on exit. After the first follow page that pattern closes System.out,
+                // and the next page's `out.write(...)` throws IOException — silently losing the
+                // rest of the follow output. Use a writer that does NOT propagate close, and
+                // flush it explicitly without closing.
+                val noCloseOut = object : java.io.FilterOutputStream(out) {
+                    override fun close() {
+                        // No-op: the writer's own close() would propagate to the underlying
+                        // stream and close System.out between follow pages. We own the
+                        // stream's lifetime; the JVM owns System.out.
+                    }
                 }
+                val writer = java.io.OutputStreamWriter(noCloseOut, StandardCharsets.UTF_8)
+                dev.rubentxu.pipeline.v2.application.observation.ObservationJsonLines.writeTo(
+                    records,
+                    writer,
+                )
+                writer.flush()
             }
         }
     }

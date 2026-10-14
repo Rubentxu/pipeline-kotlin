@@ -1,5 +1,15 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
+import dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader
+import dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead
+import dev.rubentxu.pipeline.v2.events.DomainEvent
+import dev.rubentxu.pipeline.v2.events.RunFinished
+import dev.rubentxu.pipeline.v2.events.StepFailed
+import dev.rubentxu.pipeline.v2.events.StepFinished
+import dev.rubentxu.pipeline.v2.events.StepStarted
+import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
+
 /**
  * `pipelinek inspect <run>` — bounded diagnostic surface for a single run.
  *
@@ -136,42 +146,157 @@ object MainInspectCli {
             }
         }
 
-        when (compiled.format) {
-            InspectFormat.TEXT -> {
-                System.out.println("inspect run=$runId")
-                System.out.println(
-                    "  failed=${compiled.failed} kind=${compiled.kind ?: "*"} " +
-                        "stage=${compiled.stage ?: "*"} step=${compiled.step ?: "*"} " +
-                        "context=${compiled.context} logTail=${compiled.logTail}",
-                )
-                val cols = compiled.fields ?: defaultColumns()
-                System.out.println("  fields=${cols.joinToString(",") { it.cli }}")
-            }
-            InspectFormat.JSON -> {
-                System.out.println("{")
-                System.out.println("  \"runId\": \"$runId\",")
-                System.out.println("  \"failed\": ${compiled.failed},")
-                System.out.println("  \"kind\": ${jsonOrNull(compiled.kind)},")
-                System.out.println("  \"stage\": ${jsonOrNull(compiled.stage)},")
-                System.out.println("  \"step\": ${compiled.step?.toString() ?: "null"},")
-                System.out.println("  \"context\": ${compiled.context},")
-                System.out.println("  \"logTail\": ${compiled.logTail},")
-                val cols = compiled.fields ?: defaultColumns()
-                System.out.println(
-                    "  \"fields\": [${cols.joinToString(",") { "\"${it.cli.lowercase()}\"" }}]",
-                )
-                System.out.println("}")
-            }
+        // R4 / WU-R4.1.2 — durable read seam.
+        if (compiled.dbPath == null) {
+            System.err.println("inspect: --db <path> is required to read the durable event store")
+            return 2
         }
+        if (compiled.controlRoot == null) {
+            System.err.println("inspect: --control-root <path> is required to read the Output Plane")
+            return 2
+        }
+
+        val events: List<DomainEvent> = try {
+            SqliteEventStore(compiled.dbPath).use { store ->
+                store.eventsFor(runId).toList()
+            }
+        } catch (e: java.io.IOException) {
+            System.err.println("inspect: cannot open event store at ${compiled.dbPath}: ${e.message}")
+            return 2
+        }
+
+        // Pre-fetch the Output Plane tail once for the whole run when --log-tail > 0.
+        val consoleTail: String? = if (compiled.logTail > 0) {
+            try {
+                val plane = OutputPlaneProvider.storeForReading(java.nio.file.Paths.get(compiled.controlRoot))
+                val reader = FrameIndexedObservationOutputReader(plane.frameIndex(), plane, plane)
+                when (val r = reader.readTail(runId, compiled.logTail.toLong())) {
+                    is ObservationOutputRead.Page -> r.page.text
+                    is ObservationOutputRead.Refused -> ""
+                }
+            } catch (e: java.io.IOException) {
+                null
+            }
+        } else null
+
+        val records: List<InspectionRecord> = events.map { event ->
+            toInspectionRecord(event, consoleTail)
+        }
+
+        val filtered = applyFilters(records, compiled)
+        val withContext = if (compiled.context > 0) {
+            applyContextWindow(records, filtered, compiled)
+        } else {
+            filtered
+        }
+
+        emitDocument(System.out, runId, compiled, withContext)
         return 0
     }
+
+    /**
+     * Translate one [DomainEvent] into the row shape that [InspectField] extractors read from.
+     * The mapping is intentionally narrow: the five [InspectField] cases are the contract,
+     * not the union of every DomainEvent subtype.
+     */
+    private fun toInspectionRecord(event: DomainEvent, consoleTail: String?): InspectionRecord {
+        val stepName: String? = (event as? StepStarted)?.stepName
+            ?: (event as? StepFinished)?.stepName
+            ?: (event as? StepFailed)?.stepName
+        val stepOrdinal: Long? = (event as? StepStarted)?.stepIndex?.toLong()
+            ?: (event as? StepFinished)?.stepIndex?.toLong()
+            ?: (event as? StepFailed)?.stepIndex?.toLong()
+        val outcome: String = when (event) {
+            is RunFinished -> when (event.outcome) {
+                "success" -> "success"
+                "unstable" -> "unstable"
+                "failure", "aborted" -> "failure"
+                else -> event.outcome
+            }
+            is StepFailed -> "failure"
+            else -> event.kind
+        }
+        val message: String? = (event as? StepFailed)?.message
+        return InspectionRecord(
+            stage = stepName,
+            stepOrdinal = stepOrdinal,
+            outcome = outcome,
+            message = message,
+            consoleTail = consoleTail,
+        )
+    }
+
+    private fun applyFilters(
+        records: List<InspectionRecord>,
+        q: CompiledInspectionQuery,
+    ): List<InspectionRecord> {
+        if (!q.failed && q.kind == null && q.stage == null && q.step == null) return records
+        return records.filter { rec ->
+            (q.failed && rec.outcome == "failure") ||
+                (q.kind != null && kindOf(rec) == q.kind) ||
+                (q.stage != null && rec.stage == q.stage) ||
+                (q.step != null && rec.stepOrdinal == q.step)
+        }
+    }
+
+    private fun kindOf(rec: InspectionRecord): String = rec.outcome
+
+    private fun applyContextWindow(
+        all: List<InspectionRecord>,
+        matched: List<InspectionRecord>,
+        q: CompiledInspectionQuery,
+    ): List<InspectionRecord> {
+        if (matched.isEmpty() || q.context == 0) return matched
+        val selected = mutableSetOf<Int>()
+        val matchedIndices = matched.mapNotNull { rec ->
+            all.indexOfFirst { it === rec }
+        }.toSet()
+        matchedIndices.forEach { idx ->
+            val from = (idx - q.context).coerceAtLeast(0)
+            val to = (idx + q.context).coerceAtMost(all.size - 1)
+            for (i in from..to) selected.add(i)
+        }
+        return selected.sorted().map { all[it] }
+    }
+
+    private fun emitDocument(
+        out: java.io.PrintStream,
+        runId: String,
+        q: CompiledInspectionQuery,
+        records: List<InspectionRecord>,
+    ) {
+        val cols = q.fields ?: defaultColumns()
+        when (q.format) {
+            InspectFormat.TEXT -> {
+                out.println("inspect run=$runId")
+                out.println("  ${cols.joinToString(separator = " ") { it.cli }}")
+                records.forEach { rec ->
+                    out.println("  " + cols.joinToString(separator = " ") { it.extract(rec) })
+                }
+            }
+            InspectFormat.JSON -> {
+                out.println("{")
+                out.println("  \"runId\": \"$runId\",")
+                out.println("  \"records\": [")
+                records.forEachIndexed { i, rec ->
+                    val fields = cols.joinToString(separator = ",") { f ->
+                        "\"${f.cli.lowercase()}\": \"${escapeJson(f.extract(rec))}\""
+                    }
+                    val sep = if (i < records.size - 1) "," else ""
+                    out.println("    {$fields}$sep")
+                }
+                out.println("  ]")
+                out.println("}")
+            }
+        }
+    }
+
+    private fun escapeJson(s: String): String =
+        s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
 
     private fun defaultColumns(): List<InspectField> = listOf(
         InspectField.Stage, InspectField.Step, InspectField.Outcome, InspectField.Message,
     )
-
-    private fun jsonOrNull(s: String?): String =
-        if (s == null) "null" else "\"${s.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
     /**
      * Parse the option args (run id consumed upstream) into a [CompiledInspectionQuery].

@@ -533,6 +533,17 @@ class DurableShellExecutor : DurableShellLaunching {
             "dev.rubentxu.pipeline.v2.application.durable.ingest.ObsPc2IngestAgent"
 
         /**
+         * WU-B: how long a launch waits for its transcript pumps before refusing to claim a
+         * complete transcript.
+         *
+         * Bounded, because a pump stuck on a live child must not hold the step open forever. But the
+         * bound is worthless unless it is CHECKED — `join(timeout)` returns identically on both
+         * outcomes, so the check is [Thread.isAlive] afterwards and its failure is a refusal rather
+         * than a log line.
+         */
+        const val TRANSCRIPT_PUMP_DRAIN_BUDGET_MS: Long = 10_000
+
+        /**
          * Bounded wait for the agent's `readyMarker`. The agent's class
          * init + `mkfifo` + `Files.writeString(readyMarker, "ready\n")` is
          * sub-second in practice; 10s is a generous upper bound that
@@ -832,6 +843,12 @@ class DurableShellExecutor : DurableShellLaunching {
                         ?: StreamProcessOutputSink(
                             java.io.BufferedOutputStream(java.nio.file.Files.newOutputStream(logFile, java.nio.file.StandardOpenOption.APPEND)),
                         )
+                    // WU-B: the guard is the ONLY place a thrown failure becomes a refusal, and the
+                    // pump writes and closes through it rather than through the bare sink. A broken
+                    // destination, a redactor that cannot read, and a `close` that could not publish
+                    // the final reservation are three different losses with one consequence — a
+                    // transcript that stops mid-stream and says nothing — so they share one report.
+                    val guarded = GuardedProcessOutputSink(target)
                     val pump = Thread {
                         val window = ByteArray(TRANSCRIPT_LIVE_WINDOW_BYTES)
                         try {
@@ -859,23 +876,36 @@ class DurableShellExecutor : DurableShellLaunching {
                                 val ready = maxOf(1, minOf(window.size, redacted.available()))
                                 val n = redacted.read(window, 0, ready)
                                 if (n < 0) break
-                                target.write(window, 0, n)
+                                guarded.write(window, 0, n)
                             }
-                        } catch (_: Exception) {
-                            // Child killed / pipe broken mid-flight: keep whatever
-                            // sanitized bytes were already persisted.
+                        } catch (t: Throwable) {
+                            // A child killed mid-flight closes the pipe and is a NORMAL end for this
+                            // thread; an exception thrown by the redaction seam or the destination
+                            // is not, and used to be discarded here with only a comment. It is now
+                            // recorded on the same channel as every other lost byte.
+                            guarded.recordPumpFailure("read", t)
                         } finally {
                             // Close the redacting stream FIRST: its pending buffer
                             // (EOF drain) is what flushes the final sanitized bytes.
-                            try { redacted.close() } catch (_: Exception) {}
-                            try { target.close() } catch (_: Exception) {}
+                            // Both closes run THROUGH the guard, because `target.close()` is where a
+                            // store-backed sink commits its last reservation — a failure there is the
+                            // permanent, silent loss of the transcript's tail.
+                            try {
+                                redacted.close()
+                            } catch (t: Throwable) {
+                                // The EOF drain lives in this close, so a failure here means the final
+                                // sanitized bytes were never produced. That is a lost tail like any
+                                // other, and it is reported on the same channel.
+                                guarded.recordPumpFailure("redaction-close", t)
+                            }
+                            guarded.close()
                         }
                     }
                     pump.isDaemon = true
                     pump.name = "durable-sh-transcript-pump-$opId-${channel.name.lowercase()}"
                     pump.start()
                     pumps += pump
-                    sinks += target
+                    sinks += guarded
                 }
                 lastTranscriptPumps = pumps
                 lastTranscriptSinks = sinks
@@ -1580,6 +1610,30 @@ class DurableShellExecutor : DurableShellLaunching {
     private fun transcriptRefusal(): ProcessOutputRefusal? =
         lastTranscriptSinks.firstNotNullOfOrNull { it.refusal() }
 
+    /**
+     * Waits for every channel's pump, then refuses if any of them was still running.
+     *
+     * `join(timeout)` returns when the thread finishes **or** when the timeout elapses, so the
+     * return value of a join proves nothing at all on its own. The runtime then projected a
+     * transcript it had no evidence was complete and classified the step — which is the same
+     * "short, ordered, plausible" outcome a write failure produces, reached by the opposite route.
+     *
+     * So the check that actually means something is [Thread.isAlive] AFTER the join, and its
+     * failure is a refusal rather than a log line, for the same reason [transcriptRefusal] is.
+     */
+    private fun drainTranscriptPumps(pumps: List<Thread>): ProcessOutputRefusal? {
+        pumps.forEach { it.join(TRANSCRIPT_PUMP_DRAIN_BUDGET_MS) }
+        val stillDraining = pumps.filter { it.isAlive }
+        if (stillDraining.isEmpty()) return null
+        return ProcessOutputRefusal.DrainIncomplete(
+            detail = stillDraining.joinToString(
+                prefix = "transcript drain unfinished after ${TRANSCRIPT_PUMP_DRAIN_BUDGET_MS}ms: ",
+                separator = ", ",
+            ) { it.name },
+            waitedMs = TRANSCRIPT_PUMP_DRAIN_BUDGET_MS,
+        )
+    }
+
     private fun consumeLastTranscriptPumps(@Suppress("UNUSED_PARAMETER") handle: ProcessHandle): List<Thread> {
         val pumps = lastTranscriptPumps
         lastTranscriptPumps = emptyList()
@@ -1711,21 +1765,36 @@ class DurableShellExecutor : DurableShellLaunching {
             }
 
             // Drain the transcript pumps BEFORE projecting, so the last sanitized bytes have reached
-            // the durable authority before the step is reported. Bounded, because a pump stuck on a
-            // live child must not hold the step open.
+            // the durable authority before the step is reported.
             //
             // OBS-C2.3: every channel's pump is drained, not just one. Joining a single pump would
             // let stderr still be in flight when the step is reported, and a reader tailing the
             // stderr stream would see the step finish before its last bytes arrive.
-            transcriptPumps.forEach { it.join(10_000) }
+            //
+            // WU-B: `drainTranscriptPumps` is not `forEach { join }`. It waits AND then asks whether
+            // the wait succeeded, because a join that times out returns exactly like one that
+            // completed and the difference between them is the whole difference between a complete
+            // transcript and a plausible one.
+            val undrained = drainTranscriptPumps(transcriptPumps)
 
-            // A persistence refusal is a step failure, not a warning. The bytes left the pipe when
-            // the pump read them, so a transcript that is short, ordered and plausible is the worst
-            // possible outcome; it has to be reported rather than returned.
-            transcriptRefusal()?.let { refusal ->
+            // A persistence or drain refusal is a step failure, not a warning. The bytes left the
+            // pipe when the pump read them, so a transcript that is short, ordered and plausible is
+            // the worst possible outcome; it has to be reported rather than returned.
+            //
+            // The drain is checked FIRST: if a pump was still alive, nothing downstream of it can
+            // claim the transcript is complete, so that refusal subsumes whatever the sinks recorded
+            // in the meantime.
+            (undrained ?: transcriptRefusal())?.let { refusal ->
+                // Exhaustive over the closed set: a write that threw and a pump that never finished
+                // are different facts, and the record says which one occurred. There is no `else`
+                // and no fabricated Throwable for the case that has no throwable.
+                val causeToken = when (refusal) {
+                    is ProcessOutputRefusal.WriteFailed -> refusal.cause.javaClass.simpleName
+                    is ProcessOutputRefusal.DrainIncomplete -> "transcript-pump-still-alive"
+                }
                 return DurableTaskTerminal.LaunchFailed(
                     dev.rubentxu.pipeline.v2.domain.durable.FailureRecord(
-                        code = "OUTPUT_PERSISTENCE_REFUSED",
+                        code = OUTPUT_PERSISTENCE_REFUSED,
                         kind = dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
                         message = "process output could not be persisted: ${refusal.detail}",
                         origin = dev.rubentxu.pipeline.v2.domain.durable.FailureOrigin.DURABLE_TASK,
@@ -1734,7 +1803,7 @@ class DurableShellExecutor : DurableShellLaunching {
                         // short. That is the step's call, not this seam's.
                         retryable = false,
                         operationId = opId,
-                        details = mapOf("cause" to refusal.cause.javaClass.simpleName),
+                        details = mapOf("cause" to causeToken),
                     ),
                 )
             }

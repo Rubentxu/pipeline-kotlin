@@ -267,6 +267,11 @@ class LiveOutputDrainTest {
             override fun readOutput(runId: String, afterOrdinal: Long, frameLimit: Int) =
                 ObservationOutputRead.Refused(OutputRefusal.RecoveryNotCompleted)
 
+            // R4 / WU-RC2 (P0 frame integrity) — per-op frame walk. Same refusal as the
+            // other read paths: the drain never asks for one, so this stays a refusal.
+            override fun readOutput(runId: String, opId: String, afterOrdinal: Long, frameLimit: Int) =
+                ObservationOutputRead.Refused(OutputRefusal.RecoveryNotCompleted)
+
             override fun tailStatesOf(runId: String) = emptyList<dev.rubentxu.pipeline.v2.output.OutputTailState?>()
 
             // A reader that refuses everything refuses a tail too. Answering a page here would be a

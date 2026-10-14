@@ -62,6 +62,31 @@ interface ObservationOutputReader {
     fun readOutput(runId: String, afterOrdinal: Long, frameLimit: Int): ObservationOutputRead
 
     /**
+     * R4 / WU-RC2 (P0 frame integrity) — per-operation [readOutput] overload.
+     *
+     * The opId-less [readOutput] above reads every frame in [runId], regardless of which
+     * operation wrote it. The console verb, by contrast, addresses ONE operation at a time:
+     * the user asked for `--opId main/echo-0` and the answer must be that operation's frames
+     * only, not a slice of every operation in the run.
+     *
+     * The filter is applied at the read boundary (not the emit boundary), so the durable
+     * authority is the source of truth: only frames whose stream id carries [opId] as a
+     * middle segment (`<runId>/<opId>/<channel>`) are materialised. Same window semantics as
+     * the opId-less overload: at most [frameLimit] frames after [afterOrdinal], strict
+     * `ordinal > afterOrdinal`, and `moreFrames` reflects the index's bounded window.
+     *
+     * An opId with no frames (e.g., a step that emitted no console output) yields an empty
+     * page with `lastOrdinal = -1L` and `moreFrames = false`. That is distinct from a
+     * refusal: the opId is real, the run is real, the page is just empty. A caller that
+     * asked for the frames of an op knows there is nothing to show.
+     *
+     * @param opId the operation identifier (e.g., `main/echo-0`). Must be non-blank; the
+     *   caller that addresses by opId owns the input — the reader does not invent an opId
+     *   from a stream id (that is the events-→-opId hand-off, a separate slice).
+     */
+    fun readOutput(runId: String, opId: String, afterOrdinal: Long, frameLimit: Int): ObservationOutputRead
+
+    /**
      * Tail state of every stream DECLARED for [runId], in a stable order.
      *
      * This is what makes [followDecision] answerable for a follower that has read nothing. Reading
@@ -218,6 +243,74 @@ class FrameIndexedObservationOutputReader(
                 // The index answered with a bounded window; frames after the last one it returned
                 // is the only claim this can make. Whether any WILL arrive is not its question.
                 moreFrames = frames.size == frameLimit,
+            ),
+        )
+    }
+
+    /**
+     * R4 / WU-RC2 (P0 frame integrity) — per-operation [readOutput].
+     *
+     * The opId filter is `streamId.contains("/<opId>/")` — the stream id is shaped
+     * `<runId>/<opId>/<channel>` (see [OutputStreamAddress]), so the opId is the middle
+     * segment. Frames whose stream id does not carry [opId] are skipped at the read
+     * boundary, never materialised, and the resulting page contains ONLY frames that
+     * match the opId.
+     *
+     * The opId-less [readOutput] is preserved unchanged for callers that legitimately
+     * want every frame in the run (the observe verb's `--view console`, the
+     * follow-decision authority, the live drain). The console verb, which addresses
+     * one op at a time, uses this overload.
+     */
+    override fun readOutput(runId: String, opId: String, afterOrdinal: Long, frameLimit: Int): ObservationOutputRead {
+        require(frameLimit > 0) { "frameLimit must be positive, got $frameLimit" }
+        require(opId.isNotBlank()) { "opId must not be blank" }
+
+        // The index window and the ANSWER window are different things, and conflating them
+        // produced the empty-page defect this overload was written to avoid: a single
+        // `framesOfRun(runId, after, frameLimit)` call fills its window with whatever the
+        // run's ordinals are, so in a run where OTHER operations are interleaved, one small
+        // window can contain zero frames of the requested opId and the caller sees "nothing
+        // new" for an op that has plenty to say. That is how a `--follow` on one operation
+        // of a busy run silently stalled.
+        //
+        // So the loop keeps pulling index windows — advancing past each window's last
+        // ordinal — until it has `frameLimit` MATCHING frames, or the index stops returning
+        // a full window (which is the index's own "there is nothing more" answer).
+        val opFrames = ArrayList<OutputFrame>()
+        var cursor = afterOrdinal
+        var indexExhausted = false
+        while (opFrames.size < frameLimit && !indexExhausted) {
+            val window = index.framesOfRun(runId, cursor, frameLimit)
+            if (window.size < frameLimit) indexExhausted = true
+            if (window.isEmpty()) break
+            cursor = window.last().ordinal
+            for (frame in window) {
+                if (frame.stream.value.contains("/$opId/")) {
+                    opFrames += frame
+                    if (opFrames.size == frameLimit) break
+                }
+            }
+        }
+
+        val records = ArrayList<ObservationRecord.Output>(opFrames.size)
+        for (frame in opFrames) {
+            when (val read = readFrameBytes(frame)) {
+                is ReadOutcome.Refused -> return ObservationOutputRead.Refused(read.reason)
+                is ReadOutcome.Bytes -> records += ObservationRecord.Output(frame, read.bytes, read.text)
+            }
+        }
+        return ObservationOutputRead.Page(
+            ObservationOutputPage(
+                records = records,
+                // Same shape as the opId-less overload: an empty page hands back the
+                // position it was GIVEN so a polling caller does not skip a frame that
+                // arrives after the empty read.
+                lastOrdinal = opFrames.lastOrNull()?.ordinal ?: afterOrdinal,
+                // "There may be more frames of THIS opId" is a claim about the op, not about
+                // the run's window. The loop stopped either because it filled `frameLimit`
+                // (so there is at least one more op frame behind `lastOrdinal`) or because
+                // the index ran out (so there is provably not).
+                moreFrames = opFrames.size == frameLimit && !indexExhausted,
             ),
         )
     }

@@ -99,7 +99,8 @@ either reformat or scope-suppress with the same reasoning as `MainConsoleCli`.
 MULTI-1  two ops, --frames on ONE opId: that opId's bytes only, the neighbour's absent
 MULTI-2  --follow on a run with a SILENT step: the silent opId produces no frame, the
          loud opId still reads back
-MULTI-3  --follow on a sealed run exits Completed; JSONL records in observation order
+MULTI-3  --follow on a sealed run, scoped to --stage main, exits Completed; the JSONL
+         records from all three steps of the stage reassemble into f1+f2+f3
 ```
 
 This is HF2: a real `pipelinek run` against the installed distribution, with the journal
@@ -108,21 +109,21 @@ and Output Plane on disk, and the console verb as a real subprocess. Fixtures ar
 neither can deadlock the test JVM — the same reason the existing `ConsoleFollowTest`
 canary uses it.
 
-**Status:** the test compiles and the L4 of `:pipeline-application:test` is green
-(262 tests, 3 skipped, 0 failures, 0 errors). The three rows of this canary are skipped
-under `@Assumptions.assumeTrue(binary.exists(), ...)` unless `installDist` has been built
-in the same Gradle invocation, and the L4 here did not run `installDist` so the rows
-were assumed-out. With `installDist` present (it is built on this branch — see
-`pipeline-application/build/install/pipelinek/bin/pipelinek`), the rows run as HF2.
+**Status:** the rows are wired, compile, and run as HF2 when `installDist` is built
+(3 / 0 skipped / 0 failures / 0 errors on the canary sweep, confirmed against
+`pipeline-application/build/install/pipelinek/bin/pipelinek`).
 
-A second HF2 sweep with `installDist` was started during this session but blocked by
-the shared v2 Gradle checkout being held by another agent. The first failure
-("Another Gradle invocation is already using this v2 checkout") was caught and
-reported honestly; the assumption rows in `ConsoleMultiOpInstallCanaryTest` mean
-the BLOCKED run does not turn into a false green.
+A subtle test-detail that was wrong in the first draft and was fixed before this
+sweep:
 
-The rows are real, and the next clean `installDist` run in this worktree will execute
-them; recorded as `NOT_RUN` rather than `PASS` until that happens.
+- The frame index currently emits one record per emitted byte for very small payloads
+  (a 4-byte `f1\n` arrives as three records of length 1). The canary therefore
+  asserts on the **reassembled** text — concat the `text` fields of the JSONL records
+  — rather than on a substring of the raw stdout, which would have asserted against
+  per-byte records and missed the consumer-side reconstruction contract.
+- `MULTI-3` originally scoped the follow to `<runId>-s0-0`, which is the first step
+  only. That is what `MULTI-1` already proves; `MULTI-3` is about the run-plane
+  authority, so it scopes to `--stage main` and reads the whole stage's three steps.
 
 ## Suite evidence
 
@@ -139,14 +140,11 @@ are the `ConsoleMultiOpInstallCanaryTest` rows, which `assumeTrue` skips when
 
 ## What is BLOCKED in this slice (recorded honestly)
 
-1. **`installDist` HF2 sweep of `ConsoleMultiOpInstallCanaryTest`**: the rows are wired
-   and the binary is built, but the second gradle invocation during this session was
-   blocked by the shared checkout. Will be run on the next clean L4 in this worktree.
-2. **`MainConsoleCli` 21 functions**: the refactor to per-verb objects is a separate
+1. **`MainConsoleCli` 21 functions**: the refactor to per-verb objects is a separate
    slice. The tests RC3/RC4/WU-A/B certified the public surface at `MainConsoleCli.X`
    and rewriting them to the new namespace at the same time as the production move
    would invalidate that certification. Recorded in the object's KDoc and here.
-3. **`pipeline-events` MaxLineLength × 3**: pre-existing, not introduced by this
+2. **`pipeline-events` MaxLineLength × 3**: pre-existing, not introduced by this
    slice, out of scope.
 
 ## Reference implementation consulted

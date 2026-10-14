@@ -230,14 +230,21 @@ class ConsoleMultiOpInstallCanaryTest {
         // run-plane of Completed is the only way to reach exit 0, "Completed". A run-plane of
         // Live or Unavailable — even with a sealed store — leaves the loop polling and
         // eventually exits with code 3. So this row proves both planes agree.
+        //
+        // The follow scopes to `--stage main` rather than to a single opId, so the assertion
+        // is over the WHOLE run's reconstructed text: all three steps contribute their bytes.
+        // Scoping to `s0-0` would have asserted against `f1\n` only, which is what the
+        // operator's MULTI-1 already proves — MULTI-3 is about the run-plane authority, not
+        // about per-op scoping.
         val (followExit, followStdout, followStderr) = runCli(
             binary = binary,
             args = listOf(
                 "console",
                 "--db", dbPath.toString(),
                 "--control-dir", controlRoot.toString(),
-                runId, "$runId-s0-0",
+                runId,
                 "--frames", "--follow", "--format", "jsonl",
+                "--stage", "main",
             ),
             workingDirectory = root,
             timeout = Duration.ofMinutes(1),
@@ -251,9 +258,18 @@ class ConsoleMultiOpInstallCanaryTest {
             followStdout.contains("\"type\":\"output\""),
             "every emitted line must be a real output record; got '$followStdout'",
         )
+        // WU-A/B — the frame index currently emits one record per emitted byte for very small
+        // payloads (a 4-byte `f1\n` arrives as three records of length 1). Content is
+        // byte-exact, ordinals are dense, and a reader sees a coherent stream — but the
+        // payload is reconstructed by concatenating `text` fields, not by substring match on a
+        // single record. The canary asserts on the reconstructed text, which is the contract
+        // the user-visible `console --follow` surface delivers; the per-byte fragmentation is
+        // an efficiency issue tracked separately and out of scope for this block.
+        val reconstructedText = reconstructJsonlText(followStdout)
         assertTrue(
-            followStdout.contains("f1") && followStdout.contains("f2") && followStdout.contains("f3"),
-            "all three frames must reach the consumer; got '$followStdout'",
+            reconstructedText.contains("f1") && reconstructedText.contains("f2") && reconstructedText.contains("f3"),
+            "all three printed substrings must reach the consumer after the JSONL records are " +
+                "reassembled; got '$reconstructedText' (raw stdout='$followStdout')",
         )
     }
 
@@ -308,4 +324,35 @@ class ConsoleMultiOpInstallCanaryTest {
     private fun extractRunId(stdout: String, stderr: String): String? =
         RUN_ID_REGEX.find(stdout)?.groupValues?.get(1)
             ?: RUN_ID_REGEX.find(stderr)?.groupValues?.get(1)
+
+    /**
+     * Reassembles the per-record `text` fields of a JSONL stream into the payload the user sees.
+     *
+     * The frame index currently emits one record per byte for very small payloads, so a
+     * `f1\n` arrives as three records whose `text` values are `"f"`, `"1"` and `"\n"`. The
+     * `console --follow` consumer is supposed to reconstruct the full payload by concatenating
+     * those `text` fields, and that reconstruction is what the canary asserts on — the
+     * raw stdout is not itself a document the user can search for `f1` in. JSON parsing is
+     * deliberately minimal here: a regex on `"text":"…"` per non-empty line, which is enough
+     * for the assertion and avoids pulling in a JSON library for one field.
+     */
+    private fun reconstructJsonlText(jsonl: String): String {
+        val textRegex = Regex("\"text\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"")
+        val out = StringBuilder()
+        for (line in jsonl.lineSequence().filter { it.isNotEmpty() }) {
+            textRegex.find(line)?.let { match ->
+                val raw = match.groupValues[1]
+                out.append(
+                    raw
+                        .replace("\\\\", "\u0000")
+                        .replace("\\n", "\n")
+                        .replace("\\r", "\r")
+                        .replace("\\t", "\t")
+                        .replace("\\\"", "\"")
+                        .replace("\u0000", "\\"),
+                )
+            }
+        }
+        return out.toString()
+    }
 }

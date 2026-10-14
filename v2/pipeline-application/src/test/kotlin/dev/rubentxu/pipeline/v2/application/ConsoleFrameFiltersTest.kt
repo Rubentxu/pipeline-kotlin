@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
@@ -395,10 +396,33 @@ class ConsoleFrameFiltersTest {
 
     private data class CliResult(val exitCode: Int, val stdout: String, val stderr: String)
 
+    /**
+     * R4 / WU-RC3 — the harness resolves the selection with the REAL resolver, then hands it to
+     * the real emitter.
+     *
+     * Two things this deliberately does NOT do. It does not rebuild the predicate in the test —
+     * that would certify the test's own matching logic (HARNESS FIDELITY §2). And it does not
+     * pass a hand-written `OperationSelection`: the point of these rows is that the shipped
+     * resolve-then-select pipeline filters correctly, so both halves have to be the shipped ones.
+     *
+     * `events = null` is passed because every filter here uses INDEX tokens, which the resolver
+     * can honour from the opId alone. Name and kind resolution is covered by
+     * `ConsoleOperationSelectionTest` against a real journal-shaped event list.
+     */
     private fun runEmit(
         result: ObservationOutputRead,
         request: ConsoleReadRequest.FramesFiltered,
     ): CliResult {
+        val active = request.filters as ConsoleFrameFilters.Active
+        val selection = assertInstanceOf(
+            dev.rubentxu.pipeline.v2.application.console.SelectionOutcome.Selected::class.java,
+            dev.rubentxu.pipeline.v2.application.console.ConsoleOperationSelection.resolve(
+                request.runId, active.stages, active.steps, active.kinds, null,
+            ),
+            "these rows use index tokens, which resolve without a journal. If the resolver " +
+                "refused them, the filters under test stopped being expressible.",
+        ).selection
+
         val out = ByteArrayOutputStream()
         val err = ByteArrayOutputStream()
         val savedOut = System.out
@@ -408,7 +432,7 @@ class ConsoleFrameFiltersTest {
                 PrintStream(err, true, Charsets.UTF_8).use { stderr ->
                     System.setOut(stdout)
                     System.setErr(stderr)
-                    MainConsoleCli.emitFramesFiltered(result, request, System.out, System.err)
+                    MainConsoleCli.emitFramesFiltered(result, request, System.out, System.err, selection)
                 }
             }
         } finally {
@@ -520,7 +544,30 @@ class ConsoleFrameFiltersTest {
         assertTrue(!resolver.matches("run-1/run-1-s1-0/stdout", filters), "s1-0 must not match stages={0}")
     }
 
+    /**
+     * RED — pins the `--kind` defect this block closes.
+     *
+     * `kinds = setOf("StepStarted")` is not a real kind; no step in any run has it. This row
+     * asserts the operation MATCHES anyway, because rc1's `StageStepKindResolver` computed
+     * `val kindOk = true` — a non-empty kind set contributed a TRUE conjunct and was never
+     * interpreted. That is the "semantic drop" the Semantic Constitution §2 forbids: a flag
+     * accepted, never read, whose result is indistinguishable from a filter that worked.
+     *
+     * `@Disabled` rather than deleted or rewritten, per the migration rule in AGENTS.md. When
+     * the block's own suite replaces it the transition must be explicit, never a silent rewrite
+     * of what is expected — the replacement rows are
+     * `ConsoleOperationSelectionTest.RC3-4` (a real kind selects the steps whose `stepType` it
+     * names) and `RC3-5` (an unknown kind selects NOTHING and is refused).
+     *
+     * Receipt: docs/v2/07-uat/R4_WU_RC3_CONSOLE_SELECTION_RECEIPT.md
+     */
     @Test
+    @org.junit.jupiter.api.Disabled(
+        "RED — pins the `--kind` semantic drop: rc1 computed `kindOk = true`, so ANY kind matched " +
+            "every frame with exit 0. Superseded by ConsoleOperationSelectionTest RC3-4/RC3-5, " +
+            "where a kind selects the steps whose stepType it names and an unknown kind is REFUSED. " +
+            "See docs/v2/07-uat/R4_WU_RC3_CONSOLE_SELECTION_RECEIPT.md.",
+    )
     fun `StageStepKindResolver treats empty axes as no-op conjuncts`() {
         val resolver = StageStepKindResolver.forRun(java.nio.file.Path.of("/tmp/ctrl"), "run-1")
         val onlyKind = ConsoleFrameFilters.Active(kinds = setOf("StepStarted"))

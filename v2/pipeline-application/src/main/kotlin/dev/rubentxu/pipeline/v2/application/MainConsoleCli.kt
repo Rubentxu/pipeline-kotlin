@@ -6,6 +6,10 @@ import dev.rubentxu.pipeline.v2.application.observation.ObservationJsonLines
 import dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead
 import dev.rubentxu.pipeline.v2.application.observation.ObservationRecord
 import dev.rubentxu.pipeline.v2.application.observation.RunPlane
+import dev.rubentxu.pipeline.v2.application.console.ConsoleOperationSelection
+import dev.rubentxu.pipeline.v2.application.console.OperationSelection
+import dev.rubentxu.pipeline.v2.application.console.SelectionOutcome
+import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
 import dev.rubentxu.pipeline.v2.application.observation.followDecision
 import dev.rubentxu.pipeline.v2.output.OutputChannel
 import dev.rubentxu.pipeline.v2.output.OutputCursor
@@ -331,8 +335,39 @@ object ConsoleReadService {
 sealed interface ConsoleReadRequest {
     val controlDir: String
     val runId: String
-    val opId: String
+
+    /**
+     * R4 / WU-RC3 — the operation to read, or `null` to read the WHOLE RUN and let the
+     * [dev.rubentxu.pipeline.v2.application.console.OperationSelection] narrow it.
+     *
+     * Nullable because a required opId made `--stage`, `--step` and `--kind` unable to select
+     * among operations at all: the read was scoped to ONE operation before any filter ran, so a
+     * filter could only ever narrow within it. `--stage build` against `run-1-s0-0` could never
+     * reach `run-1-s1-0`, whatever the filter said.
+     *
+     * `null` is therefore the shape a content filter REQUIRES, and the positional stays
+     * mandatory for an unfiltered read so `console <runId> <opId>` keeps its meaning. Both may
+     * be supplied together and then INTERSECT: the positional names one operation and the
+     * selection may only remove from it.
+     */
+    val opId: String?
     val format: MainConsoleCli.ConsoleFormat
+
+    /**
+     * R4 / WU-RC3 — the events journal this request may consult, or `null` when none was supplied.
+     *
+     * It is a PATH, not an opened store: the parser admits a request without performing an
+     * effect (STRICT TYPED FUNCTIONAL DESIGN §10 — a builder describes, it does not interpret),
+     * so opening the journal happens in `main`, after admission, where a failure is a typed
+     * refusal rather than a parse error.
+     *
+     * `null` is a real, load-bearing value and not an omission. Stage/step NAMES and `--kind`
+     * live only in the journal, so without it those axes cannot be honoured and
+     * [dev.rubentxu.pipeline.v2.application.console.ConsoleOperationSelection.resolve] refuses
+     * them by name. Defaulted so every existing construction stays valid and so the byte paths
+     * ([Paged], [Range]) — which have no filter and need no journal — are unaffected.
+     */
+    val dbPath: String? get() = null
 
     /** Continue after [after] (`null` starts at the beginning), emitting at most [maxBytes] bytes. */
     data class Paged(
@@ -370,7 +405,7 @@ sealed interface ConsoleReadRequest {
     data class Frames(
         override val controlDir: String,
         override val runId: String,
-        override val opId: String,
+        override val opId: String?,
         val afterOrdinal: Long,
         val frameLimit: Int,
         override val format: MainConsoleCli.ConsoleFormat,
@@ -405,11 +440,26 @@ sealed interface ConsoleReadRequest {
     data class FollowFrames(
         override val controlDir: String,
         override val runId: String,
-        override val opId: String,
+        override val opId: String?,
         val afterOrdinal: Long,
         val frameLimit: Int,
         val followConfig: FollowConfig,
         override val format: MainConsoleCli.ConsoleFormat,
+        /**
+         * R4 / WU-RC3 — the same content filter a single [FramesFiltered] read carries.
+         *
+         * This field is the audit's **P0-4**. `CliParser.consoleValidate` dispatched `--follow`
+         * BEFORE the filter branch, so `console --frames --follow --stage build` admitted a
+         * filterless [FollowFrames] and dropped the filter without a word: the operator asked to
+         * see one stage and was shown the whole run, with a successful exit code.
+         *
+         * Defaulting to [ConsoleFrameFilters.None] rather than being required keeps every
+         * existing construction valid, and the default is the honest value — "no filter was
+         * asked for" is not the same as "no filter could be applied", and only the latter is a
+         * defect.
+         */
+        val filters: ConsoleFrameFilters = ConsoleFrameFilters.None,
+        override val dbPath: String? = null,
     ) : ConsoleReadRequest {
         init {
             require(frameLimit > 0) { "frameLimit must be positive, got $frameLimit" }
@@ -433,11 +483,12 @@ sealed interface ConsoleReadRequest {
     data class FramesFiltered(
         override val controlDir: String,
         override val runId: String,
-        override val opId: String,
+        override val opId: String?,
         val afterOrdinal: Long,
         val frameLimit: Int,
         val filters: ConsoleFrameFilters,
         override val format: MainConsoleCli.ConsoleFormat,
+        override val dbPath: String? = null,
     ) : ConsoleReadRequest {
         init {
             require(frameLimit > 0) { "frameLimit must be positive, got $frameLimit" }
@@ -680,6 +731,21 @@ sealed interface ConsoleCliRefusal {
      * `--frames` rather than guessing why their filter did not narrow the answer.
      */
     data class FilterRequiresFrames(val flags: List<String>) : ConsoleCliRefusal
+
+    /**
+     * R4 / WU-RC3 — the filter could not be turned into a selection.
+     *
+     * Carries the whole [dev.rubentxu.pipeline.v2.application.console.SelectionRefusal] rather
+     * than flattening it, because the four reasons need genuinely different messages and a
+     * flattened "filter failed" would make the caller guess which one applied.
+     *
+     * Its own case, and the reason `--kind` stopped being a lie: the rc1 resolver returned `true`
+     * for any kind, so `--kind anything` selected the whole run and exited 0. A caller asking for
+     * a filter the verb cannot apply must be told so.
+     */
+    data class FilterNotResolvable(
+        val reason: dev.rubentxu.pipeline.v2.application.console.SelectionRefusal,
+    ) : ConsoleCliRefusal
 }
 
 /** One stable line per refusal, so a script can branch on the reason. */
@@ -708,6 +774,21 @@ fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal)
     is ConsoleCliRefusal.FilterRequiresFrames ->
         "Error: --stage/--step/--kind require --frames " +
             "(filters are per-frame; --range/--max-bytes/--after-cursor are byte-budgeted)"
+    is ConsoleCliRefusal.FilterNotResolvable -> when (val r = refusal.reason) {
+        is dev.rubentxu.pipeline.v2.application.console.SelectionRefusal.UnknownStage ->
+            "Error: no stage named '${r.requested}' in this run " +
+                "(known: ${r.known.joinToString(", ").ifEmpty { "none" }})"
+        is dev.rubentxu.pipeline.v2.application.console.SelectionRefusal.UnknownStep ->
+            "Error: no step named '${r.requested}' in this run " +
+                "(known: ${r.known.joinToString(", ").ifEmpty { "none" }})"
+        is dev.rubentxu.pipeline.v2.application.console.SelectionRefusal.UnknownKind ->
+            "Error: no step of kind '${r.requested}' in this run " +
+                "(known kinds: ${r.known.joinToString(", ").ifEmpty { "none" }})"
+        is dev.rubentxu.pipeline.v2.application.console.SelectionRefusal.NoEventsAuthority ->
+            "Error: ${r.axesNeedingIt.joinToString(", ")} name stage/step/kind, which are " +
+                "recorded only in the events journal — pass --db <path> so the console can " +
+                "resolve them, or use the numeric index (e.g. --stage 0)"
+    }
 }
 
 /**
@@ -791,6 +872,25 @@ object MainConsoleCli {
                 // R4 / WU-CON-2.2 — FramesFiltered is the filtered per-frame path; the
                 // filter is resolved at emit time by matching each frame's stream against
                 // the closed [ConsoleFrameFilters.Active] set.
+                //
+                // R4 / WU-RC3 — ONE selection, resolved here and consumed by whichever
+                // interpreter runs. This is the whole point of the block: the single read
+                // and the follow loop used to decide "which frames?" separately, and the
+                // follow path did not decide at all (audit P0-4). Resolving before the
+                // dispatch is what makes them the same question.
+                //
+                // Opening the journal HERE rather than in the parser is deliberate: admission
+                // must perform no effect, so a missing or unreadable `--db` is a typed refusal
+                // at interpretation time, not a parse error.
+                val selection = when (val outcome = resolveSelection(request)) {
+                    is SelectionOutcome.Selected -> outcome.selection
+                    is SelectionOutcome.Refused -> {
+                        System.err.println(
+                            renderConsoleCliRefusal(ConsoleCliRefusal.FilterNotResolvable(outcome.refusal)),
+                        )
+                        return 2
+                    }
+                }
                 when (request) {
                     is ConsoleReadRequest.Frames ->
                         emitFrames(readFrames(request, root), request, System.out, System.err)
@@ -802,7 +902,10 @@ object MainConsoleCli {
                         // exit code is projected. Stated here once so the mapping cannot drift,
                         // and so a reader can see that an exhausted poll budget is non-zero
                         // without reading the loop.
-                        runFollowFrames(request, root, System.out, System.err).also { outcome ->
+                        // R4 / WU-RC3 — a `--follow` carrying filters is a FILTERED follow.
+                        // Under rc1 this branch shadowed the filter entirely: the operator
+                        // asked for one stage, was shown the whole run, and got exit 0.
+                        runFollowFrames(request, root, System.out, System.err, selection).also { outcome ->
                             if (outcome is FollowExit.PollBudgetExhausted) {
                                 System.err.println(
                                     "console-follow-exhausted: ${outcome.polls} polls, " +
@@ -818,6 +921,7 @@ object MainConsoleCli {
                             request,
                             System.out,
                             System.err,
+                            selection,
                         )
                     is ConsoleReadRequest.Paged,
                     is ConsoleReadRequest.Range ->
@@ -850,7 +954,49 @@ object MainConsoleCli {
         // there for callers that legitimately want every frame in a run (observe --view
         // console, the live drain). The console verb addresses one op at a time and gets
         // the opId-scoped read.
-        return reader.readOutput(request.runId, request.opId, request.afterOrdinal, request.frameLimit)
+        return readFramePage(reader, request.runId, request.opId, request.afterOrdinal, request.frameLimit)
+    }
+
+    /**
+     * R4 / WU-RC3 — the per-frame reader over the run's Output Plane.
+     *
+     * One constructor for every frame path, so the three paths cannot end up reading different
+     * stores. `storeForReading` memoises per control root in a process-wide cache, which is why
+     * HARNESS FIDELITY §4 forbids a shared mutable singleton in a harness and why the test
+     * classes call `OutputPlaneProvider.forgetAll()` before each fixture.
+     */
+    /**
+     * R4 / WU-RC3 — one bounded frame read, scoped or not.
+     *
+     * The scope decision lives HERE, in the verb, rather than in the reader, because that is
+     * where the selection lives. `ObservationOutputReader` keeps its contract — a supplied
+     * `opId` is a scope, never a filter — and this function is the single place that decides
+     * whether a request asked for one operation or for the whole run.
+     *
+     * Supplying `null` reads the run wide; the selection then narrows. Supplying an opId reads
+     * that operation and the selection may only remove from it. Both together are an
+     * intersection, which is the honest reading of two constraints.
+     */
+    private fun readFramePage(
+        reader: dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader,
+        runId: String,
+        opId: String?,
+        afterOrdinal: Long,
+        frameLimit: Int,
+    ): dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead =
+        if (opId == null) {
+            reader.readOutput(runId, afterOrdinal, frameLimit)
+        } else {
+            reader.readOutput(runId, opId, afterOrdinal, frameLimit)
+        }
+
+    private fun frameReader(root: Path): dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader {
+        val store = dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider.storeForReading(root)
+        return dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader(
+            index = store.frameIndex(),
+            bytes = store,
+            tails = store,
+        )
     }
 
     /**
@@ -874,7 +1020,7 @@ object MainConsoleCli {
             tails = store,
         )
         // R4 / WU-RC2 (P0 frame integrity) — opId-scoped read; see readFrames.
-        return reader.readOutput(request.runId, request.opId, request.afterOrdinal, request.frameLimit)
+        return readFramePage(reader, request.runId, request.opId, request.afterOrdinal, request.frameLimit)
     }
 
     /**
@@ -894,6 +1040,7 @@ object MainConsoleCli {
         request: ConsoleReadRequest.FramesFiltered,
         out: PrintStream,
         err: PrintStream,
+        selection: OperationSelection = OperationSelection.AllOperations,
     ): Int = when (result) {
         is dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead.Refused -> {
             err.println(ConsoleReadService.renderRefusal(result.reason))
@@ -901,9 +1048,11 @@ object MainConsoleCli {
         }
 
         is dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead.Page -> {
-            val resolver = StageStepKindResolver.forRun(java.nio.file.Path.of(request.controlDir), request.runId)
-            val active = request.filters as ConsoleFrameFilters.Active
-            val filtered = result.page.records.filter { record -> resolver.matches(record.frame.stream.value, active) }
+            // R4 / WU-RC3 — the SAME [OperationSelection] the follow loop consults. The rc1
+            // predicate (`StageStepKindResolver`) matched the user's `--stage build` against the
+            // stringified index `"0"`, and treated `--kind` as a true conjunct; both are gone,
+            // and one selection now answers "which frames?" for every frame path.
+            val filtered = result.page.records.filter { record -> selectionSelects(selection, record.frame.stream.value) }
             val lastOrdinal = filtered.lastOrNull()?.frame?.ordinal ?: result.page.lastOrdinal
             // `moreFrames` is the index's "did the unfiltered walk cut a window short?" claim.
             // The walk did (or did not) regardless of which records we drop, so we keep the
@@ -1031,11 +1180,70 @@ object MainConsoleCli {
      *    a terminal fact. **Non-zero on purpose:** an abandoned follow and a completed one are
      *    different facts and must not share an exit code.
      */
+    /**
+     * R4 / WU-RC3 — turn a request's filter tokens into ONE [OperationSelection].
+     *
+     * The only place the events journal is opened for a console read. Everything downstream —
+     * the single filtered read AND the follow loop — receives the resulting selection as a value
+     * and never asks the journal anything, so the two paths cannot drift apart.
+     *
+     * `dbPath == null` is passed through as `null` rather than as an empty history. Those are
+     * different facts and the resolver gives them different answers: an empty history means "this
+     * run has no such stage", while no journal at all means "nobody can tell", which is a refusal
+     * naming the axis. Collapsing them would make `--db` optional in the worst possible way —
+     * silently narrowing the answer.
+     *
+     * A request with no filter at all short-circuits to [OperationSelection.AllOperations]
+     * WITHOUT opening the journal, so the byte paths and the unfiltered per-frame read are
+     * untouched by this block.
+     */
+    private fun resolveSelection(request: ConsoleReadRequest): SelectionOutcome {
+        val filters = when (request) {
+            is ConsoleReadRequest.FramesFiltered -> request.filters
+            is ConsoleReadRequest.FollowFrames -> request.filters
+            else -> return SelectionOutcome.Selected(OperationSelection.AllOperations)
+        }
+        if (filters is ConsoleFrameFilters.None) {
+            return SelectionOutcome.Selected(OperationSelection.AllOperations)
+        }
+        val active = filters as ConsoleFrameFilters.Active
+        val dbPath = request.dbPath
+            ?: return ConsoleOperationSelection.resolve(request.runId, active.stages, active.steps, active.kinds, null)
+
+        // Open the journal, read, close — in that order. The store is closed even if resolution
+        // throws, so a refusal does not leak a file handle into a follow that may run for a minute.
+        return SqliteEventStore(dbPath).use { store ->
+            ConsoleOperationSelection.resolve(
+                request.runId, active.stages, active.steps, active.kinds,
+                store.eventsFor(request.runId).asSequence(),
+            )
+        }
+    }
+
+    /**
+     * R4 / WU-RC3 — does [selection] admit this frame?
+     *
+     * The stream id is `<runId>/<opId>/<channel>`, and a selection is over the opId SEGMENT.
+     * Splitting on `/` and taking index 1 is what makes this a segment comparison: a substring
+     * test would let `run-1-s0-0` match a selection containing `run-1-s0-01`, which on a run
+     * with ten or more steps per stage leaks every neighbouring operation into a filtered read.
+     *
+     * A malformed stream id — fewer than three segments, or a foreign run — is NOT selected.
+     * Refusing to interpret it is the fail-closed direction: a frame whose operation cannot be
+     * named is one no selection can honestly claim.
+     */
+    internal fun selectionSelects(selection: OperationSelection, streamId: String): Boolean {
+        val parts = streamId.split('/')
+        if (parts.size < 3) return false
+        return selection.includes(parts[1])
+    }
+
     fun runFollowFrames(
         request: ConsoleReadRequest.FollowFrames,
         root: Path,
         out: PrintStream,
         err: PrintStream,
+        selection: OperationSelection = OperationSelection.AllOperations,
     ): FollowExit {
         val store = OutputPlaneProvider.storeForReading(root)
         val reader = dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader(
@@ -1059,7 +1267,7 @@ object MainConsoleCli {
                 if (shutdown.get()) return FollowExit.Signalled
 
                 // R4 / WU-RC2 (P0 frame integrity) — opId-scoped read; see readFrames.
-                val page = when (val read = reader.readOutput(request.runId, request.opId, ordinal, request.frameLimit)) {
+                val page = when (val read = readFramePage(reader, request.runId, request.opId, ordinal, request.frameLimit)) {
                     is ObservationOutputRead.Refused -> {
                         err.println(ConsoleReadService.renderRefusal(read.reason))
                         return FollowExit.Refused(read.reason)
@@ -1067,15 +1275,25 @@ object MainConsoleCli {
                     is ObservationOutputRead.Page -> read.page
                 }
 
-                if (page.records.isNotEmpty()) {
-                    emitFollowPage(page.records, request.format, out, err)
+                // R4 / WU-RC3 — audit P0-4. The filter is applied to EVERY page the loop emits,
+                // using the same [selection] the single read consults. rc1 applied no filter here
+                // at all: `--frames --follow --stage build` was admitted as a plain follow and the
+                // operator was shown the whole run with exit 0.
+                //
+                // The cursor advances on the LAST DELIVERED frame, not on the last READ one. That
+                // distinction is what keeps a filter from stalling the loop: advancing to the last
+                // read ordinal when the filter dropped everything after it would re-read those
+                // frames forever and never reach a frame the filter does admit.
+                val admitted = page.records.filter { selectionSelects(selection, it.frame.stream.value) }
+                if (admitted.isNotEmpty()) {
+                    emitFollowPage(admitted, request.format, out, err)
                     // The next read starts at the last ordinal we just emitted. The reader is
                     // strictly `ordinal > afterOrdinal` (see SegmentFrameIndex.framesOfRun), so
                     // passing the last-delivered ordinal is what resumes at the NEXT frame, not
                     // at the one after the next. Adding +1 here would skip a frame between
                     // polls. Empty pages leave the cursor where it is so the next poll reads
                     // the same window and can see anything new.
-                    ordinal = page.records.last().frame.ordinal
+                    ordinal = admitted.last().frame.ordinal
                 }
 
                 // EOF detection. Three facts, each from a different authority:

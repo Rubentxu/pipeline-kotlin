@@ -78,6 +78,20 @@ class ObsPc2ProducerSurvivalSpikeTest {
     private val secret = "GHS9_LEVELB_CANARY_4b8e1d7a2c6f"
     private val runId = "r-obs-pc2-levelb"
 
+    /**
+     * The child's pre-kill emission size. Not an assertion input: the row only
+     * needs a prefix long enough that `startsWith` distinguishes "the
+     * acknowledged bytes survived" from "the transcript was rebuilt".
+     */
+    private val linesBefore = 300
+
+    /**
+     * How many post-death lines the child owes the Output Plane. This IS an
+     * assertion input — [assertLevelBClosure] pins `written == linesAfter` — so
+     * it is named here rather than left as a local the reader has to trace back.
+     */
+    private val linesAfter = 50
+
     @TempDir
     lateinit var root: Path
 
@@ -105,17 +119,65 @@ class ObsPc2ProducerSurvivalSpikeTest {
 
     @Test
     fun `spike - output produced by the child AFTER the owning JVM dies`() {
-        val barrier = workspace.resolve("BARRIER")
-        val go = workspace.resolve("GO")
-        val done = workspace.resolve("DONE")
-        // OUTSIDE @TempDir on purpose: JUnit deletes the temp tree when the row ends, and a spike whose
-        // whole output is deleted on success is a spike that reports nothing.
-        val reportDir = Files.createDirectories(Path.of(System.getProperty("user.home"), "obsPc2diag"))
-        val report = reportDir.resolve("LEVELB-REPORT.txt")
+        val spike = SpikeLayout(workspace)
+        val process = spawnProducer(spike)
+        producer = process
 
-        val linesBefore = 300
-        val linesAfter = 50
+        await(spike.barrier, 120, "the child never reached its barrier")
+        // Wait for a MEANINGFUL prefix, not merely for one byte. An earlier version of this spike killed
+        // as soon as anything had been acknowledged and recorded bytes_before_kill=1, which proves the
+        // ingress had flushed its first window and nothing about durability.
+        val beforeKill = awaitPrefix("plain-before-", 90)
 
+        killOwnerJvm(process)
+
+        // Level A, already guaranteed by OBS-B: what was acknowledged before the kill is intact.
+        val afterKill = acknowledgeAndAssertSurvival(beforeKill)
+
+        // NOW release the child. Nothing it does from here on can reach a pump, because there are no
+        // pumps left: they were daemon threads in the JVM that is now gone.
+        Files.writeString(spike.go, "go")
+        val childFinished = await({ Files.exists(spike.done) }, 90)
+
+        // Whether the child finished, and whether its post-death output reached the store, is the
+        // measurement. It is recorded, not asserted.
+        OutputPlaneProvider.forgetAll()
+        val observation = observe(spike, beforeKill, afterKill, childFinished)
+
+        Files.writeString(spike.report, observation.facts())
+        dumpDiskEvidence(spike)
+
+        // The two Level A assertions above are OBS-B's, already green before this row existed.
+        assertTrue(
+            Files.exists(spike.report),
+            "the spike must always leave its observation on disk, even when the child dies",
+        )
+
+        assertLevelBClosure(observation)
+    }
+
+    /**
+     * The barrier files and the report paths of one spike run, resolved once so
+     * the reading steps cannot drift onto different files from the writing ones.
+     */
+    private class SpikeLayout(workspace: Path) {
+        val barrier: Path = workspace.resolve("BARRIER")
+        val go: Path = workspace.resolve("GO")
+        val done: Path = workspace.resolve("DONE")
+        val resumed: Path = workspace.resolve("RESUMED")
+        val aliveMark: Path = workspace.resolve("ALIVE_MARK")
+
+        /**
+         * OUTSIDE @TempDir on purpose: JUnit deletes the temp tree when the row
+         * ends, and a spike whose whole output is deleted on success is a spike
+         * that reports nothing.
+         */
+        val reportDir: Path =
+            Files.createDirectories(Path.of(System.getProperty("user.home"), "obsPc2diag"))
+        val report: Path = reportDir.resolve("LEVELB-REPORT.txt")
+    }
+
+    private fun spawnProducer(spike: SpikeLayout): Process {
         val process = ProcessBuilder(
             System.getProperty("java.home") + "/bin/java",
             "-cp",
@@ -125,9 +187,9 @@ class ObsPc2ProducerSurvivalSpikeTest {
                 controlDirRoot = controlRoot,
                 runId = runId,
                 workspace = workspace,
-                barrier = barrier,
-                go = go,
-                done = done,
+                barrier = spike.barrier,
+                go = spike.go,
+                done = spike.done,
                 secret = secret,
                 linesBefore = linesBefore,
                 linesAfter = linesAfter,
@@ -136,21 +198,24 @@ class ObsPc2ProducerSurvivalSpikeTest {
             .redirectError(ProcessBuilder.Redirect.DISCARD)
             .redirectOutput(ProcessBuilder.Redirect.to(workspace.resolve("producer.log").toFile()))
             .start()
-        producer = process
+        return process
+    }
 
-        await(workspace.resolve("BARRIER"), 120, "the child never reached its barrier")
-        // Wait for a MEANINGFUL prefix, not merely for one byte. An earlier version of this spike killed
-        // as soon as anything had been acknowledged and recorded bytes_before_kill=1, which proves the
-        // ingress had flushed its first window and nothing about durability.
-        val beforeKill = awaitPrefix("plain-before-", 90)
-
-        // Kill the JVM only. The child is a `setsid` session leader and must not be taken with it.
+    /** Kill the owner JVM only. The child is a `setsid` session leader and must not be taken with it. */
+    private fun killOwnerJvm(process: Process) {
         assertTrue(process.isAlive, "the producer exited before the crash, so this is not a crash measurement")
         ProcessBuilder("kill", "-9", process.pid().toString()).start().waitFor(5, TimeUnit.SECONDS)
         process.waitFor(30, TimeUnit.SECONDS)
         assertTrue(!process.isAlive, "the producer did not die from SIGKILL")
+    }
 
-        // Level A, already guaranteed by OBS-B: what was acknowledged before the kill is intact.
+    /**
+     * Level A, already guaranteed by OBS-B: what was acknowledged before the
+     * kill is intact. Returns the post-kill transcript so the observation
+     * below compares against the SAME reading rather than re-reading the plane
+     * and hoping it is unchanged.
+     */
+    private fun acknowledgeAndAssertSurvival(beforeKill: ByteArray): ByteArray {
         OutputPlaneProvider.forgetAll()
         val afterKill = committedTranscript()
         val afterKillText = afterKill.toString(Charsets.UTF_8)
@@ -159,49 +224,87 @@ class ObsPc2ProducerSurvivalSpikeTest {
             "acknowledged bytes must survive the kill; that is Level A and OBS-B already holds it",
         )
         assertEquals(0, afterKillText.split(secret).size - 1, "and no raw secret may be readable")
+        return afterKill
+    }
 
-        // NOW release the child. Nothing it does from here on can reach a pump, because there are no
-        // pumps left: they were daemon threads in the JVM that is now gone.
-        Files.writeString(go, "go")
-        val childFinished = await({ Files.exists(done) }, 90)
+    /**
+     * The measurement, as a value. Reading it is separated from interpreting it
+     * so the facts are recorded whether or not the assertions below hold — and
+     * so a claim about the observation cannot quietly disagree with the file
+     * written to disk.
+     */
+    private inner class LevelBObservation(
+        val beforeKillBytes: Int,
+        val afterKillBytes: Int,
+        private val afterGo: ByteArray,
+        val resumed: Boolean,
+        val aliveProof: Boolean,
+        val written: Int,
+        val doneMarker: Boolean,
+        val childFinished: Boolean,
+    ) {
+        val afterGoBytes: Int get() = afterGo.size
+        val afterGoText: String get() = afterGo.toString(Charsets.UTF_8)
 
-        // Whether the child finished, and whether its post-death output reached the store, is the
-        // measurement. It is recorded, not asserted.
-        OutputPlaneProvider.forgetAll()
-        val afterGo = committedTranscript()
-        val afterGoText = afterGo.toString(Charsets.UTF_8)
-
-        val facts = buildString {
+        /** The report a human reads. Byte-identical in content to the pre-refactor report. */
+        fun facts(): String = buildString {
             appendLine("OBS-2 LEVEL B SPIKE — runId=$runId")
             appendLine("--- discriminadores, leidos en este orden ---")
-            appendLine("resumed_after_jvm_death=${Files.exists(workspace.resolve("RESUMED"))}")
-            appendLine("alive_proof_after_jvm_death=${Files.exists(workspace.resolve("ALIVE_MARK"))}")
-            appendLine("after_lines_written=${afterLineMarkers(linesAfter)}/$linesAfter")
-            appendLine("done_marker_exists=${Files.exists(done)}")
+            appendLine("resumed_after_jvm_death=$resumed")
+            appendLine("alive_proof_after_jvm_death=$aliveProof")
+            appendLine("after_lines_written=$written/$linesAfter")
+            appendLine("done_marker_exists=$doneMarker")
             appendLine("child_finished_after_jvm_death=$childFinished")
             appendLine("--- plano de salida ---")
-            appendLine("bytes_before_kill=${beforeKill.size}")
-            appendLine("bytes_after_kill=${afterKill.size}")
+            appendLine("bytes_before_kill=$beforeKillBytes")
+            appendLine("bytes_after_kill=$afterKillBytes")
             appendLine("bytes_after_release=${afterGo.size}")
-            appendLine("after_bytes_reached_plane=${afterGo.size > afterKill.size}")
+            appendLine("after_bytes_reached_plane=${afterGo.size > afterKillBytes}")
             appendLine("has_before_lines=${afterGoText.contains("plain-before-")}")
             appendLine("has_after_lines=${afterGoText.contains("plain-after-")}")
             appendLine("canary_redacted=${afterGoText.contains("****")}")
             appendLine("raw_secret_on_disk=${rawSecretBytesOnDisk()}")
         }
-        Files.writeString(report, facts)
+    }
 
+    private fun observe(
+        spike: SpikeLayout,
+        beforeKill: ByteArray,
+        afterKill: ByteArray,
+        childFinished: Boolean,
+    ): LevelBObservation = LevelBObservation(
+        beforeKillBytes = beforeKill.size,
+        afterKillBytes = afterKill.size,
+        afterGo = committedTranscript(),
+        resumed = Files.exists(spike.resumed),
+        aliveProof = Files.exists(spike.aliveMark),
+        written = afterLineMarkers(linesAfter),
+        doneMarker = Files.exists(spike.done),
+        childFinished = childFinished,
+    )
+
+    private fun dumpDiskEvidence(spike: SpikeLayout) {
         // R2.3 diagnostics: the runtime writes the agent's stdout/stderr to
         // `controlDir/agent.log`. Walk the control root to find it (the opId
         // format includes the runId + stage/step indices, so we don't know
-        // the exact path). Copy it to the report dir so a failed assertion
-        // still has the agent's stack trace, not a TempDir that the test
-        // runner has already deleted.
+        // the exact path) ONCE, and reuse the answer: the two probes describe
+        // the same tree, and a second walk could observe a different one.
         val agentLogCandidate: Path? = runCatching {
             Files.walk(controlRoot).use { stream ->
                 stream.filter { it.fileName.toString() == "agent.log" }.findFirst().orElse(null)
             }
         }.getOrNull()
+        dumpAgentLog(spike.reportDir, agentLogCandidate)
+        dumpFifoProbe(spike.reportDir, agentLogCandidate)
+        dumpOutputPlaneProbe(spike.reportDir)
+    }
+
+    /**
+     * Copy the agent's own log out of the control root so a failed assertion
+     * still has the stack trace, not a TempDir that the test runner has
+     * already deleted.
+     */
+    private fun dumpAgentLog(reportDir: Path, agentLogCandidate: Path?) {
         if (agentLogCandidate != null && Files.exists(agentLogCandidate)) {
             Files.copy(
                 agentLogCandidate,
@@ -209,7 +312,9 @@ class ObsPc2ProducerSurvivalSpikeTest {
                 java.nio.file.StandardCopyOption.REPLACE_EXISTING,
             )
         }
-        // Also dump the fifo directory tree.
+    }
+
+    private fun dumpFifoProbe(reportDir: Path, agentLogCandidate: Path?) {
         val fifoProbe = runCatching {
             Files.walk(controlRoot).use { stream ->
                 stream.filter { it.fileName.toString() == "fifos" && Files.isDirectory(it) }
@@ -233,13 +338,17 @@ class ObsPc2ProducerSurvivalSpikeTest {
             reportDir.resolve("LEVELB-FIFO-PROBE.txt"),
             "controlRoot=$controlRoot\nagentLog=$agentLogCandidate\n$fifoProbe\n",
         )
+    }
 
-        // R2.3(b) probe: dump the Output Plane directory tree on disk so a
-        // failing assertion still leaves evidence of WHERE the agent's
-        // writes went (or didn't). The TempDir is deleted when JUnit
-        // reports PASS, and a "the agent committed 5745 bytes but the
-        // reader saw 0" row is precisely the case where the disk state
-        // matters.
+    /**
+     * R2.3(b) probe: dump the Output Plane directory tree on disk so a
+     * failing assertion still leaves evidence of WHERE the agent's
+     * writes went (or didn't). The TempDir is deleted when JUnit
+     * reports PASS, and a "the agent committed 5745 bytes but the
+     * reader saw 0" row is precisely the case where the disk state
+     * matters.
+     */
+    private fun dumpOutputPlaneProbe(reportDir: Path) {
         val planeDir = controlRoot.resolve(OutputPlaneProvider.OUTPUT_DIR)
         val planeTree = runCatching {
             if (!Files.isDirectory(planeDir)) {
@@ -272,55 +381,49 @@ class ObsPc2ProducerSurvivalSpikeTest {
             reportDir.resolve("LEVELB-PLANE-PROBE.txt"),
             "planeDir=$planeDir\n--- output-plane tree ---\n$planeTree\n",
         )
+    }
 
-        // The two Level A assertions above are OBS-B's, already green before this row existed.
+    /**
+     * ---- the §4 inversion --------------------------------------------------------
+     *
+     * R2.3 / ADR-OBS-003 §4: the agent path is active (the producer opted in via
+     * ShOptions.pumpedViaAgent = true). Two claims are pinned:
+     *
+     *   (a) The agent OUTLIVES the runtime JVM. The runtime is `kill -9`'d; the
+     *       ingest agent, launched under `setsid`, is its own session leader and
+     *       keeps the FIFO read ends open. The child therefore does NOT block on
+     *       its post-kill writes (`EPIPE` is gone) and reaches 50/50 markers.
+     *       Pre-R2.3 this row was 0/50 (child died on its first stdout write
+     *       because the runtime's pump thread, which owned the pipe, was gone).
+     *
+     *   (b) The agent DRAINS the FIFO into the Output Plane. The O_RDONLY +
+     *       warmup protocol (R2.3(b)) lets the agent see EOF when the child
+     *       exits, so the redactor flushes its lookahead and the bytes the
+     *       child wrote post-kill are committed to the plane. Pre-R2.3(b) this
+     *       row was `bytes_after_release == 0` (the O_RDWR trick made the
+     *       agent itself a writer and the agent never saw EOF); the R2.3(b)
+     *       fix is the §4 inversion to `bytes_after_release > bytes_after_kill`.
+     *
+     * The (a) and (b) assertions are both now inverted: 0/50 → 50/50 AND
+     * bytes_after_release == 0 → bytes_after_release > bytes_after_kill.
+     * The combined proof is the OBS-2 Level B closure: 50 markers on the
+     * workspace side AND a non-empty increment of committed bytes on the
+     * Output Plane side, in the same candidate.
+     */
+    private fun assertLevelBClosure(observation: LevelBObservation) {
         assertTrue(
-            Files.exists(report),
-            "the spike must always leave its observation on disk, even when the child dies",
-        )
-
-        // ---- the §4 inversion --------------------------------------------------------
-        //
-        // R2.3 / ADR-OBS-003 §4: the agent path is active (the producer opted in via
-        // ShOptions.pumpedViaAgent = true). Two claims are pinned:
-        //
-        //   (a) The agent OUTLIVES the runtime JVM. The runtime is `kill -9`'d; the
-        //       ingest agent, launched under `setsid`, is its own session leader and
-        //       keeps the FIFO read ends open. The child therefore does NOT block on
-        //       its post-kill writes (`EPIPE` is gone) and reaches 50/50 markers.
-        //       Pre-R2.3 this row was 0/50 (child died on its first stdout write
-        //       because the runtime's pump thread, which owned the pipe, was gone).
-        //
-        //   (b) The agent DRAINS the FIFO into the Output Plane. The O_RDONLY +
-        //       warmup protocol (R2.3(b)) lets the agent see EOF when the child
-        //       exits, so the redactor flushes its lookahead and the bytes the
-        //       child wrote post-kill are committed to the plane. Pre-R2.3(b) this
-        //       row was `bytes_after_release == 0` (the O_RDWR trick made the
-        //       agent itself a writer and the agent never saw EOF); the R2.3(b)
-        //       fix is the §4 inversion to `bytes_after_release > bytes_after_kill`.
-        //
-        // The (a) and (b) assertions are both now inverted: 0/50 → 50/50 AND
-        // bytes_after_release == 0 → bytes_after_release > bytes_after_kill.
-        // The combined proof is the OBS-2 Level B closure: 50 markers on the
-        // workspace side AND a non-empty increment of committed bytes on the
-        // Output Plane side, in the same candidate.
-        val resumed = Files.exists(workspace.resolve("RESUMED"))
-        val aliveProof = Files.exists(workspace.resolve("ALIVE_MARK"))
-        val written = afterLineMarkers(linesAfter)
-
-        assertTrue(
-            resumed,
+            observation.resumed,
             "PREMISE FAILED: the child never resumed after its JVM died, so this row says nothing about " +
                 "Level B. A child killed by something other than the pipe needs a different investigation.",
         )
         assertTrue(
-            aliveProof,
+            observation.aliveProof,
             "PREMISE FAILED: the child could not write a file after the JVM died, so something other " +
                 "than the stdout pipe is killing it. The whole EPIPE reading rests on this being true.",
         )
         assertEquals(
             linesAfter,
-            written,
+            observation.written,
             "R2.3 §4 inversion (a) — the agent path is active and the child must produce ALL of its " +
                 "post-death lines ($linesAfter of $linesAfter). Pre-R2.3 this row was pinned at " +
                 "0/$linesAfter as the held-in-place defect; the inversion to $linesAfter/$linesAfter " +
@@ -335,21 +438,21 @@ class ObsPc2ProducerSurvivalSpikeTest {
         // when the child exits, so the redactor flushes and the post-kill
         // bytes reach the plane.
         assertTrue(
-            afterGo.size > afterKill.size,
+            observation.afterGoBytes > observation.afterKillBytes,
             "R2.3(b) §4 inversion (b) — the Output Plane MUST gain new committed bytes after the child " +
-                "is released. afterKill=${afterKill.size} afterGo=${afterGo.size}. The pre-R2.3(b) " +
-                "shape was `afterGo == afterKill` (the agent never saw EOF because O_RDWR made it a " +
-                "writer, and the redactor's lookahead blocked forever on the open pipe).",
+                "is released. afterKill=${observation.afterKillBytes} afterGo=${observation.afterGoBytes}. " +
+                "The pre-R2.3(b) shape was `afterGo == afterKill` (the agent never saw EOF because O_RDWR " +
+                "made it a writer, and the redactor's lookahead blocked forever on the open pipe).",
         )
         assertTrue(
-            afterGoText.contains("plain-after-"),
+            observation.afterGoText.contains("plain-after-"),
             "R2.3(b) §4 inversion (b) — the post-kill lines MUST reach the Output Plane. " +
-                "afterGoText starts with: ${afterGoText.take(200)}",
+                "afterGoText starts with: ${observation.afterGoText.take(200)}",
         )
         assertTrue(
-            afterGoText.contains("****"),
+            observation.afterGoText.contains("****"),
             "R2.3(b) §4 inversion (b) — the canary MUST be redacted in the Output Plane. " +
-                "afterGoText contains the raw secret? ${afterGoText.contains(secret)}",
+                "afterGoText contains the raw secret? ${observation.afterGoText.contains(secret)}",
         )
         assertEquals(
             0,

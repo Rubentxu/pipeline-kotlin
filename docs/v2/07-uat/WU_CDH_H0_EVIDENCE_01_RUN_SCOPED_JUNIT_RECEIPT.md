@@ -8,6 +8,8 @@ so an absent or SKIPPED test fails explicitly».
 («prioridad obligatoria: corregir la línea de verificación y los defectos de integridad antes de iniciar
 expansión funcional»).
 **Base SHA:** `e3a6b9fefbba67036598e315b74c50099037f7ee` (rama `worktree/test-harnes-evolutivo`).
+**Implementation SHA:** `8d08fda745549171bd62d285d22907014a9cfa09` (contiene exactamente los SHA del
+bloque de estado).
 
 ## 1. Defecto reproducido antes de tocar código
 
@@ -169,9 +171,15 @@ Driver (fuera del repo, no se distribuye): reproduce_false_greens_postfix.py,
 ```text
 Status: IMPLEMENTED_AND_VERIFIED_ON_THIS_TREE
 Base SHA: e3a6b9fefbba67036598e315b74c50099037f7ee
+Implementation SHA: 8d08fda745549171bd62d285d22907014a9cfa09
 Tool SHA-256 (fixed):     f7f629aac1bebdecbb0e2e0cb8067a4bc5794b732e273c4a3ede66753e1988d6
 Test SHA-256 (fixed):     60f37d314cd306baf8058c87665c5fa014aae83426f3137fe1a035ed7d0360ea
 NOT_RUN: Gradle, v2 check, releaseGate, UAT, cobertura, RC 900 s, publicación.
+
+Post-commit: suite (25 filas, exit 0) y reproducción por la CLI repetidas
+sobre 8d08fda7, no sólo sobre el árbol previo al commit. Los blobs
+commiteados devuelven los dos SHA de arriba, luego la evidencia pertenece
+al SHA y no a un estado intermedio.
 ```
 
 Este recibo certifica el contrato del reporter en este árbol. **No** certifica la candidata, ni el

@@ -207,54 +207,66 @@ internal class SqliteEventFollowHandle(
     private inner class FollowIterator : Iterator<EventFollowEvent> {
 
         override fun hasNext(): Boolean {
-            // Order matters: `closed` first (terminal state), then
-            // `pending.isNotEmpty()` (events still to deliver), then
-            // `terminated` (the natural end). The pending check must
-            // come BEFORE `terminated` because `next()` calls
-            // `hasNext()` recursively to verify, and once `terminated`
-            // is set the only way to drain the last event is the
-            // pending check.
-            lock.lock()
-            try {
-                if (closed) {
-                    pending.clear()
-                    return false
+            // Live follow: while the handle is open and not yet
+            // terminal, this call blocks (with bounded sleeps on
+            // idle polls) until either a new event is available,
+            // the follow reaches a terminal state, or the handle
+            // is closed. The two terminal conditions are
+            //   - `UntilSequence` satisfied (queueCompleted in 3c)
+            //   - `RunFinished` observed (queueCompleted in 3d)
+            // A page with `hasMore=false` is NOT terminal: it
+            // signals "no new data right now", and the consumer's
+            // next `hasNext()` call will re-poll. This is the F2
+            // fix from the PK-58A T1 audit.
+            //
+            // The bounded-wait `idle()` sleeps `pollIntervalMs`
+            // (default 25 ms) between quiet polls. A consumer that
+            // wants to cancel the wait calls `close()`; the close
+            // path sets `closed` and the loop returns promptly.
+            // A consumer that wants a snapshot (poll once, return
+            // what we have, terminate) closes the handle after the
+            // first `Page` and does not re-enter `hasNext()`.
+            while (true) {
+                lock.lock()
+                try {
+                    if (closed) {
+                        pending.clear()
+                        return false
+                    }
+                } finally {
+                    lock.unlock()
                 }
-            } finally {
-                lock.unlock()
-            }
-            if (pending.isNotEmpty()) return true
-            lock.lock()
-            try {
-                if (terminated) return false
-            } finally {
-                lock.unlock()
-            }
-            // One poll cycle: fills `pending` with the events the
-            // follow produces for this round (StateChanged first, then
-            // Page, then optional terminal). Returns `false` if the
-            // cycle was quiet (the caller may want to idle and retry).
-            val drained = drainOnce()
-            if (drained) return pending.isNotEmpty()
-            // A quiet cycle: sleep `pollIntervalMs` and try once more,
-            // in case a write landed during the sleep. The "twice then
-            // give up" is the bounded-wait semantic: a consumer that
-            // wants to wait longer calls [hasNext] again, and the
-            // contract is that a closed handle will return `false`
-            // promptly (the close path signals the condition so this
-            // sleep wakes early).
-            idle()
-            lock.lock()
-            try {
-                if (closed) {
-                    pending.clear()
-                    return false
+                if (pending.isNotEmpty()) return true
+                lock.lock()
+                try {
+                    if (terminated) return false
+                } finally {
+                    lock.unlock()
                 }
-            } finally {
-                lock.unlock()
+                // One poll cycle: fill `pending` with the events
+                // the follow produces for this round. If a
+                // terminal condition fires (3c/3d), the cycle
+                // sets `terminated` and the next loop iteration
+                // returns false.
+                drainOnce()
+                if (pending.isNotEmpty()) return true
+                lock.lock()
+                try {
+                    if (terminated) return false
+                    if (closed) {
+                        pending.clear()
+                        return false
+                    }
+                } finally {
+                    lock.unlock()
+                }
+                // Quiet cycle: the follow is still alive but
+                // produced nothing in this round. Sleep the
+                // configured poll interval and re-poll. The
+                // `close()` path wakes the sleep early so
+                // cancellation is not blocked by `pollIntervalMs`.
+                idle()
             }
-            drainOnce()
-            return pending.isNotEmpty()
         }
 
         override fun next(): EventFollowEvent {
@@ -426,18 +438,25 @@ internal class SqliteEventFollowHandle(
         }
 
         // 3e. Tail reached: a page with `hasMore=false` is the
-        // natural end of currently available history. For an
-        // empty history (no rows yet), this is the natural-end
-        // emission the design §4 composition rule names for an
-        // empty run: `Completed` after the first poll. The
-        // consumer decides whether to reopen with `after =
-        // nextCursor` to keep following a run that may still be
-        // live.
-        if (!boundedSlice.hasMore && !completedEmitted) {
-            completedEmitted = true
-            return queueCompleted()
-        }
-
+        // natural end of currently available history. The follow
+        // remains alive and continues to poll on the consumer's
+        // next `hasNext()` call: a "no new data right now" page is
+        // NOT a terminal event, because the run may still publish.
+        // `Completed` is reserved for the two terminal conditions
+        // the design names:
+        //   - 3c above: `UntilSequence` reached the consumer's bound
+        //   - 3d above: `RunFinished` was observed in the page
+        // A consumer that wants a snapshot (poll once, return what
+        // we have, terminate) closes the handle after the first
+        // empty `Page`; a consumer that wants live follow does not
+        // close and the follow continues to deliver new events as
+        // they appear.
+        //
+        // The historical behavior of this branch (queueCompleted
+        // on the first quiet page) conflated snapshot with live
+        // follow and is the F2 finding from the PK-58A T1 audit.
+        // It is removed; the falsifier
+        // `SqliteEventFollowLiveTailTest` pins the new contract.
         return pending.isNotEmpty()
     }
 

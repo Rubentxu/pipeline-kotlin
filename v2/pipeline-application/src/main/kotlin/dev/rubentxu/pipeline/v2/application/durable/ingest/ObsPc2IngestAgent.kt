@@ -1,0 +1,401 @@
+package dev.rubentxu.pipeline.v2.application.durable.ingest
+
+import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
+import dev.rubentxu.pipeline.v2.application.durable.RedactingOutputIngress
+import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
+import dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor
+import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputChannel
+import java.nio.ByteBuffer
+import java.nio.channels.SeekableByteChannel
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
+import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.PosixFileAttributes
+
+/**
+ * The production ingest agent of `ADR-OBS-003`.
+ *
+ * A separate JVM that owns the read ends of a step's output, redacts in
+ * memory, and commits sanitized bytes to the Output Plane. It knows
+ * nothing about Steps, events, journals, results or outcomes — it
+ * drains two descriptors and appends. That is the whole of it, and it
+ * is what keeps it from being a second runtime.
+ *
+ * ## What this is and what the prototype is not
+ *
+ * This file is the **production** version. The prototype
+ * (`dev.rubentxu.pipeline.v2.application.durable.ObsPc2IngestAgent`,
+ * in `src/test/`) is the *reference* that proved the shape, and it
+ * remains in `src/test/` for the adversarial tests
+ * (`ObsPc2IngestAgentPrototypeUatTest`,
+ * `ObsPc2ProducerSurvivalSpikeTest`).
+ *
+ * The production version differs from the prototype in three ways:
+ *
+ * 1. **Package.** This file lives in `application.durable.ingest`,
+ *    a production package. The prototype lives in the test
+ *    `application.durable` package; cross-package access from test
+ *    to main is the convention Kotlin/JVM uses for the in-tree
+ *    reference fixture.
+ *
+ * 2. **Class name and KDoc.** The class is the same (the
+ *    `Object ObsPc2IngestAgent` is the load-bearing identifier the
+ *    prototype and the runtime launcher agree on), but this KDoc
+ *    cross-references the ADR sections the prototype's KDoc
+ *    documents: §2.1, §2.2, §2.4, §4, §5.
+ *
+ * 3. **The launch contract.** This `main(args)` is what the
+ *    runtime launches via `ProcessBuilder` + `setsid` (R2.3). The
+ *    argv order is fixed by [argv] so the launcher and the agent
+ *    cannot drift. The prototype's `argv` is the same shape; the
+ *    production agent re-uses it verbatim.
+ *
+ * ## Why FIFOs and not inherited pipe descriptors
+ *
+ * Passing a pipe's read end to another process needs `SCM_RIGHTS`,
+ * which the JVM does not expose. A FIFO in the control directory is
+ * the portable rendezvous: the runtime redirects the child's
+ * descriptors *to the FIFO* and this process opens it for reading.
+ * No descriptor crosses a process boundary and no kernel handle is
+ * shared, which is exactly what lets the agent outlive the runtime.
+ *
+ * A FIFO is also **not a file**, so nothing unredacted can reach
+ * durable storage through it. That is the whole reason the
+ * plaintext-spool option was excluded: a regular file written by the
+ * child would hold raw bytes, and this does not.
+ *
+ * That sentence is a property to *check*, not a property the word
+ * "fifo" confers. `java.nio.file` cannot create a FIFO, and the
+ * first version of the prototype called `Files.createFile` —
+ * producing a regular file that silently became the excluded spool.
+ * See [openRendezvous].
+ *
+ * ## Why it opens the FIFO O_RDWR
+ *
+ * Opening a FIFO read-only succeeds immediately but reports EOF
+ * until a writer appears, and a read end with no writer is
+ * indistinguishable from a finished child. O_RDWR on a FIFO never
+ * blocks and keeps a writer reference alive for this process, so
+ * "no data yet" is not mistaken for "the child is done".
+ *
+ * The cost is stated rather than hidden: **the agent cannot see
+ * EOF**, because it is itself a writer. It therefore cannot tell
+ * that a child exited by watching the pipe. Completion is a
+ * separate fact — the step's terminal, or a seal — and conflating
+ * "no data right now" with "finished" is precisely the bug
+ * `ADR-0085` forbids. A production agent needs an explicit seal;
+ * R2.3 supplies it (the runtime sends SIGTERM at run terminal; the
+ * agent drains its FIFO buffer, closes the sinks, and exits).
+ *
+ * ## Security invariant: the FIFO type
+ *
+ * The type is the security invariant here, so it is checked rather
+ * than assumed. [openRendezvous] refuses anything that is not a
+ * named pipe; a regular file with a `.fifo` name would silently
+ * accept a writer before any reader exists, report EOF to a reader
+ * that reached its end, and **persist to disk every byte the child
+ * wrote, unredacted**. The measured consequence of skipping this
+ * check was the whole defect class in one line: `stdout.fifo` was
+ * a 97-byte regular file holding the child's
+ * `canary=GHS_DBG_SECRET`, the reader saw EOF the instant it looked
+ * at an empty file, declared itself drained, and the Output Plane
+ * stayed empty.
+ *
+ * ## See also
+ *
+ * - `ADR-OBS-003-child-output-descriptor-ownership.md` §2.1, §2.2,
+ *   §2.4 (this is the §5-recommended shape: one agent per run,
+ *   supervised by PipelineK)
+ * - `ADR-OBS-003-child-output-descriptor-ownership.md` §4
+ *   (verification: after_lines_written 0/50 → 50/50,
+ *   bytes_after_release > bytes_after_kill, DONE post-mortem,
+ *   raw_secret_on_disk == 0)
+ * - `ObsPc2IngestAgentPrototypeUatTest` (R1.1's prototype fixture)
+ * - `ObsPc2ProducerSurvivalSpikeTest` (the §4 inversion proof)
+ * - `roadmap-R2.md` (R2 plan in `odd/tasks/`)
+ */
+object ObsPc2IngestAgent {
+
+    /**
+     * Entry point for the launched JVM. The argv order is fixed by
+     * [argv] so the launcher (R2.3's wiring in
+     * `DurableShellLaunching.launch`) and this agent cannot drift.
+     *
+     * @param args `controlDirRoot`, `runId`, `opIdString`, `fifoDir`,
+     *   `readyMarker`, `secret`
+     */
+    @JvmStatic
+    fun main(args: Array<String>) {
+        val controlDirRoot = Paths.get(args[0])
+        val runId = args[1]
+        val opId = args[2]
+        val fifoDir = Paths.get(args[3])
+        val readyMarker = Paths.get(args[4])
+        val secret = args[5]
+
+        val registry = SecretPatternRegistry().apply { addSecret(SecretHandle.plain(secret)) }
+        val store = OutputPlaneProvider.storeForWriting(controlDirRoot)
+        val streams = OutputPlaneProvider.streamsOf(runId, opId)
+        val frameIndex = store.frameIndex()
+
+        // R2.3(b) diagnostic: print lifecycle events to the agent's
+        // stdout. The runtime redirects stdout to controlDir/agent.log,
+        // so every println below is a probe line in that file. NO
+        // secrets or payloads are emitted — the diagnostics record
+        // the byte flow at the 5 frontiers the operator named:
+        //   ChildWritten → FifoReceived → Sanitized → OutputCommitted
+        // Each frontier is a separate println so the log can be
+        // diffed against the spike's `bytes_after_release` and the
+        // individual sinks' `refusal()` state.
+        val agentPid = ProcessHandle.current().pid()
+
+        // R2.3(b) diagnostic: the agent and the test must agree on the
+        // stream id and the control root. If either is wrong the
+        // "committed N bytes / reader saw 0" shape becomes silent. No
+        // payload, no secret: just the typed identity and the layout root.
+        System.err.println(
+            "pc2-agent-resolve pid=$agentPid runId=$runId opId=$opId " +
+                "controlDirRoot=$controlDirRoot " +
+                "stdoutStream=${streams.stdout.stream.value} " +
+                "stderrStream=${streams.stderr.stream.value} " +
+                "storeClass=${store.javaClass.simpleName}",
+        )
+
+        val sinks = ProcessOutputChannel.all.associateWith { channel ->
+            val address = when (channel) {
+                ProcessOutputChannel.STDOUT -> streams.stdout
+                ProcessOutputChannel.STDERR -> streams.stderr
+            }
+            RedactingOutputIngress({ store.open(address.stream) }, frameIndex, address)
+        }
+
+        System.err.println(
+            "pc2-agent-start pid=$agentPid runId=$runId opId=$opId fifoDir=$fifoDir " +
+                "stdoutFifo=${fifoDir.resolve("stdout.fifo")} stderrFifo=${fifoDir.resolve("stderr.fifo")}",
+        )
+
+        // O_RDWR on a FIFO: never blocks, and keeps this process a
+        // writer so the read side never reports a spurious EOF
+        // before the child has started.
+        val channels = mapOf(
+            ProcessOutputChannel.STDOUT to openRendezvous(fifoDir.resolve("stdout.fifo")),
+            ProcessOutputChannel.STDERR to openRendezvous(fifoDir.resolve("stderr.fifo")),
+        )
+        System.err.println("pc2-agent-fifos-opened pid=$agentPid")
+
+        // Both descriptors are open. From here this process can
+        // outlive the one that launched it.
+        Files.writeString(readyMarker, "ready\n")
+        System.err.println("pc2-agent-ready-marker-written pid=$agentPid")
+
+        val threads = ProcessOutputChannel.all.map { channel ->
+            // R2.3(b) / TODO 3: the agent now uses the redactor's state
+            // machine directly. The previous design wrapped the FIFO
+            // channel in an InputStream and then a RedactingInputStream,
+            // which made "no more data" and "end of stream" the same
+            // event (close()). The state machine separates them: the
+            // agent reads from the channel, feeds raw bytes to feed(),
+            // takes sanitized bytes from take(), and only calls finish()
+            // when the channel returns EOF. The lookahead is then flushed
+            // through the same matcher used during feeding, so the
+            // secret that crossed the last chunk boundary is detected
+            // rather than silently dropped.
+            val ch = channels.getValue(channel)
+            val redactor = StreamingRedactor(registry)
+            val state = redactor.initialState()
+            val sink = sinks.getValue(channel)
+            Thread({
+                val raw = ByteArray(8192)
+                val scratch = ByteArray(8192)
+                val rawBuffer = ByteBuffer.wrap(raw)
+                var totalReceived = 0L
+                var totalCommitted = 0L
+                var iter = 0L
+                try {
+                    while (true) {
+                        iter++
+                        rawBuffer.clear()
+                        val n = ch.read(rawBuffer)
+                        if (n < 0) {
+                            // Kernel-level EOF: the child has closed its
+                            // write end of the FIFO. Flush the redactor's
+                            // lookahead through the same matcher, then
+                            // emit the final bytes through the sink.
+                            val final = redactor.finish(state)
+                            if (final.isNotEmpty()) {
+                                sink.write(final, 0, final.size)
+                                totalCommitted += final.size.toLong()
+                            }
+                            System.err.println(
+                                "pc2-agent-pump-eof channel=${channel.name.lowercase()} " +
+                                    "iter=$iter totalReceived=$totalReceived " +
+                                    "totalCommitted=$totalCommitted " +
+                                    "finalFlushedBytes=${final.size}",
+                            )
+                            break
+                        }
+                        totalReceived += n.toLong()
+                        // Feed raw bytes into the lookahead; whatever is
+                        // now decidable is in the output queue.
+                        redactor.feed(state, raw, 0, n)
+                        // Drain the decided bytes into the sink. The
+                        // state machine may emit fewer than `n` bytes
+                        // (lookahead holds some) or more (a matched
+                        // secret expands to the SCRUB_MARKER).
+                        var taken: Int
+                        while (true) {
+                            taken = redactor.take(state, scratch, 0, scratch.size)
+                            if (taken == 0) break
+                            sink.write(scratch, 0, taken)
+                            totalCommitted += taken.toLong()
+                        }
+                        if (iter <= 5 || iter % 1000L == 0L) {
+                            val refusal = sink.refusal()
+                            System.err.println(
+                                "pc2-agent-pump-step channel=${channel.name.lowercase()} " +
+                                    "iter=$iter n=$n totalReceived=$totalReceived " +
+                                    "totalCommitted=$totalCommitted " +
+                                    "refusal=" + (refusal?.detail ?: "none"),
+                            )
+                        }
+                    }
+                    val refusal = sink.refusal()
+                    System.err.println(
+                        "pc2-agent-pump-drained channel=${channel.name.lowercase()} " +
+                            "totalReceived=$totalReceived totalCommitted=$totalCommitted " +
+                            "refusal=" + (refusal?.detail ?: "none"),
+                    )
+                    sink.close()
+                } catch (e: Exception) {
+                    // NOT swallowed. A harness that discards the
+                    // failing process's exception is a harness that
+                    // cannot debug it, and this one already cost a run
+                    // reading an empty log while the real cause sat in
+                    // the catch block.
+                    System.err.println(
+                        "pc2-agent-pump-failed channel=${channel.name.lowercase()} " +
+                            "iter=$iter totalReceived=$totalReceived totalCommitted=$totalCommitted ex=$e",
+                    )
+                    System.err.println(e.stackTraceToString())
+                }
+            }, "pc2-ingest-${channel.name.lowercase()}").apply {
+                isDaemon = true
+                start()
+            }
+        }
+
+        threads.forEach { it.join() }
+        // Give the sinks a moment to flush, then close them so the
+        // reservations are released and the stream is left in the
+        // state a recovery would expect.
+        sinks.values.forEach { runCatching { it.close() } }
+        System.out.println("pc2-agent-drained:${runId}:${opId}")
+    }
+
+    /**
+     * Open the rendezvous, refusing anything that is not a named
+     * pipe.
+     *
+     * ## Why this refuses instead of opening
+     *
+     * `java.nio.file` has no `mkfifo`, so the natural way to "create
+     * the FIFO" is `Files.createFile`, which creates a **regular
+     * file**. A regular file is indistinguishable from a FIFO in a
+     * directory listing and behaves differently in every way that
+     * matters: it accepts a writer before any reader exists, reports
+     * EOF to a reader that reaches its end, and **persists to disk
+     * every byte the child writes, unredacted**.
+     *
+     * The first version of the prototype did exactly that, and the
+     * measured consequence was the whole defect class in one line:
+     * `stdout.fifo` was a 97-byte regular file holding the child's
+     * `canary=GHS_DBG_SECRET`, the reader saw EOF the instant it
+     * looked at an empty file, declared itself drained, and the
+     * Output Plane stayed empty. That reads like "the drainer does
+     * not work" and is actually "the rendezvous is the plaintext
+     * spool ADR-OBS-003 excludes" — the one option this whole design
+     * exists to avoid, silently reintroduced by a three-line
+     * convenience call.
+     *
+     * The type is the security invariant here, so it is checked
+     * rather than assumed.
+     */
+    private fun openRendezvous(path: Path): SeekableByteChannel {
+        require(isFifo(path)) {
+            "$path is not a FIFO. Draining it would accept a plaintext spool on disk, " +
+                "which ADR-OBS-003 excludes and which raw_secret_on_disk == 0 is meant to catch."
+        }
+        // R2.3(b): open O_RDONLY. The O_RDONLY open on a named pipe blocks until
+        // a writer appears, which is exactly the rendezvous we want: the
+        // child opens the FIFO for write via `Redirect.to`, the kernel unblocks
+        // our open, and we start reading.
+        //
+        // The previous O_RDWR open made the agent itself a writer, so the
+        // pipe never reached a "zero writers" state when the child exited
+        // and the redactor blocked forever on the lookahead window,
+        // waiting for an EOF that could not arrive. With O_RDONLY the
+        // kernel's read returns EOF the moment the LAST writer closes its
+        // end, which is the honest signal the redactor needs to flush
+        // the lookahead and exit.
+        //
+        // The runtime pre-opens the FIFO in O_RDWR mode (a "warmup")
+        // before launching the agent. The warmup is a writer while the
+        // runtime JVM is alive; once the agent's O_RDONLY open succeeds,
+        // the runtime starts the child (which opens for write), the child
+        // is the only writer, and when the child exits the agent sees EOF.
+        return Files.newByteChannel(path, StandardOpenOption.READ)
+    }
+
+    /**
+     * Whether [path] is a named pipe.
+     *
+     * `java.nio.file` cannot create one and exposes no direct type
+     * test, but [PosixFileAttributes.isOther] answers it exactly: a
+     * FIFO is neither a regular file nor a directory, which is
+     * precisely what `isOther` means. Asking the JDK keeps this
+     * check in the same trust domain as the read that follows it,
+     * instead of spawning `test -p` and parsing its exit code.
+     */
+    fun isFifo(path: Path): Boolean = runCatching {
+        Files.readAttributes(path, PosixFileAttributes::class.java).isOther
+    }.getOrDefault(false)
+
+    /**
+     * Convenience so the launcher (R2.3's
+     * `DurableShellLaunching.launch`) and this agent cannot drift on
+     * argument order.
+     *
+     * Identical to the prototype's `argv`; the production launcher
+     * uses the same shape so the existing
+     * `ObsPc2JvmOwnerDeathProducer` (R2.3's spike integration) and
+     * the in-tree test fixtures (`ObsPc2IngestAgentPrototypeUatTest`,
+     * `ObsPc2ProducerSurvivalSpikeTest`) drive the agent through
+     * the same argv.
+     */
+    fun argv(
+        controlDirRoot: Path,
+        runId: String,
+        opId: String,
+        fifoDir: Path,
+        readyMarker: Path,
+        secret: String,
+    ): Array<String> = arrayOf(
+        controlDirRoot.toString(),
+        runId,
+        opId,
+        fifoDir.toString(),
+        readyMarker.toString(),
+        secret,
+    )
+
+    /** Marker text the launcher/test waits for, so "the agent is
+     *  attached" is an event and not a sleep. */
+    const val READY_CONTENT: String = "ready\n"
+
+    /** Bytes of a UTF-8 string, for harnesses that need to size
+     *  expectations without reading the plane. */
+    fun utf8(text: String): ByteArray = text.toByteArray(StandardCharsets.UTF_8)
+}

@@ -171,8 +171,20 @@ object ConsoleOperationSelection {
             )
         }
 
-        val stagesStarted = events.filterIsInstance<StageStarted>().toList()
-        val stepsStarted = events.filterIsInstance<StepStarted>().toList()
+        // WU-C FIX — the events are traversed ONCE and materialised.
+        //
+        // `SqliteEventStore.eventsFor` hands back a sequence that can be consumed only once, so
+        // the two `filterIsInstance` calls this used to make threw
+        // `IllegalStateException: This sequence can be consumed only once` on the SECOND one.
+        // It never appeared in a unit test because `list.asSequence()` is not constrained — the
+        // only real journal is the one that constrains, so the crash was reachable ONLY from the
+        // product, and it took `--stage NAME` and `--kind` both down with it.
+        //
+        // Materialising once also makes the function total over ANY sequence, which is the
+        // contract it should have had from the start.
+        val history = events.toList()
+        val stagesStarted = history.filterIsInstance<StageStarted>()
+        val stepsStarted = history.filterIsInstance<StepStarted>()
 
         // Resolve every token, refusing the FIRST unresolvable one with the full known set so a
         // caller fixing several typos fixes them in one pass rather than one per invocation.

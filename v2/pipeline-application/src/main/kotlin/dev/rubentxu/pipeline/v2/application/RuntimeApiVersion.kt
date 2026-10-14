@@ -78,6 +78,46 @@ object RuntimeApiVersion {
                 ?.takeIf { it.isNotEmpty() }
         }
 
+    /**
+     * The commit this build was made from, or null when the build did not record one.
+     *
+     * A product version is not provenance. `0.60.0` names a release line, and every commit on it
+     * reports it, so a harness holding two binaries cannot tell them apart by asking the binary.
+     * That is not hypothetical: the five corpus failures recorded in
+     * `CDH_PLANE_DIAGNOSTIC_RECEIPT.md` were exactly a stale binary whose version matched the
+     * expected one, and nothing in the run said so.
+     *
+     * Non-throwing and null-tolerant on purpose, unlike [current]. A local developer build has a
+     * legitimate commit and a tree that is dirty; that is a reportable fact, not a packaging
+     * defect. Only *certifying* a candidate requires the digest, and it makes that decision itself.
+     */
+    fun readBuildCommit(): String? =
+        RuntimeApiVersion::class.java.getResourceAsStream(RESOURCE)?.use { stream ->
+            stream.bufferedReader().readLines()
+                .firstOrNull { it.startsWith("buildCommit=") }
+                ?.removePrefix("buildCommit=")
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        }
+
+    /**
+     * Provenance as a closed result, decided once.
+     *
+     * [Recorded] means the build stated which commit it came from. [Absent] means it did not, which
+     * is a legitimate state for a working-tree build and an unacceptable one for a candidate. The
+     * two are different facts, so they are different cases rather than a nullable string the
+     * caller is trusted to check.
+     */
+    sealed interface BuildIdentity {
+        data class Recorded(val commit: String) : BuildIdentity
+
+        data object Absent : BuildIdentity
+    }
+
+    /** The commit this build came from, as a typed case. Never throws, never guesses. */
+    fun buildIdentity(): BuildIdentity =
+        readBuildCommit()?.let { BuildIdentity.Recorded(it) } ?: BuildIdentity.Absent
+
     /** `MAJOR.MINOR.PATCH`, or null for anything else. Total: no exception, no partial parse. */
     private fun parse(raw: String): SemVer? {
         val parts = raw.split('.')

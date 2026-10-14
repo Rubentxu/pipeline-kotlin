@@ -158,6 +158,14 @@ object SuitePolicy {
             fidelity = Fidelity.HF2,
         ),
         SuiteBinding(
+            capability = "Build.composition",
+            suites = listOf(
+                TestSuiteId("CompatibilityCorpusTest"),
+                TestSuiteId("ContractCatalogueFitnessTest"),
+            ),
+            fidelity = Fidelity.HF2,
+        ),
+        SuiteBinding(
             capability = "Provenance.build.identity",
             suites = listOf(
                 TestSuiteId("RuntimeBuildIdentityTest"),

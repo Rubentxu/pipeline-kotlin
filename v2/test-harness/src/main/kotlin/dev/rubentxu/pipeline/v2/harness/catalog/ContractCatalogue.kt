@@ -162,6 +162,20 @@ object ContractCatalogue {
             sourcePaths = listOf(
                 "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/RuntimeApiVersion.kt",
                 "v2/pipeline-application/build.gradle.kts",
+                // The CLI entry point decides which surface exists at all. `version --json` was
+                // added there, and a change to it can silently remove the provenance surface the
+                // whole H1.4 line depends on.
+                "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/Main.kt",
+            ),
+            minFidelity = Fidelity.HF2,
+        ),
+        Contract(
+            capability = "Build.composition",
+            owningModule = ":pipeline-application",
+            sourcePaths = listOf(
+                // Which modules exist, and which are wired into the distribution. A change here can
+                // remove a plugin from the product while every per-module test still passes.
+                "v2/settings.gradle.kts",
             ),
             minFidelity = Fidelity.HF2,
         ),

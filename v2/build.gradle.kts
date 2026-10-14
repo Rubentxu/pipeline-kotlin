@@ -585,6 +585,10 @@ val buildExamplePlugin by tasks.registering(Exec::class) {
     // Omitting it from these inputs would let the task consider its output UP-TO-DATE after a
     // change to the Event Plane — and the plugin would then be shipping against a stale seam.
     inputs.files(":pipeline-domain:jar", ":pipeline-scripting-api:jar", ":pipeline-events:jar")
+    // R4 / WU-R4.0.0 — declare rootProject.version as an explicit input. See
+    // buildExampleBlockPlugin for the full story (apiRange goes stale when
+    // the host version bumps but the SDK jar content does not).
+    inputs.property("rootProject.version", rootProject.version.toString())
     outputs.file(pluginDir.resolve("build/libs/example-uppercase-plugin-0.1.0.jar"))
 
     workingDir = rootDir
@@ -634,6 +638,9 @@ val buildExternalDirectivePlugin by tasks.registering(Exec::class) {
     inputs.dir(pluginDir.resolve("src"))
     inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
     inputs.files(":pipeline-domain:jar")
+    // R4 / WU-R4.0.0 — declare rootProject.version as an explicit input. See
+    // buildExampleBlockPlugin for the full story.
+    inputs.property("rootProject.version", rootProject.version.toString())
     outputs.file(pluginDir.resolve("build/libs/example-directive-plugin-0.1.0.jar"))
 
     workingDir = rootDir
@@ -661,6 +668,16 @@ val buildExampleBlockPlugin by tasks.registering(Exec::class) {
     inputs.dir(pluginDir.resolve("src"))
     inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
     inputs.files(":pipeline-domain:jar")
+    // R4 / WU-R4.0.0 — declare rootProject.version as an explicit input. The
+    // example plugin's Gradle property `-PsdkVersion=` is derived from this
+    // value at commandLine time, but Gradle's default fingerprint for an
+    // Exec task does NOT see the version string when only the SDK jar content
+    // is declared as an input. A bump from 0.59.0 to 0.60.0 with no source
+    // change previously left the example plugin's apiRange at [0.59.0, 0.60.0),
+    // which the shipped installDist then refused as IncompatibleApiRange.
+    // Without this property declared, every `pipelinek run` against that
+    // installDist exited 2 BEFORE the run body compiled.
+    inputs.property("rootProject.version", rootProject.version.toString())
     outputs.file(pluginDir.resolve("build/libs/example-block-plugin-0.1.0.jar"))
 
     workingDir = rootDir

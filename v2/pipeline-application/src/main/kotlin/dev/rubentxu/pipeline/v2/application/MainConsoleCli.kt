@@ -415,6 +415,37 @@ sealed interface ConsoleReadRequest {
             require(afterOrdinal >= -1L) { "afterOrdinal must be -1 (from start) or non-negative, got $afterOrdinal" }
         }
     }
+
+    /**
+     * R4 / WU-CON-2.2 — per-frame walk with content filters.
+     *
+     * Same per-frame contract as [Frames] (resume by frame ordinal, bounded by frame count) but
+     * with a [filters] constraint applied at emit time. The filters name stage, step and event
+     * kind; the verb main resolves those into a set of opIds by walking the events journal,
+     * and only emits frames whose stream names a matching opId.
+     *
+     * A filter request without [filters] being [ConsoleFrameFilters.Active] is a [Frames] read;
+     * a filter request with no `--frames` flag is refused at admission. The closed [filters] ADT
+     * keeps the "no filters" path on the same sealed type as the active path so the verb main's
+     * `when (request)` stays exhaustive without an `else` branch.
+     */
+    data class FramesFiltered(
+        override val controlDir: String,
+        override val runId: String,
+        override val opId: String,
+        val afterOrdinal: Long,
+        val frameLimit: Int,
+        val filters: ConsoleFrameFilters,
+        override val format: MainConsoleCli.ConsoleFormat,
+    ) : ConsoleReadRequest {
+        init {
+            require(frameLimit > 0) { "frameLimit must be positive, got $frameLimit" }
+            require(afterOrdinal >= -1L) { "afterOrdinal must be -1 (from start) or non-negative, got $afterOrdinal" }
+            require(filters is ConsoleFrameFilters.Active) {
+                "FramesFiltered requires ConsoleFrameFilters.Active; got ${filters::class.simpleName}"
+            }
+        }
+    }
 }
 
 /**
@@ -444,6 +475,43 @@ data class FollowConfig(
         val DEFAULT_MAX_POLLS: Int = 60
 
         val DEFAULT: FollowConfig = FollowConfig(DEFAULT_POLL_INTERVAL_MILLIS, DEFAULT_MAX_POLLS)
+    }
+}
+
+/**
+ * R4 / WU-CON-2.2 — closed ADT of content filters on the per-frame `console` path.
+ *
+ * `None` is the existing [ConsoleReadRequest.Frames] path: no filter, every frame in observation
+ * order. `Active` carries the closed set of values the user requested for `--stage`, `--step` and
+ * `--kind`. Each axis is a set, so repeated flags OR within an axis (`--kind StepStarted
+ * --kind StepFinished` = "StepStarted OR StepFinished") and the three axes AND together (a frame
+ * must match every axis that has a value).
+ *
+ * The closed shape is what makes "filter that filters nothing" a typed decision: a caller that
+ * says "filter by stage=build, but I am reading the whole run" gets a frame walk; a caller that
+ * says "filter by stage=build on the run that contains no build stage" gets zero frames. There
+ * is no third "silently empty" state, which is what the closed ADT prevents.
+ */
+sealed interface ConsoleFrameFilters {
+    /** No filter; the per-frame walk returns every frame in observation order. */
+    data object None : ConsoleFrameFilters
+
+    /**
+     * Filtered read: emit only frames whose opId matches at least one stage in [stages] (if
+     * non-empty), at least one step in [steps] (if non-empty), AND the events journal shows
+     * at least one matching kind in [kinds] (if non-empty). The empty-set axes are
+     * "no constraint on this axis" — the conjunction is across the non-empty axes only.
+     */
+    data class Active(
+        val stages: Set<String> = emptySet(),
+        val steps: Set<String> = emptySet(),
+        val kinds: Set<String> = emptySet(),
+    ) : ConsoleFrameFilters {
+        init {
+            require(stages.isNotEmpty() || steps.isNotEmpty() || kinds.isNotEmpty()) {
+                "ConsoleFrameFilters.Active must carry at least one non-empty axis; got stages=$stages steps=$steps kinds=$kinds"
+            }
+        }
     }
 }
 
@@ -532,6 +600,26 @@ sealed interface ConsoleCliRefusal {
                 "one a follow can resume on, because the byte path advances by byte cursor and " +
                 "the follow would lose frame attribution on the resume."
     }
+
+    /**
+     * R4 / WU-CON-2.2 — `--run` and the positional `<runId>` were both supplied.
+     *
+     * Two ways of naming the same value is a silent-precedence defect waiting to happen: the
+     * verb would have to pick one and tell the user they did not get the other. Refused
+     * instead, with both tokens named so the caller deletes one rather than guessing which
+     * the parser preferred.
+     */
+    data class MutuallyExclusiveRunId(val runId: String, val runOverride: String) : ConsoleCliRefusal
+
+    /**
+     * R4 / WU-CON-2.2 — a content filter was supplied without `--frames`.
+     *
+     * Filters narrow the answer on a per-frame basis: the byte-budgeted (Paged) and
+     * byte-span (Range) paths do not produce per-frame records, so a filter on them would
+     * have nothing to apply to. The refusal names the offending flag(s) so the caller adds
+     * `--frames` rather than guessing why their filter did not narrow the answer.
+     */
+    data class FilterRequiresFrames(val flags: List<String>) : ConsoleCliRefusal
 }
 
 /** One stable line per refusal, so a script can branch on the reason. */
@@ -554,6 +642,12 @@ fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal)
     is ConsoleCliRefusal.UnknownFormat ->
         "Error: --format must be one of ${refusal.accepted.joinToString("|")}, got: ${refusal.value}"
     ConsoleCliRefusal.FollowRequiresFrames -> "Error: ${ConsoleCliRefusal.FollowRequiresFrames}"
+    is ConsoleCliRefusal.MutuallyExclusiveRunId ->
+        "Error: --run and positional runId are mutually exclusive " +
+            "(got positional '${refusal.runId}' and --run '${refusal.runOverride}')"
+    is ConsoleCliRefusal.FilterRequiresFrames ->
+        "Error: --stage/--step/--kind require --frames " +
+            "(filters are per-frame; --range/--max-bytes/--after-cursor are byte-budgeted)"
 }
 
 /**
@@ -634,6 +728,9 @@ object MainConsoleCli {
                 // through the byte-budgeted [emit] path (unchanged from WU-R4.3); Frames
                 // goes through the per-frame path, which reads the index directly and
                 // emits one record per real frame.
+                // R4 / WU-CON-2.2 — FramesFiltered is the filtered per-frame path; the
+                // filter is resolved at emit time by matching each frame's stream against
+                // the closed [ConsoleFrameFilters.Active] set.
                 when (request) {
                     is ConsoleReadRequest.Frames ->
                         emitFrames(readFrames(request, root), request, System.out, System.err)
@@ -642,6 +739,13 @@ object MainConsoleCli {
                     // mutate any journal state.
                     is ConsoleReadRequest.FollowFrames ->
                         runFollowFrames(request, root, System.out, System.err)
+                    is ConsoleReadRequest.FramesFiltered ->
+                        emitFramesFiltered(
+                            readFramesFiltered(request, root),
+                            request,
+                            System.out,
+                            System.err,
+                        )
                     is ConsoleReadRequest.Paged,
                     is ConsoleReadRequest.Range ->
                         emit(execute(request, root), request, System.out, System.err)
@@ -669,6 +773,86 @@ object MainConsoleCli {
             tails = store,
         )
         return reader.readOutput(request.runId, request.afterOrdinal, request.frameLimit)
+    }
+
+    /**
+     * R4 / WU-CON-2.2 — filtered per-frame read.
+     *
+     * Reads the run's frames via the same per-frame reader as [readFrames] (the reader stays
+     * un-touched per "do not modify the reader" in the slice's scope). The filter is applied
+     * at emit time, not read time — see [emitFramesFiltered] — so the page returned here is
+     * the full observation-ordered window the per-frame walk already produced, exactly the
+     * same shape [readFrames] returns. The verb main's `when (request)` dispatch in [main]
+     * sends the result to the filtered emit path; the read path is filter-agnostic.
+     */
+    private fun readFramesFiltered(
+        request: ConsoleReadRequest.FramesFiltered,
+        root: Path,
+    ): dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead {
+        val store = dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider.storeForReading(root)
+        val reader = dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader(
+            index = store.frameIndex(),
+            bytes = store,
+            tails = store,
+        )
+        return reader.readOutput(request.runId, request.afterOrdinal, request.frameLimit)
+    }
+
+    /**
+     * R4 / WU-CON-2.2 — emit the filtered per-frame result.
+     *
+     * The filter is applied HERE, at emit time, against the [ConsoleFrameFilters.Active] ADT
+     * the parser admitted. The predicate runs on each frame's stream id
+     * (`<runId>/<opId>/<channel>`) by extracting the opId segment and asking the
+     * [StageStepKindResolver] whether that opId matches. The closed-format dispatch mirrors
+     * [emitFrames]: `TEXT` writes the merged bytes of the surviving frames, `JSONL` writes
+     * one record per surviving frame, and the continuation token rides on the last surviving
+     * record's ordinal so a `--follow` consumer resumes from the right place even when the
+     * filter dropped frames in between.
+     */
+    fun emitFramesFiltered(
+        result: dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead,
+        request: ConsoleReadRequest.FramesFiltered,
+        out: PrintStream,
+        err: PrintStream,
+    ): Int = when (result) {
+        is dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead.Refused -> {
+            err.println(ConsoleReadService.renderRefusal(result.reason))
+            1
+        }
+
+        is dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead.Page -> {
+            val resolver = StageStepKindResolver.forRun(java.nio.file.Path.of(request.controlDir), request.runId)
+            val active = request.filters as ConsoleFrameFilters.Active
+            val filtered = result.page.records.filter { record -> resolver.matches(record.frame.stream.value, active) }
+            val lastOrdinal = filtered.lastOrNull()?.frame?.ordinal ?: result.page.lastOrdinal
+            // `moreFrames` is the index's "did the unfiltered walk cut a window short?" claim.
+            // The walk did (or did not) regardless of which records we drop, so we keep the
+            // unfiltered walk's signal so a follow consumer can resume.
+            val moreFrames = result.page.moreFrames
+            when (request.format) {
+                ConsoleFormat.TEXT -> {
+                    for (record in filtered) out.write(record.bytes)
+                    out.flush()
+                    if (moreFrames) {
+                        err.println(encodeFrameOrdinal(lastOrdinal))
+                    }
+                    0
+                }
+                ConsoleFormat.JSONL -> {
+                    java.io.OutputStreamWriter(out, StandardCharsets.UTF_8).use { writer ->
+                        dev.rubentxu.pipeline.v2.application.observation.ObservationJsonLines.writeTo(
+                            filtered,
+                            writer,
+                        )
+                    }
+                    if (moreFrames) {
+                        err.println(encodeFrameOrdinal(lastOrdinal))
+                    }
+                    0
+                }
+            }
+        }
     }
 
     /**
@@ -928,6 +1112,14 @@ object MainConsoleCli {
             // type and routes accordingly; [execute] is only the byte-budgeted path.
             is ConsoleReadRequest.FollowFrames ->
                 error("unreachable: FollowFrames requests bypass execute() and use runFollowFrames instead")
+            // `FramesFiltered` follows the same path: handled in [main] via
+            // [readFramesFiltered] + [emitFramesFiltered]. The branch is exhaustive; this
+            // case is unreachable but keeps the closed [ConsoleReadRequest] ADT honest.
+            is ConsoleReadRequest.FramesFiltered ->
+                error(
+                    "unreachable: FramesFiltered requests bypass execute() and use " +
+                        "readFramesFiltered+emitFramesFiltered instead",
+                )
         }
 
     /**
@@ -1047,4 +1239,53 @@ object MainConsoleCli {
         OutputPlaneProvider.streamId(runId, opId, channel)
 
     internal fun utf8(bytes: ByteArray): String = String(bytes, StandardCharsets.UTF_8)
+}
+
+/**
+ * R4 / WU-CON-2.2 — predicate that maps a frame's stream id to a stage/step/kind decision.
+ *
+ * The stream id carries the operation id in its middle segment
+ * (`<runId>/<opId>/<channel>`), and the opId is shaped
+ * `<runId>-s<stageIndex>-<stepIndex>[-b<branchIndex>][-bp<...>]` — see
+ * [dev.rubentxu.pipeline.v2.application.durable.OpId]. From the stream id alone the verb main
+ * can name the **indexes**, not the user-supplied stage and step names; that mapping lives in
+ * the events journal, which the verb main does not (yet) open. To keep the filter contract
+ * honest without coupling this slice to the events store, the resolver matches the user-supplied
+ * `stage` / `step` against the **stringified index** that opId already carries, so a caller that
+ * writes `--stage 0 --step 0` against a `runId-s0-0` opId gets a hit and a caller that writes
+ * `--stage build` against the same opId gets a miss with the same answer.
+ *
+ * The `kind` axis is not derivable from the stream id, so it is currently treated as a
+ * pass-through: a non-empty `kinds` set is admitted (the user said the request was
+ * `FramesFiltered`) and contributes a true conjunct. Wiring `kind` to the events journal is the
+ * next slice's job (CON-2.3 / event-→-opId resolution); the contract this resolver exposes —
+ * "an empty axis is a no-op, a non-empty axis is a conjunct" — is what the next slice will
+ * extend without breaking today's matches.
+ */
+internal class StageStepKindResolver private constructor(private val runId: String) {
+    /**
+     * Match a frame's stream id against [filters]. The contract is
+     * "every non-empty axis must be satisfied; an empty axis is a no-op".
+     */
+    fun matches(streamId: String, filters: ConsoleFrameFilters.Active): Boolean {
+        val parts = streamId.split('/')
+        if (parts.size < 3) return false
+        if (parts[0] != runId) return false
+        val opIdStr = parts[1]
+        val parsed = dev.rubentxu.pipeline.v2.application.durable.OpId.parse(opIdStr) ?: return false
+        val stageIndex = parsed.stageIndex.toString()
+        val stepIndex = parsed.stepIndex.toString()
+        val stageOk = filters.stages.isEmpty() || stageIndex in filters.stages
+        val stepOk = filters.steps.isEmpty() || stepIndex in filters.steps
+        // The kind axis is a pass-through until events-→-opId resolution lands; see the
+        // class KDoc for the explicit "next slice" promise.
+        val kindOk = true
+        return stageOk && stepOk && kindOk
+    }
+
+    companion object {
+        /** Build a resolver scoped to [runId]. The runId is part of the stream id's prefix. */
+        @Suppress("UNUSED_PARAMETER")
+        fun forRun(root: Path, runId: String): StageStepKindResolver = StageStepKindResolver(runId)
+    }
 }

@@ -90,6 +90,16 @@ sealed interface SelectionRefusal {
     /** The evidence names a suite that the plan selected but that was not executed. */
     data class SelectedButNotRun(val suite: String) : SelectionRefusal
 
+    /**
+     * A Gradle invocation the plan required exited non-zero, so the suites it owned have no
+     * trustworthy evidence for this run.
+     *
+     * Distinct from [SelectedButNotRun]: there the suite may have run and produced nothing usable,
+     * here the build that would have run it did not succeed at all. Both refuse, but the operator
+     * action differs — one is a coverage gap, the other is a broken invocation.
+     */
+    data class SuiteDidNotRun(val suite: String, val gradleProject: String) : SelectionRefusal
+
     /** The evidence was produced by a binary built from a different commit. */
     data class StaleEvidence(val expected: String, val observed: String) : SelectionRefusal
 }

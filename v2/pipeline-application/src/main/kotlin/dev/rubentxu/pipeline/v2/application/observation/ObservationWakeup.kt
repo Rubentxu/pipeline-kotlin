@@ -177,20 +177,78 @@ sealed interface FollowDecision {
  * @param moreFrames whether the last page was truncated by the window.
  * @param tailStates the tail state of every stream this run owns. `null` entries are streams whose
  *   state could not be established, and they keep the follower going.
- * @param runFinished whether the durable execution authority says the run reached a terminal state.
- *   Consulted ONLY when [tailStates] is empty. A lane that cannot answer must leave this `false`,
- *   because `false` here means "no evidence", never "the run is still going".
+ * @param runPlane what the durable EXECUTION authority can say about the run. A closed
+ *   three-state answer, deliberately not a `Boolean`: "the run is still going" and "I cannot
+ *   ask" are different facts and the follower must not confuse them.
+ *
+ * ## Why the run plane is a THREE-state answer and not a flag
+ *
+ * Two failure directions, both real, and they pull in opposite ways:
+ *
+ *  - **Too strict.** If "not finished" is a single falsy value, a lane with no event store can
+ *    only ever answer "I do not know", and a follow over it becomes unterminatable. That is
+ *    what FOLLOW-6 records, and it is why sealing was once allowed to stand alone.
+ *  - **Too loose.** If sealing alone ends the follower, a live run watched between two steps
+ *    looks finished: the previous step's stream is sealed and the next step's has not been
+ *    declared yet, every KNOWN stream is sealed, and the transcript stops mid-pipeline with
+ *    exit 0 — indistinguishable from a run that genuinely ended.
+ *
+ * A `Boolean` forces one of those. [RunPlane] names all three answers, so each lane can say
+ * what it actually knows:
+ *
+ *  - [RunPlane.Completed] — the run reached a terminal state. Sealing may end the follower.
+ *  - [RunPlane.Live] — the run is still going. Sealing is NOT enough; keep reading. This is
+ *    the seam-between-two-steps case.
+ *  - [RunPlane.Unavailable] — no execution authority was reachable. Degrade to the output
+ *    lane's own authority, which is what FOLLOW-6 requires.
+ */
+sealed interface RunPlane {
+    /** The durable execution authority says the run reached a terminal state. */
+    data object Completed : RunPlane
+
+    /** The durable execution authority says the run is still going. */
+    data object Live : RunPlane
+
+    /**
+     * No execution authority was reachable (no event store, a lane that cannot ask).
+     *
+     * Not a synonym for [Live]. Treating it as Live makes a console-only follow
+     * unterminatable; treating it as Completed reintroduces the mid-pipeline stop.
+     */
+    data object Unavailable : RunPlane
+
+    /** Back-compat projection: the `Boolean` this parameter used to be. */
+    fun asBoolean(): Boolean = this == Completed
+}
+
+fun followDecision(
+    moreFrames: Boolean,
+    tailStates: Collection<OutputTailState?>,
+    runPlane: RunPlane,
+): FollowDecision = when {
+    moreFrames -> FollowDecision.ReadAgain
+    // The run owns no stream, so the output plane says nothing at all and the run plane must answer.
+    tailStates.isEmpty() && runPlane != RunPlane.Completed -> FollowDecision.ReadAgain
+    // Any stream that is open, or whose state is unknown, still owes bytes. Unreachable for an empty
+    // list, and harmless there: `any` over an empty collection is false.
+    tailStates.any { state -> state !is OutputTailState.Sealed } -> FollowDecision.ReadAgain
+    // Every known stream is sealed. That is NECESSARY. It is SUFFICIENT only when the run plane
+    // either confirms completion or cannot be asked — and explicitly NOT sufficient while the run
+    // plane says the run is live, which is the seam between two steps.
+    runPlane == RunPlane.Live -> FollowDecision.ReadAgain
+    else -> FollowDecision.Finished
+}
+
+/**
+ * Overload for callers that still hold the `Boolean`.
+ *
+ * `false` maps to [RunPlane.Unavailable], NOT to [RunPlane.Live]. The `Boolean` could not
+ * distinguish "still going" from "cannot ask", and mapping it to `Live` would have broken
+ * FOLLOW-6; mapping it to `Unavailable` preserves the pre-existing behaviour exactly while the
+ * three-state callers migrate.
  */
 fun followDecision(
     moreFrames: Boolean,
     tailStates: Collection<OutputTailState?>,
     runFinished: Boolean,
-): FollowDecision = when {
-    moreFrames -> FollowDecision.ReadAgain
-    // The run owns no stream, so the output plane says nothing at all and the run plane must answer.
-    tailStates.isEmpty() && !runFinished -> FollowDecision.ReadAgain
-    // Any stream that is open, or whose state is unknown, still owes bytes. Unreachable for an empty
-    // list, and harmless there: `any` over an empty collection is false.
-    tailStates.any { state -> state !is OutputTailState.Sealed } -> FollowDecision.ReadAgain
-    else -> FollowDecision.Finished
-}
+): FollowDecision = followDecision(moreFrames, tailStates, if (runFinished) RunPlane.Completed else RunPlane.Unavailable)

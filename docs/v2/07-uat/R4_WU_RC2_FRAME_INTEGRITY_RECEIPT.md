@@ -85,10 +85,11 @@ $ find /tmp/c -type d
 directory does not exist after a real run, so `declareStream` / `appendFrame` were never
 called, so `RedactingOutputIngress.handle()` was never reached.
 
-### Root cause (instrumented, then reverted)
+### Root cause — narrowed to the redaction composition
 
-Temporary probes were added to `RedactingOutputIngress` and `DurableShellExecutor`, run, and
-reverted (the worktree carries no probe code). They showed:
+The first hypothesis (a `setsid` fork losing the pipe) was **wrong**. Temporary probes were added
+to `RedactingOutputIngress` and `DurableShellExecutor`, run, and reverted (no probe code is
+committed). They showed:
 
 ```text
 PROBE launch:    pumpedThroughJvm=true sinks=[STDOUT, STDERR] redactor=true pumpedViaAgent=false
@@ -96,20 +97,68 @@ PROBE pump-gate: pumpedThroughJvm=true agent=false -> runs=true
 PROBE pump[...-s0-0/STDERR]: read n=-1 available=0 procAlive=false
 ```
 
-Reading the three lines together:
+`sinks=[STDOUT, STDERR]` proves the wiring in `ShExecution` and `ShOperationsAdapter` is intact,
+and `runs=true` proves the in-JVM pump path is taken. The discriminator is the third value:
+**`redactor=true`**.
 
-- the sinks ARE composed (`channelSinks=[STDOUT, STDERR]`), so the wiring in `ShExecution` and
-  `ShOperationsAdapter` is intact;
-- the pump gate DOES open (`runs=true`), so `DurableShellExecutor.launch` takes the in-JVM pump
-  path, not the agent path;
-- the pump reads `n = -1` (EOF) with **`procAlive=false`** — the direct child had already exited
-  by the time the pump touched its pipe. The STDOUT pump never reported at all.
+### The discriminator, proven by a controlled pair
 
-The launch is `argv = [setsid, bash, wrapper.sh]`. `setsid` **forks and exits immediately**;
-the JVM's `Process` handle refers to `setsid`, not to `bash`. Once `setsid` exits, the JVM's
-pipe streams for that process report EOF, and the pump threads — which read the pipes
-asynchronously — lose the transcript before they can drain it. `executeCore` does join the pump
-threads (`transcriptPumps.forEach { it.join(10_000) }`), but the data is already gone.
+`ConsoleReadServiceTest` is GREEN and drives a real `sh` through the real
+`ShExecution.invokeShell`, then reads the transcript back. It looks like proof that the Output
+Plane is populated by a real run. It is not — **that test composes no `secretPatternRegistry`**,
+so `transcriptRedactor` is null. The CLI composes one unconditionally (`Main.kt` wires the
+registry object into every run; only the canary *secrets* are conditional, at `Main.kt:253`),
+so `DurableShellExecutor` reports `pumpedThroughJvm = true` and a `StreamingRedactor` sits
+between the child's pipe and the sink.
+
+`ShTranscriptRedactionReproductionTest` is the controlled pair: same harness, same real `sh`,
+one variable.
+
+| Row | Registry | Result |
+|---|---|---|
+| `REDACTOR-1` (control, enabled) | none | **GREEN** — full transcript reads back |
+| `REDACTOR-2` (`@Disabled`, RED) | **empty** | `console-refused: unknown-stream run-redaction-false/run-redaction-false-s0-0/stdout` — the stream is never even **declared** |
+| `REDACTOR-3` (`@Disabled`, RED) | one secret | transcript reads back as exactly `'t'` — **one byte of sixteen** |
+
+The empty-registry row is the important one. A credential-free `pipelinek run` composes an
+*empty* registry, and that already loses the whole transcript. So this is not "redaction is
+broken when secrets are present"; the redactor's mere **presence** loses it.
+
+### What the numbers say
+
+```text
+$ time pipelinek version                              # JVM baseline
+real 0m0.21s
+$ time pipelinek run --db ... --control-root ... (one sh step)
+real 0m15.97s   user 0m25.1s
+```
+
+`user 25s` against `real 16s` is the tell: the run is not waiting, it is **spinning**. The
+visible 10s of wall-clock is `DurableShellExecutor.executeCore`'s
+`transcriptPumps.forEach { it.join(10_000) }` timing out on a pump that never reaches EOF.
+
+### The mechanism, as far as the evidence reaches
+
+Two facts fit every observation, and the fix has to reconcile both:
+
+1. The pump asks for `maxOf(1, minOf(window.size, redacted.available()))` bytes. With a
+   lookahead-holding redactor, `available()` returns `0` until `maxLiteral` bytes have been
+   seen, so the floor of `1` makes every read a **one-byte** read that blocks until the child
+   produces more. That is a latency floor measured in bytes — the same defect shape the comment
+   above that line already warns about, reintroduced on the *read* side.
+2. `RedactingOutputIngress.write` returns early on `length <= 0`, so a zero-length read is a
+   silent no-op. Combined with (1), a pump that cannot make progress writes nothing, spins, and
+   the transcript is truncated to whatever happened to be flushed before the join timed out —
+   which is why `REDACTOR-3` lands exactly one byte and `REDACTOR-2` lands none.
+
+### Why this is not fixed in this block
+
+It is a defect in `DurableShellExecutor`'s pump loop and `StreamingRedactor`'s read contract —
+the durable-shell substrate that ADR-0072 and ADR-0103 certify, in `pipeline-step-sdk/runtime`
+and `pipeline-credentials-api`, not in `pipeline-application`. Fixing it inside a "console frame
+integrity" block would be exactly the scope creep this receipt exists to prevent, and the fix
+has a real design choice in it (drop the `ready` floor, make the redactor block instead of
+short-read, or move the lookahead to a drain step) that deserves its own ADR-visible slice.
 
 ### Why this is not fixed in this block
 
@@ -152,6 +201,34 @@ in its own KDoc. The rc1 canary classes used HF2 installDist paths with fabricat
 `assumeTrue` skip; this class deliberately does neither, and says why in the class KDoc: an
 installDist canary for the frame read cannot be written while the Output Plane is empty, which is
 the fourth defect above.
+
+`ShTranscriptRedactionReproductionTest` is the structural fix for the gap that let the fourth
+defect reach rc1. Every pre-existing test that reads frames fabricates them
+(`M1DCrossJvmFollowTest.writeOutputFrame`, `ObservationOutputReaderTest`,
+`ConsoleFollowTest`); the only tests that drove a real `sh` (`ConsoleReadServiceTest`) did so
+with the redactor absent. Nothing in the suite held both variables at once. The new class holds
+them together and splits on exactly one.
+
+## Test evidence (including the reproduction class)
+
+| Test class | Pass / Fail / Error / Skip |
+|---|---|
+| `ConsoleRc2FrameIntegrityTest` (new) | 4 / 0 / 0 / 0 |
+| `ShTranscriptRedactionReproductionTest` (new) | 1 / 0 / 0 / 2 (`REDACTOR-2/3` `@Disabled` RED rows) |
+| `ConsoleFollowTest` | 22 / 0 / 0 / 0 |
+| `ConsoleFrameFiltersTest` | 24 / 0 / 0 / 0 |
+| `MainConsoleCliPerFrameTest` | 14 / 0 / 0 / 0 |
+| `CliParserUnificationTest` | 20 / 0 / 0 / 0 |
+| `R4ObservabilityCliInstallDistCanaryTest` | 6 / 0 / 0 / 0 |
+| `ObsE5TailTest` | 8 / 0 / 0 / 0 |
+| `LiveOutputDrainTest` | 7 / 0 / 0 / 0 |
+| `ConsoleReadServiceTest` (control, crosses a real `sh`) | 12 / 0 / 0 / 0 |
+
+The two `@Disabled` rows are a characterised defect, not passing tests. They are disabled with
+the reason inline and a link to this receipt, per `AGENTS.md` ("borrar una UAT antes de la
+migracion es prohibido: debe quedar deshabilitada con enlace"). When the defect closes, the rows
+are deleted and their assertions promoted — and that transition must be explicit, never a
+silent rewrite of what is expected.
 
 ## Refusal prefixes
 

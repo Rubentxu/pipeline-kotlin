@@ -228,4 +228,81 @@ class SegmentOutputTailStateTest {
             "OBS-C2.3 gave an operation two channel streams, so sealing one must NOT seal the other",
         )
     }
+
+    /**
+     * R4 / WU-RC4 — a READER-side store must be able to answer the tail question.
+     *
+     * Every row above uses `store()`, which recovers. This one deliberately does not, because that
+     * is the shape `OutputPlaneProvider.storeForReading` hands to `pipelinek console --follow`:
+     * `SegmentOutputStore(dir, recoveryPermitted = false)`, a store whose `recover()` THROWS.
+     *
+     * `tailState` guarded on a bare `!recovered`, so on that store it returned `null` for every
+     * stream forever — `recovered` could never become true. Every other read path on this class
+     * uses `!recovered && recoveryPermitted`, which permits exactly this case.
+     *
+     * The consequence reached the product, not just this seam: `followDecision` sees
+     * `any { it !is Sealed }` on a list of nulls and returns `ReadAgain` indefinitely, so a
+     * `console --follow` could ONLY leave through its poll budget and could never report
+     * completion. An installed-distribution canary was GREEN through that, because the budget also
+     * returned 0 — two defects cancelling, which is how it survived review.
+     *
+     * ## Why answering here does not violate ADR-OBS-002
+     *
+     * The ADR forbids a READER from reconciling — releasing reservations and truncating a live
+     * writer's range. `tailState` reconciles nothing: it stats a seal marker and reads a committed
+     * extent, the same two facts `committedExtent` already serves a reader store. So the reader
+     * exemption is safe, and the row below is the proof that it is still refused where it matters.
+     *
+     * HF0/HF2 hybrid: it crosses the real filesystem store twice — once as a writer, once as a
+     * separate reader INSTANCE — because the defect is exactly that the two instances disagree.
+     * A same-instance assertion could not see it.
+     *
+     * Mutation M-RC4-5: restore the bare `!recovered` guard — killed by both assertions. The
+     * second one is the direction this must NOT regress into: a reader store still may not recover.
+     */
+    @Test
+    fun `a reader-side store answers the tail question without recovering`() {
+        val root = root.resolve("reader-plane")
+        val writer = SegmentOutputStore(root).also { it.recover() }
+        val stream = OutputStreamId("run-rc4/run-rc4-s0-0/stdout")
+        write(stream, "hello", writer)
+        writer.seal(stream)
+
+        // A SEPARATE instance, opened the way the console verb opens it. `recover()` must refuse —
+        // that is ADR-OBS-002 and it is asserted, not assumed.
+        val reader = SegmentOutputStore(root, recoveryPermitted = false)
+        assertThrows(
+            IllegalStateException::class.java,
+            { reader.recover() },
+            "a reader store must still refuse to recover. The exemption added to `tailState` is " +
+                "narrow on purpose — it lets a reader ASK about a seal, never reconcile one — so " +
+                "this refusal is what keeps ADR-OBS-002 enforced rather than merely intended.",
+        )
+
+        assertEquals(
+            OutputTailState.Sealed(5L),
+            reader.tailState(stream),
+            "the seal marker is on disk and readable by anyone who asks. Answering null here would " +
+                "make every follow over a reader store unable to observe its own seal.",
+        )
+    }
+
+    /** The unsealed half of the same pair: a reader must be able to say `Open`, not only `Sealed`. */
+    @Test
+    fun `a reader-side store reports an unsealed stream as Open rather than unknown`() {
+        val root = root.resolve("reader-plane-open")
+        val writer = SegmentOutputStore(root).also { it.recover() }
+        val stream = OutputStreamId("run-rc4/run-rc4-s0-0/stdout")
+        write(stream, "hello", writer)
+
+        val reader = SegmentOutputStore(root, recoveryPermitted = false)
+
+        assertEquals(
+            OutputTailState.Open(5L),
+            reader.tailState(stream),
+            "no seal marker, five committed bytes: that is a fact a reader can establish, not an " +
+                "unknown. Reporting null here would keep a follower reading a stream that is open " +
+                "for the right reason but for the wrong justification.",
+        )
+    }
 }

@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
 import dev.rubentxu.pipeline.v2.application.observation.RunObservationOutput
 import dev.rubentxu.pipeline.v2.application.observation.FollowDecision
+import dev.rubentxu.pipeline.v2.application.observation.RunPlane
 import dev.rubentxu.pipeline.v2.application.observation.followDecision
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.RunFinished
@@ -366,16 +367,25 @@ object MainObserveCli {
             if (!parsed.budget.allows(emitted)) return FollowOutcome.ReachedRecordBudget.asOutcome()
             val tails = lanes.outputTailsOf(runId).orEmpty()
             // Two authorities, asked separately. `tails` is the OUTPUT plane and answers whether more
-            // BYTES can arrive; `hasRunFinished` is the EXECUTION plane and answers whether the run
+            // BYTES can arrive; `runPlaneOf` is the EXECUTION plane and answers whether the run
             // ended at all. A silent run has no tails, so without the second fact `follow` on
             // `sh("true")` would never return.
-            when (followDecision(moreFrames, tails, lanes.hasRunFinished(runId))) {
+            val runPlane = lanes.runPlaneOf(runId)
+            when (followDecision(moreFrames, tails, runPlane)) {
                 FollowDecision.ReadAgain -> {
                     if (control.shouldStop()) return FollowOutcome.StoppedByConsumer.asOutcome()
                     if (!moreFrames) control.idle()
                 }
 
-                FollowDecision.Finished -> return FollowOutcome.ReachedSealedOutput.asOutcome()
+                FollowDecision.Finished -> return when (runPlane) {
+                    // R4 / WU-RC4 — P1 termination semantics. `Finished` is ONE verdict from the
+                    // output lane, but the caller must report WHICH authority made the
+                    // observation complete. Collapsing them is what made `ReachedRunFinish`
+                    // unreachable dead code: every terminal exit claimed `ReachedSealedOutput`,
+                    // including the silent-run case where there was nothing sealed to speak of.
+                    RunPlane.Completed -> FollowOutcome.ReachedRunFinish
+                    RunPlane.Live, RunPlane.Unavailable -> FollowOutcome.ReachedSealedOutput
+                }.asOutcome()
             }
         }
     }
@@ -465,6 +475,38 @@ interface ObserveLanes : AutoCloseable {
      * on a run that is still going.
      */
     fun hasRunFinished(runId: String): Boolean = eventsOf(runId).any { it is RunFinished }
+
+    /**
+     * The EXECUTION plane's tri-state answer, for [followDecision].
+     *
+     * ## Why this exists and is not `hasRunFinished`
+     *
+     * [hasRunFinished] answers a yes/no question. [followDecision] needs three answers, and the
+     * difference between two of them is the whole point:
+     *
+     * ```text
+     * "there is a RunFinished event"     -> Completed
+     * "I can look, and there is none yet" -> Live
+     * "I have no event store to look in"  -> Unavailable
+     * ```
+     *
+     * The second and the third both project to `false`, and that projection loses exactly the
+     * information the follow decision needs. Between two steps of a live run the previous step's
+     * stream is sealed and the next has not been declared, so EVERY known stream is sealed — and
+     * `Live` must answer `ReadAgain` or the follow ends with exit 0 over a truncated transcript.
+     * But a console-only lane with no event store cannot answer at all, and `Unavailable` must
+     * still let sealing end the loop, or the follow never returns.
+     *
+     * Defaulted from [hasEventStore] and [hasRunFinished] so every lane answers correctly without
+     * re-implementing. A lane overrides this only if it has a cheaper or more precise authority —
+     * a lane that CANNOT see its own event store must return [RunPlane.Unavailable], never
+     * [RunPlane.Live], because the first hangs a consumer and the second truncates a transcript.
+     */
+    fun runPlaneOf(runId: String): RunPlane = when {
+        !hasEventStore -> RunPlane.Unavailable
+        hasRunFinished(runId) -> RunPlane.Completed
+        else -> RunPlane.Live
+    }
 
     /**
      * `null` means THIS LANE DOES NOT EXIST — no `--control-root` was given, so there is no plane

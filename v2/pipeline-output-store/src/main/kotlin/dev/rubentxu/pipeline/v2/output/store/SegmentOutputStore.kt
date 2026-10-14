@@ -239,7 +239,29 @@ class SegmentOutputStore(
      * has just sealed: the answer is always about one moment rather than two.
      */
     override fun tailState(stream: OutputStreamId): OutputTailState? {
-        if (!recovered) return null
+        // R4 / WU-RC4 — the guard is `!recovered && recoveryPermitted`, matching EVERY other read
+        // path here ([read], [readRange], [readRangeDigested], [committedExtent]), and the
+        // difference is the whole fix.
+        //
+        // It used to be a bare `!recovered`, which made this the ONLY read path that treated a
+        // reader-side store as permanently unrecovered. A reader store is opened with
+        // `recoveryPermitted = false` (ADR-OBS-002) and `recover()` THROWS for it, so `recovered`
+        // can never become true and `tailState` answered `null` for every stream, forever.
+        //
+        // The consequence was not subtle and not slow: `console --follow` obtains its store via
+        // `OutputPlaneProvider.storeForReading`, so on EVERY follow `tailStates` was a list of
+        // nulls, `followDecision` saw `any { it !is Sealed }` and returned `ReadAgain` forever,
+        // and the follow could only ever leave through its poll budget. A follow that cannot
+        // observe a seal is a follow that cannot report completion — the exact false-green this
+        // block exists to remove.
+        //
+        // Why the reader store is safe to answer from: this method RECONCILES NOTHING. It stats a
+        // seal marker and reads a committed extent — the same two facts [committedExtent] already
+        // serves a reader store without complaint. ADR-OBS-002 forbids a reader from *releasing
+        // reservations and truncating a live writer's range*, which is what `recover()` does and
+        // what this method does not. So the guard keeps its old meaning for a WRITING store that
+        // has not recovered, and stops blocking a reader store that never may.
+        if (!recovered && recoveryPermitted) return null
         val layout = layout(stream)
         if (!Files.isDirectory(layout.streamDir)) return null
         return withStreamLockFor(stream) {

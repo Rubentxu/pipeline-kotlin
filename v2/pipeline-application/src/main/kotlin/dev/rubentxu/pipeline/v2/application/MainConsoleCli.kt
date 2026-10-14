@@ -51,6 +51,16 @@ object ConsoleReadService {
     /** Bytes emitted per continuation by default. A page is bounded; this is the bound. */
     const val DEFAULT_PAGE_BYTES: Int = 64 * 1024
 
+    /**
+     * R4 / WU-R4.6 — frames emitted per continuation by default on the per-frame path.
+     *
+     * 1024 frames is a defensive default: at the typical 8 KiB frame size a step's transcript
+     * fits well under it, while a noisy script that emits many small frames does not get capped
+     * too soon. Callers that want a different bound pass `--frame-limit N`; the admission
+     * refuses non-positive values.
+     */
+    const val DEFAULT_FRAME_LIMIT: Int = 1024
+
     /** What a consumer gets back: a bounded page, or the reason there isn't one. */
     sealed interface Result {
         data class Page(val page: OutputPage) : Result
@@ -338,6 +348,33 @@ sealed interface ConsoleReadRequest {
         val to: Long,
         override val format: MainConsoleCli.ConsoleFormat,
     ) : ConsoleReadRequest
+
+    /**
+     * R4 / WU-R4.6 — per-frame walk.
+     *
+     * Continue after [afterOrdinal] (`-1` starts at the first frame), emitting at most
+     * [frameLimit] frames in observation order. Unlike [Paged] (byte-budgeted, cursor-resumable)
+     * and [Range] (byte span, no continuation), this path answers the question only the frame
+     * index can: "what did this operation publish, frame by frame, in the order PipelineK
+     * observed it?" The JSONL emitter walks this path and writes one record per real frame;
+     * the per-record [OutputFrame.ordinal] / [OutputFrame.from] / [OutputFrame.to] ride on the wire.
+     *
+     * [frameLimit] is the loop bound. The constructor refuses non-positive values, so the
+     * caller learns the rule at compile + admission rather than at the runtime loop.
+     */
+    data class Frames(
+        override val controlDir: String,
+        override val runId: String,
+        override val opId: String,
+        val afterOrdinal: Long,
+        val frameLimit: Int,
+        override val format: MainConsoleCli.ConsoleFormat,
+    ) : ConsoleReadRequest {
+        init {
+            require(frameLimit > 0) { "frameLimit must be positive, got $frameLimit" }
+            require(afterOrdinal >= -1L) { "afterOrdinal must be -1 (from start) or non-negative, got $afterOrdinal" }
+        }
+    }
 }
 
 /**
@@ -382,6 +419,26 @@ sealed interface ConsoleCliRefusal {
     }
 
     /**
+     * R4 / WU-R4.6 — a byte-budgeted or cursor-resume flag offered to a per-frame read, or vice
+     * versa.
+     *
+     * The per-frame path answers "what did the operation publish, in observation order?" and
+     * bounds the answer with [ConsoleReadRequest.Frames.frameLimit] (frame count) and
+     * [ConsoleReadRequest.Frames.afterOrdinal] (frame ordinal). `--max-bytes`, `--after-cursor`,
+     * and `--range` are the byte-budgeted / cursor-resume / byte-span affordances of the
+     * legacy path; mixing them with `--frames` is a category error, not a numeric one. The
+     * rendered refusal names the option so the caller deletes one token rather than editing two.
+     */
+    data class IncompatibleWithFrames(val option: String) : ConsoleCliRefusal {
+        override fun toString(): String =
+            "IncompatibleWithFrames($option): '$option' is a byte-budgeted / byte-cursor / " +
+                "byte-span flag and has no meaning on the per-frame path. The per-frame path is " +
+                "bounded by --frame-limit (frame count) and resumes by --after-ordinal (frame " +
+                "ordinal), not by bytes. Drop '$option' to read frames, or drop --frames to read " +
+                "bytes."
+    }
+
+    /**
      * R4 / WU-R4.3 — `--format` was given a value that is neither `text` nor `jsonl`.
      *
      * Distinct from [UnknownOption] (which is about a flag the verb does not recognise) and from
@@ -408,6 +465,7 @@ fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal)
     is ConsoleCliRefusal.ControlDirNotFound -> "Error: control dir not found: ${refusal.path}"
     is ConsoleCliRefusal.MissingOptionValue -> "Error: ${refusal.option} requires a value"
     is ConsoleCliRefusal.IncompatibleWithRange -> "Error: ${refusal.toString()}"
+    is ConsoleCliRefusal.IncompatibleWithFrames -> "Error: ${refusal.toString()}"
     is ConsoleCliRefusal.UnknownFormat ->
         "Error: --format must be one of ${refusal.accepted.joinToString("|")}, got: ${refusal.value}"
 }
@@ -486,9 +544,129 @@ object MainConsoleCli {
                 )
                 2
             } else {
-                emit(execute(request, root), request, System.out, System.err)
+                // R4 / WU-R4.6 — the dispatch is on the request variant: Paged / Range go
+                // through the byte-budgeted [emit] path (unchanged from WU-R4.3); Frames
+                // goes through the per-frame path, which reads the index directly and
+                // emits one record per real frame.
+                when (request) {
+                    is ConsoleReadRequest.Frames ->
+                        emitFrames(readFrames(request, root), request, System.out, System.err)
+                    is ConsoleReadRequest.Paged,
+                    is ConsoleReadRequest.Range ->
+                        emit(execute(request, root), request, System.out, System.err)
+                }
             }
         }
+    }
+
+    /**
+     * R4 / WU-R4.6 — per-frame read.
+     *
+     * Uses [dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader]
+     * (the WU-R4.1.3 per-op public seam) to walk the operation's frames in observation order
+     * starting at [ConsoleReadRequest.Frames.afterOrdinal], bounded by [ConsoleReadRequest.Frames.frameLimit].
+     * The opId filter is applied on the read side, exactly as WU-R4.1.3 documents it.
+     */
+    private fun readFrames(
+        request: ConsoleReadRequest.Frames,
+        root: Path,
+    ): dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead {
+        val store = dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider.storeForReading(root)
+        val reader = dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader(
+            index = store.frameIndex(),
+            bytes = store,
+            tails = store,
+        )
+        return reader.readOutput(request.runId, request.afterOrdinal, request.frameLimit)
+    }
+
+    /**
+     * R4 / WU-R4.6 — emit the per-frame result.
+     *
+     * The dispatch is on the closed [ConsoleFormat] ADT:
+     *  - `TEXT` writes the merged bytes of the page's frames to stdout (in observation order,
+     *    one frame after another), with a continuation token on stderr carrying the next
+     *    frame ordinal so a `--follow` consumer can resume.
+     *  - `JSONL` writes one [ObservationJsonLines] record per real frame, in observation
+     *    order, each carrying the frame's true [OutputFrame.ordinal] / [OutputFrame.from] /
+     *    [OutputFrame.to] / [OutputFrame.channel] plus the operation id parsed from the
+     *    stream. This is the per-frame wire shape [ObservationJsonLines] was already wired
+     *    to emit (the WU-R4.3 path was a synthetic-merged-page workaround).
+     */
+    fun emitFrames(
+        result: dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead,
+        request: ConsoleReadRequest.Frames,
+        out: PrintStream,
+        err: PrintStream,
+    ): Int = when (result) {
+        is dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead.Refused -> {
+            err.println(ConsoleReadService.renderRefusal(result.reason))
+            1
+        }
+
+        is dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead.Page -> {
+            val page = result.page
+            when (request.format) {
+                ConsoleFormat.TEXT -> {
+                    // Concatenate the per-frame bytes. Frames in the page are already in
+                    // observation order (the index owns that ordering). A consumer that
+                    // wanted a per-frame line keeps the per-frame record on the wire by
+                    // switching to --format jsonl; this path is the bytes-only view.
+                    for (record in page.records) out.write(record.bytes)
+                    out.flush()
+                    if (page.moreFrames) {
+                        // The continuation token is a decimal frame ordinal, not a byte
+                        // cursor: the per-frame path is bounded by frame count and resumes
+                        // by frame ordinal, and that is the only honest way to express it.
+                        err.println(encodeFrameOrdinal(request.afterOrdinal + page.records.size))
+                    }
+                    0
+                }
+                ConsoleFormat.JSONL -> {
+                    // Per-frame records: one jsonl line per real frame, in observation order.
+                    // The encoder [ObservationJsonLines.writeTo] flushes after each record
+                    // so a `--follow` consumer does not wait for the page to fill. The
+                    // writer wraps `out` in an OutputStreamWriter so a PrintStream reaches
+                    // the Writer overload without losing the auto-flush behaviour the
+                    // emitter relies on.
+                    java.io.OutputStreamWriter(out, StandardCharsets.UTF_8).use { writer ->
+                        dev.rubentxu.pipeline.v2.application.observation.ObservationJsonLines.writeTo(
+                            page.records,
+                            writer,
+                        )
+                    }
+                    if (page.moreFrames) {
+                        err.println(encodeFrameOrdinal(request.afterOrdinal + page.records.size))
+                    }
+                    0
+                }
+            }
+        }
+    }
+
+    /**
+     * R4 / WU-R4.6 — frame-ordinal continuation token, distinct from [OutputCursor.TOKEN_PREFIX].
+     *
+     * The byte path encodes `out-cursor-v1:<stream>:<offset>`; the per-frame path encodes
+     * `out-frame-ord-v1:<ordinal>`. Two prefixes, two planes, and a consumer that pastes the
+     * wrong one in the wrong command is told so at decode, not by being silently advanced to
+     * a position in the wrong bytes.
+     */
+    internal const val FRAME_ORDINAL_TOKEN_PREFIX: String = "out-frame-ord-v1"
+
+    internal fun encodeFrameOrdinal(ordinal: Long): String =
+        "$FRAME_ORDINAL_TOKEN_PREFIX:$ordinal"
+
+    /**
+     * Decode a frame-ordinal token. Returns `null` for anything else, including a byte-cursor
+     * token (which the byte path would decode) — two planes, two decoders, no accidental
+     * cross-wiring.
+     */
+    internal fun decodeFrameOrdinal(token: String): Long? {
+        val parts = token.split(':')
+        if (parts.size != 2) return null
+        if (parts[0] != FRAME_ORDINAL_TOKEN_PREFIX) return null
+        return parts[1].toLongOrNull()?.takeIf { it >= -1L }
     }
 
     /** Interpret one admitted request. The branch is exhaustive because the request says which. */
@@ -509,6 +687,12 @@ object MainConsoleCli {
                 request.from,
                 request.to,
             )
+
+            // `Frames` is handled in [main] via [readFrames] + [emitFrames] before [execute]
+            // is reached. The branch is exhaustive; this case is unreachable but makes the
+            // closed [ConsoleReadRequest] ADT explicit to the type-checker.
+            is ConsoleReadRequest.Frames ->
+                error("unreachable: Frames requests bypass execute() and use readFrames+emitFrames instead")
         }
 
     /**
@@ -639,6 +823,12 @@ private data class ConsoleCliTokens(
     val maxBytes: String? = null,
     val afterCursor: String? = null,
     val range: String? = null,
+    /** R4 / WU-R4.6 — `--frames` opts the admission into the per-frame read path. */
+    val frames: Boolean = false,
+    /** R4 / WU-R4.6 — `--frame-limit N` overrides the default frame count (1024). */
+    val frameLimit: String? = null,
+    /** R4 / WU-R4.6 — `--after-ordinal N` resumes from frame ordinal N (`-1` = from start). */
+    val afterOrdinal: String? = null,
     /** R4 / WU-R4.3 — `--format` value as written; validated in [MainConsoleCliAdmission.validate]. */
     val formatToken: String? = null,
 )
@@ -683,6 +873,9 @@ private object MainConsoleCliAdmission {
         var afterCursor: String? = null
         var range: String? = null
         var formatToken: String? = null
+        var frames = false
+        var frameLimit: String? = null
+        var afterOrdinal: String? = null
         var index = 0
         while (index < args.size) {
             val arg = args[index]
@@ -692,7 +885,8 @@ private object MainConsoleCliAdmission {
                 // present and its value is missing — a different fact from the flag being absent.
                 // Reading both as null applied the default page size to a command that never
                 // supplied one, and left the caller unable to tell which command they had run.
-                "--control-dir", "--max-bytes", "--after-cursor", "--range", "--format" -> {
+                "--control-dir", "--max-bytes", "--after-cursor", "--range",
+                "--frame-limit", "--after-ordinal", "--format" -> {
                     val value = args.getOrNull(index + 1)
                         ?: return ConsoleCliParse.Rejected(ConsoleCliRefusal.MissingOptionValue(arg))
                     when (arg) {
@@ -700,10 +894,15 @@ private object MainConsoleCliAdmission {
                         "--max-bytes" -> maxBytes = value
                         "--after-cursor" -> afterCursor = value
                         "--range" -> range = value
+                        "--frame-limit" -> frameLimit = value
+                        "--after-ordinal" -> afterOrdinal = value
                         "--format" -> formatToken = value
                     }
                     index++
                 }
+                // Boolean opt-in: a presence-only flag. Reading it twice is a no-op so a
+                // redundant `--frames --frames` does not flip the value.
+                "--frames" -> frames = true
                 else -> {
                     // AUD-04. This arm has no `else` of its own, so an unknown `--flag` matched it,
                     // satisfied neither condition, and completed as Unit — parsed as nothing, exit 0.
@@ -715,7 +914,10 @@ private object MainConsoleCliAdmission {
             index++
         }
         return ConsoleCliParse.Collected(
-            ConsoleCliTokens(controlDir, runId, opId, maxBytes, afterCursor, range, formatToken),
+            ConsoleCliTokens(
+                controlDir, runId, opId, maxBytes, afterCursor, range,
+                frames, frameLimit, afterOrdinal, formatToken,
+            ),
         )
     }
 
@@ -741,6 +943,22 @@ private object MainConsoleCliAdmission {
             return rejected(ConsoleCliRefusal.IncompatibleWithRange(incompatible))
         }
 
+        // R4 / WU-R4.6 — `--frames` is mutually exclusive with the byte-budgeted / cursor /
+        // range flags. The category error is decided before integer parsing, so a caller that
+        // mixed --frames with --max-bytes=abc still gets a refusal that names --max-bytes,
+        // not a number-format error that would send them to edit the wrong token.
+        if (tokens.frames) {
+            val framesIncompatible = when {
+                range != null -> "--range"
+                tokens.maxBytes != null -> "--max-bytes"
+                tokens.afterCursor != null -> "--after-cursor"
+                else -> null
+            }
+            if (framesIncompatible != null) {
+                return rejected(ConsoleCliRefusal.IncompatibleWithFrames(framesIncompatible))
+            }
+        }
+
         // R4 / WU-R4.3 — parse `--format` into the closed [MainConsoleCli.ConsoleFormat] ADT
         // (two cases: text, jsonl). An unknown value refuses with a typed reason that names
         // the accepted list, so a caller edits one token rather than guessing.
@@ -754,6 +972,7 @@ private object MainConsoleCliAdmission {
                 )
         } ?: MainConsoleCli.ConsoleFormat.TEXT
 
+        if (tokens.frames) return admitFrames(controlDir, runId, opId, tokens, format)
         if (range != null) return admitRange(controlDir, runId, opId, range, format)
         return admitPage(controlDir, runId, opId, tokens, format)
     }
@@ -794,6 +1013,36 @@ private object MainConsoleCliAdmission {
 
         return ConsoleCliAdmission.Admitted(
             ConsoleReadRequest.Paged(controlDir, runId, opId, after, maxBytes, format),
+        )
+    }
+
+    /**
+     * R4 / WU-R4.6 — admit the per-frame read path.
+     *
+     * `--frame-limit N` defaults to 1024. `--after-ordinal N` defaults to -1 (from the start).
+     * Both values are typed: a non-positive `--frame-limit` refuses, a negative `--after-ordinal`
+     * other than -1 refuses. The byte-budgeted / cursor / range flags are refused earlier in
+     * [validate] under [ConsoleCliRefusal.IncompatibleWithFrames], so this method never sees them.
+     */
+    private fun admitFrames(
+        controlDir: String,
+        runId: String,
+        opId: String,
+        tokens: ConsoleCliTokens,
+        format: MainConsoleCli.ConsoleFormat,
+    ): ConsoleCliAdmission {
+        val frameLimit = tokens.frameLimit?.let { value ->
+            value.toIntOrNull()?.takeIf { it > 0 }
+                ?: return rejected(ConsoleCliRefusal.NotAnInteger("--frame-limit", value))
+        } ?: ConsoleReadService.DEFAULT_FRAME_LIMIT
+
+        val afterOrdinal = tokens.afterOrdinal?.let { value ->
+            value.toLongOrNull()?.takeIf { it >= -1L }
+                ?: return rejected(ConsoleCliRefusal.NotAnInteger("--after-ordinal", value))
+        } ?: -1L
+
+        return ConsoleCliAdmission.Admitted(
+            ConsoleReadRequest.Frames(controlDir, runId, opId, afterOrdinal, frameLimit, format),
         )
     }
 

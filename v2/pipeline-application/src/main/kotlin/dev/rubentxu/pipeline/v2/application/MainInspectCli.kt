@@ -171,7 +171,18 @@ object MainInspectCli {
             try {
                 val plane = OutputPlaneProvider.storeForReading(java.nio.file.Paths.get(compiled.controlRoot))
                 val reader = FrameIndexedObservationOutputReader(plane.frameIndex(), plane, plane)
-                when (val r = reader.readTail(runId, compiled.logTail.toLong())) {
+                // R4 / WU-R4.1.3 — when --log-tail-op is set, the tail is scoped to ONE
+                // operation's stream-id prefix. Where the run-wide tail answers "what
+                // did the run print at the end", the per-op tail answers "what did THIS
+                // step print". The auto-binding (per-step → per-op without --log-tail-op)
+                // requires opId resolution from the durable control journals; that is
+                // documented in the WU-R4.1.3 receipt as a follow-up.
+                val r = if (compiled.opId != null) {
+                    reader.readTail(runId, compiled.opId, compiled.logTail.toLong())
+                } else {
+                    reader.readTail(runId, compiled.logTail.toLong())
+                }
+                when (r) {
                     is ObservationOutputRead.Page -> decodePageBytesAsUtf8Impl(r.page.records)
                     is ObservationOutputRead.Refused -> ""
                 }
@@ -353,6 +364,7 @@ object MainInspectCli {
         var step: Long? = null
         var context = 0
         var logTail = 0
+        var opId: String? = null
         var fields: List<InspectField>? = null
         var format: InspectFormat = InspectFormat.TEXT
         var controlRoot: String? = null
@@ -382,6 +394,11 @@ object MainInspectCli {
                     val raw = args.getOrNull(++i) ?: return reject("--log-tail requires a value")
                     logTail = raw.toIntOrNull() ?: return reject("--log-tail must be an Int, got '$raw'")
                     if (logTail < 0) return reject("--log-tail must be >= 0, got $logTail")
+                }
+                "--log-tail-op" -> {
+                    val raw = args.getOrNull(++i) ?: return reject("--log-tail-op requires a value")
+                    if (raw.isBlank()) return reject("--log-tail-op must not be blank")
+                    opId = raw
                 }
                 "--fields" -> {
                     val raw = args.getOrNull(++i) ?: return reject("--fields requires a value")
@@ -420,6 +437,7 @@ object MainInspectCli {
                 step = step,
                 context = context,
                 logTail = logTail,
+                opId = opId,
                 fields = fields,
                 format = format,
                 controlRoot = controlRoot,
@@ -440,6 +458,12 @@ data class CompiledInspectionQuery(
     val step: Long? = null,
     val context: Int = 0,
     val logTail: Int = 0,
+    /**
+     * R4 / WU-R4.1.3 — when set, the `--log-tail` scope is one operation (this opId),
+     * not the whole run. The per-op read filters frames whose stream id carries this
+     * opId as a middle segment. When null, the tail is the run-wide last-N-bytes path.
+     */
+    val opId: String? = null,
     val fields: List<MainInspectCli.InspectField>? = null,
     val format: MainInspectCli.InspectFormat = MainInspectCli.InspectFormat.TEXT,
     val controlRoot: String? = null,

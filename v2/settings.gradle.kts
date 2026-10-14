@@ -94,6 +94,12 @@ include(
     ":pipeline-credentials-executor",
     ":pipeline-binding-factory",
     ":pipeline-artefacts-local",
+    // H0: the single harness. It owns the executable catalogue that binds each PipelineK
+    // capability to the contracts that protect it and to the minimum fidelity that can
+    // honestly speak to it. Deliberately a library of contracts, not a second framework: the
+    // product and its tests keep their own composition, and this module only says which
+    // obligations exist and which change invalidates them.
+    ":test-harness",
 )
 
 // A Gradle invocation mutates the shared v2/*/build tree. Two invocations on

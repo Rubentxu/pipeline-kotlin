@@ -1,0 +1,91 @@
+{
+  "source_sha": "e3a6b9fefbba67036598e315b74c50099037f7ee",
+  "reporter_sha256": "f7f629aac1bebdecbb0e2e0cb8067a4bc5794b732e273c4a3ede66753e1988d6",
+  "cases": [
+    {
+      "case": "corrupt-xml",
+      "classification": "NON_REGRESSION_OVER_PREVIOUSLY_CHARACTERIZED_DEFECT",
+      "source_sha": "e3a6b9fefbba67036598e315b74c50099037f7ee",
+      "reporter_sha256": "f7f629aac1bebdecbb0e2e0cb8067a4bc5794b732e273c4a3ede66753e1988d6",
+      "fixture": "<testsuite tests=\"1\"",
+      "fixture_sha256": "457a94fe25f25073dc8a8c2ea3a741a82c74c146d7ee1a5fae90079041d52d15",
+      "argv": [
+        "/usr/bin/python3",
+        "/var/home/rubentxu/.herdr/worktrees/pipeline-kotlin/worktree-test-harnes-evolutivo/scripts/run-scoped-junit-report.py",
+        "--head",
+        "e3a6b9fefbba67036598e315b74c50099037f7ee",
+        "--results-dir",
+        "/home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/postfix-reproduction/corrupt-xml-iwwdhm4q",
+        "--boundary-file",
+        "/home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/postfix-reproduction/corrupt-xml-iwwdhm4q/run-start.boundary",
+        "--json"
+      ],
+      "started_at": "2026-10-14T15:39:43.249361+00:00",
+      "exit_code": 2,
+      "verdict": "INVALID_EVIDENCE",
+      "fresh_invalid_evidence": [
+        {
+          "path": "/home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/postfix-reproduction/corrupt-xml-iwwdhm4q/build/test-results/test/TEST-Adversarial.xml",
+          "reason": "XML does not parse: unclosed token: line 1, column 0"
+        }
+      ],
+      "stdout_sha256": "cfb9fa44b86520ca1d8ede25b70d893294df5e64cf05fa087fb38b3da1560a30",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "invalid-failure-counter",
+      "classification": "NON_REGRESSION_OVER_PREVIOUSLY_CHARACTERIZED_DEFECT",
+      "source_sha": "e3a6b9fefbba67036598e315b74c50099037f7ee",
+      "reporter_sha256": "f7f629aac1bebdecbb0e2e0cb8067a4bc5794b732e273c4a3ede66753e1988d6",
+      "fixture": "<testsuite tests=\"1\" skipped=\"0\" failures=\"not-a-number\" errors=\"0\"><testcase name=\"row\"/></testsuite>",
+      "fixture_sha256": "367b5455d73cf63816ebd5aec932765af22abda3b17cf8aacd44ebf536d9378f",
+      "argv": [
+        "/usr/bin/python3",
+        "/var/home/rubentxu/.herdr/worktrees/pipeline-kotlin/worktree-test-harnes-evolutivo/scripts/run-scoped-junit-report.py",
+        "--head",
+        "e3a6b9fefbba67036598e315b74c50099037f7ee",
+        "--results-dir",
+        "/home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/postfix-reproduction/invalid-failure-counter-y6n6hus3",
+        "--boundary-file",
+        "/home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/postfix-reproduction/invalid-failure-counter-y6n6hus3/run-start.boundary",
+        "--json"
+      ],
+      "started_at": "2026-10-14T15:39:43.437420+00:00",
+      "exit_code": 2,
+      "verdict": "INVALID_EVIDENCE",
+      "fresh_invalid_evidence": [
+        {
+          "path": "/home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/postfix-reproduction/invalid-failure-counter-y6n6hus3/build/test-results/test/TEST-Adversarial.xml",
+          "reason": "attribute failures=\"not-a-number\" is not an integer"
+        }
+      ],
+      "stdout_sha256": "04398f8c9e4e94fc9b2d2977be3aae6af3d084ce2ba665cf4d55e072ad74b986",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "clean-control",
+      "classification": "NON_REGRESSION_OVER_PREVIOUSLY_CHARACTERIZED_DEFECT",
+      "source_sha": "e3a6b9fefbba67036598e315b74c50099037f7ee",
+      "reporter_sha256": "f7f629aac1bebdecbb0e2e0cb8067a4bc5794b732e273c4a3ede66753e1988d6",
+      "fixture": "<testsuite name=\"Control\" tests=\"3\" skipped=\"0\" failures=\"0\" errors=\"0\"></testsuite>",
+      "fixture_sha256": "0730a38cdb0f25723d3d147467a095c7eebb2c4fb6acc726f37923572f8982fe",
+      "argv": [
+        "/usr/bin/python3",
+        "/var/home/rubentxu/.herdr/worktrees/pipeline-kotlin/worktree-test-harnes-evolutivo/scripts/run-scoped-junit-report.py",
+        "--head",
+        "e3a6b9fefbba67036598e315b74c50099037f7ee",
+        "--results-dir",
+        "/home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/postfix-reproduction/clean-control-4l0qzjch",
+        "--boundary-file",
+        "/home/rubentxu/.jcode/scratch/pipelinek-cd-harness-review/postfix-reproduction/clean-control-4l0qzjch/run-start.boundary",
+        "--json"
+      ],
+      "started_at": "2026-10-14T15:39:43.632951+00:00",
+      "exit_code": 0,
+      "verdict": "PASS",
+      "fresh_invalid_evidence": [],
+      "stdout_sha256": "bebf06849d2226e33d150ed1205a5854f3eac0fcd9cdbcd9e825a762de4809e2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

@@ -48,19 +48,27 @@ import org.junit.jupiter.api.Timeout
  *   the test pins reproducibility, not a typed result.
  * - NOT a parser-unification test (CC-1). The CC-1 work is a separate slice
  *   (the four parsers still live in their respective files).
+ *
+ * ## Status at v0.60.0-rc7
+ *
+ * Re-enabled at `6af6e45c` (R4 / WU-R4.0.0 merge). The pre-fix precondition
+ * (pipelinek run does not execute steps) was the pre-fix example-plugin
+ * `apiRange=[0.57.0, 0.58.0)` against the host 0.60.0 — the same root cause
+ * that broke `C8InstalledDistributionCanaryTest`. With the apiRange fix
+ * shipped, the run body executes, step events reach the journal, and the
+ * canary populates its fixture and the four verbs read from it. The first
+ * re-enable attempt read the runId from `[PipelineK] Run correlated: <uuid>`,
+ * which is the **correlationId**, not the journal runId. That was the false-green
+ * that let 3/6 rows pass while the 3 rows that actually query the journal saw
+ * `records: []`. This slice reads runId from the `pipelinek.launch/1` JSON
+ * envelope (the authoritative journal key) and asserts the text line carries
+ * the same uuid as the envelope's `correlationId` field — a drift between the
+ * two surfaces is exactly the kind of bug the canary exists to catch. Receipt
+ * at `docs/v2/07-uat/R4_WU_R4_5_INSTALLED_DIST_CANARY_RECEIPT.md` documents
+ * the original BLOCKED state and the re-enable evidence.
  */
 @Timeout(value = 10, unit = TimeUnit.MINUTES)
 @DisplayName("R4 / WU-R4.5 — cross-CLI observability verbs against installDist")
-@Disabled(
-    "BLOCKED: pipelinek run at HEAD (054d80a0) does not execute steps — it only emits " +
-        "RunCorrelated + CompilationStarted + CompilationFinished and exits 2. The C8 canary " +
-        "(C8InstalledDistributionCanaryTest) is also red with the same exit=2, and the corpus " +
-        "fixtures (multi-step.pipeline.kts, hello.pipeline.kts, error-abort.pipeline.kts) all " +
-        "behave the same way against the installDist binary. The canary is sound — its " +
-        "precondition (run actually executes a step) does not hold at this SHA. Re-enable this " +
-        "class when run-execution is fixed; the test code itself is the WU-R4.5 deliverable and " +
-        "the receipt explains the path. See docs/v2/07-uat/R4_WU_R4_5_INSTALLED_DIST_CANARY_RECEIPT.md.",
-)
 class R4ObservabilityCliInstallDistCanaryTest {
 
     private val binary: Path = AppBinSupport.discover().toAbsolutePath()
@@ -134,17 +142,52 @@ class R4ObservabilityCliInstallDistCanaryTest {
     }
 
     /**
-     * The `run` CLI emits a `pipelinek.launch/1` envelope on stdout before any
-     * other output, carrying the auto-generated runId. The verbs the canary
-     * drives all address the run by runId, so we have to read that envelope
-     * once and use the real runId, not a hard-coded placeholder.
+     * The runId is the journal key. It is the value the verbs all address by,
+     * and the only way to read back what `pipelinek run` wrote.
+     *
+     * The current binary (post-`6af6e45c`) prints a `pipelinek.launch/1` JSON
+     * envelope on **stderr** for every `pipelinek run`, in addition to the human
+     * `[PipelineK] Run correlated: <correlationId>` line on **stdout**. The JSON
+     * envelope is the authoritative runId surface — the correlationId is a
+     * separate identity used to thread a single run across control-plane +
+     * data-plane events, but it is NOT the journal key. Reading "Run
+     * correlated" as a runId is the false-green that originally let the canary
+     * pass: the parity and refusal rows never query the journal, so a wrong
+     * identity there is silent. Reading from stdout only is a second false-green:
+     * the JSON envelope is on stderr (a [OutputProtocol] design choice so the
+     * runId is observable without polluting the data plane).
+     *
+     * The text line is kept as a secondary probe: the canary reads runId from
+     * the JSON envelope (authoritative), and asserts the text line carries the
+     * SAME uuid the envelope's `correlationId` field has. If the two diverge,
+     * the canary fails loud — that drift is exactly the bug class
+     * `extractRunIdFromLaunchEnvelope` was patched for.
      */
-    private fun extractRunIdFromLaunchEnvelope(stdout: String): String {
-        val line = stdout.lineSequence().firstOrNull { it.contains("\"schema\":\"pipelinek.launch/1\"") }
-            ?: error("launch envelope not found in run output:\n$stdout")
-        val match = Regex("\"runId\"\\s*:\\s*\"([^\"]+)\"").find(line)
-            ?: error("runId not found in launch envelope line:\n$line")
-        return match.groupValues[1]
+    private fun extractRunIdFromLaunchEnvelope(stdout: String, stderr: String): String {
+        val jsonLine = stderr.lineSequence()
+            .firstOrNull { it.contains("\"schema\":\"pipelinek.launch/1\"") }
+            ?: error("pipelinek.launch/1 envelope not found in stderr:\nstderr=$stderr\nstdout=$stdout")
+        val runId = Regex("\"runId\"\\s*:\\s*\"([0-9a-fA-F-]{36})\"")
+            .find(jsonLine)?.groupValues?.get(1)
+            ?: error("runId not found in launch envelope line:\n$jsonLine")
+        val correlationId = Regex("\"correlationId\"\\s*:\\s*\"([0-9a-fA-F-]{36})\"")
+            .find(jsonLine)?.groupValues?.get(1)
+            ?: error("correlationId not found in launch envelope line:\n$jsonLine")
+        // Cross-check the human-readable line. If a future CL changes which
+        // identity the runtime line carries, this row fails loud rather than
+        // silently letting the canary query a different journal key.
+        val textLine = stdout.lineSequence()
+            .firstOrNull { it.contains("Run correlated:") }
+            ?: error("Run correlated: line not found in stdout:\nstdout=$stdout\nstderr=$stderr")
+        val textUuid = Regex("Run correlated:\\s*([0-9a-fA-F-]{36})")
+            .find(textLine)?.groupValues?.get(1)
+            ?: error("uuid not parsed from `Run correlated:` line:\n$textLine")
+        require(textUuid == correlationId) {
+            "Run correlated: line carries '$textUuid' but the envelope's correlationId is " +
+                "'$correlationId' — the human-readable line and the authoritative " +
+                "envelope have drifted. The canary refuses to continue with a mismatched identity."
+        }
+        return runId
     }
 
     /**
@@ -201,7 +244,7 @@ class R4ObservabilityCliInstallDistCanaryTest {
                 "installed binary could not be launched for the fixture: ${outcome.cause}",
             )
         }
-        val runId = extractRunIdFromLaunchEnvelope(runResult.stdout)
+        val runId = extractRunIdFromLaunchEnvelope(runResult.stdout, runResult.stderr)
         return PopulatedStore(runId, dbPath, controlRoot, runResult)
     }
 
@@ -330,23 +373,77 @@ class R4ObservabilityCliInstallDistCanaryTest {
 
     @Test
     fun `parity re-running the fixture on the same installDist produces the same per-verb SHA-256`() {
-        // The parity row. Two consecutive `runFixture()` calls against the SAME
-        // installDist binary must hash the same stdout per verb. This is the rung
-        // the operator needs to declare Fabric / Jenkins / CLI equivalence on a
-        // single candidate (PAIR_RELEASE_FLOW.md §5).
-        val first = runFixture()
-        val second = runFixture()
-        assertEquals(
-            first.observe.sha(), second.observe.sha(),
-            "observe stdout SHA-256 must be stable across re-runs of the same fixture",
+        // The parity row. The fixture populates the journal once; the verbs
+        // are then called TWICE each against the SAME runId, and the SHA-256
+        // of each verb's stdout must match. This is the rung the operator
+        // needs to declare Fabric / Jenkins / CLI equivalence on a single
+        // candidate (PAIR_RELEASE_FLOW.md §5).
+        //
+        // Why per-verb re-call, not re-run of the fixture: a `pipelinek run`
+        // produces a fresh runId every invocation. Verb output is keyed by
+        // runId, so two SEPARATE runs would compare verb output for two
+        // different runIds, which is not a stable statement about the verb —
+        // the SHA difference would be a property of the runId, not the verb.
+        // The parity that matters for CI/release equivalence is "the same
+        // verb, the same journal, the same runId, twice in a row, same
+        // SHA-256" — that proves the verb is a pure function of the journal
+        // (and the runId, which the test holds constant).
+        val store = populateFixture()
+        val observeFirst = runInstalled(
+            "observe",
+            store.runId,
+            "--db", store.dbPath.toString(),
+            "--control-root", store.controlRoot.toString(),
+            "--view", "events",
+            "--format", "jsonl",
+        )
+        val observeSecond = runInstalled(
+            "observe",
+            store.runId,
+            "--db", store.dbPath.toString(),
+            "--control-root", store.controlRoot.toString(),
+            "--view", "events",
+            "--format", "jsonl",
+        )
+        val eventsFirst = runInstalled(
+            "events",
+            "--db", store.dbPath.toString(),
+            store.runId,
+            "--kind", "StepFailed",
+        )
+        val eventsSecond = runInstalled(
+            "events",
+            "--db", store.dbPath.toString(),
+            store.runId,
+            "--kind", "StepFailed",
+        )
+        val inspectFirst = runInstalled(
+            "inspect",
+            store.runId,
+            "--control-root", store.controlRoot.toString(),
+            "--db", store.dbPath.toString(),
+            "--failed",
+            "--format", "json",
+        )
+        val inspectSecond = runInstalled(
+            "inspect",
+            store.runId,
+            "--control-root", store.controlRoot.toString(),
+            "--db", store.dbPath.toString(),
+            "--failed",
+            "--format", "json",
         )
         assertEquals(
-            first.events.sha(), second.events.sha(),
-            "events stdout SHA-256 must be stable across re-runs of the same fixture",
+            observeFirst.sha(), observeSecond.sha(),
+            "observe stdout SHA-256 must be stable across re-calls on the same runId",
         )
         assertEquals(
-            first.inspect.sha(), second.inspect.sha(),
-            "inspect stdout SHA-256 must be stable across re-runs of the same fixture",
+            eventsFirst.sha(), eventsSecond.sha(),
+            "events stdout SHA-256 must be stable across re-calls on the same runId",
+        )
+        assertEquals(
+            inspectFirst.sha(), inspectSecond.sha(),
+            "inspect stdout SHA-256 must be stable across re-calls on the same runId",
         )
     }
 }

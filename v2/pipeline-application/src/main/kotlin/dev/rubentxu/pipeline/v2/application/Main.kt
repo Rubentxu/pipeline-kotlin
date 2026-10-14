@@ -190,6 +190,18 @@ fun main(args: Array<String>) {
         return
     }
 
+    // Inspect subcommand (R4 / WU-R4.1, ADR-0088): bounded diagnostic surface.
+    //
+    // The verb is the same workflow for `inspect` that `observe`, `events`, and `console`
+    // are for their lanes: a typed parser + a typed query + a typed projection. The dispatcher
+    // adds it without disturbing the existing CLI surface (R4 / WU-R4.5 is the cross-CLI
+    // canary that catches any regression here).
+    if (args.firstOrNull() == "inspect") {
+        val exitCode = MainInspectCli.main(args.drop(1).toTypedArray())
+        System.exit(exitCode)
+        return
+    }
+
     val config = when (val parsed = CliParser.parse(args)) {
         is CliParseResult.Parsed -> parsed.flags
         is CliParseResult.Rejected -> {

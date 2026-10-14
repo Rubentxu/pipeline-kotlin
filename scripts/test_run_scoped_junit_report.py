@@ -982,5 +982,116 @@ class RefusalIsAValue(Harness):
         self.assertIn("AFTER the build", r.stderr)
 
 
+class RunDirectoryBoundary(Harness):
+    """`--run-dir` makes the boundary STRUCTURAL instead of temporal.
+
+    Claim under test: when the caller points the tool at a directory this run
+    owns, "which results belong to this run" is answered by containment rather
+    than by the clock. The mtime of a file then cannot decide the verdict, so a
+    deliberately back-dated XML is still fresh evidence and a stale one living
+    outside the directory is still excluded.
+
+    Mutation: keep the mtime filter active even when `--run-dir` is given, so
+    the boundary silently stays temporal.
+    """
+
+    def run_dir(self, name: str = "R1") -> str:
+        """A directory this run owns, created before any result lands in it.
+
+        It lives INSIDE the results tree on purpose: `--results-dir` is what the
+        tool scans, so a run directory outside it could never own anything. That
+        nesting is also how a real shard layout works — one results root, one
+        subdirectory per run.
+        """
+        d = os.path.join(self.results, "harness-runs", name)
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    def xml_in(self, run_dir: str, name: str, *, t=1, age_s: float = 0.0) -> str:
+        """A result file placed inside the run directory, optionally back-dated.
+
+        The nesting mirrors how Gradle is actually driven: each shard gets its
+        own results root, and the run directory is what makes those roots
+        belong to one run.
+        """
+        sub = os.path.join(run_dir, "test-results")
+        os.makedirs(sub, exist_ok=True)
+        p = os.path.join(sub, f"TEST-{name}.xml")
+        with open(p, "w", encoding="utf-8") as fh:
+            fh.write(SUITE.format(name=name, t=t, s=0, f=0, e=0))
+        if age_s:
+            os.utime(p, (os.path.getmtime(p) - age_s, os.path.getmtime(p) - age_s))
+        return p
+
+    def test_back_dated_result_inside_the_run_dir_is_still_fresh(self) -> None:
+        """A file older than the boundary clock is fresh because it is IN the run.
+
+        The back-dating is the whole point: it is the exact attack an mtime
+        filter cannot defend against, and containment does.
+        """
+        rd = self.run_dir()
+        self.xml_in(rd, "Backdated", t=3, age_s=86_400)
+        code, payload = self.run_tool("--run-dir", rd)
+        self.assertEqual(code, 0, payload)
+        # No catalog is declared, so PASS is not available to this report:
+        # completeness is NOT_ATTESTABLE, not a green. exit 0 with
+        # NOT_ATTESTABLE is the honest outcome, and the test asserts the
+        # accounting rather than borrowing a verdict it did not earn.
+        self.assertEqual(payload["verdict"], "NOT_ATTESTABLE", payload)
+        # One file, three tests, and both counts live inside `fresh` because
+        # containment, not mtime, decided freshness here.
+        self.assertEqual(payload["fresh_files"], 1, payload)
+        self.assertEqual(payload["fresh"], {"errors": 0, "failures": 0, "skipped": 0, "tests": 3}, payload)
+        self.assertEqual(payload["carried_over_files"], 0, payload)
+
+    def test_result_outside_the_run_dir_is_excluded_even_if_newer(self) -> None:
+        """Containment excludes strays the clock would have absorbed.
+
+        A writer from another run can be newer than anything in this run's
+        directory; an mtime filter calls that fresh, and it is not.
+        """
+        rd = self.run_dir()
+        self.xml_in(rd, "Mine", t=1)
+        self.xml("m1", "Theirs", t=99, age_s=0.0)
+        code, payload = self.run_tool("--run-dir", rd)
+        self.assertEqual(code, 0, payload)
+        # `fresh` and `carried_over` are counts objects, and the stray's 99
+        # tests must land in carried_over, never in the fresh accounting.
+        self.assertEqual(payload["fresh"], {"errors": 0, "failures": 0, "skipped": 0, "tests": 1}, payload)
+        self.assertEqual(payload["fresh_files"], 1, payload)
+        self.assertEqual(payload["carried_over"], {"errors": 0, "failures": 0, "skipped": 0, "tests": 99}, payload)
+        self.assertEqual(payload["carried_over_files"], 1, payload)
+
+    def test_the_boundary_file_is_not_needed_when_a_run_dir_is_given(self) -> None:
+        """A structural boundary needs no clock sentinel to exist at all.
+
+        Requiring the caller to also create a boundary file would make the
+        structural path a decoration of the temporal one.
+        """
+        rd = self.run_dir()
+        self.xml_in(rd, "Solo", t=2)
+        code, payload = self.run_tool("--run-dir", rd)
+        self.assertEqual(code, 0, payload)
+        self.assertEqual(payload["verdict"], "NOT_ATTESTABLE", payload)
+        self.assertTrue(
+            payload["boundary_source"].startswith("run-dir "),
+            f"the report must name the structural boundary it used: {payload['boundary_source']}",
+        )
+
+    def test_a_missing_run_dir_refuses_instead_of_reporting_green(self) -> None:
+        """A run directory that does not exist is no evidence, not a pass.
+
+        The failure this defends against is a typo'd path silently yielding an
+        empty-but-green report for a run that never executed.
+        """
+        missing = os.path.join(self.results, "harness-runs", "does-not-exist")
+        self.xml("m1", "Old", t=5)
+        raw = self.run_raw("--run-dir", missing)
+        self.assertEqual(raw.returncode, 2, raw.stdout)
+        payload = json.loads(raw.stdout)
+        self.assertEqual(payload["verdict"], "INVALID_EVIDENCE")
+        self.assertEqual(payload["refused"]["case"], "NOTHING_INSIDE_BOUNDARY")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

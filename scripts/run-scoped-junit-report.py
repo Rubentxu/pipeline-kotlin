@@ -264,6 +264,16 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
             "the arrived set renamed, and would make the check unfalsifiable."
         ),
     )
+    p.add_argument(
+        "--run-dir",
+        help=(
+            "directory this run OWNS; results are selected by containment rather "
+            "than by mtime. This is the structural boundary: a back-dated XML "
+            "inside it is fresh, and a stray from another run outside it is not. "
+            "Preferred over --boundary-file, which cannot defend against a "
+            "concurrent or deliberately back-dated writer."
+        ),
+    )
     p.add_argument("--skip-tree-check", action="store_true")
     return p.parse_args(ours), passthrough
 
@@ -311,10 +321,26 @@ def read_xml(path: str) -> Evidence:
     return SuiteCounts(out)
 
 
-def discover(results_dir: str) -> list[str]:
+def discover(results_dir: str, run_dir: str | None = None) -> list[str]:
+    """Locate JUnit result files.
+
+    With no ``run_dir`` this keeps the historical heuristic: Gradle writes under
+    a ``build`` directory, so a walk that skips every other subtree still finds
+    every result the build produced. That heuristic is an assumption about where
+    Gradle puts things, and it is why an explicit ``run_dir`` below exists.
+
+    With ``run_dir`` the caller has named the directory that holds this run's
+    results, and that is the authority. Requiring ``/build/`` there as well would
+    make the option unable to express its own contract: a harness run directory
+    is not required to live inside a Gradle build tree, and a refusal to read
+    readable XML is an ``INVALID_EVIDENCE`` verdict about the tool, not about
+    the run. The walk still descends into subdirectories, because Gradle writes
+    ``<module>/build/test-results/<task>/``.
+    """
     found: list[str] = []
-    for root, _dirs, files in os.walk(results_dir):
-        if os.sep + "build" + os.sep not in root + os.sep:
+    base = os.path.abspath(results_dir)
+    for root, _dirs, files in os.walk(base):
+        if run_dir is None and os.sep + "build" + os.sep not in root + os.sep:
             continue
         for f in files:
             if f.startswith("TEST-") and f.endswith(".xml"):
@@ -594,14 +620,64 @@ def emit(args: argparse.Namespace, refusal: Refusal, **extra: object) -> int:
     return 2
 
 
+def split_fresh_by_run_dir(paths: list[str], run_dir: str) -> tuple[list[str], list[str]]:
+    """Select this run's results by CONTAINMENT, not by the clock.
+
+    The mtime filter has two failure directions that both look plausible: a
+    back-dated result reads as carried-over (a real green run reported as empty),
+    and a stray written by another run reads as fresh (results attributed to a
+    run that did not produce them). Neither is detectable afterwards, because by
+    then the XML carries no record of who wrote it.
+
+    Containment removes the question instead of narrowing it. Everything the run
+    wrote lives under the directory the caller owns, so membership is a
+    structural fact about paths rather than an inference from timestamps.
+
+    `commonpath` is used rather than string prefixing so that
+    `/runs/R1-other` is NOT treated as inside `/runs/R1`.
+    """
+    root = os.path.abspath(run_dir)
+    fresh: list[str] = []
+    stale: list[str] = []
+    for p in paths:
+        try:
+            inside = os.path.commonpath([os.path.abspath(p), root]) == root
+        except ValueError:
+            # Different drives / mixed absolute-relative: not inside.
+            inside = False
+        (fresh if inside else stale).append(p)
+    return fresh, stale
+
+
 def main(argv: list[str]) -> int:
     args, gradle_argv = parse_args(argv)
 
-    if args.boundary_file and os.path.exists(args.boundary_file):
+    # A run directory replaces the clock boundary ENTIRELY. Keeping the mtime
+    # filter alongside it would mean the structural answer could be overridden
+    # by the temporal one, which is the bug this flag exists to remove.
+    structural = bool(args.run_dir)
+    if args.run_dir and not os.path.isdir(args.run_dir):
+        return emit(
+            args,
+            Refusal(
+                "NOTHING_INSIDE_BOUNDARY",
+                f"--run-dir {args.run_dir} is not a directory. A run boundary that "
+                "does not exist cannot own results, and reporting a green gate for "
+                "a run whose evidence directory was mistyped is the failure this "
+                "refuses.",
+            ),
+            head=git("rev-parse", "HEAD"),
+            results_dir=args.results_dir,
+            run_dir=args.run_dir,
+        )
+
+    if structural:
+        boundary_source = f"run-dir {args.run_dir} (structural: containment, not mtime)"
+    elif args.boundary_file and os.path.exists(args.boundary_file):
         boundary = os.path.getmtime(args.boundary_file)
         boundary_source = f"boundary file {args.boundary_file}"
     else:
-        paths = discover(args.results_dir)
+        paths = discover(args.results_dir, args.run_dir)
         if not paths:
             return emit(
                 args,
@@ -619,7 +695,7 @@ def main(argv: list[str]) -> int:
             "supplied, so this is an inference, not a measurement)"
         )
 
-    paths = discover(args.results_dir)
+    paths = discover(args.results_dir, args.run_dir)
     if not paths:
         return emit(
             args,
@@ -631,7 +707,11 @@ def main(argv: list[str]) -> int:
             results_dir=args.results_dir,
         )
 
-    fresh, stale = split_fresh(paths, boundary)
+    fresh, stale = (
+        split_fresh_by_run_dir(paths, args.run_dir)
+        if structural
+        else split_fresh(paths, boundary)
+    )
     fresh_t, stale_t = totals(fresh), totals(stale)
 
     # Result files exist but none is inside the boundary. Two causes, and they

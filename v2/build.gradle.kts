@@ -91,7 +91,14 @@ repositories {
 // suffix by construction; the candidate is identified by digest
 // (CandidateId = sha256 of the distribution ZIP), not by the version
 // string.
-version = "0.60.0"
+//
+// R4 / WU-D — the 0.61.0 train publishes v0.61.0-rc1 (and now rc2) with
+// the train version as ProductVersion. v0.60.0 was the version shipped
+// at v0.61.0-rc1 (an oversight in the rc1 block: ProductVersion was the
+// 0.60.0 string while the candidate was the 0.61.0 train). Bumped here
+// to 0.61.0 so the rc2 candidate has ProductVersion = 0.61.0, satisfying
+// PRODUCT IDENTITY LAW across all five surfaces.
+version = "0.61.0"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

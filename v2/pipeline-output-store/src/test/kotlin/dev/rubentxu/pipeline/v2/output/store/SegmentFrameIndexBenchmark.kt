@@ -116,6 +116,49 @@ class SegmentFrameIndexBenchmark {
         // not regress the catch-up read; the gain is in the limit=10 case.
     }
 
+    /**
+     * R3 / OBS-3 step 2 (ADR-OBS-004) — the cost claim the offset index underwrites.
+     *
+     * Before the fix, [SegmentFrameIndex.framesOfRun] re-read the whole frames log on every
+     * call, so a `limit=10` read after `N` appends cost `O(N)`. With the per-run offset index
+     * the reader binary-searches the entry for the floor(afterOrdinal) frame and reads `O(L)`
+     * lines forward; the duration for `limit=10` is now bounded by `L`, not by `N`.
+     *
+     * Comparing a 100-frame run against a 10 000-frame run is the smallest reproducer that
+     * exposes the difference: pre-fix, the 10 000-frame read pays ~100× more time than the
+     * 100-frame read; post-fix, both are within an order of magnitude.
+     *
+     * No wall-clock threshold — the comparison is on **ratios**, not milliseconds.
+     */
+    @Test
+    @Timeout(value = 60, unit = TimeUnit.SECONDS)
+    fun `after-fix — framesOfRun(K, 10) is O(L) on a 10_000-frame run, not O(file size)`() {
+        val runId = "bench-framesOfRun-after-fix"
+        val (store, index) = freshStoreAndIndex(runId)
+        val sizes = listOf(100, 1_000, 10_000)
+        val timings = LinkedHashMap<Int, Long>()
+        for (n in sizes) {
+            for (i in 0 until n) appendFrame(index, store, runId, i.toLong())
+            val ns = measureNanoTime {
+                index.framesOfRun(runId, afterOrdinal = -1L, limit = 10)
+            }
+            timings[n] = ns
+        }
+        report("after-fix framesOfRun(limit=10)-after-N", timings) { it }
+
+        // Property check: with the fix in place, the duration is roughly constant in N because
+        // the read is O(L). The pre-fix shape would show the 10_000-row duration at least 100×
+        // the 100-row duration; here we only ask that the 10_000-row duration is not more than
+        // 10× the 100-row duration. A failing CI box could shift this by an order of magnitude
+        // on its own, so we leave generous headroom and let the report carry the precise shape.
+        val small = timings.getValue(100)
+        val big = timings.getValue(10_000)
+        check(big <= small * 10L) {
+            "framesOfRun(K, 10) on 10 000 frames took ${big / 1_000_000.0} ms vs " +
+                "${small / 1_000_000.0} ms on 100 frames — the O(L) shape regressed"
+        }
+    }
+
     // ----------------------------------------------------------------- helpers
 
     private data class BenchRun(

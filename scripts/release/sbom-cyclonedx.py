@@ -131,7 +131,7 @@ def build_sbom(zip_path: str, version: str, git_commit: str, git_tag: str) -> di
     return {
         "bomFormat": "CycloneDX",
         "specVersion": "1.5",
-        "serialNumber": f"urn:uuid:{uuid4hex()}",
+        "serialNumber": f"urn:uuid:{new_serial_uuid()}",
         "version": 1,
         "metadata": metadata,
         "components": components,
@@ -146,8 +146,10 @@ def sha256_of_file(path: str) -> str:
     return h.hexdigest()
 
 
-def uuid4hex() -> str:
+def new_serial_uuid() -> str:
     import uuid
+    # Returns the canonical dashed UUID string; the previous name claimed hex,
+    # which it never was.
     return str(uuid.uuid4())
 
 

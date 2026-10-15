@@ -459,6 +459,13 @@ def main_check(inv: dict) -> int:
     Returns 0 on clean, non-zero on drift (so CI can fail closed).
     """
     errors = 0
+    # 0. An empty CORE inventory is drift: every production Step disappearing
+    #    from the factory (or the factory being refactored out of the regex's
+    #    reach) must fail loudly, not render a green empty inventory.
+    if not inv["core_keys"]:
+        print("DRIFT: CORE step inventory is empty", file=sys.stderr)
+        errors += 1
+
     # 1. Every Core<X>Step.registerInto must resolve to a known core key.
     core_classes = parse_registered_core_steps(CORE_REGISTRY)
     for cls in core_classes:

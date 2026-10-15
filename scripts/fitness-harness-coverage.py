@@ -48,24 +48,11 @@ EXEMPT = {
         "HARNESS_INVENTORY_HANDOVER.md hash-pins it for the verbatim harness "
         "copy; adding a suite is an owner decision.",
     ),
-    "regenerate-step-inventory.py": (
-        "OPEN_GAP",
-        "509-line inventory generator with no contract suite yet; recorded in "
-        ".agent/TESTING-STATE.md as a B1 gap.",
-    ),
-    "gen-ecosystem-matrix.py": (
-        "OPEN_GAP",
-        "240-line matrix generator; its FAIL-LOUD paths exist but are not yet "
-        "pinned by a suite.",
-    ),
-    "sbom-cyclonedx.py": (
-        "OPEN_GAP",
-        "release SBOM generator; a faithful suite needs the cyclonedx tool and "
-        "produced artifacts, not available in the hermetic harness.",
-    ),
     "mirror.py": (
         "OPEN_GAP",
-        "SDKMAN UAT mirror spike; networked tool with no hermetic contract yet.",
+        "SDKMAN UAT mirror spike (ThreadingHTTPServer); networked tool whose "
+        "digest contract is covered by release/test_sdkman_digest.py. Its own "
+        "server loop has no hermetic contract yet.",
     ),
 }
 

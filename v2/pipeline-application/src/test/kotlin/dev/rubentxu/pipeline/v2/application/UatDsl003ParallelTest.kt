@@ -15,6 +15,7 @@ import dev.rubentxu.pipeline.v2.events.StageFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -173,6 +174,15 @@ class UatDsl003ParallelTest {
         assertTrue(
             "cannot mix a parallel body with sibling steps" in output,
             "Rejection must name the G2 contract: $output",
+        )
+        // A stack trace tells the author the runtime broke, when what happened is that their pipeline
+        // is wrong and the runtime is working. Invalid user input is a refusal, and AGENTS.md reserves
+        // uncaught exceptions for adapter boundaries and programmer defects. The refusal text is
+        // unchanged either way, so only this assertion distinguishes the two.
+        assertFalse(
+            "Exception in thread" in output || "\tat dev.rubentxu" in output,
+            "the rejection must be a typed refusal, not an uncaught IllegalStateException escaping " +
+                "main. Output was:\n$output",
         )
     }
 

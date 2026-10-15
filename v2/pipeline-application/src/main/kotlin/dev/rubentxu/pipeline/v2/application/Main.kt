@@ -495,11 +495,10 @@ fun main(args: Array<String>) {
             dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore(clock)
 
         val compiledPipeline = pipelineSpec?.let { spec ->
-            DslCompiledPipelineCompiler.compile(
+            compileOrRefuse(
                 spec = spec,
                 sourcePath = scriptPath.toString(),
                 sourceContent = scriptContent,
-                pluginLockDigest = dev.rubentxu.pipeline.v2.domain.Digest("builtin"),
             )
         }
 
@@ -880,11 +879,10 @@ fun main(args: Array<String>) {
     } else null
 
     val compiledPipeline = pipelineSpec?.let { spec ->
-        DslCompiledPipelineCompiler.compile(
+        compileOrRefuse(
             spec = spec,
             sourcePath = scriptPath.toString(),
             sourceContent = scriptContent,
-            pluginLockDigest = dev.rubentxu.pipeline.v2.domain.Digest("builtin"),
         )
     }
 
@@ -1365,3 +1363,56 @@ private fun writeEventDocument(
     sink.write(bytes)
     sink.flush()
 }
+
+/**
+ * Compile the DSL into the canonical form, or refuse it.
+ *
+ * ## Why this wrapper exists
+ *
+ * `DslCompiledPipelineCompiler` rejects an invalid definition with `error()`, which is the right call
+ * from inside a compiler that has no idea how a CLI reports things. What it did NOT have was a caller
+ * that knew it was being handed user input rather than a programmer's bug, and the consequence was
+ * measured:
+ *
+ * ```console
+ * $ pipelinek run --format json mixed-body-and-sibling.pipeline.kts
+ * stdout: {"schema":"pipelinek.launch/1",...,"status":"Launched"}
+ * stderr: Exception in thread "main" java.lang.IllegalStateException:
+ *             Stage 'ParallelTest' cannot mix a parallel body with sibling steps
+ *             at ...DslCompiledPipelineCompiler.stageNode(DslCompiledPipelineCompiler.kt:107)
+ *             at ...MainKt.main(Main.kt:498)
+ * exit 1
+ * ```
+ *
+ * Correct verdict, right exit code, right message — delivered as an uncaught exception. A stack trace
+ * tells the author that something broke inside the runtime, when what happened is that their pipeline
+ * is wrong and the runtime is working. AGENTS.md reserves exceptions for adapter boundaries and
+ * programmer defects (STRICT TYPED FUNCTIONAL DESIGN §11); a stage that mixes a `parallel` body with
+ * sibling steps is neither.
+ *
+ * ## What it does NOT swallow
+ *
+ * The catch is scoped to this one call and to [IllegalStateException], which is what the guards throw.
+ * Nothing else is converted: a `NullPointerException` or a `ClassCastException` inside the compiler is
+ * a defect, and it still surfaces as a defect with its stack trace intact. The refusal prints the
+ * message verbatim, because the message is the part the author needs.
+ *
+ * Exit code is 1, matching every other definition-level failure (`CliCompileErrorExitsOneTest`); 2 is
+ * reserved for admission refusals, which are a different decision about a different thing.
+ */
+private fun compileOrRefuse(
+    spec: dev.rubentxu.pipeline.v2.dsl.PipelineSpec,
+    sourcePath: String,
+    sourceContent: String,
+): dev.rubentxu.pipeline.v2.domain.CompiledPipeline =
+    try {
+        DslCompiledPipelineCompiler.compile(
+            spec = spec,
+            sourcePath = sourcePath,
+            sourceContent = sourceContent,
+            pluginLockDigest = dev.rubentxu.pipeline.v2.domain.Digest("builtin"),
+        )
+    } catch (rejection: IllegalStateException) {
+        System.err.println("Error: ${rejection.message}")
+        kotlin.system.exitProcess(1)
+    }

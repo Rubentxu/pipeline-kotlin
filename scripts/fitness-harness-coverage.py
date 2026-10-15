@@ -48,12 +48,6 @@ EXEMPT = {
         "HARNESS_INVENTORY_HANDOVER.md hash-pins it for the verbatim harness "
         "copy; adding a suite is an owner decision.",
     ),
-    "mirror.py": (
-        "OPEN_GAP",
-        "SDKMAN UAT mirror spike (ThreadingHTTPServer); networked tool whose "
-        "digest contract is covered by release/test_sdkman_digest.py. Its own "
-        "server loop has no hermetic contract yet.",
-    ),
 }
 
 # Topic-named suites that cover more than one subject (name does not match a

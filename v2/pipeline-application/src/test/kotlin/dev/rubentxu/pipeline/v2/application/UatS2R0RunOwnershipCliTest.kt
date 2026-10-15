@@ -151,12 +151,31 @@ class UatS2R0RunOwnershipCliTest {
      * Reads the run id the CLI recorded for this definition. The layout is a
      * flat directory of one file per definition whose content is the run id, so
      * the run id is the newest such file's content.
+     *
+     * The record is TWO lines, not one, and the second one matters here.
+     * `RunIdDirectory` (line 26 of its own doc) writes:
+     *
+     * ```text
+     * <runId.value>          # line 1
+     * <correlationId.value>  # line 2; absent for legacy records
+     * ```
+     *
+     * So `.trim()` is not a safe way to read it: it strips the TRAILING newline but leaves the
+     * INTERIOR one, and this helper then returns `"<runId>\n<correlationId>"`. The lease store
+     * sanitises non-`[A-Za-z0-9._-]` to `_` when it derives a lock filename, so the test would
+     * have locked `lease-<runId>_<correlationId>.lock` while the CLI locks `lease-<runId>.lock`.
+     * Two different files, no contention, and the second invocation would exit 0 — a false green
+     * that looks exactly like a product defect and is not one.
+     *
+     * `.lines().first()` mirrors what production does: `RunIdDirectory.findLastRunId` (line 105)
+     * reads the same file and takes `lines.getOrNull(0)`. A harness that re-derives the production
+     * decision any other way is testing its own arithmetic, not the runtime's.
      */
     private fun runIdOf(controlRoot: Path): String {
         val lastRunRoot = controlRoot.resolve("last-run")
         val files = Files.list(lastRunRoot).use { s -> s.toList() }
         assertTrue(files.isNotEmpty(), "the CLI must record a run id under $lastRunRoot")
         val newest = files.maxByOrNull { Files.getLastModifiedTime(it).toMillis() }!!
-        return Files.readString(newest).trim()
+        return Files.readString(newest).lines().first().trim()
     }
 }

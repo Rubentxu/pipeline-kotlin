@@ -95,6 +95,14 @@ uat_excludes := '*UatLocal*,*UatCompat*,*UatDsl*,*UatStep*,*UatEvt*,*UatDurable*
 @gate-escalate-full budget="1270":
     timeout {{budget}} v2/gradlew -p v2 check --rerun-tasks
 
+# L-RC: the certification gate. releaseGate = distZip + SBOM + candidateAdmission +
+# architecture/application/release suites, with the UAT battery excluded like the
+# other local gates. Budget is DECLARED, not measured: releaseGate has never
+# completed on this base (PK-58A F6), so re-derive it from the first complete run.
+# The bytes it certifies are the bytes handed to the external harness.
+@rc budget="2400":
+    timeout {{budget}} v2/gradlew -p v2 :pipeline-release:releaseGate -Pshard.excludes='{{uat_excludes}}'
+
 # Single corpus fixture by number 1..13, e.g.: just corpus 11
 @corpus n:
     #!/usr/bin/env bash
@@ -133,13 +141,24 @@ uat_excludes := '*UatLocal*,*UatCompat*,*UatDsl*,*UatStep*,*UatEvt*,*UatDurable*
 
 # ─── harness governance (B1) ─────────────────────────────────────
 
-# Bidirectional tool <-> suite registry for scripts/ (OPEN_GAP reported)
+# Bidirectional tool <-> suite registry for scripts/ (OPEN_GAP reported) + the
+# generated catalogue must be fresh (module impact, gate budgets, UAT frontier)
 @fitness:
     python3 scripts/fitness-harness-coverage.py
+    python3 scripts/gen-test-harness-catalogue.py --check
 
 # Same registry, but a declared OPEN_GAP fails too (use when closing gaps)
 @fitness-strict:
     python3 scripts/fitness-harness-coverage.py --strict
+    python3 scripts/gen-test-harness-catalogue.py --check
+
+# Regenerate the test-harness catalogue (v2/test-harness/: modules, gates, roles)
+@catalogue:
+    python3 scripts/gen-test-harness-catalogue.py
+
+# Verify the committed catalogue matches the tree (this is the failing half of `just fitness`)
+@catalogue-check:
+    python3 scripts/gen-test-harness-catalogue.py --check
 
 # Run every hermetic harness suite under scripts/ (recursive) and aggregate (B1 orchestration)
 @harness budget="900":

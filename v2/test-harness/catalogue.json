@@ -1,0 +1,632 @@
+{
+  "gates": [
+    {
+      "budget_s": 900,
+      "gradle_invocations": 1,
+      "gradle_via": "direct",
+      "level": "L-DEV",
+      "recipe": "dev",
+      "runs": "affected module tests + affected python suites, one incremental Gradle graph, UAT excluded"
+    },
+    {
+      "budget_s": 1800,
+      "gradle_invocations": 0,
+      "gradle_via": [
+        "run-integration-gate.py"
+      ],
+      "level": "L-MERGE",
+      "recipe": "integration",
+      "runs": "fitness + affected suites + lint/ABI + one Gradle graph, typed verdict"
+    },
+    {
+      "budget_s": 1270,
+      "gradle_invocations": 1,
+      "gradle_via": "direct",
+      "level": "L-ROUND",
+      "recipe": "gate",
+      "runs": "full `check` with the UAT battery excluded"
+    },
+    {
+      "budget_s": 1270,
+      "gradle_invocations": 1,
+      "gradle_via": "direct",
+      "level": "L-ROUND-ESCALATED",
+      "recipe": "gate-escalate",
+      "runs": "`check --rerun-tasks`: escalation after a killed run"
+    },
+    {
+      "budget_s": 900,
+      "gradle_invocations": 0,
+      "gradle_via": "none",
+      "level": "HARNESS",
+      "recipe": "harness",
+      "runs": "every hermetic python suite under scripts/"
+    },
+    {
+      "budget_s": 2400,
+      "gradle_invocations": 1,
+      "gradle_via": "direct",
+      "level": "L-RC",
+      "recipe": "rc",
+      "runs": "releaseGate: distZip + SBOM + candidateAdmission + architecture/application/release suites, UAT excluded; declared budget pending the first complete run"
+    }
+  ],
+  "home": "v2/test-harness/",
+  "modules": [
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          "check"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/buildSrc",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": "forkEvery = 1 is deliberate while the installed-CLI UAT wedge has no structural fix (PK-0-57-RC1, recorded in .agent/TESTING-STATE.md); the module's UAT classes are excluded from local gates via shard.excludes, so the fork cost is paid only by the harness",
+      "fork_policy": "forkEvery=1, maxParallelForks=1",
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-application:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-application",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-artefacts-local:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-artefacts-local",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-binding-factory:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-binding-factory",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-credentials-api:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-credentials-api",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-credentials-executor:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-credentials-executor",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-credentials-local:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-credentials-local",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-credentials-multipart:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-credentials-multipart",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-domain:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-domain",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-event-harness:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-event-harness",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-architecture-tests:test",
+          ":pipeline-events:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-events",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-events-store:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-events-store",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-output:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-output",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-output-store:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-output-store",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-protocol:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-protocol",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-release:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-release",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-runtime:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-runtime",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-runtime-api:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-runtime-api",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-scripting-api:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-scripting-api",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-scripting-kotlin24:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-scripting-kotlin24",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-testkit:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-testkit",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-application:test",
+          ":pipeline-step-sdk:api:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-step-sdk/api",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-application:test",
+          ":pipeline-step-sdk:files:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-step-sdk/files",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-application:test",
+          ":pipeline-step-sdk:http:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-step-sdk/http",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-application:test",
+          ":pipeline-step-sdk:junit:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-step-sdk/junit",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-application:test",
+          ":pipeline-step-sdk:runtime:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-step-sdk/runtime",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-application:test",
+          ":pipeline-step-sdk:scm-git:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-step-sdk/scm-git",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-application:test",
+          ":pipeline-step-sdk:utilities:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-step-sdk/utilities",
+      "owner": "pipeline-kotlin maintainers"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-application:test",
+          ":pipeline-step-sdk:workflow-control:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-step-sdk/workflow-control",
+      "owner": "pipeline-kotlin maintainers"
+    }
+  ],
+  "policies": [
+    {
+      "authority": "AGENTS.md \u00a7V2 TESTING RULES",
+      "topic": "test authoring, hang protocol, budgets"
+    },
+    {
+      "authority": "docs/v2/07-uat/CERTIFICATION_PROTOCOL.md \u00a74",
+      "topic": "gate ladder and what each level certifies"
+    },
+    {
+      "authority": "docs/v2/03-specifications/STEP_PLUGIN_CERTIFICATION.md",
+      "topic": "step certification states"
+    },
+    {
+      "authority": "docs/v2/04-adrs/ADR-0072-layered-test-harness-fidelity.md",
+      "topic": "harness fidelity levels (HF0..HF6), proposed"
+    },
+    {
+      "authority": "docs/v2/07-uat/HARNESS_INVENTORY_HANDOVER.md \u00a75.4",
+      "topic": "candidate/release boundary with the external harness"
+    },
+    {
+      "authority": "docs/v2/05-roadmap/RESPONSIBILITY_MIGRATION_ROADMAP.md",
+      "topic": "responsibility migration catalogue (UAT exodus)"
+    }
+  ],
+  "receipts": {
+    "candidate_evidence": "docs/v2/07-uat/evidence/",
+    "root": "docs/v2/07-uat/"
+  },
+  "roles": [
+    {
+      "authority": "scripts/gen-test-harness-catalogue.py",
+      "name": "ContractCatalogue",
+      "owns": "the catalogue itself: which modules, gates, suites and roles exist"
+    },
+    {
+      "authority": "scripts/plan-affected-tests.py",
+      "name": "ImpactResolver",
+      "owns": "file -> test plan (the only impact mapping)"
+    },
+    {
+      "authority": "scripts/fitness-harness-coverage.py",
+      "name": "SuitePolicy",
+      "owns": "tool <-> suite registry: what must have a suite and what a suite needs"
+    },
+    {
+      "authority": "justfile",
+      "name": "Dispatch",
+      "owns": "the gate ladder and the only place that spawns Gradle"
+    },
+    {
+      "authority": "scripts/run-integration-gate.py",
+      "name": "Gate",
+      "owns": "typed PASS|FAIL|BLOCKED|STALE receipt for a gate run"
+    },
+    {
+      "authority": "scripts/run-scoped-junit-report.py",
+      "name": "EvidenceReader",
+      "owns": "fresh-vs-carried-over JUnit adjudication (skips, zero tests, head)"
+    },
+    {
+      "authority": "scripts/measure-harness-baseline.py",
+      "name": "BaselineMeter",
+      "owns": "reproducible wall/Gradle/profile samples and freshness of the XML"
+    },
+    {
+      "authority": "scripts/emit-candidate-receipt.py",
+      "name": "CandidateReceipt",
+      "owns": "candidate identity: bytes, digests, product-identity law"
+    },
+    {
+      "authority": "scripts/consult-harness-verdict.py",
+      "name": "VerdictConsumer",
+      "owns": "external harness verdict consumption under a committed publisher authority"
+    }
+  ],
+  "schema": "pipelinek-test-harness-catalogue-1",
+  "suites": {
+    "kotlin_modules_with_tests": [
+      "v2/buildSrc/src",
+      "v2/pipeline-application/src",
+      "v2/pipeline-architecture-tests/src",
+      "v2/pipeline-artefacts-local/src",
+      "v2/pipeline-binding-factory/src",
+      "v2/pipeline-credentials-api/src",
+      "v2/pipeline-credentials-executor/src",
+      "v2/pipeline-credentials-local/src",
+      "v2/pipeline-credentials-multipart/src",
+      "v2/pipeline-domain/src",
+      "v2/pipeline-event-harness/src",
+      "v2/pipeline-events-store/src",
+      "v2/pipeline-events/src",
+      "v2/pipeline-output-store/src",
+      "v2/pipeline-output/src",
+      "v2/pipeline-protocol/src",
+      "v2/pipeline-release/src",
+      "v2/pipeline-runtime-api/src",
+      "v2/pipeline-runtime/src",
+      "v2/pipeline-scripting-api/src",
+      "v2/pipeline-scripting-kotlin24/src",
+      "v2/pipeline-testkit/src",
+      "v2/pipeline-step-sdk/api/src",
+      "v2/pipeline-step-sdk/files/src",
+      "v2/pipeline-step-sdk/http/src",
+      "v2/pipeline-step-sdk/junit/src",
+      "v2/pipeline-step-sdk/runtime/src",
+      "v2/pipeline-step-sdk/scm-git/src",
+      "v2/pipeline-step-sdk/utilities/src",
+      "v2/pipeline-step-sdk/workflow-control/src"
+    ],
+    "python": [
+      {
+        "path": "scripts/release/sdkman-uat/test_mirror.py",
+        "tests": 8
+      },
+      {
+        "path": "scripts/release/test_sbom_cyclonedx.py",
+        "tests": 10
+      },
+      {
+        "path": "scripts/release/test_sdkman_digest.py",
+        "tests": 16
+      },
+      {
+        "path": "scripts/test_admission_check.py",
+        "tests": 51
+      },
+      {
+        "path": "scripts/test_audit_gradle_test_graph.py",
+        "tests": 11
+      },
+      {
+        "path": "scripts/test_build_release_manifest.py",
+        "tests": 7
+      },
+      {
+        "path": "scripts/test_check_candidate_handoff.py",
+        "tests": 13
+      },
+      {
+        "path": "scripts/test_classify_open_prs.py",
+        "tests": 13
+      },
+      {
+        "path": "scripts/test_consult_harness_verdict.py",
+        "tests": 24
+      },
+      {
+        "path": "scripts/test_emit_candidate_receipt.py",
+        "tests": 13
+      },
+      {
+        "path": "scripts/test_fitness_harness_coverage.py",
+        "tests": 22
+      },
+      {
+        "path": "scripts/test_gen_current_state_projection.py",
+        "tests": 6
+      },
+      {
+        "path": "scripts/test_gen_current_uat_status.py",
+        "tests": 47
+      },
+      {
+        "path": "scripts/test_gen_disabled_inventory.py",
+        "tests": 12
+      },
+      {
+        "path": "scripts/test_gen_ecosystem_matrix.py",
+        "tests": 6
+      },
+      {
+        "path": "scripts/test_gen_test_harness_catalogue.py",
+        "tests": 19
+      },
+      {
+        "path": "scripts/test_install_pipelinek.py",
+        "tests": 14
+      },
+      {
+        "path": "scripts/test_measure_harness_baseline.py",
+        "tests": 16
+      },
+      {
+        "path": "scripts/test_plan_affected_tests.py",
+        "tests": 16
+      },
+      {
+        "path": "scripts/test_regenerate_step_inventory.py",
+        "tests": 12
+      },
+      {
+        "path": "scripts/test_run_integration_gate.py",
+        "tests": 13
+      },
+      {
+        "path": "scripts/test_run_scoped_junit_report.py",
+        "tests": 17
+      }
+    ],
+    "python_tests": 366,
+    "python_total": 22
+  },
+  "uat_frontier": {
+    "declared_in": "justfile:uat_excludes",
+    "excludes": [
+      "*UatLocal*",
+      "*UatCompat*",
+      "*UatDsl*",
+      "*UatStep*",
+      "*UatEvt*",
+      "*UatDurable*",
+      "*Lpr011*",
+      "*PublishHtml*",
+      "*StashOps*"
+    ]
+  }
+}

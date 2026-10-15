@@ -152,7 +152,7 @@ class Lfc2PolicyReadinessFitnessTest {
             publisher = "io.rubentxu",
             families = setOf(PluginFamily.SCM, PluginFamily.NETWORK),
             delivery = Delivery.OFFICIAL_PLUGIN,
-            trust = TrustMetadata.Unverified,
+            trust = TrustMetadata.Unverified(),
         )
 
         val reg_step = StepRegistration(definition = def, provider = provider)
@@ -180,7 +180,7 @@ class Lfc2PolicyReadinessFitnessTest {
                 publisher = "io.rubentxu",
                 families = setOf(PluginFamily.SCM),
                 delivery = Delivery.OFFICIAL_PLUGIN,
-                trust = TrustMetadata.Unverified,
+                trust = TrustMetadata.Unverified(),
             )
         }
     }
@@ -198,7 +198,7 @@ class Lfc2PolicyReadinessFitnessTest {
                 publisher = "io.rubentxu",
                 families = emptySet(),
                 delivery = Delivery.OFFICIAL_PLUGIN,
-                trust = TrustMetadata.Unverified,
+                trust = TrustMetadata.Unverified(),
             )
         }
     }
@@ -218,7 +218,7 @@ class Lfc2PolicyReadinessFitnessTest {
             publisher = "io.rubentxu",
             families = setOf(PluginFamily.SCM, PluginFamily.NETWORK),
             delivery = Delivery.OFFICIAL_PLUGIN,
-            trust = TrustMetadata.Unverified,
+            trust = TrustMetadata.Unverified(),
             contributions = PluginContributions(
                 steps = listOf(
                     PluginStepContribution(
@@ -247,7 +247,7 @@ class Lfc2PolicyReadinessFitnessTest {
             publisher = "io.rubentxu",
             families = setOf(PluginFamily.SCM),
             delivery = Delivery.OFFICIAL_PLUGIN,
-            trust = TrustMetadata.Unverified,
+            trust = TrustMetadata.Unverified(),
             contributions = PluginContributions(
                 steps = listOf(
                     PluginStepContribution(
@@ -283,7 +283,7 @@ class Lfc2PolicyReadinessFitnessTest {
             publisher = "io.rubentxu",
             families = setOf(PluginFamily.SCM),
             delivery = Delivery.OFFICIAL_PLUGIN,
-            trust = TrustMetadata.Unverified,
+            trust = TrustMetadata.Unverified(),
             contributions = PluginContributions(
                 steps = listOf(
                     PluginStepContribution(
@@ -314,7 +314,7 @@ class Lfc2PolicyReadinessFitnessTest {
         val offProvider = StepProviderMetadata.create(
             plugin = pluginA, release = releaseA, publisher = "io.rubentxu",
             families = setOf(PluginFamily.SCM), delivery = Delivery.OFFICIAL_PLUGIN,
-            trust = TrustMetadata.Unverified,
+            trust = TrustMetadata.Unverified(),
         )
         reg.add(StepRegistration(defA, offProvider))
 
@@ -329,7 +329,7 @@ class Lfc2PolicyReadinessFitnessTest {
         val extProvider = StepProviderMetadata.create(
             plugin = pluginB, release = releaseB, publisher = "io.rubentxu",
             families = setOf(PluginFamily.SCM), delivery = Delivery.EXTERNAL_REFERENCE,
-            trust = TrustMetadata.Unverified,
+            trust = TrustMetadata.Unverified(),
         )
         val defB = definition(key, caps = setOf(SCOPE_FS))
         assertThrows(IllegalArgumentException::class.java) {
@@ -391,7 +391,7 @@ class Lfc2PolicyReadinessFitnessTest {
         val provider = StepProviderMetadata.create(
             plugin = plugin, release = release, publisher = "io.rubentxu",
             families = setOf(PluginFamily.SCM), delivery = Delivery.OFFICIAL_PLUGIN,
-            trust = TrustMetadata.Unverified,
+            trust = TrustMetadata.Unverified(),
         )
         reg.add(StepRegistration(def, provider))
         val frozen: StepRegistry = reg.build()
@@ -414,7 +414,7 @@ class Lfc2PolicyReadinessFitnessTest {
             plugin = plugin, release = release, publisher = "io.rubentxu",
             families = setOf(PluginFamily.SCM, PluginFamily.NETWORK),
             delivery = Delivery.OFFICIAL_PLUGIN,
-            trust = TrustMetadata.Unverified,
+            trust = TrustMetadata.Unverified(),
         )
         reg.add(StepRegistration(def, provider))
         val frozen: StepRegistry = reg.build()

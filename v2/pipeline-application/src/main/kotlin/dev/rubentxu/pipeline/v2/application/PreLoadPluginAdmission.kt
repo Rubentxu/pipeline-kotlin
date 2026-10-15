@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.step.AdmittedPlugin
+import dev.rubentxu.pipeline.v2.domain.step.AdmissionRejection
 import dev.rubentxu.pipeline.v2.domain.step.ArtifactOrigin
 import dev.rubentxu.pipeline.v2.domain.step.PluginAdmission
 import dev.rubentxu.pipeline.v2.domain.step.PluginAdmissionResult
@@ -173,5 +174,5 @@ sealed interface AdmittedArtifacts {
     data class Admitted(val artifacts: List<AdmittedArtifact>) : AdmittedArtifacts
 
     /** Which artifact failed, and what was wrong with it. Never "an artifact somewhere". */
-    data class Refused(val artifact: Path, val rejection: PluginManifestRejection) : AdmittedArtifacts
+    data class Refused(val artifact: Path, val rejection: AdmissionRejection) : AdmittedArtifacts
 }

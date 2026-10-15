@@ -69,7 +69,7 @@ class F5_1_ScmGitProviderProvenanceTest {
             publisher = "pipeline-kotlin",
             families = setOf(PluginFamily.SCM, PluginFamily.NETWORK),
             delivery = Delivery.OFFICIAL_PLUGIN,
-            trust = dev.rubentxu.pipeline.v2.domain.step.TrustMetadata.Unverified,
+            trust = dev.rubentxu.pipeline.v2.domain.step.TrustMetadata.Unverified(),
         )
 
         // Append a Step-keyed event whose stepType matches the SCM/Git plugin key.
@@ -140,7 +140,7 @@ class F5_1_ScmGitProviderProvenanceTest {
                     publisher = "pipeline-kotlin",
                     families = setOf(PluginFamily.SCM),
                     delivery = Delivery.OFFICIAL_PLUGIN,
-                    trust = dev.rubentxu.pipeline.v2.domain.step.TrustMetadata.Unverified,
+                    trust = dev.rubentxu.pipeline.v2.domain.step.TrustMetadata.Unverified(),
                 )
             } else {
                 null // legacy CORE: no provenance surfaced
@@ -166,7 +166,7 @@ class F5_1_ScmGitProviderProvenanceTest {
             publisher = "pipeline-kotlin",
             families = setOf(PluginFamily.SCM),
             delivery = Delivery.OFFICIAL_PLUGIN,
-            trust = dev.rubentxu.pipeline.v2.domain.step.TrustMetadata.Unverified,
+            trust = dev.rubentxu.pipeline.v2.domain.step.TrustMetadata.Unverified(),
         )
         val store = InMemoryEventStore()
         val runId = "run-reg-backed"

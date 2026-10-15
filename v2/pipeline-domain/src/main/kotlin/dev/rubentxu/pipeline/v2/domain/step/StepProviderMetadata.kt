@@ -20,7 +20,7 @@ import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
  * [families] is a non-empty set (multi-family allowed). [delivery] is
  * **metadata**, never a verdict (PLUGIN_IDENTITY_MODEL §"Delivery
  * classification vs trust decision"). [trust] is the typed trust ADT
- * (only [TrustMetadata.Unverified] exists today).
+ * (only [TrustMetadata.Unverified] is constructable from the document grammar today).
  *
  * The primary constructor is `internal` to force the use of [create],
  * which centralises the cross-field invariant.

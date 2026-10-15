@@ -98,7 +98,7 @@ object UtilitiesPluginDeclaration {
             publisher = publisher,
             families = setOf(PluginFamily.UTILITIES),
             delivery = Delivery.OFFICIAL_PLUGIN,
-            trust = TrustMetadata.Unverified,
+            trust = TrustMetadata.Unverified(),
         )
     }
 

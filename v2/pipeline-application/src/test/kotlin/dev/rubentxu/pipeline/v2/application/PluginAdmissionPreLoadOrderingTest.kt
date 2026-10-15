@@ -78,7 +78,7 @@ class PluginAdmissionPreLoadOrderingTest {
             publisher = "test",
             families = setOf(PluginFamily.TESTING),
             delivery = Delivery.EXTERNAL_REFERENCE,
-            trust = TrustMetadata.Unverified,
+            trust = TrustMetadata.Unverified(),
             // Declares a capability and NO Steps, because the fixture genuinely provides no
             // Step. It used to declare `sentinel.step` and implement nothing, which BLOCK 1-E
             // correctly caught as drift — the cross-check found a real inconsistency in a test

@@ -47,7 +47,7 @@ class PluginManifestValidatorTest {
         publisher = "acme",
         families = setOf(PluginFamily.NETWORK),
         delivery = Delivery.EXTERNAL_REFERENCE,
-        trust = TrustMetadata.Unverified,
+        trust = TrustMetadata.Unverified(),
         contributions = PluginContributions(
             steps = steps,
             directives = directives,
@@ -290,7 +290,7 @@ class PluginManifestValidatorTest {
                 publisher = "acme",
                 families = setOf(PluginFamily.NETWORK),
                 delivery = Delivery.EXTERNAL_REFERENCE,
-                trust = TrustMetadata.Unverified,
+                trust = TrustMetadata.Unverified(),
                 contributions = PluginContributions(steps = listOf(step("acme.echo"))),
             )
         }.message.orEmpty()

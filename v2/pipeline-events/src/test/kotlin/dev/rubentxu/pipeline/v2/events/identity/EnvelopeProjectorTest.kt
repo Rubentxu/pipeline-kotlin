@@ -259,7 +259,7 @@ class EnvelopeProjectorTest {
                 publisher = "acme",
                 families = setOf(PluginFamily.UTILITIES),
                 delivery = Delivery.OFFICIAL_PLUGIN,
-                trust = TrustMetadata.Unverified,
+                trust = TrustMetadata.Unverified(),
             )
         }
 
@@ -311,7 +311,7 @@ class EnvelopeProjectorTest {
                 publisher = "acme",
                 families = setOf(PluginFamily.SCM, PluginFamily.NETWORK),
                 delivery = Delivery.OFFICIAL_PLUGIN,
-                trust = TrustMetadata.Unverified,
+                trust = TrustMetadata.Unverified(),
             )
         }
     }

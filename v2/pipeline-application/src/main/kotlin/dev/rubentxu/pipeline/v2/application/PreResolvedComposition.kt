@@ -186,7 +186,7 @@ sealed interface CompositionOutcome {
     /** One named artifact, one typed reason. Never "some plugin could not be admitted". */
     data class Refused(
         val artifact: Path,
-        val rejection: dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection,
+        val rejection: dev.rubentxu.pipeline.v2.domain.step.AdmissionRejection,
     ) : CompositionOutcome
 
     /** The running artifact carries no usable version, so no plugin could be judged. */

@@ -6,6 +6,27 @@ import dev.rubentxu.pipeline.v2.domain.step.PluginManifestDecodeResult.Accepted
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifestDecodeResult.Rejected
 
 /**
+ * Closed parent of every admission refusal.
+ *
+ * ## Why a parent at all
+ *
+ * The two refusal hierarchies have different lifecycles:
+ * [PluginManifestRejection] is what the codec refuses (a malformed document, an unknown
+ * schema, an unknown codec). [AdmissionRefusal] is what the gate refuses after the codec
+ * has accepted the document (a measured digest that disagrees, an identity the operator
+ * has not pinned, a duplicate identity from a different artifact). Both are refusals at
+ * the same boundary, and a caller that needs to log the failure or react to it wants one
+ * type to switch on, not a `when` over a union of two.
+ *
+ * Keeping the two sealed subtypes disjoint is what lets a refusal stay typed: a caller
+ * that knows it is dealing with a decode-time failure pattern-matches over
+ * [PluginManifestRejection] cases; a caller dealing with a gate-time failure pattern-matches
+ * over [AdmissionRefusal] cases. The only common operation is "what was the refusal text",
+ * which the KDoc on each case spells.
+ */
+sealed interface AdmissionRejection
+
+/**
  * S6/D — THE single authority that decides whether a plugin may join the runtime.
  *
  * ## The responsibility this inverts
@@ -46,7 +67,11 @@ object PluginAdmission {
      * @param identity the identity the runtime measured, kept separate from the digest the
      *   manifest claims about itself.
      * @param runtimeVersion the PipelineK version running, for the API range comparison.
-     * @param alreadyAdmitted identities admitted so far in this composition.
+     * @param alreadyAdmitted identities admitted so far in this composition. Step 1 (B3.2
+     *   ADT only) keeps the original `Set<String>` signature; the B3.2 case
+     *   [AdmissionRefusal.RefusedAlreadyAdmittedDifferentArtifact] is wired up in Step 3,
+     *   when the gate tracks per-identity origins and can distinguish "same plugin, same
+     *   artifact" from "same plugin, different artifact" at the boundary.
      */
     fun admit(
         decoded: PluginManifestDecodeResult,
@@ -92,7 +117,12 @@ sealed interface PluginAdmissionResult {
 
     data class Admitted(val plugin: AdmittedPlugin) : PluginAdmissionResult
 
-    data class Refused(val rejection: PluginManifestRejection) : PluginAdmissionResult
+    /**
+     * The plugin was refused. [rejection] is the closed [AdmissionRejection] union — a
+     * caller that needs to distinguish codec refusals from gate refusals pattern-matches
+     * the concrete subtype, which is what the two disjoint sealed types make exhaustive.
+     */
+    data class Refused(val rejection: AdmissionRejection) : PluginAdmissionResult
 }
 
 /**

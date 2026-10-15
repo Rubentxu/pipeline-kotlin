@@ -24,8 +24,10 @@ are not renamed).
 ## R2 — Capabilities
 
 `PipelineExtension` (HF1), `RealPipelineExtension` (HF2), `PipelineSessionExtension` (HF3),
-`SandboxPipelineExtension` (HF4/HF5); plus `StepContractSuite`/`PluginContractSuite` and
-workspace/process/git/credentials/plugin fixtures and failure injection.
+`SandboxPipelineExtension` (HF4/HF5); plus the per-Step `*StepContractSuiteTest` (one per core
+Step, e.g. `EchoStepContractSuiteTest`, `CoreShellStepContractSuiteTest`,
+`CoreCleanWsStepContractSuiteTest`) and the cross-plugin `DirectivePluginContractSuiteTest` for the
+open-world plugin path; workspace/process/git/credentials/plugin fixtures and failure injection.
 
 ## R3 — Isolation
 
@@ -40,5 +42,6 @@ object.
 ## Acceptance
 
 - A property testable at a lower HF must not be escalated to a container.
-- StepContractSuite passes for `echo`, `sh` and the external reference plugin at the minimum
-  faithful level.
+- The per-Step `*StepContractSuiteTest` passes for `echo`, `sh` and the external reference plugin at
+  the minimum faithful level. `DirectivePluginContractSuiteTest` exercises the cross-plugin path on
+  the same Step keys.

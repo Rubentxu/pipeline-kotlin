@@ -938,18 +938,49 @@ class ObsPc208LevelBUatTest {
             await({ Files.exists(done) }, 60)
             // Wait for the agent to drain (the child has exited; the
             // runtime closes the warmup; the agent sees EOF and exits).
+            //
+            // Two waits, in this order, and the order is the fix. `awaitNoAgentProcess` polls
+            // ProcessHandle and returns the first time it does NOT see an agent — but in the window
+            // between the child exiting and the drainer being visible on the box, "no agent" is
+            // indistinguishable from "the agent has not started". f09 then took its first measurement
+            // mid-drain (extent1=61 against a 121-byte payload) and reported the growth as a storage
+            // integrity defect. The seal first makes "the agent finished and closed its sinks" a fact;
+            // the process check second then genuinely means "and it has exited".
+            awaitStreamSealed(opIdFormat(), 60)
             awaitNoAgentProcess(30)
             OutputPlaneProvider.forgetAll()
-            val store = OutputPlaneProvider.storeForReading(controlRoot)
             val stream = OutputPlaneProvider.streamsOf(runId, opIdFormat()).stdout.stream
-            val extent1 = store.committedExtent(stream) ?: 0L
+            val extent1 =
+                OutputPlaneProvider.storeForReading(controlRoot).committedExtent(stream) ?: 0L
             assertTrue(extent1 > 0L, "f09: stream must have committed bytes after drain")
+            // A sealed stream must carry the WHOLE payload, not merely some bytes. This is what makes
+            // the row's claim falsifiable: measured against `extent1 > 0` alone, removing the seal wait
+            // still passes, because a mid-drain sample of 61 of 121 bytes satisfies "committed bytes
+            // exist". Requiring every marker turns the same mutation into a red — which is the whole
+            // point of a falsifier, and the difference between pinning the property and describing it.
+            //
+            // The markers are DISCRETE observations, not a byte count: the assertion does not re-derive
+            // the payload length or re-sum the transcript, it asks whether each expected line is present.
+            val transcript = committedBytes()
+            val missing = (1..10).filterNot { transcript.toString(Charsets.UTF_8).contains("seal-line-$it ") }
+            assertTrue(
+                missing.isEmpty(),
+                "f09: a sealed stream must hold the complete payload, but seal-line-$missing are absent " +
+                    "from $extent1 committed bytes. A seal observed before the last commit is the defect " +
+                    "this row exists to catch.",
+            )
             // Wait briefly and re-read the extent. A correctly sealed
             // stream returns the same extent; an unsealed one keeps
             // growing or shrinks when the cache forgets.
+            //
+            // The second measurement opens its OWN store. `forgetAll()` discards the provider cache but
+            // does not invalidate a local reference, so reusing `store` here would re-read through the
+            // same handle the first measurement used — and the row would claim to prove reopened
+            // persistence while never reopening anything. Two handles, two reads, one variable each.
             Thread.sleep(2_000)
             OutputPlaneProvider.forgetAll()
-            val extent2 = store.committedExtent(stream) ?: 0L
+            val extent2 =
+                OutputPlaneProvider.storeForReading(controlRoot).committedExtent(stream) ?: 0L
             assertEquals(
                 extent1,
                 extent2,
@@ -1189,6 +1220,50 @@ class ObsPc208LevelBUatTest {
             Thread.sleep(50)
         }
         return predicate()
+    }
+
+    /**
+     * Wait until the run's stdout stream is SEALED — the durable fact that no further byte will be written.
+     *
+     * ## Why the seal and not the agent's own "drained" line
+     *
+     * `ObsPc2IngestAgent` prints `pc2-agent-drained:<runId>:<opId>` on stdout when its pumps join
+     * (`ObsPc2IngestAgent.kt:295`) and `DurableShellExecutor` redirects that stdout to
+     * `<controlDir>/agent.log` (`DurableShellExecutor.kt:485-489`). That line is the obvious signal and
+     * it is unusable here: `cleanup()` deletes the control dir outright on the success path
+     * (`DurableShellExecutor.kt:1113`), so by the time a post-step test looks, the log is gone. Measured,
+     * not assumed — waiting on it for 60 s finds no `agent.log` at all, because `output-plane/` is the
+     * only thing left under the control root. A signal the harness cannot observe is not a signal.
+     *
+     * `stream.seal` is written by the store's own sink close (`SegmentOutputStore.kt:1081`, documented as
+     * "no further bytes will be written") and lives in the Output Plane, which is exactly the artefact
+     * that outlives cleanup — because the Output Plane is the durable record and `controlDir` is scratch.
+     * It is the same fact the row is about, in the place the row can actually read it.
+     *
+     * The stream directory is located by walking the plane and matching the opId, rather than by
+     * re-deriving the `safe()` folder name this harness would otherwise have to duplicate
+     * (HARNESS FIDELITY §2: do not recompute what the production authority owns).
+     */
+    private fun awaitStreamSealed(opId: String, seconds: Long) {
+        val planeDir = controlRoot.resolve(OutputPlaneProvider.OUTPUT_DIR)
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(seconds)
+        while (System.nanoTime() < deadline) {
+            val sealed = runCatching {
+                Files.walk(planeDir).use { stream ->
+                    stream.filter { it.fileName.toString() == "stream.seal" }.toList()
+                }
+            }.getOrNull().orEmpty().any { it.parent?.fileName?.toString()?.contains(opId) == true }
+            if (sealed) return
+            Thread.sleep(100)
+        }
+        // The tree travels with the failure: "the stream never sealed" and "the plane was never created"
+        // have different owners, and the difference is which files exist.
+        val tree = runCatching {
+            Files.walk(controlRoot).use { stream ->
+                stream.map { controlRoot.relativize(it).toString() }.toList().sorted()
+            }
+        }.getOrNull()?.take(80)?.joinToString("\n") ?: "<control root unreadable>"
+        error("the stdout stream for $opId was never sealed within $seconds s. control root tree:\n$tree")
     }
 
     private fun awaitNoAgentProcess(seconds: Long) {

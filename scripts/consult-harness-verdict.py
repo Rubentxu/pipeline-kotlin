@@ -60,6 +60,10 @@
 #       publisher OR missing/wrong-typed critical fields OR a FAIL whose
 #       failure_kind is absent/unknown)
 #   4   verdict MISSING (no verdict.json found in harness)
+#   5   CONFIG (publisher allowlist authority unavailable: the committed
+#       allowlist is missing, unreadable or declares no login). Refused before
+#       any network call: a verdict consumed under an unknown publisher
+#       authority is not a verified verdict.
 #   75  ISSUE_PENDING (failed to open issue: credentials or network)
 #
 # Accepted failure_kind values (normalised: trimmed, lower-cased):
@@ -88,6 +92,15 @@ DEFAULT_HARNESS_REPO = "Rubentxu/pipelinek-release-harness"
 DEFAULT_PRODUCT_REPO = "Rubentxu/pipeline-kotlin"
 DEFAULT_ALLOWED_AUTHORS = ("pipelinek-harness[bot]",)
 DEFAULT_RECEIPT_ROOT = os.path.join("docs", "v2", "07-uat", "RECEIPTS", "consult")
+# Committed authority for "who may publish a verdict". The allowlist used to be
+# only a CLI/env knob, so a caller could widen it silently and the receipt could
+# not show whether the widening was reviewable. The file is the authority; CLI
+# and env additions are allowed but recorded as deviations in the receipt.
+# Resolved against this script, not the ambient cwd, so a run from any directory
+# reads the same authority (override with PIPELINEK_PUBLISHER_ALLOWLIST).
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DEFAULT_ALLOWLIST_FILE = os.path.join(
+    _REPO_ROOT, "docs", "v2", "07-uat", "HARNESS_PUBLISHER_ALLOWLIST.txt")
 
 GITHUB_API = "https://api.github.com"
 
@@ -221,6 +234,35 @@ def verify_publisher(parsed, allowed_authors):
     return ok, publisher
 
 
+class PublisherAuthorityError(RuntimeError):
+    """The committed publisher allowlist cannot be read as an authority."""
+
+
+def load_publisher_allowlist(path):
+    """Return (logins, sha256) from the committed allowlist file.
+
+    Raises PublisherAuthorityError when the file is missing, unreadable or
+    declares no login. An empty allowlist must never be treated as "nobody is
+    allowed" silently: that would report every verdict as an unknown publisher
+    (exit 3), blaming the harness for a local configuration failure.
+    """
+    if not os.path.isfile(path):
+        raise PublisherAuthorityError(f"allowlist file not found: {path}")
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+    except OSError as exc:
+        raise PublisherAuthorityError(f"allowlist unreadable: {path}: {exc}") from exc
+    logins = [
+        line.strip()
+        for line in raw.decode("utf-8", errors="replace").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    if not logins:
+        raise PublisherAuthorityError(f"allowlist declares no login: {path}")
+    return logins, hashlib.sha256(raw).hexdigest()
+
+
 def compute_issue_fingerprint(candidate, parsed, product_zip_sha256):
     """Stable fingerprint for an issue (input + síntoma + tipo + causa).
 
@@ -331,11 +373,38 @@ def main(argv=None):
     args = p.parse_args(argv)
 
     token = os.environ.get("GITHUB_TOKEN") or None
-    allowed = set(DEFAULT_ALLOWED_AUTHORS)
+    allowlist_path = os.environ.get("PIPELINEK_PUBLISHER_ALLOWLIST",
+                                     DEFAULT_ALLOWLIST_FILE)
+    try:
+        committed_allowed, allowlist_digest = load_publisher_allowlist(allowlist_path)
+    except PublisherAuthorityError as exc:
+        payload = {
+            "consumer": "scripts/consult-harness-verdict.py",
+            "candidate": args.candidate,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc)
+                .strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "harness_repo": args.harness_repo,
+            "product_repo": args.product_repo,
+            "status": "CONFIG_ERROR",
+            "allowlist_source": allowlist_path,
+            "detail": ("publisher allowlist authority unavailable; refused "
+                       f"before any network call: {exc}"),
+        }
+        payload["receipt_path"] = _write_receipt(args, payload)
+        _emit(payload, args, exit_code=5)
+        return 5
+
+    allowed = set(DEFAULT_ALLOWED_AUTHORS) | set(committed_allowed)
     allowed |= set(args.allow_author)
     env_allowed = os.environ.get("PIPELINEK_ALLOWED_AUTHORS", "")
+    requested_extra = set(args.allow_author)
     if env_allowed:
-        allowed |= {x.strip() for x in env_allowed.split(",") if x.strip()}
+        requested_extra |= {x.strip() for x in env_allowed.split(",") if x.strip()}
+    allowed |= requested_extra
+    # An addition beyond the committed authority is lawful but must be visible:
+    # a reviewer reads it as a deviation, not as an established publisher.
+    allowlist_deviations = sorted(requested_extra - set(committed_allowed)
+                                  - set(DEFAULT_ALLOWED_AUTHORS))
 
     verdict, verdict_meta = fetch_verdict(
         args.harness_repo, args.candidate, token=token)
@@ -461,6 +530,9 @@ def main(argv=None):
         "publisher_login": publisher_login,
         "publisher_allowlisted": publisher_ok,
         "allowed_authors": sorted(allowed),
+        "allowlist_source": allowlist_path,
+        "allowlist_digest": allowlist_digest,
+        "allowlist_deviations": allowlist_deviations,
         "harness_sha": harness_sha,
         "scenario": scenario,
         "failure_kind": failure_kind,
@@ -495,6 +567,18 @@ def _emit(payload, args, exit_code):
               f"publisher={publisher} "
               f"publisher_ok={publisher_ok} "
               f"fingerprint={fingerprint[:16]}")
+        if payload.get("allowlist_source"):
+            digest = payload.get("allowlist_digest") or "(unread)"
+            print(f"[consult] allowlist_source={payload['allowlist_source']} "
+                  f"digest={digest[:16]}")
+        if payload.get("status") == "CONFIG_ERROR" and payload.get("detail"):
+            # A refusal must say why: the operator has to be able to tell a local
+            # configuration failure from a harness-side rejection.
+            print(f"[consult] detail={payload['detail']}")
+        deviations = payload.get("allowlist_deviations") or []
+        if deviations:
+            print(f"[consult] WARNING allowlist_deviations={deviations} "
+                  "(added beyond the committed authority)")
         if exit_code == 75:
             print("ISSUE_PENDING (no stack trace; credentials or "
                   "network likely unavailable)")

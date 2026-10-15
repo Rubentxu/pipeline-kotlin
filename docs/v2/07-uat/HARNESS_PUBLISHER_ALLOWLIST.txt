@@ -1,0 +1,20 @@
+# Publisher allowlist — the authority for "who may publish a verdict" that
+# pipeline-kotlin consumes through scripts/consult-harness-verdict.py.
+#
+# Law (AGENTS.md §"Frontera de responsabilidad — pipeline-kotlin vs
+# pipelinek-release-harness" and docs/v2/07-uat/HARNESS_INVENTORY_HANDOVER.md §5.4):
+#
+#   - the harness publishes verdict.json; pipeline-kotlin verifies it;
+#   - a verdict whose publisher is not in this file is INVALID (exit 3);
+#   - --allow-author / PIPELINEK_ALLOWED_AUTHORS may still widen the set, but the
+#     addition is recorded in the receipt as `allowlist_deviations` and printed
+#     as a WARNING, so a reviewer reads it as a deviation from this authority
+#     and not as an established publisher;
+#   - if this file is missing, unreadable or declares no login, the consumer
+#     refuses (exit 5, status CONFIG_ERROR) before any network call: an unknown
+#     publisher authority is not a verified verdict.
+#
+# One GitHub login per line. Blank lines and `#` comments are ignored.
+# Widening this list is a contract decision (which identity publishes), so it
+# belongs in a reviewable commit that says why, not in a caller's environment.
+pipelinek-harness[bot]

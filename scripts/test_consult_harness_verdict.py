@@ -139,6 +139,98 @@ class InvalidPublisherCase(_Base):
         self.assertIn("publisher_ok=False", out)
 
 
+class AllowlistAuthorityCase(_Base):
+    """Claim: consuming a verdict requires a committed publisher authority.
+
+    The allowlist used to be only a CLI/env knob, so a caller could widen it
+    silently and no artifact showed whether the widening was reviewable. Now the
+    file `docs/v2/07-uat/HARNESS_PUBLISHER_ALLOWLIST.txt` is the authority: an
+    unreachable authority refuses before any network call, and additions beyond
+    it are recorded as deviations.
+    """
+
+    def _authority(self, body: str):
+        import tempfile
+        path = pathlib.Path(tempfile.mkdtemp(prefix="allowlist-")) / "ALLOWLIST.txt"
+        path.write_text(body, encoding="utf-8")
+        return path
+
+    def _pass_verdict(self, publisher: str):
+        return {
+            "result": "PASS",
+            "publisher": publisher,
+            "zip_sha256": "1234" * 16,
+            "scenario": "S1",
+            "harness_sha": "ca2a91c0",
+        }
+
+    def test_missing_authority_refuses_before_network(self):
+        """Mutation: default an absent allowlist to the built-in bot -> the run
+        reports a verified verdict under an authority nobody established."""
+        missing = str(self._authority("pipelinek-harness[bot]\n")) + ".does-not-exist"
+        with mock.patch.dict(os.environ,
+                             {"PIPELINEK_PUBLISHER_ALLOWLIST": missing}), \
+             mock.patch.object(self.mod, "fetch_verdict",
+                               side_effect=AssertionError("network must not be reached")), \
+             self._patch_receipt_dir():
+            rc, out, err = _run_with_args(self.mod, ["--candidate", "vX"])
+        self.assertEqual(rc, 5)
+        self.assertIn("CONFIG_ERROR", out)
+        self.assertIn("allowlist", out)
+
+    def test_empty_authority_refuses(self):
+        """Mutation: treat a comments-only file as an empty allowlist -> every
+        verdict becomes 'unknown publisher', blaming the harness for a local
+        configuration failure."""
+        empty = self._authority("# only comments\n\n")
+        with mock.patch.dict(os.environ,
+                             {"PIPELINEK_PUBLISHER_ALLOWLIST": str(empty)}), \
+             self._patch_receipt_dir():
+            rc, out, err = _run_with_args(self.mod, ["--candidate", "vX"])
+        self.assertEqual(rc, 5)
+        self.assertIn("declares no login", out)
+
+    def test_committed_authority_is_used_and_recorded(self):
+        """Mutation: stop recording the allowlist source/digest -> the receipt no
+        longer says which authority admitted this publisher."""
+        sha = "1234" * 16
+        with self._stub_verdict(self._pass_verdict("pipelinek-harness[bot]")), \
+             self._stub_release(sha), \
+             self._patch_receipt_dir():
+            rc, out, err = _run_with_args(self.mod, ["--candidate", "vX"])
+        self.assertEqual(rc, 0)
+        self.assertIn("allowlist_source=", out)
+        self.assertIn("HARNESS_PUBLISHER_ALLOWLIST.txt", out)
+        self.assertIn("digest=", out)
+
+    def test_cli_addition_is_recorded_as_deviation(self):
+        """Mutation: fold --allow-author into the allowlist silently -> a widened
+        authority looks identical to the committed one in the receipt."""
+        authority = self._authority("pipelinek-harness[bot]\n")
+        sha = "1234" * 16
+        with mock.patch.dict(os.environ,
+                             {"PIPELINEK_PUBLISHER_ALLOWLIST": str(authority)}), \
+             self._stub_verdict(self._pass_verdict("extra-publisher")), \
+             self._stub_release(sha), \
+             self._patch_receipt_dir():
+            rc, out, err = _run_with_args(
+                self.mod, ["--candidate", "vX", "--allow-author", "extra-publisher"])
+        self.assertEqual(rc, 0)
+        self.assertIn("allowlist_deviations=['extra-publisher']", out)
+
+    def test_login_outside_the_authority_is_invalid(self):
+        """Mutation: accept any publisher when the file lists at least one login."""
+        authority = self._authority("pipelinek-harness[bot]\n")
+        with mock.patch.dict(os.environ,
+                             {"PIPELINEK_PUBLISHER_ALLOWLIST": str(authority)}), \
+             self._stub_verdict(self._pass_verdict("someone-else")), \
+             self._stub_release("1234" * 16), \
+             self._patch_receipt_dir():
+            rc, out, err = _run_with_args(self.mod, ["--candidate", "vX"])
+        self.assertEqual(rc, 3)
+        self.assertIn("publisher_ok=False", out)
+
+
 class PassCase(_Base):
     def test_pass_is_zero(self):
         sha = "1234" * 16

@@ -69,6 +69,15 @@ Esto NO es un inventario de "cosas a mover", sino el conjunto de capacidades que
 - Una identidad con `Checks: write` para crear check runs / commit statuses sobre la SHA candidata. Inicialmente se usa **commit statuses** (sin necesidad de GitHub App).
 - Una identidad separada con `Contents: write` para etiquetar y crear la release sobre el repo de `pipeline-kotlin`.
 - Ninguna identidad debe tener los dos permisos. **Separación del verificador y del publicador** es un invariante, no una optimización.
+- **Quién puede publicar un veredicto que este repo consume** vive en
+  `docs/v2/07-uat/HARNESS_PUBLISHER_ALLOWLIST.txt` (una identidad por línea). El consumidor
+  `scripts/consult-harness-verdict.py` la usa como autoridad: un veredicto de una identidad
+  fuera de esa lista es INVALID (exit 3); `--allow-author` / `PIPELINEK_ALLOWED_AUTHORS`
+  pueden ampliarla, pero la ampliación queda registrada en el recibo como
+  `allowlist_deviations` y se imprime como WARNING; si el fichero falta o no declara ninguna
+  identidad, el consumidor se niega (exit 5, `CONFIG_ERROR`) **antes** de cualquier llamada
+  de red. Ampliar la lista es una decisión de contrato revisable en un commit, no un ajuste
+  de entorno del invocador.
 
 ### 5.5 Para promover una release
 - Permiso `Contents: write` sobre `Rubentxu/pipeline-kotlin` (del lado del publicador).

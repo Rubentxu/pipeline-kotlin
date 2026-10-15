@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.RunFinished
+import dev.rubentxu.pipeline.v2.events.RunCorrelated
 import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.StageStarted
@@ -66,24 +67,53 @@ class UatEvt001ReplayTest {
     @Test
     fun `re-parsed timeline equals original with correct kinds`() {
         val (stdout, events) = runAndDecode()
-        // hello.pipeline.kts (DSL, 1 stage x 1 step) under the Single Runtime
-        // Spine (LF-0208): compilation events precede RunStarted because the
-        // script compiles before the coordinator starts the run.
-        // CompilationStarted, CompilationFinished, RunStarted, StageStarted,
+        // hello.pipeline.kts (DSL, 1 stage x 1 step) under the Single Runtime Spine (LF-0208).
+        //
+        // RunCorrelated leads the timeline, and that is now the contract rather than an accident of
+        // implementation. It is emitted when the run acquires a durable identity — after the lease,
+        // together with the `last-run` control record that `--resume` and execution ownership both
+        // read. Emitting it after compilation would leave a script that fails to compile with no
+        // correlation record at all, so the order is what keeps an early failure observable.
+        // Ratified in `PipelineIds.kt` and ADR-PK1-IDENTITY (2026-10-15); the previous wording said
+        // only "before the first RunStarted", which was true but under-determined, and three UATs
+        // filled the gap by asserting an order no document had promised.
+        //
+        // RunCorrelated, CompilationStarted, CompilationFinished, RunStarted, StageStarted,
         // StepStarted, EchoOutputCaptured, StepFinished, StageFinished, RunFinished
-        assertEquals(9, events.size, "Expected 9 events for hello DSL pipeline: $stdout")
+        assertEquals(10, events.size, "Expected 10 events for hello DSL pipeline: $stdout")
 
-        assertTrue(events[0] is CompilationStarted, "events[0] must be CompilationStarted")
-        assertTrue(events[1] is CompilationFinished, "events[1] must be CompilationFinished")
-        assertTrue(events[2] is RunStarted, "events[2] must be RunStarted")
-        assertTrue(events[3] is StageStarted, "events[3] must be StageStarted (DSL evaluated)")
-        assertTrue(events[4] is StepStarted, "events[4] must be StepStarted")
-        assertTrue(events[5] is EchoOutputCaptured, "events[5] must be EchoOutputCaptured")
-        assertTrue(events[6] is StepFinished, "events[6] must be StepFinished")
-        assertTrue(events[7] is StageFinished, "events[7] must be StageFinished")
-        assertTrue(events[8] is RunFinished, "events[8] must be RunFinished")
+        assertTrue(events[0] is RunCorrelated, "events[0] must be RunCorrelated")
+        assertTrue(events[1] is CompilationStarted, "events[1] must be CompilationStarted")
+        assertTrue(events[2] is CompilationFinished, "events[2] must be CompilationFinished")
+        assertTrue(events[3] is RunStarted, "events[3] must be RunStarted")
+        assertTrue(events[4] is StageStarted, "events[4] must be StageStarted (DSL evaluated)")
+        assertTrue(events[5] is StepStarted, "events[5] must be StepStarted")
+        assertTrue(events[6] is EchoOutputCaptured, "events[6] must be EchoOutputCaptured")
+        assertTrue(events[7] is StepFinished, "events[7] must be StepFinished")
+        assertTrue(events[8] is StageFinished, "events[8] must be StageFinished")
+        assertTrue(events[9] is RunFinished, "events[9] must be RunFinished")
 
-        val cf = events[1] as CompilationFinished
+        // The count and the positions are the easy half. This is the half that a shift cannot fake:
+        // the correlation must be the SAME run every later event belongs to, so a timeline that grew
+        // a RunCorrelated from a different run — or whose runId silently differs below it — fails
+        // here rather than passing on cardinality alone.
+        val correlated = events[0] as RunCorrelated
+        val correlatedRunId = correlated.runId
+        assertTrue(
+            correlated.correlationId.value.isNotBlank(),
+            "RunCorrelated must carry a non-blank correlation token: $correlated",
+        )
+        val foreignRunIds = events.drop(1)
+            .map { event -> event.runId }
+            .filter { it != correlatedRunId }
+            .distinct()
+        assertTrue(
+            foreignRunIds.isEmpty(),
+            "every event after RunCorrelated must belong to the run it correlated; found other " +
+                "runIds $foreignRunIds against $correlatedRunId",
+        )
+
+        val cf = events[2] as CompilationFinished
         assertEquals("v1", cf.cacheKey.version, "cacheKey.version must be v1")
         assertEquals(64, cf.cacheKey.value.length, "cacheKey.value must be 64-char hex")
         // M1-F.1 (PK-R1 R1-B extension): the Kotlin 2.4.10 compiler confirms
@@ -99,7 +129,7 @@ class UatEvt001ReplayTest {
             "CompilationFinished diagnostics must have no ERROR/FATAL for DSL: ${cf.diagnostics}",
         )
 
-        val rf = events[8] as RunFinished
+        val rf = events[9] as RunFinished
         assertEquals("success", rf.outcome, "RunFinished outcome must be success")
         val errorRfDiags = rf.diagnostics.filter {
             it.severity == ScriptDiagnosticSeverity.ERROR ||
@@ -110,11 +140,11 @@ class UatEvt001ReplayTest {
             "RunFinished diagnostics must have no ERROR/FATAL: ${rf.diagnostics}",
         )
 
-        val ss = events[3] as StageStarted
+        val ss = events[4] as StageStarted
         assertEquals(0, ss.stageIndex, "stageIndex must be 0")
         assertEquals("hello", ss.stageName, "stageName must be hello")
 
-        val stepStarted = events[4] as StepStarted
+        val stepStarted = events[5] as StepStarted
         assertEquals(0, stepStarted.stageIndex, "step stageIndex must be 0")
         assertEquals(0, stepStarted.stepIndex, "stepIndex must be 0")
         // G3: auto-named DSL steps are `<stage>/<type>-<index>` (DslCompiledPipelineCompilerTest).

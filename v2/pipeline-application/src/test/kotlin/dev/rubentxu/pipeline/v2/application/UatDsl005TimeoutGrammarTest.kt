@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.events.RetryAttemptFinished
 import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
+import dev.rubentxu.pipeline.v2.events.RunCorrelated
 import dev.rubentxu.pipeline.v2.events.StageStarted
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.StepFinished
@@ -196,10 +197,29 @@ class UatDsl005TimeoutGrammarTest {
     fun `timeout-retry script produces complete event timeline`() {
         val (_, events) = runAndDecode()
 
-        // Verify RunStarted
-        assertTrue(events.first() is CompilationStarted, "First event must be CompilationStarted (durable spine: script compiles before the run starts)")
+        // The timeline leads with RunCorrelated, which is the ratified contract rather than an
+        // accident of implementation (ADR-PK1-IDENTITY / PipelineIds.kt, 2026-10-15). It is emitted
+        // once the run holds a durable identity, together with the `last-run` control record that
+        // `--resume` and execution ownership both read — so a script that fails to compile still
+        // leaves a correlation behind. The previous assertion, "the first event must be
+        // CompilationStarted (script compiles before the run starts)", described an intent that no
+        // accepted document stated and that the durable branch never met.
+        assertTrue(events.first() is RunCorrelated, "First event must be RunCorrelated")
+        assertTrue(
+            events[1] is CompilationStarted,
+            "CompilationStarted must follow RunCorrelated and precede the run: ${events.take(3)}",
+        )
         // Verify RunFinished
         assertTrue(events.last() is RunFinished, "Last event must be RunFinished")
+
+        // Cardinality alone would pass for a timeline that gained a correlation from elsewhere, so
+        // every later event must belong to the correlated run.
+        val correlatedRunId = (events.first() as RunCorrelated).runId
+        val foreignRunIds = events.drop(1).map { it.runId }.filter { it != correlatedRunId }.distinct()
+        assertTrue(
+            foreignRunIds.isEmpty(),
+            "every event after RunCorrelated must belong to $correlatedRunId; found $foreignRunIds",
+        )
 
         // Verify we have stage events (3 stages: RetryTest, TimeoutTest, ErrorHandling)
         val stageStartedEvents = events.filter { it is StageStarted }

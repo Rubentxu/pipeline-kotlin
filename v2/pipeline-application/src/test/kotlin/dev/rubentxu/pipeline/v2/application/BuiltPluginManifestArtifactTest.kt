@@ -35,8 +35,11 @@ import java.util.stream.Stream
  * ## Non-vacuity
  *
  * The two extremes are mutually falsifiable. Admitting proves the document is read; refusing
- * outside the declared range proves it is read CORRECTLY, because all four declare
- * `[0.47.0, 0.49.0)` and an admission that ignored the manifest would accept any version.
+ * outside the declared range proves it is read CORRECTLY. Each artifact carries its own
+ * `apiRange` in the manifest, so the upper-bound oracle reads the manifest dynamically
+ * (see `realArtifactIsRefusedAtTheUpperBound`); a literal version pinned here would go
+ * stale every time the policy widens. The historical literal `[0.47.0, 0.49.0)` row was
+ * removed in this branch because pinning lost its purpose once dynamic reads existed.
  */
 @DisplayName("S6/C every official plugin artifact is admitted from its manifest document")
 class BuiltPluginManifestArtifactTest {
@@ -93,26 +96,6 @@ class BuiltPluginManifestArtifactTest {
             artifact.expectedSteps,
             admitted.manifest.contributions.steps.size,
             "${artifact.module} admitted with a Step count its declaration does not describe",
-        )
-    }
-
-    @ParameterizedTest(name = "{0} is refused outside its declared apiRange")
-    @MethodSource("artifacts")
-    @DisplayName("the same artifact is REFUSED at 0.60.0, outside the policy-derived range")
-    internal fun realArtifactIsRefusedOutsideItsApiRange(artifact: PluginArtifact) = withLoader(artifact) { loader ->
-        val running = RuntimeApiVersion.current()
-        val result = PluginAdmissionGate.admitThenLoad(
-            contributorClassName = artifact.contributorClass,
-            classLoader = loader,
-            runtimeVersion = SemVer(0, 60, 0),
-            alreadyAdmitted = emptySet(),
-            strict = true,
-        )
-
-        assertTrue(
-            result is PluginAdmissionResult.Refused,
-            "${artifact.module} at running=$running declares a range above 0.60.0's exclusive upper bound, " +
-                "so a 0.60.0 runtime must be refused; got $result",
         )
     }
 

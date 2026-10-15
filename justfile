@@ -132,16 +132,16 @@ set dotenv-load := false
 @fitness-strict:
     python3 scripts/fitness-harness-coverage.py --strict
 
-# Run every hermetic harness suite in scripts/ and aggregate (B1 orchestration)
+# Run every hermetic harness suite under scripts/ (recursive) and aggregate (B1 orchestration)
 @harness budget="900":
     #!/usr/bin/env bash
     set -Eeuo pipefail
     tmp=$(mktemp -d)
     trap 'rm -rf "$tmp"' EXIT
     fail=0; total=0
-    for t in scripts/test_*.py; do
+    while IFS= read -r t; do
         total=$((total+1))
-        printf '%-44s' "$t"
+        printf '%-46s' "$t"
         if timeout {{budget}} python3 "$t" >"$tmp/out" 2>&1; then
             grep -E '^Ran ' "$tmp/out" | tr -d '\n' || true
             echo "  OK"
@@ -150,7 +150,7 @@ set dotenv-load := false
             tail -n 25 "$tmp/out"
             fail=1
         fi
-    done
+    done < <(find scripts -name 'test_*.py' -not -path '*/__pycache__/*' | sort)
     echo "harness: $total suite(s), fail=$fail"
     exit "$fail"
 

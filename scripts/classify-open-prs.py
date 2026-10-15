@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Classify open PRs into KEEP/STACK/SUPERSEDE/CLOSE/DEPENDENCY per PR-004.
+"""Classify open PRs into KEEP/STACK/SUPERSEDE/CLOSE/DEPENDENCY/NEEDS_REVIEW per PR-004.
 
 Usage:
     python3 scripts/classify-open-prs.py [--out <path>]
 
 Reads PRs via `gh pr list --state open`, classifies each by:
-  - KEEP       : mergeable, scope aligned with current roadmap, no superseder
-  - STACK      : should be stacked on another PR (related work, sequential merge)
-  - SUPERSEDE  : replaced by a later commit/PR (work already in main)
-  - CLOSE      : obsolete, contradicts policies, or superseded by spec
-  - DEPENDENCY : blocked by external dep (e.g. harness verdict, dependabot batch)
+  - KEEP         : mergeable, scope aligned with current roadmap, no superseder
+  - STACK        : should be stacked on another PR (related work, sequential merge)
+  - SUPERSEDE    : replaced by a later commit/PR (work already in main)
+  - CLOSE        : obsolete, contradicts policies, or superseded by spec
+  - DEPENDENCY   : blocked by external dep (e.g. harness verdict, dependabot batch)
+  - NEEDS_REVIEW : no rule matched; the receipt states so and a human decides
+                   (the default is NOT KEEP: that would claim a review nobody ran)
 
 Output:
     - Writes docs/v2/08-production-readiness/PR_004_RECEIPT.md with the
@@ -25,7 +27,6 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
-import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -51,23 +52,8 @@ def gh_pr_list_open(limit=50):
     return json.loads(out)
 
 
-def git_log_search(pattern, limit=20):
-    """Return commit subjects matching a regex in the last N commits (all branches)."""
-    out = run(["git", "log", f"-n{limit}", "--all", "--format=%H %s", "--regexp-ignore-case", f"--grep={pattern}"])
-    return [line for line in out.splitlines() if re.search(pattern, line.split(" ", 1)[1] if " " in line else "", re.I)]
-
-
-def git_branch_contains(ref):
-    """Check if a ref exists in any local branch."""
-    try:
-        run(["git", "rev-parse", "--verify", ref])
-        return True
-    except RuntimeError:
-        return False
-
-
 def classify(pr):
-    """Return one of {KEEP, STACK, SUPERSEDE, CLOSE, DEPENDENCY} for a PR."""
+    """Return one of {KEEP, STACK, SUPERSEDE, CLOSE, DEPENDENCY, NEEDS_REVIEW}."""
     n = pr["number"]
     title = pr["title"].lower()
     head = pr["headRefName"]
@@ -85,8 +71,9 @@ def classify(pr):
     # 3. WU-RP-053 PRs (90, 92, 95, 96, 97): SUPERSEDE — work already in main
     rp053_keywords = ["wu-rp-053", "wu/rp-053", "rp-053"]
     if any(k in title or k in head.lower() for k in rp053_keywords):
-        # Verify: did the relevant work land in main?
-        return "SUPERSEDE", "WU-RP-053 work landed in main via WU-RP-053R (commits 567196c9+)"
+        # Marker-matched only. No commit SHA is cited here: nothing in this
+        # script verifies one, and an unverified SHA reads as evidence.
+        return "SUPERSEDE", "WU-RP-053 marker matched; work landed in main via the WU-RP-053R closure — confirm before closing"
 
     # 4. PR-93 (CI drop pull_request trigger): KEEP — operative CI fix
     if n == 93 and "pull_request" in title:
@@ -100,15 +87,24 @@ def classify(pr):
     if is_draft:
         return "CLOSE", "Draft, no concrete change"
 
-    # 7. Default
-    return "KEEP", "Default: no superseder detected; needs manual review"
+    # 7. Default — NOT a KEEP claim. KEEP means "mergeable, scope aligned, no
+    # superseder", and none of that is checked here; a silent KEEP was a
+    # false-green receipt. The receipt surfaces the uncertainty instead.
+    return "NEEDS_REVIEW", "Default: no rule matched; needs human review before any action"
 
 
-def render_markdown(prs, classifications):
+def render_markdown(prs, classifications, head_sha=None):
+    if len(prs) != len(classifications):
+        raise ValueError(
+            f"refusing to render: {len(prs)} PRs enumerated but "
+            f"{len(classifications)} classifications provided. A receipt with "
+            "fewer rows than its declared total is partial evidence."
+        )
     lines = []
     lines.append("# PR-004 Receipt: Open PR Classification\n")
     lines.append(f"**Generated at (UTC):** {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}\n")
     lines.append(f"**Repository:** `{REPO}`\n")
+    lines.append(f"**HEAD:** `{head_sha or 'NOT STAMPED'}`\n")
     lines.append(f"**Source of truth:** `gh pr list --state open` (machine-verifiable).\n")
     lines.append("\n---\n\n")
     lines.append("## Summary\n\n")
@@ -116,7 +112,7 @@ def render_markdown(prs, classifications):
     for cat, _ in classifications:
         counts[cat] = counts.get(cat, 0) + 1
     lines.append(f"- **Total OPEN PRs classified:** {len(prs)}\n")
-    for cat in ["KEEP", "STACK", "SUPERSEDE", "CLOSE", "DEPENDENCY"]:
+    for cat in ["KEEP", "STACK", "SUPERSEDE", "CLOSE", "DEPENDENCY", "NEEDS_REVIEW"]:
         if cat in counts:
             lines.append(f"- **{cat}:** {counts[cat]}\n")
     lines.append("\n---\n\n")
@@ -130,10 +126,13 @@ def render_markdown(prs, classifications):
         lines.append(f"| {pr['number']} | #{pr['number']} | {title} | `{head}` | {author} | **{cat}** | {why} |\n")
     lines.append("\n---\n\n")
     lines.append("## Acceptance Criteria\n\n")
-    lines.append("- [x] C1: All 25 OPEN PRs enumerated (machine-verifiable via `gh pr list --state open`).\n")
-    lines.append("- [x] C2: Each PR classified into one of KEEP/STACK/SUPERSEDE/CLOSE/DEPENDENCY.\n")
+    lines.append(f"- [x] C1: {len(prs)} OPEN PRs enumerated (machine-verifiable via `gh pr list --state open`).\n")
+    lines.append("- [x] C2: Each PR classified into one of KEEP/STACK/SUPERSEDE/CLOSE/DEPENDENCY/NEEDS_REVIEW.\n")
     lines.append("- [x] C3: Rationale recorded for each classification.\n")
-    lines.append("- [x] C4: Receipt generated with SHA-stamped provenance.\n")
+    if head_sha:
+        lines.append(f"- [x] C4: Receipt generated with SHA-stamped provenance (`{head_sha}`).\n")
+    else:
+        lines.append("- [ ] C4: Receipt has NO SHA-stamped provenance (rendered without head_sha).\n")
     lines.append("\n---\n\n")
     lines.append("## Decisions and Discoveries\n\n")
     lines.append("- **Decision:** Dependabot PRs (#58-#71) batched under DEPENDENCY (PR-005 will handle).\n")
@@ -161,7 +160,11 @@ def main():
         return 1
 
     classifications = [classify(pr) for pr in prs]
-    md = render_markdown(prs, classifications)
+    try:
+        head_sha = run(["git", "rev-parse", "HEAD"])
+    except RuntimeError:
+        head_sha = None  # C4 stays unticked; the receipt says so explicitly
+    md = render_markdown(prs, classifications, head_sha=head_sha)
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(md)

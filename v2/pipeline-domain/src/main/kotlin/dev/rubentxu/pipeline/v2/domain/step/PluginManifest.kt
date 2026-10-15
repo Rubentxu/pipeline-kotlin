@@ -40,6 +40,13 @@ data class PluginManifest(
     val delivery: Delivery,
     val trust: TrustMetadata,
     val contributions: PluginContributions,
+    /**
+     * B3.2 — optional URI of an out-of-band trust reference. When present, the
+     * document grammar allows it; when absent, the manifest stays byte-compatible
+     * with the pre-B3.2 codec. The codec refuses [MalformedDocument][PluginManifestRejection.MalformedDocument]
+     * when the URI is present but does not parse as a `java.net.URI`.
+     */
+    val operatorTrustReference: String? = null,
 ) {
     init {
         require(schemaVersion == ManifestSchemaVersion.CURRENT) {

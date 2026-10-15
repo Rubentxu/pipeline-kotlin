@@ -280,6 +280,131 @@ class CheckModeEndToEndTests(unittest.TestCase):
         self.assertIn("STALE", text)
 
 
+class ApplicabilitySamplingTests(unittest.TestCase):
+    """F4: the gate sample must be complete and deterministic.
+
+    The previous implementation capped at 200 files in rglob order, so a
+    declaration that existed could be invisible to the gate depending on
+    filesystem ordering. Measured on the real tree the cap changed no verdict,
+    but an arbitrary slice is not a defensible oracle.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = _load_mod()
+
+    def _tree(self, n):
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix="uat-sample-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        for i in range(n):
+            (tmp / f"src/f{i:04d}.kt").parent.mkdir(parents=True, exist_ok=True)
+            (tmp / f"src/f{i:04d}.kt").write_text(f"// MARKER_{i:04d}\n")
+        return tmp
+
+    def test_every_candidate_file_is_sampled(self):
+        """Claim: the sample contains every candidate file.
+
+        Mutation: restore the 200-file cap; markers 0200+ disappear and this
+        test fails deterministically (whichever 200 files rglob returns, at
+        most 200 markers are present).
+        """
+        tmp = self._tree(250)
+        with mock.patch.object(self.mod, "ROOT", tmp):
+            text = self.mod._collect_repo_text()
+        for i in (0, 199, 200, 249):
+            self.assertIn(f"MARKER_{i:04d}", text)
+        self.assertEqual(text.count("MARKER_"), 250)
+
+    def test_limit_parameter_bounds_the_sample_for_tests(self):
+        """Claim: an explicit limit is honoured (test hook, not production)."""
+        tmp = self._tree(10)
+        with mock.patch.object(self.mod, "ROOT", tmp):
+            text = self.mod._collect_repo_text(limit=3)
+        self.assertEqual(text.count("MARKER_"), 3)
+
+
+class UnknownUatIdTests(unittest.TestCase):
+    """F6: an id outside the 27-UAT contract must not crash the scan."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = _load_mod()
+
+    def test_marker_for_unknown_uat_id_is_disclosed_not_a_crash(self):
+        """Claim: UAT-RP-100 cannot abort the generator with KeyError.
+
+        Mutation: index `found[uid]` directly; any stray id in a document
+        crashes the scan with KeyError('UAT-RP-100').
+        """
+        tmp = _tmp_repo_with_history([{
+            "files": [("r.md",
+                       "UAT-EVIDENCE | UAT-RP-100 | COVERED | candidate=deadbeef\n")],
+            "message": "c1"}])
+        malformed = []
+        found = self.mod.scan_receipts(
+            pathlib.Path(tmp), git=self.mod._Git(cwd=tmp),
+            malformed_markers=malformed)
+        self.assertNotIn("UAT-RP-100", found)
+        self.assertTrue(any("UAT-RP-100" in entry[1] for entry in malformed),
+                        "an out-of-contract id must be disclosed")
+
+    def test_freeform_unknown_uat_id_is_ignored(self):
+        """Claim: a narrative mention of an unknown id is not evidence."""
+        tmp = _tmp_repo_with_history([{
+            "files": [("r.md", "See UAT-RP-100 for context\n")],
+            "message": "c1"}])
+        found = self.mod.scan_receipts(
+            pathlib.Path(tmp), git=self.mod._Git(cwd=tmp))
+        self.assertNotIn("UAT-RP-100", found)
+
+
+class RenderExcerptTests(unittest.TestCase):
+    """F5: the excerpt must describe the selected evidence, not triples[0]."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = _load_mod()
+
+    def test_excerpt_comes_from_the_selected_triple(self):
+        """Claim: the rendered row and its excerpt agree on one triple.
+
+        Mutation: keep `excerpt = triples[0][1]`; a narrative-only older line
+        then prints beside a COVERED status, so the row contradicts itself.
+        """
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix="uat-excerpt-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        subprocess.run(["git", "-C", str(tmp), "init", "-q", "--initial-branch=main"],
+                       check=True)
+        subprocess.run(["git", "-C", str(tmp), "config", "user.email", "t@t"], check=True)
+        subprocess.run(["git", "-C", str(tmp), "config", "user.name", "t"], check=True)
+        (tmp / "a.md").write_text("narrative mention of UAT-RP-001\n")
+        subprocess.run(["git", "-C", str(tmp), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(tmp), "commit", "-q", "-m", "c1"], check=True)
+        c1 = subprocess.run(["git", "-C", str(tmp), "rev-parse", "HEAD"],
+                            capture_output=True, text=True, check=True).stdout.strip()
+        (tmp / "b.md").write_text("UAT-RP-001 | COVERED | receipt b\n")
+        subprocess.run(["git", "-C", str(tmp), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(tmp), "commit", "-q", "-m", "c2"], check=True)
+        c2 = subprocess.run(["git", "-C", str(tmp), "rev-parse", "HEAD"],
+                            capture_output=True, text=True, check=True).stdout.strip()
+
+        triples = [
+            (tmp / "a.md", "narrative mention of UAT-RP-001", c1, []),
+            (tmp / "b.md", "UAT-RP-001 | COVERED | receipt b", c2, ["COVERED"]),
+        ]
+        uat_status = {uid: [] for uid in self.mod.UAT_IDS}
+        uat_status["UAT-RP-001"] = triples
+        with mock.patch.object(self.mod, "ROOT", tmp), \
+             mock.patch.object(self.mod, "GIT", self.mod._Git(cwd=tmp)):
+            md = self.mod.render_markdown(uat_status, c2,
+                                          malformed_markers=None)
+        row = [line for line in md.splitlines() if line.startswith("| `UAT-RP-001`")][0]
+        self.assertIn("**COVERED**", row)
+        self.assertIn("UAT-RP-001 | COVERED | receipt b", row)
+        self.assertNotIn("narrative mention", row)
+        self.assertIn("b.md", row)
+
+
 class GenCurrentUatStatusTests(unittest.TestCase):
     """D-007 + T0E-EVID-01 characterisation suite."""
 

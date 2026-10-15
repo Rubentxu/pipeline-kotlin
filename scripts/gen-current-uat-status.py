@@ -309,6 +309,13 @@ def scan_receipts(uat_dir, *, candidate_sha: str | None = None,
                 # the file mentioned the same UAT. The freeform
                 # entry is superseded by the machine-readable marker.
                 uid, status, cand = parsed_marker
+                if uid not in found:
+                    # Out-of-contract id (UAT_IDS is 001..027): refuse and
+                    # disclose instead of dying with KeyError mid-scan.
+                    if malformed_markers is not None:
+                        malformed_markers.append((rel_str,
+                                                  line.strip()[:120], sha))
+                    continue
                 if cand == sha or git.is_ancestor(cand, sha):
                     # Marker is consistent with this receipt's commit
                     # (the claimed candidate is the receipt's commit
@@ -340,6 +347,9 @@ def scan_receipts(uat_dir, *, candidate_sha: str | None = None,
                 continue
 
             for uid, statuses, _kind in _parse_freeform(line):
+                if uid not in found:
+                    # Narrative mention of an id outside the 27-UAT contract.
+                    continue
                 if uid not in per_uids_in_file:
                     per_uids_in_file.add(uid)
                     found[uid].append((rel, line.strip()[:120], sha, statuses))
@@ -471,26 +481,34 @@ def pin_receipt(triples, candidate_sha: str, git: _Git = GIT) -> str | None:
 # ---------------------------------------------------------------------
 
 
-def _collect_repo_text(extra_paths: list[pathlib.Path] | None = None
-                       ) -> str:
-    """Concatenate text from selected source files for applicability
-    gates. We sample key directories (.kt, .gradle.kts, .kts, .yml) to
-    keep the read bounded; missing files are simply absent from the
-    sample.
+def _collect_repo_text(extra_paths: list[pathlib.Path] | None = None,
+                       *, limit: int | None = None) -> str:
+    """Concatenate source text for applicability gates.
+
+    The sample is deterministic and complete: candidates are de-duplicated
+    and sorted, so the same tree always yields the same sample, and every
+    source file is read. The previous implementation capped at 200 files in
+    rglob order (filesystem-dependent); a declaration that existed could be
+    invisible to the gate. Measured on the real tree the cap changed no gate
+    verdict, but an arbitrary slice is not a defensible oracle.
+
+    `limit` exists for tests that need a bounded sample; production passes no
+    limit.
     """
+    candidates = {
+        p
+        for pattern in ("*.kt", "*.gradle.kts", "*.kts", "*.yml")
+        for p in ROOT.rglob(pattern)
+        if "/.git/" not in str(p) and "/build/" not in str(p)
+        and "/.gradle/" not in str(p)
+    }
+    if extra_paths:
+        candidates.update(extra_paths)
+    ordered = sorted(candidates)
+    if limit is not None:
+        ordered = ordered[:limit]
     pieces: list[str] = []
-    candidates = list(ROOT.rglob("*.kt")) + list(ROOT.rglob("*.gradle.kts")) \
-        + list(ROOT.rglob("*.kts")) + list(ROOT.rglob("*.yml"))
-    # Bound the scan: 200 files max, skip build/.git dirs.
-    bounded: list[pathlib.Path] = []
-    for p in candidates:
-        rel = str(p)
-        if "/.git/" in rel or "/build/" in rel or "/.gradle/" in rel:
-            continue
-        bounded.append(p)
-        if len(bounded) >= 200:
-            break
-    for p in bounded:
+    for p in ordered:
         try:
             pieces.append(p.read_text(errors="ignore"))
         except OSError:
@@ -547,9 +565,14 @@ def render_markdown(uat_status, head_sha, malformed_markers=None):
             receipt = None
             excerpt = "_not applicable to current profile_"
         else:
-            status, _sel = select_evidence(triples, head_sha, GIT)
+            status, selected = select_evidence(triples, head_sha, GIT)
             receipt = pin_receipt(triples, head_sha, GIT)
-            excerpt = triples[0][1] if triples else "_no evidence yet_"
+            # The excerpt must describe the SAME triple the row is based on.
+            # triples[0] is storage order, not selection: a narrative-only
+            # older line would print beside a COVERED status and contradict
+            # the row it annotates.
+            pinned = [t for t in selected if str(t[0]) == str(receipt)] or selected
+            excerpt = pinned[0][1] if pinned else "_no evidence yet_"
         counts[status] = counts.get(status, 0) + 1
         lines.append(f"| `{uid}` | **{status}** | `{receipt or '—'}` | {excerpt} |\n")
     lines.append("\n---\n\n")

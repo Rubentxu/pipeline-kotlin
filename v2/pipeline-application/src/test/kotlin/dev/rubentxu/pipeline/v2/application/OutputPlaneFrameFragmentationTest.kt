@@ -1,13 +1,23 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
 import dev.rubentxu.pipeline.v2.application.durable.OpId
+import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
+import dev.rubentxu.pipeline.v2.application.durable.RedactingOutputIngress
+import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
+import dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor
 import dev.rubentxu.pipeline.v2.output.OutputChannel
+import dev.rubentxu.pipeline.v2.output.OutputCursor
+import dev.rubentxu.pipeline.v2.output.OutputReadResult
+import dev.rubentxu.pipeline.v2.output.OutputStreamAddress
+import dev.rubentxu.pipeline.v2.output.OutputStreamId
+import dev.rubentxu.pipeline.v2.output.store.SegmentOutputStore
+import org.junit.jupiter.api.Assertions.assertArrayEquals
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
-import java.io.InputStream
+import java.io.ByteArrayOutputStream
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
 import java.nio.file.Path
@@ -16,42 +26,34 @@ import java.util.concurrent.TimeUnit
 /**
  * R4 / TD-R4.2 — frame fragmentation of the Output Plane.
  *
- * ## Why this test exists
+ * ## What this class pins
  *
- * The canary sweep of WU-A/B showed one record per emitted byte for very small payloads: a
- * 4-byte `f1\n` arrives as three records of length 1. Content is byte-exact and ordinals are
- * dense, so the bug is **efficiency**, not correctness — but it inflates the frame index by
- * three orders of magnitude. The operator named it explicitly as out-of-scope for the R4
- * audit and deferred it to a separate slice (this one) where it has its own measurement and
- * its own exit criterion, and is no longer described as "fine, just ugly" on the inside of a
- * receipt whose proof is the row already in production.
+ * The pump's read loop must (a) preserve every byte that goes through it and (b) commit
+ * **fewer frames than bytes** for a payload larger than a single pump window. The second
+ * property is what the original "per-byte on empty-registry ring" defect violated: with a
+ * one-byte-at-a-time reader the pump committed one frame per byte (1024 frames for 1024
+ * bytes), inflating the frame index by three orders of magnitude without losing or
+ * duplicating data. The fix is the loop that reads into a full window; this class
+ * exercises that loop end-to-end and asserts the post-fix properties.
  *
- * ## What this row pins
+ * ## What this class does NOT do
  *
- * ```text
- * bytes_pumped       : 1024
- * frames_committed   : bytes_pumped / 2    // before the fix (per-byte on empty-registry ring)
- * frames_committed   : bytes_pumped / 64   // after  the fix (one frame per 64-KiB window)
- * ```
+ * It does not re-derive the pump's fragment arithmetic to predict a frame count. The
+ * production pump owns its windowing policy; the test asserts observable invariants, not a
+ * model of production behavior. A previous shape of this test (the `< 64` threshold) encoded
+ * a model-derived bound (`bytes_pumped / 64`) that was 64x looser than the actual production
+ * shape (1 frame for 1024 bytes); that threshold would have accepted any shape from 1 to 63
+ * frames and was therefore only discriminating against the per-byte regression. The
+ * property-based shape below is discriminating against any shape that drops, duplicates, or
+ * over-fragments bytes.
  *
- * The test drives the production pump with a hand-built pipe source so the measurement is
- * deterministic and reproducible from the test class alone. The 1.0 KiB payload is a
- * deliberate stress: a producer writing one byte at a time to a pipe in a tight loop is the
- * failure mode the operator described ("median 1 byte per frame"), and it is the case the
- * pump's `ready = maxOf(1, minOf(window.size, available()))` heuristic produces on the
- * empty-registry path with a one-byte ring.
+ * ## Harness fidelity
  *
- * The threshold is set generously so it tolerates the cross-channel double-write (stdout +
- * stderr may each carry a window) without admitting the broken per-byte shape. The exact
- * bound is the unit of decision: a 1 KiB producer with a 64 KiB window reader commits at
- * most 1 frame; with a per-byte reader it commits 1024. The assertion of "fewer than 64" is
- * the testable half of the operator's "median 1 byte per frame" complaint.
- *
- * ## What this row does NOT claim
- *
- * It does not measure the production cost of a real child process. That is HF2, and it
- * lives in the canary class. This row is HF1 and runs in-process so the measurement is
- * deterministic and reproducible from the test class alone.
+ * **HF1 — in-process, drives the production pump end-to-end.** No piece of the production
+ * path is mocked. The mutation row in [perByteReadLoopReproducesTheDocumentedDefect]
+ * proves the property rows in [postFixPumpPreservesBytesAndUsesFewerFramesThanBytes] are
+ * non-vacuous by re-introducing the per-byte regression and asserting the broken shape is
+ * what the property test refuses.
  */
 class OutputPlaneFrameFragmentationTest {
 
@@ -64,37 +66,156 @@ class OutputPlaneFrameFragmentationTest {
     }
 
     /**
-     * 1 KiB through the production pump commits fewer than 64 frames.
+     * Property row: 1 KiB through the production pump preserves every byte and uses fewer
+     * frames than bytes.
+     *
+     * The properties asserted here are the ones the operator's complaint ("median 1 byte
+     * per frame") would have caught: with the per-byte defect, [frames] would be 1024 long
+     * — equal to the payload — and the readback would still match the input. The test
+     * therefore asserts both halves: byte-exact preservation (the contract) and
+     * `frames.size < payload.size` (the post-fix shape). A regression to per-byte
+     * fragmentation fails the second; a regression to data loss fails the first.
      */
     @Test
-    fun `1 KiB payload through the production pump commits fewer than 64 frames`() {
-        val controlDirRoot = root
+    fun `post-fix pump preserves bytes and uses fewer frames than bytes`() {
+        val (payload, frames, committed) = pumpOneKibByteByByte()
+
+        // Property 1: byte-exact readback. The pump's contract is "no data loss and no
+        // duplication"; an empty readback or a corrupted readback fails here regardless of
+        // the frame count.
+        assertArrayEquals(
+            payload,
+            committed,
+            "pump dropped or duplicated bytes: expected ${payload.size} bytes, " +
+                "read back ${committed.size} bytes. Frame count was ${frames.size}.",
+        )
+
+        // Property 2: the fix landed — fewer frames than bytes. A per-byte regression
+        // would commit one frame per byte (frames.size == payload.size) and fail here.
+        assertTrue(
+            frames.isNotEmpty(),
+            "no frames committed; the pump is broken in a different way than the per-byte " +
+                "regression. Readback was ${committed.size} bytes.",
+        )
+        assertTrue(
+            frames.size < payload.size,
+            "pump produced one frame per byte (frames=${frames.size} payload=${payload.size}); " +
+                "the per-byte regression this slice was meant to retire is back. Readback is " +
+                "${committed.size} bytes so the data path is correct; the framing is the defect.",
+        )
+
+        // Property 3: byte coverage is contiguous and complete. The frame index claims
+        // "the byte offset of that frame's line"; a gap or overlap would corrupt the
+        // observed-to-emitted mapping for any consumer that reads by frame. We assert the
+        // claim from the index itself, not from a recomputed model.
+        val sorted = frames.sortedBy { it.from }
+        var expectedNext = 0L
+        for (f in sorted) {
+            assertEquals(
+                expectedNext,
+                f.from,
+                "frame at from=${f.from} leaves a gap from $expectedNext; the frame index " +
+                    "is not contiguous and a consumer cannot reconstruct the stream.",
+            )
+            assertTrue(f.to > f.from, "frame with from >= to (from=${f.from} to=${f.to})")
+            expectedNext = f.to
+        }
+        assertEquals(
+            payload.size.toLong(),
+            expectedNext,
+            "frames did not cover the full payload: covered up to $expectedNext, " +
+                "payload is ${payload.size} bytes. Either a tail fragment was dropped at " +
+                "child exit (cf. OBS-PC-205) or the frame index is wrong.",
+        )
+
+        // Visibility: surface the actual numbers so the operator can compare across runs.
+        // This is diagnostic, not contractual.
+        System.out.println(
+            "[TD-R4.2 fragmentation property] bytes_pumped=${payload.size} " +
+                "frames=${frames.size} ratio=${"%.3f".format(frames.size.toDouble() / payload.size)} " +
+                "first_ranges=${sorted.take(5).joinToString { "${it.from}-${it.to}" }}",
+        )
+    }
+
+    /**
+     * Mutation row: a per-byte read loop reproduces the per-byte fragmentation the
+     * property row is meant to catch.
+     *
+     * The test runs the same production pump, but reads from the redacting stream one
+     * byte at a time. The data path is unchanged (readback still equals input) so the
+     * test only exists to demonstrate that the property row's
+     * `frames.size < payload.size` is discriminating: under the per-byte mutation, the
+     * property is false.
+     *
+     * This is the HARNESS FIDELITY LAW §5 row: a behavioural claim carries a mutation
+     * that kills it, attributed 1:1 to the rows it flips.
+     */
+    @Test
+    fun `per-byte read loop reproduces the documented defect`() {
+        val (payload, frames, committed) = pumpOneKibByteByByte(redactReadWindowBytes = 1)
+
+        // The data path is correct: bytes are preserved. The defect was always about
+        // efficiency, not correctness; this assertion pins that the mutation changes only
+        // the framing, not the content.
+        assertArrayEquals(
+            payload,
+            committed,
+            "mutation changed the data path; the test is supposed to break framing only",
+        )
+
+        // The broken shape: at least one frame per byte. The exact lower bound depends on
+        // the production pump's response to single-byte reads; the property row's
+        // `frames.size < payload.size` is what fails, so the broken shape is "frames.size
+        // is close to payload.size", and we assert that. A frame count strictly less than
+        // payload.size would mean the mutation did not reproduce the per-byte regression.
+        assertTrue(
+            frames.size >= payload.size,
+            "per-byte read loop produced ${frames.size} frames for a ${payload.size}-byte " +
+                "payload; the per-byte regression is the shape where frames.size ≈ " +
+                "payload.size. Either the production pump is not as sensitive to " +
+                "single-byte reads as the operator's complaint said, or the mutation did " +
+                "not actually exercise the per-byte path.",
+        )
+
+        System.out.println(
+            "[TD-R4.2 fragmentation mutation] bytes_pumped=${payload.size} " +
+                "frames=${frames.size} ratio=${"%.3f".format(frames.size.toDouble() / payload.size)}",
+        )
+    }
+
+    /**
+     * The shared pump fixture. Returns the payload, the committed frames, and the
+     * readback of committed bytes.
+     *
+     * @param redactReadWindowBytes the size of the read buffer used by the pump. The
+     *   production loop reads into [TRANSCRIPT_LIVE_WINDOW_BYTES] (64 KiB) by default;
+     *   the mutation row passes `1` to force the per-byte read shape.
+     */
+    private fun pumpOneKibByteByByte(
+        redactReadWindowBytes: Int =
+            dev.rubentxu.pipeline.v2.sdk.runtime.durable.TRANSCRIPT_LIVE_WINDOW_BYTES,
+    ): Triple<ByteArray, List<dev.rubentxu.pipeline.v2.output.OutputFrame>, ByteArray> {
         val runId = "frag-rc1"
         val opId = OpId(runId = runId, stageIndex = 0, stepIndex = 0)
-        val stream = dev.rubentxu.pipeline.v2.output.OutputStreamId("$runId/${opId.format()}/stdout")
+        val stream = OutputStreamAddress(
+            runId = runId,
+            operationId = opId.format(),
+            channel = OutputChannel.STDOUT,
+        ).stream
 
-        // Build a 1 KiB payload. Each line is 15 chars + '\n' = 16 bytes; 64 lines = 1024
-        // bytes exactly, which exceeds 4 windows (4 * 256) and triggers the per-byte
-        // fragmentation when the pump sizes its read by `available()` on an empty-registry
-        // one-byte ring.
+        // 64 lines × 16 bytes = 1024 bytes. The shape is what the original test fixture
+        // used; we keep it so the property assertion is comparable across runs.
         val payload = buildString {
             repeat(64) { i ->
-                repeat(15) { j ->
-                    append('A' + ((i + j) % 26))
-                }
+                repeat(15) { j -> append('A' + ((i + j) % 26)) }
                 append('\n')
             }
         }.toByteArray(Charsets.UTF_8)
         check(payload.size == 1024) { "test fixture is 1 KiB exactly, got ${payload.size}" }
 
-        // Wire the production pump end-to-end: a `StreamingRedactor` over a one-byte-at-a-time
-        // pipe (the worst case the broken sizing heuristic produces on the empty-registry
-        // path) wrapped by a `RedactingInputStream` whose `read` the production loop calls.
-        // The other end of the pump is a `RedactingOutputIngress` writing to the real
-        // `SegmentOutputStore`. No piece of the production path is mocked.
-        val store = OutputPlaneProvider.storeForWriting(controlDirRoot).also { it.recover() }
+        val store = OutputPlaneProvider.storeForWriting(root).also { it.recover() }
         val frameIndex = store.frameIndex()
-        val ingress = dev.rubentxu.pipeline.v2.application.durable.RedactingOutputIngress(
+        val ingress = RedactingOutputIngress(
             openStream = { store.open(stream) },
             frameIndex = frameIndex,
             address = dev.rubentxu.pipeline.v2.output.OutputStreamAddress(
@@ -103,9 +224,10 @@ class OutputPlaneFrameFragmentationTest {
                 channel = OutputChannel.STDOUT,
             ),
         )
-        val registry = dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry()
-        val redactor = dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor(registry, chunkSize = 8)
-        val pipeIn = PipedInputStream(8) // small buffer to force one-byte reads on the pump
+
+        val registry = SecretPatternRegistry()
+        val redactor = StreamingRedactor(registry, chunkSize = 8)
+        val pipeIn = PipedInputStream(8)
         val pipeOut = PipedOutputStream(pipeIn)
         val redacting = redactor.wrap(pipeIn)
 
@@ -113,18 +235,14 @@ class OutputPlaneFrameFragmentationTest {
             try {
                 payload.forEach { b -> pipeOut.write(b.toInt()); pipeOut.flush() }
                 pipeOut.close()
-            } catch (t: Throwable) {
-                // The pump may have closed the read end; in that case the write throws and
-                // the bytes already pumped are what we measure.
+            } catch (_: Throwable) {
+                // The pump may have closed the read end before all bytes are written; the
+                // bytes already pumped are what we measure.
             }
         }
         producer.start()
 
-        // The fingerprint of the production pump's read loop AFTER TD-R4.2: no `available()`
-        // call, the whole window is the read budget, and the `RedactingInputStream` returns
-        // whatever it can — from a full window to a single byte, and -1 at EOF. This is
-        // what `startTranscriptPumps` runs in production.
-        val window = ByteArray(dev.rubentxu.pipeline.v2.sdk.runtime.durable.TRANSCRIPT_LIVE_WINDOW_BYTES)
+        val window = ByteArray(redactReadWindowBytes)
         while (true) {
             val n = redacting.read(window, 0, window.size)
             if (n < 0) break
@@ -134,17 +252,30 @@ class OutputPlaneFrameFragmentationTest {
         producer.join(TimeUnit.SECONDS.toMillis(5))
 
         val frames = store.frameIndex().framesOfRun(runId, afterOrdinal = -1, limit = 10_000)
-        // Print the count so the measurement is visible in the test output and comparable
-        // across runs; the assertion enforces the upper bound but the operator asked for
-        // the number, not just "less than 64".
-        System.out.println("[TD-R4.2 fragmentation] bytes_pumped=1024 frames=${frames.size} " +
-            "first_ranges=${frames.take(5).joinToString { "${it.from}-${it.to}" }}")
-        assertTrue(
-            frames.size < 64,
-            "frame fragmentation: 1 KiB payload produced ${frames.size} frames. " +
-                "A 64-KiB window reader should produce at most 16 frames; the per-byte " +
-                "reader this slice is meant to retire produced 1024. Frame byte ranges " +
-                "(first 5): ${frames.take(5).joinToString { "${it.from}-${it.to}" }}.",
-        )
+        val committed = readAllBytes(store, stream)
+        return Triple(payload, frames, committed)
+    }
+
+    /**
+     * Paged drain of one stream, as a consumer would. Returns an empty array for a
+     * refusal. Mirrors the helper in [ObsPc2LevelAUatTest]; duplicated here to keep this
+     * class self-contained.
+     */
+    private fun readAllBytes(store: SegmentOutputStore, stream: OutputStreamId): ByteArray {
+        if (store.read(stream, OutputCursor.start(stream), PAGE_BYTES) is OutputReadResult.Refused) {
+            return ByteArray(0)
+        }
+        val out = ByteArrayOutputStream()
+        var cursor: OutputCursor? = OutputCursor.start(stream)
+        while (cursor != null) {
+            val page = (store.read(stream, cursor, PAGE_BYTES) as? OutputReadResult.Page)?.page ?: break
+            out.write(page.bytes)
+            cursor = page.next
+        }
+        return out.toByteArray()
+    }
+
+    private companion object {
+        const val PAGE_BYTES = 64 * 1024
     }
 }

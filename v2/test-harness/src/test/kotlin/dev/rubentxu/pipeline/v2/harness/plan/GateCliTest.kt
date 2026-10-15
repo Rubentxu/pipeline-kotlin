@@ -32,13 +32,16 @@ class GateCliTest {
         val v2 = root.resolve("v2")
         Files.createDirectories(v2)
         Files.writeString(v2.resolve("settings.gradle.kts"), "// test scaffold\n")
+        // The wrapper is half of what identifies the v2 build root, so a scaffold without it would
+        // let a test pass for the wrong reason. Empty is enough: nothing in these tests executes it.
+        Files.writeString(v2.resolve("gradlew"), "#!/bin/sh\n")
         return v2
     }
 
     // ---- locating the tree ----
 
     @Test
-    fun `v2 root is found from a module directory, not from a parent`(@TempDir tmp: Path) {
+    fun `v2 root is found from a module directory several levels down`(@TempDir tmp: Path) {
         val v2 = scaffold(tmp)
         val module = Files.createDirectories(v2.resolve("test-harness/build/classes"))
 
@@ -46,10 +49,60 @@ class GateCliTest {
     }
 
     @Test
-    fun `repo root is the parent of v2`(@TempDir tmp: Path) {
-        val v2 = scaffold(tmp)
+    fun `repo root is the directory that contains v2`(@TempDir tmp: Path) {
+        scaffold(tmp)
 
-        assertEquals(tmp.toAbsolutePath().normalize(), GateCli.repoRoot(v2))
+        // Starting INSIDE v2/ is the ordinary case: that is where Gradle runs the harness. The
+        // answer is the containing directory, which is exactly what `v2Root(...).parent` would give
+        // by accident — so the assertion names the containing directory rather than deriving it.
+        assertEquals(tmp.toAbsolutePath().normalize(), GateCli.repoRoot(tmp.resolve("v2")))
+    }
+
+    /**
+     * A repository-shaped tree whose root ALSO carries a `settings.gradle.kts`, as this repository
+     * does: the root is a composite build that pulls `v2` in with `includeBuild("v2")`.
+     *
+     * This is the shape that broke the real gate run. With a bare "walk up until you find
+     * settings.gradle.kts" the root's file matched first, `v2Root` returned the REPOSITORY root, and
+     * `repoRoot` then returned its PARENT — a directory outside the checkout. The gate refused with
+     * `git status failed: fatal: not a git repository`, which is a correct refusal of the wrong tree,
+     * not a diagnosis of anything.
+     */
+    private fun compositeScaffold(root: Path): Path {
+        val v2 = scaffold(root)
+        Files.writeString(
+            root.resolve("settings.gradle.kts"),
+            "rootProject.name = \"pipeline-kotlin\"\nincludeBuild(\"v2\")\n",
+        )
+        return v2
+    }
+
+    @Test
+    fun `v2 root is not the composite root, which also has a settings file`(@TempDir tmp: Path) {
+        val v2 = compositeScaffold(tmp)
+        // Resolution STARTS AT THE CHECKOUT ROOT, which is what the JVM does: `main` derives its
+        // start from the working directory. Starting inside `v2/` instead would match the right
+        // file on the first probe and the test would pass whichever way the walk discriminates —
+        // it passed under a mutation of the production code before this start point was fixed.
+        assertEquals(
+            v2,
+            GateCli.v2Root(tmp),
+            "the composite build's settings file must not shadow the v2 build it includes",
+        )
+    }
+
+    @Test
+    fun `repo root stays inside the checkout when the composite root has a settings file too`(
+        @TempDir tmp: Path,
+    ) {
+        val v2 = compositeScaffold(tmp)
+
+        assertEquals(
+            tmp.toAbsolutePath().normalize(),
+            GateCli.repoRoot(tmp),
+            "resolution from the checkout root must land on the checkout root, never its parent",
+        )
+        assertTrue(v2 != GateCli.repoRoot(tmp), "sanity: the composite root is not the v2 build root")
     }
 
     // ---- the dirty tree ----

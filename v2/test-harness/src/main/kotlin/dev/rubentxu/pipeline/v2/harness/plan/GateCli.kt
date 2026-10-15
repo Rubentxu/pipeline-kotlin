@@ -28,18 +28,41 @@ import java.nio.file.Paths
  */
 object GateCli {
 
-    /** The `v2/` directory, found by walking up to `settings.gradle.kts`. */
-    fun v2Root(start: Path): Path {
+    /**
+     * The repository root: the nearest ancestor that CONTAINS the `v2/` build.
+     *
+     * The DIRECTION of the search is the whole point, and it is easy to get backwards. `v2/` is a
+     * CHILD of the checkout root, so an upward walk can never find it — the answer is always "up to
+     * a directory, then down into `v2/`". Searching upwards for a directory that *is* the build
+     * root is what broke the real gate run: this checkout's root is itself a composite Gradle build
+     * (`includeBuild("v2")`), so a settings-file probe matched the root, and the caller then took
+     * its PARENT — a directory outside the checkout. `git status` there failed with "not a git
+     * repository": a correct refusal, of the wrong tree, for a reason the operator could not act on.
+     *
+     * The discriminator is "does this directory contain a `v2/` that is a real build root", which
+     * asks about a CHILD and therefore cannot be confused by an ancestor that is a build too.
+     */
+    fun repoRoot(start: Path): Path {
         var dir: Path? = start.toAbsolutePath().normalize()
         while (dir != null) {
-            if (Files.exists(dir.resolve("settings.gradle.kts"))) return dir
+            if (isBuildRoot(dir.resolve("v2"))) return dir
             dir = dir.parent
         }
-        error("no settings.gradle.kts above $start")
+        error("no directory containing a v2/ build root above $start")
     }
 
-    /** The repository root, which is the parent of `v2/`. */
-    fun repoRoot(start: Path): Path = v2Root(start).parent
+    /** True for the directory that owns BOTH the settings file and the Gradle wrapper. */
+    private fun isBuildRoot(dir: Path): Boolean =
+        Files.exists(dir.resolve("settings.gradle.kts")) && Files.exists(dir.resolve("gradlew"))
+
+    /**
+     * The `v2/` build root: [repoRoot]'s `v2/` child by construction.
+     *
+     * [repoRoot] already proved this directory is a build root, so the check here is about the
+     * CONTRACT rather than the lookup: naming a directory that is not a build would turn every
+     * later failure into a confusing Gradle error instead of one line naming what is missing.
+     */
+    fun v2Root(start: Path): Path = repoRoot(start).resolve("v2")
 
     /** Paths Git reports as modified but uncommitted, ignoring untracked files. */
     fun dirtyPaths(repoRoot: Path): List<String> {

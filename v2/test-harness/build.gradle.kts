@@ -67,51 +67,40 @@ val validationPlan by tasks.registering(JavaExec::class) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// H1 — the gate. `validationPlan` above computes and PRINTS the selection; it never runs anything
-// and never looks at what ran, so a plan nobody discharges still builds green. This task closes
-// that loop: it resolves the same plan, dispatches it as Gradle invocations, runs them, reads the
-// JUnit XML they produced, and refuses unless the evidence discharges the selection.
+// H1 — the gate, and WHY IT IS NOT A TASK HERE.
 //
-// It is a separate task rather than extra behaviour on `validationPlan` on purpose. Selection,
-// execution and adjudication are three decisions; a task that both selects and certifies can be
-// trusted for none of them, because a narrowing of the selection and a narrowing of the run look
-// identical from the outside.
+// `validationPlan` above computes and PRINTS the selection; it never runs anything and never looks
+// at what ran, so a plan nobody discharges still builds green. The gate closes that loop: it
+// resolves the same plan, dispatches it as Gradle invocations, runs them, reads the JUnit XML they
+// produced, and refuses unless the evidence discharges the selection.
 //
-// `-PvalidationCommit=<sha>` is the commit the evidence must be bound to, and
-// `-PvalidationObservedCommit=<sha>` is what the installed binary reports. Both are explicit
-// because the gate must never infer its own identity: an omitted observed commit is UNKNOWN, and
-// unknown refuses rather than matching.
+// It is deliberately NOT a `JavaExec` task in this file. `settings.gradle.kts` takes an exclusive
+// lock on this checkout for the duration of any build, and the gate has to START builds of its own
+// after the build that launched it has finished. A task would always find that lock held by itself,
+// and every selected suite would fail with "Another Gradle invocation is already using this v2
+// checkout". That was measured, not assumed: it is how the first real run of the gate failed, and
+// the gate's refusal named all five suites correctly while the underlying cause was the lock.
+//
+// So the entry point is `scripts/validation-gate.py`, which builds the harness jar, releases the
+// lock, then runs the gate as a plain JVM. One path, and it is the one that works.
 // ---------------------------------------------------------------------------------------------
 
-val validationCommit: String? = findProperty("validationCommit") as String?
+tasks.register("printRuntimeClasspath") {
+    group = "build"
+    description = "Write the runtime classpath of this module, one entry per line, for external launchers."
 
-val validationObservedCommit: String? = findProperty("validationObservedCommit") as String?
+    val output = findProperty("output") as String?
+        ?: error("printRuntimeClasspath needs -Poutput=<file>")
 
-val validationGate by tasks.registering(JavaExec::class) {
-    group = "verification"
-    description = "Run the suites the plan selected and refuse unless their evidence discharges it."
+    dependsOn(tasks.named("jar"))
 
-    mainClass.set("dev.rubentxu.pipeline.v2.harness.plan.GateCliKt")
-    classpath = sourceSets["main"].runtimeClasspath
-
-    // onlyIf is evaluated before doFirst, so the commit is appended here rather than in a doFirst:
-    // a task whose arguments depend on a condition should not build them in an action block.
-    onlyIf {
-        if (validationCommit == null) {
-            logger.lifecycle(
-                "validationGate: SKIPPED — pass -PvalidationCommit=<sha> to bind the evidence. " +
-                    "This task does not guess a commit, and an unbound receipt certifies nothing.",
-            )
-            false
-        } else {
-            args(validationBase, validationCommit!!, validationObservedCommit ?: "")
-            logger.lifecycle(
-                "validationGate: binding evidence to ${validationCommit} against $validationBase. " +
-                    "The working tree must be clean: uncommitted work is not in " +
-                    "$validationBase...HEAD and cannot be attributed to that commit.",
-            )
-            true
-        }
+    doLast {
+        val entries = sourceSets["main"].runtimeClasspath.files.map { it.absolutePath }
+        check(entries.isNotEmpty()) { "the runtime classpath is empty; refusing to write it" }
+        val file = file(output)
+        file.parentFile.mkdirs()
+        file.writeText(entries.joinToString("\n"))
+        logger.lifecycle("printRuntimeClasspath: wrote ${entries.size} entries to $output")
     }
 }
 

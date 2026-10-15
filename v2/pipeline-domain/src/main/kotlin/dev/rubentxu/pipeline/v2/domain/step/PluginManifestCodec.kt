@@ -71,7 +71,17 @@ object PluginManifestCodec {
         sb.append("  \"publisher\": \"").append(escape(manifest.publisher)).append("\",\n")
         sb.append("  \"delivery\": \"").append(escape(manifest.delivery.name)).append("\",\n")
         sb.append("  \"trust\": \"").append(escape(trustToken(manifest.trust))).append("\",\n")
-        sb.append("  \"families\": [")
+        // B3.2 — optional operatorTrustReference URI. Emitted only when the manifest
+        // carries one. Pre-B3.2 documents (no field) stay byte-compatible because the
+        // field is absent from the encoded form, not present-and-null. The trust line
+        // above already terminates with a trailing comma, so this field does NOT add
+        // its own leading comma. A trailing comma IS added so families follows cleanly.
+        if (manifest.operatorTrustReference != null) {
+            sb.append("\n  \"operatorTrustReference\": \"")
+                .append(escape(manifest.operatorTrustReference))
+                .append("\",")
+        }
+        sb.append("\n  \"families\": [")
         sb.append(manifest.families.sortedBy { it.name }.joinToString(", ") { "\"${escape(it.name)}\"" })
         sb.append("],\n")
         sb.append("  \"steps\": [")
@@ -191,6 +201,24 @@ object PluginManifestCodec {
         val c = contract as Contract
         val k = contributions as Contributions
 
+        // B3.2 — optional operatorTrustReference URI. Absent = null (no operator
+        // trust reference). Present + parses as a URI = the URI string. Present +
+        // malformed = refused as MalformedDocument, NOT silently dropped.
+        val operatorTrustRefRaw = root.str("operatorTrustReference")
+        val operatorTrustRef: String? = if (operatorTrustRefRaw == null) {
+            null
+        } else {
+            val parsed = runCatching { java.net.URI(operatorTrustRefRaw) }.getOrNull()
+            if (parsed == null) {
+                return DecodeFailure(
+                    PluginManifestRejection.MalformedDocument(
+                        "operatorTrustReference is not a valid URI: $operatorTrustRefRaw",
+                    ),
+                )
+            }
+            operatorTrustRefRaw
+        }
+
         // The PluginManifest constructor enforces the cross-field invariants (identity ==
         // release.plugin, known schema, non-empty families, non-empty contributions). Letting
         // it throw here is correct and not the exception case: those invariants are part of
@@ -207,6 +235,7 @@ object PluginManifestCodec {
                 delivery = c.delivery,
                 trust = TrustMetadata.Unverified(),
                 contributions = k.contributions,
+                operatorTrustReference = operatorTrustRef,
             )
         }.fold(
             onSuccess = { DecodeSuccess(it) },

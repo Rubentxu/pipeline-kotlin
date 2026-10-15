@@ -200,4 +200,38 @@ class AppBinProvenanceTest {
             "Discovery must carry four mutually distinct cases; collapsing any pair is a defect",
         )
     }
+
+    // ---- Mutation-4 runtime coverage: extractBuildCommit classification seam ----
+    //
+    // The previous shape ran the regex inline inside `runVersionJson`. Mutation-4 was that
+    // `null version-json -> Discovery.Unattributed` could only be exercised structurally because
+    // the seam was not separately testable. Each branch of the regex now has a unit row so a
+    // mutation that returns the wrong null/non-null value gets a red row.
+
+    @Test
+    @DisplayName("extractBuildCommit returns null when stdout is empty")
+    fun extractBuildCommitNullOnEmptyStdout() {
+        assertEquals(null, AppBinSupport.extractBuildCommit(""))
+    }
+
+    @Test
+    @DisplayName("extractBuildCommit returns null when the JSON has no buildCommit field")
+    fun extractBuildCommitNullWhenFieldAbsent() {
+        assertEquals(null, AppBinSupport.extractBuildCommit("""{"version":"0.61.0"}"""))
+    }
+
+    @Test
+    @DisplayName("extractBuildCommit returns null when buildCommit is not a 40-hex string")
+    fun extractBuildCommitNullOnMalformedHash() {
+        assertEquals(null, AppBinSupport.extractBuildCommit("""{"buildCommit":"not-a-hash"}"""))
+        assertEquals(null, AppBinSupport.extractBuildCommit("""{"buildCommit":"deadbeef"}"""))
+    }
+
+    @Test
+    @DisplayName("extractBuildCommit returns the 40-hex commit when the field is well-formed")
+    fun extractBuildCommitReturnsMatch() {
+        val commit = "abcdef0123456789abcdef0123456789abcdef01"
+        val json = """{"version":"0.61.0","buildCommit":"$commit"}"""
+        assertEquals(commit, AppBinSupport.extractBuildCommit(json))
+    }
 }

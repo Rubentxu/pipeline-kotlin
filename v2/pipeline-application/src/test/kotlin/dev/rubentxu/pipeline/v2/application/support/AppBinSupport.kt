@@ -145,17 +145,27 @@ object AppBinSupport {
      * drain before waiting. A bare reader here would reintroduce the pipe deadlock that fitness law
      * exists to prevent, and being right about provenance is no excuse for hanging.
      */
-    private fun runVersionJson(binary: Path): String? =
+    internal fun runVersionJson(binary: Path): String? =
         when (val run = OwnedSubprocess.run(listOf(binary.toString(), "version", "--json"), Duration.ofSeconds(120))) {
             is CliRun.Completed ->
-                if (run.exitCode == 0) {
-                    Regex("\"buildCommit\":\"([0-9a-f]{40})\"").find(run.stdout)?.groupValues?.get(1)
-                } else {
-                    null
-                }
+                if (run.exitCode == 0) extractBuildCommit(run.stdout) else null
 
             is CliRun.TimedOut, is CliRun.LaunchFailed -> null
         }
+
+    /**
+     * The buildCommit the JSON reports, or null when the field is absent, malformed, or wrong length.
+     *
+     * Extracted so each parse branch is exercised by unit tests without launching a binary:
+     * the route from "binary ran but reports no commit" to `Discovery.Unattributed` is now
+     * structurally AND runtime-covered (mutation-4 was the structural-only gap; these tests
+     * kill the corresponding mutation by running `extractBuildCommit("")` -> null,
+     * `extractBuildCommit("{\"version\":\"0.61.0\"}")` -> null,
+     * `extractBuildCommit("{\"buildCommit\":\"not-a-hash\"}")` -> null, and the matching case).
+     * The shell-out + parse integration is still tested end-to-end by H1-U01 / H1-U02.
+     */
+    internal fun extractBuildCommit(stdout: String): String? =
+        Regex("\"buildCommit\":\"([0-9a-f]{40})\"").find(stdout)?.groupValues?.get(1)
 
     /** This checkout's HEAD, or null when there is no Git metadata to compare against. */
     private fun checkoutHead(): String? =

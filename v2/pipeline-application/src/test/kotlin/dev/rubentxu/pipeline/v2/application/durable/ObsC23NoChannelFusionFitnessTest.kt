@@ -44,24 +44,85 @@ class ObsC23NoChannelFusionFitnessTest {
             "DurableShellExecutor.kt",
         )
 
-        val offenders = executor.readText()
-            .lineSequence()
-            .withIndex()
-            // Comments legitimately NAME the call they forbid, which is how the reason for this law
-            // survives in the file. Only executable code counts.
-            .filterNot { (_, line) -> line.trimStart().startsWith("//") || line.trimStart().startsWith("*") }
-            .filter { (_, line) -> line.contains("redirectErrorStream(true)") }
-            .map { (index, line) -> "line ${index + 1}: ${line.trim()}" }
-            .toList()
+        val offenders = fusionSites(executor)
+            .filterNot { (_, block) -> PERMITTED.any { it.marker in block } }
+            .map { (line, block) ->
+                "line $line: ${block.lineSequence().first { "ProcessBuilder(" in it }.trim()} — fused " +
+                    "with no declared reason. Declare it in PERMITTED_FUSIONS with its justification, " +
+                    "or remove the call."
+            }
 
         assertTrue(
             offenders.isEmpty(),
             "the canonical transcript path must not fuse the child's channels, because the fusion " +
                 "is invisible above it and makes channel attribution unrecoverable. OBS-C2.3 " +
                 "removed the call; reintroducing it silently re-breaks `--channel stderr` while every " +
-                "other row in this suite stays green. Found: $offenders",
+                "other row in this suite stays green.\n" +
+                "  ${PERMITTED.size} declared exclusions apply: " +
+                PERMITTED.joinToString("; ") { "'${it.marker}' — ${it.why}" } +
+                "\n  Found: $offenders",
         )
     }
+
+    /**
+     * Every executable `redirectErrorStream(true)`, paired with the `ProcessBuilder` block it belongs to.
+     *
+     * ## Why the block and not the line
+     *
+     * The first version of this row matched the LINE, which reported the whole file as fused as soon
+     * as any process in it fused — including `mkfifo`, which creates the control dir's rendezvous, and
+     * the ingest agent, whose stdout and stderr are deliberately fused into one diagnostic log. Neither
+     * is the child's transcript. The row was red for a reason its own KDoc explicitly exempts, and a
+     * fitness that cries wolf on legal code trains people to route around the law instead of obeying
+     * it.
+     *
+     * The unit is therefore the whole `ProcessBuilder(...)….start()` expression: the call fuses a
+     * specific process, and whether that process is the child is a property of the block, not of the
+     * line the flag happens to sit on.
+     */
+    private fun fusionSites(file: Path): List<Pair<Int, String>> {
+        val lines = file.readText().lines()
+        val sites = mutableListOf<Pair<Int, String>>()
+        var blockStart = -1
+
+        lines.forEachIndexed { index, raw ->
+            val line = raw.trimStart()
+            if (line.startsWith("//") || line.startsWith("*") || line.startsWith("/*")) return@forEachIndexed
+            when {
+                "ProcessBuilder(" in line -> blockStart = index
+                line.contains("redirectErrorStream(true)") && blockStart >= 0 -> {
+                    val end = generateSequence(blockStart) { it + 1 }
+                        .take(12)
+                        .firstOrNull { lines[it].contains(".start(") } ?: index
+                    sites += (index + 1) to lines.subList(blockStart, end + 1).joinToString("\n")
+                }
+                line.contains(".start(") -> blockStart = -1
+            }
+        }
+        return sites
+    }
+
+    /**
+     * The declared exclusions, each with the reason it is not the child's transcript.
+     *
+     * Fail-closed by construction: a NEW fusion without a marker here is an offender, so this list
+     * cannot grow silently. It is the exclusion the KDoc promised and the line-level scan never
+     * delivered.
+     */
+    private data class PermittedFusion(val marker: String, val why: String)
+
+    private val PERMITTED = listOf(
+        PermittedFusion(
+            marker = "\"mkfifo\"",
+            why = "creates the control directory's rendezvous FIFOs; its output is mkfifo's own " +
+                "diagnostic and never reaches the transcript",
+        ),
+        PermittedFusion(
+            marker = "AGENT_MAIN_CLASS",
+            why = "the ingest agent's own log; agent stdout and stderr are fused on purpose so a " +
+                "pump failure's stack trace is not lost to a half-written stream",
+        ),
+    )
 
     @Test
     fun `the canonical transcript path redirects each channel independently`() {

@@ -139,11 +139,7 @@ object PluginAdmissionGate {
                     )
                 }
                 return PluginAdmissionResult.Refused(
-                    dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection.MalformedDocument(
-                        "no manifest at ${dev.rubentxu.pipeline.v2.domain.step.PluginManifestCodec.RESOURCE_PATH} " +
-                            "for contributor $contributorClassName; a plugin declares itself, and one that " +
-                            "declares nothing is refused rather than admitted on trust",
-                    ),
+                    AdmissionRefusal.RefusedNoManifest(contributorClassName),
                 )
             }
 

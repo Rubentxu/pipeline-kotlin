@@ -59,4 +59,4 @@ Explicit matches by module:
 - `v2/test-harness/src/main/kotlin/dev/rubentxu/pipeline/v2/harness/plan/ImpactResolver.kt`
 - `v2/test-harness/src/main/kotlin/dev/rubentxu/pipeline/v2/harness/plan/EvidenceReader.kt`
 
-**Limit:** Name/path census plus indexed GitHub code-search probes (at most 100 matches per query); the code probes are not exhaustive and do not replace a full AST/source scan. This is, not an executed coverage audit. Confirm contents of `POTENTIAL_PROCESS_ACCEPTANCE` and inspect non-matching tests with subprocesses before claiming exhaustiveness. Do not use this snapshot to infer passed/failed tests.
+**Limit:** Name/path census plus indexed GitHub code-search probes (at most 100 matches per query); the code probes are not exhaustive and do not replace a full AST/source scan. This is a discovery inventory, not an executed coverage audit. Confirm contents of `POTENTIAL_PROCESS_ACCEPTANCE` and inspect non-matching tests with subprocesses before claiming exhaustiveness. Do not use this snapshot to infer passed/failed tests.

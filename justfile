@@ -121,3 +121,35 @@ set dotenv-load := false
     if [[ $docs_only -eq 1 ]]; then
         echo "docs-only change: markdown/link validation suffices"
     fi
+
+# ─── harness governance (B1) ─────────────────────────────────────
+
+# Bidirectional tool <-> suite registry for scripts/ (OPEN_GAP reported)
+@fitness:
+    python3 scripts/fitness-harness-coverage.py
+
+# Same registry, but a declared OPEN_GAP fails too (use when closing gaps)
+@fitness-strict:
+    python3 scripts/fitness-harness-coverage.py --strict
+
+# Run every hermetic harness suite in scripts/ and aggregate (B1 orchestration)
+@harness budget="900":
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    fail=0; total=0
+    for t in scripts/test_*.py; do
+        total=$((total+1))
+        printf '%-44s' "$t"
+        if timeout {{budget}} python3 "$t" >"$tmp/out" 2>&1; then
+            grep -E '^Ran ' "$tmp/out" | tr -d '\n' || true
+            echo "  OK"
+        else
+            echo "  FAIL"
+            tail -n 25 "$tmp/out"
+            fail=1
+        fi
+    done
+    echo "harness: $total suite(s), fail=$fail"
+    exit "$fail"

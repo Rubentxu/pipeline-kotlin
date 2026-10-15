@@ -76,11 +76,16 @@ object AppBinSupport {
             .firstOrNull { it.toFile().exists() }
             ?: return Discovery.Absent
 
-        if (expectedCommit == null) return Discovery.Current(bin)
+        // Always classify against the binary's own report. A null from `runVersionJson`
+        // means the launcher runs but records no commit; that is its own case and cannot be
+        // silently swept under `Current`. A non-null report with no expectation (`expectedCommit
+        // == null`, e.g. an exported-source build) is still legitimately `Current` because there
+        // is nothing to compare against. A non-null report that mismatches `expectedCommit` is
+        // `Stale`. This is the discrimination H1-U02 and the variant tests below force.
         return when (val builtFrom = runVersionJson(bin)) {
             null -> Discovery.Unattributed(bin)
             else ->
-                if (builtFrom.equals(expectedCommit, ignoreCase = true)) {
+                if (expectedCommit == null || builtFrom.equals(expectedCommit, ignoreCase = true)) {
                     Discovery.Current(bin)
                 } else {
                     Discovery.Stale(bin, builtFrom, expectedCommit)
@@ -95,24 +100,42 @@ object AppBinSupport {
      * `InstalledDistributionHarnessFitnessTest`'s allowlist: a migration cannot land before the
      * thing it migrates FROM still compiles. New harnesses must call [discoverProvenance], because
      * this function is exactly the mechanism that let a stale binary look current.
+     *
+     * [discover] delegates to [pathOrRefuse], which is also the seam the discrimination tests
+     * attack directly with a synthetic [Discovery] case; this keeps the legacy and the new API
+     * agreeing on what counts as refusable.
      */
-    fun discover(): Path =
-        when (val found = discoverProvenance()) {
-            is Discovery.Current -> found.binary
-            is Discovery.Stale -> throw IllegalStateException(
-                "The installed binary at ${found.binary} was built from ${found.builtFrom}, but " +
-                    "this checkout is ${found.expected}. Running against it would certify a " +
-                    "different state of the product. Run ./gradlew :pipeline-application:installDist.",
-            )
+    fun discover(): Path = pathOrRefuse(discoverProvenance())
 
-            is Discovery.Absent -> throw IllegalStateException(
-                "Application binary not found under " +
-                    "${Paths.get(System.getProperty("user.dir"))}. " +
-                    "Run ./gradlew :pipeline-application:installDist first.",
-            )
+    /**
+     * Decide whether a [Discovery] may be certified, return its launcher path, or refuse.
+     *
+     * Extracted so each branch is reachable on its own: an unattributed binary cannot be
+     * certified even though it runs, so it lands here alongside [Discovery.Stale] and
+     * [Discovery.Absent]. The old inlined [discover] silently returned [Discovery.Unattributed]
+     * paths, which is exactly the false-green the sealed [Discovery] exists to prevent.
+     */
+    fun pathOrRefuse(found: Discovery): Path = when (found) {
+        is Discovery.Current -> found.binary
+        is Discovery.Stale -> throw IllegalStateException(
+            "The installed binary at ${found.binary} was built from ${found.builtFrom}, but " +
+                "this checkout is ${found.expected}. Running against it would certify a " +
+                "different state of the product. Run ./gradlew :pipeline-application:installDist.",
+        )
 
-            is Discovery.Unattributed -> found.binary
-        }
+        is Discovery.Absent -> throw IllegalStateException(
+            "Application binary not found under " +
+                "${Paths.get(System.getProperty("user.dir"))}. " +
+                "Run ./gradlew :pipeline-application:installDist first.",
+        )
+
+        is Discovery.Unattributed -> throw IllegalStateException(
+            "The installed binary at ${found.binary} reports no build commit. " +
+                "This is a legitimate working-tree build but cannot be used to certify " +
+                "product behavior. Run ./gradlew :pipeline-application:installDist from this " +
+                "checkout so the binary is tagged with this checkout's HEAD.",
+        )
+    }
 
     /**
      * The `buildCommit` the launcher reports, or null when it reports none.

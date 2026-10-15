@@ -53,12 +53,17 @@ value class ContractId(val capability: String)
 /**
  * Identifies one runnable suite.
  *
- * This is a value class over a Gradle test filter, so a suite cannot exist in the catalogue
- * without also naming the thing that runs it. A suite with no runnable target is a refusal, not a
- * suite.
+ * [gradleProject] is the module whose `test` task runs it. It is part of the value rather than
+ * derived at dispatch time because a suite attributed to the wrong module is a suite that
+ * silently does not run, and deriving it by guessing from the class name is exactly how that would
+ * happen. The fitness `every bound suite names the module it actually lives in` checks it against
+ * the repository, so the mistake is a red test rather than a suite that quietly never executes.
+ *
+ * A data class rather than a value class: Kotlin forbids a value class with two constructor
+ * parameters, and boxing a two-field identity to save an allocation would be a poor trade for a
+ * type that appears once per selected suite.
  */
-@JvmInline
-value class TestSuiteId(val filter: String)
+data class TestSuiteId(val filter: String, val gradleProject: String)
 
 /**
  * Why a capability entered the plan.
@@ -84,6 +89,16 @@ sealed interface SelectionRefusal {
 
     /** The evidence names a suite that the plan selected but that was not executed. */
     data class SelectedButNotRun(val suite: String) : SelectionRefusal
+
+    /**
+     * A Gradle invocation the plan required exited non-zero, so the suites it owned have no
+     * trustworthy evidence for this run.
+     *
+     * Distinct from [SelectedButNotRun]: there the suite may have run and produced nothing usable,
+     * here the build that would have run it did not succeed at all. Both refuse, but the operator
+     * action differs — one is a coverage gap, the other is a broken invocation.
+     */
+    data class SuiteDidNotRun(val suite: String, val gradleProject: String) : SelectionRefusal
 
     /** The evidence was produced by a binary built from a different commit. */
     data class StaleEvidence(val expected: String, val observed: String) : SelectionRefusal
@@ -116,61 +131,61 @@ object SuitePolicy {
         SuiteBinding(
             capability = "OutputPlane.redaction.streaming",
             suites = listOf(
-                TestSuiteId("ShTranscriptRedactionReproductionTest"),
+                TestSuiteId("ShTranscriptRedactionReproductionTest", ":pipeline-application"),
             ),
             fidelity = Fidelity.HF2,
         ),
         SuiteBinding(
             capability = "OutputPlane.write.commit",
             suites = listOf(
-                TestSuiteId("ShTranscriptRedactionReproductionTest"),
+                TestSuiteId("ShTranscriptRedactionReproductionTest", ":pipeline-application"),
             ),
             fidelity = Fidelity.HF2,
         ),
         SuiteBinding(
             capability = "OutputPlane.pump.drain",
             suites = listOf(
-                TestSuiteId("DurableShellExecutorAdversarialTest"),
+                TestSuiteId("DurableShellExecutorAdversarialTest", ":pipeline-step-sdk:runtime"),
             ),
             fidelity = Fidelity.HF2,
         ),
         SuiteBinding(
             capability = "OutputPlane.read.cursor",
             suites = listOf(
-                TestSuiteId("B1aOutputPlaneProviderLifecycleCharacterizationTest"),
-                TestSuiteId("D7CursorOwnershipBehaviourTest"),
+                TestSuiteId("B1aOutputPlaneProviderLifecycleCharacterizationTest", ":pipeline-application"),
+                TestSuiteId("D7CursorOwnershipBehaviourTest", ":pipeline-application"),
             ),
             fidelity = Fidelity.HF2,
         ),
         SuiteBinding(
             capability = "Shell.execution.composition",
             suites = listOf(
-                TestSuiteId("CompatibilityCorpusTest"),
-                TestSuiteId("ShTranscriptRedactionReproductionTest"),
+                TestSuiteId("CompatibilityCorpusTest", ":pipeline-application"),
+                TestSuiteId("ShTranscriptRedactionReproductionTest", ":pipeline-application"),
             ),
             fidelity = Fidelity.HF2,
         ),
         SuiteBinding(
             capability = "Console.cli.selection",
             suites = listOf(
-                TestSuiteId("CompatibilityCorpusTest"),
+                TestSuiteId("CompatibilityCorpusTest", ":pipeline-application"),
             ),
             fidelity = Fidelity.HF2,
         ),
         SuiteBinding(
             capability = "Build.composition",
             suites = listOf(
-                TestSuiteId("CompatibilityCorpusTest"),
-                TestSuiteId("ContractCatalogueFitnessTest"),
+                TestSuiteId("CompatibilityCorpusTest", ":pipeline-application"),
+                TestSuiteId("ContractCatalogueFitnessTest", ":test-harness"),
             ),
             fidelity = Fidelity.HF2,
         ),
         SuiteBinding(
             capability = "Provenance.build.identity",
             suites = listOf(
-                TestSuiteId("RuntimeBuildIdentityTest"),
-                TestSuiteId("BuildProvenanceIsReportedByTheInstalledBinaryTest"),
-                TestSuiteId("AppBinProvenanceTest"),
+                TestSuiteId("RuntimeBuildIdentityTest", ":pipeline-application"),
+                TestSuiteId("BuildProvenanceIsReportedByTheInstalledBinaryTest", ":pipeline-application"),
+                TestSuiteId("AppBinProvenanceTest", ":pipeline-application"),
             ),
             fidelity = Fidelity.HF2,
         ),

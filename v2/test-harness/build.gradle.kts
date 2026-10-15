@@ -66,6 +66,53 @@ val validationPlan by tasks.registering(JavaExec::class) {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// H1 — the gate, and WHY IT IS NOT A TASK HERE.
+//
+// `validationPlan` above computes and PRINTS the selection; it never runs anything and never looks
+// at what ran, so a plan nobody discharges still builds green. The gate closes that loop: it
+// resolves the same plan, dispatches it as Gradle invocations, runs them, reads the JUnit XML they
+// produced, and refuses unless the evidence discharges the selection.
+//
+// It is deliberately NOT a `JavaExec` task in this file. `settings.gradle.kts` takes an exclusive
+// lock on this checkout for the duration of any build, and the gate has to START builds of its own
+// after the build that launched it has finished. A task would always find that lock held by itself,
+// and every selected suite would fail with "Another Gradle invocation is already using this v2
+// checkout". That was measured, not assumed: it is how the first real run of the gate failed, and
+// the gate's refusal named all five suites correctly while the underlying cause was the lock.
+//
+// So the entry point is `scripts/validation-gate.py`, which builds the harness jar, releases the
+// lock, then runs the gate as a plain JVM. One path, and it is the one that works.
+// ---------------------------------------------------------------------------------------------
+
+tasks.register("printRuntimeClasspath") {
+    group = "build"
+    description = "Write the runtime classpath of this module, one entry per line, for external launchers."
+
+    // The output path is read INSIDE doLast, never at configuration time. Configuring eagerly
+    // with `?: error(...)` aborts the whole module's configuration when the property is absent —
+    // and since configuration happens for EVERY task in the module, `:test-harness:tasks` and
+    // `:test-harness:test` both died with "Could not create task ':test-harness:printRuntimeClasspath'"
+    // before this moved. Measured: it is what made the gate report "task 'test-harness' not found"
+    // for a project that is in settings.gradle.kts and has a working `test` task.
+    val outputProperty = findProperty("output") as String?
+
+    dependsOn(tasks.named("jar"))
+
+    doLast {
+        val output = outputProperty
+            ?: throw InvalidUserDataException(
+                "printRuntimeClasspath needs -Poutput=<file>; refusing to guess where to write the classpath",
+            )
+        val entries = sourceSets["main"].runtimeClasspath.files.map { it.absolutePath }
+        check(entries.isNotEmpty()) { "the runtime classpath is empty; refusing to write it" }
+        val file = file(output)
+        file.parentFile.mkdirs()
+        file.writeText(entries.joinToString("\n"))
+        logger.lifecycle("printRuntimeClasspath: wrote ${entries.size} entries to $output")
+    }
+}
+
 tasks.named("check") {
     // The planner runs before the suites, so a change that cannot be classified never pays for a
     // full test run. dependsOn rather than finalizedBy: the plan is an input to validation, not a

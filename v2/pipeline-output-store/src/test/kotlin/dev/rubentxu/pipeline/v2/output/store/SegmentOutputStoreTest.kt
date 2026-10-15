@@ -690,7 +690,7 @@ class SegmentOutputStoreTest {
      * is tracked separately and not this block's to make — for now, the test is a guard
      * that fails today and must pass after the fix lands).
      */
-    @org.junit.jupiter.api.Disabled("OUT-01 reproduced; fix requires durable-format migration policy. See WIP4_OUT01_OUT02_REPRODUCED.md.")
+    @org.junit.jupiter.api.Disabled("reproduced; root cause: pruning by `safe(runId) + '_'` prefix deletes streams of longer runIds sharing the prefix (safeStreamName is not injective); tracked in UAT_GATE_CLASSIFICATION.md as a NON-BLOCKING pre-existing row under PRODUCT-GATE BLOCKED_EXTERNAL. Migrates to harness once issue pipelinek-release-harness#<n> opens.")
     @Test
     fun `OUT-01 prune of a short runId must not delete streams of a longer runId sharing the safe prefix`(@TempDir root: Path) {
         val store = SegmentOutputStore(root)
@@ -751,7 +751,7 @@ class SegmentOutputStoreTest {
      * Status: known to fail until a non-ambiguous physical identity is introduced. The durable
      * format change is a separate concern with a migration policy.
      */
-    @org.junit.jupiter.api.Disabled("OUT-02 reproduced; fix requires durable-format migration policy. See WIP4_OUT01_OUT02_REPRODUCED.md.")
+    @org.junit.jupiter.api.Disabled("reproduced; root cause: two distinct runIds (e.g., 'run/abc' and 'run_abc') collapse to the same safe form 'run_abc' on disk; tracked in UAT_GATE_CLASSIFICATION.md as a NON-BLOCKING pre-existing row under PRODUCT-GATE BLOCKED_EXTERNAL. Migrates to harness once issue pipelinek-release-harness#<n> opens.")
     @Test
     fun `OUT-02 distinct runIds whose safe forms are equal collide on disk and serve each other's bytes`(@TempDir root: Path) {
         val store = SegmentOutputStore(root)

@@ -205,7 +205,7 @@ object PluginManifestCodec {
                 publisher = c.publisher,
                 families = k.families,
                 delivery = c.delivery,
-                trust = TrustMetadata.Unverified,
+                trust = TrustMetadata.Unverified(),
                 contributions = k.contributions,
             )
         }.fold(
@@ -360,7 +360,18 @@ object PluginManifestCodec {
     }
 
     private fun trustToken(trust: TrustMetadata): String = when (trust) {
+        // The document grammar still only knows the `unverified` token. Encoding a
+        // [TrustMetadata.Verified] or [TrustMetadata.Mismatch] here is a B3.2 plumbing
+        // defect — those states belong to the runtime's identity verdict, not to the
+        // manifest document. We refuse them rather than emitting a placeholder token that
+        // would round-trip into a different case on decode.
         is TrustMetadata.Unverified -> TRUST_UNVERIFIED
+        is TrustMetadata.Verified ->
+            error("PluginManifestCodec.encode does not support TrustMetadata.Verified; " +
+                "Verified is a runtime identity verdict, not a document field")
+        is TrustMetadata.Mismatch ->
+            error("PluginManifestCodec.encode does not support TrustMetadata.Mismatch; " +
+                "Mismatch is a runtime identity verdict, not a document field")
     }
 
     /**

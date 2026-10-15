@@ -70,7 +70,7 @@ object JUnitPluginDeclaration {
             publisher = publisher,
             families = setOf(PluginFamily.TESTING, PluginFamily.REPORTING),
             delivery = Delivery.OFFICIAL_PLUGIN,
-            trust = TrustMetadata.Unverified,
+            trust = TrustMetadata.Unverified(),
         )
     }
 

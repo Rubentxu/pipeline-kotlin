@@ -12,7 +12,7 @@ package dev.rubentxu.pipeline.v2.domain.step
  * which identity collided and with whom, so admission can name two plugins rather than
  * pointing at "a conflict".
  */
-sealed interface PluginManifestRejection {
+sealed interface PluginManifestRejection : AdmissionRejection {
 
     /** The bytes are not a manifest this codec can read at all. */
     data class MalformedDocument(val detail: String) : PluginManifestRejection
@@ -158,4 +158,117 @@ sealed interface ArtifactOrigin {
      * be the one path that skips admission.
      */
     data class ReusedCompiledArtifact(val cacheKey: String) : ArtifactOrigin
+
+    /**
+     * The runtime has not yet resolved where the artifact came from.
+     *
+     * B3.2 placeholder used by the manifest codec: the codec parses the document but does
+     * not measure the artifact, so it cannot know the real origin. The gate replaces this
+     * with the actual [LocalClasspathEntry] / [ResolvedCoordinate] / [ReusedCompiledArtifact]
+     * after measurement, and a refusal recorded against an [Unknown] origin is the smell of
+     * a decision made before measurement completed.
+     */
+    data object Unknown : ArtifactOrigin
+}
+
+/**
+ * B3.2 — first-level admission refusals that arise AFTER the manifest has decoded cleanly.
+ *
+ * ## The two lifecycles
+ *
+ * [PluginManifestRejection] and [AdmissionRefusal] are kept disjoint by design. Codec
+ * failures (malformed document, unsupported schema, unknown codec) come from reading bytes
+ * the runtime did not author and belong to the decode-time boundary. [AdmissionRefusal]
+ * covers failures that depend on the runtime's own state — measured bytes, the operator
+ * trust database, the admission log of who has already been admitted. The two are a
+ * partition of the refusal surface, and a caller that needs to distinguish "this plugin
+ * was malformed" from "this plugin was forged" switches on the parent
+ * [AdmissionRejection] case, not on a String reason.
+ *
+ * ## Why first-level, not derived
+ *
+ * Each case below carries a different payload: a `RefusedDigestMismatch` carries two
+ * digests; a `RefusedUntrustedIdentity` carries a [TrustMetadata.UnverifiedReason];
+ * `RefusedAlreadyAdmittedDifferentArtifact` carries the incumbent's origin. Collapsing
+ * them into `Refused(reason: String)` or into a single `RefusedTrustFailure(...)` would
+ * make the refusal a function of the caller's prose, and the same defect the existing
+ * `PluginManifestRejection` KDoc refuses ("a closed ADT on purpose... a String reason is
+ * how a fail-closed boundary degrades into a log line nobody can switch on") would re-open
+ * here.
+ *
+ * ## Order of cases
+ *
+ * Listed in the order the gate would discover them: no manifest first (the gate cannot
+ * even measure an artifact it has no document for), then a digest mismatch, then a
+ * trust-database gap, then a version conflict, then a duplicate identity whose
+ * second-arrival bytes disagree with the first-arrival bytes.
+ */
+sealed interface AdmissionRefusal : AdmissionRejection {
+
+    /**
+     * The gate could not find a manifest for the contributor.
+     *
+     * A plugin that declares nothing is refused rather than admitted on the strength of its
+     * class. The contributor class name is carried so the refusal names the artifact, not
+     * just "no document".
+     */
+    data class RefusedNoManifest(val contributor: String) : AdmissionRefusal
+
+    /**
+     * The runtime measured the artifact bytes and the digest disagrees with the manifest.
+     *
+     * The plugin is lying about itself. Both [declared] and [measured] are kept so the
+     * durable control row can be diagnosed from the journal alone. The [identity] is the
+     * canonical plugin text so the refusal can name the same key every call.
+     */
+    data class RefusedDigestMismatch(
+        val identity: String,
+        val declared: Digest,
+        val measured: Digest,
+    ) : AdmissionRefusal
+
+    /**
+     * The runtime could not produce a [TrustMetadata.Verified] state.
+     *
+     * The [reason] names which kind of unverified: no operator trust row, bytes not
+     * readable, or the operator's pinned digest disagrees with the manifest. The [identity]
+     * is the canonical plugin text. The same plugin producing the same reason twice is
+     * refused the same way, with no implicit "previous time we admitted it" recovery —
+     * fail-closed is a state, not a heuristic.
+     */
+    data class RefusedUntrustedIdentity(
+        val identity: String,
+        val reason: TrustMetadata.UnverifiedReason,
+    ) : AdmissionRefusal
+
+    /**
+     * The manifest is for a different PipelineK version range than the runtime enforces.
+     *
+     * Distinct from [PluginManifestRejection.IncompatibleApiRange] in scope: that one is
+     * the gate's primary version check; this one is the trust-layer re-assertion that the
+     * declared [declared] range and the [runtime] version really do not overlap. Carrying
+     * both as separate cases lets a future change in the version policy be reflected in
+     * only one place without renaming the other.
+     */
+    data class RefusedIncompatibleVersion(
+        val identity: String,
+        val declared: PipelineKApiRange,
+        val runtime: SemVer,
+    ) : AdmissionRefusal
+
+    /**
+     * A second plugin claims the same identity as one already admitted, with bytes from a
+     * different artifact.
+     *
+     * Neither first-wins nor last-wins; the second one is refused, naming the [identity]
+     * and the [incumbentOrigin] it collides with. The [declaredDigest] is the digest the
+     * newcomer carried — useful when diagnosing a downgrade attack where the incumbent was
+     * a legitimate earlier version and the newcomer is a later build substituted in place
+     * of the legitimate one.
+     */
+    data class RefusedAlreadyAdmittedDifferentArtifact(
+        val identity: String,
+        val declaredDigest: Digest,
+        val incumbentOrigin: ArtifactOrigin,
+    ) : AdmissionRefusal
 }

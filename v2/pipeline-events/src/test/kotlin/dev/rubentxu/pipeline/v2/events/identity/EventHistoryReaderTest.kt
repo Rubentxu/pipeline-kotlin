@@ -260,6 +260,6 @@ class EventHistoryReaderTest {
         publisher = "pipeline-kotlin",
         families = setOf(PluginFamily.SCM, PluginFamily.NETWORK),
         delivery = Delivery.OFFICIAL_PLUGIN,
-        trust = TrustMetadata.Unverified,
+        trust = TrustMetadata.Unverified(),
     )
 }

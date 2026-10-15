@@ -184,12 +184,16 @@ fun main(args: Array<String>) {
     val observedCommit = args.getOrNull(2)
 
     val root = GateCli.repoRoot(Paths.get("").toAbsolutePath().normalize())
-    val gradlew = root.resolve("v2/gradlew")
+    val buildRoot = GateCli.v2Root(root)
 
     val outcome = GateCli.run(
         base = base,
         repoRoot = root,
-        runner = GradleSuiteRunner(repoRoot = root, gradlew = gradlew),
+        // Two directories, because they answer different questions: the repo root is what Git
+        // runs in and where report directories hang off, while the build root is the Gradle build
+        // that OWNS the modules. Passing the repo root as both is what made every dispatch fail
+        // with "task not found in root project 'pipeline-kotlin'".
+        runner = GradleSuiteRunner(repoRoot = root, buildRoot = buildRoot),
         observedCommit = observedCommit,
         expectedCommit = expectedCommit,
     )

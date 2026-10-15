@@ -105,6 +105,50 @@ class GateCliTest {
         assertTrue(v2 != GateCli.repoRoot(tmp), "sanity: the composite root is not the v2 build root")
     }
 
+    /**
+     * The runner must shell out with the working directory at the BUILD root, not the checkout root.
+     *
+     * This is not a preference; it is what made the first gate run to reach execution fail every
+     * dispatch. The checkout root is a composite build whose own `settings.gradle.kts` has no
+     * modules, so running `v2/gradlew` from there resolves the ROOT build and every module path in
+     * the dispatch dies with "task not found in root project 'pipeline-kotlin'".
+     *
+     * The assertion reads the working directory back out of a REAL invocation rather than checking
+     * a field, because a field can be set correctly while the process is still started somewhere
+     * else. The fake `gradlew` writes its own `$PWD` to a file, so the test observes what the
+     * process would actually have seen.
+     */
+    @Test
+    fun `the runner starts gradle in the build root, not the checkout root`(@TempDir tmp: Path) {
+        val v2 = compositeScaffold(tmp)
+        val marker = tmp.resolve("observed-cwd.txt")
+        // A `gradlew` that records where it was started from and exits 0. It must be executable, or
+        // the failure would be a permission error rather than the wrong-directory assertion.
+        val gradlew = v2.resolve("gradlew")
+        Files.writeString(gradlew, "#!/bin/sh\npwd > '$marker'\n")
+        gradlew.toFile().setExecutable(true)
+
+        val ran = GradleSuiteRunner(repoRoot = tmp, buildRoot = v2)
+            .run(
+                Dispatch.GradleInvocation(
+                    gradleProject = ":mod-one",
+                    task = "test",
+                    filters = listOf("AlphaTest"),
+                ),
+            )
+
+        assertTrue(ran, "the fake wrapper exits 0, so the invocation must be reported as successful")
+        assertTrue(Files.exists(marker), "the wrapper must have been able to record its working directory")
+        // `toRealPath` on BOTH sides: the process reports a resolved path, and on macOS a temp dir
+        // arrives under /private, so comparing the unresolved path would fail for a reason that has
+        // nothing to do with the working directory.
+        assertEquals(
+            v2.toRealPath().toString(),
+            Files.readString(marker).trim(),
+            "gradle must run where the modules are, not where the checkout root is",
+        )
+    }
+
     // ---- the dirty tree ----
 
     @Test

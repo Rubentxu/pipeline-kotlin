@@ -111,11 +111,27 @@ interface SuiteRunner {
  * Reading those would be reading a prior run's evidence and calling it this one's, so the target
  * directory is removed before the invocation. This is the stale-green shape the whole gate exists
  * to close: without it, a suite that stopped running still has a passing XML on disk.
+ *
+ * ## Why the working directory is the build root, not the checkout root
+ *
+ * The wrapper script's location does not decide which build runs. This checkout is a COMPOSITE
+ * build: the repository root has its own `settings.gradle.kts` that pulls `v2` in with
+ * `includeBuild("v2")`, and it has no modules of its own. Running `v2/gradlew` with the working
+ * directory at the checkout root therefore resolves the ROOT build, and every module path in the
+ * dispatch — `:pipeline-application`, `:test-harness` — fails with "task not found in root project
+ * 'pipeline-kotlin'". Measured, not assumed: that was the first real gate run to reach execution.
+ *
+ * The working directory must be the build that OWNS the modules, which is `buildRoot`, the same
+ * directory the wrapper lives in. [repoRoot] is still needed, for the Git queries and for locating
+ * the per-module report directories, so both are parameters and neither is guessed.
  */
 class GradleSuiteRunner(
     private val repoRoot: Path,
-    private val gradlew: Path,
+    private val buildRoot: Path,
 ) : SuiteRunner {
+
+    /** The wrapper that belongs to [buildRoot]. */
+    private val gradlew: Path = buildRoot.resolve("gradlew")
 
     override fun run(invocation: Dispatch.GradleInvocation): Boolean {
         val resultsDir = Gate.resultsDirFor(repoRoot, invocation.gradleProject)
@@ -128,7 +144,7 @@ class GradleSuiteRunner(
         val rerun = listOf("--rerun-tasks")
 
         val process = ProcessBuilder(listOf(gradlew.toString()) + rerun + invocation.argv())
-            .directory(repoRoot.toFile())
+            .directory(buildRoot.toFile())
             .redirectErrorStream(true)
             .start()
 

@@ -405,6 +405,122 @@ class RenderExcerptTests(unittest.TestCase):
         self.assertIn("b.md", row)
 
 
+class NarrativeSupersessionTests(unittest.TestCase):
+    """Claim: a REFERENCED row must say when it is hiding an older explicit status.
+
+    Defect this pins (measured on the real tree on 2026-10-15): regenerating the
+    document moved UAT-RP-005 (COVERED/KNOWN_LIMITATION) and UAT-RP-011 (COVERED)
+    to REFERENCED purely because newer documents -- including the harness sweep's
+    own receipts -- *mentioned* the ids in prose. The derivation follows
+    ADR-0095/T0E-EVID-01 and is not changed here; what changes is that the
+    document cannot print a bare REFERENCED that reads as "never certified".
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = _load_mod()
+        cls.uat_ids = list(cls.mod.UAT_IDS)
+
+    def _history(self):
+        """Commit A: an explicit marker for UAT-RP-005. Commit B: prose mention."""
+        return _tmp_repo_with_history([
+            {"files": [("a.md", "UAT-EVIDENCE | UAT-RP-005 | COVERED | candidate=aaaa")],
+             "message": "A certified"},
+            {"files": [("b.md", "| UAT-RP-005 | narrative mention |")],
+             "message": "B narrative"},
+        ])
+
+    def _shas(self, repo_dir):
+        return subprocess.run(["git", "-C", str(repo_dir), "log", "--format=%H",
+                               "--reverse"], capture_output=True, text=True,
+                              check=True).stdout.strip().splitlines()
+
+    def _two_shas(self, repo_dir):
+        shas = self._shas(repo_dir)
+        return shas[0], shas[-1]
+
+    def _triples(self, sha_a, sha_b):
+        return [
+            _quad("a.md", "UAT-EVIDENCE | UAT-RP-005 | COVERED | candidate=aaaa",
+                  sha_a, ["COVERED"]),
+            _quad("b.md", "| UAT-RP-005 | narrative mention |", sha_b, []),
+        ]
+
+    def test_referenced_row_reports_the_hidden_status(self):
+        """Mutation: return the bare REFERENCED row without inspecting the
+        non-maximal triples -> a certified UAT silently reads as uncertified."""
+        repo_dir = self._history()
+        git = _git(repo_dir)
+        sha_a, sha_b = self._two_shas(repo_dir)
+        triples = self._triples(sha_a, sha_b)
+        status, _sel = self.mod.select_evidence(triples, sha_b, git)
+        self.assertEqual(status, "REFERENCED", "the declared derivation is unchanged")
+        hidden, paths = self.mod.narrative_supersession(
+            triples, sha_b, git, derived_status=status)
+        self.assertEqual(hidden, "COVERED")
+        self.assertEqual(paths, ["a.md"])
+
+    def test_referenced_without_older_explicit_status_is_silent(self):
+        """Mutation: annotate every REFERENCED row -> the annotation becomes noise
+        and a genuinely uncertified UAT grows a fake supersession claim."""
+        repo_dir = _tmp_repo_with_history([
+            {"files": [("b.md", "| UAT-RP-005 | narrative mention |")],
+             "message": "narrative only"},
+        ])
+        git = _git(repo_dir)
+        _a, sha_b = self._two_shas(repo_dir)
+        triples = [_quad("b.md", "| UAT-RP-005 | narrative mention |", sha_b, [])]
+        hidden, paths = self.mod.narrative_supersession(
+            triples, sha_b, git, derived_status="REFERENCED")
+        self.assertIsNone(hidden)
+        self.assertEqual(paths, [])
+
+    def test_the_causally_latest_hidden_status_wins_over_most_blocking(self):
+        """Mutation: report the most blocking hidden status instead of the latest
+        -> UAT-RP-005 would be described as hiding FAIL_PROVEN when ADR-0095
+        supersedence had already carried it to KNOWN_LIMITATION."""
+        repo_dir = _tmp_repo_with_history([
+            {"files": [("a.md", "UAT-EVIDENCE | UAT-RP-005 | FAIL_PROVEN | candidate=aaaa")],
+             "message": "A failure"},
+            {"files": [("b.md", "UAT-EVIDENCE | UAT-RP-005 | KNOWN_LIMITATION | candidate=bbbb")],
+             "message": "B known limitation"},
+            {"files": [("c.md", "| UAT-RP-005 | narrative mention |")],
+             "message": "C narrative"},
+        ])
+        git = _git(repo_dir)
+        sha_a, sha_b, sha_c = self._shas(repo_dir)
+        triples = [
+            _quad("a.md", "UAT-EVIDENCE | UAT-RP-005 | FAIL_PROVEN | candidate=aaaa",
+                  sha_a, ["FAIL_PROVEN"]),
+            _quad("b.md", "UAT-EVIDENCE | UAT-RP-005 | KNOWN_LIMITATION | candidate=bbbb",
+                  sha_b, ["KNOWN_LIMITATION"]),
+            _quad("c.md", "| UAT-RP-005 | narrative mention |", sha_c, []),
+        ]
+        status, _sel = self.mod.select_evidence(triples, sha_c, git)
+        self.assertEqual(status, "REFERENCED")
+        hidden, paths = self.mod.narrative_supersession(
+            triples, sha_c, git, derived_status=status)
+        self.assertEqual(hidden, "KNOWN_LIMITATION")
+        self.assertEqual(paths, ["b.md"])
+
+    def test_rendered_document_carries_the_section_and_the_row_note(self):
+        """Mutation: annotate only in the helper (never in the document) -> the
+        operator reading CURRENT_UAT_STATUS.md still sees a bare REFERENCED."""
+        repo_dir = self._history()
+        git = _git(repo_dir)
+        sha_a, sha_b = self._two_shas(repo_dir)
+        uat_status = {uid: [] for uid in self.uat_ids}
+        uat_status["UAT-RP-005"] = self._triples(sha_a, sha_b)
+        with mock.patch.object(self.mod, "GIT", git):
+            md = self.mod.render_markdown(uat_status, sha_b, malformed_markers=None)
+        self.assertIn("## Narrative supersessions", md)
+        # The row keeps the derived status (REFERENCED) and gains the note...
+        self.assertIn("| `UAT-RP-005` | **REFERENCED** |", md)
+        self.assertIn("narrative-superseded: COVERED", md)
+        # ...while the section table names what was superseded and by which doc.
+        self.assertIn("| `UAT-RP-005` | **COVERED** | `a.md` | `b.md` |", md)
+
+
 class GenCurrentUatStatusTests(unittest.TestCase):
     """D-007 + T0E-EVID-01 characterisation suite."""
 

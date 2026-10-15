@@ -48,6 +48,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 UAT_DIR = ROOT / "docs/v2/07-uat"
@@ -459,6 +460,47 @@ def select_evidence(triples, candidate_sha: str, git: _Git = GIT
     return maximal_statuses[0], maximal_triples
 
 
+def narrative_supersession(triples, candidate_sha, git=GIT, derived_status=None):
+    """Return (explicit_status, paths) hidden by a narrative-only maximal.
+
+    `select_evidence` returns REFERENCED when the DAG-maximal evidence is
+    narrative-only, and its docstring says callers that need to distinguish
+    "still certified" from "superseded by narrative" must inspect the maximal
+    set explicitly. This is that inspection.
+
+    Why it matters: printed bare, REFERENCED cannot be told apart from "never
+    certified". During the 2026-10-15 harness sweep two UATs (UAT-RP-005,
+    UAT-RP-011) moved COVERED -> REFERENCED purely because newer documents —
+    including this session's own receipts — *mentioned* the ids in prose. The
+    derivation is declared behaviour; hiding it in the document is not.
+
+    Zero false hope: the older status is NOT restored. The row still says
+    REFERENCED, now with an explicit note naming what it superseded.
+
+    Which hidden status is reported: the **causally latest** one (DAG-maximal
+    among the hidden triples), because that is the status ADR-0095 supersedence
+    would have carried. Only when several latest triples disagree does the
+    tie-break pick the most blocking status (EXPLICIT_STATUSES order), which is
+    the conservative choice: a hidden FAIL_PROVEN must not be described as a
+    hidden PARTIAL.
+    """
+    if derived_status != "REFERENCED" or not triples:
+        return None, []
+    maximals = set(causal_maximal_shas(triples, candidate_sha, git))
+    superseded = [t for t in triples if t[2] not in maximals and t[3]]
+    if not superseded:
+        return None, []
+    hidden_maximals = set(causal_maximal_shas(superseded, candidate_sha, git))
+    latest = [t for t in superseded if t[2] in hidden_maximals] or superseded
+    statuses = sorted({s for t in latest for s in t[3]},
+                      key=EXPLICIT_STATUSES.index)
+    if not statuses:
+        return None, []
+    strongest = statuses[0]
+    paths = sorted({str(t[0]) for t in latest if strongest in t[3]})
+    return strongest, paths
+
+
 def pin_receipt(triples, candidate_sha: str, git: _Git = GIT) -> str | None:
     """Pin the receipt path of the latest applicable evidence.
 
@@ -547,6 +589,7 @@ def render_markdown(uat_status, head_sha, malformed_markers=None):
     lines.append("|---|---|---|---|\n")
     repo_text = _collect_repo_text()
     counts: dict[str, int] = {}
+    narrative_supersessions: list[tuple] = []
     for uid in UAT_IDS:
         triples = uat_status[uid]
         applicable, _gate = check_applicability(uid, repo_text)
@@ -573,6 +616,16 @@ def render_markdown(uat_status, head_sha, malformed_markers=None):
             # the row it annotates.
             pinned = [t for t in selected if str(t[0]) == str(receipt)] or selected
             excerpt = pinned[0][1] if pinned else "_no evidence yet_"
+            # A REFERENCED row may be hiding an older explicit status (the id was
+            # certified, then merely *mentioned* in newer prose). The derivation
+            # stays as declared; the document must say what it superseded.
+            hidden_status, hidden_paths = narrative_supersession(
+                triples, head_sha, GIT, derived_status=status)
+            if hidden_status:
+                excerpt = (f"{excerpt} → **narrative-superseded: {hidden_status}**"
+                           f" (older evidence: `{hidden_paths[0]}`)")
+                narrative_supersessions.append((uid, hidden_status,
+                                                hidden_paths, receipt))
         counts[status] = counts.get(status, 0) + 1
         lines.append(f"| `{uid}` | **{status}** | `{receipt or '—'}` | {excerpt} |\n")
     lines.append("\n---\n\n")
@@ -608,6 +661,23 @@ def render_markdown(uat_status, head_sha, malformed_markers=None):
         lines.append("## Malformed marker-shaped lines (refused; no certification)\n\n")
         for rel, line, _sha in malformed_markers:
             lines.append(f"- `{rel}`: {line}\n")
+    if narrative_supersessions:
+        lines.append("\n---\n\n")
+        lines.append("## Narrative supersessions (REFERENCED rows hiding an older "
+                     "explicit status)\n\n")
+        lines.append("These rows are REFERENCED because the DAG-maximal evidence is a "
+                     "narrative mention, while an older receipt did carry an explicit "
+                     "status. The derivation follows ADR-0095/T0E-EVID-01; the list exists "
+                     "so nobody reads REFERENCED as 'never certified'. To restore the "
+                     "status, publish evidence with a real marker "
+                     "(`UAT-EVIDENCE | <UAT> | <STATUS> | candidate=<sha>`), or amend the "
+                     "rule with an ADR.\n\n")
+        lines.append("| UAT | Hidden status | Older evidence | Superseding narrative |\n")
+        lines.append("|---|---|---|---|\n")
+        for uid, hidden_status, hidden_paths, superseding in narrative_supersessions:
+            older = ", ".join(f"`{p}`" for p in hidden_paths)
+            lines.append(f"| `{uid}` | **{hidden_status}** | {older} | "
+                         f"`{superseding or '—'}` |\n")
     lines.append("\n---\n\n")
     lines.append("## Discoveries\n\n")
     lines.append("- The normative matrix in `PRODUCTION_READY_UAT_MATRIX.md` mixes contract (immutable) and current state (mutable); this generator honours that separation and excludes the matrix from classification.\n")
@@ -641,9 +711,13 @@ def main():
 
     out = pathlib.Path(args.out)
     if args.check:
-        tmp = pathlib.Path("/tmp/_uat_status_check.md")
-        tmp.write_text(md)
-        existing = out.read_text() if out.exists() else ""
+        # Scratch copy: a private temp dir, not a fixed /tmp path. A fixed path
+        # collides when two checks run at once and leaves a stray file behind on
+        # every invocation (HARNESS FIDELITY LAW §4: no ambient shared surface).
+        with tempfile.TemporaryDirectory(prefix="uat-status-check-") as scratch:
+            tmp = pathlib.Path(scratch) / "status.md"
+            tmp.write_text(md)
+            existing = out.read_text() if out.exists() else ""
         # Normalise the volatile header (Generated-at timestamp + HEAD SHA)
         # before comparison: the file is regenerated after each commit, so
         # the HEAD reference naturally moves with every regen commit. The
@@ -662,6 +736,9 @@ def main():
             )
         if _strip_volatile_header(existing) == _strip_volatile_header(md):
             print(f"OK-IDENTICAL ({md.splitlines()[0]})")
+            if "## Narrative supersessions" in md:
+                print("narrative_supersessions=present (REFERENCED rows hiding an "
+                      "older explicit status; see the section in the document)")
             return 0
         # The contents differ materially (not just volatile header).
         # Report STALE so the operator knows the regen produced new content

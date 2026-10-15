@@ -37,6 +37,10 @@ Rules (fail-closed, numbered R0..R7):
       candidate commit, not from filesystem mtime.
   R6  With --strict: REFERENCED UATs are also blocking (require exception).
   R7  --head must not be behind origin/main.
+  R8  CURRENT_UAT_STATUS.md must be the document the generator would write for
+      this tree (`gen-current-uat-status.py --check`). R4/R5 read that document
+      as evidence; a stale copy makes them answer about yesterday's evidence.
+      Missing generator fails closed too: freshness cannot be adjudicated.
 
 Usage:
     python3 scripts/admission-check.py --head <sha>
@@ -446,6 +450,44 @@ def check_r7_origin_main_not_ahead(
     return True, None
 
 
+def check_r8_uat_status_fresh(cwd: pathlib.Path = ROOT,
+                             ) -> tuple[bool, Optional[str]]:
+    """R8: CURRENT_UAT_STATUS.md must be what the generator would write.
+
+    The document is generated state, not an authored source. A stale copy is
+    silent: it reports statuses for evidence that has since changed, while R4
+    and R5 adjudicate on the text in front of them. The generator owns the
+    comparison (`--check` normalises only the volatile header), so this rule
+    does not reimplement it: it runs the production tool and reads its verdict.
+
+    Fail closed in both directions: a stale document is a finding, and a
+    missing generator is also a finding, because then nobody can tell.
+    """
+    generator = cwd / "scripts" / "gen-current-uat-status.py"
+    if not generator.is_file():
+        # Report the path RELATIVE to the admission root: an absolute path makes
+        # two clones of the same candidate print different gate output, which
+        # breaks the reproducibility invariant the suite asserts.
+        return False, ("R8 generator missing: scripts/gen-current-uat-status.py "
+                       "(freshness not adjudicable)")
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(generator), "--check"],
+            cwd=str(cwd), capture_output=True, text=True, timeout=600,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "R8 generator --check timed out after 600s"
+    # Same reason: the generator names its output path, which is clone-specific.
+    output = (proc.stdout + proc.stderr).strip().replace(str(cwd), "<root>")
+    if proc.returncode == 0:
+        if "narrative_supersessions=present" in output:
+            return True, ("R8 in sync; narrative supersessions disclosed in the "
+                          "document (REFERENCED rows hiding an older status)")
+        return True, "R8 in sync with the evidence scan"
+    first = output.splitlines()[0] if output else "no output"
+    return False, f"R8 CURRENT_UAT_STATUS.md STALE: {first}"
+
+
 # ---- Driver ----------------------------------------------------------------
 
 def main() -> int:
@@ -526,6 +568,10 @@ def main() -> int:
     # R7 (R6 reserved for --strict handling in R4 above; see docstring)
     ok, msg = check_r7_origin_main_not_ahead(candidate, cwd)
     results.append(("R7 origin/main not ahead", ok, msg))
+
+    # R8
+    ok, msg = check_r8_uat_status_fresh(cwd)
+    results.append(("R8 CURRENT_UAT_STATUS.md fresh (regenerate on drift)", ok, msg))
 
     passed = sum(1 for _, ok, _ in results if ok)
     failed = sum(1 for _, ok, _ in results if not ok)

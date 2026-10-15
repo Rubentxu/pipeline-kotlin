@@ -846,6 +846,69 @@ class R7OriginMainTests(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+class R8UatStatusFreshnessTests(unittest.TestCase):
+    """R8: the generated status document must match the evidence scan.
+
+    R4/R5 adjudicate on CURRENT_UAT_STATUS.md. A stale copy is silent: it reports
+    the statuses of an older evidence set. R8 runs the production generator's
+    `--check` (which owns the comparison) and reads its verdict, instead of
+    re-deriving the document here.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = _load_mod()
+
+    def _install_generator(self, repo: pathlib.Path) -> None:
+        dest = repo / "scripts" / "gen-current-uat-status.py"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(SCRIPT.parent / "gen-current-uat-status.py", dest)
+
+    DOC = "docs/v2/08-production-readiness/CURRENT_UAT_STATUS.md"
+
+    def test_missing_generator_fails_closed(self):
+        """Mutation: treat an unverifiable freshness as PASS -> every clone
+        without the generator silently stops checking the document."""
+        with TempGitRepo() as repo:
+            ok, msg = self.mod.check_r8_uat_status_fresh(repo.repo)
+        self.assertFalse(ok, "an unadjudicable freshness must fail closed")
+        self.assertIn("generator missing", msg)
+
+    def test_stale_document_is_reported_stale(self):
+        """Mutation: return True whenever the document exists -> the gate keeps
+        adjudicating on evidence that has already changed."""
+        with TempGitRepo() as repo:
+            self._install_generator(repo.repo)
+            repo.commit("stale doc tree", {
+                "docs/v2/07-uat/r.md": "# R\n",
+                self.DOC: "# Current UAT Status\n| UAT ID | Status |\n|--|--|\n| `UAT-RP-001` | **COVERED** |\n",
+            })
+            ok, msg = self.mod.check_r8_uat_status_fresh(repo.repo)
+        self.assertFalse(ok)
+        self.assertIn("STALE", msg)
+
+    def test_fresh_document_passes(self):
+        """Mutation: always report STALE -> R8 becomes noise and the operator
+        stops regenerating; the pair (stale, fresh) is what makes R8 meaningful."""
+        with TempGitRepo() as repo:
+            self._install_generator(repo.repo)
+            head = repo.commit("evidence tree", {
+                "docs/v2/07-uat/r.md": "# R\n",
+            })
+            repo.commit("marker", {
+                "docs/v2/07-uat/r.md": (
+                    f"# R\n\nUAT-EVIDENCE | UAT-RP-001 | COVERED | candidate={head}\n"),
+            })
+            gen = repo.repo / "scripts" / "gen-current-uat-status.py"
+            write = subprocess.run([sys.executable, str(gen)], cwd=str(repo.repo),
+                                   capture_output=True, text=True)
+            self.assertEqual(write.returncode, 0, write.stderr)
+            ok, msg = self.mod.check_r8_uat_status_fresh(repo.repo)
+        self.assertTrue(ok, msg)
+        self.assertIn("in sync", msg)
+
+
+# ---------------------------------------------------------------------------
 # Driver / CLI smoke
 # ---------------------------------------------------------------------------
 

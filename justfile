@@ -103,42 +103,32 @@ uat_excludes := '*UatLocal*,*UatCompat*,*UatDsl*,*UatStep*,*UatEvt*,*UatDurable*
     timeout 600 v2/gradlew -p v2 :pipeline-application:test --tests "CompatibilityCorpusTest.fixture${nn}*"
 
 # Change-driven selection: which tests does my diff touch? (rule 17)
+# Mapping lives in scripts/plan-affected-tests.py (single source of truth).
 @changed base="HEAD":
+    python3 scripts/plan-affected-tests.py --base {{base}}
+
+# B2 devGate: run the affected tests for this diff in ONE Gradle invocation
+# (incremental, UAT battery excluded, no --rerun-tasks). Build-system diffs plan
+# the full round gate; a tool without a suite is UNCLASSIFIED and fails closed.
+@dev base="HEAD" budget="900":
     #!/usr/bin/env bash
     set -Eeuo pipefail
-    files=$(git diff --name-only "{{base}}")
-    if [[ -z "$files" ]]; then
-        echo "no diff vs {{base}}"
-        exit 0
+    plan_out=$(python3 scripts/plan-affected-tests.py --base {{base}} --format json) || exit $?
+    py=$(python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin)["python_suites"]))' <<<"$plan_out")
+    g=$(python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin)["gradle_tasks"]))' <<<"$plan_out")
+    echo "dev plan: gradle=[${g}] python=[${py}]"
+    if [[ -n "$py" ]]; then
+        for suite in $py; do
+            echo "dev> python3 $suite"
+            timeout {{budget}} python3 "$suite"
+        done
     fi
-    echo "== changed files vs {{base}} =="
-    echo "$files"
-    echo ""
-    echo "== suggested validation (rule 17 ladder) =="
-    declare -A tasks=()
-    corpus=0; docs_only=1; build_system=0
-    while IFS= read -r f; do
-        case "$f" in
-            v2/compatibility/*) corpus=1; docs_only=0 ;;
-            docs/*|*.md) : ;;
-            v2/*.gradle.kts|v2/gradle/*|v2/gradlew*) build_system=1; docs_only=0 ;;
-            v2/pipeline-application/*) tasks[":pipeline-application:test"]=1; docs_only=0 ;;
-            v2/pipeline-events/*) tasks[":pipeline-events:test"]=1; tasks[":pipeline-architecture-tests:test"]=1; docs_only=0 ;;
-            v2/pipeline-scripting-api/*) tasks[":pipeline-scripting-api:test"]=1; docs_only=0 ;;
-            v2/pipeline-architecture-tests/*) tasks[":pipeline-architecture-tests:test"]=1; docs_only=0 ;;
-            v2/pipeline-step-sdk/*/*) tasks[":pipeline-step-sdk:$(echo "$f" | cut -d/ -f3):test"]=1; tasks[":pipeline-application:test"]=1; docs_only=0 ;;
-            v2/*) tasks[":$(echo "$f" | cut -d/ -f2):test"]=1; docs_only=0 ;;
-        esac
-    done <<< "$files"
-    if [[ $build_system -eq 1 ]]; then
-        echo "timeout 1270 v2/gradlew -p v2 check   # build-system change: full round gate (L5)"
+    if [[ -n "$g" ]]; then
+        echo "dev> v2/gradlew -p v2 $g -Pshard.excludes='<uat>'"
+        timeout {{budget}} v2/gradlew -p v2 $g -Pshard.excludes='{{uat_excludes}}'
     fi
-    for t in "${!tasks[@]}"; do echo "timeout 600 v2/gradlew -p v2 $t"; done
-    if [[ $corpus -eq 1 ]]; then
-        echo "timeout 600 v2/gradlew -p v2 :pipeline-application:test --tests 'CompatibilityCorpusTest'  # or single fixture: just corpus <n>"
-    fi
-    if [[ $docs_only -eq 1 ]]; then
-        echo "docs-only change: markdown/link validation suffices"
+    if [[ -z "$py" && -z "$g" ]]; then
+        echo "dev: no test plan for this diff"
     fi
 
 # ─── harness governance (B1) ─────────────────────────────────────

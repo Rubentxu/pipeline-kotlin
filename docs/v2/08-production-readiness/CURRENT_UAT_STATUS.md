@@ -1,6 +1,6 @@
 # Current UAT Status (Production-Readiness)
-**Generated at (UTC):** 2026-10-15T20:56:32Z
-**Source of truth:** `git log` HEAD `b2adcff` + evidence scan in `docs/v2/07-uat/` (normative matrix excluded).
+**Generated at (UTC):** 2026-10-15T21:15:55Z
+**Source of truth:** `git log` HEAD `68649c7` + evidence scan in `docs/v2/07-uat/` (normative matrix excluded).
 **Generator:** `scripts/gen-current-uat-status.py` (D-007 + T0E-EVID-01 architecture)
 
 ---
@@ -78,6 +78,14 @@
 
 - `docs/v2/07-uat/RP2_GATE_RECEIPT.md`: `UAT-EVIDENCE`. Este turno autónomo re-ejecuta el test contra el
 - `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md`: UAT-EVIDENCE marker.
+
+---
+
+## Documents excluded from the scan (status-view descriptions)
+
+These files declare the status-view marker and are not read as evidence: they describe the status view (for example, they explain a supersession), and a scanner that reads them certifies from documentation. Listed so the exclusion is visible, not silent.
+
+- `docs/v2/07-uat/B1_HARNESS_UAT_STATUS_DOWNGRADE_RECEIPT.md`
 
 ---
 

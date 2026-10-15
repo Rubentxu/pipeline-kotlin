@@ -5,6 +5,11 @@
 - **Scope:** `scripts/gen-current-uat-status.py` + suite, `scripts/admission-check.py` + suite,
   `docs/v2/08-production-readiness/CURRENT_UAT_STATUS.md` (regenerated).
 
+
+**Este documento describe el status view; no es evidencia para él.** Contiene filas con la forma `| UAT | STATUS | receipt |` que explican supersessions. El marcador de abajo le dice al generador que no lo lea como certificación (medido: sin él, esas filas restauraban siete estados desde documentación).
+
+<!-- uat-status-view: description, not evidence -->
+
 ---
 
 ## 1. The hazard the backlog recorded as "ADR-0095 supersede rule"
@@ -101,3 +106,49 @@ The disclosed supersessions in the regenerated document:
   impossible to skip.
 - No UAT status was invented, and no blocking status (`FAIL_PROVEN`/`BLOCKED`/`REJECTED`/
   `NOT_RUN`) was introduced by the regeneration: R4 still passes.
+
+---
+
+## 5. Follow-up found by R8 itself: a document about the status view was read as evidence
+
+Committing this receipt changed the scan. Its supersession table has rows of the form
+`| UAT-RP-011 | COVERED | WIP9_OBSERVABILITY_RECEIPT.md |`, which the generator reads as a
+single-UAT line carrying an explicit status. Result, measured minutes later by the R8 rule
+this same receipt introduced:
+
+```text
+R8 CURRENT_UAT_STATUS.md fresh: STALE  (out=<root>/docs/v2/08-production-readiness/CURRENT_UAT_STATUS.md)
+fresh regeneration disagreed with the committed document:
+  REFERENCED 9 -> 3     COVERED 13 -> 19
+  and this receipt became the "latest receipt" for seven UATs
+```
+
+That is the same defect class as §1, one level up: **documentation about evidence becomes
+evidence**. It is worth noting where it was caught — not by review, and not by the suites,
+but by the rule that refuses a stale generated document.
+
+### The fix (mechanical, no normative change)
+
+```text
+STATUS_VIEW_MARKER = "<!-- uat-status-view: description, not evidence -->"
+scan_receipts   skips a document that declares the marker, and reports it
+render_markdown prints a "## Documents excluded from the scan" section naming it
+                (an exclusion nobody can see is a hidden certification)
+```
+
+This receipt carries the marker. The generated document now lists it under that section, and
+the statuses returned to what the evidence (not the prose) supports: COVERED 13,
+KNOWN_LIMITATION 1, REFERENCED 9 — with R4 still PASS and R8 PASS.
+
+Three new tests pin it: a marked document does not certify, an unmarked one keeps its
+evidence, and the exclusion is disclosed in the rendered document. The check-mode stub also
+had to track the new `scan_receipts` keyword — it failed loudly with a `TypeError` instead of
+silently scanning nothing, which is the behaviour a harness wants from its own stub.
+
+### What is deliberately NOT decided here
+
+Whether free-form prose (a line mentioning one UAT plus a status word) may certify at all is a
+**normative** question: the current design says yes (C5 in the generator's acceptance
+criteria) and this session does not change it. The evidence for revisiting it is now concrete:
+two of the three defects in this file are the same loophole pointing in opposite directions —
+a narrative mention demoting a certification (§1), and a description restoring one (§5).

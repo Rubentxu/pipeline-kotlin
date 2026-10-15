@@ -52,6 +52,11 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 UAT_DIR = ROOT / "docs/v2/07-uat"
+# A document may declare itself a description of the status view instead of
+# evidence for it. Measured defect this closes: a receipt that lists
+# `| UAT-RP-011 | COVERED | ... |` rows to explain a supersession was read as
+# fresh certification for seven UATs, restoring statuses from documentation.
+STATUS_VIEW_MARKER = "<!-- uat-status-view: description, not evidence -->"
 NORMATIVE_MATRIX = "PRODUCTION_READY_UAT_MATRIX.md"  # excluded from scan
 DEFAULT_OUT = ROOT / "docs/v2/08-production-readiness/CURRENT_UAT_STATUS.md"
 
@@ -246,7 +251,8 @@ def _parse_freeform(line: str):
 def scan_receipts(uat_dir, *, candidate_sha: str | None = None,
                   git: _Git = GIT,
                   collect_glob_order: list[pathlib.Path] | None = None,
-                  malformed_markers: list | None = None):
+                  malformed_markers: list | None = None,
+                  excluded_status_views: list | None = None):
     """Return dict: uat_id -> list of EvidenceQuad.
 
     Each EvidenceQuad is `(receipt_path, matched_line, commit_sha,
@@ -266,6 +272,16 @@ def scan_receipts(uat_dir, *, candidate_sha: str | None = None,
     a list is supplied, so the refusal is disclosed rather than silent.
 
     Receipts without a tracked Git history are skipped.
+
+    A document that only *describes* the status view must not be read as
+    evidence. It declares that with STATUS_VIEW_MARKER on its own line, and is
+    then skipped and disclosed through `excluded_status_views`. Measured defect
+    this closes: `B1_HARNESS_UAT_STATUS_DOWNGRADE_RECEIPT.md` lists
+    `| UAT-RP-011 | COVERED | ... |`-shaped rows to explain a supersession, and
+    the scanner read those rows as fresh certification, restoring seven
+    statuses from documentation. (Whether free-form prose may certify at all is
+    a normative question this fix does not decide: it only refuses documents
+    that declare themselves descriptions.)
     """
     if not uat_dir.exists():
         return {uid: [] for uid in UAT_IDS}
@@ -289,6 +305,12 @@ def scan_receipts(uat_dir, *, candidate_sha: str | None = None,
             rel = path
 
         rel_str = str(rel)
+        if STATUS_VIEW_MARKER in text:
+            # Disclosure, not silence: the document is named in the generated
+            # output so a reader can see what the scan ignored.
+            if excluded_status_views is not None:
+                excluded_status_views.append(rel_str)
+            continue
         git_rel = path.name if path.parent.resolve() != uat_dir.resolve() \
             else rel_str
 
@@ -577,7 +599,8 @@ def check_applicability(uid: str, repo_text: str | None = None
     return applicable, descr
 
 
-def render_markdown(uat_status, head_sha, malformed_markers=None):
+def render_markdown(uat_status, head_sha, malformed_markers=None,
+                    excluded_status_views=None):
     lines = []
     lines.append("# Current UAT Status (Production-Readiness)\n")
     lines.append(f"**Generated at (UTC):** {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}\n")
@@ -661,6 +684,17 @@ def render_markdown(uat_status, head_sha, malformed_markers=None):
         lines.append("## Malformed marker-shaped lines (refused; no certification)\n\n")
         for rel, line, _sha in malformed_markers:
             lines.append(f"- `{rel}`: {line}\n")
+    if excluded_status_views:
+        lines.append("\n---\n\n")
+        lines.append("## Documents excluded from the scan (status-view "
+                     "descriptions)\n\n")
+        lines.append("These files declare the status-view marker and are not read "
+                     "as evidence: they describe the status view (for example, "
+                     "they explain a supersession), and a scanner that reads them "
+                     "certifies from documentation. Listed so the exclusion is "
+                     "visible, not silent.\n\n")
+        for rel in excluded_status_views:
+            lines.append(f"- `{rel}`\n")
     if narrative_supersessions:
         lines.append("\n---\n\n")
         lines.append("## Narrative supersessions (REFERENCED rows hiding an older "
@@ -705,9 +739,12 @@ def main():
     head_sha = git_head_full()
     candidate = args.candidate or head_sha
     malformed: list = []
+    excluded_views: list = []
     uat_status = scan_receipts(UAT_DIR, candidate_sha=candidate,
-                               malformed_markers=malformed)
-    md = render_markdown(uat_status, head_sha, malformed_markers=malformed)
+                               malformed_markers=malformed,
+                               excluded_status_views=excluded_views)
+    md = render_markdown(uat_status, head_sha, malformed_markers=malformed,
+                         excluded_status_views=excluded_views)
 
     out = pathlib.Path(args.out)
     if args.check:

@@ -226,12 +226,16 @@ class CheckModeEndToEndTests(unittest.TestCase):
         buf = io.StringIO()
         real_scan = self.mod.scan_receipts
 
-        def bound_scan(uat_dir, *, candidate_sha=None, malformed_markers=None):
+        def bound_scan(uat_dir, *, candidate_sha=None, malformed_markers=None,
+                       excluded_status_views=None):
             # `scan_receipts`'s `git` default was captured at import time, so
             # patching the module global is not enough; inject the temp repo.
+            # The signature must track the production seam: a missing kwarg here
+            # is a TypeError from main(), which is how this stub earned its keep.
             return real_scan(uat_dir, candidate_sha=candidate_sha,
                              git=self.mod._Git(cwd=tmp),
-                             malformed_markers=malformed_markers)
+                             malformed_markers=malformed_markers,
+                             excluded_status_views=excluded_status_views)
 
         with mock.patch.object(self.mod, "ROOT", tmp), \
              mock.patch.object(self.mod, "UAT_DIR", tmp / "docs" / "v2" / "07-uat"), \
@@ -519,6 +523,74 @@ class NarrativeSupersessionTests(unittest.TestCase):
         self.assertIn("narrative-superseded: COVERED", md)
         # ...while the section table names what was superseded and by which doc.
         self.assertIn("| `UAT-RP-005` | **COVERED** | `a.md` | `b.md` |", md)
+
+
+class StatusViewMarkerTests(unittest.TestCase):
+    """Claim: a document that describes the status view is not evidence for it.
+
+    Measured defect this pins (2026-10-15): `B1_HARNESS_UAT_STATUS_DOWNGRADE_
+    RECEIPT.md` lists `| UAT-RP-011 | COVERED | ... |` rows to explain a
+    supersession. The scanner read those rows as fresh certification and
+    restored seven statuses from documentation, which R8 then reported as a
+    stale document. The fix refuses only documents that declare themselves
+    descriptions; whether free-form prose may certify at all stays a normative
+    question.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = _load_mod()
+
+    def _repo(self):
+        repo_dir = _tmp_repo_with_receipts([
+            ("describe.md",
+             f"# R\n\n{self.mod.STATUS_VIEW_MARKER}\n\n"
+             "| `UAT-RP-011` | COVERED | x.md |\n"),
+        ])
+        # A marker must claim a REAL candidate at or before its own commit, so the
+        # certification fixture uses the first commit's SHA for real.
+        sha = subprocess.run(["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
+                             capture_output=True, text=True, check=True).stdout.strip()
+        (repo_dir / "certify.md").write_text(
+            f"# C\n\nUAT-EVIDENCE | UAT-RP-001 | COVERED | candidate={sha}\n")
+        subprocess.run(["git", "-C", str(repo_dir), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(repo_dir), "commit", "-q", "-m", "certify"],
+                       check=True)
+        return repo_dir
+
+    def test_marked_document_is_not_scanned(self):
+        """Mutation: drop the marker check -> documentation certifies again."""
+        repo_dir = self._repo()
+        git = _git(repo_dir)
+        excluded = []
+        uat_status = self.mod.scan_receipts(
+            repo_dir, git=git, excluded_status_views=excluded)
+        self.assertEqual(uat_status["UAT-RP-011"], [],
+                         "a status-view description must not certify")
+        self.assertTrue(excluded and excluded[0].endswith("describe.md"),
+                        f"the exclusion must be disclosed, not silent; got {excluded}")
+
+    def test_document_without_the_marker_still_certifies(self):
+        """Mutation: skip every document that mentions UAT ids -> real
+        certifications vanish and the gate fails closed for the wrong reason."""
+        repo_dir = self._repo()
+        git = _git(repo_dir)
+        excluded = []
+        uat_status = self.mod.scan_receipts(
+            repo_dir, git=git, excluded_status_views=excluded)
+        self.assertTrue(uat_status["UAT-RP-001"],
+                        "an unmarked receipt must keep its evidence")
+        self.assertNotIn("certify.md", excluded)
+
+    def test_exclusion_is_disclosed_in_the_generated_document(self):
+        """Mutation: exclude silently -> a reader cannot tell what the scan
+        ignored, which is how an exclusion becomes a hidden certification."""
+        md = self.mod.render_markdown(
+            {uid: [] for uid in self.mod.UAT_IDS}, "a" * 40,
+            malformed_markers=None,
+            excluded_status_views=["docs/v2/07-uat/describe.md"])
+        self.assertIn("## Documents excluded from the scan", md)
+        self.assertIn("docs/v2/07-uat/describe.md", md)
 
 
 class GenCurrentUatStatusTests(unittest.TestCase):

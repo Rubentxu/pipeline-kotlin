@@ -48,14 +48,26 @@
 #   PIPELINEK_ALLOWED_AUTHORS comma-separated allowlist of GitHub logins
 #                              allowed to publish verdict.json entries
 #                              (default: pipelinek-harness[bot] only)
+#   PIPELINEK_CONSULT_RECEIPT_ROOT
+#                              receipt root (default
+#                              docs/v2/07-uat/RECEIPTS/consult/); overridable so
+#                              tests never write receipts into the tracked tree
 #
 # Exit codes:
-#   0   verdict PASS reproducible (no promotion action)
-#   2   verdict FAIL reproducible (issue draft printed; --open-issue opens)
-#   3   verdict INVALID (ZIP SHA-256 mismatch OR unknown publisher OR
-#       verdict.json missing critical fields)
+#   0   verdict PASS reproducible (no promotion action) or FAIL 'transient'
+#   2   verdict FAIL 'reproducible' (issue draft printed; --open-issue opens)
+#   3   verdict INVALID (ZIP SHA-256 mismatch OR malformed digest OR unknown
+#       publisher OR missing/wrong-typed critical fields OR a FAIL whose
+#       failure_kind is absent/unknown)
 #   4   verdict MISSING (no verdict.json found in harness)
 #   75  ISSUE_PENDING (failed to open issue: credentials or network)
+#
+# Accepted failure_kind values (normalised: trimmed, lower-cased):
+#   reproducible    -> FAIL_REPRODUCIBLE, exit 2
+#   transient       -> FAIL_NON_REPRODUCIBLE, exit 0
+#   anything else   -> INVALID, exit 3 (a FAIL without a recognized
+#                      discriminator is a missing critical field, not an
+#                      unactionable verdict)
 #
 # Idempotent: re-running with the same --candidate is safe; receipt paths
 # include timestamp to avoid clobbering.
@@ -65,6 +77,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.error
@@ -74,8 +87,40 @@ import urllib.request
 DEFAULT_HARNESS_REPO = "Rubentxu/pipelinek-release-harness"
 DEFAULT_PRODUCT_REPO = "Rubentxu/pipeline-kotlin"
 DEFAULT_ALLOWED_AUTHORS = ("pipelinek-harness[bot]",)
+DEFAULT_RECEIPT_ROOT = os.path.join("docs", "v2", "07-uat", "RECEIPTS", "consult")
 
 GITHUB_API = "https://api.github.com"
+
+# Digest and provenance shapes. A string that merely equals itself is not a
+# verified digest.
+HEX64 = re.compile(r"^[0-9a-f]{64}$", re.IGNORECASE)
+HARNESS_SHA_SHAPE = re.compile(r"^[0-9a-f]{7,40}$", re.IGNORECASE)
+
+REPRODUCIBLE_KIND = "reproducible"
+TRANSIENT_KIND = "transient"
+
+
+def _receipt_root():
+    return os.environ.get("PIPELINEK_CONSULT_RECEIPT_ROOT", DEFAULT_RECEIPT_ROOT)
+
+
+def _text_field(parsed, *keys):
+    """First non-empty string among keys, else None.
+
+    Non-string values are NOT coerced: a wrong type is an invalid document,
+    not a truthy value ({"result": 1} must not become "1").
+    """
+    for key in keys:
+        value = parsed.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _write_receipt(args, payload):
+    ts_slug = payload["timestamp"].replace(":", "").replace("-", "")
+    receipt_dir = os.path.join(_receipt_root(), f"{args.candidate}-{ts_slug}")
+    return _print_receipt(os.path.join(receipt_dir, "verdict.json"), payload)
 
 
 def _gh_get(url, token=None):
@@ -145,22 +190,25 @@ def fetch_product_release_zip_sha256(product_repo, candidate, token=None):
         if exc.code == 404:
             return None, None
         raise
-    # Look for an asset named pipelinek-<candidate>.zip and its sibling
-    # *.sha256 (the convention used by this repo's DIST-2 installer).
-    zip_sha = None
-    for asset in release.get("assets", []):
-        name = asset.get("name", "")
-        if name.endswith(".zip.sha256"):
-            # Fetch the .sha256 file content via the asset URL.
-            asset_url = asset.get("browser_download_url")
-            try:
-                with urllib.request.urlopen(asset_url, timeout=30) as resp:
-                    raw = resp.read().decode("utf-8").strip()
-                # Format: "<sha256>  \n" or just "<sha256>"
-                zip_sha = raw.split()[0]
-            except Exception:
-                continue
-    return zip_sha, release
+    # Look for the sidecar OF THIS CANDIDATE: pipelinek-<candidate>.zip.sha256.
+    # Any other *.zip.sha256 belongs to different bytes; zero or several exact
+    # matches means the digest cannot be established, so the caller sees None
+    # and classifies INVALID instead of trusting asset order.
+    expected = f"pipelinek-{candidate}.zip.sha256"
+    matches = [a for a in release.get("assets", []) if a.get("name") == expected]
+    if len(matches) != 1:
+        return None, release
+    asset_url = matches[0].get("browser_download_url")
+    try:
+        with urllib.request.urlopen(asset_url, timeout=30) as resp:
+            raw = resp.read().decode("utf-8").strip()
+    except Exception:
+        # Unreadable sidecar = no established digest. Never keep a previous
+        # asset's value as if it described these bytes.
+        return None, release
+    # Format: "<sha256>  \n" or just "<sha256>".
+    first = raw.split()[0] if raw else ""
+    return (first or None), release
 
 
 def verify_publisher(parsed, allowed_authors):
@@ -304,55 +352,88 @@ def main(argv=None):
                        f"{args.harness_repo}/evidence/{args.candidate}/"),
         }
         # Immutable receipt even for MISSING so consumers can audit.
-        ts_slug = result["timestamp"].replace(":", "").replace("-", "")
-        receipt_dir = os.path.join(
-            "docs", "v2", "07-uat", "RECEIPTS", "consult",
-            f"{args.candidate}-{ts_slug}")
-        receipt_path = _print_receipt(receipt_dir + "/verdict.json", result)
+        receipt_path = _write_receipt(args, result)
         result["receipt_path"] = receipt_path
         _emit(result, args, exit_code=4)
         return 4
 
-    # 1. ZIP SHA-256 cross-check.
+    # A malformed document (list, string, number) must produce a typed
+    # verdict and a receipt instead of an AttributeError out of main().
+    if not isinstance(verdict, dict):
+        result = {
+            "consumer": "scripts/consult-harness-verdict.py",
+            "candidate": args.candidate,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc)
+                .strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "harness_repo": args.harness_repo,
+            "product_repo": args.product_repo,
+            "status": "INVALID",
+            "detail": (f"verdict.json is a {type(verdict).__name__}, not a JSON "
+                       "object; critical fields cannot be read"),
+        }
+        result["receipt_path"] = _write_receipt(args, result)
+        _emit(result, args, exit_code=3)
+        return 3
+
+    # 1. ZIP SHA-256 cross-check. Both sides must be well-formed 64-hex; a
+    # string that equals itself is not a verified digest.
     product_zip_sha, release = fetch_product_release_zip_sha256(
         args.product_repo, args.candidate, token=token)
-    zip_in_verdict = verdict.get("zip_sha256") or verdict.get("product_zip_sha256")
-    zip_match = (
-        product_zip_sha is not None
-        and zip_in_verdict is not None
-        and product_zip_sha.lower() == zip_in_verdict.lower()
+    zip_in_verdict = _text_field(verdict, "zip_sha256", "product_zip_sha256")
+    digest_shaped = (
+        zip_in_verdict is not None and HEX64.match(zip_in_verdict) is not None
+        and product_zip_sha is not None and HEX64.match(product_zip_sha) is not None
     )
+    zip_match = digest_shaped and product_zip_sha.lower() == zip_in_verdict.lower()
 
     # 2. Publisher allowlist.
     publisher_ok, publisher_login = verify_publisher(verdict, tuple(allowed))
 
-    # 3. Harness SHA recorded.
-    harness_sha = verdict.get("harness_sha") or verdict.get("producer_sha", "")
-    scenario = verdict.get("scenario", "")
-    result_field = verdict.get("result", "")
-    failure_kind = verdict.get("failure_kind", "")
+    # 3. Declared verification fields, typed. Wrong types are absent fields.
+    harness_sha = _text_field(verdict, "harness_sha", "producer_sha") or ""
+    scenario = _text_field(verdict, "scenario") or ""
+    result_raw = verdict.get("result")
+    result_field = result_raw.strip().upper() if isinstance(result_raw, str) else ""
+    kind_raw = verdict.get("failure_kind")
+    failure_kind = kind_raw.strip().lower() if isinstance(kind_raw, str) else ""
 
     # Classify.
     status = "INVALID"
     exit_code = 3
+    detail = ""
     if not zip_match:
         status = "INVALID"
         exit_code = 3
+        detail = "ZIP SHA-256 mismatch or malformed digest"
     elif not publisher_ok:
         status = "INVALID"
         exit_code = 3
-    elif result_field.upper() == "PASS":
-        status = "PASS"
-        exit_code = 0
-    elif result_field.upper() == "FAIL" and failure_kind == "reproducible":
-        status = "FAIL_REPRODUCIBLE"
-        exit_code = 2
-    elif result_field.upper() == "FAIL":
-        status = "FAIL_NON_REPRODUCIBLE"
-        exit_code = 0  # not actionable as motor issue
+        detail = f"publisher {publisher_login!r} not in the allowlist"
+    elif result_field == "PASS":
+        if not scenario or HARNESS_SHA_SHAPE.match(harness_sha) is None:
+            status = "INVALID"
+            exit_code = 3
+            detail = ("PASS without minimal evidence: a non-empty scenario and a "
+                      "harness_sha shaped like a commit are required")
+        else:
+            status = "PASS"
+            exit_code = 0
+    elif result_field == "FAIL":
+        if failure_kind == REPRODUCIBLE_KIND:
+            status = "FAIL_REPRODUCIBLE"
+            exit_code = 2
+        elif failure_kind == TRANSIENT_KIND:
+            status = "FAIL_NON_REPRODUCIBLE"
+            exit_code = 0  # not actionable as motor issue
+        else:
+            status = "INVALID"
+            exit_code = 3
+            detail = (f"FAIL without a recognized failure_kind (got {kind_raw!r}); "
+                      f"expected {REPRODUCIBLE_KIND!r} or {TRANSIENT_KIND!r}")
     else:
         status = "INVALID"
         exit_code = 3
+        detail = f"result field missing or unrecognized (got {result_raw!r})"
 
     fingerprint = compute_issue_fingerprint(
         args.candidate, verdict, product_zip_sha)
@@ -386,15 +467,12 @@ def main(argv=None):
         "result": result_field,
         "fingerprint": fingerprint,
         "status": status,
+        "detail": detail,
         "issue_action": issue_action,
     }
 
     # Immutable receipt.
-    ts_slug = receipt["timestamp"].replace(":", "").replace("-", "")
-    receipt_dir = os.path.join(
-        "docs", "v2", "07-uat", "RECEIPTS", "consult",
-        f"{args.candidate}-{ts_slug}")
-    receipt_path = _print_receipt(receipt_dir + "/verdict.json", receipt)
+    receipt_path = _write_receipt(args, receipt)
     receipt["receipt_path"] = receipt_path
 
     _emit(receipt, args, exit_code=exit_code)

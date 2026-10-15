@@ -22,6 +22,7 @@ import importlib.util
 import io
 import json
 import os
+import pathlib
 import sys
 import unittest
 from contextlib import redirect_stdout, redirect_stderr
@@ -29,8 +30,10 @@ from unittest import mock
 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(HERE)
 ROOT = HERE  # scripts/ lives at the repo root
 SCRIPT = os.path.join(ROOT, "consult-harness-verdict.py")
+RECEIPTS_IN_REPO = os.path.join(REPO_ROOT, "docs", "v2", "07-uat", "RECEIPTS", "consult")
 
 
 def _load_module():
@@ -57,6 +60,14 @@ class _Base(unittest.TestCase):
     def setUp(self):
         self.mod = _load_module()
         self.tmp_receipts = self._mkdtemp()
+        # HARNESS FIDELITY LAW §4: no test may write receipts into the tracked
+        # tree. The receipt root is injectable and EVERY test gets the temp
+        # root, so a future case that forgets _patch_receipt_dir() is still
+        # hermetic.
+        env = mock.patch.dict(os.environ,
+                              {"PIPELINEK_CONSULT_RECEIPT_ROOT": self.tmp_receipts})
+        env.start()
+        self.addCleanup(env.stop)
 
     def _mkdtemp(self):
         import tempfile
@@ -262,6 +273,216 @@ class JsonOutputCase(_Base):
         parsed = json.loads(out)
         self.assertEqual(parsed["status"], "PASS")
         self.assertEqual(parsed["zip_match"], True)
+
+
+class FailureKindIsRequired(_Base):
+    def _verdict(self, **overrides):
+        base = {
+            "result": "FAIL",
+            "publisher": "pipelinek-harness[bot]",
+            "zip_sha256": "dead" * 16,
+            "scenario": "S1",
+            "harness_sha": "ca2a91c0",
+        }
+        base.update(overrides)
+        return base
+
+    def test_fail_without_failure_kind_is_invalid(self):
+        """Claim: a FAIL with no discriminator is not silently 'not actionable'.
+
+        Mutation: keep the bare `elif result == FAIL` arm; an absent
+        failure_kind exits 0 exactly like PASS, with no receipt distinction.
+        """
+        verdict = self._verdict()
+        with self._stub_verdict(verdict), self._stub_release("dead" * 16), \
+             self._patch_receipt_dir():
+            rc, out, err = _run_with_args(self.mod, ["--candidate", "vX"])
+        self.assertEqual(rc, 3, "a missing failure_kind is a missing critical field")
+        self.assertIn("INVALID", out)
+
+    def test_fail_with_unknown_failure_kind_is_invalid(self):
+        """Claim: an unknown discriminator is not a non-reproducible verdict.
+
+        Mutation: default the unknown branch to FAIL_NON_REPRODUCIBLE.
+        """
+        verdict = self._verdict(failure_kind="weird-unknown-value")
+        with self._stub_verdict(verdict), self._stub_release("dead" * 16), \
+             self._patch_receipt_dir():
+            rc, out, err = _run_with_args(self.mod, ["--candidate", "vX"])
+        self.assertEqual(rc, 3)
+        self.assertIn("INVALID", out)
+
+    def test_failure_kind_is_normalised(self):
+        """Claim: case/whitespace do not change the discrimination.
+
+        Mutation: compare raw; 'Reproducible' would fall into the invalid
+        branch although it states the same fact.
+        """
+        verdict = self._verdict(failure_kind="  Reproducible ")
+        with self._stub_verdict(verdict), self._stub_release("dead" * 16), \
+             self._patch_receipt_dir():
+            rc, out, err = _run_with_args(self.mod, ["--candidate", "vX"])
+        self.assertEqual(rc, 2)
+        self.assertIn("FAIL_REPRODUCIBLE", out)
+
+
+class TypedFieldsCase(_Base):
+    def test_non_string_result_field_is_invalid(self):
+        """Claim: a JSON object with wrong field types is INVALID, not a crash.
+
+        Mutation: call .upper() on the raw value; {"result": 1} raises
+        AttributeError and escapes the documented exit codes with a traceback.
+        """
+        verdict = {
+            "result": 1,
+            "publisher": "pipelinek-harness[bot]",
+            "zip_sha256": "dead" * 16,
+            "scenario": "S1",
+            "harness_sha": "ca2a91c0",
+        }
+        with self._stub_verdict(verdict), self._stub_release("dead" * 16), \
+             self._patch_receipt_dir():
+            rc, out, err = _run_with_args(self.mod, ["--candidate", "vX"])
+        self.assertEqual(rc, 3)
+        self.assertNotIn("Traceback", err)
+        self.assertIn("INVALID", out)
+
+    def test_top_level_json_list_is_invalid(self):
+        """Claim: a non-object verdict.json is refused with a typed verdict.
+
+        Mutation: index the parsed document as a dict; a list raises
+        AttributeError before any receipt is written.
+        """
+        with self._stub_verdict(["not", "an", "object"]), \
+             self._stub_release("dead" * 16), self._patch_receipt_dir():
+            rc, out, err = _run_with_args(self.mod, ["--candidate", "vX"])
+        self.assertEqual(rc, 3)
+        self.assertNotIn("Traceback", err)
+        self.assertIn("INVALID", out)
+
+
+class MinimalEvidenceCase(_Base):
+    def test_pass_requires_scenario_and_harness_sha(self):
+        """Claim: PASS needs the declared verification fields present.
+
+        Mutation: classify PASS on the result field alone; a verdict with
+        empty scenario and harness_sha then reports status=PASS, exit 0, and
+        a receipt whose verification surface is empty.
+        """
+        sha = "1234" * 16
+        verdict = {
+            "result": "PASS",
+            "publisher": "pipelinek-harness[bot]",
+            "zip_sha256": sha,
+            "scenario": "",
+            "harness_sha": "",
+        }
+        with self._stub_verdict(verdict), self._stub_release(sha), \
+             self._patch_receipt_dir():
+            rc, out, err = _run_with_args(self.mod, ["--candidate", "vX"])
+        self.assertEqual(rc, 3)
+        self.assertIn("INVALID", out)
+
+    def test_zip_sha256_must_be_64_hex(self):
+        """Claim: a digest that matches itself is not a verified digest.
+
+        Mutation: compare strings without shape validation; 'abc' == 'abc'
+        yields zip_match=True and PASS.
+        """
+        verdict = {
+            "result": "PASS",
+            "publisher": "pipelinek-harness[bot]",
+            "zip_sha256": "abc",
+            "scenario": "S1",
+            "harness_sha": "ca2a91c0",
+        }
+        with self._stub_verdict(verdict), self._stub_release("abc"), \
+             self._patch_receipt_dir():
+            rc, out, err = _run_with_args(self.mod, ["--candidate", "vX"])
+        self.assertEqual(rc, 3)
+        self.assertIn("INVALID", out)
+
+
+class ZipSidecarCase(_Base):
+    class _ReadableResponse:
+        """A sidecar body that a naive implementation WOULD accept."""
+
+        def __init__(self, body: bytes):
+            self._body = body
+
+        def read(self) -> bytes:
+            return self._body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def _readable_urlopen(self, calls):
+        def fake(url, timeout=30):
+            calls.append(url)
+            return self._ReadableResponse(b"f" * 64 + b"\n")
+        return fake
+
+    def test_sha256_asset_must_match_candidate_name(self):
+        """Claim: the sidecar read must belong to the candidate's ZIP.
+
+        Mutation: accept any *.zip.sha256. The fake body is readable, so a
+        suffix-matching implementation returns a digest for FOREIGN bytes;
+        this test then fails on both assertions.
+        """
+        assets = [{"name": "pipelinek-OTHER.zip.sha256",
+                   "browser_download_url": "https://example/other"}]
+        calls = []
+        with mock.patch.object(self.mod, "_gh_get",
+                               return_value={"assets": assets}), \
+             mock.patch.object(self.mod.urllib.request, "urlopen",
+                               side_effect=self._readable_urlopen(calls)):
+            sha, _release = self.mod.fetch_product_release_zip_sha256("repo", "vX")
+        self.assertIsNone(sha)
+        self.assertEqual(calls, [], "must not fetch a foreign sidecar")
+
+    def test_multiple_sha256_siblings_fail_closed(self):
+        """Claim: ambiguous sidecars are refused, not last-wins.
+
+        Mutation: iterate and keep the last readable value; two siblings
+        silently decide the digest by asset order.
+        """
+        same = [{"name": "pipelinek-vX.zip.sha256",
+                 "browser_download_url": "https://example/a"},
+                {"name": "pipelinek-vX.zip.sha256",
+                 "browser_download_url": "https://example/b"}]
+        calls = []
+        with mock.patch.object(self.mod, "_gh_get", return_value={"assets": same}), \
+             mock.patch.object(self.mod.urllib.request, "urlopen",
+                               side_effect=self._readable_urlopen(calls)):
+            sha, _release = self.mod.fetch_product_release_zip_sha256("repo", "vX")
+        self.assertIsNone(sha)
+        self.assertEqual(calls, [], "ambiguous siblings must not be fetched at all")
+
+
+class ReceiptHermeticityCase(_Base):
+    def test_missing_case_writes_under_the_env_root_only(self):
+        """Claim: running a case may not fabricate a receipt in the repo.
+
+        Mutation: drop the env override and the MissingCase patch; the suite
+        writes docs/v2/07-uat/RECEIPTS/consult/<candidate>-<ts>/verdict.json
+        into the tracked tree on every run (HARNESS FIDELITY LAW §4).
+        """
+        before = set(os.listdir(RECEIPTS_IN_REPO)) if os.path.isdir(RECEIPTS_IN_REPO) else set()
+        with mock.patch.object(self.mod, "fetch_verdict",
+                               return_value=(None, None)):
+            rc, out, err = _run_with_args(
+                self.mod, ["--candidate", "v-hermetic-probe"])
+        self.assertEqual(rc, 4)
+        after = set(os.listdir(RECEIPTS_IN_REPO)) if os.path.isdir(RECEIPTS_IN_REPO) else set()
+        self.assertEqual(before, after,
+                         "the test run must not write into the tracked receipts dir")
+        written = list(pathlib.Path(self.tmp_receipts).glob(
+            "v-hermetic-probe-*/verdict.json"))
+        self.assertEqual(len(written), 1,
+                         "the MISSING receipt must land under the injected root")
 
 
 if __name__ == "__main__":

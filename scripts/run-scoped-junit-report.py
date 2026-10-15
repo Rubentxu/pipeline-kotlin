@@ -80,20 +80,32 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
 
 
 def read_xml(path: str) -> dict[str, int] | None:
-    """Counts for one JUnit class file, or None when it is not readable."""
+    """Aggregate JUnit counters for one report, or None when it is invalid."""
     try:
         root = ET.parse(path).getroot()
     except (ET.ParseError, OSError):
         return None
-    node = root if root.tag == "testsuite" else root.find("testsuite")
-    if node is None:
+
+    if root.tag == "testsuite":
+        suites = [root]
+    elif root.tag == "testsuites":
+        suites = root.findall("testsuite")
+    else:
         return None
-    out: dict[str, int] = {}
-    for k in COUNTS:
-        try:
-            out[k] = int(node.get(k, "0"))
-        except ValueError:
-            out[k] = 0
+    if not suites:
+        return None
+
+    out = dict.fromkeys(COUNTS, 0)
+    for suite in suites:
+        for key in COUNTS:
+            raw = suite.get(key, "0")
+            try:
+                value = int(raw)
+            except ValueError:
+                return None
+            if value < 0:
+                return None
+            out[key] += value
     return out
 
 
@@ -126,7 +138,8 @@ def totals(paths: list[str]) -> dict[str, int]:
         for k in COUNTS:
             acc[k] += c[k]
     if unreadable:
-        acc["unreadable_files"] = acc.get("unreadable_files", 0) + unreadable
+        acc["unreadable_files"] = unreadable
+    acc["executed"] = max(0, acc["tests"] - acc["skipped"])
     return acc
 
 
@@ -186,6 +199,13 @@ def main(argv: list[str]) -> int:
             file=sys.stderr,
         )
         return 2
+    if fresh_t["executed"] == 0:
+        print(
+            "FAIL: the fresh result set contains no executed tests. Skipped tests "
+            "are reported separately and cannot by themselves certify a green gate.",
+            file=sys.stderr,
+        )
+        return 2
     head = git("rev-parse", "HEAD")
     subject = git("log", "-1", "--pretty=%s")
     branch = git("rev-parse", "--abbrev-ref", "HEAD")
@@ -199,7 +219,12 @@ def main(argv: list[str]) -> int:
         )
         return 2
 
-    ok = fresh_t["failures"] == 0 and fresh_t["errors"] == 0
+    ok = (
+        fresh_t["failures"] == 0
+        and fresh_t["errors"] == 0
+        and fresh_t.get("unreadable_files", 0) == 0
+        and fresh_t["executed"] > 0
+    )
     digest = hashlib.sha256(
         "".join(f"{os.path.basename(p)}:{read_xml(p)}" for p in fresh).encode()
     ).hexdigest()
@@ -241,17 +266,17 @@ def main(argv: list[str]) -> int:
     print(f"boundary    : {boundary_source}")
     print(f"fresh set   : sha256 {digest}")
     print()
-    print(f"{'':22}{'classes':>10}{'tests':>10}{'failures':>10}{'errors':>10}{'skips':>8}")
+    print(f"{'':22}{'classes':>10}{'tests':>10}{'executed':>10}{'failures':>10}{'errors':>10}{'skips':>8}")
     for label, t in (("THIS RUN", fresh_t), ("carried-over", stale_t)):
         print(
             f"{label:22}{len(fresh) if label == 'THIS RUN' else len(stale):>10}"
-            f"{t['tests']:>10}{t['failures']:>10}{t['errors']:>10}{t['skipped']:>8}"
+            f"{t['tests']:>10}{t.get('executed', 0):>10}{t['failures']:>10}{t['errors']:>10}{t['skipped']:>8}"
         )
     print()
     if fresh_t.get("unreadable_files"):
         print(
             f"WARNING: {fresh_t['unreadable_files']} fresh XML file(s) were "
-            "unreadable and are excluded from the counts below.",
+            "unreadable. They are excluded from totals and force a FAIL verdict.",
             file=sys.stderr,
         )
     if stale_t["tests"]:

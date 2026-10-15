@@ -157,17 +157,29 @@ class FailClosed(Harness):
         self.assertEqual(r.returncode, 2, "an empty fresh set must fail closed")
         self.assertIn("created", r.stderr)
 
-    def test_skips_do_not_make_the_verdict_fail(self) -> None:
-        """Claim: skips are reported and counted but are not a red gate.
+    def test_skipped_tests_are_reported_but_not_counted_as_executed(self) -> None:
+        """Claim: skips remain visible and reduce executed-test cardinality.
 
-        Mutation: treat skipped > 0 as failure. The 133 W4 skips would then
-        block every gate and the tool would be unusable.
+        Mutation: treat all declared tests as executed. The report would claim
+        more useful behavioral evidence than the runner actually produced.
         """
-        self.xml("m1", "Skipped", t=5, s=5)
+        self.xml("m1", "Skipped", t=5, s=2)
         code, out = self.run_tool("--boundary-file", self.boundary())
         self.assertEqual(code, 0)
         self.assertEqual(out["verdict"], "PASS")
-        self.assertEqual(out["fresh"]["skipped"], 5)
+        self.assertEqual(out["fresh"]["skipped"], 2)
+        self.assertEqual(out["fresh"]["executed"], 3)
+
+    def test_all_skipped_results_do_not_certify_gate(self) -> None:
+        """Claim: skipped tests alone cannot produce a PASS verdict.
+
+        Mutation: count skips as executed. An entirely skipped suite then
+        appears to have exercised the contract.
+        """
+        self.xml("m1", "OnlySkipped", t=5, s=5)
+        r = self.run_raw("--boundary-file", self.boundary())
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("no executed tests", r.stderr)
 
 
 class Provenance(Harness):
@@ -241,19 +253,57 @@ class Provenance(Harness):
 
 
 class MalformedInput(Harness):
-    def test_unreadable_xml_is_counted_not_silently_dropped(self) -> None:
-        """Claim: a corrupt file is visible, not quietly subtracted.
+    def test_unreadable_xml_is_counted_and_fails_the_verdict(self) -> None:
+        """Claim: a corrupt result file cannot be hidden by a clean sibling.
 
-        Mutation: `except: pass` without counting. The totals would look
-        clean while a class silently vanished from the evidence.
+        Mutation: keep unreadable files as a warning only. A healthy XML plus
+        one corrupt XML would then report PASS despite incomplete evidence.
         """
         self.xml("m1", "Good", t=1)
         d = os.path.join(self.results, "m1", "build", "test-results", "test")
         with open(os.path.join(d, "TEST-Broken.xml"), "w", encoding="utf-8") as fh:
             fh.write("<testsuite truncated")
         code, out = self.run_tool("--boundary-file", self.boundary())
+        self.assertEqual(code, 1, "an unreadable fresh result must make evidence FAIL")
+        self.assertEqual(out["verdict"], "FAIL")
         self.assertEqual(out["fresh"].get("unreadable_files"), 1)
-        self.assertEqual(out["fresh"]["tests"], 1, "the good file is still counted")
+
+    def test_invalid_count_attribute_fails_the_verdict(self) -> None:
+        """Claim: malformed counters are not silently converted to zero.
+
+        Mutation: replace an invalid counter with 0. The malformed XML then
+        looks like an empty, successful suite.
+        """
+        self.xml("m1", "Good", t=1)
+        d = os.path.join(self.results, "m1", "build", "test-results", "test")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "TEST-InvalidCount.xml"), "w", encoding="utf-8") as fh:
+            fh.write('<testsuite name="Invalid" tests="not-a-number" failures="0" errors="0" skipped="0"/>')
+        code, out = self.run_tool("--boundary-file", self.boundary())
+        self.assertEqual(code, 1, "an invalid JUnit count must fail evidence adjudication")
+        self.assertEqual(out["verdict"], "FAIL")
+        self.assertEqual(out["fresh"].get("unreadable_files"), 1)
+
+    def test_all_testsuites_in_one_xml_are_aggregated(self) -> None:
+        """Claim: all suites in a standard <testsuites> document contribute.
+
+        Mutation: read only the first child suite. Later suite failures would
+        disappear from the gate report.
+        """
+        d = os.path.join(self.results, "m1", "build", "test-results", "test")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "TEST-Multi.xml"), "w", encoding="utf-8") as fh:
+            fh.write(
+                '<testsuites>'
+                '<testsuite name="First" tests="2" skipped="0" failures="0" errors="0"/>'
+                '<testsuite name="Second" tests="3" skipped="1" failures="1" errors="0"/>'
+                '</testsuites>'
+            )
+        code, out = self.run_tool("--boundary-file", self.boundary())
+        self.assertEqual(code, 1, "a failure in any child suite must fail the report")
+        self.assertEqual(out["fresh"]["tests"], 5)
+        self.assertEqual(out["fresh"]["failures"], 1)
+        self.assertEqual(out["fresh"]["skipped"], 1)
 
     def test_unrelated_dirs_are_not_scanned(self) -> None:
         """Claim: only build/test-results trees are evidence.

@@ -1,0 +1,93 @@
+{
+  "checks": [
+    {
+      "check": "zip-present",
+      "detail": "v2/pipeline-application/build/distributions/pipelinek-0.61.0.zip (92985677 bytes, sha256:1b1a2c01715c\u2026)",
+      "verdict": "PASS"
+    },
+    {
+      "check": "handoff.artifact.sha256 == zip",
+      "detail": "declared 1b1a2c01715c92c5125e727f311c63b77f2fd6d29c05ecef99178660766860b7 vs measured 1b1a2c01715c92c5125e727f311c63b77f2fd6d29c05ecef99178660766860b7",
+      "verdict": "PASS"
+    },
+    {
+      "check": "manifest.asset.sha256 == zip",
+      "detail": "declared 1b1a2c01715c92c5125e727f311c63b77f2fd6d29c05ecef99178660766860b7 vs measured 1b1a2c01715c92c5125e727f311c63b77f2fd6d29c05ecef99178660766860b7",
+      "verdict": "PASS"
+    },
+    {
+      "check": "handoff.artifact.size == zip",
+      "detail": "declared 92985677 vs 92985677",
+      "verdict": "PASS"
+    },
+    {
+      "check": "manifest.asset.size == zip",
+      "detail": "declared 92985677 vs 92985677",
+      "verdict": "PASS"
+    },
+    {
+      "check": "archive_root agrees (handoff/manifest/zip)",
+      "detail": "zip=pipelinek-0.61.0 handoff=pipelinek-0.61.0 manifest=pipelinek-0.61.0",
+      "verdict": "PASS"
+    },
+    {
+      "check": "app JAR carries Implementation-Version",
+      "detail": "pipeline-application-0.61.0.jar: 0.61.0",
+      "verdict": "PASS"
+    },
+    {
+      "check": "implementation_version agrees (handoff/manifest/jar)",
+      "detail": "handoff=0.61.0 manifest=0.61.0 jar=0.61.0",
+      "verdict": "PASS"
+    },
+    {
+      "check": "product identity law (exact tokens)",
+      "detail": "product=0.61.0 train=0.61.0 manifest=0.61.0 jar=0.61.0",
+      "verdict": "PASS"
+    },
+    {
+      "check": "source_commit is a 40-hex commit",
+      "detail": "source_commit=e79fbff772561561520f5a866a2e3c7d258ca78a",
+      "verdict": "PASS"
+    },
+    {
+      "check": "--expect-sha == source_commit",
+      "detail": "expected e79fbff772561561520f5a866a2e3c7d258ca78a vs e79fbff772561561520f5a866a2e3c7d258ca78a",
+      "verdict": "PASS"
+    },
+    {
+      "check": "source_commit == observed git HEAD",
+      "detail": "HEAD e79fbff772561561520f5a866a2e3c7d258ca78a vs e79fbff772561561520f5a866a2e3c7d258ca78a",
+      "verdict": "PASS"
+    },
+    {
+      "check": "manifest.source.git_commit == source_commit",
+      "detail": "manifest=e79fbff772561561520f5a866a2e3c7d258ca78a handoff=e79fbff772561561520f5a866a2e3c7d258ca78a",
+      "verdict": "PASS"
+    },
+    {
+      "check": "candidate_id == sha256:<zip>",
+      "detail": "declared sha256:1b1a2c01715c92c5125e727f311c63b77f2fd6d29c05ecef99178660766860b7 vs sha256:1b1a2c01715c92c5125e727f311c63b77f2fd6d29c05ecef99178660766860b7",
+      "verdict": "PASS"
+    },
+    {
+      "check": "sbom digest == declared (handoff and manifest)",
+      "detail": "measured 50d02584603a1c6b482f468976a21d0d8334c47e858fcdcdee6ac92c517af707 declared=50d02584603a1c6b482f468976a21d0d8334c47e858fcdcdee6ac92c517af707 manifest=50d02584603a1c6b482f468976a21d0d8334c47e858fcdcdee6ac92c517af707",
+      "verdict": "PASS"
+    },
+    {
+      "check": "distribution manifest digest == declared",
+      "detail": "measured cbd3090c1e8e432fe437c86bee5430d35a1b2b9815e758bcffc01031f4801b42 declared=cbd3090c1e8e432fe437c86bee5430d35a1b2b9815e758bcffc01031f4801b42",
+      "verdict": "PASS"
+    }
+  ],
+  "git_head_observed": "e79fbff772561561520f5a866a2e3c7d258ca78a",
+  "timestamp": "2026-10-15T19:06:29Z",
+  "tool": "scripts/emit-candidate-receipt.py",
+  "verdict": "PASS",
+  "zip": {
+    "path": "v2/pipeline-application/build/distributions/pipelinek-0.61.0.zip",
+    "sha256": "1b1a2c01715c92c5125e727f311c63b77f2fd6d29c05ecef99178660766860b7",
+    "size": 92985677
+  }
+}

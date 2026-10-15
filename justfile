@@ -65,15 +65,34 @@ set dotenv-load := false
 
 # WU-RP-005: full application-module gate (L3 round-gate equivalent) before
 # pushing WUs that touch pipeline-application. Budget 1500s.
+# Same UAT frontier as `just gate`: the local app gate excludes the UAT battery.
 @gate-app budget="1500":
+    timeout {{budget}} v2/gradlew -p v2 :pipeline-application:test -Pshard.excludes='{{uat_excludes}}'
+
+# Legacy behaviour: application-module gate INCLUDING the UAT battery
+@gate-app-full budget="1500":
     timeout {{budget}} v2/gradlew -p v2 :pipeline-application:test
 
 # Round gate: incremental by default (1s when nothing changed since last green)
+# UAT frontier (AGENTS.md — 'Frontera de responsabilidad'): the UAT battery belongs to
+# the external pipelinek-release-harness; the LOCAL round gate verifies internal
+# contracts and regressions and EXCLUDES the UAT classes. Tests are not deleted or
+# skipped — they stay runnable via `just gate-full`.
+uat_excludes := '*UatLocal*,*UatCompat*,*UatDsl*,*UatStep*,*UatEvt*,*UatDurable*,*Lpr011*,*PublishHtml*,*StashOps*'
+
 @gate budget="1270":
+    timeout {{budget}} v2/gradlew -p v2 check -Pshard.excludes='{{uat_excludes}}'
+
+# Legacy behaviour: round gate INCLUDING the UAT battery (belongs to the harness)
+@gate-full budget="1270":
     timeout {{budget}} v2/gradlew -p v2 check
 
 # Escalation only: after a killed run or suspected stale green (rule 2)
 @gate-escalate budget="1270":
+    timeout {{budget}} v2/gradlew -p v2 check --rerun-tasks -Pshard.excludes='{{uat_excludes}}'
+
+# Escalation with the UAT battery included
+@gate-escalate-full budget="1270":
     timeout {{budget}} v2/gradlew -p v2 check --rerun-tasks
 
 # Single corpus fixture by number 1..13, e.g.: just corpus 11

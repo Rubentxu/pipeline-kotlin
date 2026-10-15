@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
 
 /**
@@ -171,8 +172,14 @@ class RunExecutesStepsInstalledUatTest {
     }
 
     @Test
-    fun `installed distribution runs a 3-step pipeline and emits Step events in the journal`() {
-        val root = Files.createTempDirectory("r4-wu-r4-0-0-canary-")
+    fun `installed distribution runs a 3-step pipeline and emits Step events in the journal`(
+        @TempDir parent: Path,
+    ) {
+        // Under the JUnit-owned temp dir rather than at the top of java.io.tmpdir. The old form
+        // created the directory with no parent and relied on a `finally { deleteRecursively() }`,
+        // which is a cleanup step that a killed run skips — leaving a directory per test behind
+        // (HARNESS FIDELITY §4). Nesting makes the ownership structural.
+        val root = Files.createDirectories(parent.resolve("r4-wu-r4-0-0-canary"))
         try {
             val store = populateFixture(root)
             val json = inspectJson(store)

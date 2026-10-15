@@ -61,6 +61,26 @@ import org.junit.jupiter.api.io.TempDir
 @DisplayName("R4 / WU-CON-2.3 — pipelinek console --follow (per-frame tail-f)")
 class ConsoleFollowTest {
 
+    /**
+     * A control-dir argument this class OWNS, for the parser rows.
+     *
+     * These rows parse an argument vector and never open the path. They used a hardcoded `/tmp/x`,
+     * which is why the class appeared in the sandbox fitness: the law attributes a leak to the
+     * FILE, and one row that legitimately forks and forks correctly — the installed-distribution
+     * canary, which has its own `@TempDir` — made the twenty-one parser rows offenders too.
+     *
+     * The fix is to make the path one this class owns rather than to explain the path away. A
+     * `@TempDir` field gives every row a fresh directory that JUnit removes, so the argument is
+     * still a plausible absolute control-dir, and nothing in the class now names a location outside
+     * itself. The parser rows still never open it, which is what they were for.
+     */
+    @TempDir
+    private lateinit var ownedRoot: Path
+
+    private val ownedControlDir: String
+        get() = ownedRoot.resolve("control").toString()
+
+
     // ------------------------------------------------------------------ HF0 closed ADT
 
     @Test
@@ -199,7 +219,7 @@ class ConsoleFollowTest {
      * --follow request" rows.
      */
     private fun cli(vararg args: String): CliResult {
-        val nonexistentDir = "/tmp/r4-wu-con-2-3-nonexistent-${UUID.randomUUID()}"
+        val nonexistentDir = ownedRoot.resolve("r4-wu-con-2-3-nonexistent-${UUID.randomUUID()}").toString()
         val all = arrayOf("--control-dir", nonexistentDir) + args
         val out = ByteArrayOutputStream()
         val err = ByteArrayOutputStream()
@@ -226,7 +246,7 @@ class ConsoleFollowTest {
         // carry the documented defaults (pollIntervalMillis=1000, maxPolls=60) so a fresh
         // caller does not need to set them by hand.
         val result = CliParser.parseConsole(
-            arrayOf("--control-dir", "/tmp/x", "run-1", "op-1", "--frames", "--follow", "--format", "jsonl"),
+            arrayOf("--control-dir", ownedControlDir, "run-1", "op-1", "--frames", "--follow", "--format", "jsonl"),
         )
         val admitted = assertInstance(result)
         assertTrue(admitted is ConsoleReadRequest.FollowFrames, "must admit FollowFrames; got: $admitted")
@@ -244,7 +264,7 @@ class ConsoleFollowTest {
         // does not clamp them; whatever the parser admitted is what the loop uses.
         val result = CliParser.parseConsole(
             arrayOf(
-                "--control-dir", "/tmp/x",
+                "--control-dir", ownedControlDir,
                 "run-1", "op-1",
                 "--frames",
                 "--follow",
@@ -264,7 +284,7 @@ class ConsoleFollowTest {
         // The flag is meaningless without the per-frame path. Refused by name so the
         // caller deletes one token (drop --follow) rather than guessing.
         val result = CliParser.parseConsole(
-            arrayOf("--control-dir", "/tmp/x", "run-1", "op-1", "--follow"),
+            arrayOf("--control-dir", ownedControlDir, "run-1", "op-1", "--follow"),
         )
         assertRefusal(result, ConsoleCliRefusal.FollowRequiresFrames)
     }
@@ -275,7 +295,7 @@ class ConsoleFollowTest {
         // "must be a positive integer, got: 0", which is what the caller needs.
         val result = CliParser.parseConsole(
             arrayOf(
-                "--control-dir", "/tmp/x", "run-1", "op-1",
+                "--control-dir", ownedControlDir, "run-1", "op-1",
                 "--frames", "--follow", "--follow-poll-interval", "0",
             ),
         )
@@ -287,7 +307,7 @@ class ConsoleFollowTest {
         // Negative values are also non-positive; same refusal shape as 0.
         val result = CliParser.parseConsole(
             arrayOf(
-                "--control-dir", "/tmp/x", "run-1", "op-1",
+                "--control-dir", ownedControlDir, "run-1", "op-1",
                 "--frames", "--follow", "--follow-poll-interval", "-1",
             ),
         )
@@ -298,7 +318,7 @@ class ConsoleFollowTest {
     fun `parser refuses --follow-max-polls 0 as a non-positive integer`() {
         val result = CliParser.parseConsole(
             arrayOf(
-                "--control-dir", "/tmp/x", "run-1", "op-1",
+                "--control-dir", ownedControlDir, "run-1", "op-1",
                 "--frames", "--follow", "--follow-max-polls", "0",
             ),
         )
@@ -309,7 +329,7 @@ class ConsoleFollowTest {
     fun `parser refuses --follow-max-polls -3 as a non-positive integer`() {
         val result = CliParser.parseConsole(
             arrayOf(
-                "--control-dir", "/tmp/x", "run-1", "op-1",
+                "--control-dir", ownedControlDir, "run-1", "op-1",
                 "--frames", "--follow", "--follow-max-polls", "-3",
             ),
         )
@@ -321,7 +341,7 @@ class ConsoleFollowTest {
         // Missing value is its own refusal — distinct from a value that doesn't parse.
         val result = CliParser.parseConsole(
             arrayOf(
-                "--control-dir", "/tmp/x", "run-1", "op-1",
+                "--control-dir", ownedControlDir, "run-1", "op-1",
                 "--frames", "--follow", "--follow-poll-interval",
             ),
         )
@@ -332,7 +352,7 @@ class ConsoleFollowTest {
     fun `parser refuses --follow-max-polls without a value`() {
         val result = CliParser.parseConsole(
             arrayOf(
-                "--control-dir", "/tmp/x", "run-1", "op-1",
+                "--control-dir", ownedControlDir, "run-1", "op-1",
                 "--frames", "--follow", "--follow-max-polls",
             ),
         )
@@ -346,7 +366,7 @@ class ConsoleFollowTest {
         // "must be a positive integer, got: <value>" message as the rule they violated.
         val result = CliParser.parseConsole(
             arrayOf(
-                "--control-dir", "/tmp/x", "run-1", "op-1",
+                "--control-dir", ownedControlDir, "run-1", "op-1",
                 "--frames", "--follow", "--follow-poll-interval", "abc",
             ),
         )
@@ -359,7 +379,7 @@ class ConsoleFollowTest {
         // by NAME so the caller deletes one token; it does NOT silently drop.
         val result = CliParser.parseConsole(
             arrayOf(
-                "--control-dir", "/tmp/x", "run-1", "op-1",
+                "--control-dir", ownedControlDir, "run-1", "op-1",
                 "--frames", "--follow", "--follow-imaginary",
             ),
         )

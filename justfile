@@ -172,3 +172,8 @@ uat_excludes := '*UatLocal*,*UatCompat*,*UatDsl*,*UatStep*,*UatEvt*,*UatDurable*
 # Add --out <path> to persist the receipt JSON.
 @integration base="HEAD" budget="1800":
     python3 scripts/run-integration-gate.py --base {{base}} --budget {{budget}}
+
+# B4 candidate receipt: bind a built candidate ZIP to its SHA, hashes and identity.
+# Example: just candidate-receipt v2/pipeline-application/build/distributions/pipelinek-0.61.0.zip
+@candidate-receipt zip manifest="v2/pipeline-release/build/candidate/distribution-manifest.json" handoff="v2/pipeline-release/build/candidate/candidate-handoff.json":
+    python3 scripts/emit-candidate-receipt.py --zip {{zip}} --manifest {{manifest}} --handoff {{handoff}}

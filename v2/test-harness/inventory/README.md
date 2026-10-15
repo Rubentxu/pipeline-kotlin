@@ -8,7 +8,8 @@
 - **27 additional filenames** plausibly carrying process/integration/installed-distribution acceptance behavior; inspection of bodies is required.
 - **5 associated support files** whose callers must be traced before deletion.
 - **9 runner/status scripts** whose invocations need to be traced.
-- **126 total ledger entries** in [uat-e2e-retirement.csv](uat-e2e-retirement.csv).
+- **43 further test classes discovered through implementation code search** for AppBinSupport, OwnedSubprocess.run or ProcessBuilder; some may be legitimate unit tests and must be classified by inspecting their behavior.
+- **169 total ledger entries** in [uat-e2e-retirement.csv](uat-e2e-retirement.csv).
 - **920 Kotlin/Java files** under `src/test` in this snapshot; filename discovery alone does **not** establish that all acceptance behavior has been found.
 
 Explicit matches by module:
@@ -23,7 +24,7 @@ Explicit matches by module:
 
 | Field | Meaning |
 |---|---|
-| `source_kind` | EXPLICIT_UAT_E2E: filename declares acceptance; POTENTIAL_PROCESS_ACCEPTANCE: must inspect body; TEST_SUPPORT: fixtures/base class, not necessarily runnable; SCRIPT_RUNNER: external test script |
+| `source_kind` | EXPLICIT_UAT_E2E: filename declares acceptance; POTENTIAL_PROCESS_ACCEPTANCE: must inspect body; OBSERVED_PROCESS_USAGE: source uses a relevant process API but may still be unit-level; TEST_SUPPORT: fixtures/base class, not necessarily runnable; SCRIPT_RUNNER: external test script |
 | `scope` | V2_GRADLE is in the included build; LEGACY_NOT_IN_DEFAULT_V2_BUILD is outside the root composite build; SCRIPT_ENTRY_POINT is manually invoked |
 | `retirement_policy` | Proposed **review priority only**, never a finding of redundancy |
 | `status` | PENDING_REVIEW by default. No row says DELETE_READY |
@@ -58,4 +59,4 @@ Explicit matches by module:
 - `v2/test-harness/src/main/kotlin/dev/rubentxu/pipeline/v2/harness/plan/ImpactResolver.kt`
 - `v2/test-harness/src/main/kotlin/dev/rubentxu/pipeline/v2/harness/plan/EvidenceReader.kt`
 
-**Limit:** This is a repeatable name/path census, not an executed coverage audit. Confirm contents of `POTENTIAL_PROCESS_ACCEPTANCE` and inspect non-matching tests with subprocesses before claiming exhaustiveness. Do not use this snapshot to infer passed/failed tests.
+**Limit:** Name/path census plus indexed GitHub code-search probes (at most 100 matches per query); the code probes are not exhaustive and do not replace a full AST/source scan. This is, not an executed coverage audit. Confirm contents of `POTENTIAL_PROCESS_ACCEPTANCE` and inspect non-matching tests with subprocesses before claiming exhaustiveness. Do not use this snapshot to infer passed/failed tests.

@@ -35,6 +35,36 @@ sealed interface PluginManifestRejection : AdmissionRejection {
 
     /** The manifest parsed and is structurally sound, but a cross-field invariant failed. */
     data class InvalidManifest(val identity: String, val detail: String) : PluginManifestRejection
+
+    /**
+     * The artifact's real bytes could not be measured, so nothing about it can be established.
+     *
+     * Distinct from [MalformedDocument] on purpose. A malformed document is a verdict about the
+     * manifest TEXT; this is a verdict about the ARTIFACT — an unreadable JAR, a directory that
+     * disappeared between enumeration and admission. Folding the second into the first would report
+     * a packaging fault as if the plugin had written nonsense, and the operator's remedy is different
+     * in each case.
+     *
+     * Composition refuses on this BEFORE loading any class from the artifact. An artifact whose
+     * bytes cannot be hashed is not an artifact that may be executed, and there is no degraded
+     * reading in which that is safe: the digest is what tells one copy of a plugin from another.
+     */
+    data class ArtifactNotMeasurable(val artifact: String, val detail: String) : PluginManifestRejection
+
+    /**
+     * The artifact's bytes changed between the moment they were measured and the moment they would
+     * have been loaded.
+     *
+     * A time-of-check/time-of-use seam, and the reason the measurement is taken before composition
+     * rather than only inside it: a digest measured once and trusted later proves nothing about the
+     * file that is actually read. Carries both digests so the drift is auditable rather than merely
+     * reported.
+     */
+    data class ArtifactChangedDuringAdmission(
+        val artifact: String,
+        val measuredDigest: String,
+        val foundDigest: String,
+    ) : PluginManifestRejection
 }
 
 /**

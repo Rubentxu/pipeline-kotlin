@@ -114,10 +114,10 @@ class ObsPcReadRecoverySeamFitnessTest {
 
         assertTrue(
             offenders.isEmpty(),
-            "only the write side ($WRITE_SIDE) and retention ($RETENTION) may open a recovering store, " +
-                "with OutputPlaneProvider defining them. A read verb that names storeForWriting or " +
-                "storeFor can truncate a live writer's range, which is the defect ADR-OBS-002 removed " +
-                "and OBS-G measured. Use storeForReading. Found: $offenders",
+            "only the named writers (${recoveringOpeningAllowed.sorted().joinToString(", ")}) may open " +
+                "a recovering store. A read verb that names storeForWriting or storeFor can truncate a " +
+                "live writer's range, which is the defect ADR-OBS-002 removed and OBS-G measured. " +
+                "Use storeForReading. Found: $offenders",
         )
     }
 
@@ -142,7 +142,7 @@ class ObsPcReadRecoverySeamFitnessTest {
      */
     private val recoveringOpening = Regex("""storeFor(Writing|)\s*\(""")
 
-    private val recoveringOpeningAllowed = setOf(PROVIDER, WRITE_SIDE, RETENTION)
+    private val recoveringOpeningAllowed = setOf(PROVIDER, WRITE_SIDE, RETENTION, INGEST_WRITER)
 
     /**
      * Executable lines with their 1-based number, with prose excluded.
@@ -208,5 +208,21 @@ class ObsPcReadRecoverySeamFitnessTest {
         const val PROVIDER = "OutputPlaneProvider.kt"
         const val WRITE_SIDE = "ShExecution.kt"
         const val RETENTION = "CompositionRoot.kt"
+
+        /**
+         * The ingest agent is a production WRITER, and this scan cannot tell writers from readers.
+         *
+         * It asks "may this file name a recovering opening?", not "does this file read?", so every
+         * writer has to be named. `ObsPc2IngestAgent` was missing from the set, which is how the
+         * `storeForWriting` call at its line 140 surfaced as an offender: the row was right to go red
+         * and wrong about why — a drainer that persists the child's transcript is the writer ADR-OBS-002
+         * is about, not a reader it must be protected from.
+         *
+         * It is the SAME shape as the write side, and the classification is not discretionary: the agent
+         * opens the store to `reserve → write → commit` and closes its sinks at drain end. A future
+         * writer that is not named here goes red, which is the intended behaviour — a new writer must
+         * declare itself rather than inherit permission.
+         */
+        const val INGEST_WRITER = "ObsPc2IngestAgent.kt"
     }
 }

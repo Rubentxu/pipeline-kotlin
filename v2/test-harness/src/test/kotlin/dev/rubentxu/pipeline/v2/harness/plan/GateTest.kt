@@ -159,11 +159,15 @@ class GateTest {
         // as a broken build would, and the clearing is still the property under test.
         writeXml(resultsDir, "AlphaTest", 0, 0)
 
-        val fakeGradlew = tmp.resolve("gradlew")
+        // `buildRoot` holds the wrapper: the runner resolves `gradlew` inside the build that owns
+        // the modules. Putting the fake wrapper directly in the repo root would pass a test that no
+        // longer describes how the runner finds it.
+        val buildRoot = Files.createDirectories(tmp.resolve("v2"))
+        val fakeGradlew = buildRoot.resolve("gradlew")
         Files.writeString(fakeGradlew, "#!/bin/sh\nexit 1\n")
         fakeGradlew.toFile().setExecutable(true)
 
-        val gradleRunner = GradleSuiteRunner(repoRoot = tmp, gradlew = fakeGradlew)
+        val gradleRunner = GradleSuiteRunner(repoRoot = tmp, buildRoot = buildRoot)
         val succeeded = gradleRunner.run(
             Dispatch.GradleInvocation(":mod-one", "test", listOf("AlphaTest")),
         )

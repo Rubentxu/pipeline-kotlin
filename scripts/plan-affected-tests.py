@@ -147,9 +147,19 @@ def plan(files: list[str], root: pathlib.Path) -> dict:
 
 
 def changed_files(base: str, root: pathlib.Path) -> list[str]:
-    out = subprocess.run(["git", "diff", "--name-only", base], cwd=root,
-                         capture_output=True, text=True, check=True).stdout
-    return [line for line in out.splitlines() if line.strip()]
+    """Files that differ from `base`, INCLUDING untracked ones.
+
+    `git diff --name-only` alone hides a brand-new file, so a change that
+    consists only of new files would plan nothing.
+    """
+    diff = subprocess.run(["git", "diff", "--name-only", base], cwd=root,
+                          capture_output=True, text=True, check=True).stdout
+    untracked = subprocess.run(["git", "ls-files", "--others", "--exclude-standard"],
+                               cwd=root, capture_output=True, text=True,
+                               check=True).stdout
+    files = {line.strip() for line in diff.splitlines() if line.strip()}
+    files.update(line.strip() for line in untracked.splitlines() if line.strip())
+    return sorted(files)
 
 
 def format_text(result: dict) -> str:

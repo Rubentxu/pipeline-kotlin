@@ -166,3 +166,9 @@ uat_excludes := '*UatLocal*,*UatCompat*,*UatDsl*,*UatStep*,*UatEvt*,*UatDurable*
 # Reproducible Gradle baseline sample (B1): wall/Gradle time, task split, XML freshness
 @baseline task=":pipeline-domain:test" runs="3":
     python3 scripts/measure-harness-baseline.py --task {{task}} --runs {{runs}} --profile
+
+# B3 integrationGate: fitness + affected python suites + ONE Gradle graph (UAT
+# battery excluded, incremental) + typed receipt PASS|FAIL|BLOCKED|STALE|NOT_RUN.
+# Add --out <path> to persist the receipt JSON.
+@integration base="HEAD" budget="1800":
+    python3 scripts/run-integration-gate.py --base {{base}} --budget {{budget}}

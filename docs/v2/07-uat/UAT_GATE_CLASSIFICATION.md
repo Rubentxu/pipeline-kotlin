@@ -2,11 +2,12 @@
 
 Status: **CLASSIFICATION ONLY. Nothing here was made to pass, deleted, or disabled.**
 
-Base SHA: `0bf60bec` (`main`, post-B3.1 discrimination + AppBin compatibility fix) · Date: 2026-10-15
-Last refresh: 2026-10-15 — added rows 9 (OUT-01) and 10 (OUT-02) from
-`SegmentOutputStoreTest`: previously unclassified @Disabled defects from the
-output-store durability layer. Sourced from the B3.2 pre-existing failures
-audit. No PRODUCT-GATE re-evaluation; still `BLOCKED_EXTERNAL`.
+Base SHA: `3ee1bad8` (`main`) · Date: 2026-10-15
+Last refresh: 2026-10-15 — added rows 11-15 and §7, covering the five findings
+of the external harness's `v0.61.0-rc2` diagnostic note. Three resolved with
+evidence (two of them by overturning the note's diagnosis), one closed as not a
+product defect, one escalated as a contract decision. No PRODUCT-GATE
+re-evaluation; still `BLOCKED_EXTERNAL`.
 
 ## Why this document exists
 
@@ -119,6 +120,12 @@ green today**, and it is non-blocking with a named owner.
 | 9 | `SegmentOutputStoreTest` row OUT-01 (line 693) | **NONE** (durability format defect; tracked but not gate-required) | The `safe(runId) + "_"` prefix-based prune is not collision-safe (`run_` collides with `run_x_`'s stream dir). No `CERTIFICATION_PROTOCOL.md` row requires this; AGENTS.md does not cite this defect in STEP-CERT C01..C19; `PRODUCTION_READY_UAT_MATRIX.md` does not name this class | PRODUCT-GATE **NO** (`BLOCKED_EXTERNAL`). STEP-CERT does not require this format invariant | RED. `@Disabled` with reason pointing at this row | **NON-BLOCKING** under `BLOCKED_EXTERNAL`; migration to harness awaits issue `pipelinek-release-harness#<n>` opening per AGENTS.md §2 |
 | 10 | `SegmentOutputStoreTest` row OUT-02 (line 754) | **NONE** (durability format defect; tracked but not gate-required) | `safeStreamName` is not injective: `run/abc` and `run_abc` both sanitise to `run_abc`, aliasing on disk. Same shape: no gate cites it | Same as row 9 | RED. `@Disabled` with reason pointing at this row | **NON-BLOCKING** under `BLOCKED_EXTERNAL`; migration to harness awaits `pipelinek-release-harness#<n>`. Root cause is the durable-format migration policy referenced in rows 9 and 10's shared `WIP4_OUT01_OUT02_REPRODUCED.md` |
 
+| 11 | `UatS2R0RunOwnershipCliTest` | **NONE** (harness defect, not a gate property) | The suite exercised run ownership correctly; its own reader was wrong. No gate row cites it | n/a | **GREEN** @`1405b21a` | **RESOLVED.** See §7 |
+| 12 | `ObsPc208LevelBUatTest$Falsifiers` row f09 | **NONE** (harness defect) | The falsifier sampled a mid-drain commit and reported it as storage corruption. No gate cites f09 | n/a | **GREEN** @`c3c77fa0` | **RESOLVED.** See §7 |
+| 13 | `ObsBJvmDeathOutputRecoveryUatTest` | **NONE** (UAT design question) | No `CERTIFICATION_PROTOCOL.md` row or `PRODUCTION_READY_UAT_MATRIX.md` entry cites it | n/a | **RED, not a product defect.** Diagnosis closed at `3ee1bad8` | **NON-BLOCKING.** See §7 and `OBSB_JVM_DEATH_DIAGNOSIS.md` |
+| 14 | `UatEvt001ReplayTest`, `UatEvt002MultiStepReplayTest`, `UatDsl005TimeoutGrammarTest` | **NONE** until the contract decides | The order they assert is promised by no accepted document; the order the product emits satisfies the one promise that exists | **UNDECIDED** | **RED** — escalated, not fixed | **NON-BLOCKING** pending decision. See §7 and `EVENT_TIMELINE_CONTRACT_DRIFT_ESCALATION.md` |
+| 15 | `DirectivePluginContractSuiteTest` | **STEP-CERT** (plugin admission) | The digest pin is the identity half; compatibility is the other seven rows, all green | Yes | **GREEN 8/8** @`3ee1bad8` | **RESOLVED.** See §7 |
+
 ### Totals
 
 | Verdict | Count | Classes |
@@ -128,6 +135,8 @@ green today**, and it is non-blocking with a named owner.
 | **NON-BLOCKING** (under `BLOCKED_EXTERNAL`; pre-existing defects awaiting harness migration) | **3** | `CompatibilityCorpusTest`, `SegmentOutputStoreTest` OUT-01 (prefix collision), `SegmentOutputStoreTest` OUT-02 (injective identity collapse) |
 | **DOC-ONLY** | **1** | `ObsAOutputStreamingCharacterisationTest` |
 | **Genuine product defects (escalated, not fixed)** | **2** | §5.1, §5.5; plus the durable-format migration policy the segment-store OUTPUT defect is parked behind |
+| **RESOLVED in the rc2 remediation** | **3** | rows 11, 12, 15 — `UatS2R0RunOwnershipCliTest`, `ObsPc208LevelBUatTest$Falsifiers` f09, `DirectivePluginContractSuiteTest` |
+| **RED, awaiting a decision rather than a fix** | **2** | rows 13, 14 — `ObsBJvmDeathOutputRecoveryUatTest` (UAT design under a 64 KiB window) and the three event-timeline classes (contract decision) |
 
 \* `Lpr011r2SecretRedactionAtRestUatTest` is counted BLOCKING because a security
 property is not made optional by the absence of CI: `CERTIFICATION_PROTOCOL.md`
@@ -294,14 +303,46 @@ weakening it — that would destroy the baseline the inversion depends on.
   presence-gated tag exclusion.
 - Per-class KDoc, read in full, for each of the eight.
 
-## §7 — What this document does not establish
+## §7 — The rc2 remediation findings (2026-10-15)
 
-- **No fresh failure XML.** This worktree carries no
-  `build/test-results/test/*.xml`; the eight classes were not re-run here. The
-  classification is based on each class's asserted contract and on the
-  normative gate documents, **not** on a fresh red at this SHA. A per-SHA
-  receipt with argv, XML and digests is still owed before any of these is
-  promoted or demoted on evidence rather than on contract.
+These five rows come from the external harness's diagnostic note on the
+`v0.61.0-rc2` `releaseGate`, not from the eight carried-forward classes above.
+Each was re-derived against this worktree before being classified, because the
+note's conclusions did not survive contact with the code in three cases out of
+six.
+
+| Note's claim | What the evidence showed | Disposition |
+|---|---|---|
+| CLI run ownership is a **product defect** — the CLI ignores a live lease | `FileBackedRunExecutionLeaseStore` is correct (`:83-90` takes the `FileLock` first and returns `AlreadyOwned`), and `Main.kt:708-717` maps it to exit 2. The suite's own `runIdOf()` used `.trim()` on a **two-line** record, so it locked `lease-<runId>_<corrId>.lock` while the CLI locked `lease-<runId>.lock` — two files, no contention | **Test defect.** Fixed `1405b21a`. RED reproduced on clean main, GREEN after, mutation reverting to `.trim()` reproduces exactly 1 failure |
+| Live transcript may expose unsanitized output | No evidence of a leak: the "no raw secret" assertion passed. The suggested fix (`storeForReading`) was tried and **moved the symptom** instead of resolving it, so it was reverted. Recovery is not on the read path — `read` serves from `cur.cmt` (`SegmentOutputStore:320-326`) and `reconcile()` only truncates past the commit | **Not a product defect.** Diagnosis in `OBSB_JVM_DEATH_DIAGNOSIS.md`. The row's own 1 KiB-window premise died with `419f9192` (now 64 KiB) and was never updated |
+| Committed extent grows after the agent exits (f09) | Real, and a sampling bug: `awaitNoAgentProcess` returns the first time it sees **no** agent, which is indistinguishable from "the agent has not started". The row measured a mid-drain commit — reproducing the note's exact `extent1=61, extent2=121` | **Test defect.** Fixed `c3c77fa0`. Mutation removing the seal wait reproduces the reported symptom 1:1 |
+| `RunCorrelated` before `CompilationStarted` is contract drift | True, and undecidable by the harness: `PipelineIds.kt:33-34` promises only "before the first `RunStarted`". The product complies. The three tests over-assert an intent ("durable spine") no document states | **Escalated** to the events/API owner. `EVENT_TIMELINE_CONTRACT_DRIFT_ESCALATION.md`, with two costed options |
+| Plugin JAR digest mismatch | One artifact carried **three** digests: the pin `38b70854…`, the harness's `5ddfaf4d…`, and what this revision actually builds. Reproducible: two independent `--rerun-tasks --no-build-cache` builds both produced `4add6e38…` | **Stale pin, legitimately.** Recertified `3ee1bad8`; 8/8 green |
+
+One item remains from the note and is not yet classified: the `Lpr011r2SecretRedactionAtRestUatTest`
+row is row 2 above and is unrelated to these five.
+
+### What "not a product defect" did not cost
+
+The ObsBJvmDeath investigation did not end at "the suggestion did not work". It
+established, with a 60 000-case instrumented harness, that the
+`StreamingRedactor` ring-full spin it hypothesised is **unreachable**:
+`StreamingRedactor.kt:441` refills whenever `inputOffset >= inputLimit &&
+!sourceExhausted`, and `InputStream.read` is contractually ≥1 or −1. One
+low-severity hardening item remains open — `relieveFullRing` is nested inside
+`if (inputOffset < inputLimit)`, so the ring-full escape depends on a JDK
+contract the redactor does not own. That is filed as debt, not as a defect.
+
+## §8 — What this document does not establish
+
+- **No fresh failure XML for rows 1-10.** This worktree carries no
+  `build/test-results/test/*.xml` for the eight carried-forward classes; they
+  were not re-run here. The classification is based on each class's asserted
+  contract and on the normative gate documents, **not** on a fresh red at this
+  SHA. A per-SHA receipt with argv, XML and digests is still owed before any of
+  these is promoted or demoted on evidence rather than on contract.
+  **Rows 11-15 are the exception**: each carries a fresh canary-verified XML from
+  this session, quoted in §7.
 - **`./gradlew check` is not green at this SHA** and cannot be: `detekt` fails
   (see the delivery-quality work item for the four in-scope findings) and the
   corpus runs red. That is stated, not worked around.

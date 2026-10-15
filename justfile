@@ -153,3 +153,7 @@ set dotenv-load := false
     done
     echo "harness: $total suite(s), fail=$fail"
     exit "$fail"
+
+# Reproducible Gradle baseline sample (B1): wall/Gradle time, task split, XML freshness
+@baseline task=":pipeline-domain:test" runs="3":
+    python3 scripts/measure-harness-baseline.py --task {{task}} --runs {{runs}} --profile

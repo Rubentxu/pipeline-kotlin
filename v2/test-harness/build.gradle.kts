@@ -89,12 +89,21 @@ tasks.register("printRuntimeClasspath") {
     group = "build"
     description = "Write the runtime classpath of this module, one entry per line, for external launchers."
 
-    val output = findProperty("output") as String?
-        ?: error("printRuntimeClasspath needs -Poutput=<file>")
+    // The output path is read INSIDE doLast, never at configuration time. Configuring eagerly
+    // with `?: error(...)` aborts the whole module's configuration when the property is absent —
+    // and since configuration happens for EVERY task in the module, `:test-harness:tasks` and
+    // `:test-harness:test` both died with "Could not create task ':test-harness:printRuntimeClasspath'"
+    // before this moved. Measured: it is what made the gate report "task 'test-harness' not found"
+    // for a project that is in settings.gradle.kts and has a working `test` task.
+    val outputProperty = findProperty("output") as String?
 
     dependsOn(tasks.named("jar"))
 
     doLast {
+        val output = outputProperty
+            ?: throw InvalidUserDataException(
+                "printRuntimeClasspath needs -Poutput=<file>; refusing to guess where to write the classpath",
+            )
         val entries = sourceSets["main"].runtimeClasspath.files.map { it.absolutePath }
         check(entries.isNotEmpty()) { "the runtime classpath is empty; refusing to write it" }
         val file = file(output)

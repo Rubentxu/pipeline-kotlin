@@ -36,10 +36,38 @@ class DispatchTest {
         assertEquals(listOf("ShTranscriptRedactionReproductionTest"), invocations[0].filters)
         assertEquals(
             listOf(
-                ":pipeline-application", "test",
+                ":pipeline-application:test",
                 "--tests", "ShTranscriptRedactionReproductionTest",
             ),
             invocations[0].argv(),
+        )
+    }
+
+    /**
+     * The task path must be ONE argument joined by a colon.
+     *
+     * `listOf(":mod", "test")` looks like the natural spelling and it is wrong: Gradle resolves it
+     * as the task path `:mod`, so the build reports "task 'mod' not found in root project" and the
+     * message names the PROJECT rather than the missing task. That cost one real gate run and read
+     * as a misconfigured module. Pinned here so the argv cannot drift back to the space form, which
+     * is green in any test that only inspects a list.
+     */
+    @Test
+    fun `the project and task are one colon-joined argument, never two`() {
+        val argv = Dispatch.GradleInvocation(
+            gradleProject = ":test-harness",
+            task = "test",
+            filters = listOf("ContractCatalogueFitnessTest"),
+        ).argv()
+
+        assertEquals(
+            listOf(":test-harness:test", "--tests", "ContractCatalogueFitnessTest"),
+            argv,
+        )
+        assertEquals(
+            1,
+            argv.count { it.startsWith(":") },
+            "exactly one task-path argument: a second one would be read as another task to run",
         )
     }
 

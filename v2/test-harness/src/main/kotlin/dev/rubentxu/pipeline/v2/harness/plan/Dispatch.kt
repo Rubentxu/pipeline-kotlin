@@ -25,9 +25,19 @@ object Dispatch {
         val task: String,
         val filters: List<String>,
     ) {
-        /** The argv, as a build would receive it. Asserted directly by the tests. */
+        /**
+         * The argv, as a build would receive it. Asserted directly by the tests.
+         *
+         * The project and the task are joined with a COLON, never a space. Gradle accepts
+         * `:project task` only for some spellings, and it silently mis-resolves the rest:
+         * `:test-harness test` fails with "task 'test-harness' not found in root project" while
+         * `:test-harness:test` succeeds. The space form is not a warning, it is a different
+         * (wrong) task path, and the error names the project instead of the missing task, so it
+         * reads like a misconfigured module rather than a malformed argv. Measured on the real
+         * build; joining with a space cost one full gate run.
+         */
         fun argv(): List<String> =
-            listOf(gradleProject, task) + filters.flatMap { listOf("--tests", it) }
+            listOf("$gradleProject:$task") + filters.flatMap { listOf("--tests", it) }
     }
 
     /**

@@ -211,6 +211,102 @@ class PluginAdmissionPreLoadOrderingTest {
     }
 
     @Test
+    @DisplayName("B3.2: a refused plugin's control row is on disk BEFORE the gate returns")
+    fun admissionControlRowIsPersistedBeforeSecurity() {
+        // The control row is the durable fact the operator (and a future re-run) needs
+        // to read. The row must be on disk before the gate returns the refusal; a
+        // refused plugin that left the row only in memory would defeat the whole
+        // point of writing it.
+        //
+        // The fixture is a JAR that holds the Sentinel class but NO manifest at
+        // PluginManifestCodec.RESOURCE_PATH, so the gate reaches phase 2 (manifest read)
+        // and refuses with RefusedNoManifest. An empty-jar fixture (the existing
+        // emptyArtifactLoader) would fail earlier in phase 1 (Class.forName), before
+        // the control row gets a chance to be written.
+        val controlRoot = tempDir.resolve("control-${System.nanoTime()}")
+        val controlJournal = dev.rubentxu.pipeline.v2.application.durable.AdmissionControlJournal(controlRoot)
+        val jarWithClassNoManifest = buildJarWithClassNoManifest(tempDir)
+        val loader = SentinelPluginArtifact.loaderFor(jarWithClassNoManifest)
+        try {
+            val result = PluginAdmissionGate.admitThenLoad(
+                contributorClassName = SentinelPluginArtifact.PLUGIN_CLASS_NAME,
+                classLoader = loader,
+                runtimeVersion = runtimeVersion,
+                alreadyAdmitted = emptySet(),
+                strict = true,
+                // B3.2 — pass an empty in-memory trust database. The 4 shipped plugin
+                // manifests are not in it, so any real artifact would be refused with
+                // RefusedUntrustedIdentity. The no-manifest test below refuses with
+                // RefusedNoManifest because the JAR has no manifest at all.
+                trustDatabase = InMemoryOperatorTrustDatabase(),
+                controlJournal = controlJournal,
+            )
+
+            assertTrue(
+                result is PluginAdmissionResult.Refused,
+                "a no-manifest artifact MUST be refused even with the B3.2 trust layer on; got $result",
+            )
+
+            val pluginId = SentinelPluginArtifact.PLUGIN_CLASS_NAME
+            val row = controlJournal.readRow(pluginId)
+            assertTrue(
+                row != null,
+                "control row MUST be persisted before the gate returns the refusal; " +
+                    "absent row means the gate's pre-load ordering broke under B3.2",
+            )
+            val r = row!!
+            assertEquals(pluginId, r.pluginId, "row's pluginId MUST match the contributor's binary name")
+            assertEquals("RefusedNoManifest", r.refusedKind, "row MUST name the first-level refusal case")
+        } finally {
+            loader.close()
+        }
+    }
+
+    /**
+     * Build a JAR that contains the [SentinelPluginArtifact.PLUGIN_CLASS_NAME] class
+     * but no manifest at [dev.rubentxu.pipeline.v2.domain.step.PluginManifestCodec.RESOURCE_PATH].
+     *
+     * Same compile-from-source pattern as [SentinelPluginArtifact.build], but the JAR
+     * omits the manifest entry so phase 2 of the gate sees a missing manifest and
+     * refuses with [dev.rubentxu.pipeline.v2.domain.step.AdmissionRefusal.RefusedNoManifest].
+     */
+    private fun buildJarWithClassNoManifest(jarDir: Path): Path {
+        val workDir = Files.createDirectories(jarDir.resolve("work-${System.nanoTime()}"))
+        val sourceDir = Files.createDirectories(workDir.resolve("src/pipelinek/test/sentinel"))
+        val classesDir = Files.createDirectories(workDir.resolve("classes"))
+        val sourceFile = sourceDir.resolve("SentinelPlugin.java")
+
+        // A minimal Sentinel that does NOT need a sentinel-target resource. The plugin
+        // never actually runs (the gate refuses before initialize=true), so the static
+        // initialiser does not execute.
+        Files.writeString(
+            sourceFile,
+            """
+            package pipelinek.test.sentinel;
+            public final class SentinelPlugin {
+                private SentinelPlugin() {}
+            }
+            """.trimIndent(),
+        )
+
+        val compiler = javax.tools.ToolProvider.getSystemJavaCompiler()
+            ?: error("no system Java compiler available")
+        val exit = compiler.run(null, null, null, "-d", classesDir.toString(), sourceFile.toString())
+        check(exit == 0) { "compile failed (exit $exit)" }
+
+        val classFile = classesDir.resolve("pipelinek/test/sentinel/SentinelPlugin.class")
+        check(Files.exists(classFile)) { "compiled class missing at $classFile" }
+
+        val jar = jarDir.resolve("class-no-manifest-${System.nanoTime()}.jar")
+        java.util.jar.JarOutputStream(Files.newOutputStream(jar)).use { out ->
+            out.putNextEntry(java.util.jar.JarEntry("pipelinek/test/sentinel/SentinelPlugin.class"))
+            out.write(Files.readAllBytes(classFile))
+            out.closeEntry()
+        }
+        return jar
+    }
+
+    @Test
     @DisplayName("a duplicate plugin identity names BOTH the newcomer and the incumbent")
     fun duplicateIdentityNamesBothParties() {
         val decoded = PluginManifestCodec.decode(manifestText())

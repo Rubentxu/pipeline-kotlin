@@ -1,14 +1,21 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.durable.AdmissionControlJournal
+import dev.rubentxu.pipeline.v2.application.durable.AdmissionControlRow
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveContributor
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
+import dev.rubentxu.pipeline.v2.domain.step.AdmissionRefusal
+import dev.rubentxu.pipeline.v2.domain.step.AdmissionRejection
 import dev.rubentxu.pipeline.v2.domain.step.ArtifactOrigin
+import dev.rubentxu.pipeline.v2.domain.step.Digest
+import dev.rubentxu.pipeline.v2.domain.step.MeasuredArtifactIdentity
 import dev.rubentxu.pipeline.v2.domain.step.PluginAdmission
 import dev.rubentxu.pipeline.v2.domain.step.PluginAdmissionResult
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection
 import dev.rubentxu.pipeline.v2.domain.step.SemVer
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor
+import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 import dev.rubentxu.pipeline.v2.events.registry.EventDefinitionContributor
 import dev.rubentxu.pipeline.v2.events.registry.EventDefinitionCreation
 import java.util.ServiceLoader
@@ -77,6 +84,15 @@ object PluginAdmissionGate {
      * @param strict whether the manifest must come from the same code source as the
      *   contributor. Left on in production; tests inject manifests for classes they cannot
      *   repackage and pass `false`, which is a weaker promise and says so.
+     * @param trustDatabase B3.2 trust database. When `null`, the gate uses the legacy
+     *   `measure()` entry point (Unverified identity, no operator-trust check). When
+     *   provided, the gate hashes the artifact bytes, consults the operator's pinned
+     *   digests, refuses on no-row / mismatch, and writes a control row BEFORE returning.
+     *   Legacy code that did not know about B3.2 keeps working; new code passes a real
+     *   database to get the fail-closed B3.2 behaviour.
+     * @param controlJournal B3.2 admission control row writer. Required when
+     *   [trustDatabase] is provided; the gate persists the decision durably before
+     *   returning. When [trustDatabase] is `null`, [controlJournal] is also ignored.
      */
     fun admitThenLoad(
         contributorClassName: String,
@@ -84,6 +100,8 @@ object PluginAdmissionGate {
         runtimeVersion: SemVer,
         alreadyAdmitted: Set<String>,
         strict: Boolean = true,
+        trustDatabase: OperatorTrustDatabase? = null,
+        controlJournal: AdmissionControlJournal? = null,
     ): PluginAdmissionResult {
         // Phase 1: LINK ONLY. initialize=false, so no static initialiser in the plugin runs.
         val contributorClass = try {
@@ -99,7 +117,27 @@ object PluginAdmissionGate {
         // Phase 2: read the DECLARATION, by resource name, with no reference to the class.
         val read = PluginManifestResourceReader.read(classLoader, contributorClass, strict)
         val decoded = when (read) {
-            is PluginManifestReadOutcome.NoManifest ->
+            is PluginManifestReadOutcome.NoManifest -> {
+                // B3.2 control-row-before-refusal: write the row even on a "no manifest"
+                // refusal, because the absence of a manifest IS the durable fact the
+                // operator may want to see. The row's `measuredDigest` is null and the
+                // verdict is Unverified.ArtifactNotMeasurable.
+                val origin = originFor(contributorClass)
+                val pluginId = contributorClassName
+                if (trustDatabase != null && controlJournal != null) {
+                    writeControlRow(
+                        controlJournal = controlJournal,
+                        pluginId = pluginId,
+                        origin = origin,
+                        declaredDigest = Digest("sha256:" + "0".repeat(64)),
+                        measuredDigest = null,
+                        verdict = TrustMetadata.Unverified(
+                            reason = TrustMetadata.UnverifiedReason.ArtifactNotMeasurable,
+                            origin = origin,
+                        ),
+                        rejection = AdmissionRefusal.RefusedNoManifest(contributorClassName),
+                    )
+                }
                 return PluginAdmissionResult.Refused(
                     dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection.MalformedDocument(
                         "no manifest at ${dev.rubentxu.pipeline.v2.domain.step.PluginManifestCodec.RESOURCE_PATH} " +
@@ -107,6 +145,7 @@ object PluginAdmissionGate {
                             "declares nothing is refused rather than admitted on trust",
                     ),
                 )
+            }
 
             is PluginManifestReadOutcome.Refused -> return PluginAdmissionResult.Refused(read.rejection)
             is PluginManifestReadOutcome.Read -> read.decoded
@@ -117,13 +156,65 @@ object PluginAdmissionGate {
                 (decoded as dev.rubentxu.pipeline.v2.domain.step.PluginManifestDecodeResult.Rejected).rejection,
             )
 
-        // Phase 3: MEASURE what the runtime can measure, then decide.
+        // Phase 3: MEASURE what the runtime can measure, consult the operator's trust
+        // database if one is provided, and decide. The control row is persisted BEFORE
+        // any refusal returns; admitted plugins also write a row (Verified verdict,
+        // refusedKind = null) so a re-run can see the decision the runtime made.
         val codeSource = contributorClass.protectionDomain?.codeSource?.location?.toString() ?: "unknown"
         val origin = ArtifactOrigin.LocalClasspathEntry(codeSource)
-        val identity = PluginManifestResourceReader.measure(
-            declaredDigest = accepted.manifest.release.digest,
-            origin = origin,
-        )
+        val identity: MeasuredArtifactIdentity = if (trustDatabase != null) {
+            PluginManifestResourceReader.measureArtifactBytes(
+                declaredDigest = accepted.manifest.release.digest,
+                contributorClass = contributorClass,
+                origin = origin,
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            PluginManifestResourceReader.measure(
+                declaredDigest = accepted.manifest.release.digest,
+                origin = origin,
+            )
+        }
+
+        val trustRefusal: AdmissionRejection? = if (trustDatabase != null) {
+            b32TrustRefusal(
+                trustDatabase = trustDatabase,
+                manifest = accepted.manifest,
+                identity = identity,
+                origin = origin,
+            )
+        } else {
+            null
+        }
+        if (trustRefusal != null) {
+            val verdict = when (trustRefusal) {
+                is AdmissionRefusal.RefusedDigestMismatch -> TrustMetadata.Mismatch(
+                    declared = identity.declaredDigest,
+                    measured = identity.measuredDigest ?: identity.declaredDigest,
+                    origin = origin,
+                )
+                is AdmissionRefusal.RefusedUntrustedIdentity -> TrustMetadata.Unverified(
+                    reason = trustRefusal.reason,
+                    origin = origin,
+                )
+                else -> TrustMetadata.Unverified(
+                    reason = TrustMetadata.UnverifiedReason.NoTrustedDigestAvailable,
+                    origin = origin,
+                )
+            }
+            if (controlJournal != null) {
+                writeControlRow(
+                    controlJournal = controlJournal,
+                    pluginId = accepted.manifest.plugin.canonicalText(),
+                    origin = origin,
+                    declaredDigest = identity.declaredDigest,
+                    measuredDigest = identity.measuredDigest,
+                    verdict = verdict,
+                    rejection = trustRefusal,
+                )
+            }
+            return PluginAdmissionResult.Refused(trustRefusal)
+        }
 
         val admitted = PluginAdmission.admit(
             decoded = decoded,
@@ -221,6 +312,107 @@ object PluginAdmissionGate {
             )
         }
 
+        // B3.2 — admitted plugins also write a row. The decision the runtime made is
+        // itself a durable fact: a future run with the same `--control-root` can see what
+        // was admitted and why, without re-running the gate.
+        if (trustDatabase != null && controlJournal != null) {
+            writeControlRow(
+                controlJournal = controlJournal,
+                pluginId = admittedPlugin.pluginId,
+                origin = origin,
+                declaredDigest = admittedPlugin.identity.declaredDigest,
+                measuredDigest = admittedPlugin.identity.measuredDigest,
+                verdict = TrustMetadata.Verified(
+                    digest = admittedPlugin.identity.measuredDigest
+                        ?: admittedPlugin.identity.declaredDigest,
+                    origin = origin,
+                ),
+                rejection = null,
+            )
+        }
+
         return admitted
+    }
+
+    /**
+     * Compute the B3.2 trust refusal for a manifest + measured identity.
+     *
+     * Returns `null` when the plugin is admitted on trust grounds (i.e. the operator
+     * pinned the digest and the measured bytes match). Returns the first matching
+     * [AdmissionRefusal] case otherwise.
+     */
+    private fun b32TrustRefusal(
+        trustDatabase: OperatorTrustDatabase,
+        manifest: dev.rubentxu.pipeline.v2.domain.step.PluginManifest,
+        identity: MeasuredArtifactIdentity,
+        origin: ArtifactOrigin,
+    ): AdmissionRejection? {
+        val pluginId = manifest.plugin.canonicalText()
+        val releaseVersion = manifest.release.version
+
+        // 1) Compare measured vs declared FIRST. A measured mismatch is a measured
+        // mismatch, regardless of whether the operator has pinned anything. The
+        // admission layer does not need a row to know the manifest is lying.
+        val measured = identity.measuredDigest
+        if (measured != null && !measured.value.equals(identity.declaredDigest.value, ignoreCase = true)) {
+            return AdmissionRefusal.RefusedDigestMismatch(
+                identity = pluginId,
+                declared = identity.declaredDigest,
+                measured = measured,
+            )
+        }
+
+        // 2) Look up the operator's row for (plugin, version). Three outcomes.
+        val row = trustDatabase.lookup(pluginId, releaseVersion)
+        return when {
+            row == null -> AdmissionRefusal.RefusedUntrustedIdentity(
+                identity = pluginId,
+                reason = TrustMetadata.UnverifiedReason.NoTrustedDigestAvailable,
+            )
+            !row.digest.value.equals(manifest.release.digest.value, ignoreCase = true) ->
+                // Manifest's claim disagrees with what the operator pinned. This is a
+                // policy-level refusal, not a byte-level one, so the reason is
+                // OutsideOperatorTrustPolicy rather than Mismatch.
+                AdmissionRefusal.RefusedUntrustedIdentity(
+                    identity = pluginId,
+                    reason = TrustMetadata.UnverifiedReason.OutsideOperatorTrustPolicy,
+                )
+            else -> null // Verified.
+        }
+    }
+
+    /**
+     * Persist the gate's decision durably. Called from EVERY refusal path AND from
+     * the admit path; absence of a row for a plugin means the gate has not yet
+     * decided it, NOT that the plugin is missing.
+     */
+    private fun writeControlRow(
+        controlJournal: AdmissionControlJournal,
+        pluginId: String,
+        origin: ArtifactOrigin,
+        declaredDigest: Digest,
+        measuredDigest: Digest?,
+        verdict: TrustMetadata,
+        rejection: AdmissionRejection?,
+    ) {
+        val row = AdmissionControlRow.compose(
+            pluginId = pluginId,
+            origin = origin,
+            declaredDigest = declaredDigest,
+            measuredDigest = measuredDigest,
+            verdict = verdict,
+            rejection = rejection,
+        )
+        controlJournal.record(row)
+    }
+
+    /**
+     * Resolve the contributor's `protectionDomain.codeSource` to an [ArtifactOrigin].
+     * Returns [ArtifactOrigin.Unknown] if the contributor has no codeSource.
+     */
+    private fun originFor(contributorClass: Class<*>): ArtifactOrigin {
+        val location = contributorClass.protectionDomain?.codeSource?.location?.toString()
+            ?: return ArtifactOrigin.Unknown
+        return ArtifactOrigin.LocalClasspathEntry(location)
     }
 }

@@ -2,15 +2,24 @@
 
 Status: **CLASSIFICATION ONLY. Nothing here was made to pass, deleted, or disabled.**
 
-Base SHA: `fdcadcfd` (`main`) · Date: 2026-10-14
+Base SHA: `0bf60bec` (`main`, post-B3.1 discrimination + AppBin compatibility fix) · Date: 2026-10-15
+Last refresh: 2026-10-15 — added rows 9 (OUT-01) and 10 (OUT-02) from
+`SegmentOutputStoreTest`: previously unclassified @Disabled defects from the
+output-store durability layer. Sourced from the B3.2 pre-existing failures
+audit. No PRODUCT-GATE re-evaluation; still `BLOCKED_EXTERNAL`.
 
 ## Why this document exists
 
-Eight UATs in `:pipeline-application` have been red across at least eight
-consecutive candidates. They were carried in a "Known issues (carried over, not
-introduced by this candidate)" bullet of the handoff, unchanged, at
-`evidence/0-60-rc2/HANDOFF-TO-CERTIFIER.md` through
-`evidence/0-61-rc1/HANDOFF-TO-CERTIFIER.md`.
+Eight UATs in `:pipeline-application` and two pre-existing `@Disabled` rows
+in `:pipeline-output-store` (`SegmentOutputStoreTest` OUT-01 / OUT-02) have
+been red across at least eight consecutive candidates. They were carried in a
+"Known issues (carried over, not introduced by this candidate)" bullet of the
+handoff, unchanged, at `evidence/0-60-rc2/HANDOFF-TO-CERTIFIER.md` through
+`evidence/0-61-rc1/HANDOFF-TO-CERTIFIER.md`. The two `SegmentOutputStoreTest`
+rows had no previous classification in this document; they were tracked in a
+working note (`WIP4_OUT01_OUT02_REPRODUCED.md`) but never surfaced as
+verdicts. This refresh (2026-10-15) brings them under the same rubric as the
+eight.
 
 Carrying a red test forward because it is *old* is not a classification. The
 question that actually decides whether a release may ship is **which gate
@@ -107,6 +116,8 @@ green today**, and it is non-blocking with a named owner.
 | 6 | `DirScopeEndToEndTest` | **STEP-CERT** (Step semantics for `dir`) | `CERTIFICATION_PROTOCOL.md` §4 (STEP-CERT "Step completo y ejecutable en el SHA") + §3 rows C09, C16, C18; `AGENTS.md` STEP SEMANTICS §1 (`dir` Jenkins parity) | Yes | RED end-to-end through the installed CLI | **BLOCKING** for a `dir` STEP-CERT. **NON-BLOCKING** for a release that does not certify `dir` at this SHA |
 | 7 | `ObsPc2LevelAUatTest` | **STEP-CERT** (output-plane Step semantics) | `CERTIFICATION_PROTOCOL.md` §4 (STEP-CERT "sin regressiones conocidas del perfil") + §3 row C11 | Yes | RED. Guards `returnStdout` non-duplication, pump-flush at child exit, volume throughput, timeout prefix retention | **BLOCKING** for the `core.sh` / output-plane STEP-CERT. **NON-BLOCKING** otherwise. See §5.6 |
 | 8 | `ObsAOutputStreamingCharacterisationTest` | **NONE** (characterisation by its own declaration) | Nothing. Its KDoc states "Each row asserts a defect" — it pins a KNOWN-BROKEN behaviour so that fixing it becomes a deliberate inversion | No gate requires a characterisation of a defect to be green | RED **by design** | **DOC-ONLY** — see §5.7 |
+| 9 | `SegmentOutputStoreTest` row OUT-01 (line 693) | **NONE** (durability format defect; tracked but not gate-required) | The `safe(runId) + "_"` prefix-based prune is not collision-safe (`run_` collides with `run_x_`'s stream dir). No `CERTIFICATION_PROTOCOL.md` row requires this; AGENTS.md does not cite this defect in STEP-CERT C01..C19; `PRODUCTION_READY_UAT_MATRIX.md` does not name this class | PRODUCT-GATE **NO** (`BLOCKED_EXTERNAL`). STEP-CERT does not require this format invariant | RED. `@Disabled` with reason pointing at this row | **NON-BLOCKING** under `BLOCKED_EXTERNAL`; migration to harness awaits issue `pipelinek-release-harness#<n>` opening per AGENTS.md §2 |
+| 10 | `SegmentOutputStoreTest` row OUT-02 (line 754) | **NONE** (durability format defect; tracked but not gate-required) | `safeStreamName` is not injective: `run/abc` and `run_abc` both sanitise to `run_abc`, aliasing on disk. Same shape: no gate cites it | Same as row 9 | RED. `@Disabled` with reason pointing at this row | **NON-BLOCKING** under `BLOCKED_EXTERNAL`; migration to harness awaits `pipelinek-release-harness#<n>`. Root cause is the durable-format migration policy referenced in rows 9 and 10's shared `WIP4_OUT01_OUT02_REPRODUCED.md` |
 
 ### Totals
 
@@ -114,9 +125,9 @@ green today**, and it is non-blocking with a named owner.
 |---|---|---|
 | **BLOCKING** (a gate in force requires them green) | **3** | `ExternalPluginFourFamilyAdmissionTest`, `FArchS3PureBuilderPurityWitnessTest`, `Lpr011r2SecretRedactionAtRestUatTest`* |
 | **BLOCKING-conditional** (required only by the STEP-CERT of a named Step) | **4** | `Lfc2WaitUntilCanonicalReentryFitnessTest` (`core.waitUntil`), `DirScopeEndToEndTest` (`dir`), `ObsPc2LevelAUatTest` (output plane / `core.sh`) — plus `FArchS3PureBuilderPurityWitnessTest` against builder-adding Steps |
-| **NON-BLOCKING** | **1** | `CompatibilityCorpusTest` — under `BLOCKED_EXTERNAL` only |
+| **NON-BLOCKING** (under `BLOCKED_EXTERNAL`; pre-existing defects awaiting harness migration) | **3** | `CompatibilityCorpusTest`, `SegmentOutputStoreTest` OUT-01 (prefix collision), `SegmentOutputStoreTest` OUT-02 (injective identity collapse) |
 | **DOC-ONLY** | **1** | `ObsAOutputStreamingCharacterisationTest` |
-| **Genuine product defects (escalated, not fixed)** | **2** | §5.1, §5.5 |
+| **Genuine product defects (escalated, not fixed)** | **2** | §5.1, §5.5; plus the durable-format migration policy the segment-store OUTPUT defect is parked behind |
 
 \* `Lpr011r2SecretRedactionAtRestUatTest` is counted BLOCKING because a security
 property is not made optional by the absence of CI: `CERTIFICATION_PROTOCOL.md`

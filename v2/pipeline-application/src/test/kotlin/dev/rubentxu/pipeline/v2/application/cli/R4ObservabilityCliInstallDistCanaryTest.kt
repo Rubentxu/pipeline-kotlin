@@ -7,11 +7,11 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
 import java.util.concurrent.TimeUnit
-import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -75,14 +75,19 @@ class R4ObservabilityCliInstallDistCanaryTest {
 
     private lateinit var root: Path
 
+    /**
+     * The canary's root is a child of a JUnit-owned `@TempDir`, not a top-level system temp.
+     *
+     * `Files.createTempDirectory(prefix)` with no parent lands in `java.io.tmpdir` and outlives this
+     * class unless something deletes it — which is why this carried an explicit `deleteRecursively`
+     * in `@AfterEach`, and why a killed run left a directory per test behind (HARNESS FIDELITY §4).
+     * Nesting under the injected temp dir makes the ownership structural: JUnit removes the parent,
+     * the child goes with it, and there is no cleanup step that can be skipped by a failing
+     * assertion.
+     */
     @BeforeEach
-    fun createRoot() {
-        root = Files.createTempDirectory("r4-wu-r4-5-canary-")
-    }
-
-    @AfterEach
-    fun removeRoot() {
-        root.toFile().deleteRecursively()
+    fun createRoot(@TempDir parent: Path) {
+        root = Files.createDirectories(parent.resolve("r4-wu-r4-5-canary"))
     }
 
     private fun writeScript(name: String, body: String): Path {

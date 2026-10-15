@@ -131,7 +131,7 @@ object UppercasePluginDeclaration {
             publisher = publisher,
             families = setOf(PluginFamily.UTILITIES),
             delivery = Delivery.EXTERNAL_REFERENCE,
-            trust = TrustMetadata.Unverified,
+            trust = TrustMetadata.Unverified(),
         )
     }
 

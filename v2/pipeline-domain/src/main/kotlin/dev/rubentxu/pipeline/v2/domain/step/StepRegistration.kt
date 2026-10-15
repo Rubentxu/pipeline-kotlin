@@ -55,7 +55,7 @@ data class StepRegistration<I : Any, O : Any>(
          *   it in its own manifest, which is where a family belongs.
          * - delivery = [Delivery.CORE] when [publisher] starts with
          *   `legacy-core`, otherwise [Delivery.EXTERNAL_REFERENCE].
-         * - trust = [TrustMetadata.Unverified] (only existing state).
+         * - trust = [TrustMetadata.Unverified] (only constructable state from the document grammar).
          *
          * Legacy registrations DO carry a [StepProviderMetadata] entry in
          * the registry (so [StepRegistry.providerOf] returns non-null for
@@ -86,7 +86,7 @@ data class StepRegistration<I : Any, O : Any>(
                 publisher = publisher,
                 families = families,
                 delivery = delivery,
-                trust = TrustMetadata.Unverified,
+                trust = TrustMetadata.Unverified(),
             )
             return StepRegistration(definition, provider)
         }

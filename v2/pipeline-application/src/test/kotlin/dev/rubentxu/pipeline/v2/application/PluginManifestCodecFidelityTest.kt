@@ -57,7 +57,7 @@ class PluginManifestCodecFidelityTest {
             publisher = "rubentxu",
             families = setOf(PluginFamily.NETWORK, PluginFamily.SUPPLY_CHAIN),
             delivery = Delivery.OFFICIAL_PLUGIN,
-            trust = TrustMetadata.Unverified,
+            trust = TrustMetadata.Unverified(),
             contributions = PluginContributions(
                 steps = listOf(
                     PluginStepContribution(

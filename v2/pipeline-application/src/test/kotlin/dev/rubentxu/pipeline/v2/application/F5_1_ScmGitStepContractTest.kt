@@ -424,6 +424,6 @@ class F5_1_ScmGitStepContractTest {
         publisher = publisher,
         families = setOf(PluginFamily.SCM, PluginFamily.NETWORK),
         delivery = Delivery.OFFICIAL_PLUGIN,
-        trust = TrustMetadata.Unverified,
+        trust = TrustMetadata.Unverified(),
     )
 }

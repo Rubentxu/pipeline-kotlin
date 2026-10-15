@@ -34,6 +34,17 @@ Prueba negativa esencial: la ausencia de una capacidad rechaza antes del efecto.
 
 **PRODUCT-GATE:** todas las UAT obligatorias de PRODUCTION_READY_UAT_MATRIX.md, CI real del SHA, cobertura declarada, SAST/dependency scan, seguridad del perfil, presupuesto de rendimiento aprobado, distZip reproducible e instalación limpia. Un Step-CERT nuevo no vuelve verde el PRODUCT-GATE. **CHANNEL-GATE:** ZIP GitHub Release y SDKMAN se certifican por separado; no publicar SDKMAN_READY sin vendor publish + clean install UAT + default verify.
 
+**Escalera local (2026-10-15, aprobada por el operador).** Los gates locales no sustituyen a STEP-CERT ni a PRODUCT-GATE; ordenan la verificación interna:
+
+| Nivel | Comando | Alcance |
+|---|---|---|
+| L-DEV | `just dev [base]` | pruebas del módulo afectado + suites del harness afectadas, **un** grafo Gradle incremental, sin `--rerun-tasks`; falla cerrado ante rutas sin clasificar |
+| L-MERGE | `just integration [base]` | lo anterior + fitness de cobertura; veredicto tipado `PASS\|FAIL\|BLOCKED\|STALE` con `NOT_RUN` por fase y recibo ligado al SHA |
+| L-ROUND | `just gate` | `check` completo con la **batería UAT excluida** (`just gate-full` la incluye); el L5 local verifica contratos internos y regresiones |
+| L-RC | `:pipeline-release:releaseGate` | distZip + SBOM + `candidateAdmission` + suites de release; los bytes certificados son los mismos que se entregan al harness externo |
+
+La batería UAT pertenece al `pipelinek-release-harness` externo. La selección vive en `scripts/plan-affected-tests.py` (fuente única). Un veredicto local `PASS` no es una certificación.
+
 ## 5. Formato obligatorio del recibo nuevo
 
 ~~~yaml

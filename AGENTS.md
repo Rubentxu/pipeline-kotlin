@@ -1322,9 +1322,29 @@ v2/gradlew -p v2 check                              # incremental (default)
 timeout 1270 v2/gradlew -p v2 check --rerun-tasks   # escalation only
 ```
 
-Quick interface: `just gate` / `just gate-escalate` / `just t '<pattern>'` /
-`just corpus <n>` / `just changed [base]` (see justfile test-efficiency
-group).
+Quick interface: `just dev [base]` (devGate: affected suites + ONE incremental Gradle graph) / `just integration [base]` (integrationGate: fitness + affected + ONE Gradle graph, typed PASS|FAIL|BLOCKED|STALE receipt) / `just gate` / `just gate-full` / `just gate-escalate` / `just t '<pattern>'` /
+`just corpus <n>` / `just changed [base]` / `just fitness` / `just harness` / `just baseline '<task>' <runs>` (see justfile test-efficiency
+and harness-governance groups).
+
+**LOCAL GATE LADDER (2026-10-15, operator-approved).** Four local levels, one
+command each; none of them replaces STEP-CERT or PRODUCT-GATE:
+
+```text
+L-DEV    just dev [base]        affected module tests + affected harness suites,
+                                ONE incremental Gradle graph, no --rerun-tasks,
+                                fail-closed on unclassified paths
+L-MERGE  just integration [base] same plus coverage fitness, typed receipt
+                                (PASS|FAIL|BLOCKED|STALE, NOT_RUN per phase)
+L-ROUND  just gate              full `check` (UAT battery EXCLUDED via
+                                shard.excludes; `just gate-full` includes it)
+L-RC     v2/gradlew -p v2 :pipeline-release:releaseGate
+                                distZip + SBOM + candidateAdmission + suites
+```
+
+The UAT battery runs in the external `pipelinek-release-harness`, not here;
+the local ladder verifies internal contracts and regressions. Selection lives
+in `scripts/plan-affected-tests.py` (single source of truth). A local gate is
+never a substitute for STEP-CERT or PRODUCT-GATE.
 
 ### Test design ( hangs and processes )
 

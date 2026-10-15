@@ -33,11 +33,11 @@ See [ADR-0043: Proto-Governance for Worker Protocol Module](../../docs/v2/04-adr
 ## Build
 
 ```bash
-./gradlew -p v2/pipeline-protocol build
+v2/gradlew -p v2/pipeline-protocol build
 ```
 
 ## Test
 
 ```bash
-./gradlew -p v2/pipeline-protocol test
+v2/gradlew -p v2/pipeline-protocol test
 ```

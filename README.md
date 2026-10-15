@@ -166,7 +166,7 @@ contract for 07–10):
 
 ```bash
 # Build the local binary first, then run the assertions
-./gradlew -p v2 :pipeline-application:installDist
+v2/gradlew -p v2 :pipeline-application:installDist
 examples/run.sh 03-shell.pipeline.kts
 examples/run.sh            # run all ten
 ```

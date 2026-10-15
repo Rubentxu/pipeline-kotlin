@@ -29,8 +29,8 @@ SCRATCH="${TMPDIR:-/tmp}/pipeline-examples"
 mkdir -p "$SCRATCH"
 
 if [[ ! -x "$BIN" ]]; then
-  echo "Application binary not found. Building it first (./gradlew -p v2 :pipeline-application:installDist)..." >&2
-  (cd "$ROOT" && ./gradlew -p v2 :pipeline-application:installDist) >&2
+  echo "Application binary not found. Building it first (v2/gradlew -p v2 :pipeline-application:installDist)..." >&2
+  (cd "$ROOT" && v2/gradlew -p v2 :pipeline-application:installDist) >&2
 fi
 
 # Expected terminal outcome of the LAST RunFinished event per example.

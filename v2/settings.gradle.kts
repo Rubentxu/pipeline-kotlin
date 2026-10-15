@@ -99,7 +99,7 @@ include(
 // A Gradle invocation mutates the shared v2/*/build tree. Two invocations on
 // this checkout can otherwise race while writing compiler caches and produce
 // failures that disappear when the task is rerun in isolation. Keep the
-// protection at settings evaluation so every `./gradlew -p v2 ...` entry point
+// protection at settings evaluation so every `v2/gradlew -p v2 ...` entry point
 // gets the same fail-fast contract.
 val buildLockPath = rootDir.resolve(".gradle/pipelinek-build.lock").toPath()
 Files.createDirectories(buildLockPath.parent)

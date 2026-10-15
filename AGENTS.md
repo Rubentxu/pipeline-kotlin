@@ -24,7 +24,7 @@ Al INICIO de CADA sesión, antes de editar código:
 3. Contrastar ADRs/contratos publicados y ROADMAP.md. NO asumir que HEAD coincide con un handoff antiguo, receipt pasado o SESSION_POINTER local.
 4. Identificar la unidad de trabajo activa (TRAIN) y el WorkItem READY dentro del TRAIN. Identificar NEXT_WU, base SHA, precondiciones, ADR/contratos, código consumidor, UAT y criterios de salida. No retomar automáticamente la próxima WU de un handoff antiguo ni ejecutar una cola paralela.
 5. Verificar qué evidencia pertenece al SHA exacto. Certificaciones/recibos de v0.39.0 o de commits anteriores NO hacen verde main. Si falta verificación, escribir NOT_RUN/BLOCKED; jamás PASS por mera presencia de tests, tag, log o recibo antiguo.
-6. Para ejecutar Gradle desde la raíz, el wrapper está en v2/gradlew: usar cd v2 && ./gradlew <tasks> o v2/gradlew -p v2 <tasks>. Las instrucciones antiguas que usan ./gradlew -p v2 desde la raíz son erróneas; NO copiarlas sin corregir la ruta.
+6. Para ejecutar Gradle desde la raíz, el wrapper está en v2/gradlew: usar cd v2 && ./gradlew <tasks> o v2/gradlew -p v2 <tasks>. Las instrucciones antiguas que usan `./gradlew -p v2` desde la raíz son erróneas; NO copiarlas sin corregir la ruta.
 7. No avanzar nuevos Steps mientras RP-0/RP-1 estén abiertos. Seguir la escalera de tests por impacto; cuando el gate requiere verificación completa, ejecutarla sobre el NUEVO SHA y registrar lo realmente ejecutado (argv, exit, tareas ejecutadas, clases, tests, fallos, errores, skips) junto al SHA.
 
    **Política de verificación (2026-10-03). Sustituye a la instrucción anterior de "lanzar CI para el nuevo SHA", que ya no es ejecutable.** No existe integración continua remota en este repositorio: `754ddda0` ("chore(ci): remove dead GitHub Actions workflows", 2026-09-30) retiró `lpr0-ci.yml`, `release.yml`, `v2-baseline.yml` y `sdkman-publish.yml` tras 60 runs cancelados consecutivos con los runners self-hosted offline desde 2026-09-28, cerrando el ítem de backlog `bl-bl-01M3STVZ0Z000387KNMMQ96E00` (P2). `.github/workflows/` está vacío y `gh run list` sólo devuelve jobs de Dependabot, que no verifican este código.
@@ -1278,7 +1278,7 @@ checklist-only.** That is a known, declared gap, not a claim of coverage.
 
 1. Inner loop: targeted runs only (`--tests 'UatLocal004*'`), warm daemon,
    NO `--rerun-tasks` while iterating.
- 2. Full round gate = `./gradlew -p v2 check` (incremental) runs ONCE per
+ 2. Full round gate = `v2/gradlew -p v2 check` (incremental) runs ONCE per
     apply/verify round, as the final gate. Never per-iteration. Gradle's
     content-hash up-to-date checks are the freshness oracle: a no-op
     `check` returning BUILD SUCCESSFUL with all tasks UP-TO-DATE is a
@@ -1309,8 +1309,8 @@ Canonical inner loop (TDD red-green, seconds — measured 2s no-op / 22-40s
 with incremental compile):
 
 ```bash
-timeout 600 ./gradlew -p v2 :pipeline-application:test --tests 'UatLocal004*'
-timeout 600 ./gradlew -p v2 :pipeline-step-sdk:runtime:test --tests 'DurableShellExecutorAdversarialTest'
+timeout 600 v2/gradlew -p v2 :pipeline-application:test --tests 'UatLocal004*'
+timeout 600 v2/gradlew -p v2 :pipeline-step-sdk:runtime:test --tests 'DurableShellExecutorAdversarialTest'
 ```
 
 Round gate (once per apply/verify round, not per iteration). Incremental
@@ -1318,8 +1318,8 @@ by default — the escalated budget (rule 4) applies to the escalation form
 only; current escalated baseline 977s → budget 1270:
 
 ```bash
-./gradlew -p v2 check                              # incremental (default)
-timeout 1270 ./gradlew -p v2 check --rerun-tasks   # escalation only
+v2/gradlew -p v2 check                              # incremental (default)
+timeout 1270 v2/gradlew -p v2 check --rerun-tasks   # escalation only
 ```
 
 Quick interface: `just gate` / `just gate-escalate` / `just t '<pattern>'` /

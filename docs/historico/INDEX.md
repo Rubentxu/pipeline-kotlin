@@ -19,3 +19,15 @@
 Los enlaces antiguos a esos paquetes en notas/recibos históricos son referencias AL PATH ANTERIOR y pueden no resolver en HEAD; consultar este índice o navegar el commit de procedencia. No se cambia el contenido original solo para reparar enlaces históricos. Las referencias normativas de la documentación activa deben apuntar a docs/v2/ y a este índice.
 
 **Conservados en su sitio deliberadamente:** ADRs aceptados y propuestos, especificaciones, receipts, evidence, UAT previas, LOCAL_FOUNDATION_CONSOLIDATION.md, LFC2_STEP_ECOSYSTEM_EXPANSION.md e INITIATIVE_LPR_001.md: contienen obligaciones técnicas/operativas todavía consultadas, aunque NO autorizan una cola paralela al roadmap activo. Otros informes antiguos permanecen como referencia hasta una migración de enlaces separada.
+
+## Candidatas archivadas
+
+| Candidata | Destino histórico | Train | Commit de publicación | Build commit | Veredicto externo |
+|---|---|---|---|---|---|
+| `evidence/0-61-rc2/` (en `main`) | `docs/historico/0-61-rc2/` | `0.61.0-rc2` | `6a5e9183` (`release: v0.61.0-rc2 — fix PRODUCT IDENTITY LAW, publish candidate`) | `4a6b161e` (post-PR #136) | pendiente del harness (`pipelinek-release-harness`); el veredicto NO se archiva aquí |
+
+Esta fila existe porque `evidence/0-61-rc2/` dejó de ser directorio activo al publicarse la
+siguiente candidata. El archive es byte-inmutable: ZIP, SBOM, git-head y `SHA256SUMS` con sus
+sumas verificadas en `docs/historico/0-61-rc2/README.md`. La copia operativa puede continuar
+en `evidence/0-61-rc2/` mientras el harness la necesite; si se borra, el archive es la
+verdad histórica.

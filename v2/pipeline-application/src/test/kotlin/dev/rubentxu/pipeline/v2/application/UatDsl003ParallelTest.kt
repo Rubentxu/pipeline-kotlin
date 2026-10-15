@@ -168,21 +168,25 @@ class UatDsl003ParallelTest {
 
     @Test
     fun `G2 - stage mixing parallel body with sibling step is rejected fail-closed`() {
-        val (exit, output) = runBinary("run", "--format", "json", mixedBodySiblingScript.toString())
+        val output = runBinary("run", "--format", "json", mixedBodySiblingScript.toString())
 
-        assertEquals(1, exit, "Mixed parallel+sibling stage must fail closed")
+        assertEquals(1, output.exitCode, "Mixed parallel+sibling stage must fail closed")
+        // The rejection is on stderr; the event document, when there is one, is on stdout. Naming the
+        // fields rather than destructuring is deliberate — a `val (a, b)` over a three-field data
+        // class made this row silently read the wrong channel when the helper's return type changed.
+        val rejection = output.stdout + output.stderr
         assertTrue(
-            "cannot mix a parallel body with sibling steps" in output,
-            "Rejection must name the G2 contract: $output",
+            "cannot mix a parallel body with sibling steps" in rejection,
+            "Rejection must name the G2 contract: $rejection",
         )
         // A stack trace tells the author the runtime broke, when what happened is that their pipeline
         // is wrong and the runtime is working. Invalid user input is a refusal, and AGENTS.md reserves
         // uncaught exceptions for adapter boundaries and programmer defects. The refusal text is
         // unchanged either way, so only this assertion distinguishes the two.
         assertFalse(
-            "Exception in thread" in output || "\tat dev.rubentxu" in output,
+            "Exception in thread" in rejection || "\tat dev.rubentxu" in rejection,
             "the rejection must be a typed refusal, not an uncaught IllegalStateException escaping " +
-                "main. Output was:\n$output",
+                "main. Output was:\n$rejection",
         )
     }
 
@@ -231,13 +235,27 @@ class UatDsl003ParallelTest {
      * half-flushed stdout: the `TimedOut` case carries a thread dump, which the old `waitFor()` had
      * no way to produce.
      */
-    private fun runBinary(vararg args: String): Pair<Int, String> {
+    /**
+     * Returns the [CliRun.Completed] itself, so each caller reads the channel it actually needs.
+     *
+     * This returned `Pair<Int, String>` whose String was `stdout + stderr`. Passing that under the
+     * name `stdout` broke seven rows of this class at once: `JsonEventLog.encode` writes the closing
+     * bracket with no trailing newline, and the CLI writes "Pipeline finished with ..." to stderr,
+     * so the merge welded 34 characters onto the array. `CliContractTestKit` takes `lines[1]` and
+     * requires it to end with "]", and a perfectly formed document was refused.
+     *
+     * The merged string was a bug in the decoder's INPUT, not the decoder's rule — the three other
+     * event readers never merge and so fail downstream on counts and order instead. Keeping the two
+     * streams apart also means a consumer that wants a rejection can ask for stderr: with the merge
+     * in place, G2 was green by accident rather than because the refusal said what it should.
+     */
+    private fun runBinary(vararg args: String): CliRun.Completed {
         val outcome = OwnedSubprocess.run(
             command = listOf(appBin.toString()) + args,
             timeout = CLI_DEADLINE,
         )
         return when (outcome) {
-            is CliRun.Completed -> outcome.exitCode to (outcome.stdout + outcome.stderr)
+            is CliRun.Completed -> outcome
             is CliRun.TimedOut -> error(
                 "the installed binary hung on ${args.toList()} after ${CLI_DEADLINE.seconds}s; " +
                     "pid=${outcome.diagnostics.pid} descendants=${outcome.diagnostics.descendantPids}. " +
@@ -253,7 +271,9 @@ class UatDsl003ParallelTest {
     }
 
     private fun runAndDecode(script: Path, expectedExit: Int): Pair<String, List<DomainEvent>> {
-        val (exitCode, stdout) = runBinary("run", "--format", "json", script.toString())
+        val output = runBinary("run", "--format", "json", script.toString())
+        val exitCode = output.exitCode
+        val stdout = output.stdout
         val trimmed = stdout.trim()
         if (exitCode != expectedExit) {
             throw IllegalStateException("CLI exited with $exitCode, expected $expectedExit. output: $stdout")
@@ -264,8 +284,8 @@ class UatDsl003ParallelTest {
         // the receipt, and a missing receipt on stderr is not a
         // contract violation for the JSON view.
         val contract = CliContractTestKit.decodeLaunchContract(
-            stdout = stdout,
-            stderr = "",
+            stdout = output.stdout,
+            stderr = output.stderr,
             format = ObservationFormat.JSON,
         )
         if (contract.eventDocument.decodeError != null) {

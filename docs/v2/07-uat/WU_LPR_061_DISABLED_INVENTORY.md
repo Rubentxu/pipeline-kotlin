@@ -1,9 +1,10 @@
 # WU-LPR-061 — @Disabled Inventory (GENERATED, do not hand-edit counts)
 
-Generated: 2026-09-18T20:21:39+00:00 · HEAD `5138a32a`
+Generated: 2026-10-15T20:47:16+00:00 · HEAD `840c7e19`
 
 | module | class | method/target | category | reason | owner | blocks Gate-1 |
 |---|---|---|---|---|---|---|
+| pipeline-application | ConsoleFrameFiltersTest.kt | `StageStepKindResolver treats empty axes as no-op conjuncts` | OBSOLETE | RED pin of the `--kind` semantic drop, now CLOSED; live successor is ConsoleOperationSelectionTest RC3-4/RC3-5 (docs/v2/07-uat/R4_WU_RC3_CONSOLE_SELECTION_RECEIPT.md) | pipeline-kotlin maintainers | no |
 | pipeline-application | CoreArchiveArtifactsStepUnitTest.kt | `core archiveArtifacts LEGACY_REMOVED - residual counters are 2 ids 2 metadata rows 2 dispatcher files` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
 | pipeline-application | CoreArchiveArtifactsStepUnitTest.kt | `counters - G1 leaves legacy counters at 5 5 5` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
 | pipeline-application | CoreArchiveArtifactsStepUnitTest.kt | `structural family - core archiveArtifacts stays LegacyCore while in LEGACY_PLUGIN_IDS` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
@@ -12,7 +13,7 @@ Generated: 2026-09-18T20:21:39+00:00 · HEAD `5138a32a`
 | pipeline-application | CoreDeleteDirStepUnitTest.kt | `counters - post-S2-A10-G5 LEGACY_REMOVED 3-3-3 converged` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
 | pipeline-application | CoreDeleteDirStepUnitTest.kt | `counters - post-S2-A9-G5 converged 4-4-4 legacy physically removed` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
 | pipeline-application | CoreDeleteDirStepUnitTest.kt | `counters - post-S2-B10-G5 LEGACY_REMOVED 2-2-2 converged` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
-| pipeline-application | CoreEmitEventMigrationReadinessFitnessTest.kt | class kdoc (whole class) | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
+| pipeline-application | CoreEmitEventMigrationReadinessFitnessTest.kt | class CoreEmitEventMigrationReadinessFitnessTest (whole class) | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
 | pipeline-application | CoreEmitEventRegistryPrimaryFitnessTest.kt | `G4 flip post-S2-A10-G4 — 3 residual legacy keys remain` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
 | pipeline-application | CoreEmitEventRegistryPrimaryFitnessTest.kt | `G4 flip — core dot emit dot event is NOT in LEGACY_PLUGIN_IDS and 8 residual keys remain` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
 | pipeline-application | CoreEmitEventRegistryPrimaryFitnessTest.kt | `G5 LEGACY_REMOVED — 3 residual legacy keys remain post-S2-A10-G5` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
@@ -31,14 +32,14 @@ Generated: 2026-09-18T20:21:39+00:00 · HEAD `5138a32a`
 | pipeline-application | CoreIsUnixRegistryPrimaryFitnessTest.kt | `G4 flip - core dot isUnix stays absent from LEGACY_PLUGIN_IDS post-S2-A6-G4` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
 | pipeline-application | CoreIsUnixRegistryPrimaryFitnessTest.kt | `G4 flip - core dot isUnix stays absent post-S2-A10-G4` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
 | pipeline-application | CoreIsUnixRegistryPrimaryFitnessTest.kt | `G4 flip — core dot isUnix is absent from LEGACY_PLUGIN_IDS` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
-| pipeline-application | CoreIsUnixRegistryPrimaryFitnessTest.kt | `G4 flip — legacy source code is physically present (LEGACY_UNREACHABLE, not LEGACY_REMOVED)` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
+| pipeline-application | CoreIsUnixRegistryPrimaryFitnessTest.kt | `G4 flip — legacy source code is physically present (LEGACY_UNREACHABLE, not LEGACY_REMOVED)` | HISTORICAL | S2-A5 / G5 archived registry-primary evidence (G4 row 8 preserved verbatim) | pipeline-kotlin maintainers | no |
 | pipeline-application | CoreIsUnixRegistryPrimaryFitnessTest.kt | `G5 LEGACY_REMOVED - core dot isUnix stays absent post-S2-A10-G5` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
 | pipeline-application | CoreIsUnixRegistryPrimaryFitnessTest.kt | `G5 milestone - core dot isUnix stays absent from LEGACY_PLUGIN_IDS post-S2-A9-G5` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
 | pipeline-application | CoreIsUnixStepUnitTest.kt | `counters are 2-2-2 post-S2-B10-G5 and legacy dispatcher sources are physically removed` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
 | pipeline-application | CoreIsUnixStepUnitTest.kt | `counters drop to 6-6-6 post-S2-A6-G5 and legacy dispatcher source is physically removed` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
 | pipeline-application | CoreIsUnixStepUnitTest.kt | `counters drop to 6-6-7 post-S2-A6-G4 and legacy dispatcher source is physically removed` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
 | pipeline-application | CoreIsUnixStepUnitTest.kt | `counters drop to 7-7-7 and legacy dispatcher source is physically removed` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
-| pipeline-application | CoreLegacyStepMetadataResolverTest.kt | `resolves sleep metadata by step key matching the decoded command` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
+| pipeline-application | CoreLegacyStepMetadataResolverTest.kt | `resolves sleep metadata by step key matching the decoded command` | OBSOLETE | subject physically deleted (CanonicalCoreStepCommand Pwd/CleanWs/Load LEGACY_REMOVED); live successor is CoreSleepG3DifferentialParityTest + CoreSleepStep.descriptor | pipeline-kotlin maintainers | no |
 | pipeline-application | CorePwdRegistryPrimaryFitnessTest.kt | `G4 flip - core dot pwd is absent from LEGACY_PLUGIN_IDS` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
 | pipeline-application | CorePwdRegistryPrimaryFitnessTest.kt | `G4 flip - core dot pwd stays absent post-S2-A10-G4` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
 | pipeline-application | CorePwdRegistryPrimaryFitnessTest.kt | `G4 flip - registry descriptor metadata matches legacy row (effects + replayPolicy)` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
@@ -70,24 +71,31 @@ Generated: 2026-09-18T20:21:39+00:00 · HEAD `5138a32a`
 | pipeline-application | CoreWriteFileRegistryPrimaryFitnessTest.kt | `G5 milestone - core dot writeFile stays absent from LEGACY_PLUGIN_IDS post-S2-A9-G5` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
 | pipeline-application | EmitEventStepContractSuiteTest.kt | `no legacy resurrection — irreversible G5 state holds from inside the contract suite` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
 | pipeline-application | EmitEventStepContractSuiteTest.kt | `no legacy resurrection — irreversible G5 state holds post-S2-A6-G4` | HISTORICAL | Archived migration/cycle snapshot evidence (verbatim traceability) | pipeline-kotlin maintainers | no |
+| pipeline-application | RuntimeApiVersionPrereleaseProbeTest.kt | `a plain version parses` | EXPERIMENTAL | P3 witness probe: 0.48.0-rc1 is illegal BY DESIGN (ProductVersion rejects a candidate suffix); kept as a law-regression witness, non-gating (P3_CANDIDATE_VERSION_BLOCKER) | pipeline-kotlin maintainers | no |
 | pipeline-application | UatLocal008CredentialsTest.kt | `CR-BD-034 mismatched credential kind throws` | COMPATIBILITY | CredentialsId not on the .pipeline.kts script classpath; deferred to WU-LPR-103 contract decision | pipeline-kotlin maintainers | no |
 | pipeline-application | UatLocal011WorkflowControlTest.kt | `SC-011-11 load executes script content` | COMPATIBILITY | INC-024: coordinator does not yet inject loaded pipeline; load is explicitly non-blocking for local-core-v1 | pipeline-kotlin maintainers | no |
+| pipeline-application | WULpr010CliCharacterizationTest.kt | `WONTFIX (WU-LPR-011 F5) - resume of a terminal run reuses the recorded aggregate - zero child re-execution, journaled lifecycle reprinted` | HISTORICAL | WU-LPR-011 F5 closed as WONTFIX; its run() helper hangs, and the canonical contract is pinned by CanonicalDurableRunCoordinatorTest (SKIP 4-event lifecycle) and UatDsl003ParallelTest.P6 | pipeline-kotlin maintainers | no |
+| pipeline-architecture-tests | Lfc2ConcreteBodyRoutingDebtFitnessTest.kt | class ViolationFixture (whole class) | EXPERIMENTAL | violation-injection fixture pending a synthetic-source refactor (H2 slice 3): with zero baseline debt it reports WithinPinnedDebt, so it is non-gating until refactored | pipeline-kotlin maintainers | no |
+| pipeline-output-store | SegmentOutputStoreTest.kt | `OUT-01 prune of a short runId must not delete streams of a longer runId sharing the safe prefix` | COMPATIBILITY | OUT-01 reproduced witness kept as a reproduction; the fix needs the durable-format migration policy (docs/v2/07-uat/WIP4_OUT01_OUT02_REPRODUCED.md), not decided in this cycle | pipeline-kotlin maintainers | no |
+| pipeline-output-store | SegmentOutputStoreTest.kt | `OUT-02 distinct runIds whose safe forms are equal collide on disk and serve each other's bytes` | COMPATIBILITY | OUT-02 reproduced witness kept as a reproduction; the fix needs the durable-format migration policy (docs/v2/07-uat/WIP4_OUT01_OUT02_REPRODUCED.md), not decided in this cycle | pipeline-kotlin maintainers | no |
 
 ## Counts
 
 ```text
-@Disabled total                 = 68
+kotlin test files scanned     = 826
+@Disabled total                 = 74
 MANDATORY_SUPPORTED      = 0
-COMPATIBILITY            = 2
+COMPATIBILITY            = 4
 HISTORICAL               = 66
-EXPERIMENTAL             = 0
-OBSOLETE                 = 0
+EXPERIMENTAL             = 2
+OBSOLETE                 = 2
 mandatory-disabled (Gate-1)    = 0
 Gate-1 @Disabled state         = not blocked by @Disabled inventory
 ```
 
 Regenerate: `python3 scripts/gen-disabled-inventory.py`
 
-Law: Gate-1 cannot be GREEN while mandatory-disabled > 0. A new
-non-HISTORICAL @Disabled entry MUST be added to CLASSIFICATION in the
-generator or the inventory silently miscounts it as HISTORICAL.
+Law: Gate-1 cannot be GREEN while mandatory-disabled > 0. Every
+non-archived @Disabled entry MUST be declared in CLASSIFICATION; an
+undeclared entry, an unobserved declaration, an empty scan or a missing
+git SHA makes the generator refuse (exit 2) and publish nothing.

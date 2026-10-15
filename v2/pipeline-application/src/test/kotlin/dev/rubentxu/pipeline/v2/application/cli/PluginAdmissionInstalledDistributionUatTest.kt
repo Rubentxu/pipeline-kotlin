@@ -197,12 +197,43 @@ class PluginAdmissionInstalledDistributionUatTest {
             require(text.split(anchor).size - 1 == 1) {
                 "the plugin manifest no longer has exactly one anchor this mutant assumes: $text"
             }
-            val spliced = text.replace(
+            var spliced = text.replace(
                 anchor,
                 "}, {\"stepKey\": \"example.uppercase.ghost\", \"declaredCapabilities\": []}]," +
                     "\n  \"directives\"",
             )
-            require(spliced.contains("example.uppercase.ghost")) { "the splice did not land" }
+            require(spliced.contains("example.uppercase.ghost")) { "the step splice did not land" }
+
+            // The mutant needs its OWN identity, or it never reaches the pass-2 cross-check.
+            //
+            // `example-uppercase-plugin` is a BUNDLED plugin of the distribution
+            // (`pipeline-application/build.gradle.kts` runtimeOnly, staged into `lib/`), so a mutant
+            // carrying the same identity is refused by `PluginAdmission.admit` as
+            // `DuplicateIdentity` — in PASS 1, before any contribution is cross-checked. The row was
+            // green for the wrong reason: its first two assertions (exit 2, "Plugin admission
+            // refused") were satisfied by a duplicate-identity refusal, and the assertion that
+            // actually carries this row's claim — that the refusal NAMES `example.uppercase.ghost` —
+            // was never true. The pass-2 cross-check this row exists to prove had not run on this
+            // SHA.
+            //
+            // Rewriting the identity does not weaken what is proved. `admitContributions` compares the
+            // mutant's declared set against its own provided set and never compares the manifest
+            // identity against the contributor id, and `PluginContributionVerifier` buckets by the
+            // provider's own `codeSource`, so the bundled plugin is cross-checked as a separate
+            // admitted artifact. The mutant then ADMITS in pass 1 and is REFUSED in pass 2 by the
+            // cross-check — and since only the cross-check ever names a ghost Step key, the
+            // assertion still cannot go green for the wrong reason.
+            val identityAnchor = "\"plugin\": \"v1:plugin:example-uppercase-plugin/plugin/uppercase\""
+            require(text.split(identityAnchor).size - 1 == 1) {
+                "the plugin manifest no longer has exactly one identity anchor this mutant assumes: $text"
+            }
+            spliced = spliced.replace(
+                identityAnchor,
+                "\"plugin\": \"v1:plugin:example-uppercase-mutant/plugin/uppercase\"",
+            )
+            require(
+                spliced.contains("v1:plugin:example-uppercase-mutant/plugin/uppercase"),
+            ) { "the identity splice did not land" }
 
             // THE property this mutant must have, checked by the SAME authority that admits real
             // plugins rather than by a generic JSON parser. If the splice did not produce a
@@ -212,6 +243,12 @@ class PluginAdmissionInstalledDistributionUatTest {
             require(PluginManifestCodec.decode(spliced) is PluginManifestDecodeResult.Accepted) {
                 "the mutant must be a VALID manifest that merely lies; if it does not decode, this " +
                     "row would pass for the wrong reason. Rejected document: $spliced"
+            }
+            // And the identity must actually differ from the bundled plugin's, or this whole edit is
+            // a comment with no effect and the row is green for the old reason again.
+            require(!spliced.contains(identityAnchor)) {
+                "the mutant still carries the bundled plugin's identity, so admission would refuse it " +
+                    "as a duplicate before the cross-check it exists to prove"
             }
             spliced
         }
@@ -238,6 +275,17 @@ class PluginAdmissionInstalledDistributionUatTest {
             result.stderr.contains("example.uppercase.ghost"),
             "the refusal must NAME the step that was declared without being implemented; a bare " +
                 "exit code proves only that something failed. " +
+                "stderr tail=${result.stderr.takeLast(400)}",
+        )
+        // ...and it must be refused for THAT reason. A `DuplicateIdentity` refusal exits 2 and says
+        // "Plugin admission refused" just as well, so the two assertions above can both pass without
+        // the cross-check ever running. This is the assertion that makes the row mean what it says:
+        // it fails if the mutant is ever refused for a reason unrelated to the lie it carries.
+        assertFalse(
+            result.stderr.contains("DuplicateIdentity"),
+            "the mutant was refused as a duplicate identity, so it never reached the pass-2 " +
+                "cross-check this row exists to prove. The ghost-step assertion above passed for the " +
+                "wrong reason. " +
                 "stderr tail=${result.stderr.takeLast(400)}",
         )
         assertFalse(

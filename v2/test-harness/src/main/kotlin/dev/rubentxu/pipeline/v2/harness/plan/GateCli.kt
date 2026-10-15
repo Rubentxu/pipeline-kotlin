@@ -96,14 +96,17 @@ object GateCli {
     /**
      * Runs the gate against [base] and reports what it decided.
      *
-     * [observedCommit] is what the installed binary reports; passing null means "unknown", which
-     * [ImpactResolver.adjudicate] treats as a refusal rather than as a match.
+     * [provenance] is the INSTALLED distribution's own answer about which commit it carries. It is
+     * read, never passed in: a caller-supplied observed commit lets one value satisfy both sides of
+     * [ImpactResolver.adjudicate]'s comparison, which is how a real run discharged on `SHA != SHA`.
+     * [Unreadable][ObservedProvenance.Unreadable] refuses rather than assuming, so a missing
+     * distribution and a matching one are never confused.
      */
     fun run(
         base: String,
         repoRoot: Path,
         runner: SuiteRunner,
-        observedCommit: String?,
+        provenance: ObservedProvenance,
         expectedCommit: String,
     ): Outcome {
         val dirty = dirtyPaths(repoRoot)
@@ -120,7 +123,7 @@ object GateCli {
             runner = runner,
             resultsRoot = repoRoot.resolve("v2"),
             expectedCommit = expectedCommit,
-            observedCommit = observedCommit,
+            observedCommit = provenance.commitOrNull(),
         )
         return if (refusal == null) {
             Outcome.Discharged(selected.suites.size, invocations.size)
@@ -175,16 +178,21 @@ object GateCli {
  */
 fun main(args: Array<String>) {
     val base = args.firstOrNull()
-        ?: error("usage: main <base-ref> <expected-commit> [observed-commit]")
+        ?: error("usage: main <base-ref> <expected-commit>")
     val expectedCommit = args.getOrNull(1)
-        ?: error("usage: main <base-ref> <expected-commit> [observed-commit]")
-    // A missing third argument means the binary's commit is UNKNOWN, and adjudicate refuses on
-    // unknown rather than treating it as a match. That is the fail-closed direction: the operator
-    // has to name the commit they observed.
-    val observedCommit = args.getOrNull(2)
+        ?: error("usage: main <base-ref> <expected-commit>")
+    // There is deliberately no observed-commit argument. It existed so the operator could name both
+    // sides of the provenance comparison, which made the comparison agree with itself; the observed
+    // side is now read from the installed distribution below.
+    check(args.size == 2) { "usage: main <base-ref> <expected-commit>" }
 
     val root = GateCli.repoRoot(Paths.get("").toAbsolutePath().normalize())
     val buildRoot = GateCli.v2Root(root)
+
+    // Read BEFORE the suites run, so a refusal costs a `version --json` rather than the whole build.
+    // Adjudication still happens after: this only decides whether an observed value exists.
+    val provenance = InstalledDistribution.read(buildRoot)
+    println("provenance: ${provenance.describe()}")
 
     val outcome = GateCli.run(
         base = base,
@@ -194,7 +202,7 @@ fun main(args: Array<String>) {
         // that OWNS the modules. Passing the repo root as both is what made every dispatch fail
         // with "task not found in root project 'pipeline-kotlin'".
         runner = GradleSuiteRunner(repoRoot = root, buildRoot = buildRoot),
-        observedCommit = observedCommit,
+        provenance = provenance,
         expectedCommit = expectedCommit,
     )
 

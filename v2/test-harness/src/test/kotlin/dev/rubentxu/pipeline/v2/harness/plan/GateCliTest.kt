@@ -207,7 +207,7 @@ class GateCliTest {
                     return true
                 }
             },
-            observedCommit = "abc",
+            provenance = ObservedProvenance.Reported("abc"),
             expectedCommit = "abc",
         )
 
@@ -225,7 +225,9 @@ class GateCliTest {
         val repo = gitRepo(tmp)
         Files.writeString(repo.resolve("tracked.txt"), "changed\n")
 
-        val text = GateCli.render(GateCli.run("HEAD", repo, neverRuns, "abc", "abc"))
+        val text = GateCli.render(
+            GateCli.run("HEAD", repo, neverRuns, ObservedProvenance.Reported("abc"), "abc"),
+        )
 
         assertTrue("tracked.txt" in text, "the operator must see which file blocks the gate:\n$text")
         assertTrue("dirty" in text, "the refusal must say why:\n$text")

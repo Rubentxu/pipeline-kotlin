@@ -22,12 +22,18 @@ workarounds is not simpler than one that runs them in order.
 
 ## Usage
 
-    scripts/validation-gate.py --base origin/main --commit <sha> [--observed-commit <sha>]
+    scripts/validation-gate.py --base origin/main --commit <sha>
 
-`--observed-commit` is what the INSTALLED binary reports. When it is omitted the gate treats the
-observed commit as unknown, and unknown refuses. It is never inferred from Git: the point of the
-check is to notice when the binary on disk is not the one the commit describes, and asking Git
-would make the check agree with itself.
+There is deliberately no `--observed-commit`. It used to exist, and passing the commit the
+operator expected on both sides made `ImpactResolver.adjudicate` compare `SHA != SHA` — a real run
+discharged on that tautology while its provenance check did nothing. The observed commit is now
+read from the installed distribution by `InstalledDistribution.read`, which runs
+`pipelinek version --json` and reads `buildCommit`.
+
+That value is never inferred from Git. `git rev-parse HEAD` would always agree with `--commit`,
+which is the same tautology one layer down; the artifact is the only thing that can disagree. When
+the distribution is missing or says nothing, the gate refuses — see
+:installDist above.
 """
 
 from __future__ import annotations
@@ -119,21 +125,10 @@ def runtime_classpath() -> str:
     return os.pathsep.join(entries)
 
 
-def run_gate(base: str, commit: str, observed: str | None) -> int:
+def run_gate(base: str, commit: str) -> int:
     """Run the gate main class with a plain JVM, holding no Gradle lock."""
     classpath = runtime_classpath()
-    # An empty third argument is not "unknown": it is an empty string, which does not equal the
-    # commit and therefore refuses. The distinction matters, so the flag is passed as a marker and
-    # translated here rather than being assembled by the caller.
-    argv = [
-        "java",
-        "-cp",
-        classpath,
-        MAIN_CLASS,
-        base,
-        commit,
-        observed if observed is not None else "",
-    ]
+    argv = ["java", "-cp", classpath, MAIN_CLASS, base, commit]
     print(f"\n$ {' '.join(argv)}", flush=True)
     completed = subprocess.run(argv, cwd=str(REPO_ROOT))
     return completed.returncode
@@ -143,11 +138,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--base", default="origin/main", help="ref the plan is computed against")
     parser.add_argument("--commit", required=True, help="commit the evidence must be bound to")
-    parser.add_argument(
-        "--observed-commit",
-        default=None,
-        help="commit the installed binary reports; omitted means unknown, and unknown refuses",
-    )
     args = parser.parse_args()
 
     if not GRADLEW.exists():
@@ -161,7 +151,7 @@ def main() -> int:
         print("could not build the harness; refusing", file=sys.stderr)
         return 2
 
-    code = run_gate(args.base, args.commit, args.observed_commit)
+    code = run_gate(args.base, args.commit)
     if code == 0:
         print("\nVALIDATION GATE: discharged", flush=True)
     else:

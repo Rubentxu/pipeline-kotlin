@@ -12,11 +12,19 @@ Categories (classification law, WU-LPR-061):
   EXPERIMENTAL         non-gating research surface
   OBSOLETE             to be deleted (must name its live replacement)
 
+The generator fails closed (exit 2, nothing written) when:
+  - TEST_ROOT does not exist or contains no Kotlin test sources;
+  - git cannot name the scanned tree;
+  - an @Disabled entry is neither declared in CLASSIFICATION nor
+    explained by the archive pattern (`Historical ...` / `Archived ...`);
+  - a declared CLASSIFICATION entry is no longer observed in the tree.
+
 Usage: python3 scripts/gen-disabled-inventory.py
 """
 import os
 import re
 import subprocess
+import sys
 from datetime import datetime, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -24,11 +32,11 @@ TEST_ROOT = os.path.join(ROOT, "v2")
 OUT = os.path.join(ROOT, "docs", "v2", "07-uat", "WU_LPR_061_DISABLED_INVENTORY.md")
 
 # file -> (category, reason-summary, decision) classification table.
-# Everything NOT listed here defaults to HISTORICAL (the archived migration
-# snapshot pattern dominates: "@Disabled(\"Historical ...\" / \"Archived ...").
-# A default would silently mask new misclassified entries, so new non-historical
-# @Disabled entries MUST be added to CLASSIFICATION below or the generator
-# fails the run.
+# Entries whose reason starts with `Historical`/`Archived` are the archived
+# migration snapshot pattern and count as HISTORICAL without a declaration.
+# Every OTHER @Disabled entry MUST be declared below or the generator fails
+# the run: a silent default is exactly how a gate-critical disable used to be
+# miscounted as archived evidence.
 CLASSIFICATION = {
     # COMPATIBILITY: DSL classpath surface for CredentialsId inside .pipeline.kts.
     "v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UatLocal008CredentialsTest.kt": [
@@ -49,18 +57,26 @@ def module_of(rel: str) -> str:
     return m.group(1) if m else rel
 
 
-def classify(rel: str, method: str) -> tuple:
+# The archived migration/cycle snapshot pattern: the only reason string that
+# counts as HISTORICAL without an explicit CLASSIFICATION entry.
+ARCHIVE_REASON = re.compile(r"^(Historical|Archived)\b")
+
+
+def classify(rel: str, method: str, reason: str):
+    """Return (category, reason, blocking) or None when the entry is undeclared."""
     for f, entries in CLASSIFICATION.items():
         if rel == f:
-            for meth, cat, reason, blocking in entries:
+            for meth, cat, cat_reason, blocking in entries:
                 if meth in method:
-                    return cat, reason, blocking
-    # default: archived snapshot evidence
-    return "HISTORICAL", "Archived migration/cycle snapshot evidence (verbatim traceability)", "no"
+                    return cat, cat_reason, blocking
+    if ARCHIVE_REASON.match(reason):
+        return "HISTORICAL", "Archived migration/cycle snapshot evidence (verbatim traceability)", "no"
+    return None
 
 
 def extract_entries(rel_path: str, abs_path: str):
-    src = open(abs_path, encoding="utf-8").read()
+    with open(abs_path, encoding="utf-8") as fh:
+        src = fh.read()
     entries = []
     # match @Disabled("...") possibly multiline, followed by optional annotations
     # then `fun \`name\`` or `class Name`
@@ -75,31 +91,83 @@ def extract_entries(rel_path: str, abs_path: str):
         else:
             target = "<unresolved>"
         reason = m.group(1).replace("\\\"", "\"")[:160]
-        entries.append((target, reason))
+        line = src.count("\n", 0, m.start()) + 1
+        entries.append((target, reason, line))
     return entries
 
 
 def main():
+    """Regenerate the inventory. Returns 0 on success, 2 on a fail-closed refusal."""
+    errors = []
     rows = []
     counts = {"MANDATORY_SUPPORTED": 0, "COMPATIBILITY": 0, "HISTORICAL": 0,
               "EXPERIMENTAL": 0, "OBSOLETE": 0}
-    for dirpath, _dirs, files in os.walk(TEST_ROOT):
-        for f in files:
-            if not f.endswith(".kt"):
-                continue
-            abs_path = os.path.join(dirpath, f)
-            rel = os.path.relpath(abs_path, ROOT)
-            if "/src/test/" not in rel:
-                continue
-            if "@Disabled" not in open(abs_path, encoding="utf-8", errors="ignore").read():
-                continue
-            cls = f
-            for target, reason in extract_entries(rel, abs_path):
-                cat, cat_reason, blocking = classify(rel, target)
-                counts[cat] += 1
-                rows.append((module_of(rel), cls, target, cat, cat_reason or reason, "pipeline-kotlin maintainers", blocking))
+    scanned_kt = 0
+    observed = []
 
-    sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=ROOT).stdout.strip()
+    if not os.path.isdir(TEST_ROOT):
+        errors.append(f"scan root does not exist: {TEST_ROOT}")
+
+    if os.path.isdir(TEST_ROOT):
+        for dirpath, _dirs, files in os.walk(TEST_ROOT):
+            for f in files:
+                if not f.endswith(".kt"):
+                    continue
+                abs_path = os.path.join(dirpath, f)
+                rel = os.path.relpath(abs_path, ROOT)
+                if "/src/test/" not in rel:
+                    continue
+                scanned_kt += 1
+                with open(abs_path, encoding="utf-8", errors="ignore") as fh:
+                    has_disabled = "@Disabled" in fh.read()
+                if not has_disabled:
+                    continue
+                cls = f
+                for target, reason, line in extract_entries(rel, abs_path):
+                    observed.append((rel, target))
+                    result = classify(rel, target, reason)
+                    if result is None:
+                        errors.append(
+                            f"unclassified @Disabled entry: {rel}:{line}  {target}  {reason!r}"
+                        )
+                        continue
+                    cat, cat_reason, blocking = result
+                    counts[cat] += 1
+                    rows.append((module_of(rel), cls, target, cat, cat_reason or reason, "pipeline-kotlin maintainers", blocking))
+        if scanned_kt == 0:
+            errors.append(
+                f"scan root contains no Kotlin test sources under src/test: {TEST_ROOT}"
+            )
+
+    # A declared classification that no longer matches anything is stale: it
+    # would hide the entry it was written for (expected COMPATIBILITY 2 -> 0).
+    for f, entries in CLASSIFICATION.items():
+        for meth, _cat, _reason, _blocking in entries:
+            if not any(rel == f and meth in target for rel, target in observed):
+                errors.append(
+                    f"declared CLASSIFICATION entry not observed in the tree: {f} :: {meth}"
+                )
+
+    git_result = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=ROOT
+    )
+    sha = git_result.stdout.strip()
+    if git_result.returncode != 0 or not sha:
+        errors.append(
+            "cannot determine the scanned tree: git rev-parse --short HEAD failed in "
+            f"{ROOT}"
+        )
+
+    if errors:
+        print(
+            f"REFUSED: {len(errors)} problem(s); no inventory written. Classify the entries "
+            "in CLASSIFICATION or fix the scan root, then rerun.",
+            file=sys.stderr,
+        )
+        for e in errors:
+            print(f"  - {e}", file=sys.stderr)
+        return 2
+
     mandatory = counts["MANDATORY_SUPPORTED"]
     gate = "OPEN (mandatory disabled > 0)" if mandatory > 0 else "not blocked by @Disabled inventory"
     lines = [
@@ -117,6 +185,7 @@ def main():
         "## Counts",
         "",
         "```text",
+        f"kotlin test files scanned     = {scanned_kt}",
         f"@Disabled total                 = {len(rows)}",
         *[f"{k:<24} = {v}" for k, v in counts.items()],
         f"mandatory-disabled (Gate-1)    = {mandatory}",
@@ -125,14 +194,16 @@ def main():
         "",
         "Regenerate: `python3 scripts/gen-disabled-inventory.py`",
         "",
-        "Law: Gate-1 cannot be GREEN while mandatory-disabled > 0. A new",
-        "non-HISTORICAL @Disabled entry MUST be added to CLASSIFICATION in the",
-        "generator or the inventory silently miscounts it as HISTORICAL.",
+        "Law: Gate-1 cannot be GREEN while mandatory-disabled > 0. Every",
+        "non-archived @Disabled entry MUST be declared in CLASSIFICATION; an",
+        "undeclared entry, an unobserved declaration, an empty scan or a missing",
+        "git SHA makes the generator refuse (exit 2) and publish nothing.",
     ]
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     open(OUT, "w", encoding="utf-8").write("\n".join(lines) + "\n")
-    print("\n".join(lines[-14:]))
+    print("\n".join(lines[-16:]))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

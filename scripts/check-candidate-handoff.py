@@ -36,8 +36,12 @@ Fail closed unless the on-disk handoff names the candidate exactly:
   R-C1  the handoff exists and parses
   R-C2  `source_commit` equals the SHA being promoted (not merely an
         ancestor — an ancestor handoff describes a DIFFERENT tree)
-  R-C3  `distribution_manifest.built_at` and `sbom.built_at` equal it too, so
-        a manifest cannot attest to bytes from another commit
+  R-C3  `distribution_manifest.built_at` equals it, and `sbom.built_at`
+        does too WHEN the section is present — a manifest cannot attest to
+        bytes from another commit. `distribution_manifest` is non-null in
+        the schema, so an absent or attestation-less section is refused;
+        `sbom` is optional (`CandidateFileRef?`), so an absent one is
+        lawful. A present-but-malformed section is refused either way.
   R-C4  the artifact sha256 the handoff claims is the sha256 of the ZIP that
         actually exists, so a rewritten handoff cannot claim bytes that were
         never built
@@ -112,13 +116,30 @@ def check(head: str, handoff_path: pathlib.Path, zip_path: pathlib.Path) -> None
         )
 
     # R-C3
-    for key in ("distribution_manifest", "sbom"):
+    #
+    # `distribution_manifest` is non-null in CandidateHandoff (schema
+    # authority): a handoff without it, or with a section that carries no
+    # `built_at`, is partial truth and is refused. `sbom` IS optional
+    # (`val sbom: CandidateFileRef?`, emitted only when an SBOM was
+    # produced), so an absent one is legitimate; a malformed one is not.
+    for key, required in (("distribution_manifest", True), ("sbom", False)):
         section = data.get(key)
+        if section is None:
+            if required:
+                raise Refusal(
+                    f"R-C3: handoff carries no {key} section. The document "
+                    "attests the candidate's bytes; without it the handoff is "
+                    "partial truth and is refused."
+                )
+            continue
         if not isinstance(section, dict):
-            continue
+            raise Refusal(f"R-C3: handoff.{key} is not a JSON object")
         built_at = section.get("built_at")
-        if built_at is None:
-            continue
+        if not isinstance(built_at, str) or not built_at:
+            raise Refusal(
+                f"R-C3: handoff.{key} carries no built_at. A section that "
+                "attests no commit cannot vouch for these bytes."
+            )
         if built_at != head:
             raise Refusal(
                 f"R-C3 REFUSED: handoff.{key}.built_at is {built_at[:12]}, not the "

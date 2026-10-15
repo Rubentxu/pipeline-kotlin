@@ -105,6 +105,18 @@ class Accepts(Harness):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("OK", r.stdout)
 
+    def test_absent_optional_sbom_is_accepted(self) -> None:
+        """Claim: an absent `sbom` is legitimate, because the schema says so.
+
+        `CandidateHandoff.sbom` is `CandidateFileRef?` and the materializer
+        emits it only when an SBOM was produced. Mutation: make R-C3 demand
+        the section unconditionally, refusing a lawful handoff.
+        """
+        self.write_handoff(sbom=None)
+        r = self.run_check()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("OK", r.stdout)
+
 
 class RefusesStale(Harness):
     def test_ancestor_handoff_is_refused(self) -> None:
@@ -143,6 +155,30 @@ class RefusesPartialTruth(Harness):
         self.write_handoff(distribution_manifest={"built_at": "6f97d9eda43a47aef448e0b59cd7ead68ca151f3"})
         r = self.run_check()
         self.assertEqual(r.returncode, 1)
+        self.assertIn("R-C3", r.stdout)
+
+    def test_missing_distribution_manifest_is_refused(self) -> None:
+        """Claim: the required manifest section cannot be absent.
+
+        `CandidateHandoff.distributionManifest` is non-null in the schema, so
+        a handoff without it is partial truth. Mutation: keep the
+        `continue`-on-missing behaviour, which skips R-C3 entirely and
+        accepts a handoff that attests nothing about the manifest.
+        """
+        self.write_handoff(distribution_manifest=None)
+        r = self.run_check()
+        self.assertEqual(r.returncode, 1, "a handoff without distribution_manifest must be refused")
+        self.assertIn("R-C3", r.stdout)
+
+    def test_distribution_manifest_without_built_at_is_refused(self) -> None:
+        """Claim: a manifest section that attests no commit is malformed.
+
+        Mutation: treat `built_at is None` as "nothing to compare" and skip.
+        A truncated manifest JSON would then pass R-C3 silently.
+        """
+        self.write_handoff(distribution_manifest={"built_at": None})
+        r = self.run_check()
+        self.assertEqual(r.returncode, 1, "a manifest without built_at must be refused")
         self.assertIn("R-C3", r.stdout)
 
     def test_sbom_built_at_from_another_commit_is_refused(self) -> None:

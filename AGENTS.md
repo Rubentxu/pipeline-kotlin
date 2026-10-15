@@ -1300,6 +1300,15 @@ checklist-only.** That is a known, declared gap, not a claim of coverage.
      kill is a signal: either the suite legitimately grew (re-derive
      the baseline explicitly and document why) or something degraded
      (diagnose per rules 28-31). NEVER raise a timeout mid-run.
+     When the gate is RED on the base (a recorded, pre-existing
+     failure), no green duration exists for that base: do NOT derive a
+     budget from a red run (it stops early and measures nothing). Keep
+     the last green duration recorded for ANY base, cite the SHA it came
+     from, and re-derive once a green run exists. One gate at a time: a
+     concurrent full gate on the same host is enough to blow the budget
+     by itself — measured 2026-10-15, a warm no-op task went from a
+     2.4s median to 18.7s max under a sibling worktree's
+     `check --rerun-tasks` (see B1_HARNESS_TIMING_BASELINE_RECEIPT.md).
 5. Base-SHA evidence is immutable: never recompile a base worktree to
    "re-prove" a result already captured (cite the prior XML/SHA).
 6. `v2/gradle.properties` MUST keep enabled: `org.gradle.caching=true`,

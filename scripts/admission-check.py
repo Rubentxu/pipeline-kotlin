@@ -342,6 +342,14 @@ def check_r4_no_blocking_uats(strict: bool, cwd: pathlib.Path = ROOT
         return False, "R4 CURRENT_UAT_STATUS.md missing"
     text = uat_path.read_text()
     rows = parse_uat_status_rows(text)
+    # Zero parseable rows is not "no blocking UATs": it is an unverifiable
+    # status surface. A truncated file or a format drift would otherwise
+    # admit a candidate while checking nothing. Fail closed instead.
+    if not rows:
+        return False, (
+            "R4 CURRENT_UAT_STATUS.md contains no parseable UAT rows "
+            "(zero evidence cannot be admitted)"
+        )
     # Inline load_exceptions against exc_path (not the module-level one).
     if not exc_path.exists():
         exceptions: set[str] = set()
@@ -486,10 +494,21 @@ def main() -> int:
     ok, msg = check_r1_current_state_exists(cwd)
     results.append(("R1 current_state exists", ok, msg))
 
-    # R2
+    # R2 — evaluated whenever CURRENT_STATE.md exists.
+    #
+    # An existing but empty file passes R1 (the file exists) and would
+    # otherwise make the driver skip R2 entirely: the gate would report no
+    # R2 verdict at all, which reads as PASS by absence. The rule must run
+    # and fail closed with an explicit message instead.
     if state_text:
         ok, msg = check_r2_state_head_is_ancestor(candidate, state_text, cwd)
         results.append(("R2 state.HEAD is ancestor of candidate", ok, msg))
+    elif cs_path.exists():
+        results.append((
+            "R2 state.HEAD is ancestor of candidate",
+            False,
+            "R2 CURRENT_STATE.md exists but is empty; cannot parse HEAD",
+        ))
 
     # R3
     ok, msg = check_r3_working_tree_clean(cwd)

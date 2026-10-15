@@ -608,6 +608,21 @@ class R4BlockingUatTests(unittest.TestCase):
             finally:
                 self.mod.UAT_STATUS_REL = orig
 
+    def test_empty_uat_status_blocks(self):
+        """Claim: a status file with zero parseable UAT rows is not evidence.
+
+        Mutation: treat `rows == []` as "no blocking UATs" and return True.
+        A truncated or structurally changed status file would then admit a
+        candidate while verifying nothing — the same zero-evidence false
+        green the run-scoped report refuses.
+        """
+        repo = TempGitRepo()
+        with repo:
+            fake = "# Current UAT Status\n\n_No UAT rows present._\n"
+            ok, msg = self._run_with_fake_uat_status(fake, "", False)
+            self.assertFalse(ok, "zero parseable rows must fail closed")
+            self.assertIn("no parseable", msg)
+
 
 # ---------------------------------------------------------------------------
 # R5 — receipt provenance via Git ancestry (the Hallazgo 3 contract)
@@ -880,6 +895,36 @@ class DriverSmokeTests(unittest.TestCase):
             self.assertIn("R4 ", output := r.stdout)
             self.assertIn("R5 ", output)
             self.assertNotIn("R0 ERROR", r.stderr)
+
+    def test_empty_current_state_fails_r2_instead_of_skipping_it(self):
+        """Claim: an existing but empty CURRENT_STATE.md cannot skip R2.
+
+        Mutation: keep the `if state_text:` guard in the driver. An empty
+        file passes R1 (exists) and silently omits the ancestry rule, so
+        the gate reports PASS for R2 by absence instead of by verification.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = pathlib.Path(tmp) / "r"
+            repo.mkdir()
+            _run_git(repo, "init", "-q", "--initial-branch=main")
+            _run_git(repo, "config", "user.email", "t@t")
+            _run_git(repo, "config", "user.name", "t")
+            _run_git(repo, "commit", "--allow-empty", "-m", "i",
+                     env=_git_env())
+            head = _run_git(repo, "rev-parse", "HEAD")
+            cs = repo / "docs" / "v2" / "08-production-readiness" / "CURRENT_STATE.md"
+            cs.parent.mkdir(parents=True)
+            cs.write_text("")
+            _run_git(repo, "add", "--", "docs")
+            _run_git(repo, "commit", "-m", "empty cs", env=_git_env())
+            head = _run_git(repo, "rev-parse", "HEAD")
+            r = subprocess.run(
+                [sys.executable, str(SCRIPT),
+                 "--head", head, "--root", str(repo)],
+                capture_output=True, text=True,
+            )
+            self.assertIn("[FAIL] R2", r.stdout)
+            self.assertIn("empty", r.stdout)
 
 
 # ---------------------------------------------------------------------------

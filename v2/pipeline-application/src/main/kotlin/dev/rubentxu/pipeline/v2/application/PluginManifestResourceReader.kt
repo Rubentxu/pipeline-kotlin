@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.step.MeasuredArtifactIdentity
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifestCodec
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifestDecodeResult
 import java.io.InputStream
+import java.nio.file.Files
 
 /**
  * S6/C — reads a plugin's manifest DOCUMENT out of its artifact.
@@ -101,14 +102,24 @@ object PluginManifestResourceReader {
  * `measuredDigest = null`, which [MeasuredArtifactIdentity] renders as
  * [ArtifactIdentityVerdict.Unverified]: a named third state rather than a pass.
  *
- * ## What would close it
+ * ## Why it is deprecated rather than removed
  *
- * Measuring the artifact needs the artifact's bytes, which means resolving where it came
- * from — a [ArtifactOrigin] the runtime does not have today. That capability is the opening
- * condition of EVO-M3b's generic artifact model. Until it exists, admission is a
- * DECLARATION gate: it refuses malformed, incompatible, duplicate and unverifiable
- * manifests, and it says nothing at all about whether the bytes match the claim.
+ * B3.2 introduces [measureArtifactBytes], which actually hashes the artifact bytes
+ * resolved from the contributor's `protectionDomain.codeSource`. The deprecated entry
+ * point stays so the legacy no-measurement decision shape is still reachable from a
+ * single call site; new code MUST use [measureArtifactBytes] and the gate (Step 3) is
+ * the only caller that decides between the two.
+ *
+ * @deprecated use [measureArtifactBytes] to actually measure the artifact; this method
+ *   returns an [ArtifactIdentityVerdict.Unverified] identity that the gate must NOT
+ *   promote to admitted, and it stays in the code only to mark the legacy decision
+ *   shape that the B3.2 mutation M1 specifically targets.
  */
+@Deprecated(
+    message = "Use measureArtifactBytes to actually hash the artifact. " +
+        "This returns a placeholder Unverified identity and must not be admitted.",
+    replaceWith = ReplaceWith("measureArtifactBytes(contributorClass, origin)"),
+)
 fun measure(
     declaredDigest: Digest,
     origin: ArtifactOrigin,
@@ -117,6 +128,94 @@ fun measure(
     measuredDigest = null,
     origin = origin,
 )
+
+    /**
+     * B3.2 — measure the actual artifact bytes the contributor class was loaded from.
+     *
+     * ## What this method replaces
+     *
+     * [measure] returns `measuredDigest = null` by deliberate design: the manifest
+     * document is not the artifact, and hashing it would produce a false Mismatch verdict
+     * on every legitimate plugin. B3.2 closes the gap by reading the bytes of the artifact
+     * the contributor's `protectionDomain.codeSource` points to — a JAR on a classpath
+     * entry, or an exploded directory for shaded builds.
+     *
+     * ## The seam
+     *
+     * The method takes the [contributorClass] (the class the gate linked in phase 1) and
+     * uses its `protectionDomain.codeSource.location` to locate the artifact. This is the
+     * SAME seam the manifest-resource strict check uses, so the bytes and the manifest
+     * are guaranteed to come from the same artifact. A plugin that contributes classes
+     * from artifact B while planting a manifest in artifact A would be caught by the
+     * strict check first, and the bytes hashed here are the bytes of A.
+     *
+     * ## Failure modes
+     *
+     * - JAR unreachable / unreadable: returns an [ArtifactIdentityVerdict.Unverified]
+     *   identity with `measuredDigest = null` and the original [origin] so the gate can
+     *   refuse with `RefusedUntrustedIdentity(reason = ArtifactNotMeasurable)`.
+     * - Directory classpath entry: walks the directory recursively, sorted by path, and
+     *   hashes `<path>\n<sha256-of-file-bytes>` per file. The walk is sorted so two
+     *   identical trees produce the same digest regardless of filesystem order.
+     * - Anything else: same as unreachable — the gate does not admit a plugin it could
+     *   not measure.
+     */
+    fun measureArtifactBytes(
+        declaredDigest: Digest,
+        contributorClass: Class<*>,
+        origin: ArtifactOrigin,
+    ): MeasuredArtifactIdentity {
+        val measured = try {
+            hashArtifactForClass(contributorClass)
+        } catch (e: java.io.IOException) {
+            null
+        } catch (e: java.security.PrivilegedActionException) {
+            null
+        }
+        return MeasuredArtifactIdentity(
+            declaredDigest = declaredDigest,
+            measuredDigest = measured,
+            origin = origin,
+        )
+    }
+
+    /**
+     * Resolve the contributor's codeSource to a [java.nio.file.Path] and hash its bytes.
+     *
+     * @return the SHA-256 digest of the artifact's bytes, or `null` if the artifact is
+     *   not reachable (which the gate treats as a refusal, not a pass).
+     */
+    private fun hashArtifactForClass(contributorClass: Class<*>): Digest? {
+        val location = contributorClass.protectionDomain?.codeSource?.location ?: return null
+        val url = location.toString()
+        val path = when {
+            url.startsWith("file:") -> java.nio.file.Path.of(java.net.URI.create(url))
+            else -> return null
+        }
+        if (!path.toFile().exists()) return null
+        val sha = java.security.MessageDigest.getInstance("SHA-256")
+        if (path.toFile().isDirectory) {
+            val files = walkSorted(path)
+            for (file in files) {
+                sha.update(file.toString().toByteArray(Charsets.UTF_8))
+                sha.update(0)
+                Files.readAllBytes(file).let { sha.update(it) }
+            }
+        } else {
+            Files.readAllBytes(path).let { sha.update(it) }
+        }
+        return Digest("sha256:" + sha.digest().joinToString("") { "%02x".format(it) })
+    }
+
+    private fun walkSorted(root: java.nio.file.Path): List<java.nio.file.Path> {
+        val out = mutableListOf<java.nio.file.Path>()
+        Files.walk(root).use { stream ->
+            stream.forEach { p ->
+                if (p.toFile().isFile) out.add(p)
+            }
+        }
+        return out.sortedBy { it.toString() }
+    }
 
     /**
      * The artifact that CONTAINS a resource URL.

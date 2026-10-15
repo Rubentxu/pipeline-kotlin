@@ -64,20 +64,84 @@ object GateCli {
      */
     fun v2Root(start: Path): Path = repoRoot(start).resolve("v2")
 
-    /** Paths Git reports as modified but uncommitted, ignoring untracked files. */
+    /**
+     * Paths that make the tree un-bindable to a commit.
+     *
+     * ## Why untracked files are usually ignored
+     *
+     * A working checkout is full of scratch files — notes, a receipt being drafted, another
+     * session's document. Refusing on every untracked path would make the gate unusable in practice,
+     * and a gate people disable is worse than no gate.
+     *
+     * ## Why BUILDABLE sources are not in that category
+     *
+     * An untracked `.kt` under a source root is not scratch: Gradle compiles it. `git diff
+     * base...HEAD` does not describe it, so the plan omits its capability while the candidate
+     * carries its behaviour — a receipt for bytes the commit does not contain. That is the exact
+     * shape this gate exists to refuse, so it refuses it too.
+     *
+     * The discriminator is BUILDABILITY, not novelty, and it is deliberately narrow: the Kotlin and
+     * Java source roots of the build. Widening it to "any untracked file under `v2/`" would refuse
+     * on build outputs and reports, which are untracked by design.
+     */
     fun dirtyPaths(repoRoot: Path): List<String> {
-        val process = ProcessBuilder("git", "status", "--porcelain", "--untracked-files=no")
+        val status = gitStatus(repoRoot)
+        val tracked = status.filterNot { it.untracked }.map { it.path }
+        val untracked = status.filter { it.untracked }
+            .map { it.path }
+            .filter { isBuildableSource(it) }
+        return (tracked + untracked).distinct()
+    }
+
+    /**
+     * One porcelain status row, with the untracked marker KEPT.
+     *
+     * The distinction is load-bearing and was the bug this shape replaced: [gitStatus] used to strip
+     * the two status columns before returning, which silently discarded the only signal that said
+     * whether a path was untracked. Callers then filtered on `?? ` against data that could no longer
+     * contain it, and the untracked-source refusal never fired. Reading both halves in one value
+     * makes that unrepresentable rather than something a future edit can undo by accident.
+     */
+    data class StatusRow(val untracked: Boolean, val path: String)
+
+    /**
+     * True for a file Gradle would compile into the candidate, by extension and tree.
+     *
+     * Repository-relative on purpose: the caller already has paths in Git's own form, and
+     * re-anchoring them against a filesystem would be the kind of join that silently mismatches.
+     */
+    fun isBuildableSource(path: String): Boolean {
+        val inSourceTree = path.startsWith("v2/") || path.startsWith("examples/")
+        if (!inSourceTree) return false
+        return path.endsWith(".kt") || path.endsWith(".java") || path.endsWith(".kts")
+    }
+
+    /**
+     * Porcelain v1 status for [repoRoot], one [StatusRow] per line.
+     *
+     * Both status columns are read, because both answer a different question: `?` means "not in the
+     * commit at all", anything else means "in the commit but modified".
+     */
+    private fun gitStatus(repoRoot: Path): List<StatusRow> {
+        val process = ProcessBuilder("git", "status", "--porcelain", "--untracked-files=all")
             .directory(repoRoot.toFile())
             .redirectErrorStream(true)
             .start()
         val output = process.inputStream.bufferedReader().readText()
         check(process.waitFor() == 0) { "git status failed: $output" }
-        // Porcelain v1: "XY path". The first two columns are the index and worktree status; a path
-        // is dirty when either is not a space and not '?'.
+        // Porcelain v1: "XY path", two status columns then a space. Renames use "old -> new" and the
+        // NEW path is the one that exists on disk, so it is the side that matters here.
         return output.lineSequence()
             .filter { it.isNotBlank() }
-            .map { it.substring(3).trim() }
-            .filter { it.isNotEmpty() }
+            .map { line ->
+                val status = line.substring(0, 2)
+                val raw = line.substring(3).trim()
+                StatusRow(
+                    untracked = status == "??",
+                    path = raw.substringAfter(" -> "),
+                )
+            }
+            .filter { it.path.isNotEmpty() }
             .toList()
     }
 

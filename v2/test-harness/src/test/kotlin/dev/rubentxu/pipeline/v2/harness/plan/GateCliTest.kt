@@ -180,16 +180,81 @@ class GateCliTest {
     }
 
     @Test
-    fun `an untracked file does not block, because it is not part of the change under test`(
+    fun `an untracked scratch file does not block, because it is not part of the change under test`(
         @TempDir tmp: Path,
     ) {
         // The distinction matters: an untracked file is not in `git diff base...HEAD` either, but
         // refusing on every scratch file would make the gate unusable in a working checkout. The
-        // rule is about changes to tracked files, which is what the plan describes.
+        // rule is about changes to tracked files, and about untracked files Gradle would COMPILE —
+        // a note in the repo root changes nothing about the candidate's behaviour.
         val repo = gitRepo(tmp)
         Files.writeString(repo.resolve("scratch.txt"), "notes\n")
 
         assertEquals(emptyList(), GateCli.dirtyPaths(repo))
+    }
+
+    @Test
+    fun `an untracked doc under v2 does not block either, because it cannot compile`(@TempDir tmp: Path) {
+        // The companion row that keeps the rule from becoming "refuse on everything untracked".
+        val repo = gitRepo(tmp)
+        Files.createDirectories(repo.resolve("v2/docs"))
+        Files.writeString(repo.resolve("v2/docs/receipt.md"), "# draft\n")
+
+        assertEquals(
+            emptyList(),
+            GateCli.dirtyPaths(repo),
+            "an untracked markdown file is not compiled and cannot change the candidate's bytes",
+        )
+    }
+
+    @Test
+    fun `an untracked Kotlin source under v2 DOES block, because it compiles into the candidate`(
+        @TempDir tmp: Path,
+    ) {
+        // The defect this closes. `git diff base...HEAD` does not mention this file, so the plan
+        // would omit its capability, yet Gradle compiles it into the candidate: a receipt for bytes
+        // the commit does not contain.
+        val repo = gitRepo(tmp)
+        val sneaky = repo.resolve("v2/pipeline-application/src/main/kotlin/Sneaky.kt")
+        Files.createDirectories(sneaky.parent)
+        Files.writeString(sneaky, "fun sneaky() = Unit\n")
+
+        assertEquals(
+            listOf("v2/pipeline-application/src/main/kotlin/Sneaky.kt"),
+            GateCli.dirtyPaths(repo),
+        )
+    }
+
+    @Test
+    fun `an untracked Java or script source is treated like Kotlin`(@TempDir tmp: Path) {
+        val repo = gitRepo(tmp)
+        val java = repo.resolve("v2/mod/src/main/java/A.java")
+        Files.createDirectories(java.parent)
+        Files.writeString(java, "class A {}\n")
+        val script = repo.resolve("v2/mod/build.gradle.kts")
+        Files.createDirectories(script.parent)
+        Files.writeString(script, "// extra config\n")
+
+        assertEquals(
+            listOf("v2/mod/build.gradle.kts", "v2/mod/src/main/java/A.java"),
+            GateCli.dirtyPaths(repo).sorted(),
+        )
+    }
+
+    @Test
+    fun `the buildable-source discriminator is about the tree and the extension, not the path name`(
+        @TempDir tmp: Path,
+    ) {
+        // Guards against the rule drifting into "anything untracked under v2": build OUTPUTS live
+        // under v2/ too and are untracked by design. What separates them is the extension, not the
+        // directory — a generated .kt under v2/ would genuinely be compiled by a build that picks it
+        // up, so refusing it is the safe direction rather than a false positive.
+        assertTrue(GateCli.isBuildableSource("v2/mod/src/main/kotlin/A.kt"))
+        assertTrue(GateCli.isBuildableSource("examples/plugin/src/main/kotlin/B.kt"))
+        assertTrue(!GateCli.isBuildableSource("v2/mod/build/reports/report.html"))
+        assertTrue(!GateCli.isBuildableSource("v2/build/test-results/TEST-A.xml"))
+        assertTrue(!GateCli.isBuildableSource("docs/v2/07-uat/receipt.md"))
+        assertTrue(!GateCli.isBuildableSource("notes.kt"), "outside the build tree, a .kt is a note")
     }
 
     @Test

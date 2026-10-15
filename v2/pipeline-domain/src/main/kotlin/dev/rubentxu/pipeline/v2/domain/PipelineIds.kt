@@ -30,8 +30,24 @@ value class RunId(val value: String) {
  * script) assigns to a single invocation. PipelineK preserves it through
  * the durable state and emits it in:
  *
- *  - The [dev.rubentxu.pipeline.v2.events.RunCorrelated] event (before
- *    the first [dev.rubentxu.pipeline.v2.events.RunStarted]).
+ *  - The [dev.rubentxu.pipeline.v2.events.RunCorrelated] event.
+ *
+ *  ## Where it lands in the timeline, and why it is stated rather than inferred
+ *
+ *  `RunCorrelated` is the FIRST event of a run: it precedes
+ *  `CompilationStarted`, which in turn precedes `RunStarted`. That is a
+ *  promise this document now makes explicitly, because the previous wording —
+ *  "before the first [RunStarted]" — was true but under-determined. It left the
+ *  position relative to compilation unstated, and three UATs filled the gap by
+ *  asserting an order no document had ever promised.
+ *
+ *  The reason it goes first is not tidiness. `RunCorrelated` is emitted at the
+ *  moment the run acquires a durable identity — after the execution lease is
+ *  held, and together with the `last-run.json` control record that `--resume`
+ *  and the ownership arbitration both read. Emitting it after compilation would
+ *  mean a script that fails to compile leaves no correlation record at all: the
+ *  invocation would disappear from the control dir with nothing explaining it
+ *  and nothing to resume. The order is what makes an early failure observable.
  *  - The `LaunchReceipt` JSON envelope on stdout.
  *  - The `last-run.json` file in the control dir.
  *

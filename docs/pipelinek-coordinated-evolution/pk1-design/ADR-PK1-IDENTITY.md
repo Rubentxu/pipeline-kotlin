@@ -44,8 +44,25 @@ componentes ortogonales:
 - Garantía: la misma `CorrelationId` aparece en:
   - El `LaunchReceipt` stdout.
   - Un nuevo evento tipado `RunCorrelated(runId, correlationId, ownerId,
-    startedAtMs)` en la `event-plane` (antes del primer `RunStarted`).
+    startedAtMs)` en la `event-plane`.
   - El archivo durable `last-run.json` en `controlDirRoot/last-run/`.
+
+- **Posición en el timeline (ratificada 2026-10-15).** `RunCorrelated` es el
+  PRIMER evento del run: precede a `CompilationStarted`, que precede a
+  `RunStarted`. La redacción anterior —«antes del primer `RunStarted`»— era
+  cierta pero infra-determinada: dejaba sin declarar la posición respecto a la
+  compilación, y tres UATs rellenaron ese hueco afirmando un orden que ningún
+  documento había prometido nunca.
+
+  La razón de ese orden no es el orden en sí. `RunCorrelated` se emite cuando la
+  ejecución ya tiene identidad durable —tras tomar el lease, y junto al registro
+  `last-run.json` del que leen tanto `--resume` como la arbitraje de propiedad—. Si
+  se emitiera después de compilar, un script que no compila dejaría **ningún**
+  registro de correlación: la invocación desaparecería del directorio de control
+  sin explicación y sin nada que reanudar. El orden es lo que hace observable un
+  fallo temprano.
+
+  Registro de la decisión: `docs/v2/07-uat/EVENT_TIMELINE_CONTRACT_DRIFT_ESCALATION.md`.
 - Concurrencia: dos invocaciones concurrentes con la misma
   `CorrelationId` **no** se fusionan; cada una obtiene su propio
   `RunId`. La `CorrelationId` no es un identificador de run, es un token

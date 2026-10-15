@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.ParallelBranchFinished
 import dev.rubentxu.pipeline.v2.events.ParallelBranchStarted
+import dev.rubentxu.pipeline.v2.events.RunCorrelated
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.StageStarted
@@ -196,8 +197,20 @@ class UatDsl003ParallelTest {
     fun `complete canonical event timeline for parallel stage`() {
         val (_, events) = runAndDecode(parallelScript, expectedExit = 0)
 
-        assertTrue(events.first() is CompilationStarted, "First event must be CompilationStarted")
+        // RunCorrelated leads the timeline (ADR-PK1-IDENTITY / PipelineIds.kt, ratified 2026-10-15):
+        // emitted once the run holds a durable identity, together with the `last-run` record that
+        // `--resume` and execution ownership read, so an early failure is still observable.
+        assertTrue(events.first() is RunCorrelated, "First event must be RunCorrelated")
+        assertTrue(events.any { it is CompilationStarted }, "Must have CompilationStarted event")
         assertTrue(events.any { it is CompilationFinished })
+        // Every later event belongs to the correlated run — a shift alone would not catch a timeline
+        // that gained a correlation belonging to someone else.
+        val correlatedRunId = (events.first() as RunCorrelated).runId
+        val foreignRunIds = events.drop(1).map { it.runId }.filter { it != correlatedRunId }.distinct()
+        assertTrue(
+            foreignRunIds.isEmpty(),
+            "every event after RunCorrelated must belong to $correlatedRunId; found $foreignRunIds",
+        )
         // OBSERVATION (E-EM-11): parallel stages currently emit StageFinished but no
         // StageStarted (verified in dist); recorded here as characterized behavior, not
         // asserted as a law. If stage-entry projection becomes mandatory, that is a

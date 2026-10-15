@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.RunFinished
+import dev.rubentxu.pipeline.v2.events.RunCorrelated
 import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.StageStarted
@@ -109,7 +110,7 @@ class UatEvt002MultiStepReplayTest {
         //              + (StepStarted/StepFinished)                       =  2
         //              + StageFinished                                     =  1   -> 7 each
         //   RunFinished                                                    =  1
-        //                                                                   =  3 + 14 + 1 = 18
+        //                                                                   =  3 + 14 + 1 + 1 = 19
         //
         // It was 20 while `sh` output was duplicated into the event log; the two `sh` steps
         // lost their EchoOutputCaptured and nothing else moved. The four texts asserted below
@@ -119,13 +120,30 @@ class UatEvt002MultiStepReplayTest {
         // INC-R8-ARC-001 historical note: under the legacy record-only
         // walker the make steps were simulated as StepFailed; under real
         // execution the fixture uses succeeding commands.
-        assertEquals(18, events.size, "Expected 18 events from multi-step fixture: $stdout")
+        //   RunCorrelated                                                    =  1
+        assertEquals(19, events.size, "Expected 19 events from multi-step fixture: $stdout")
 
-        assertTrue(events[0] is CompilationStarted, "events[0] must be CompilationStarted (durable spine)")
-        assertTrue(events[1] is CompilationFinished, "events[1] must be CompilationFinished")
-        assertTrue(events[2] is RunStarted, "events[2] must be RunStarted")
+        // RunCorrelated leads, and that is the ratified contract rather than an accident
+        // (ADR-PK1-IDENTITY / PipelineIds.kt, 2026-10-15): it is emitted once the run has a durable
+        // identity, together with the `last-run` record `--resume` and execution ownership read. A
+        // script that failed to compile would otherwise leave no correlation record at all.
+        assertTrue(events[0] is RunCorrelated, "events[0] must be RunCorrelated")
+        assertTrue(events[1] is CompilationStarted, "events[1] must be CompilationStarted")
+        assertTrue(events[2] is CompilationFinished, "events[2] must be CompilationFinished")
+        assertTrue(events[3] is RunStarted, "events[3] must be RunStarted")
 
-        val cf = events[1] as CompilationFinished
+        // The shift is the easy half. This is the half a shift cannot fake: every later event must
+        // belong to the run that was correlated, so a timeline that gained a RunCorrelated from a
+        // different run fails here instead of passing on cardinality.
+        val correlatedRunId = (events[0] as RunCorrelated).runId
+        val foreignRunIds = events.drop(1).map { it.runId }.filter { it != correlatedRunId }.distinct()
+        assertTrue(
+            foreignRunIds.isEmpty(),
+            "every event after RunCorrelated must belong to the correlated run $correlatedRunId; " +
+                "found $foreignRunIds",
+        )
+
+        val cf = events[2] as CompilationFinished
         assertEquals("v1", cf.cacheKey.version, "cacheKey.version must be v1")
         // M1-F.1 (PK-R1 R1-B extension): the Kotlin 2.4.10 compiler confirms
         // `-Xuse-fast-jar-file-system=false` with an INFO diagnostic. The diagnostic

@@ -318,13 +318,52 @@ The `pipeline-testkit` module — at the spec's central delivery slot — is a 3
 
 **Cheapest path.** One JUnit 5 class per verb, one method per surface flag. The shared helper already lives in `S0SemanticWitnessMatrixTest` (`run(script)` returning `Triple<Int, List<DomainEvent>, Path>`). The `events`/`console`/`observe` HF2 rung should be 4–6 short tests per verb; `inspect` is BLOCKED until the verb is implemented.
 
-### §4.3 GAP — second external plugin has no first installDist canary
+### §4.3 WITHDRAWN — the second external plugin's installDist canary already exists
 
-`LB02_EP_EXAMPLE_UPPERCASE_CERTIFICATION.md` proves the seam works for **one** external plugin. The "plugin-zero-production-change" claim (`STEP_PLUGIN_CERTIFICATION.md R1 acceptance`) is NOT proved for a second, structurally different external plugin (e.g. one with rich capabilities, body semantics, or event contribution).
+**This gap was reported in error and is withdrawn (2026-10-15).** The original §4.3 claimed
+that only `example.uppercase` had ever been exercised against an installed distribution, and that
+the "plugin-zero-production-change" claim was honour-by-name rather than by-evidence. That claim
+was wrong: the audit searched the `:pipeline-application` canaries and the
+`LB02_EP_EXAMPLE_UPPERCASE_CERTIFICATION.md` receipt, and did not search
+`examples/sdk-external-execution/`, which is a SEPARATE Gradle build and therefore invisible to a
+search scoped to `v2/`.
 
-**Cost of NOT closing.** The seam may carry a hidden assumption that holds for `example.uppercase` but breaks for a Step with, say, `NETWORK` capability or a body invocation pattern. Until 2..3 plugins cross-installDist the seam, the **universal** clause of the EXT-1/EXT-2 ADRs is honour-by-name, not by-evidence.
+What actually exists in the tree at HEAD (`880c3a08`):
 
-**Cheapest path.** Identify one Tier B / LFC-2E3 candidate (e.g. `junit.results` or `stash`) and require it to pass the closed G0..G8 + `UppercaseStepContractSuiteTest`-shape isolation pair before its Tier B tier is published.
+| Evidence | Plugin | Shape | Rows |
+|---|---|---|---|
+| `examples/sdk-external-execution/src/test/kotlin/example/sdkext/external/ExternalExecutionTest.kt` | `example.uppercase` | atomic Step | the original witness |
+| `examples/sdk-external-execution/src/test/kotlin/example/sdkext/external/ExternalShapeExecutionTest.kt` | `example-block-plugin` | **body-bearing Step** (`BODY_CONTINUATION_CAPABILITY`) | `an external block Step executes its body the declared number of times` + `the block fixture is refused without the plugin and runs no body` |
+| same class | `example.directive` | **directive** | `an external directive is admitted and its stage body runs` + `the directive is denied before any stage effect without the plugin` |
+
+`ExternalShapeExecutionTest` is HF2 (forked real distribution): `examples/sdk-external-execution/build.gradle.kts`
+wires `dependsOn(buildExternalBlockPlugin)` / `buildExternalDirectivePlugin`, resolves the real
+`v2/pipeline-application/build/install/pipelinek/bin/pipelinek`, and passes each plugin JAR in as
+a system property. Its KDoc is explicit that "the JAR was admitted" and "the thing the plugin
+contributed actually ran" are different claims for a body Step or a directive — which is exactly the
+concern this gap was trying to raise — and it pairs every positive with an isolation negative.
+
+It is also **stronger** than a gap-closing canary written from scratch would have been. Its KDoc
+records a defect it caught during construction: the first draft counted the bare `"/sh-0"` substring
+and went RED with `expected 3 but was 6`, which is the stream being honest — the step name appears
+once in `StepStarted` and again in `StepFinished`. The current version counts `StepStarted` only,
+and the KDoc explains why a witness counting both halves would pass at six and keep passing if the
+engine stopped reporting completions. That is HARNESS FIDELITY LAW §5 applied correctly.
+
+**What remains genuinely open** (narrower than the original §4.3):
+
+1. **Freshness.** This audit does not establish that `ExternalShapeExecutionTest` is GREEN at
+   current HEAD. Its evidence is the code in the tree; running it is a separate measurement and
+   was not performed while withdrawing this gap. Per `CERTIFICATION_PROTOCOL.md` §4, a receipt is
+   evidence for its own SHA and inherits nothing.
+2. **Capability breadth.** The two shapes covered are `BODY_CONTINUATION_CAPABILITY` (block) and
+   directive admission. Neither covers a plugin declaring a capability that reaches the network or
+   an external service. The `NETWORK`-capability gap the original §4.3 gestured at is real, and it
+   is the correct successor to this withdrawn item: a plugin declaring a capability beyond the
+   local-execution set, exercised at HF2.
+3. **Tier B / LFC-2E3 candidates** (`junit.results`, `stash`, and any future published plugin) still
+   owe the G0..G8 + isolation pair before their tier is published. That part of the original
+   recommendation stands unchanged.
 
 ### §4.4 GAP — CLI HF3 restart/resume missing
 
@@ -434,9 +473,13 @@ R2  Add the per-verb HF2 canary tests for `events`, `console`, `observe`,
      built on the S0SemanticWitnessMatrixTest helper, four methods per verb
      each. Implementing `inspect` removes the BLOCKER in §4.2 entirely.
 
-R3  Build a second external-plugin installDist canary, ideally with rich
-     capability requirements (`NETWORK` or a body Step), to prove the seam
-     is one-plugin-deep, not upper-bounded by `example.uppercase`.
+R3  ~~Build a second external-plugin installDist canary.~~ WITHDRAWN — see
+     §4.3. `ExternalShapeExecutionTest` (examples/sdk-external-execution) already
+     covers a body Step and a directive, each with an isolation pair. The
+     surviving item is capability breadth: a plugin declaring a capability that
+     reaches beyond the local-execution set (e.g. `NETWORK`), exercised at HF2.
+     Do NOT write a duplicate canary for the second plugin; the existing one is
+     stronger than a fresh one would be.
 
 R4  Re-anchor the S7 BLOCK 3.x chain against HEAD in a single digest
      commit (per §4.5). One receipt, eight BLOCK-chained anchors, no

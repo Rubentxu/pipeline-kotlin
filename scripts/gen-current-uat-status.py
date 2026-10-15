@@ -156,15 +156,23 @@ APPLICABILITY_GATES = {
 
 # T0E-EVID-01 E1.2: machine-readable marker.
 #   UAT-EVIDENCE | UAT-RP-013 | COVERED | candidate=<sha> | tests=...
-# The marker is unambiguous because each line is single-UAT.
+# The marker is unambiguous because each line is single-UAT. A leading
+# emphasis wrapper (backtick, quote, blockquote) is tolerated: the marker is
+# still the machine-readable form, and a wrapped marker MUST go through the
+# candidate binding instead of degrading to free-form certification.
 _MARKER_PATTERN = re.compile(
-    r"^\s*UAT-EVIDENCE\s*\|"                # marker header
+    r"^\s*[`'\">]*\s*UAT-EVIDENCE\s*\|"    # marker header (wrappers tolerated)
     r"\s*`?(UAT-RP-\d{3})`?\s*\|"            # UAT id (column 2)
     r"\s*(FAIL_PROVEN|BLOCKED|REJECTED|COVERED|PARTIAL|KNOWN_LIMITATION|NOT_RUN)\s*\|"
     r"\s*candidate\s*=\s*`?([0-9a-f]{4,64})`?"
     r"(?:\s*\|\s*([^\n]*))?",                # optional trailing cols
     re.IGNORECASE | re.MULTILINE,
 )
+
+# A line that STARTS with the marker keyword but does not parse as a marker.
+# Such a line must not fall through to the free-form branch: free-form
+# certification ignores the candidate= field entirely.
+_MARKER_LEAD = re.compile(r"^\s*[`'\">]*\s*UAT-EVIDENCE\b", re.IGNORECASE)
 
 # UID pattern for free-form references inside receipts.
 UID_PATTERN = re.compile(r"UAT-RP-\d{3}")
@@ -236,7 +244,8 @@ def _parse_freeform(line: str):
 
 def scan_receipts(uat_dir, *, candidate_sha: str | None = None,
                   git: _Git = GIT,
-                  collect_glob_order: list[pathlib.Path] | None = None):
+                  collect_glob_order: list[pathlib.Path] | None = None,
+                  malformed_markers: list | None = None):
     """Return dict: uat_id -> list of EvidenceQuad.
 
     Each EvidenceQuad is `(receipt_path, matched_line, commit_sha,
@@ -245,7 +254,15 @@ def scan_receipts(uat_dir, *, candidate_sha: str | None = None,
 
     - `[]` for "single_noref" or "multi_noref" (no certification).
     - `[S]` for "single" lines (one UAT, one or more statuses).
-    - `[S]` for marker lines (machine-readable, single UAT).
+    - `[S]` for marker lines (machine-readable, single UAT). For markers the
+      evidence SHA is the marker's CLAIMED candidate (validated to be at or
+      before the receipt's last commit), not the receipt file's commit: a
+      later cosmetic edit must not re-date a certification that never ran at
+      that commit.
+
+    Marker-shaped lines that do not parse (missing candidate=, unknown
+    status, ...) certify nothing and are appended to `malformed_markers` when
+    a list is supplied, so the refusal is disclosed rather than silent.
 
     Receipts without a tracked Git history are skipped.
     """
@@ -293,19 +310,33 @@ def scan_receipts(uat_dir, *, candidate_sha: str | None = None,
                 # entry is superseded by the machine-readable marker.
                 uid, status, cand = parsed_marker
                 if cand == sha or git.is_ancestor(cand, sha):
-                    # Marker is consistent with this receipt's
-                    # commit. Replace any earlier freeform entry
-                    # with full certification.
+                    # Marker is consistent with this receipt's commit
+                    # (the claimed candidate is the receipt's commit
+                    # or an ancestor of it). Replace any earlier
+                    # freeform entry with full certification, and
+                    # record the CLAIMED candidate as the evidence
+                    # SHA: freshness belongs to the tree that ran the
+                    # scenario, not to the file's edit history.
                     found[uid] = [
                         t for t in found[uid]
                         if t[0] != rel
                     ]
-                    found[uid].append((rel, line.strip()[:120], sha,
+                    found[uid].append((rel, line.strip()[:120], cand,
                                        [_STATUS_CANONICAL[status.upper()]]))
                     per_uids_in_file.add(uid)
                 # else: marker candidate is unrelated to this
                 # receipt — skip (don't add REFERENCED either, to
                 # avoid clobbering an earlier valid freeform).
+                continue
+
+            if _MARKER_LEAD.match(line):
+                # Marker-shaped but unparseable (missing candidate=,
+                # unknown status, malformed id...). It must NOT fall
+                # through to the free-form branch, which certifies
+                # from a UID plus a status word alone and ignores
+                # candidate=. Refuse, and disclose the refusal.
+                if malformed_markers is not None:
+                    malformed_markers.append((rel_str, line.strip()[:120], sha))
                 continue
 
             for uid, statuses, _kind in _parse_freeform(line):
@@ -486,7 +517,7 @@ def check_applicability(uid: str, repo_text: str | None = None
     return applicable, descr
 
 
-def render_markdown(uat_status, head_sha):
+def render_markdown(uat_status, head_sha, malformed_markers=None):
     lines = []
     lines.append("# Current UAT Status (Production-Readiness)\n")
     lines.append(f"**Generated at (UTC):** {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}\n")
@@ -549,6 +580,11 @@ def render_markdown(uat_status, head_sha):
     lines.append("- [x] C7: Generator + tests + receipt produced.\n")
     lines.append("- [x] C8: `PRODUCTION_READY_UAT_MATRIX.md` remains normative only; this file replaces its mutable section.\n")
     lines.append("- [x] C9: Applicability gates produce NOT_APPLICABLE (non-blocking) for UAT-RP-025/026/027 when the corresponding feature is not declared in the codebase.\n")
+    if malformed_markers:
+        lines.append("\n---\n\n")
+        lines.append("## Malformed marker-shaped lines (refused; no certification)\n\n")
+        for rel, line, _sha in malformed_markers:
+            lines.append(f"- `{rel}`: {line}\n")
     lines.append("\n---\n\n")
     lines.append("## Discoveries\n\n")
     lines.append("- The normative matrix in `PRODUCTION_READY_UAT_MATRIX.md` mixes contract (immutable) and current state (mutable); this generator honours that separation and excludes the matrix from classification.\n")
@@ -575,8 +611,10 @@ def main():
 
     head_sha = git_head_full()
     candidate = args.candidate or head_sha
-    uat_status = scan_receipts(UAT_DIR, candidate_sha=candidate)
-    md = render_markdown(uat_status, head_sha)
+    malformed: list = []
+    uat_status = scan_receipts(UAT_DIR, candidate_sha=candidate,
+                               malformed_markers=malformed)
+    md = render_markdown(uat_status, head_sha, malformed_markers=malformed)
 
     out = pathlib.Path(args.out)
     if args.check:

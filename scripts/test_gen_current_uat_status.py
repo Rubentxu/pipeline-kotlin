@@ -14,11 +14,15 @@ Coverage:
   - Pinning by DAG-maximal SHA.
 """
 import importlib.util
+import io
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "gen-current-uat-status.py"
@@ -81,9 +85,199 @@ def _git(cwd):
     return _load_mod()._Git(cwd=cwd)
 
 
+class MarkerBindingTests(unittest.TestCase):
+    """F1/F2: marker-shaped lines must bind to their claimed candidate.
+
+    A `` `UAT-EVIDENCE | ...` `` line wrapped in backticks used to fall out of
+    the anchored marker pattern and be re-read by the free-form branch, which
+    certifies without the candidate check. These tests pin the marker path.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = _load_mod()
+
+    def _rev(self, tmpdir):
+        return subprocess.run(
+            ["git", "-C", str(tmpdir), "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=True).stdout.strip()
+
+    def _commit_file(self, tmpdir, name, body, message):
+        (pathlib.Path(tmpdir) / name).write_text(body)
+        subprocess.run(["git", "-C", str(tmpdir), "add", "--", name], check=True)
+        subprocess.run(["git", "-C", str(tmpdir), "commit", "-q", "-m", message],
+                       check=True)
+
+    def _scan(self, tmpdir, candidate=None, malformed=None):
+        git = self.mod._Git(cwd=tmpdir)
+        if malformed is None:
+            return self.mod.scan_receipts(
+                pathlib.Path(tmpdir), candidate_sha=candidate, git=git)
+        return self.mod.scan_receipts(
+            pathlib.Path(tmpdir), candidate_sha=candidate, git=git,
+            malformed_markers=malformed)
+
+    def test_backticked_marker_is_bound_to_its_candidate(self):
+        """Claim: a backticked marker certifies AND carries its own candidate.
+
+        Mutation: keep the anchored pattern. The line degrades to free-form
+        'single' and the evidence SHA recorded is the file's last commit, so a
+        later cosmetic edit re-dates a certification that never ran there.
+        """
+        tmp = _tmp_repo_with_history([{"files": [("r.md", "# R\n")], "message": "c1"}])
+        c1 = self._rev(tmp)
+        self._commit_file(
+            tmp, "r.md",
+            f"# R\n\n`UAT-EVIDENCE | UAT-RP-005 | KNOWN_LIMITATION | candidate={c1}`\n",
+            "c2 cosmetic")
+        c2 = self._rev(tmp)
+        self.assertNotEqual(c1, c2)
+        found = self._scan(tmp)
+        quads = found["UAT-RP-005"]
+        self.assertEqual(len(quads), 1, "the backticked marker must certify exactly once")
+        self.assertEqual(quads[0][3], ["KNOWN_LIMITATION"],
+                         "certification must come from the marker, not free-form")
+        self.assertEqual(quads[0][2], c1,
+                         "the evidence SHA is the claimed candidate, not the file commit")
+
+    def test_backticked_marker_with_unknown_candidate_does_not_certify(self):
+        """Claim: an unresolvable candidate voids the marker certification.
+
+        Mutation: route the line through free-form; the unknown candidate is
+        ignored and the UAT is certified without any binding.
+        """
+        tmp = _tmp_repo_with_history([{
+            "files": [("r.md",
+                       "`UAT-EVIDENCE | UAT-RP-005 | COVERED | candidate=deadbeef`\n")],
+            "message": "c1"}])
+        found = self._scan(tmp)
+        self.assertEqual(found["UAT-RP-005"], [],
+                         "a marker with an unknown candidate certifies nothing")
+
+    def test_marker_shaped_line_without_candidate_does_not_certify(self):
+        """Claim: marker-shaped text that does not parse cannot certify.
+
+        Mutation: let it fall through to free-form, where one UID plus an
+        explicit status is enough to certify without any marker discipline.
+        """
+        tmp = _tmp_repo_with_history([{
+            "files": [("r.md", "UAT-EVIDENCE | UAT-RP-005 | COVERED\n")],
+            "message": "c1"}])
+        found = self._scan(tmp)
+        self.assertEqual(found["UAT-RP-005"], [])
+
+    def test_malformed_marker_lines_are_reported_not_silent(self):
+        """Claim: a refused marker line is disclosed, not dropped quietly."""
+        tmp = _tmp_repo_with_history([{
+            "files": [("r.md", "UAT-EVIDENCE | UAT-RP-005 | COVERED\n")],
+            "message": "c1"}])
+        malformed = []
+        self._scan(tmp, malformed=malformed)
+        self.assertEqual(len(malformed), 1)
+        self.assertIn("r.md", malformed[0][0])
+        self.assertIn("COVERED", malformed[0][1])
+
+
 def _quad(path, line, sha, statuses=()):
     """Compact EvidenceQuad (path, line, sha, statuses)."""
     return (path, line, sha, list(statuses))
+
+
+class CheckModeEndToEndTests(unittest.TestCase):
+    """F3: --check must be verifiable through the production path.
+
+    The previous coverage accepted ``rc in (0, 1)`` without asserting which,
+    so a ``--check`` that always says STALE (or always OK) passed the suite.
+    These tests drive ``main()`` against a hermetic repo and pin both verdicts.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = _load_mod()
+
+    def _repo(self):
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix="uat-check-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        subprocess.run(["git", "-C", str(tmp), "init", "-q", "--initial-branch=main"],
+                       check=True)
+        subprocess.run(["git", "-C", str(tmp), "config", "user.email", "t@t"], check=True)
+        subprocess.run(["git", "-C", str(tmp), "config", "user.name", "t"], check=True)
+        uat = tmp / "docs" / "v2" / "07-uat"
+        uat.mkdir(parents=True)
+        (uat / "r.md").write_text("# R\n")
+        self._commit(tmp, "c1")
+        c1 = self._rev(tmp)
+        (uat / "r.md").write_text(
+            f"# R\n\nUAT-EVIDENCE | UAT-RP-001 | COVERED | candidate={c1}\n")
+        self._commit(tmp, "c2")
+        return tmp
+
+    def _rev(self, tmp):
+        return subprocess.run(["git", "-C", str(tmp), "rev-parse", "HEAD"],
+                              capture_output=True, text=True, check=True
+                              ).stdout.strip()
+
+    def _commit(self, tmp, message):
+        subprocess.run(["git", "-C", str(tmp), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(tmp), "commit", "-q", "--allow-empty",
+                        "-m", message], check=True)
+
+    def _run(self, tmp, argv):
+        buf = io.StringIO()
+        real_scan = self.mod.scan_receipts
+
+        def bound_scan(uat_dir, *, candidate_sha=None, malformed_markers=None):
+            # `scan_receipts`'s `git` default was captured at import time, so
+            # patching the module global is not enough; inject the temp repo.
+            return real_scan(uat_dir, candidate_sha=candidate_sha,
+                             git=self.mod._Git(cwd=tmp),
+                             malformed_markers=malformed_markers)
+
+        with mock.patch.object(self.mod, "ROOT", tmp), \
+             mock.patch.object(self.mod, "UAT_DIR", tmp / "docs" / "v2" / "07-uat"), \
+             mock.patch.object(self.mod, "GIT", self.mod._Git(cwd=tmp)), \
+             mock.patch.object(self.mod, "DEFAULT_OUT", tmp / "out.md"), \
+             mock.patch.object(self.mod, "scan_receipts", new=bound_scan), \
+             mock.patch.object(sys, "argv", ["gen-current-uat-status.py", *argv]), \
+             redirect_stdout(buf):
+            rc = self.mod.main()
+        return rc, buf.getvalue()
+
+    def test_check_is_identical_after_write_and_header_only_drift(self):
+        """Claim: --check says OK-IDENTICAL for a freshly written status.
+
+        Mutation: make --check return 1 unconditionally (llama's M2); this
+        test fails, while the previous suite passed such a mutation.
+        """
+        tmp = self._repo()
+        out = str(tmp / "out.md")
+        rc, _ = self._run(tmp, ["--out", out])
+        self.assertEqual(rc, 0, "the write path must succeed")
+        rc, text = self._run(tmp, ["--out", out, "--check"])
+        self.assertEqual(rc, 0, f"--check must be identical right after write: {text!r}")
+        self.assertIn("OK-IDENTICAL", text)
+        # A commit that touches nothing must not create a false STALE: the
+        # volatile header (timestamp + HEAD) is the only difference.
+        self._commit(tmp, "c3 unrelated")
+        rc, text = self._run(tmp, ["--out", out, "--check"])
+        self.assertEqual(rc, 0, "header-only drift must still be OK-IDENTICAL")
+
+    def test_check_reports_stale_on_material_change(self):
+        """Claim: --check says STALE when the evidence actually changed.
+
+        Mutation: make --check return 0 unconditionally; this test fails.
+        """
+        tmp = self._repo()
+        out = str(tmp / "out.md")
+        rc, _ = self._run(tmp, ["--out", out])
+        self.assertEqual(rc, 0)
+        c3 = self._rev(tmp)
+        (tmp / "docs" / "v2" / "07-uat" / "r.md").write_text(
+            f"# R\n\nUAT-EVIDENCE | UAT-RP-001 | PARTIAL | candidate={c3}\n")
+        self._commit(tmp, "c4 material change")
+        rc, text = self._run(tmp, ["--out", out, "--check"])
+        self.assertEqual(rc, 1, "a material change must be reported STALE")
+        self.assertIn("STALE", text)
 
 
 class GenCurrentUatStatusTests(unittest.TestCase):

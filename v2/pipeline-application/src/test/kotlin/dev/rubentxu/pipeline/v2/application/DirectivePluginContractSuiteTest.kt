@@ -160,6 +160,37 @@ class DirectivePluginContractSuiteTest {
      *    green, including `real discovery - ServiceLoader finds LockContributor in the real JAR`
      *    and `with plugin - stage admits, emits DirectiveAdmitted, and body runs`.
      *
+     * ## Re-certified 2026-10-15, SHA 4add6e38 (0.61.0)
+     *
+     * Pin moved from `38b70854…` to `4add6e38…`. Two causes, both deliberate:
+     *
+     *  - `eaa57d30` (B3.2 step 1) changed `TrustMetadata.Unverified` to `TrustMetadata.Unverified()`
+     *    inside `examples/example-directive-plugin/.../LockPluginDeclaration.kt`. That is a source
+     *    change to the plugin itself, so the compiled bytes move. The manifest now reads
+     *    `"trust": "unverified"` against the 0.61.0 surface.
+     *  - `buildExternalDirectivePlugin` passes `-PsdkVersion=${rootProject.version}` = `0.61.0`, so the
+     *    declared `apiRange` moved `[0.57.0, 0.58.0)` → `[0.61.0, 0.62.0)`. That string is inside
+     *    `META-INF/pipelinek/plugin-manifest.json`, which is inside the JAR.
+     *
+     * The plugin's Step/Directive body did NOT change. What changed is the SDK it links against and
+     * the version range it declares — exactly the two things `apiRange` exists to track.
+     *
+     * Evidence, not a constant update:
+     *
+     *  - REPRODUCIBLE. Two independent `./gradlew :buildExternalDirectivePlugin --rerun-tasks
+     *    --no-build-cache` invocations both produced
+     *    `4add6e38a37295fed1bd1827e1f26448107d4270a928e0804c3b70914bb4dd63`. `--no-build-cache` is
+     *    what makes the second run independent of the first; without it the second invocation could
+     *    restore the first's output and prove nothing.
+     *  - The seven sibling rows are green on this build, including real ServiceLoader discovery of
+     *    `LockContributor` from the JAR and a real pipeline admitting `acme.lock` and running its body.
+     *
+     * Worth recording: the rc2 releaseGate measured `5ddfaf4d…` for this same JAR, and neither that
+     * value nor the old pin is what this revision builds. Three different digests for one artifact is
+     * what makes the reproducibility measurement above mandatory rather than ceremonial — a pin
+     * updated to whatever the current build happened to emit would have recorded all three in turn
+     * and looked like a pin the whole time.
+     *
      * What this pin cannot do, and never could: prove compatibility. It proves the jar is the one
      * this revision certified. Compatibility is the other seven rows. Treating one number as both
      * is how a stale toolchain quietly becomes a permanent exemption.
@@ -173,29 +204,16 @@ class DirectivePluginContractSuiteTest {
         assertEquals(
             // PK-57A.1 R1: recertified bytes. The previous pin
             // (f45ab76959e215dcb...) was the example directive plugin's
-            // JAR with apiRange [0.47.0, 0.57.0). Since then, the
-            // official plugin family (http/scm-git/junit/utilities) was
-            // promoted to apiRange [0.57.0, 0.58.0) for the 0.57.0
-            // runtime, and the example directive plugin followed to
-            // keep the family coherent. The Step body did NOT change;
-            // only the declared apiRange did. The new JAR is reproducible:
-            // two consecutive `./gradlew :buildExternalDirectivePlugin
-            // --rerun-tasks` invocations on the current build both
-            // produced 38b7085434fe05f01a2a83c5703ac88dc57e79a308a7e40c54145c6af9d022e8.
-            // The previous bytes refused to load against the 0.57.0
-            // runtime because the host now sits at 0.57.0 and the
-            // declared range was [0.47.0, 0.57.0) (half-open: 0.57.0
-            // excluded), so a re-certification is not optional — it is
-            // the only way the gate stays green for the new runtime.
-            // Recertification evidence: (1) two rerun-tasks builds
-            // produce identical bytes (verified); (2) the seven sibling
-            // rows in this class — which load this green plugin in a
-            // classloader, resolve LockContributor through ServiceLoader
-            // and execute a real pipeline with it — all 7 of 7 are
-            // green, confirming the JAR's classes, ServiceLoader
-            // descriptors, manifest declaration and runtime behaviour
-            // remain contractually correct.
-            "38b7085434fe05f01a2a83c5703ac88dc57e79a308a7e40c54145c6af9d022e8",
+            // Re-certified bytes; see the KDoc section "Re-certified 2026-10-15, SHA
+            // 4add6e38" for the two causes (the plugin's own `TrustMetadata.Unverified()`
+            // change and the apiRange move to [0.61.0, 0.62.0)) and for the evidence.
+            //
+            // The history matters here. Every earlier section of this KDoc records a digest
+            // that was reproducible too, and each moved exactly once, for exactly one
+            // reason. That is the property this row protects: a digest that flaps per run
+            // would look identical in a diff to one that moves once, and only the
+            // reproducibility measurement tells them apart.
+            "4add6e38a37295fed1bd1827e1f26448107d4270a928e0804c3b70914bb4dd63",
             digest,
             "external directive plugin JAR drifted from the certified bytes; a rebuild " +
                 "invalidates the S2-D compatibility claim — restore the certified JAR instead. " +

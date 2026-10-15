@@ -295,6 +295,37 @@ class PluginAdmissionInstalledDistributionUatTest {
         )
     }
 
+    @Test
+    @DisplayName("dos artefactos con la MISMA identidad y bytes DISTINTOS siguen siendo un duplicado")
+    fun twoArtifactsWithOneIdentityAndDifferentBytesAreStillRefused(@TempDir tempDir: Path) {
+        // The other half of the artefact-identity rule, and the half that is easy to break while
+        // fixing the first. Composition deduplicates candidates whose REAL BYTES are equal, so an
+        // operator naming an already-bundled plugin by another path composes once instead of being
+        // refused. The tempting simplification is to make identity alone decisive — "first one wins" —
+        // which would make this row go away by deleting the law rather than by keeping it.
+        //
+        // The twin carries the ORIGINAL manifest, so its plugin identity is the bundled plugin's
+        // identity, and differs in one byte. That is precisely the shape the law exists for: two
+        // different artifacts, one name.
+        val twin = repack(tempDir) { text ->
+            text + "\n" // one extra byte of payload; the manifest is untouched
+        }
+        val result = runPlugin(tempDir, twin)
+
+        assertTrue(
+            result.exitCode == 2,
+            "two DIFFERENT artifacts claiming one plugin identity must fail closed with exit 2. " +
+                "Deduplication is by measured bytes, not by name: equal bytes compose once, unequal " +
+                "bytes remain a duplicate. " +
+                "stderr tail=${result.stderr.takeLast(400)}",
+        )
+        assertTrue(
+            result.stderr.contains("DuplicateIdentity"),
+            "the refusal must be a DuplicateIdentity, naming the identity both artifacts claim. " +
+                "stderr tail=${result.stderr.takeLast(400)}",
+        )
+    }
+
     private companion object {
         const val MANIFEST_RESOURCE = "META-INF/pipelinek/plugin-manifest.json"
 

@@ -122,12 +122,42 @@ object PluginCompositionAdmitter {
      *   would under-admit.
      */
     fun admitThenCompose(pluginJars: List<String>): CompositionOutcome {
-        // `distinct()` because a user may name a bundled JAR again on --plugin-jar. Admitting the
-        // same artifact twice would refuse it as a duplicate identity, which is the correct verdict
-        // for two DIFFERENT artifacts and a bug report for the same path listed twice.
-        val artifacts = (computeBundledPlugins() + pluginJars)
-            .distinct()
-            .map { Path.of(it) }
+        val candidates = (computeBundledPlugins() + pluginJars).map { Path.of(it) }
+
+        // Measure the REAL bytes of every candidate BEFORE any class from any of them is loaded.
+        //
+        // The previous `.distinct()` compared PATH STRINGS, which only covered the operator naming
+        // the bundled JAR by its installed path. The same plugin named from the source tree, from a
+        // copy, or through a symlink produced a different string, survived deduplication, and was
+        // refused as `DuplicateIdentity` — a rejection that protects against two DIFFERENT artifacts
+        // being applied to one name, fired at one artifact named twice.
+        //
+        // What makes two candidates "the same artifact" is their bytes, and the bytes are read here
+        // through the same `hashArtifactAt` that B3.2 uses when it measures a linked contributor, so a
+        // path measured now and a class measured later agree by construction rather than by two
+        // implementations happening to match.
+        //
+        // Deliberately NOT used as the identity: the manifest's own `releaseDigest`. It is written by
+        // the plugin, so a plugin claiming the bytes of another plugin is exactly the case where it
+        // would lie, and using it here would let one plugin erase another from the composition by
+        // declaring the same digest.
+        val measured = mutableListOf<Pair<Path, String>>()
+        for (candidate in candidates) {
+            val digest = PluginManifestResourceReader.digestOfArtifactAt(candidate)
+                ?: return CompositionOutcome.Refused(
+                    artifact = candidate,
+                    rejection = dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection
+                        .ArtifactNotMeasurable(
+                            artifact = candidate.toString(),
+                            detail = "the artifact could not be read, so its bytes cannot be measured; " +
+                                "an artifact whose bytes are unknown is not one that may be loaded",
+                        ),
+                )
+            // Same bytes already seen under another path: one copy is loaded, once.
+            if (measured.any { it.second == digest.toString() }) continue
+            measured += candidate to digest.toString()
+        }
+        val artifacts = measured.map { it.first }
 
         if (artifacts.isEmpty()) {
             // Not a degraded case: an installation with no plugin JARs still composes, it just
@@ -154,6 +184,26 @@ object PluginCompositionAdmitter {
             )
 
             is AdmittedArtifacts.Admitted -> {
+                // Time-of-check/time-of-use. Admission read every artifact's bytes; composition is
+                // about to LOAD them. If a file was replaced in between, the digest measured above
+                // describes bytes that are no longer there, and admitting on the strength of it would
+                // make the measurement decorative. Re-measured with the same function, refused with
+                // both digests so the drift is auditable.
+                for ((path, expected) in measured) {
+                    val now = PluginManifestResourceReader.digestOfArtifactAt(path)?.toString()
+                    if (now != expected) {
+                        return CompositionOutcome.Refused(
+                            artifact = path,
+                            rejection = dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection
+                                .ArtifactChangedDuringAdmission(
+                                    artifact = path.toString(),
+                                    measuredDigest = expected,
+                                    foundDigest = now ?: "<unreadable at composition time>",
+                                ),
+                        )
+                    }
+                }
+
                 val loader = pluginClassLoaderFor(admission.artifacts.map { it.path.toString() })
                 try {
                     CompositionOutcome.Composed(

@@ -192,6 +192,29 @@ fun measure(
             url.startsWith("file:") -> java.nio.file.Path.of(java.net.URI.create(url))
             else -> return null
         }
+        return hashArtifactAt(path)
+    }
+
+    /**
+     * Measure an artifact's REAL bytes from its PATH, with no class loaded from it yet.
+     *
+     * [measureArtifactBytes] answers "were the bytes that got loaded the bytes the plugin declared?"
+     * and it can only run AFTER a class from the artifact is linked. That is the right seam for a
+     * trust verdict and the wrong one for composition: by then the code has already run, and there is
+     * nothing left to decide.
+     *
+     * This is the same question asked one step earlier — same [hashArtifactAt] implementation, so a
+     * path measured here and a class measured there yield the SAME digest for the same file. That is
+     * the property that makes the two measurements composable rather than two independent opinions.
+     *
+     * Returns `null` when the artifact cannot be read. Callers treat that as its own refusal case:
+     * an artifact whose bytes cannot be measured is not an artifact that may be loaded.
+     *
+     * @param path a JAR on a classpath entry, or an exploded directory for shaded builds.
+     */
+    fun digestOfArtifactAt(path: java.nio.file.Path): Digest? = hashArtifactAt(path)
+
+    private fun hashArtifactAt(path: java.nio.file.Path): Digest? {
         if (!path.toFile().exists()) return null
         val sha = java.security.MessageDigest.getInstance("SHA-256")
         if (path.toFile().isDirectory) {

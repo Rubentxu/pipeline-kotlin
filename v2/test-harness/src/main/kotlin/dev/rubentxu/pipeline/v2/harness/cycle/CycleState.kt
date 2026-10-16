@@ -46,14 +46,18 @@ sealed interface CycleState {
     }
 
     /**
-     * Terminal state for a successful cycle. The cycle was either
-     * promoted and then closed, or it observed nothing actionable
-     * and closed cleanly. The close reason is preserved for the
-     * receipt (cycleId, sourceSHA, evidence, closeReason) per
-     * `EPHEMERAL_CYCLE_LIFECYCLE_SPEC.md`. A `Closed` cycle is
-     * NOT a `Refused` cycle: refusing means evidence was
-     * contradictory; closing means evidence was sufficient
-     * (or unnecessary) and the temporary files were released.
+     * Terminal state for a successful cycle. A `Closed` cycle is
+     * reached ONLY via the success path
+     * `Draft -> Running -> Observed -> Promoted -> Closed` per
+     * `EPHEMERAL_CYCLE_LIFECYCLE_SPEC.md`. The close reason is
+     * preserved for the receipt (cycleId, sourceSHA, evidence,
+     * closeReason). A `Closed` cycle is NOT a `Refused` cycle:
+     * refusing means evidence was contradictory; closing means
+     * evidence was sufficient and the temporary files were
+     * released. The BQ4 audit (2026-10-16, vertical) closed the
+     * previous `Observed -> Closed` shortcut: a cycle that
+     * observed with probes but did not request promotion is
+     * `IllegalTransition`, not `Closed`.
      */
     data class Closed(val closeReason: String) : CycleState {
         init {

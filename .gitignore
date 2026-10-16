@@ -74,6 +74,10 @@ CLAUDE.md
 artifacts/*
 !artifacts/.gitkeep
 
+### Ephemeral cycle worktrees (BQ4) — see docs/v2/03-specifications/EPHEMERAL_CYCLE_LIFECYCLE_SPEC.md ###
+workspace/
+.pipelinek-cycles/
+
 ### Gradle cache (when scoped to project-local path) ###
 .gradle-cache/
 

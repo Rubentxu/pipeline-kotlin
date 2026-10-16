@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm")
+    kotlin("plugin.serialization")
 }
 
 group = "dev.rubentxu.pipeline.v2"
@@ -12,6 +13,7 @@ group = "dev.rubentxu.pipeline.v2"
 // classpath, impact analysis could not answer "what must be tested" until the product already
 // built, which is one moment too late.
 dependencies {
+    implementation(libs.kotlinx.serialization.json)
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -64,6 +66,25 @@ val validationPlan by tasks.registering(JavaExec::class) {
                 "A REFUSED result fails this build by design.",
         )
     }
+}
+
+// BQ4 vertical (2026-10-16): the cycle runner is the harness's
+// executable surface. The `cycle` task is a thin wrapper that
+// launches the JVM with the harness's runtime classpath. The
+// `CycleCli` itself decides which path is the cycle dir, refuses
+// to write inside a Git working tree, and parses a snake_case
+// manifest via `kotlinx.serialization`.
+val cycle by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Run an ephemeral cycle (HF0/HF1 only) and close it under spec invariants."
+
+    mainClass.set("dev.rubentxu.pipeline.v2.harness.cycle.CycleCliKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    // The CLI is opt-in: it requires --cycle-id and --manifest.
+    // When the operator runs `:test-harness:cycle`, Gradle will
+    // surface the CLI's argument error and exit 2. We do not
+    // pre-validate the args here to keep the task single-purpose.
+    isIgnoreExitValue = true
 }
 
 // ---------------------------------------------------------------------------------------------

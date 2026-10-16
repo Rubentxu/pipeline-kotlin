@@ -235,22 +235,24 @@ class CycleTest {
         }
 
         @Test
-        fun `CloseRequested from Observed with no probes is Refused`() {
-            // Construct an Observed state directly (the data
-            // class init accepts it) but with an EMPTY context:
-            // a cycle that observed with no probe finished.
+        fun `CloseRequested from Observed is IllegalTransition (BQ4 audit vertical)`() {
+            // BQ4 audit (2026-10-16, vertical): a cycle that
+            // observed with probes but did not request promotion
+            // must NOT be able to skip `Promoted` by going
+            // straight to `CloseRequested`. The only success path
+            // is `Observed -> Promoted -> Closed`. A direct
+            // `Observed -> CloseRequested` is therefore
+            // `IllegalTransition`, regardless of whether the
+            // accumulator has probes.
             val obsState = CycleState.Observed(commit)
             val outcome = Cycle.decide(
                 obsState,
                 CycleEvent.CloseRequested("clean cycle"),
                 CycleContext(),
             )
-            val next = outcome as CycleOutcome.Next
-            val refused = next.nextState as CycleState.Refused
-            assertTrue(
-                refused.reason.contains("never collected evidence"),
-                "refusal must name the missing evidence, got ${refused.reason}",
-            )
+            assertTrue(outcome is CycleOutcome.IllegalTransition) {
+                "BQ4 audit: Observed -> CloseRequested MUST be IllegalTransition; got $outcome"
+            }
         }
 
         @Test

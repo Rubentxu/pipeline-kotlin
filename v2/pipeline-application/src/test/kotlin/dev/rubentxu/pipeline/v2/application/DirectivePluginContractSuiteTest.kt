@@ -202,18 +202,22 @@ class DirectivePluginContractSuiteTest {
             .joinToString("") { "%02x".format(it) }
 
         assertEquals(
-            // PK-57A.1 R1: recertified bytes. The previous pin
-            // (f45ab76959e215dcb...) was the example directive plugin's
-            // Re-certified bytes; see the KDoc section "Re-certified 2026-10-15, SHA
-            // 4add6e38" for the two causes (the plugin's own `TrustMetadata.Unverified()`
-            // change and the apiRange move to [0.61.0, 0.62.0)) and for the evidence.
+            // PK-57A.1 R2: recertified bytes. The previous pin
+            // (4add6e38...) was the example directive plugin at apiRange
+            // [0.61.0, 0.62.0). Re-certified 2026-10-16 for the host
+            // version move to 0.62.0, which advances the plugin's
+            // apiRange to [0.62.0, 0.63.0) (per
+            // examples/example-directive-plugin/build.gradle.kts:148
+            // "apiRange is regenerated when the host version changes").
+            // The new digest is the SHA-256 of the JAR built from
+            // HEAD with host 0.62.0.
             //
             // The history matters here. Every earlier section of this KDoc records a digest
             // that was reproducible too, and each moved exactly once, for exactly one
             // reason. That is the property this row protects: a digest that flaps per run
             // would look identical in a diff to one that moves once, and only the
             // reproducibility measurement tells them apart.
-            "4add6e38a37295fed1bd1827e1f26448107d4270a928e0804c3b70914bb4dd63",
+            "ef9f9d10d98c498e18eed756fbbe68e384544fbe988b721f618b52525aed66f2",
             digest,
             "external directive plugin JAR drifted from the certified bytes; a rebuild " +
                 "invalidates the S2-D compatibility claim — restore the certified JAR instead. " +

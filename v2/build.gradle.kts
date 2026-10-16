@@ -539,24 +539,26 @@ val publishedContractModules = listOf(
     // 0.52.0-rc1 / CRIC-M2: the runtime publish/subscribe ports. The four existing entries
     // (read-side contracts for events, output, scripting, and domain) gave consumers a
     // complete read plane; this fifth entry adds the write plane. The invariant
-    // "PublishedContractBoundaryFitnessTest and must stay exactly the four" predates this
+    // "PublishedContractBoundaryFitnessTest must stay exactly the four" predates this
     // entry; the fitness test is updated in lock-step (see
-    // v2/pipeline-architecture-tests/.../PublishedContractBoundaryFitnessTest.kt). The
-    // publication plan (§3.4 row 2, docs/v2/07-uat/evidence/cric-m2-publication-plan.md)
-    // names this expansion as the gate for 0.52.0-rc1.
+    // v2/pipeline-architecture-tests/.../PublishedContractBoundaryFitnessTest.kt), and the
+    // BOM picks up the matching `api(...)` constraint (see
+    // v2/pipeline-sdk-bom/build.gradle.kts). The publication plan (§3.4 row 2,
+    // docs/v2/07-uat/evidence/cric-m2-publication-plan.md) names this expansion as the
+    // gate for 0.52.0-rc1.
     "pipeline-runtime-api",
 )
 
 /**
- * B2A: the SDK BOM, published alongside the four contracts and deliberately OUTSIDE
+ * B2A: the SDK BOM, published alongside the five contracts and deliberately OUTSIDE
  * [publishedContractModules].
  *
  * The two lists answer different questions. `publishedContractModules` is the set of artifacts whose
  * TYPE surface a consumer compiles against and whose bytes `apiCheck` freezes — it is read by
- * `PublishedContractBoundaryFitnessTest` and must stay exactly the four. `sdkBomModules` is the set
+ * `PublishedContractBoundaryFitnessTest` and must stay exactly the five. `sdkBomModules` is the set
  * of published RESOLUTION documents: `:pipeline-sdk-bom` carries no classes, no ABI and no tests, so
  * adding it to the contract list would be a claim that it has a surface to guard. It does not; it
- * has four version constraints derived from `rootProject.version`.
+ * has five version constraints derived from `rootProject.version`.
  *
  * It is published by the same task, into the same `sdk-repo`, from the same revision, so a consumer
  * resolving the platform and the coordinates finds a consistent set or finds nothing.
@@ -797,7 +799,7 @@ project(":pipeline-application").pluginManager.withPlugin("org.jetbrains.kotlin.
  * `apiCheck` and `PublishedContractBoundaryFitnessTest` both look at the published surface from
  * INSIDE this build, and all three of them can be satisfied by an artifact a real consumer still
  * cannot compile against. `examples/fabric-contract-consumer` is the outside: its own settings
- * file, no `project(...)` anywhere, resolving only the four published coordinates. It builds the
+ * file, no `project(...)` anywhere, resolving only the five published coordinates. It builds the
  * `RunOutcome` / `OutputRefusal` / `EventQuery` mappings Fabric will need and pins their wire
  * forms against a golden committed OUTSIDE `v2`, so a contract change fails a build that never
  * saw the change.
@@ -820,7 +822,7 @@ val verifyFabricContractConsumer by tasks.registering(Exec::class) {
     val consumerDir = file("../examples/fabric-contract-consumer")
     inputs.dir(consumerDir.resolve("src"))
     inputs.files(consumerDir.resolve("build.gradle.kts"), consumerDir.resolve("settings.gradle.kts"))
-    // The consumer reads the four CONTRACT modules, so those are the jars whose bytes it compiles
+    // The consumer reads the five CONTRACT modules, so those are the jars whose bytes it compiles
     // against. Listing the store modules would be wrong: they are not published, and adding them
     // here would let a future publication slip past the consumer's own negative control by making
     // the outer build quietly expect it.
@@ -848,7 +850,7 @@ val verifyFabricContractConsumer by tasks.registering(Exec::class) {
  *
  * ```text
  * examples/sdk-external-execution   (own settings file, no project(...))
- *   -> resolves the four contracts through pipeline-sdk-bom      (ENTREGA A)
+ *   -> resolves the five contracts through pipeline-sdk-bom      (ENTREGA A)
  *   -> builds examples/example-uppercase-plugin against that SDK (Exec, independent build)
  *   -> runs :pipeline-application's INSTALLED binary with --plugin-jar against a .pipeline.kts
  *   -> asserts: exit 0, "Pipeline finished with SUCCESS", and the plugin's own event in the run
@@ -908,7 +910,7 @@ val verifySdkExternalExecution by tasks.registering(Exec::class) {
  * into the published Gradle Module Metadata, so it is the only reason a consumer can name the type
  * at all.
  *
- * `examples/fabric-contract-consumer` cannot observe this. It declares all four coordinates, so it
+ * `examples/fabric-contract-consumer` cannot observe this. It declares all five coordinates, so it
  * compiles whether the publisher said `api` or `implementation` — the property under test would be
  * satisfied by that build's own dependency list. `examples/scripting-contract-consumer` declares
  * ONE coordinate and never names `pipeline-domain`, so the publisher's metadata is the only route

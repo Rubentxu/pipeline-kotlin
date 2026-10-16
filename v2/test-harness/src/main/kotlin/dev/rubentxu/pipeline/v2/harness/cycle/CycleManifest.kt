@@ -123,15 +123,21 @@ data class ProbeEntry(
     @SerialName("content_sha256") val contentSha256: String,
 ) {
     init {
-        require(id.isNotBlank()) { "ProbeEntry.id must not be blank" }
+        // P0-B (audit 2026-10-16): id and relativePath are the
+        // two file-system names the runner and the executor
+        // compose. Both must be confined to a safe character
+        // class so a manifest cannot write outside the cycle
+        // directory by smuggling a path separator into the id.
+        require(isSafeId(id)) {
+            "ProbeEntry.id must be a non-blank token of [A-Za-z0-9._-], 1..128 chars, " +
+                "with no path separator and no '..' segment; got '$id'"
+        }
+        require(isSafeRelativePath(relativePath)) {
+            "ProbeEntry.relativePath must be a relative path under the cycle " +
+                "directory: no absolute, no '..' segments, no symlink targets, " +
+                "and no name outside [A-Za-z0-9._/-]; got '$relativePath'"
+        }
         require(contractId.isNotBlank()) { "ProbeEntry.contractId must not be blank" }
-        require(relativePath.isNotBlank()) { "ProbeEntry.relativePath must not be blank" }
-        require(!relativePath.startsWith("/")) {
-            "ProbeEntry.relativePath must be relative, not absolute: '$relativePath'"
-        }
-        require(".." !in relativePath.split('/')) {
-            "ProbeEntry.relativePath must not contain '..' segments: '$relativePath'"
-        }
         require(executed >= 0) { "executed must be non-negative" }
         require(skipped in 0..executed) { "skipped must be 0..executed" }
         require(mutationOrNegative.isNotBlank()) { "mutationOrNegative must not be blank" }
@@ -142,6 +148,41 @@ data class ProbeEntry(
         }
         require(contentSha256.all { it in '0'..'9' || it in 'a'..'f' }) {
             "contentSha256 must be lowercase hex; got '$contentSha256'"
+        }
+    }
+
+    companion object {
+        // P0-B: a safe id is a single name component (no `/`,
+        // no `..`, no NUL, no control chars). The runner composes
+        // the evidence file as `outDir/${id}.json`; allowing a
+        // `/` or a `..` would let the manifest escape the cycle
+        // dir's probes/ subdirectory.
+        internal fun isSafeId(id: String): Boolean {
+            if (id.isBlank() || id.length > 128) return false
+            if (id == "." || id == "..") return false
+            if ('/' in id || '\\' in id) return false
+            return id.all { c ->
+                c.isLetterOrDigit() || c == '-' || c == '_' || c == '.'
+            }
+        }
+
+        // P0-B: a safe relative path is a POSIX-style relative
+        // path confined to the cycle directory. No absolute,
+        // no `..` segments, no symlink-hopping via a leading `~`
+        // or `\\`, no NUL or control bytes. Each segment must be
+        // a single name component matching the same char class as
+        // isSafeId.
+        internal fun isSafeRelativePath(path: String): Boolean {
+            if (path.isBlank()) return false
+            if (path.startsWith("/") || path.startsWith("~")) return false
+            if (path.contains('\u0000')) return false
+            val segments = path.split('/')
+            if (segments.any { it.isEmpty() || it == "." || it == ".." }) return false
+            return segments.all { segment ->
+                segment.all { c ->
+                    c.isLetterOrDigit() || c == '-' || c == '_' || c == '.'
+                }
+            }
         }
     }
 

@@ -204,7 +204,7 @@ class ProbeExecutorTest {
         }
         runner.runProbes(executor)
         runner.observeAll(observedCommit = "0123456789abcdef0123456789abcdef01234567")
-        runner.requestPromote(replacementEvidence = "rec")
+        runner.requestPromote(replacementEvidence = "permanent-contract:rec")
         runner.requestClose("done")
 
         // Tamper with the persisted evidence file. The runner must
@@ -246,7 +246,7 @@ class ProbeExecutorTest {
         }
         runner.runProbes(executor)
         runner.observeAll(observedCommit = "0123456789abcdef0123456789abcdef01234567")
-        runner.requestPromote(replacementEvidence = "rec")
+        runner.requestPromote(replacementEvidence = "permanent-contract:rec")
         runner.requestClose("done")
         runner.finalise()
         org.junit.jupiter.api.Assertions.assertFalse(

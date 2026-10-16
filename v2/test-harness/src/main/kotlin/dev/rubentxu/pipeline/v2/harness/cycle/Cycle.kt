@@ -67,35 +67,96 @@ object Cycle {
             }
             is CycleState.Running -> when (event) {
                 is CycleEvent.ProbeFinished -> {
-                    // Reject a probe with a non-blank exit code OR
-                    // a blank evidence ref before the accumulator
-                    // sees it: the cycle is Refused, the runner
-                    // can close it explicitly. This pins the
-                    // spec's "Skipped, NotRun, NoEvidence niega
-                    // Verified" rule at the probe boundary.
-                    val probe = ProbeFinished(event.exitCode, event.evidenceRef)
-                    if (!probe.succeeded) {
-                        CycleOutcome.Next(
-                            nextState = CycleState.Refused(
-                                "probe ${event.evidenceRef} failed with exitCode=${event.exitCode}",
-                            ),
-                            nextContext = context,
-                        )
-                    } else {
-                        CycleOutcome.Next(
-                            nextState = CycleState.Running,
-                            nextContext = context.withProbe(probe),
-                        )
+                    // The decider is the SOLE authority on whether a
+                    // probe is verified. Anything other than
+                    // ProbeOutcome.Verified is refused here, in the
+                    // decider, on the ADT. The previous shape
+                    // collapsed UnsupportedFidelity and
+                    // BlockedExternal to exitCode=0 and let the
+                    // decider read them as success; that is the P0
+                    // defect the 2026-10-16 external audit named.
+                    val outcome = event.outcome
+                    when (outcome) {
+                        is ProbeOutcome.Verified -> {
+                            val probe = ProbeFinished(outcome)
+                            CycleOutcome.Next(
+                                nextState = CycleState.Running,
+                                nextContext = context.withProbe(probe),
+                            )
+                        }
+                        is ProbeOutcome.Failed ->
+                            CycleOutcome.Next(
+                                nextState = CycleState.Refused(
+                                    "probe ${outcome.evidenceRef} Failed: ${outcome.reason}",
+                                ),
+                                nextContext = context,
+                            )
+                        is ProbeOutcome.Skipped ->
+                            CycleOutcome.Next(
+                                nextState = CycleState.Refused(
+                                    "probe ${outcome.evidenceRef} Skipped; " +
+                                        "the spec rejects a Skipped probe from " +
+                                        "advancing to Observed (the AAT or " +
+                                        "E2E has no mutation target)",
+                                ),
+                                nextContext = context,
+                            )
+                        is ProbeOutcome.NotRun ->
+                            CycleOutcome.Next(
+                                nextState = CycleState.Refused(
+                                    "probe ${outcome.evidenceRef} NotRun: ${outcome.reason}",
+                                ),
+                                nextContext = context,
+                            )
+                        is ProbeOutcome.NoEvidence ->
+                            CycleOutcome.Next(
+                                nextState = CycleState.Refused(
+                                    "probe ${outcome.evidenceRef} NoEvidence; " +
+                                        "the cycle cannot observe a probe " +
+                                        "that produced no observable evidence",
+                                ),
+                                nextContext = context,
+                            )
+                        is ProbeOutcome.OtherCommit ->
+                            CycleOutcome.Next(
+                                nextState = CycleState.Refused(
+                                    "probe ${outcome.evidenceRef} OtherCommit=${outcome.observed}; " +
+                                        "the manifest's source_sha is the only " +
+                                        "authoritative source identity",
+                                ),
+                                nextContext = context,
+                            )
+                        is ProbeOutcome.UnsupportedFidelity ->
+                            CycleOutcome.Next(
+                                nextState = CycleState.Refused(
+                                    "probe ${outcome.evidenceRef} UnsupportedFidelity=${outcome.fidelity}; " +
+                                        "this vertical only supports the fidelities " +
+                                        "declared in CycleManifest.ALLOWED_FIDELITIES",
+                                ),
+                                nextContext = context,
+                            )
+                        is ProbeOutcome.BlockedExternal ->
+                            CycleOutcome.Next(
+                                nextState = CycleState.BlockedExternal(
+                                    "probe ${outcome.evidenceRef} BlockedExternal=${outcome.blocker}; " +
+                                        "the cycle cannot be observed while a probe " +
+                                        "needs external authority",
+                                ),
+                                nextContext = context,
+                            )
                     }
                 }
                 is CycleEvent.AllProbesObserved -> {
                     // At least one probe MUST have succeeded for
-                    // the cycle to observe. Without this guard a
-                    // cycle could observe the commit and then
-                    // close without ever running a probe (the
-                    // audit's P0 defect).
-                    val succeeded = context.probeOutcomes.isNotEmpty() &&
-                        context.probeOutcomes.all { it.succeeded }
+                    // the cycle to observe. The accumulator only
+                    // contains Verified probes (the decider refuses
+                    // every other case on entry), so a non-empty
+                    // accumulator is, by construction, a set of
+                    // successful probes. The audit's P0 defect was
+                    // a decider that allowed exitCode=0 BlockedExternal
+                    // to count as success; the new accumulator
+                    // makes that impossible.
+                    val succeeded = context.probeOutcomes.isNotEmpty()
                     if (!succeeded) {
                         CycleOutcome.Next(
                             nextState = CycleState.Refused(
@@ -126,12 +187,30 @@ object Cycle {
                     // The spec: a Promote is valid only when a
                     // replacement evidence (the substitute
                     // contract / property test that replaces the
-                    // ephemeral cycle's coverage) is present.
+                    // ephemeral cycle's coverage) is present AND
+                    // is not a free-form string. The audit named
+                    // this as P0-D: a textual reference like
+                    // "replacement:foo" is not a verified
+                    // substitute, it is a label. A cycle that
+                    // closes on an unverified substitute has
+                    // deleted its evidence under a false
+                    // guarantee.
                     val evidence = event.replacementEvidence
                     if (evidence.isBlank()) {
                         CycleOutcome.Next(
                             nextState = CycleState.Refused(
                                 "PromoteRequested with blank replacementEvidence",
+                            ),
+                            nextContext = context,
+                        )
+                    } else if (!isVerifiedSubstituteShape(evidence)) {
+                        CycleOutcome.Next(
+                            nextState = CycleState.Refused(
+                                "PromoteRequested with non-conforming replacementEvidence: " +
+                                    "'$evidence'. The substitute must be either " +
+                                    "'permanent-contract:<id>' (a permanent test/fitness " +
+                                    "in the producer repo) or 'certifier-receipt:<sha256>' " +
+                                    "(a receipt the external certifier has signed).",
                             ),
                             nextContext = context,
                         )
@@ -192,6 +271,44 @@ object Cycle {
 
     private fun illegal(state: CycleState, event: CycleEvent): CycleOutcome =
         CycleOutcome.IllegalTransition(state, event)
+
+    // P0-D (audit 2026-10-16): the shape of a replacementEvidence
+    // that the decider accepts on Observed -> Promoted. A bare
+    // string is refused: the substitute must be either a
+    // reference to a permanent in-repo contract (the
+    // test/fitness/property that replaces the ephemeral cycle's
+    // coverage) or a receipt signed by the external certifier.
+    //
+    // This is the MINIMUM that the decider can verify in-process.
+    // The producer still has to declare the substitute in the
+    // manifest (ReplacementPlan.kind + ReplacementPlan.id +
+    // ReplacementPlan.evidence) and the certifier still has to
+    // sign a real receipt; what this check does is refuse a
+    // textual placeholder like "replacement:foo" that names
+    // nothing verifiable.
+    private const val PERMANENT_CONTRACT_PREFIX = "permanent-contract:"
+    private const val CERTIFIER_RECEIPT_PREFIX = "certifier-receipt:"
+}
+
+// P0-D verifier is a top-level internal function (Kotlin does
+// not allow a `companion object` inside an `object`). It is
+// used by [Cycle.decide] on the Observed -> Promoted path; the
+// CLI's [CycleCli.requestPromote] call composes a
+// replacementEvidence that matches one of the two accepted
+// shapes, so a normal cycle path passes; a hand-crafted
+// replacementEvidence that is a free-form string is refused.
+internal fun isVerifiedSubstituteShape(evidence: String): Boolean {
+    if (evidence.startsWith("permanent-contract:")) {
+        val id = evidence.removePrefix("permanent-contract:")
+        return id.isNotBlank() && id.length in 1..128 &&
+            id.all { it.isLetterOrDigit() || it == '-' || it == '_' || it == '.' }
+    }
+    if (evidence.startsWith("certifier-receipt:")) {
+        val digest = evidence.removePrefix("certifier-receipt:")
+        return digest.length == 64 &&
+            digest.all { it in '0'..'9' || it in 'a'..'f' }
+    }
+    return false
 }
 
 /** Result of [Cycle.decide]. */

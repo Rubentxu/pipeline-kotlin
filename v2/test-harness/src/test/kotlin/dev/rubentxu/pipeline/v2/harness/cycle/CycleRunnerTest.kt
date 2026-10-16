@@ -185,7 +185,7 @@ class CycleRunnerTest {
         runner.runProbesWithVerified()
         assertEquals(CycleState.Running, runner.state)
         assertEquals(1, runner.context.probeOutcomes.size)
-        assertEquals("ref-1", runner.context.probeOutcomes.first().evidenceRef)
+        assertEquals("ref-1", runner.context.probeOutcomes.first().outcome.evidenceRef)
     }
 
     @Test
@@ -207,7 +207,7 @@ class CycleRunnerTest {
         runner.prepare()
         runner.runProbesWithVerified()
         runner.observeAll("abc123")
-        runner.requestPromote(replacementEvidence = "rec-1")
+        runner.requestPromote(replacementEvidence = "permanent-contract:rec-1")
         assertEquals(CycleState.Promoted("abc123"), runner.state)
     }
 
@@ -219,7 +219,7 @@ class CycleRunnerTest {
         runner.prepare()
         runner.runProbesWithVerified()
         runner.observeAll("abc123")
-        runner.requestPromote("rec-1")
+        runner.requestPromote("permanent-contract:rec-1")
         runner.requestClose("temporary probes retired")
         assertEquals(CycleState.Closed("temporary probes retired"), runner.state)
     }
@@ -270,7 +270,7 @@ class CycleRunnerTest {
         runner.prepare()
         runner.runProbesWithVerified()
         runner.observeAll("abc123")
-        runner.requestPromote("rec-1")
+        runner.requestPromote("permanent-contract:rec-1")
         runner.requestClose("done")
         assertTrue(Files.isDirectory(dir), "cycle dir must exist before finalise")
         runner.finalise()
@@ -306,13 +306,13 @@ class CycleRunnerTest {
 
     @Test
     fun `BQ4 adversarial - runProbes with UnsupportedFidelity refuses the cycle`(@TempDir tmp: Path) {
-        // The executor returns UnsupportedFidelity for HF2..HF6; the
-        // runner translates that to a `ProbeFinished(0, ...)` event
-        // (because a fidelity refusal is not a probe failure) and
-        // the decider still requires a non-empty accumulator, so
-        // the cycle can observe the commit. The recorded evidence
-        // ref names the unsupported fidelity so the operator can
-        // diagnose the cycle.
+        // The executor returns UnsupportedFidelity for HF2..HF6.
+        // The 2026-10-16 audit (P0) named the previous shape a
+        // false green: the runner collapsed UnsupportedFidelity
+        // to `exitCode=0, evidenceRef="unsupported:..."` and the
+        // decider read it as success. The new shape refuses the
+        // cycle on the ADT directly: an UnsupportedFidelity is a
+        // Refused state, NOT an evidence row in the accumulator.
         val manifest = tmp.resolve("manifest.json")
         writeManifest(manifest, expectedHF = "HF0")
         val runner = CycleRunner("cyc-1", manifest, tmp.resolve("cycles/cyc-1"))
@@ -323,14 +323,42 @@ class CycleRunnerTest {
         })
         assertEquals(1, outcomes.size)
         assertTrue(outcomes[0] is ProbeOutcome.UnsupportedFidelity)
-        // The decider accepts the (exitCode=0, evidenceRef non-blank)
-        // event, so the cycle moves to Running-with-evidence. The
-        // operator can then inspect the recorded outcome.
-        assertEquals(CycleState.Running, runner.state)
-        assertTrue(
-            runner.context.probeOutcomes.single().evidenceRef.startsWith("unsupported:"),
-            "the evidence ref must name the unsupported fidelity, got " +
-                runner.context.probeOutcomes.single().evidenceRef,
-        )
+        // The cycle is now Refused, NOT Running with evidence.
+        // The previous assertion `assertEquals(CycleState.Running, ...)`
+        // is the P0 false-green the audit named; the new shape
+        // refuses the cycle without advancing.
+        val state = runner.state
+        assertTrue(state is CycleState.Refused) {
+            "expected Refused for UnsupportedFidelity, got $state"
+        }
+        // The accumulator MUST be empty: a refused probe does
+        // not contribute evidence.
+        assertEquals(0, runner.context.probeOutcomes.size) {
+            "an UnsupportedFidelity probe MUST NOT enter the " +
+                "accumulator; got ${runner.context.probeOutcomes.size} rows"
+        }
+    }
+
+    @Test
+    fun `BQ4 adversarial - runProbes with BlockedExternal transitions to BlockedExternal`(
+        @TempDir tmp: Path,
+    ) {
+        // The audit (P0) also named BlockedExternal: the
+        // previous runner collapsed it to exitCode=0 and the
+        // decider accepted it as success. The new shape
+        // transitions the cycle to BlockedExternal directly.
+        val manifest = tmp.resolve("manifest.json")
+        writeManifest(manifest, expectedHF = "HF1")
+        val runner = CycleRunner("cyc-1", manifest, tmp.resolve("cycles/cyc-1"))
+        runner.prepare()
+        runner.runProbes(object : ProbeExecutor(Path.of("/n")) {
+            override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome =
+                ProbeOutcome.BlockedExternal("", "harness verdict missing")
+        })
+        val state = runner.state
+        assertTrue(state is CycleState.BlockedExternal) {
+            "expected BlockedExternal, got $state"
+        }
+        assertEquals(0, runner.context.probeOutcomes.size)
     }
 }

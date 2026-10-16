@@ -252,11 +252,14 @@ class InProcessProductProbeExecutorTest {
         @TempDir tmp: Path,
     ) {
         // End-to-end: a Verified HF1 probe drives the cycle to
-        // Closed, the runner's `finalise` deletes the cycle dir,
-        // and the evidence digest on disk matches the digest
-        // recorded at persistence. This pins the contract that
-        // an HF1 probe is a first-class cycle outcome (not a
-        // shortcut or a stub).
+        // Closed, the runner's `finalise` validates the evidence
+        // digest and removes the runner-owned files
+        // (`probes/`, `work-probe-1/`), leaving operator-owned
+        // files (the `tmp/` directory the test pre-creates
+        // under the cycle dir) intact. The audit (P0-C) named
+        // "do not over-delete a directory you do not own"; the
+        // contract here is that the runner deletes the evidence
+        // it created, not the operator's source files.
         val cycleDir = tmp.resolve("cyc")
         Files.createDirectories(cycleDir)
         val relativePath = "tmp/full-cycle-hf1.kts"
@@ -283,12 +286,26 @@ class InProcessProductProbeExecutorTest {
         )
         runner.runProbes(executor)
         runner.observeAll(observedCommit = "0123456789abcdef0123456789abcdef01234567")
-        runner.requestPromote(replacementEvidence = "rec")
+        runner.requestPromote(replacementEvidence = "permanent-contract:rec")
         runner.requestClose("done")
         runner.finalise()
+        // Runner-owned paths are gone: the probes/ evidence
+        // directory and the executor's work dir.
         assertFalse(
-            Files.exists(cycleDir),
-            "the cycle dir must be deleted after a clean finalise",
+            Files.exists(cycleDir.resolve("probes")),
+            "the probes/ directory is runner-owned and must be deleted",
+        )
+        assertFalse(
+            Files.exists(cycleDir.resolve("work-probe-1")),
+            "the work-<id> directory is executor-owned and must be deleted",
+        )
+        // Operator-owned paths survive: the `tmp/` directory the
+        // test pre-created before prepare() is the operator's
+        // property and the runner must NOT delete it. This is
+        // the audit's "manifest of property" property.
+        assertTrue(
+            Files.exists(cycleDir.resolve("tmp/full-cycle-hf1.kts")),
+            "operator-owned files staged before prepare() MUST survive finalise",
         )
     }
 }

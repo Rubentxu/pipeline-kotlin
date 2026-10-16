@@ -100,9 +100,12 @@ data class CycleContext(
     val latestReplacementEvidence: String = "",
 ) {
     init {
-        require(probeOutcomes.all { it.evidenceRef.isNotBlank() }) {
-            "probeOutcomes MUST only contain non-blank evidence refs; " +
-                "the decider should have refused the bad ProbeFinished event"
+        require(probeOutcomes.all { it.outcome is ProbeOutcome.Verified }) {
+            "probeOutcomes MUST only contain Verified probes; the decider refuses " +
+                "every other ProbeOutcome case (Failed, Skipped, NotRun, NoEvidence, " +
+                "OtherCommit, UnsupportedFidelity, BlockedExternal). Found: " +
+                probeOutcomes.filter { it.outcome !is ProbeOutcome.Verified }
+                    .map { it.outcome.outcome.name }
         }
     }
 
@@ -114,15 +117,26 @@ data class CycleContext(
 }
 
 /**
- * The reified shape of an accepted probe. Carries the fields the
- * decider inspects (exit code + non-blank evidence ref) as a value,
- * not a free-floating pair.
+ * The reified shape of an accepted probe. Carries the typed [ProbeOutcome]
+ * from the executor, NOT a free-floating `(Int, String)` pair. The
+ * previous shape collapsed `UnsupportedFidelity` and `BlockedExternal` to
+ * `exitCode=0` and let the decider read them as success: that is the P0
+ * defect the 2026-10-16 external audit named. The ADT is the source of
+ * truth here; the decider is the only place that decides whether a
+ * probe is "verified".
  */
-data class ProbeFinished(val exitCode: Int, val evidenceRef: String) {
-    init { require(evidenceRef.isNotBlank()) { "evidenceRef must not be blank" } }
-
-    /** A non-zero exit code is a failed probe. The decider treats it as Refused. */
-    val succeeded: Boolean get() = exitCode == 0
+data class ProbeFinished(val outcome: ProbeOutcome) {
+    init {
+        require(outcome is ProbeOutcome.Verified) {
+            "ProbeFinished MUST only wrap ProbeOutcome.Verified; the runner cannot " +
+                "promote a ${outcome::class.simpleName} into the accumulator. " +
+                "Got: ${outcome.outcome.name}"
+        }
+        require(outcome.evidenceRef.isNotBlank()) {
+            "ProbeFinished.outcome.evidenceRef must not be blank; Verified without " +
+                "a real evidence path is a fabrication"
+        }
+    }
 }
 
 /**
@@ -130,13 +144,23 @@ data class ProbeFinished(val exitCode: Int, val evidenceRef: String) {
  * decider consumes them. There is no `Cancel` event here: a cancel is a
  * specific `Refused(reason)` that the caller can emit, not a state of
  * its own.
+ *
+ * `ProbeFinished` carries the typed [ProbeOutcome] (not a free-floating
+ * `exitCode` and `evidenceRef`). The decider is the only authority that
+ * classifies a probe as accepted; collapsing the ADT to a boolean at the
+ * runner boundary is the P0 defect the 2026-10-16 external audit named.
  */
 sealed interface CycleEvent {
     data object PrepareStarted : CycleEvent
-    /** Emit ONLY when a real probe has run. Blank evidence is refused by the decider. */
-    data class ProbeFinished(val exitCode: Int, val evidenceRef: String) : CycleEvent
+    /** Emit ONLY when the probe returned [ProbeOutcome.Verified]. Other cases refuse. */
+    data class ProbeFinished(val outcome: ProbeOutcome) : CycleEvent
     data class AllProbesObserved(val observedCommit: String) : CycleEvent
-    /** Blank replacement evidence is refused on the promote path. */
+    /**
+     * Blank replacement evidence is refused on the promote path. The
+     * audit also requires the evidence to be a non-blank reference whose
+     * shape is a known kind (the [ReplacementPlan] from the manifest);
+     * the decider's verifier is below.
+     */
     data class PromoteRequested(val replacementEvidence: String) : CycleEvent
     data class CloseRequested(val closeReason: String) : CycleEvent
     data class ExternalBlockerRaised(val blocker: String) : CycleEvent

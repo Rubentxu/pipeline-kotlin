@@ -938,7 +938,12 @@ object JsonEventLog {
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
                 val reportName = EventJsonFields.stringField(s, "reportName") ?: ""
                 val reportDir = EventJsonFields.stringField(s, "reportDir") ?: ""
-                val entries = EventJsonDecoder.decodeHtmlReportEntries(s)
+                // TD-R4.3 — refuse an unreadable entries row instead of silently dropping
+                // corrupt entries and returning a SHORT list. The silent-drop variant
+                // produced a 5-of-4 mismatch on replay that nothing reported; the same
+                // fail-closed shape the Stash/Artifact codecs use is the only path now.
+                val entries = EventJsonDecoder.decodeHtmlReportEntriesOrRefuse(s)
+                    ?: return unreadable("entries", "HtmlReportPublished")
                 val targetPath = EventJsonFields.stringField(s, "targetPath") ?: ""
                 HtmlReportPublished(
                     eventId = eventId,

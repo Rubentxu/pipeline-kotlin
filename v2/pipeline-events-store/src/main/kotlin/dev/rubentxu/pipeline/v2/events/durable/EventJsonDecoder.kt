@@ -234,6 +234,27 @@ internal object EventJsonDecoder {
     }
 
     /**
+     * Same contract as [decodeStashedEntriesOrRefuse], for HTML report entries. TD-R4.3
+     * retired the silent-drop [decodeHtmlReportEntries] from the production path because a
+     * `HtmlReportPublished` row with five files where one was corrupt came back as four,
+     * and the durable fingerprint then matched the corrupt subset, not the recorded one.
+     * The empty list and the absent field still return an empty list — only the
+     * present-but-unreadable case is a refusal.
+     */
+    fun decodeHtmlReportEntriesOrRefuse(s: String): List<HtmlReportEntry>? {
+        val arr = extractJsonArray(s, "entries") ?: return emptyList()
+        val entries = arr.map { obj ->
+            val relPath = EventJsonFields.stringField(obj, "relPath") ?: return null
+            val sha256 = EventJsonFields.stringField(obj, "sha256") ?: return null
+            // An entry of unknown size is not an empty file. sizeBytes is required
+            // by its type and always written, so absent is a refusal.
+            val sizeBytes = EventJsonFields.longField(obj, "sizeBytes") ?: return null
+            HtmlReportEntry(relPath = relPath, sha256 = sha256, sizeBytes = sizeBytes)
+        }
+        return if (entries.size == arr.size) entries else null
+    }
+
+    /**
      * Extracts the JSON array of objects for the named field from a single
      * event payload. Returns one string per object in the array, or null if
      * the field is missing or not an array.

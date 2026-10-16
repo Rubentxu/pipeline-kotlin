@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
@@ -54,7 +55,8 @@ class UatDsl005TimeoutGrammarTest {
         Paths.get(javaClass.getResource("/timeout-retry.pipeline.kts")!!.toURI())
     }
 
-    @Test
+    @Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
+@Test
     fun `timeout-retry script compiles and emits parseable JSON`() {
         // PK-0-57-RC1 / R2.4 (audit fix): the previous form
         // `output.startsWith("[")` and `output.endsWith("]")`

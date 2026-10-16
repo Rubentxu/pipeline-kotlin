@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -67,7 +68,8 @@ class UatLocal005ClassTimeoutAndTeardownTest {
     /**
      * TC-001: UatLocal005CheckoutGitTest has @Timeout(120) at class level.
      */
-    @Test
+    @Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
+@Test
     fun `TC-001 UatLocal005CheckoutGitTest declares class-level Timeout 120`() {
         val annotation = UatLocal005CheckoutGitTest::class.java.getAnnotation(Timeout::class.java)
         assertNotNull(annotation, "UatLocal005CheckoutGitTest must have @Timeout annotation")

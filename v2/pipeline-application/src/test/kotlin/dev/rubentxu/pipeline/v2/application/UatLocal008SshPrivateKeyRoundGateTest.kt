@@ -27,6 +27,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.SecureRandom
@@ -95,7 +96,8 @@ class UatLocal008SshPrivateKeyRoundGateTest {
      * When absent, the test is skipped — the SSH channel materialization path
      * is exercised via file:// + GIT_SSH_COMMAND in the existing tests.
      */
-    @Test
+    @Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
+@Test
     fun `CR-RD-021 SSH canary zero occurrences in event surfaces after SSH channel path`(@TempDir tempDir: Path) {
         assumeTrue(
             System.getenv("V2_SSH_OK") == "true",

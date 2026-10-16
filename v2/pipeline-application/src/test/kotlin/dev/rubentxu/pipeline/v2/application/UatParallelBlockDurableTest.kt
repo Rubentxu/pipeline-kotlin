@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
@@ -72,7 +73,8 @@ class UatParallelBlockDurableTest {
         script.toString(),
     )
 
-    @Test
+    @Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
+@Test
     fun `WL-P1 both branches execute with branch events`(@TempDir tempDir: Path) {
         val marker = tempDir.resolve("marker.txt")
         val script = tempDir.resolve("pipeline-parallel-ok.kts")

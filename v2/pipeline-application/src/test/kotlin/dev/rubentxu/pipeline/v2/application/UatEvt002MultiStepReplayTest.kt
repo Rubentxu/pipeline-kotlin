@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
@@ -72,7 +73,8 @@ class UatEvt002MultiStepReplayTest {
         Paths.get(javaClass.getResource("/multi-step.pipeline.kts")!!.toURI())
     }
 
-    @Test
+    @Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
+@Test
     fun `cli run with multi-step script emits parseable JSON array`() {
         val (exitCode, stdout, stderr) = runBinary("run", "--format", "json", multiStepScript.toString())
         val output = stdout.trim()

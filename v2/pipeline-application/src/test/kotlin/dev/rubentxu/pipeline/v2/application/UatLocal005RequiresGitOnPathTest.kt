@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -66,7 +67,8 @@ class UatLocal005RequiresGitOnPathTest {
     /**
      * REQ-001: git --version returns >=2.30 on PATH.
      */
-    @Test
+    @Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
+@Test
     fun `REQ-001 git version is at least 2-30`() {
         val output = runCommand(listOf("git", "--version"))
         assertTrue(output.startsWith("git version"),

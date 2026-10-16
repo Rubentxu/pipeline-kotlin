@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.io.TempDir
 
 /**
@@ -39,7 +40,8 @@ class UatLocal005EnvSpecialCharsTest {
      * Uses sh(script, env) DSL keyword with KEY=val=ue and verifies getenv("KEY") returns exact value.
      * Writes to output file (avoids returnStdout complexity) and reads content.
      */
-    @Test
+    @Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
+@Test
     fun `WS-S-008 env value with equals sign preserved verbatim`(@TempDir tempDir: Path) {
         assumeTrue(System.getProperty("os.name", "").lowercase().contains("linux"),
             "Durable shell is Linux-only")

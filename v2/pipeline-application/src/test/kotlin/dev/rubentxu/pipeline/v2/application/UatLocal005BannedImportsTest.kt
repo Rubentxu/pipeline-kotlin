@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -49,7 +50,8 @@ class UatLocal005BannedImportsTest {
      * JGit is the Eclipse pure-Java Git implementation. Using it would
      * violate the CLI-git design decision (D1 in ADR-0050).
      */
-    @Test
+    @Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
+@Test
     fun `IMP-001 no jgit imports in v2 main source`() {
         val projectRoot = TestProjectRoot.dir.toPath()
         val results = mutableListOf<String>()

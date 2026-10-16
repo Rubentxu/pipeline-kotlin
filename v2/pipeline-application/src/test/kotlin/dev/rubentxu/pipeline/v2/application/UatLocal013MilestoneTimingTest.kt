@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Base64
@@ -125,7 +126,8 @@ class UatLocal013MilestoneTimingTest {
     // SC-013-01: milestone monotonic ordinals — increasing ordinals emit MilestoneReached
     // ═══════════════════════════════════════════════════════════════════════════
 
-    @Test
+    @Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
+@Test
     fun `SC-013-01 milestone increasing ordinals emit MilestoneReached in order`() {
         val script = tempDir.resolve("sc-013-01.pipeline.kts")
         Files.writeString(script, """

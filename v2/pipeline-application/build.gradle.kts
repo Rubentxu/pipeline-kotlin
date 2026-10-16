@@ -220,6 +220,22 @@ dependencies {
 // state after any prior `:pipeline-application:installDist`.
 
 tasks.test {
+    // Gradle 8.x strict task-dependency validation refuses to
+    // schedule a task whose inputs include files produced by a
+    // task not declared in the dependency graph. The
+    // `testImplementation(files(...))` lines below add
+    // `example-block-plugin-0.1.0.jar` (and its peers) as a
+    // compile-classpath file; the build that produces it
+    // (`:buildExampleBlockPlugin`) MUST be in the dependency
+    // graph or Gradle aborts with an "implicit dependency"
+    // error. Declare the three external plugin builds here so
+    // the lane is correct on a clean checkout; the JARs are
+    // cached after the first run, so this is a one-time cost.
+    dependsOn(
+        ":buildExamplePlugin",
+        ":buildExternalDirectivePlugin",
+        ":buildExampleBlockPlugin",
+    )
     // BQ2 (2026-10-16 audit, RC3 close-out): the previous
     // configuration coupled `:test` to
     // `:pipeline-application:installDist` and three external

@@ -12,8 +12,8 @@
 | `product_version` | `0.62.0` |
 | `release_train` | `0.62.0` |
 | `candidate_sequence` | `5` |
-| `candidate_id` | `sha256:5b78b91a3c4b6ca86010b52a5fd0c9a5920363e21e09a5c59997dbec3c485964` |
-| `source_commit` | `dcb98b1d00a1112cffc736e4272efd3e2f8a5245` |
+| `candidate_id` | `sha256:6fa9a89fde86d957d61747a21b26193bcd7d631692d01f5872a5b5f56c44d5b9` |
+| `source_commit` | `49d4c1b8c407de51570e5b4c346111d48a354d07` |
 | `git_tag` | `v0.62.0-rc5` |
 | `archive_root` | `pipelinek-0.62.0` |
 | `implementation_version` | `0.62.0` |
@@ -22,11 +22,11 @@
 
 | Asset | SHA-256 | Tamaño |
 |---|---|---|
-| `pipelinek-0.62.0.zip` | `5b78b91a3c4b6ca86010b52a5fd0c9a5920363e21e09a5c59997dbec3c485964` | 89.0M |
-| `pipelinek-0.62.0.sbom.json` | `5fc2f5e135cf195ed01b64382fb8fc75b0761bb26a2958b70aa9190e3e4f2894` | 1.3M |
-| `pipelinek-0.62.0.sdk.zip` | `7824bf627758635663e5b9045bbc4709c4abc5a9544c179c051d3e4bbbf1863a` | 2.2M |
+| `pipelinek-0.62.0.zip` | `6fa9a89fde86d957d61747a21b26193bcd7d631692d01f5872a5b5f56c44d5b9` | 89.0M |
+| `pipelinek-0.62.0.sbom.json` | `7154a78633a7963e8eebf538313e680383d40614b1e6f604cee9550061f5ca82` | 1.3M |
+| `pipelinek-0.62.0.sdk.zip` | `76c55194dee8a1af6ee08ba0eb91f66c8d9bc02f0c714ff8cae0f648673296fc` | 2.2M |
 | `pipelinek-bom-0.62.0.json` | `91e66acf2adb6aff56dd0ca4cc534466bde3d61c7b55f8ddfb5c00ef22b7b050` | 22.5K |
-| `SHA256SUMS` | `0819d58bd56f74feca5ba3405e17082180e9de05bbfbf982bd14d8c4a1f496ab` | 363B |
+| `SHA256SUMS` | `<digest del archivo en build/candidate/SHA256SUMS>` | 363B |
 
 `SHA256SUMS` contiene las 4 entradas de los assets distribuibles (zip, sbom, sdk.zip, bom) — el formato `sha256sum` estándar, así que `sha256sum -c SHA256SUMS` funciona sin cambios.
 
@@ -34,7 +34,7 @@
 
 El handoff de `6e780224` documentaba un **gap de build**: el `:pipeline-release:releaseGate` producía 3 assets (zip, sbom, bom) pero el `bom` era **byte-idéntico** al sbom (ambos eran el cyclonedx output renombrado dos veces) y no existía `pipelinek-<v>.sdk.zip`. Ese gap era lo que bloqueaba la publicación en el certifier.
 
-El gap queda cerrado en `dcb98b1d`:
+El gap queda cerrado en `dcb98b1d` (código) y `49d4c1b8` (evidencia regenerada con SHAs frescos de la HEAD actual):
 
 - **Nuevo `SdkZipBuilder`** (puro Kotlin) y `SdkZipMain` (entry point Gradle). Empaqueta `<v2>/build/sdk-repo/` (poblado por `:publishSdkForExternalPlugin`) en `pipelinek-<v>.sdk.zip` con sólo los JARs y POMs de la versión actual.
 - **Nuevo `pipelinek-bom-<v>.json`**: manifest plano de triples `group:artifact:version` (coordenadas gestionadas) + inventario SHA-256 por archivo del contenido del ZIP. **Estructuralmente distinto** del SBOM (lista plana vs grafo CycloneDX).
@@ -62,20 +62,21 @@ cd v2 && ./gradlew --no-daemon \
   --rerun-tasks
 ```
 
-Resultado: `candidate admission PASSED` con `provenance: source provenance VERIFIED: clean tree at dcb98b1d00a1112cffc736e4272efd3e2f8a5245`.
+Resultado: `candidate admission PASSED` con `provenance: source provenance VERIFIED: clean tree at 49d4c1b8c407de51570e5b4c346111d48a354d07`.
 
 **No se verificó `RUNTIME_VERSION` ni `MANIFEST_VERSION`** (la identity probe marca `INCOMPLETE` para esos dos). El primero requiere ejecutar el binario instalado (lane pesado del harness); el segundo requiere el manifest del JAR de aplicación extraído. Ambos son responsabilidad del harness per el comentario de `CandidateMaterializer.materialize`. El certifier debe verificar `RUNTIME_VERSION` ejecutando el binario.
 
-## Commits incluidos en el SHA `dcb98b1d`
+## Commits incluidos en el SHA `49d4c1b8`
 
 ```
 fe58d574  fix(cycle): BQ4 v3 — close external-audit P0 defects A/B/C/D
 f32bd439  build(test): declare external plugin builds as test task inputs
 6e780224  evidence: stage v0.62.0-rc5 partial candidate for certifier
 dcb98b1d  feat(release): §8 SDK ZIP + bom/sbom split — close releaseGate contract gap
+49d4c1b8  evidence: stage v0.62.0-rc5 §8-conforme (5 assets) for certifier
 ```
 
-`dcb98b1d` es el commit que **cierra el gap §8** que bloqueaba la publicación. Es la única diferencia respecto al handoff anterior.
+`dcb98b1d` es el commit que **cierra el gap §8** que bloqueaba la publicación. `49d4c1b8` regenera la evidencia contra ese commit.
 
 ## Acción solicitada al certifier
 

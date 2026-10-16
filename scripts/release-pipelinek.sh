@@ -18,31 +18,32 @@
 #   PIPELINEK_RELEASE_TAG=v0.56.0-rc5 PIPELINEK_RELEASE_TRAIN=0.56.0 \
 #     ./scripts/release-pipelinek.sh
 #
-# On success: the script exits 0, the ZIP and the full §4 asset set are
+# On success: the script exits 0, the ZIP and the full §8 asset set are
 # uploaded, the Prerelease is created on GitHub, and the receipt is committed
 # under docs/v2/07-uat/evidence/<tag>/.
 #
 # On any refusal: non-zero exit, no upload, no Prerelease, no commit.
 #
-# Published asset set (DISTRIBUTION_RELEASE_SPEC.md §4)
-# -----------------------------------------------------
-# v0.61.0-rc1 shipped only the ZIP and the SBOM. §4 requires the digest
-# manifest alongside them, and calls SHA256SUMS "the single digest authority for
-# the whole release" — so a release without it has no digest authority a
-# consumer can resolve, and `scripts/install-pipelinek.sh` fails closed rather
-# than installing. The set this script publishes is therefore:
+# Published asset set (AGENTS.md §8)
+# ---------------------------------
+# The publisher reads the asset set from the DistributionManifest (the typed
+# value at v2/pipeline-release/.../DistributionManifest.kt), which is the
+# single source of truth produced by :pipeline-release:releaseGate. The five
+# slots are: asset (the ZIP), sbom, sdk, bom, sha256sums. Any non-null slot
+# is staged from v2/pipeline-application/build/distributions/ to the evidence
+# dir, hashed into SHA256SUMS, and uploaded. This is the §8 contract:
 #
 #   pipelinek-<train>.zip          the candidate bytes
-#   pipelinek-<train>.sbom.json    the SBOM
-#   SHA256SUMS                     the digest authority, covering ALL of the below
-#   HANDOFF.md                     the release notes
-#   git-head.txt                   the commit the ARTEFACT was built from
+#   pipelinek-<train>.sbom.json    the SBOM (if present in manifest)
+#   pipelinek-<train>.sdk.zip      the SDK contract bundle (if present)
+#   pipelinek-bom-<train>.json     the SDK BOM JSON (if present)
+#   SHA256SUMS                     the digest authority, covering all of the above
 #
-# SHA256SUMS covers every one of those except itself, because a manifest cannot
-# carry its own digest. git-head.txt is included deliberately: §4's "optional
-# provenance attestation" slot is exactly what it is, and a digest authority
-# that omits the provenance record leaves the certifier unable to tie the tag
-# to the bytes through the manifest alone.
+# HANDOFF.md and git-head.txt stay in the EVIDENCE_DIR as small text
+# artefacts committed to git, but they are NOT release assets per AGENTS.md
+# §3 (HANDOFF.md is a report; git-head.txt is a receipt). They are not
+# uploaded to the GitHub release asset store. The handoff remains available
+# to consumers as the body of the GitHub release via --notes-file.
 
 set -euo pipefail
 
@@ -237,9 +238,9 @@ with \`scripts/release/resolve-release-digest.sh\`; never consult a per-asset
 | Asset | Role |
 |---|---|
 | \`${EXPECTED_ZIP_NAME}\` | the candidate bytes |
-| \`pipelinek-${PIPELINEK_RELEASE_TRAIN}.sbom.json\` | the SBOM |
-| \`HANDOFF.md\` | these release notes |
-| \`git-head.txt\` | provenance: the artefact build commit |
+| \`pipelinek-${PIPELINEK_RELEASE_TRAIN}.sbom.json\` | the SBOM (if present in manifest) |
+| \`pipelinek-${PIPELINEK_RELEASE_TRAIN}.sdk.zip\` | the SDK contract bundle (if present) |
+| \`pipelinek-bom-${PIPELINEK_RELEASE_TRAIN}.json\` | the SDK BOM JSON (if present) |
 | \`SHA256SUMS\` | the digest authority for all of the above |
 
 ## What the certifier must do
@@ -262,23 +263,96 @@ if [ "$IDENTITY_VERDICT" = "DIVERGENT" ]; then
     exit 1
 fi
 
-# The ZIP is ~90 MB; the release asset store must hold a copy, so stage it
-# beside the evidence rather than uploading from build/ and hoping Gradle has
-# not cleaned it between the gate and the upload.
-cp "$DIST_ZIP" "${EVIDENCE_DIR}/${EXPECTED_ZIP_NAME}"
-cp "$SBOM" "${EVIDENCE_DIR}/${SBOM_NAME}"
+# The asset staging happens in section 5b below, driven by the manifest.
+# We deliberately do not stage here, because the manifest is the single
+# source of truth for the asset set (AGENTS.md §8).
 
-# Every published asset except the manifest itself. This list IS the coverage
-# claim, and it is the same list the upload below consumes — so an asset added
-# to the release but forgotten here is a compile-time-shaped mistake rather
-# than a silent hole. The digests describe the STAGED bytes, which are the
-# bytes about to be uploaded.
+# ----------------------------------------------------------------------------
+# 5b. Manifest-driven asset staging.
+#
+#     The DistributionManifest is the single source of truth for the §8 asset
+#     set. Each non-null field (asset, sbom, sdk, bom, sha256sums) names a
+#     file in v2/pipeline-application/build/distributions/. We stage each
+#     non-null one into the EVIDENCE_DIR, then hash the staged set into
+#     SHA256SUMS. The list is the same list the upload below consumes; an
+#     asset declared in the manifest but missing on disk fails the script
+#     before upload, so the release never carries a partial set.
+# ----------------------------------------------------------------------------
+
+read_manifest_field() {
+    # $1 = JSON field path, $2 = default. Reads the receipt and prints the
+    # value or the default if the field is null/missing.
+    python3 -c "
+import json, sys
+m = json.load(open(sys.argv[1]))
+keys = sys.argv[2].split('.')
+v = m
+for k in keys:
+    v = v.get(k) if isinstance(v, dict) else None
+    if v is None:
+        break
+print(v if v else sys.argv[3])
+" "$RECEIPT" "$1" "$2"
+}
+
+STAGED_PATHS=()
+
+stage_manifest_asset() {
+    # $1 = manifest field path (e.g. "asset.name"); $2 = local source path
+    # (resolved against v2/pipeline-application/build/distributions/).
+    # If the manifest field is non-null, copies the file to EVIDENCE_DIR and
+    # appends the staged path to STAGED_PATHS. If the field is null, prints
+    # a note and returns 0.
+    local field="$1"
+    local src="$2"
+    local fname
+    fname=$(read_manifest_field "$field" "")
+    if [ -z "$fname" ]; then
+        echo "release-pipelinek: manifest field '$field' is null; skipping."
+        return 0
+    fi
+    if [ ! -f "$src" ]; then
+        echo "release-pipelinek: manifest names '$fname' at $src but the file does not exist." >&2
+        rm -rf "$EVIDENCE_DIR"
+        exit 1
+    fi
+    cp "$src" "${EVIDENCE_DIR}/${fname}"
+    STAGED_PATHS+=("${EVIDENCE_DIR}/${fname}")
+    echo "release-pipelinek: staged ${fname} from ${src}"
+}
+
+# asset is required (the ZIP). Fail-closed if missing.
+ASSET_FNAME=$(read_manifest_field "asset.name" "")
+if [ -z "$ASSET_FNAME" ]; then
+    echo "release-pipelinek: manifest field 'asset.name' is null; cannot publish." >&2
+    rm -rf "$EVIDENCE_DIR"
+    exit 1
+fi
+DIST_DIR="v2/pipeline-application/build/distributions"
+stage_manifest_asset "asset.name"   "${DIST_DIR}/${ASSET_FNAME}"
+stage_manifest_asset "sbom.name"    "${DIST_DIR}/$(read_manifest_field 'sbom.name' 'none')"
+stage_manifest_asset "sdk.name"     "${DIST_DIR}/$(read_manifest_field 'sdk.name' 'none')"
+stage_manifest_asset "bom.name"     "${DIST_DIR}/$(read_manifest_field 'bom.name' 'none')"
+stage_manifest_asset "sha256sums.name" "${DIST_DIR}/$(read_manifest_field 'sha256sums.name' 'none')"
+
+# Build SHA256SUMS over the staged set. The digests describe the STAGED bytes,
+# which are the bytes about to be uploaded.
+if [ ${#STAGED_PATHS[@]} -eq 0 ]; then
+    echo "release-pipelinek: no staged assets to hash; manifest is empty." >&2
+    rm -rf "$EVIDENCE_DIR"
+    exit 1
+fi
+
+# Note: the SHA256SUMS file itself is not in STAGED_PATHS at this point
+# (we are about to generate it), so it is naturally excluded from the
+# manifest. A digest cannot carry its own digest.
 "${REPO_ROOT}/scripts/release/build-release-manifest.sh" \
     --out "$SUMS" \
-    "${EVIDENCE_DIR}/${EXPECTED_ZIP_NAME}" \
-    "${EVIDENCE_DIR}/${SBOM_NAME}" \
-    "${EVIDENCE_DIR}/HANDOFF.md" \
-    "${EVIDENCE_DIR}/git-head.txt"
+    "${STAGED_PATHS[@]}"
+
+# Now SHA256SUMS is staged. Add it to the upload list but NOT to the
+# SHA256SUMS coverage (a manifest cannot carry its own digest).
+STAGED_PATHS+=("$SUMS")
 
 # ----------------------------------------------------------------------------
 # 6. Tag, then confirm the tag landed where the handoff says it would.
@@ -310,25 +384,24 @@ gh release create "${PIPELINEK_RELEASE_TAG}" \
     --prerelease \
     --title "PipelineK ${PIPELINEK_RELEASE_TAG} (release-gate PASS sha256:${LOCAL_SHA})" \
     --notes-file "${EVIDENCE_DIR}/HANDOFF.md" \
-    "${EVIDENCE_DIR}/${EXPECTED_ZIP_NAME}" \
-    "${EVIDENCE_DIR}/${SBOM_NAME}" \
-    "${EVIDENCE_DIR}/HANDOFF.md" \
-    "${EVIDENCE_DIR}/git-head.txt" \
-    "$SUMS"
+    "${STAGED_PATHS[@]}"
 
-# Fail closed if the release did not end up carrying the whole set. `gh` exits
-# 0 on a partial upload in some failure modes, and a release missing its digest
-# authority is the defect this script was changed to close.
+# Fail closed if the release did not end up carrying the whole manifest-driven
+# set. `gh` exits 0 on a partial upload in some failure modes, and a release
+# missing its digest authority is the defect this script was changed to close.
+# The required list is the BASENAME of each staged path, since `gh release
+# view --json assets` returns asset names without directory components.
 PUBLISHED=$(gh release view "${PIPELINEK_RELEASE_TAG}" --json assets --jq '.assets[].name')
-for required in "${EXPECTED_ZIP_NAME}" "${SBOM_NAME}" HANDOFF.md git-head.txt SHA256SUMS; do
+for staged in "${STAGED_PATHS[@]}"; do
+    required=$(basename "$staged")
     if ! printf '%s\n' "$PUBLISHED" | grep -Fxq "$required"; then
         echo "release-pipelinek: published release is missing required asset '${required}'." >&2
-        echo "    DISTRIBUTION_RELEASE_SPEC.md §4 requires it. Published:" >&2
+        echo "    AGENTS.md §8 requires it. Published:" >&2
         printf '      %s\n' "$PUBLISHED" >&2
         exit 1
     fi
 done
-echo "release-pipelinek: published asset set verified complete (5 assets)."
+echo "release-pipelinek: published asset set verified complete (${#STAGED_PATHS[@]} assets, manifest-driven)."
 
 # Commit the SMALL TEXT evidence only. This commit is a *post-publish*
 # documentation commit; it does not move the tag, because the tag was

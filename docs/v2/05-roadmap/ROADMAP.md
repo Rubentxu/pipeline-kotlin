@@ -70,6 +70,8 @@ Hallazgos de esa reconciliación, con evidencia y dueño, en `../07-uat/B0_RECON
 Los dos P0 de 2026-10-08 ya no lo son ambos: B0-F1 quedó resuelto, y B0-F2 sigue abierto con
 remedio externo compartido con B0-F4.
 **Autoridad operativa (TRAIN-0 cutover 2026-09-26):** SDDK + Git + ADRs + evidencia externa. `.agent/SESSION_POINTER.md` queda como proyección humana opcional / histórico (no autoridad). **Pruebas vinculantes:** ../07-uat/CERTIFICATION_PROTOCOL.md y ../07-uat/PRODUCTION_READY_UAT_MATRIX.md.
+**Continuación auditada (2026-10-16):** [QUALITY_VALUE_ADDENDUM.md](QUALITY_VALUE_ADDENDUM.md) §«Continuación operativa auditada» conserva BQ1–BQ5 y agrega el plan operativo medido sobre `main@a66fe88c`, incluyendo PR #142, P2 Maven y la limpieza de UAT/E2E/AAT de sesión al final de cada bloque. **No altera el orden RP ni la autoridad del certifier**.
+
 **Subroadmap derivado:** la consola progresiva y el streaming durable se evolucionan en [OBS_PROGRESSIVE_CONSOLE_ROADMAP.md](OBS_PROGRESSIVE_CONSOLE_ROADMAP.md) (OBS-1 … OBS-7). Ese documento **no** es una autoridad de producto paralela: la prioridad, la integración y el calendario siguen siendo los de este roadmap, y ningún bloque OBS se admite antes de cumplir su gate ni bloquea la publicación del SDK.
 
 ## 0. Autoridad, límites y significado de DONE

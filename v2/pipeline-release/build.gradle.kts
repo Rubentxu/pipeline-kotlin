@@ -361,6 +361,19 @@ tasks.register("releaseGate") {
         // (audit R1.1 fix). The dependsOn on distZip ensures the file
         // exists before the test task is scheduled.
         "test",
+        // H0..H4 closure (2026-10-16): the application test classpath
+        // references three example plugin JARs
+        // (example-uppercase-plugin, example-directive-plugin,
+        // example-block-plugin). The fast lane `:test` does NOT depend
+        // on their build tasks (H1 TODO 3) — that's the inner-loop
+        // performance contract. The release gate, however, must not
+        // run with stale or missing JARs: a candidate is only as
+        // honest as the bytes the gate exercises. Adding the three
+        // `:buildExample*Plugin` tasks here means the release gate
+        // pays for them ONCE per RC, not on every inner-loop run.
+        ":buildExamplePlugin",
+        ":buildExternalDirectivePlugin",
+        ":buildExampleBlockPlugin",
     )
 
     // PK-RELEASE-CONSOLIDATION R1.1 (audit fix): previously this doFirst

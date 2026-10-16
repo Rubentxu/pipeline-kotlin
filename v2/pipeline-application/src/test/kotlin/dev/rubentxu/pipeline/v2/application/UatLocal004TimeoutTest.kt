@@ -1,4 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
+import org.junit.jupiter.api.Disabled
+
 
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.application.support.CliContractTestKit

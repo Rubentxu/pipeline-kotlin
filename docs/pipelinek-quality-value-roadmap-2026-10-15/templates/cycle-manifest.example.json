@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "cycle_id": "BQ1-WU-EXAMPLE",
+  "source_sha": "0000000000000000000000000000000000000000",
+  "status": "DRAFT",
+  "probes": [
+    {
+      "id": "AAT-BQ1-01",
+      "kind": "AAT",
+      "relative_path": "AAT-BQ1-01.kt",
+      "contract_id": "OutputPlane.evidence.non_vacuity",
+      "expected_fidelity": "HF0",
+      "verdict": "NOT_RUN",
+      "executed": 0,
+      "skipped": 0,
+      "mutation_or_negative": "xml-tests-zero-mutation",
+      "content_sha256": "TO_BE_FILLED_SHA256_OF_ACTUAL_TEMP_FILE",
+      "replacement_kind": "PERMANENT_CONTRACT",
+      "replacement_id": "path/to/existing/contract-test.kt",
+      "replacement_evidence": "NOT_RUN"
+    }
+  ]
+}

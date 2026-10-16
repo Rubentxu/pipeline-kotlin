@@ -1,0 +1,2 @@
+id,path,contract_id,scenario_id,required_fidelity,bug_fingerprint,replacement_owner,replacement_id,replacement_evidence_sha,candidate_id,decision,approved_by
+EXAMPLE_ONLY,src/test/.../UatExampleTest.kt,UNKNOWN,UNKNOWN,HF2,UNKNOWN,pipelinek-release-harness,NOT_PROVIDED,NOT_PROVIDED,NOT_PROVIDED,MIGRATE_PENDING,NOT_APPROVED

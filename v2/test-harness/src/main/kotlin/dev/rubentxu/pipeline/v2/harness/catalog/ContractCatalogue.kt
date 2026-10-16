@@ -38,6 +38,11 @@ object ContractCatalogue {
      * These are the HF levels from `PIPELINE_TEST_HARNESS.md` and ADR-0072, represented as a closed
      * set rather than a free string, so an unknown level is a compile error instead of a level that
      * silently matches nothing.
+     *
+     * The audit at 2026-10-16 found that this enum only declared HF0..HF4 while ADR-0072
+     * mandates HF0..HF6. The previous code was an under-specification: an HF5 or HF6
+     * claim could not be expressed as a closed value. HF5 (Service Sandbox) and HF6
+     * (Online Smoke) are now first-class cases.
      */
     enum class Fidelity {
         /** Pure contract: no process. ADTs, codecs, validation. */
@@ -54,6 +59,12 @@ object ContractCatalogue {
 
         /** Rootless sandbox: isolation and security. */
         HF4,
+
+        /** Service sandbox: HF4 plus external services (Git, HTTP, DB, artifacts) isolated. */
+        HF5,
+
+        /** Online smoke: OSS / network. Ecosystem compatibility. */
+        HF6,
     }
 
     /**

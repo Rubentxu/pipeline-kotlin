@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "authority": "docs/v2/05-roadmap/ROADMAP.md",
+  "proposal": "docs/v2/05-roadmap/QUALITY_VALUE_ADDENDUM.md",
+  "release_channel": "immutable_release_candidate_only",
+  "external_certification": "Rubentxu/pipelinek-release-harness",
+  "baseline_commit": "29981033ee1374f89e5711c7d5c2bc4b620e1b2a",
+  "milestones": [
+    {
+      "id": "BQ1",
+      "name": "Impacto y evidencia sin falsos verdes",
+      "depends_on": [],
+      "product_demo": "validationPlan explica suites y rechaza cambios no catalogados",
+      "modules": ["v2/test-harness"],
+      "normative_specs": ["docs/v2/03-specifications/PIPELINE_TEST_HARNESS.md", "docs/v2/07-uat/CERTIFICATION_PROTOCOL.md"],
+      "acceptance": ["AAT-BQ1-01", "AAT-BQ1-02", "AAT-BQ1-03", "UAT-BQ1-01", "AAT-BQ1-04"],
+      "gate": "negative mutations and fresh structural/contract evidence",
+      "closeout": "delete_cycle_probes_after_promoting_persistent_contracts_and_before_release",
+      "remote": "integrate_main_then_publish_reachable_rc"
+    },
+    {
+      "id": "BQ2",
+      "name": "Feedback rápido por frontera",
+      "depends_on": ["BQ1"],
+      "product_demo": "tests de dominio sin installDist; CLI de test integrado y release real separado",
+      "modules": ["v2/pipeline-application", "v2/test-harness"],
+      "normative_specs": ["docs/v2/03-specifications/PIPELINE_TEST_HARNESS.md", "docs/v2/03-specifications/EXECUTABLE_SCENARIO_CORPUS.md"],
+      "acceptance": ["UAT-BQ2-01", "AAT-BQ2-01", "AAT-BQ2-02", "UAT-BQ2-02"],
+      "gate": "incremental task DAG, no missing boundary, compared p50/p95",
+      "closeout": "delete_cycle_probes_after_promoting_persistent_contracts_and_before_release",
+      "remote": "integrate_main_then_publish_reachable_rc"
+    },
+    {
+      "id": "BQ3",
+      "name": "Una vertical funcional con ADTs",
+      "depends_on": ["BQ2"],
+      "product_demo": "one real user capability with single pure decision authority",
+      "modules": ["v2/pipeline-domain", "v2/pipeline-application", "v2/pipeline-runtime-api"],
+      "normative_specs": ["docs/v2/03-specifications/STEP_CONSTITUTION.md", "docs/v2/04-adrs/ADR-0103-one-replay-authority.md"],
+      "acceptance": ["UAT-BQ3-01", "AAT-BQ3-01", "AAT-BQ3-02", "AAT-BQ3-03"],
+      "gate": "reducer laws and boundary parity at same candidate SHA",
+      "closeout": "delete_cycle_probes_after_promoting_persistent_contracts_and_before_release",
+      "remote": "integrate_main_then_publish_reachable_rc"
+    },
+    {
+      "id": "BQ4",
+      "name": "Lifecycle explícito de pruebas efímeras",
+      "depends_on": ["BQ3"],
+      "product_demo": "cycle prepare/run/adjudicate/close refuses missing evidence and removes only declared probes",
+      "modules": ["v2/test-harness"],
+      "normative_specs": ["docs/v2/07-uat/PRODUCTION_READY_UAT_MATRIX.md", "docs/v2/07-uat/CERTIFICATION_PROTOCOL.md"],
+      "acceptance": ["UAT-BQ4-01", "AAT-BQ4-01", "AAT-BQ4-02", "AAT-BQ4-03"],
+      "gate": "lifecycle fitness, non-vacuous evidence, safe deletion negative tests",
+      "closeout": "delete_cycle_probes_after_promoting_persistent_contracts_and_before_release",
+      "remote": "integrate_main_then_publish_reachable_rc"
+    },
+    {
+      "id": "BQ5",
+      "name": "Migración/retirada demostrada de UAT heredadas",
+      "depends_on": ["BQ4"],
+      "product_demo": "smaller producer test surface, installed acceptance owned by external certifier",
+      "modules": ["v2/pipeline-application", "v2/test-harness", "v2/pipeline-testkit"],
+      "normative_specs": ["docs/v2/05-roadmap/RESPONSIBILITY_MIGRATION_ROADMAP.md", "docs/v2/03-specifications/DISTRIBUTION_RELEASE_SPEC.md"],
+      "acceptance": ["UAT-BQ5-01", "AAT-BQ5-01", "AAT-BQ5-02", "AAT-BQ5-03"],
+      "gate": "external equivalent same defect/candidate proof required before any legacy deletion",
+      "closeout": "delete_cycle_probes; legacy retirement only after external equivalence and explicit ADR authorization",
+      "remote": "integrate_main_then_publish_reachable_rc"
+    }
+  ]
+}

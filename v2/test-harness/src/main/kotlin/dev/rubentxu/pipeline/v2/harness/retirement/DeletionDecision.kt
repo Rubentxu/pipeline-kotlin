@@ -27,11 +27,39 @@ sealed interface DeletionDecision {
     /** Belongs to the harness; do not delete from this repo. */
     data object MigrateExternalPending : DeletionDecision
 
-    /** Equivalent coverage exists; needs `proofDigest` + `authority` to retire. */
+    /**
+     * Equivalent coverage exists; needs the substitute's proof
+     * digest, the file identity the proof refers to, and the
+     * signing authority to retire.
+     *
+     * The two digests are distinct identities:
+     * - `originalFileSha256` is the SHA-256 of the test file the
+     *   proof applies to. The guard checks that
+     *   `record.contentSha256 == originalFileSha256` so a stale
+     *   proof cannot be reused for a modified file.
+     * - `proofDigest` is the SHA-256 of the substitute evidence
+     *   the harness emitted (e.g. the fingerprint of the
+     *   harness's NDJSON line). It is what links the
+     *   retirement to the harness's verdict and is **not**
+     *   expected to equal the file's hash.
+     */
     data class RedundantWithProof(
+        val originalFileSha256: String,
         val proofDigest: String,
         val authority: String,
-    ) : DeletionDecision
+    ) : DeletionDecision {
+        init {
+            require(originalFileSha256.length == 64) {
+                "originalFileSha256 must be a 64-char hex SHA-256"
+            }
+            require(proofDigest.length == 64) {
+                "proofDigest must be a 64-char hex SHA-256"
+            }
+            require(authority.isNotBlank()) {
+                "authority must be a non-blank harness / certifier name"
+            }
+        }
+    }
 
     /** A test fixture (no @Test methods); retire as part of a parent refactor. */
     data object TestFixture : DeletionDecision

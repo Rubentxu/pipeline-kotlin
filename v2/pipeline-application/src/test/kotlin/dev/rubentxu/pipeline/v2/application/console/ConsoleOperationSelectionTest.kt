@@ -344,4 +344,93 @@ class ConsoleOperationSelectionTest {
     }
 
     private fun opId(stage: Int, step: Int) = OpId(runId = runId, stageIndex = stage, stepIndex = step).format()
+
+    // ---- BQ3 audit (2026-10-16): the resolve decider must be a
+    // pure function. Idempotence, sequence invariance and
+    // event-tuple invariance pin the three things the audit asks
+    // for: same input -> same output (idempotence), no hidden
+    // state, and that the choice of sequence vs list vs array
+    // does not change the outcome (sequence invariance).
+
+    @Test
+    fun `resolve is idempotent over the same input`() {
+        val events: Sequence<DomainEvent> = listOf<DomainEvent>(
+            stageStarted(index = 0, name = "build"),
+            stepStarted(stage = 0, step = 0, name = "compile", type = "Shell"),
+        ).asSequence()
+        val first = ConsoleOperationSelection.resolve(
+            runId = runId,
+            stages = setOf("build"),
+            steps = setOf("compile"),
+            kinds = setOf("Shell"),
+            events = events,
+        )
+        // Re-evaluate on a fresh sequence: the decider MUST not
+        // remember a partial state from a previous call.
+        val second = ConsoleOperationSelection.resolve(
+            runId = runId,
+            stages = setOf("build"),
+            steps = setOf("compile"),
+            kinds = setOf("Shell"),
+            events = events.toList().asSequence(),
+        )
+        assertEquals(first, second, "resolve must be a pure function; same input -> same output")
+    }
+
+    @Test
+    fun `resolve is sequence-source-invariant (list vs sequence vs array)`() {
+        fun asList(events: List<DomainEvent>) = events.toList()
+        fun asSequence(events: List<DomainEvent>) = events.asSequence()
+        fun asArray(events: List<DomainEvent>) = events.toTypedArray()
+        val base = listOf<DomainEvent>(
+            stageStarted(index = 0, name = "build"),
+            stepStarted(stage = 0, step = 0, name = "compile", type = "Shell"),
+            stageStarted(index = 1, name = "test"),
+            stepStarted(stage = 1, step = 0, name = "junit", type = "Junit"),
+        )
+        val fromList = ConsoleOperationSelection.resolve(
+            runId = runId,
+            stages = setOf("build", "test"),
+            steps = emptySet(),
+            kinds = emptySet(),
+            events = asList(base).asSequence(),
+        )
+        val fromSequence = ConsoleOperationSelection.resolve(
+            runId = runId,
+            stages = setOf("build", "test"),
+            steps = emptySet(),
+            kinds = emptySet(),
+            events = asSequence(base),
+        )
+        val fromArray = ConsoleOperationSelection.resolve(
+            runId = runId,
+            stages = setOf("build", "test"),
+            steps = emptySet(),
+            kinds = emptySet(),
+            events = asArray(base).asList().asSequence(),
+        )
+        assertEquals(fromList, fromSequence, "list-as-sequence must agree with sequence")
+        assertEquals(fromList, fromArray, "array-as-sequence must agree with list-as-sequence")
+    }
+
+    @Test
+    fun `resolve AllOperations is the empty-filter identity`() {
+        // The empty-filter case MUST always yield AllOperations
+        // regardless of events (the decider does not peek at the
+        // journal when no filter is requested).
+        val withEvents: Sequence<DomainEvent>? = listOf<DomainEvent>(
+            stageStarted(index = 0, name = "build"),
+        ).asSequence()
+        val withoutEvents: Sequence<DomainEvent>? = null
+        val a = ConsoleOperationSelection.resolve(runId, emptySet(), emptySet(), emptySet(), withEvents)
+        val b = ConsoleOperationSelection.resolve(runId, emptySet(), emptySet(), emptySet(), withoutEvents)
+        assertEquals(
+            OperationSelection.AllOperations,
+            (a as SelectionOutcome.Selected).selection,
+        )
+        assertEquals(
+            OperationSelection.AllOperations,
+            (b as SelectionOutcome.Selected).selection,
+        )
+    }
 }

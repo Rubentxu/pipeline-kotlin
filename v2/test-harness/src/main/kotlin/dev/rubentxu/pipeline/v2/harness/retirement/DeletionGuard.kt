@@ -9,11 +9,24 @@ package dev.rubentxu.pipeline.v2.harness.retirement
  * Wave D (V1 legacy) is gated by [retirementAuthorisedD] which is
  * independent of the certifier verdict.
  *
+ * The two digests in `RedundantWithProof` are distinct identities
+ * (see [DeletionDecision.RedundantWithProof] for the rationale):
+ *   - `originalFileSha256` is the SHA-256 of the file being retired.
+ *     The guard requires `record.contentSha256 == originalFileSha256`
+ *     so a proof stamped on a different version of the file cannot
+ *     retire the current one.
+ *   - `proofDigest` is the SHA-256 of the substitute evidence the
+ *     harness emitted. The guard checks it is a well-formed
+ *     64-char hex (enforced by the data class `init`) but does
+ *     NOT require it to equal the file's hash: the proof and
+ *     the file are different things.
+ *
  * A test is allowed to retire only when ALL of the following hold:
  *   - the decision is `RedundantWithProof` (NOT Keep, Migrate, Fixture, etc.),
- *   - the `proofDigest` is a 64-char hex string,
+ *   - the `originalFileSha256` matches the record's `contentSha256`
+ *     (file identity is the same as the one the proof refers to),
+ *   - the `proofDigest` is a 64-char hex string (well-formed),
  *   - the `authority` is non-blank and matches the wave's expectations,
- *   - the file's `contentSha256` matches the manifest,
  *   - the wave's authority is unlocked (`retirementAuthorised` for
  *     A/B/C; `retirementAuthorisedD` for D).
  *   - ADR-PK-QV-003 is `accepted` (signaled by `retirementAuthorised`).
@@ -41,21 +54,15 @@ object DeletionGuard {
                 "decision must be RedundantWithProof; got ${decision::class.simpleName}",
             )
         }
-        if (decision.proofDigest.length != 64) {
-            return GuardOutcome.Refused("proofDigest must be a 64-char hex SHA-256")
-        }
-        if (decision.authority.isBlank()) {
-            return GuardOutcome.Refused("authority must be a non-blank harness / certifier name")
-        }
-        if (record.contentSha256 != decision.proofDigest) {
+        if (record.contentSha256 != decision.originalFileSha256) {
             return GuardOutcome.Refused(
-                "decision.proofDigest does not match record.contentSha256; " +
-                    "the proof must point at the file that is being retired",
+                "decision.originalFileSha256 does not match record.contentSha256; " +
+                    "the proof must refer to the file that is being retired, " +
+                    "otherwise the file may have changed since the proof was issued",
             )
         }
         // Wave-specific authority expectations: Wave C demands a sandbox-
-        // level authority. Other waves accept any non-blank authority,
-        // because the proof digest is the binding constraint.
+        // level authority. Other waves accept any non-blank authority.
         if (wave == Wave.C) {
             val allowed = listOf("sandbox", "release-harness", "harness")
             if (decision.authority.lowercase() !in allowed) {

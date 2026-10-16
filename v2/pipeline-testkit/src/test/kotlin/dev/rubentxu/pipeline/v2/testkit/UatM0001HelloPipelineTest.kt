@@ -1,4 +1,6 @@
 package dev.rubentxu.pipeline.v2.testkit
+import org.junit.jupiter.api.Disabled
+
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse

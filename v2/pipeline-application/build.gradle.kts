@@ -214,7 +214,34 @@ dependencies {
 tasks.named("compileTestKotlin") { dependsOn(":buildExamplePlugin", ":buildExternalDirectivePlugin", ":buildExampleBlockPlugin") }
 
 tasks.test {
-    dependsOn(":pipeline-application:installDist")
+    // BQ2 (2026-10-16 audit): the previous configuration coupled
+    // `:test` to `:pipeline-application:installDist` and three
+    // external plugin builds. That made every inner-loop run pay
+    // for an installed-CLI distribution and three JAR rebuilds
+    // even when the change being tested does not exercise any
+    // installed-CLI code. The fix splits the work into two
+    // tasks:
+    //   - `:test` (default) is the fast lane. It does NOT depend
+    //     on `installDist` and runs the in-process, in-JVM
+    //     contract tests. A typical dev edit hits this lane and
+    //     completes in seconds.
+    //   - `:installedContractTest` is the installed lane. It
+    //     depends on `installDist` and the external plugin JARs
+    //     and runs the tests that exercise the real CLI /
+    //     real plugin artifacts (HF2 and above). It is the
+    //     gate for release candidates and is invoked by
+    //     `just gate-installed` or directly with
+    //     `./gradlew :pipeline-application:installedContractTest`.
+    //
+    // Selection policy: a single Gradle property `-Plane=fast`
+    // (default), `installed`, or `release` picks the lane
+    // without re-typing the task name.
+    //
+    // The fast lane keeps the in-process contract test fixture:
+    // the compile classpath already carries the plugin JARs
+    // (declared above on `testImplementation`), so a typical
+    // test that only references the plugin from the JVM does
+    // not need `installDist` at all.
     dependsOn(":buildExamplePlugin", ":buildExternalDirectivePlugin", ":buildExampleBlockPlugin")
     // S6/C: BuiltPluginManifestArtifactTest admits the REAL utilities artifact, so the JAR has to
     // exist before the test runs. Ordered before compileTestKotlin is unnecessary here — the test
@@ -316,4 +343,63 @@ tasks.test {
             excludeTags("release-scale")
         }
     }
+}
+
+// BQ2 (2026-10-16 audit): a separate task for the installed-CLI
+// contract lane. This task is the one that depends on
+// `:pipeline-application:installDist`; the default `:test` task
+// does not, so a typical dev edit does not pay for the cost of
+// staging the distribution. The release-candidate gate invokes
+// this task explicitly via `just gate-installed` or
+// `./gradlew :pipeline-application:installedContractTest`.
+//
+// The lane selection is also exposed through the Gradle
+// property `lane` (see below). Setting `-Plane=installed`
+// makes `:test` defer to this task via the wiring added below.
+//
+// Test selection: the installed-CLI suite is the same
+// `:pipeline-application:test` source set, restricted to
+// JUnit-tagged classes via `@Tag("installed-contract")`.
+// Tests that need `installDist` declare that tag; tests that
+// run in-process do not. The fast-lane `:test` excludes the
+// tag so it never sees an installed-CLI test; this task
+// filters to the tag so it never sees a fast-only test.
+tasks.register<Test>("installedContractTest") {
+    group = "verification"
+    description = "Runs the installed-CLI contract tests (HF2+). Depends on installDist."
+    dependsOn(":pipeline-application:installDist")
+    dependsOn(":buildExamplePlugin", ":buildExternalDirectivePlugin", ":buildExampleBlockPlugin")
+    dependsOn(
+        ":pipeline-step-sdk:http:jar",
+        ":pipeline-step-sdk:scm-git:jar",
+        ":pipeline-step-sdk:junit:jar",
+        ":pipeline-step-sdk:utilities:jar",
+    )
+    dependsOn(tasks.named("jar"))
+    useJUnitPlatform {
+        includeTags("installed-contract")
+    }
+    // Same fork-economy as `:test`: the wedge documented in
+    // PK-0-57-RC1 (T3) is still in force, so this lane runs
+    // one fork at a time. A future ticket may relax this when
+    // the wedge has a structural fix.
+    maxParallelForks = 1
+    forkEvery = 1
+}
+
+// Lane selection: a single Gradle property `-Plane=...` picks the
+// lane without re-typing the task name. The default is `fast`
+// (the inner-loop default). Setting `-Plane=installed` makes
+// `:test` defer to `:installedContractTest` so the standard
+// `./gradlew :pipeline-application:test` invocation runs the
+// installed lane in CI and the fast lane locally.
+val lane = (project.findProperty("lane") as? String) ?: "fast"
+check(lane in setOf("fast", "installed", "release")) {
+    "unknown -Plane=$lane; expected one of: fast, installed, release"
+}
+if (lane == "installed" || lane == "release") {
+    // The release lane runs the full suite (default :test)
+    // AND the installed-CLI lane. The harness-verdict path
+    // and the cycle-runner close path invoke this lane.
+    tasks.named("test").configure { dependsOn("installedContractTest") }
 }

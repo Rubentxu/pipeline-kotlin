@@ -1,4 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable.retry
+import org.junit.jupiter.api.Disabled
+
 
 import dev.rubentxu.pipeline.v2.application.durable.ChildRowReader
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal

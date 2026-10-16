@@ -33,6 +33,22 @@ sealed interface CycleState {
     /** All evidence is valid; the manifest is ready to close. */
     data class Promoted(val promotedAtCommit: String) : CycleState
 
+    /**
+     * Terminal state for a successful cycle. The cycle was either
+     * promoted and then closed, or it observed nothing actionable
+     * and closed cleanly. The close reason is preserved for the
+     * receipt (cycleId, sourceSHA, evidence, closeReason) per
+     * `EPHEMERAL_CYCLE_LIFECYCLE_SPEC.md`. A `Closed` cycle is
+     * NOT a `Refused` cycle: refusing means evidence was
+     * contradictory; closing means evidence was sufficient
+     * (or unnecessary) and the temporary files were released.
+     */
+    data class Closed(val closeReason: String) : CycleState {
+        init {
+            require(closeReason.isNotBlank()) { "Closed.closeReason must not be blank" }
+        }
+    }
+
     /** A probe or the runner rejected; the cycle is closed. */
     data class Refused(val reason: String) : CycleState {
         init {

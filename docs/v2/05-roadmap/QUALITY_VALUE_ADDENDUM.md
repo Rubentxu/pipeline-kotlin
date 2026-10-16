@@ -132,3 +132,93 @@
 ## Resultado esperado
 
 Cinco incrementos ejecutables y cinco releases candidates **si sus gates y publicación se realizan realmente**. El diseño promueve tests que explican y protegen el comportamiento; descarta UAT/E2E/AAT del ciclo sin fabricar un falso verde y externaliza progresivamente la aceptación de distribución de acuerdo con la autoridad existente.
+
+## Continuación operativa auditada — 2026-10-16 (main a66fe88c)
+
+**Alcance:** actualización del TODO **existente** BQ1..BQ5, subordinada al orden RP de `ROADMAP.md` `0/`13 y a `AGENTS.md`. No crea otra autoridad ni reinicia trabajo ya probado. Hechos observados directamente en `main@a66fe88c5f19aecf019e1452e520aa7307cef006`, sin ejecución independiente de Gradle. `v0.62.0-rc5` es la última RC publicada verificada (ZIP JVM, SBOM, SHA256SUMS, git-head y lane-planner; tag sobre el mismo SHA). **No reservar versiones/tags de RC futuras: descubrir el siguiente disponible en el momento de publicación.**
+
+### Estado de implementación (revisar de nuevo antes de cada bloque)
+
+| Bloque | Ya existe en código | Pendiente para DONE |
+|---|---|---|
+| BQ1 | ImpactResolver clasifica wrapper/Gradle/SPI, Gate lee XML después de ejecutar, catálogo de ocho contratos | Entradas relevantes aún no cubiertas, nivel HF **observado**, prueba de invocación actual |
+| BQ2 | `:test` deja de depender directamente de `installDist`; LanePlannerMain usa catálogo real; `-Plane` declarado | `installedContractTest` no tiene `testClassesDirs/classpath` explícitos ni se localizan clases `@Tag("installed-contract")`; checkout fresco aún necesita plugin JAR preexistente, faltan mediciones |
+| BQ3 | Propiedades de `ConsoleOperationSelection` y deciders preexistentes | Una mejora funcional visible del producto con ADT, negativo discriminante y autoridad única |
+| BQ4 | Ciclo HF0/HF1 y adapter del producto, validación de bytes SHA y cierre pasando por Promoted | `CycleRunner` transforma bloqueos/unsupported a `exitCode=0`, promoción por referencia no verificada, rutas ID de probe y borrado amplio, `cycle` ignora exit de JavaExec; UAT de ZIP pendiente |
+| BQ5 | Reader/guard de veredictos y ADR-PK-QV-003 aceptado | Equivalencias externas verificadas por candidato y retiro autorizado de pruebas heredadas; PR #140 abierta |
+| SDK/distribución | CLI JVM ZIP publicado; cinco contratos con Maven local, BOM; PR #142 abierta | SDK sin destino remoto; BOM constriñe cuatro de cinco contratos (falta runtime-api), `sdkBomModules` enumera runtime-api como si fuera documento BOM; assets internos extra deben desaparecer |
+
+**Secuencia:** corregir inmediatamente el P0 de BQ4 por riesgo de borrado (prioridad de integridad de `ROADMAP.md` `0), sin declarar BQ4 terminado. A continuación mantener BQ1→BQ2→BQ3→BQ4→BQ5; la distribución SDK es un incremento independiente. Si falta certifier o Maven remoto, avanzar bloques autónomos sin falsear `DONE`.
+
+### BLOQUE 1 — P0 de ciclo seguro (corrección BQ4, RC propia)
+
+- [ ] Conservar `ProbeOutcome`/`ObservedBoundary` tipados hasta `Cycle.decide`: solo `Verified` comprobado cuenta; `Skipped`/`NotRun`/`BlockedExternal`/`UnsupportedFidelity`/`OtherCommit` rechazan sin generar eventos éxito. Regression RED antes del fix.
+- [ ] Validar source SHA real, hash de evidencia, IDs y rutas de probes, sustituto permanente o recibo externo del mismo candidato. Eliminar referencia fabricada `replacement:<id>` y el SHA por defecto de 40 ceros.
+- [ ] Aislar las escrituras y el borrado por propiedad del directorio y manifiesto, no recorrer/borrar cualquier contenido del cycleDir; rechazar symlink/escape/carreras; propagar fallo de `:test-harness:cycle` al build.
+- [ ] AAT de sesión: probe bloqueado con exit 0, `../` en ID, sustituto falso, SHA diferente, fichero ajeno y borrado parcial. **Promover** leyes permanentes y **BORRAR UAT/E2E/AAT temporales** más fixtures exclusivas tras recibo correcto; `git ls-files` debe mostrar cero temporales.
+- [ ] **Cierre:** merge/push conservando historia, gate fresco sobre código FINAL sin temporales, RC nueva con ZIP real y SHA256SUMS/SBOM, tag y assets remotos verificados. No afirmar BQ4 DONE todavía.
+
+**Refs existentes:** `EPHEMERAL_CYCLE_LIFECYCLE_SPEC.md`, `TEST_IMPACT_AND_EVIDENCE_SPEC.md`, `BQ_ACCEPTANCE_MATRIX.md`, `ADR-PK-QV-003` y `ADR-0099`.
+
+### BLOQUE 2 — Selección honesta + vías rápidas (BQ1/BQ2, RC propia)
+
+- [ ] BQ1: catalogar cambios de recursos, scripts de distribución y build que alteran ejecución; casos relevantes no clasificados = negativa. Evidencia de `tests>0`, `skipped<tests`, mismo SHA, misma invocación, mismo nivel HF ejecutado.
+- [ ] BQ2: asignar tests que lanzan el ZIP realmente instalado a una tarea Gradle con `testClassesDirs`, `classpath`, JUnit tags reales, `installDist` y conteo positivo. La lane rápida no debe necesitar plugin JAR ya construido cuando parte de checkout limpio.
+- [ ] Enlazar `LanePlanner` con selección/ejecución reales, no limitarlo al JSON. Medir DAG y p50/p95 de al menos 5 corridas comparables, sin `--rerun-tasks` universal en el inner loop; objetivo ≥40 % de reducción del caso de dominio, sin perder mutantes.
+- [ ] Ejecutar negativas temporales: XML cero/all skipped, recurso desconocido, fallo instalado, proyecto limpio sin cachés, tres pasos CLI y error real. Mantener fitness/propiedades mínimas; **BORRAR UAT/E2E/AAT de sesión** tras reemplazo verificable.
+- [ ] **Cierre:** fast/integration/candidate usables, prueba real positiva de installed lane, nueva RC tras merge/push, SHA y métricas verificadas. Marcar BQ1/BQ2 DONE únicamente si cumplen todos sus STOP originales.
+
+**Refs existentes:** `TEST_IMPACT_AND_EVIDENCE_SPEC.md`, `TEST_EXECUTION_LANES_SPEC.md`, `PIPELINE_TEST_HARNESS.md`, `BQ_ACCEPTANCE_MATRIX.md`, `ADR-PK-QV-002`.
+
+### BLOQUE 3 — SDK compilado + distribución limpia (P2 Maven/DIST, RC propia)
+
+- [ ] Reconciliar PR #142 y aplicar política `distribution-first-release`: solo ZIP **runtime instalable** de la CLI, SBOM y SHA256SUMS normativos como assets. `HANDOFF.md` son notas, no archivo adjunto; prohibir source archives añadidos manualmente, ZIP duplicados y binarios en Git. Los `Source code` automáticos de GitHub NO se pueden eliminar.
+- [ ] Arreglar autoridad Maven: cinco módulos de `publishedContractModules` y un `pipeline-sdk-bom` con las cinco constraints; `sdkBomModules` solo documentos BOM, no `pipeline-runtime-api` duplicado. JAR + POM + `.module`; no publicar stores privados ni asumir que el JAR de app solo reemplaza ZIP ejecutable.
+- [ ] Mantener `build/sdk-repo` local como fixture. Configurar publicación remota solo con destino/credenciales autorizados (Nexus o GitHub Packages), probar resolución y compilación de plugin en consumidor limpio, con versiones/transitividad/ABI y SHA exactos. Si no hay acceso, `SDK_PUBLISHED=BLOCKED_EXTERNAL`, aunque la RC CLI pueda salir.
+- [ ] UAT/AAT de consumidor Maven y ausencia de contrato en BOM, fuente inesperada en release y checksum incorrecto. Promover test ABI/completitud, **BORRAR temporales** tras sustitución.
+- [ ] **Cierre:** RC del producto con asset instalable, lista remota exacta y tags verificables; SDK se llama publicado SOLO si se resolvió de un repositorio remoto. Merge/push/RC también con bloqueo remoto explícito, sin crear release vacía.
+
+**Refs existentes:** `P2_MAVEN_PUBLICATION.md`, `DISTRIBUTION_ROADMAP.md`, `DISTRIBUTION_RELEASE_SPEC.md`, `STEP_PLUGIN_SDK.md`, `ADR-0089`, `AGENTS.md`.
+
+### BLOQUE 4 — Valor de runtime y cierre real del ciclo (BQ3/BQ4, RC propia)
+
+- [ ] Escoger UNA vertical de `ConsoleOperationSelection`, `ShExecution` o `retry/waitUntil` con fallo observado: mejorar comportamiento real, reutilizar vocabulario `State/Input/Decision/EffectIntent/Failure`, `decide` puro, intérprete de E/S en el borde y sin segunda autoridad de replay.
+- [ ] Demostrar escenario CLI/DSL real antes/después, fallo nuevo corregido, eventos/outcome compatibles, mutante discriminante y API/semver explicados si cambian.
+- [ ] Ejecutar HF1 desde CLI de producto con adapter realmente descubierto (no solo test que instancia clase). Ejecutar UAT-BQ4-01 real sobre ZIP instalado HF2 mediante su propietario/certifier; timeout, no secretos, aislamiento, descendientes, cierre y sustituto verificado. HF2..HF6 jamás devuelven stub `PASS`.
+- [ ] UAT real de usuario, E2E de ZIP y AAT de replay/secretos/borrado interrumpido; conservar leyes, escenario y recibo; **BORRAR pruebas creadas solo durante sesión** antes de release.
+- [ ] **Cierre:** mejora funcional usable y cierre de ciclo demostrado, merge/push + RC real. El certifier externo sigue siendo la única autoridad de `CERTIFIED`.
+
+**Refs existentes:** `FUNCTIONAL_CORE_ONTOLOGY_SPEC.md`, `DSL_SPEC.md`, `STEP_CONSTITUTION.md`, `EPHEMERAL_CYCLE_LIFECYCLE_SPEC.md`, `BQ_ACCEPTANCE_MATRIX.md`, `ADR-PK-QV-001` y `ADR-0103`.
+
+### BLOQUE 5 — Retirar UAT heredadas con equivalencia (BQ5, RC si gate permite)
+
+- [ ] Contrastar PR #140 con HEAD y `RESPONSIBILITY_MIGRATION_ROADMAP.md`; clasificar test heredado por capability, escenario, bug fingerprint, HF y coste. No equivaler `Uat*` a «duplicado».
+- [ ] Migrar por oleadas (smoke/CLI → restart → sandbox/secretos → V1) usando **el mismo ZIP/CandidateId**, veredicto real del certifier y `DeletionGuard` autorizado. Mantener tests protegidos hasta evidencia de **mismo defecto**. No convertir skipped en verde.
+- [ ] Medir tiempo y mantenimiento antes/después, número de pruebas realmente retiradas y garantías conservadas. **BORRAR UAT/E2E/AAT creadas en este bloque** tras promoción; originales solo con equivalencia y aprobación.
+- [ ] **Cierre:** retirada real autorizada, tests del estado final, merge/push y RC nueva. Si certifier falta, reportar `BLOCKED_EXTERNAL`, **no marcar DONE ni publicar una RC sin valor solo para tachar el hito**; continuar con otro trabajo ejecutable.
+
+**Refs existentes:** `RESPONSIBILITY_MIGRATION_ROADMAP.md`, `BQ_ACCEPTANCE_MATRIX.md`, `DISTRIBUTION_RELEASE_SPEC.md`, `ADR-PK-QV-003` y `ADR-0105`.
+
+### Protocolo de cierre y borrado — se ejecuta al final de CADA bloque
+
+Aplicar el **protocolo común ya existente** arriba en esta adenda y `ROADMAP.md` `13.6. Para cada prueba temporal guardar `cycleId/sourceSHA/CandidateId`, HF ejecutada, resultado, negativa, contrato sustituto y evidencia. Fallo, omitted, skipped o blocked **no autorizan** borrado. **Borrar solo los ficheros UAT/E2E/AAT de sesión y sus fixtures exclusivas**, comprobar `git status`/`git ls-files` y correr el gate de integración/release sobre código final **después** de la limpieza. Nunca borrar unitarios/fitness/contratos ni UAT heredadas por nombre; exigir veredicto y autorización para ellas.
+
+Cada bloque terminado exige branch integrada en `origin/main` sin squash de historia publicada, tag RC nuevo sobre SHA de producto, binario instalable de esos bytes, checksum/SBOM normativos, enlace y digest observados en GitHub. `CANDIDATE_PUBLISHED` ≠ `SDK_PUBLISHED` ≠ `CERTIFIED` ≠ `STABLE_PROMOTED`; no falsear estados. Los bloqueos externos no paralizan work units independientes.
+
+### Anexo — glosario (lenguaje ubicuo)
+
+| Término | Significado |
+|---|---|
+| Capability / Contract | Comportamiento prometido / ley que lo protege, no nombre de clase JUnit. |
+| Scenario / Oracle | Entrada reproducible / observación que distingue éxito de defecto. |
+| Probe efímera | UAT/E2E/AAT del ciclo: se elimina SOLO con garantía permanente conservada. |
+| Test heredado | UAT antigua; no se borra con cleanup del ciclo, exige equivalencia externa. |
+| Evidence / Verdict | Observación con identidad/digest y frontera / decisión tipada sustentada por ella. |
+| HF0…HF6 | Frontera de prueba requerida/real; una HF inferior no demuestra una superior. |
+| Decider / Interpreter | Función pura que decide / adaptador que realiza efectos autorizados. |
+| Lane | Tareas y tests realmente ejecutados, no informe JSON. |
+| Replacement / Equivalence | Garantía sustituta / prueba del mismo defecto al nivel exigido. |
+| CandidateId | Hash SHA-256 de los bytes del ZIP concreto, no el texto del tag. |
+| SDK BOM / SBOM | POM con constraints Maven / inventario de componentes del producto; NO son lo mismo. |
+| Source archive / Release asset | ZIP automático de GitHub generado desde Git / binario adjuntado expresamente. |
+| BLOCKED_EXTERNAL | Falta autorización/veredicto ajeno; nunca equivale a DONE. |

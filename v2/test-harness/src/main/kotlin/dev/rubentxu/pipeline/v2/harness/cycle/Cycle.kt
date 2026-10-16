@@ -184,42 +184,25 @@ object Cycle {
             }
             is CycleState.Observed -> when (event) {
                 is CycleEvent.PromoteRequested -> {
-                    // The spec: a Promote is valid only when a
-                    // replacement evidence (the substitute
-                    // contract / property test that replaces the
-                    // ephemeral cycle's coverage) is present AND
-                    // is not a free-form string. The audit named
-                    // this as P0-D: a textual reference like
-                    // "replacement:foo" is not a verified
-                    // substitute, it is a label. A cycle that
-                    // closes on an unverified substitute has
-                    // deleted its evidence under a false
-                    // guarantee.
-                    val evidence = event.replacementEvidence
-                    if (evidence.isBlank()) {
-                        CycleOutcome.Next(
-                            nextState = CycleState.Refused(
-                                "PromoteRequested with blank replacementEvidence",
-                            ),
-                            nextContext = context,
-                        )
-                    } else if (!isVerifiedSubstituteShape(evidence)) {
-                        CycleOutcome.Next(
-                            nextState = CycleState.Refused(
-                                "PromoteRequested with non-conforming replacementEvidence: " +
-                                    "'$evidence'. The substitute must be either " +
-                                    "'permanent-contract:<id>' (a permanent test/fitness " +
-                                    "in the producer repo) or 'certifier-receipt:<sha256>' " +
-                                    "(a receipt the external certifier has signed).",
-                            ),
-                            nextContext = context,
-                        )
-                    } else {
-                        CycleOutcome.Next(
-                            nextState = CycleState.Promoted(state.observedCommit),
-                            nextContext = context.withReplacementEvidence(evidence),
-                        )
-                    }
+                    // The runner has already verified the evidence
+                    // via [PromotionEvidenceVerifier] BEFORE emitting
+                    // this event. A cycle cannot reach this branch
+                    // with a verified evidence that fails the
+                    // five-property check (existence, identity,
+                    // fidelity, digest, oracle). The carrier is a
+                    // typed [PromotionEvidence] (sealed interface);
+                    // its data class init refuses blanks, so the
+                    // decider does not need to re-check.
+                    //
+                    // The decider's job here is purely structural:
+                    // record the evidence and advance the state.
+                    // The previous shape (P0-D, audit 2026-10-16)
+                    // string-prefix-validated the evidence here;
+                    // that is now the runner's authority.
+                    CycleOutcome.Next(
+                        nextState = CycleState.Promoted(state.observedCommit),
+                        nextContext = context.withReplacementEvidence(event.replacementEvidence),
+                    )
                 }
                 is CycleEvent.CloseRequested -> {
                     // BQ4 audit (2026-10-16, vertical): the spec
@@ -271,44 +254,6 @@ object Cycle {
 
     private fun illegal(state: CycleState, event: CycleEvent): CycleOutcome =
         CycleOutcome.IllegalTransition(state, event)
-
-    // P0-D (audit 2026-10-16): the shape of a replacementEvidence
-    // that the decider accepts on Observed -> Promoted. A bare
-    // string is refused: the substitute must be either a
-    // reference to a permanent in-repo contract (the
-    // test/fitness/property that replaces the ephemeral cycle's
-    // coverage) or a receipt signed by the external certifier.
-    //
-    // This is the MINIMUM that the decider can verify in-process.
-    // The producer still has to declare the substitute in the
-    // manifest (ReplacementPlan.kind + ReplacementPlan.id +
-    // ReplacementPlan.evidence) and the certifier still has to
-    // sign a real receipt; what this check does is refuse a
-    // textual placeholder like "replacement:foo" that names
-    // nothing verifiable.
-    private const val PERMANENT_CONTRACT_PREFIX = "permanent-contract:"
-    private const val CERTIFIER_RECEIPT_PREFIX = "certifier-receipt:"
-}
-
-// P0-D verifier is a top-level internal function (Kotlin does
-// not allow a `companion object` inside an `object`). It is
-// used by [Cycle.decide] on the Observed -> Promoted path; the
-// CLI's [CycleCli.requestPromote] call composes a
-// replacementEvidence that matches one of the two accepted
-// shapes, so a normal cycle path passes; a hand-crafted
-// replacementEvidence that is a free-form string is refused.
-internal fun isVerifiedSubstituteShape(evidence: String): Boolean {
-    if (evidence.startsWith("permanent-contract:")) {
-        val id = evidence.removePrefix("permanent-contract:")
-        return id.isNotBlank() && id.length in 1..128 &&
-            id.all { it.isLetterOrDigit() || it == '-' || it == '_' || it == '.' }
-    }
-    if (evidence.startsWith("certifier-receipt:")) {
-        val digest = evidence.removePrefix("certifier-receipt:")
-        return digest.length == 64 &&
-            digest.all { it in '0'..'9' || it in 'a'..'f' }
-    }
-    return false
 }
 
 /** Result of [Cycle.decide]. */

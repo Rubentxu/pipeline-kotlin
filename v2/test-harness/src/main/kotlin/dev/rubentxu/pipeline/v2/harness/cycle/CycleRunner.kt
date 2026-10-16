@@ -54,6 +54,21 @@ class CycleRunner(
     val manifestPath: Path,
     val cycleDir: Path,
     private val clock: () -> Long = System::currentTimeMillis,
+    /**
+     * Authority on whether a named oracle has last run PASS at a
+     * given commit. Defaults to [EmptyOracleLedger] which refuses
+     * every oracle — the safe fallback. Production wiring injects
+     * a real ledger backed by the test-results or fitness
+     * registry.
+     */
+    private val oracleLedger: OracleLedger = EmptyOracleLedger,
+    /**
+     * Filesystem root for resolving `PromotionEvidence.sourcePath`
+     * against. Defaults to the current working directory, which
+     * is what the [CycleCli] wants when running from the repo
+     * root. Tests inject a temp dir.
+     */
+    private val repoRoot: Path = Path.of(""),
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = false }
 
@@ -254,16 +269,37 @@ class CycleRunner(
         transition(CycleEvent.AllProbesObserved(observedCommit))
 
     /**
-     * `adjudicate`: request promotion. The decider decides
-     * whether the cycle is `Promoted` or stays in `Observed`
-     * (the latter is a typed refusal of the promotion request
-     * — the state machine does not move).
+     * `adjudicate`: request promotion. The runner verifies the
+     * [evidence] via [PromotionEvidenceVerifier] BEFORE emitting
+     * the `PromoteRequested` event. The decider is a pure
+     * transition; the runner is the only authority on whether
+     * the substitute guarantee is real.
      *
-     * The decider refuses a blank `replacementEvidence` so a
-     * cycle cannot promote without naming a substitute.
+     * The verifier checks five properties (existence, identity,
+     * fidelity, digest, oracle). On [Verdict.Verified] the cycle
+     * advances to `Promoted`. On [Verdict.Refused] the cycle is
+     * `Refused` with the verifier's reason. On
+     * [Verdict.BlockedExternal] the cycle is `BlockedExternal`
+     * (a `CertifierReceipt` cannot be verified in-process).
      */
-    fun requestPromote(replacementEvidence: String): CycleOutcome =
-        transition(CycleEvent.PromoteRequested(replacementEvidence))
+    fun requestPromote(evidence: PromotionEvidence): CycleOutcome {
+        val parsed = manifest
+            ?: error("requestPromote requires a parsed manifest; call prepare() first")
+        val verdict = PromotionEvidenceVerifier.verify(
+            evidence = evidence,
+            runnerSourceSha = parsed.sourceSha,
+            manifestExpectedHF = parsed.expectedHF,
+            repoRoot = repoRoot,
+            oracleLedger = oracleLedger,
+        )
+        return when (verdict) {
+            is PromotionEvidenceVerifier.Verdict.Verified ->
+                transition(CycleEvent.PromoteRequested(evidence))
+            is PromotionEvidenceVerifier.Verdict.Refused -> fail(verdict.reason)
+            is PromotionEvidenceVerifier.Verdict.BlockedExternal ->
+                blockExternal(verdict.reason)
+        }
+    }
 
     /**
      * `close`: ask for the cycle to terminate. The decider allows

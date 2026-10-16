@@ -21,6 +21,8 @@ class ProbeExecutorTest {
     /**
      * Helper: write a manifest with a real or fake `content_sha256`
      * that points at a pre-staged file under the cycle dir.
+     * BQ4 v2: the `replacement.evidence` field is a typed
+     * [PromotionEvidence] (a JSON object), not a free-form string.
      */
     private fun writeManifest(
         path: Path,
@@ -29,6 +31,18 @@ class ProbeExecutorTest {
         contentSha256: String,
         contractId: String = "OutputPlane.redaction.streaming",
     ) {
+        val oracle = """{"type":"fitness","name":"ProbeExecutorTest.fixture","module":":test-harness"}"""
+        val stubEvidence = """
+            {
+              "type": "permanent_contract",
+              "contract_id": "$contractId",
+              "bound_commit": "0123456789abcdef0123456789abcdef01234567",
+              "source_path": "staging/StreamingRedactor.kt",
+              "content_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+              "fidelity": "HF0",
+              "oracle": $oracle
+            }
+        """.trimIndent()
         val manifest = """
             {
               "cycle_id": "cyc-1",
@@ -36,9 +50,7 @@ class ProbeExecutorTest {
               "expected_hf": "HF0",
               "isolation_policy": "cycleDirOnly",
               "replacement": {
-                "kind": "PERMANENT_CONTRACT",
-                "id": "x",
-                "evidence": "y"
+                "evidence": $stubEvidence
               },
               "contracts": [
                 {
@@ -196,7 +208,7 @@ class ProbeExecutorTest {
             contentSha256 = "0".repeat(64),
         )
 
-        val runner = CycleRunner("cyc-1", manifest, cycleDir)
+        val (runner, evidence) = setupPromotableRunner(tmp, cycleDir, manifest)
         runner.prepare()
         val executor = object : ProbeExecutor(cycleDir) {
             override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome =
@@ -204,7 +216,7 @@ class ProbeExecutorTest {
         }
         runner.runProbes(executor)
         runner.observeAll(observedCommit = "0123456789abcdef0123456789abcdef01234567")
-        runner.requestPromote(replacementEvidence = "permanent-contract:rec")
+        runner.requestPromote(evidence = evidence)
         runner.requestClose("done")
 
         // Tamper with the persisted evidence file. The runner must
@@ -238,7 +250,7 @@ class ProbeExecutorTest {
             contentSha256 = "0".repeat(64),
         )
 
-        val runner = CycleRunner("cyc-1", manifest, cycleDir)
+        val (runner, evidence) = setupPromotableRunner(tmp, cycleDir, manifest)
         runner.prepare()
         val executor = object : ProbeExecutor(cycleDir) {
             override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome =
@@ -246,13 +258,63 @@ class ProbeExecutorTest {
         }
         runner.runProbes(executor)
         runner.observeAll(observedCommit = "0123456789abcdef0123456789abcdef01234567")
-        runner.requestPromote(replacementEvidence = "permanent-contract:rec")
+        runner.requestPromote(evidence = evidence)
         runner.requestClose("done")
         runner.finalise()
         org.junit.jupiter.api.Assertions.assertFalse(
             Files.exists(cycleDir),
             "the cycle dir must be deleted after a clean finalise",
         )
+    }
+
+    /**
+     * Stage a real contract file, build a matching
+     * [PromotionEvidence.PermanentContract], and return a
+     * [CycleRunner] wired with a [MapOracleLedger] that says
+     * PASS at the source SHA. The runner's
+     * [PromotionEvidenceVerifier] will then accept the carrier
+     * and let `requestPromote` advance the cycle to Promoted.
+     */
+    private fun setupPromotableRunner(
+        tmp: Path,
+        cycleDir: Path,
+        manifest: Path,
+    ): Pair<CycleRunner, PromotionEvidence> {
+        val contractFile = tmp.resolve("MyContract.kt")
+        Files.writeString(contractFile, "// permanent contract body\nclass MyContract\n")
+        val contractDigest = sha256HexOfFile(contractFile)
+        val oracle = OracleRef.Fitness("ProbeExecutorTest.fixture", ":test-harness")
+        val sourceSha = "0123456789abcdef0123456789abcdef01234567"
+        val evidence = PromotionEvidence.PermanentContract(
+            contractId = "OutputPlane.redaction.streaming",
+            boundCommit = sourceSha,
+            sourcePath = "MyContract.kt",
+            contentDigest = contractDigest,
+            fidelity = "HF0",
+            oracle = oracle,
+        )
+        val ledger = MapOracleLedger(mapOf(oracle to setOf(sourceSha)))
+        val runner = CycleRunner(
+            cycleId = "cyc-1",
+            manifestPath = manifest,
+            cycleDir = cycleDir,
+            oracleLedger = ledger,
+            repoRoot = tmp,
+        )
+        return runner to evidence
+    }
+
+    private fun sha256HexOfFile(path: Path): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        Files.newInputStream(path).use { input ->
+            val buf = ByteArray(8192)
+            while (true) {
+                val n = input.read(buf)
+                if (n <= 0) break
+                md.update(buf, 0, n)
+            }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
     }
 
     @Test

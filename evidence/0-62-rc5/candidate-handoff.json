@@ -1,25 +1,35 @@
 {
   "schema_version": "pipelinek-candidate-2",
-  "candidate_id": "sha256:b14794ec7d5bd1aabd45074d78fcf846a11ce0af6a26ad14d5d927f18b07506c",
+  "candidate_id": "sha256:5b78b91a3c4b6ca86010b52a5fd0c9a5920363e21e09a5c59997dbec3c485964",
   "release_train": "0.62.0",
   "candidate_sequence": 5,
   "product_version": "0.62.0",
-  "source_commit": "f32bd4395709b09790bc4a074fb88416e01b9ac6",
+  "source_commit": "dcb98b1d00a1112cffc736e4272efd3e2f8a5245",
   "artifact": {
     "name": "pipelinek-0.62.0.zip",
-    "sha256": "b14794ec7d5bd1aabd45074d78fcf846a11ce0af6a26ad14d5d927f18b07506c",
-    "size": 93354630,
+    "sha256": "5b78b91a3c4b6ca86010b52a5fd0c9a5920363e21e09a5c59997dbec3c485964",
+    "size": 93354627,
     "archive_root": "pipelinek-0.62.0",
     "implementation_version": "0.62.0"
   },
   "distribution_manifest": {
     "name": "distribution-manifest.json",
-    "sha256": "69653ebd01d952522c02569db8ce0e9954935cbf9d943834d78d2a7cd372b1b9",
+    "sha256": "5fc038b7e44424aaf2a462356ff6f4c3c6d6c0de4cedd0f5f1e278fd1d5770de",
     "built_at": "v0.62.0-rc5"
   },
   "sbom": {
     "name": "pipelinek-0.62.0.sbom.json",
-    "sha256": "0e9c0f4e0f8c5910a0e460eb4e7e9072b35636733c02db5125a677395bb0d1aa",
+    "sha256": "5fc2f5e135cf195ed01b64382fb8fc75b0761bb26a2958b70aa9190e3e4f2894",
+    "built_at": "v0.62.0-rc5"
+  },
+  "sdk": {
+    "name": "pipelinek-0.62.0.sdk.zip",
+    "sha256": "7824bf627758635663e5b9045bbc4709c4abc5a9544c179c051d3e4bbbf1863a",
+    "built_at": "v0.62.0-rc5"
+  },
+  "bom": {
+    "name": "pipelinek-bom-0.62.0.json",
+    "sha256": "91e66acf2adb6aff56dd0ca4cc534466bde3d61c7b55f8ddfb5c00ef22b7b050",
     "built_at": "v0.62.0-rc5"
   }
 }

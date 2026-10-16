@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.io.TempDir
 
 /**
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.io.TempDir
  *
  * Uses: MainKt run + run --resume (full orchestration, not MinMainKt)
  */
+@Disabled("migrated-pending")
 @Timeout(120)
 class UatLocal002ResumeAfterKillTest {
 

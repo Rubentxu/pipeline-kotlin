@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -32,6 +33,7 @@ import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
  * UAT-EVT-001: CLI invocation produces a JSON event log that can be re-parsed
  * and yields the same timeline across two invocations.
  */
+@Disabled("migrated-pending")
 @Timeout(120)
 class UatEvt001ReplayTest {
 

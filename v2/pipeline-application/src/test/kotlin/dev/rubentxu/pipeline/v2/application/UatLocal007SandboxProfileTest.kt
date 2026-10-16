@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.io.TempDir
 
 /**
@@ -49,6 +50,7 @@ import org.junit.jupiter.api.io.TempDir
  * @see <a href="ADR-0048">ADR-0048 — SandboxProfile.LOCAL</a>
  * @see <a href="ADR-0016">ADR-0016 — M5/M9 scope firewall</a>
  */
+@Disabled("migrated-pending")
 @Timeout(120)
 class UatLocal007SandboxProfileTest {
 

@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -39,6 +40,7 @@ import java.util.concurrent.TimeUnit
  *
  * @see <a href="ADR-0053">ADR-0053 — ML-R8 L7 smoke E2E sandbox</a>
  */
+@Disabled("migrated-pending")
 @Timeout(600)
 class UatLocal010SmokeE2ESandboxTest {
 

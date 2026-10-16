@@ -1,0 +1,16 @@
+{
+  "total_specs": 8,
+  "by_lane": {
+    "CANDIDATE" : ["OutputPlane.redaction.streaming", "OutputPlane.write.commit", "OutputPlane.pump.drain", "OutputPlane.read.cursor", "Shell.execution.composition", "Console.cli.selection", "Provenance.build.identity", "Build.composition"]
+  },
+  "assignments": [
+    { "contract_id": "OutputPlane.redaction.streaming", "lane": "CANDIDATE", "reason": "fidelity=2 installed=true certifier=false" },
+    { "contract_id": "OutputPlane.write.commit", "lane": "CANDIDATE", "reason": "fidelity=2 installed=true certifier=false" },
+    { "contract_id": "OutputPlane.pump.drain", "lane": "CANDIDATE", "reason": "fidelity=2 installed=true certifier=false" },
+    { "contract_id": "OutputPlane.read.cursor", "lane": "CANDIDATE", "reason": "fidelity=2 installed=true certifier=false" },
+    { "contract_id": "Shell.execution.composition", "lane": "CANDIDATE", "reason": "fidelity=2 installed=true certifier=false" },
+    { "contract_id": "Console.cli.selection", "lane": "CANDIDATE", "reason": "fidelity=2 installed=true certifier=false" },
+    { "contract_id": "Provenance.build.identity", "lane": "CANDIDATE", "reason": "fidelity=2 installed=true certifier=false" },
+    { "contract_id": "Build.composition", "lane": "CANDIDATE", "reason": "fidelity=2 installed=true certifier=false" }
+  ]
+}

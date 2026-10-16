@@ -296,28 +296,33 @@ tasks.test {
         .withPropertyName("crossModuleProductionSources")
         .withPathSensitivity(PathSensitivity.RELATIVE)
 
-    // WU-RP-005 (docs/v2/07-uat/WU_RP_005_TEST_EFFICIENCY_RECEIPT.md):
-    // measured decision under AGENTS.md rule 11 exception path. The suite is
-    // dominated by ~5s-per-fork installed-CLI invocations with no timing
-    // semantics (no heartbeat/backoff/LOST classification); 2 parallel forks
-    // halve wall time on 2-core CI runners. forkEvery recycles test JVMs that
-    // accumulate CLI child processes.
+    // BQ2 (2026-10-16 audit, RC2): the fast lane is in-process
+    // contract tests. They do not fork the `pipelinek` binary;
+    // they do not need the wedge defense (maxParallelForks = 1,
+    // forkEvery = 1) that PK-0-57-RC1 (T3) imposed on
+    // installed-CLI tests. The defense is kept on
+    // `:installedContractTest` below; the fast lane can run
+    // forks in parallel. The WU-RP-005 measurement (2 parallel
+    // forks halve wall time on 2-core CI) is restored for the
+    // fast lane.
     //
-    // PK-0-57-RC1 (T3): the WU-RP-005 fork economy is PAUSED for this train.
-    // Two HF2 UATs that fork the installed `pipelinek` binary — WURp023
-    // (observation surfaces) and UatS2R0 (run ownership / cross-process
-    // lease) — wedge in futex_do_wait under host load > 5 when two
-    // Gradle test forks spawn `pipelinek` at the same time (BLOCK_E_RUN_21
-    // receipts document the load condition). The stable reproduction
-    // documented there requires `--max-workers=1 --no-daemon`. We honour
-    // that here at the per-test fork layer: one fork at a time, one
-    // fresh JVM per test class, so the loaded `pipelinek` child process
-    // never collides with another fork's classloader or DB file. The
-    // WU-RP-005 wall-time cost is the price of a green UAT gate for
-    // 0.57.0-rc1; re-measure in 0.58 with a tighter fork-every once the
-    // UAT wedge has a structural fix.
-    maxParallelForks = 1
-    forkEvery = 1
+    // `maxParallelForks` is left unset (Gradle default) so the
+    // value is governed by the daemon's available cores. The
+    // WU-RP-005 measure used 2 explicitly; here we trust the
+    // daemon and rely on `-PpipelineTestForkEvery=0` from the
+    // inner-loop recipe to opt out of fork-every entirely.
+    //
+    // PK-0-57-RC1 (T3) defence retained on the installed lane
+    // (see `:installedContractTest` below) because THAT lane
+    // forks the `pipelinek` binary and is the load wedge.
+    useJUnitPlatform()
+
+    // WU-RP-005 round 3: `--tests '!pkg.Class*'` negation on the command line
+    // is silently IGNORED by Gradle in this configuration (verified locally:
+    // the exact CI command still executed all 203 classes). CI now passes
+    // -PexcludeSlowTests=true; the full suite (gate-app / release) runs
+    // without the property and keeps every test.
+    // WU-RP-005 r6: shard exclusions from CI. `--tests '!X'` on the command
     // WU-RP-005 round 3: `--tests '!pkg.Class*'` negation on the command line
     // is silently IGNORED by Gradle in this configuration (verified locally:
     // the exact CI command still executed all 203 classes). CI now passes
@@ -402,4 +407,34 @@ if (lane == "installed" || lane == "release") {
     // AND the installed-CLI lane. The harness-verdict path
     // and the cycle-runner close path invoke this lane.
     tasks.named("test").configure { dependsOn("installedContractTest") }
+}
+
+// BQ2 (2026-10-16 audit, RC2): wire the LanePlanner into the
+// build so the lane partitioning is observable at the Gradle
+// level, not just in unit tests. The task reads the same
+// `LaneSpec` inputs the planner unit tests use and writes the
+// partition to `build/reports/lane-planner.json` for human
+// review. It is intentionally a no-side-effect task: it
+// computes the partition, writes JSON, and exits. The
+// plan-driven choice of `:test` vs `:installedContractTest`
+// is made ABOVE via `-Plane=...`; this task is the receipt
+// that proves the planner was consulted.
+val laneReportClasspath = configurations.create("laneReportClasspath")
+dependencies {
+    // The LanePlanner lives in :test-harness (sibling project).
+    // We depend on its runtime classpath directly so the
+    // planner main class is reachable from this JavaExec task.
+    laneReportClasspath(project(":test-harness"))
+    laneReportClasspath("org.jetbrains.kotlin:kotlin-stdlib:2.4.10")
+    laneReportClasspath("org.jetbrains.kotlin:kotlin-reflect:2.4.10")
+}
+val laneReportCp = laneReportClasspath
+tasks.register<JavaExec>("laneReport") {
+    group = "verification"
+    description = "Runs LanePlanner.partition and writes build/reports/lane-planner.json"
+    classpath = laneReportCp
+    mainClass.set("dev.rubentxu.pipeline.v2.harness.lanes.LanePlannerMainKt")
+    val out = layout.buildDirectory.file("reports/lane-planner.json")
+    outputs.file(out)
+    args("--output", out.get().asFile.absolutePath)
 }

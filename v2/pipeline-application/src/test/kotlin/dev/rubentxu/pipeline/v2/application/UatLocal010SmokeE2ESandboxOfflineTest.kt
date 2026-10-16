@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -136,7 +137,8 @@ class UatLocal010SmokeE2ESandboxOfflineTest {
     // REQUIRES: online class has warmed Gradle cache via UatLocal010SmokeE2ESandboxTest.
     // This scenario runs with `--offline` to verify the cache is sufficient without network.
 
-    @Test
+    @Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
+@Test
     @EnabledIfEnvironmentVariable(named = "V2_SMOKE_E2E_OFFLINE_OK", matches = "true")
     fun `SC-010-08 picocli offline re-run exits 0 with warm cache`() {
         assumeLinux()

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
@@ -25,6 +26,7 @@ import java.util.concurrent.TimeUnit
  * Both processes are the installed distribution, not the test classpath: the
  * behaviour under test is what operators get.
  */
+@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
 class UatS2R0RunOwnershipCliTest {

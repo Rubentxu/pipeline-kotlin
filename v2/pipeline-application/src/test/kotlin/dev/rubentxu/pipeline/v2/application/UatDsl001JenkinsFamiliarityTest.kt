@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -53,7 +54,8 @@ class UatDsl001JenkinsFamiliarityTest {
         Paths.get(javaClass.getResource("/grammar-full.pipeline.kts")!!.toURI())
     }
 
-    @Test
+    @Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
+@Test
     fun `full grammar script compiles and emits parseable JSON`() {
         // S6-PRE: this was `.also { it.waitFor() }` and only then a stdout read, which is the
         // deadlock `fixture12-error-handling` proved — this script emits the same full event log

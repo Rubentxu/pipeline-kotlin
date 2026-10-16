@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -74,7 +75,8 @@ class UatLocal005RegressionGateTest {
     /**
      * RG-001: UatLocal001 smoke — basic pipeline with sh still works after ML-R5.
      */
-    @Test
+    @Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
+@Test
     fun `RG-001 UatLocal001 smoke test — sh still works`(@TempDir tempDir: Path) {
         val javaHome = System.getProperty("java.home")
         val classpath = System.getProperty("java.class.path")

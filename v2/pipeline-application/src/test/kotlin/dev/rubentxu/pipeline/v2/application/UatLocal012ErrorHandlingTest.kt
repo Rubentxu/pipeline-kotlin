@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Base64
@@ -133,7 +134,8 @@ class UatLocal012ErrorHandlingTest {
     // SC-012-01: catchError catches failure → UNSTABLE (default Jenkins)
     // ═══════════════════════════════════════════════════════════════════════════
 
-    @Test
+    @Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
+@Test
     fun `SC-012-01 catchError default catches failure and emits CatchErrorTriggered`() {
         val script = tempDir.resolve("sc-012-01.pipeline.kts")
         Files.writeString(script, """

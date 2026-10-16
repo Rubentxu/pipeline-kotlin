@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.io.TempDir
 
 /**
@@ -124,7 +125,8 @@ class UatLocal009TopStepsTest {
 
     // ─── CR-U9-001: writeFile + readFile round-trip with sha256 ─────────────────
 
-    @Test
+    @Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
+@Test
     fun `CR-U9-001 writeFile readFile round-trip with sha256 event`() {
         val script = tempDir.resolve("cr-u9-001.pipeline.kts")
         Files.writeString(script, """

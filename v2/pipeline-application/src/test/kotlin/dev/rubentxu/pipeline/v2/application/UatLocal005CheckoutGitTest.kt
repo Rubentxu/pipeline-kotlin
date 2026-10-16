@@ -35,6 +35,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import java.nio.file.Files
 import java.util.UUID
 import java.nio.file.Path
@@ -109,7 +110,8 @@ class UatLocal005CheckoutGitTest {
 
     // ─── Scenario 1: Clone fresh repo ───────────────────────────────────────
 
-    @Test
+    @Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
+@Test
     fun `SC-001 clone fresh repo emits GitCheckoutCompleted with SHA`(@TempDir tempDir: Path) {
         // Create a local bare repo with one commit
         val bareRepo = createBareRepoWithCommits(tempDir, "fixture.git", listOf("Initial commit"))

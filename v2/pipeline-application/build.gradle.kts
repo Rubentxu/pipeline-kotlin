@@ -294,6 +294,28 @@ tasks.test {
     // that may carry forward older published versions from prior builds on the same checkout.
     systemProperty("pipeline.domain.version", project.version.toString())
 
+    // xerial sqlite-jdbc's static-state `loaded` cache collides with the
+    // Gradle test JVM's multi-classloader hierarchy: the JNI symbol IS
+    // exported in `org/sqlite/native/Linux/x86_64/libsqlitejdbc.so` (verified
+    // via `nm -D`, `Java_org_sqlite_core_NativeDB__1open_1utf8` is `T`), the
+    // Java NativeDB declares `synchronized native void _open_utf8(byte[], int)`,
+    // and the .so signature matches. The failure is the CLASSLOADER, not the
+    // JNI signature: under a multi-classloader JVM the driver's static
+    // `loaded` field can resolve to a .so that was extracted by a different
+    // thread / classloader than the one holding the NativeDB class. The
+    // resulting `UnsatisfiedLinkError: 'void ... _open_utf8(byte[], int)'`
+    // does NOT mean the symbol is missing; it means the JVM looked for the
+    // symbol against the wrong library.
+    //
+    // Forcing `org.sqlite.lib.path` to the bundled .so inside the JAR
+    // (via `classpath:` URI) makes the driver skip auto-extraction and load
+    // the same library handle the NativeDB class can see. This is the
+    // documented xerial escape hatch for multi-classloader deployments.
+    systemProperty(
+        "org.sqlite.lib.path",
+        "classpath:org/sqlite/native/Linux/x86_64/libsqlitejdbc.so",
+    )
+
     // ── Cross-module inputs, declared ────────────────────────────────────────────
     //
     // A handful of tests here read OTHER modules on purpose, because the law they enforce is about

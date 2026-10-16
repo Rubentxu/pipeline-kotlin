@@ -3,7 +3,8 @@ package dev.rubentxu.pipeline.v2.harness.retirement
 /**
  * CLI entry point: read a CSV produced by
  * `tooling/inventory_tests.py`, classify every row with
- * [TestClassifier], and emit a per-decision summary as JSON.
+ * [TestClassifier], assign a [Wave], and emit a per-decision +
+ * per-wave summary as JSON.
  *
  * Usage: `java -cp ... InventoryClassifierMainKt <input.csv> <output.json>`
  *
@@ -17,6 +18,7 @@ fun main(args: Array<String>) {
     val output = java.nio.file.Path.of(args[1])
 
     val byDecision = HashMap<String, Int>()
+    val byWave = HashMap<String, Int>()
     val blockedReasons = HashMap<String, Int>()
     var total = 0
 
@@ -40,8 +42,9 @@ fun main(args: Array<String>) {
                 contentSha256 = row[ix.getValue("content_sha256")],
             )
             val d = TestClassifier.classify(record)
-            val bucket = bucketName(d)
-            byDecision[bucket] = (byDecision[bucket] ?: 0) + 1
+            val w = Wave.forRecord(record)
+            byDecision[bucketName(d)] = (byDecision[bucketName(d)] ?: 0) + 1
+            byWave["wave_${w.name}"] = (byWave["wave_${w.name}"] ?: 0) + 1
             if (d is DeletionDecision.Blocked) {
                 val reason = d.reason.take(80)
                 blockedReasons[reason] = (blockedReasons[reason] ?: 0) + 1
@@ -57,12 +60,18 @@ fun main(args: Array<String>) {
             "    ${jsonKey(k)}: $v"
         }
         append("\n  },\n")
+        append("  \"by_wave\": {\n")
+        byWave.entries.sortedBy { it.key }.joinTo(this, separator = ",\n") { (k, v) ->
+            "    ${jsonKey(k)}: $v"
+        }
+        append("\n  },\n")
         append("  \"blocked_reasons\": {\n")
         blockedReasons.entries.joinTo(this, separator = ",\n") { (k, v) ->
             "    ${jsonKey(k)}: $v"
         }
         append("\n  },\n")
-        append("  \"retirement_authorised\": false\n")
+        append("  \"retirement_authorised_a_b_c\": false,\n")
+        append("  \"retirement_authorised_d\": false\n")
         append("}\n")
     }
     java.nio.file.Files.writeString(output, json)

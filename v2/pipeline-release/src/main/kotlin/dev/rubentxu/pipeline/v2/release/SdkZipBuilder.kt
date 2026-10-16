@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.release
 
 import java.io.BufferedOutputStream
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -76,56 +77,72 @@ object SdkZipBuilder {
 
     /**
      * Walk [sdkRepo] and return every regular file whose path contains
-     * `/<version>/` as a folder segment. Returns the absolute paths in
-     * the order they appear on the filesystem; the zip writer preserves
-     * a deterministic order via [inventory]'s sort.
+     * `/<version>/` as a folder segment, paired with the path RELATIVE
+     * to [sdkRepo]. The relative path is what goes into the ZIP entry
+     * name: the Maven layout is `dev/<group>/<artifact>/<version>/<file>`,
+     * which only resolves if the ZIP is extracted with the SDK repo as
+     * the root, NOT with whatever absolute path the build happened to
+     * use. The previous shape leaked `path: "/var/home/rubentxu/.../sdk-repo/..."`
+     * into the ZIP, which `unzip` strips to `dev/...` (the leading `/`
+     * makes it an absolute path entry); the result is a ZIP that is
+     * not directly usable as a local Maven repo.
      */
-    private fun collectVersionedEntries(sdkRepo: Path, version: String): List<Path> {
+    private fun collectVersionedEntries(sdkRepo: Path, version: String): List<EntryRef> {
         if (!Files.isDirectory(sdkRepo)) return emptyList()
         val versionSegment = "/$version/"
+        val sdkRepoReal = sdkRepo.toRealPath()
         return Files.walk(sdkRepo).use { stream ->
-            stream
+            val refs = stream
                 .filter { Files.isRegularFile(it) }
                 .filter { it.toString().contains(versionSegment) }
-                .sorted()
+                .map { absolute ->
+                    EntryRef(
+                        absolutePath = absolute,
+                        relativePath = sdkRepoReal.relativize(absolute.toRealPath()).toString()
+                            .replace(File.separatorChar, '/'),
+                    )
+                }
                 .toList()
+            refs.sortedBy { it.relativePath }
         }
     }
 
     /**
      * Write the SDK ZIP at [target] and return the per-file inventory
-     * (path relative to [sdkRepo], size, sha256) for the BOM manifest.
-     * The inventory is sorted by relative path so the BOM JSON is
-     * byte-deterministic across builds.
+     * (path relative to the SDK repo, size, sha256) for the BOM
+     * manifest. The inventory is sorted by relative path so the BOM
+     * JSON is byte-deterministic across builds.
      */
     private fun writeSdkZip(
         target: Path,
-        entries: List<Path>,
+        entries: List<EntryRef>,
     ): List<BomFileEntry> {
         Files.createDirectories(target.parent)
-        val inventory = entries.map { absolute ->
-            val relative = absolute.toString()
-            val bytes = Files.readAllBytes(absolute)
-            val sha256 = sha256Hex(bytes)
+        val inventory = entries.map { ref ->
+            val bytes = Files.readAllBytes(ref.absolutePath)
             BomFileEntry(
-                path = relative,
+                path = ref.relativePath,
                 size = bytes.size.toLong(),
-                sha256 = sha256,
+                sha256 = sha256Hex(bytes),
             )
-        }.sortedBy { it.path }
+        }
 
         ZipOutputStream(BufferedOutputStream(Files.newOutputStream(target))).use { zip ->
-            for (file in entries) {
-                val name = file.toString()
-                val entry = ZipEntry(name)
-                entry.size = Files.size(file)
+            for (ref in entries) {
+                val entry = ZipEntry(ref.relativePath)
+                entry.size = Files.size(ref.absolutePath)
                 zip.putNextEntry(entry)
-                Files.copy(file, zip)
+                Files.copy(ref.absolutePath, zip)
                 zip.closeEntry()
             }
         }
         return inventory
     }
+
+    private data class EntryRef(
+        val absolutePath: Path,
+        val relativePath: String,
+    )
 
     /**
      * Write the BOM JSON manifest at [target]. The shape is intentionally

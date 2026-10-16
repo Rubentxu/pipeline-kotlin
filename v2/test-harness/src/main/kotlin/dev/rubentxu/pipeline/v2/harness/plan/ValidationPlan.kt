@@ -82,7 +82,19 @@ sealed interface SelectionReason {
 /** Why the plan is refused. Each case names a different operator action. */
 sealed interface SelectionRefusal {
     /** A production file the catalogue has never heard of. Action: add a row or justify the file. */
-    data class UnclassifiedPath(val path: String) : SelectionRefusal
+    /**
+     * A production-shape path the catalogue does not bind.
+     * H1 TODO 1 added [proposedCapability] and [proposedOwner]
+     * so the operator has a starting point for adding a
+     * rule, derived from path conventions (not a per-file
+     * string table). The two fields are heuristic; the
+     * operator replaces them by adding a catalogue row.
+     */
+    data class UnclassifiedPath(
+        val path: String,
+        val proposedCapability: String? = null,
+        val proposedOwner: String? = null,
+    ) : SelectionRefusal
 
     /** A required suite has no runnable target in the policy. Action: restore the suite binding. */
     data class MissingSuite(val capability: String, val suite: String) : SelectionRefusal

@@ -35,14 +35,13 @@
 #   pipelinek-<train>.zip          the candidate bytes
 #   pipelinek-<train>.sbom.json    the SBOM
 #   SHA256SUMS                     the digest authority, covering ALL of the below
-#   HANDOFF.md                     the release notes
-#   git-head.txt                   the commit the ARTEFACT was built from
+#   (HANDOFF.md is release notes, not an uploaded asset)
+#   (git-head.txt stays internal; tag and manifest carry provenance)
 #
-# SHA256SUMS covers every one of those except itself, because a manifest cannot
-# carry its own digest. git-head.txt is included deliberately: §4's "optional
-# provenance attestation" slot is exactly what it is, and a digest authority
-# that omits the provenance record leaves the certifier unable to tie the tag
-# to the bytes through the manifest alone.
+# SHA256SUMS covers the ZIP and SBOM; it cannot list itself. Build provenance
+# stays in the annotated release tag and internal distribution-manifest.json.
+# SDK JARs and BOM are published separately using Maven metadata, never by
+# uploading a source snapshot or a naked, dependency-less SDK JAR.
 
 set -euo pipefail
 
@@ -229,25 +228,25 @@ carries receipts ABOUT a candidate and cannot be the source of its bytes.
 
 ## Published assets
 
-Every asset below carries an entry in \`SHA256SUMS\`, which is itself the only
-asset that does not (a manifest cannot contain its own digest). Resolve digests
-with \`scripts/release/resolve-release-digest.sh\`; never consult a per-asset
-\`<asset>.sha256\` sidecar, which does not exist on a real release.
+The ZIP and SBOM have checksum entries in \`SHA256SUMS\`. This HANDOFF is
+release notes only (not a GitHub Release asset). The build commit is bound to
+the release tag and recorded in the internal distribution manifest. Resolve
+digests with \`scripts/release/resolve-release-digest.sh\`.
 
 | Asset | Role |
 |---|---|
 | \`${EXPECTED_ZIP_NAME}\` | the candidate bytes |
 | \`pipelinek-${PIPELINEK_RELEASE_TRAIN}.sbom.json\` | the SBOM |
-| \`HANDOFF.md\` | these release notes |
-| \`git-head.txt\` | provenance: the artefact build commit |
+| Release notes (not a separate asset) | this handoff |
+| Git tag / internal distribution manifest | artefact provenance |
 | \`SHA256SUMS\` | the digest authority for all of the above |
 
 ## What the certifier must do
 
 1. \`sha256sum -c SHA256SUMS\` against the downloaded assets.
-2. Confirm \`git-head.txt\` equals the commit named above, and that the
-   relationship row above is \`IDENTICAL\` or a \`DESCENDANT\` you have reasoned
-   about. A \`DIVERGENT\` verdict is a hard stop.
+2. Confirm the release tag points to the build commit named above and inspect
+   the internally retained \`git-head.txt\` / \`distribution-manifest.json\`.
+   A \`DIVERGENT\` identity is a hard stop.
 3. Re-run \`./v2/gradlew -p v2 :pipeline-release:releaseGate\` at
    \`${ARTIFACT_BUILD_COMMIT}\` and confirm it admits these same bytes.
 HANDOFF_EOF
@@ -276,9 +275,7 @@ cp "$SBOM" "${EVIDENCE_DIR}/${SBOM_NAME}"
 "${REPO_ROOT}/scripts/release/build-release-manifest.sh" \
     --out "$SUMS" \
     "${EVIDENCE_DIR}/${EXPECTED_ZIP_NAME}" \
-    "${EVIDENCE_DIR}/${SBOM_NAME}" \
-    "${EVIDENCE_DIR}/HANDOFF.md" \
-    "${EVIDENCE_DIR}/git-head.txt"
+    "${EVIDENCE_DIR}/${SBOM_NAME}"
 
 # ----------------------------------------------------------------------------
 # 6. Tag, then confirm the tag landed where the handoff says it would.
@@ -300,10 +297,9 @@ if [ "$TAG_COMMIT" != "$PROSPECTIVE_TAG_COMMIT" ]; then
 fi
 
 # ----------------------------------------------------------------------------
-# 7. Publish. The Prerelease URL is the receipt's permanent address.
-#    PK-NEXT R0.1: the ZIP is uploaded to the GitHub release asset store
-#    (NOT copied into the git tree). The git tree carries only the small
-#    text artefacts (manifest, handoff, git-head).
+# 7. Publish only consumer assets: ZIP (compiled runtime), SBOM, SHA256SUMS.
+#    SDK modules are a distinct Maven publication, not raw GitHub release assets.
+#    HANDOFF becomes the release description; internal provenance stays in Git.
 # ----------------------------------------------------------------------------
 
 gh release create "${PIPELINEK_RELEASE_TAG}" \
@@ -312,33 +308,30 @@ gh release create "${PIPELINEK_RELEASE_TAG}" \
     --notes-file "${EVIDENCE_DIR}/HANDOFF.md" \
     "${EVIDENCE_DIR}/${EXPECTED_ZIP_NAME}" \
     "${EVIDENCE_DIR}/${SBOM_NAME}" \
-    "${EVIDENCE_DIR}/HANDOFF.md" \
-    "${EVIDENCE_DIR}/git-head.txt" \
     "$SUMS"
 
 # Fail closed if the release did not end up carrying the whole set. `gh` exits
 # 0 on a partial upload in some failure modes, and a release missing its digest
 # authority is the defect this script was changed to close.
 PUBLISHED=$(gh release view "${PIPELINEK_RELEASE_TAG}" --json assets --jq '.assets[].name')
-for required in "${EXPECTED_ZIP_NAME}" "${SBOM_NAME}" HANDOFF.md git-head.txt SHA256SUMS; do
-    if ! printf '%s\n' "$PUBLISHED" | grep -Fxq "$required"; then
-        echo "release-pipelinek: published release is missing required asset '${required}'." >&2
-        echo "    DISTRIBUTION_RELEASE_SPEC.md §4 requires it. Published:" >&2
-        printf '      %s\n' "$PUBLISHED" >&2
-        exit 1
-    fi
-done
-echo "release-pipelinek: published asset set verified complete (5 assets)."
+# Exact set comparison: no unanticipated source archives, test evidence or stale SDK JARs.
+EXPECTED_ASSETS=$(printf '%s\n' "${EXPECTED_ZIP_NAME}" "${SBOM_NAME}" SHA256SUMS | LC_ALL=C sort)
+ACTUAL_ASSETS=$(printf '%s\n' "$PUBLISHED" | sed '/^$/d' | LC_ALL=C sort)
+if [ "$ACTUAL_ASSETS" != "$EXPECTED_ASSETS" ]; then
+    echo "release-pipelinek: remote release assets are missing or unexpected:" >&2
+    printf 'expected:\n%s\nactual:\n%s\n' "$EXPECTED_ASSETS" "$ACTUAL_ASSETS" >&2
+    exit 1
+fi
+echo "release-pipelinek: consumer asset set verified complete (3 assets)."
 
 # Commit the SMALL TEXT evidence only. This commit is a *post-publish*
 # documentation commit; it does not move the tag, because the tag was
 # already pushed before this commit. That is exactly the DESCENDANT relationship
 # recorded in HANDOFF.md — reverting this commit does not unpublish the release.
 #
-# The ZIP and the SBOM are explicitly NOT added. PK-NEXT R0.1 puts them in the
-# GitHub release asset store; a `git add "$EVIDENCE_DIR"` would sweep a ~90 MB
-# blob and a ~1.3 MB blob into the repository, because they are staged in the
-# same directory purely as upload sources.
+# The ZIP and the SBOM are explicitly NOT committed. They exist here only to
+# upload the exact admitted bytes and remain excluded by .gitignore. No broad
+# `git add "$EVIDENCE_DIR"` may bring generated binaries into version control.
 git add "${EVIDENCE_DIR}/distribution-manifest.json" \
         "${EVIDENCE_DIR}/HANDOFF.md" \
         "${EVIDENCE_DIR}/git-head.txt" \

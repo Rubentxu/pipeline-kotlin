@@ -1,0 +1,5 @@
+# Do not put internal evidence and historical archive bundles in future Git source archives.
+# This neither disables GitHub's automatic Source code links nor rewrites existing tags.
+evidence/** export-ignore
+docs/v2/07-uat/evidence/** export-ignore
+docs/historico/** export-ignore

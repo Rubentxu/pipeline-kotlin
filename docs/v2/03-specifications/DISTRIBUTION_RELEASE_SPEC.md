@@ -60,6 +60,14 @@ Published alongside:
 - release notes;
 - optional signature/provenance attestation after initial gate.
 
+### 4a. Publicación de SDK/JAR separados de la CLI
+
+El consumidor de plugins recibe bibliotecas compiladas por coordenadas Maven: `*.jar`, `*.pom`, `*.module` y el BOM `pipeline-sdk-bom` como POM. El destino `v2/build/sdk-repo` es solo local; no acredita que los módulos se hayan publicado fuera del workspace. La publicación remota exige un repositorio y credenciales autorizadas y resolución real desde un proyecto externo.
+
+El usuario de la CLI sigue necesitando la distribución JVM `pipelinek-<version>.zip` (lanzadores `bin/` y JAR de runtime `lib/`) según el contrato vigente; un `pipeline-application.jar` simple no es un sustituto ejecutable equivalente. Cualquier retirada del ZIP exige migrar y certificar antes los consumidores SDKMAN, instalador y harness.
+
+No subir como assets GitHub los source ZIP, `-sources.jar`, handoffs internos, XML, logs ni evidencia. Mantener `SHA256SUMS` y SBOM obligatorios; las release notes son texto, no un asset. GitHub agrega sus source archives automáticos de los tags y esta política no puede suprimir sus enlaces.
+
 A per-asset `<asset>.sha256` sidecar is **not** published and must not be
 consulted. That URL returns 404 on real releases; reading it makes any
 digest check fail closed forever. Consumers resolve through `SHA256SUMS`

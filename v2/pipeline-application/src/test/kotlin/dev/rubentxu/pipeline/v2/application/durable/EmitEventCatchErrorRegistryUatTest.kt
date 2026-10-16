@@ -1,4 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
+import org.junit.jupiter.api.Disabled
+
 
 import dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory
 import dev.rubentxu.pipeline.v2.application.SystemClock

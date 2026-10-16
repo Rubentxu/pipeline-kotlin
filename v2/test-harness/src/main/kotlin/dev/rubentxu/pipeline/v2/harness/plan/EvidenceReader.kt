@@ -64,7 +64,19 @@ object EvidenceReader {
         val name = root.getAttribute("name")
         val failures = root.getAttribute("failures").toIntOrNull() ?: 0
         val errors = root.getAttribute("errors").toIntOrNull() ?: 0
+        // Evidence gate. The previous version rejected only on
+        // failures/errors; that admitted a silent-green path: an
+        // XML with tests="0" failures="0" errors="0" (or
+        // tests="5" skipped="5") was counted as a suite that
+        // passed. A report with no executed tests, or with every
+        // test skipped, is NOT evidence that the suite ran.
+        val tests = root.getAttribute("tests").toIntOrNull() ?: 0
+        val skipped = root.getAttribute("skipped").toIntOrNull() ?: 0
         if (failures > 0 || errors > 0) {
+            null
+        } else if (tests <= 0) {
+            null
+        } else if (tests - skipped <= 0) {
             null
         } else {
             name.substringAfterLast('.').ifEmpty { null }

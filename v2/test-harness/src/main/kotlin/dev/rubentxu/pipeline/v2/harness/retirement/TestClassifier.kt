@@ -12,6 +12,15 @@ package dev.rubentxu.pipeline.v2.harness.retirement
  */
 object TestClassifier {
     fun classify(input: TestRecord): DeletionDecision {
+        // Permanent architectural fitness gates are protected by
+        // ADR, not by content. They MUST classify as KeepCoreContract
+        // regardless of heuristics (migrated-pending, UAT name, etc.)
+        // because removing them would silently disable a permanent
+        // internal guarantee. The set is fail-closed: adding a
+        // permanent fitness requires a new ADR.
+        if (isPermanentFitness(input.path)) {
+            return DeletionDecision.KeepCoreContract
+        }
         if (input.migratedPending) {
             // A file marked @Disabled("migrated-pending") is the
             // legitimate DEFER state for a UAT that awaits the
@@ -82,3 +91,18 @@ enum class KindHint {
 }
 
 enum class RunnerHint { V2_GRADLE, LEGACY_NOT_DEFAULT_V2 }
+
+/**
+ * The set of test paths that are permanent architectural fitness
+ * gates and MUST never be retired by any heuristic. Membership is
+ * ADR-protected: `UatLocal005BannedImportsTest` is the only entry
+ * because it is the only V2 UAT that `docs/v2/05-roadmap/RESPONSIBILITY_MIGRATION_ROADMAP.md`
+ * §2/§3 declares as **SE QUEDA** (it is a test of the
+ * codebase, not of the installed binary — JGit ban, hardcoded
+ * git path ban).
+ */
+val PERMANENT_FITNESS_PATHS: Set<String> = setOf(
+    "v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UatLocal005BannedImportsTest.kt",
+)
+
+fun isPermanentFitness(path: String): Boolean = path in PERMANENT_FITNESS_PATHS

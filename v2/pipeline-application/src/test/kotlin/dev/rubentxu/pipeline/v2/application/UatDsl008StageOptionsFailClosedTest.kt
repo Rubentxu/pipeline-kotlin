@@ -1,4 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
+import org.junit.jupiter.api.Disabled
+
 
 import dev.rubentxu.pipeline.v2.dsl.OptionsScope
 import dev.rubentxu.pipeline.v2.dsl.OptionsSpec

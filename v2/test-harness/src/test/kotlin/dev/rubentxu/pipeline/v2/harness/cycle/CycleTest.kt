@@ -40,10 +40,25 @@ class CycleTest {
 
         @Test
         fun `Promoted closes with the close reason`() {
+            // The previous version of this test asserted that
+            // `Promoted + CloseRequested` produced `Refused`. That was
+            // a model error: a promoted cycle that closes is the
+            // success path (per EPHEMERAL_CYCLE_LIFECYCLE_SPEC.md:
+            // `Draft -> Running -> Observed -> Promoted -> Closed`).
+            // `Refused` is for cycles where evidence was
+            // contradictory; `Closed` is for cycles where evidence
+            // was sufficient and the temporary files were released.
             val promoted = CycleState.Promoted(commit)
             val outcome = Cycle.decide(promoted, CycleEvent.CloseRequested("temporary probes retired"))
-            val refused = (outcome as CycleOutcome.Next).state as CycleState.Refused
-            assertEquals("temporary probes retired", refused.reason)
+            val closed = (outcome as CycleOutcome.Next).state as CycleState.Closed
+            assertEquals("temporary probes retired", closed.closeReason)
+        }
+
+        @Test
+        fun `Closed is terminal and any further event is an illegal transition`() {
+            val closed = CycleState.Closed("done")
+            val outcome = Cycle.decide(closed, CycleEvent.CloseRequested("again"))
+            assertTrue(outcome is CycleOutcome.IllegalTransition) { "got $outcome" }
         }
     }
 

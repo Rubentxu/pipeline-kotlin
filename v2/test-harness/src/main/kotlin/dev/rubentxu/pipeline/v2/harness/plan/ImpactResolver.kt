@@ -47,16 +47,24 @@ object ImpactResolver {
     /**
      * Paths that are production code, i.e. paths whose change invalidates a guarantee.
      *
-     * A path is production when it is a `src/main` source or a Gradle build file. Everything else
-     * — `src/test`, `docs/`, `*.md` — selects nothing and refuses nothing.
+     * A path is production when it is a `src/main` source, a Gradle build file, a protobuf
+     * schema, or a `META-INF/services/` resource (ServiceLoader binding). The audit at
+     * 2026-10-16 found two production-impacting extensions missing from this check:
+     *   - `.proto` files declare wire contracts; a schema change is a product change.
+     *   - files under `META-INF/services/` are SPI bindings: renaming or removing a
+     *     ServiceLoader line changes which implementation is loaded at runtime and is
+     *     effectively a product change.
+     * Both extensions are now part of the heuristic. The BQ1 acceptance matrix names
+     * both as adversarial cases (AAT-BQ1-03 alters a META-INF services resource).
      */
     fun isProductionPath(path: String): Boolean {
         if (SELF_OWNED_PREFIXES.any { path.startsWith(it) }) return false
-        return path.endsWith(".gradle.kts") ||
-            (
-                path.contains("/src/main/") &&
-                    (path.endsWith(".kt") || path.endsWith(".java"))
-            )
+        if (path.endsWith(".gradle.kts")) return true
+        if (path.endsWith(".proto")) return true
+        // SPI binding: any resource under META-INF/services/ is a product change.
+        if (path.contains("/META-INF/services/") && !path.endsWith("/")) return true
+        return path.contains("/src/main/") &&
+            (path.endsWith(".kt") || path.endsWith(".java"))
     }
 
     /**

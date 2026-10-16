@@ -199,7 +199,8 @@ class HarnessVerdictApplierTest {
 
     private fun VerdictApplication.toDecision(): DeletionDecision = when (this) {
         is VerdictApplication.Promoted -> DeletionDecision.RedundantWithProof(
-            proofDigest = proofDigest,
+            originalFileSha256 = sha, // the record's contentSha256 == verdict.contentSha256
+            proofDigest = proofDigest, // the substitute evidence hash from the harness
             authority = "pipelinek-release-harness",
         )
         is VerdictApplication.NotApplicable -> DeletionDecision.MigrateExternalPending

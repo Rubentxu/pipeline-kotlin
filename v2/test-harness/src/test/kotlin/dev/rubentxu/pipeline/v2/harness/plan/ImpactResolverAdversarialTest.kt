@@ -219,6 +219,50 @@ class ImpactResolverAdversarialTest {
             "these suites are bound but no test class declares them, so the binding is fiction: $missing",
         )
     }
+
+    // ---- BQ1 audit: production-impacting extensions ----
+    // The previous heuristic missed `.proto` files (wire contracts)
+    // and `META-INF/services/*` (SPI bindings). Both are product
+    // changes: a renamed ServiceLoader line changes the
+    // implementation chosen at runtime; a `.proto` change is a
+    // wire contract change. The audit at 2026-10-16 found both
+    // gaps; these tests pin the corrected heuristic.
+
+    @Test
+    fun `proto schema under src main is a production path`() {
+        assertTrue(ImpactResolver.isProductionPath("v2/pipeline-domain/src/main/proto/order.proto"))
+    }
+
+    @Test
+    fun `proto schema in any module is a production path`() {
+        // The `.proto` extension is a wire contract regardless of
+        // where the file lives. A protobuf in the docs folder is
+        // still a product change.
+        assertTrue(ImpactResolver.isProductionPath("v2/pipeline-events/proto/event.proto"))
+    }
+
+    @Test
+    fun `META-INF services resource is a production path`() {
+        // ServiceLoader bindings live under META-INF/services/.
+        // Renaming a binding changes which implementation is
+        // chosen at runtime.
+        assertTrue(
+            ImpactResolver.isProductionPath(
+                "v2/pipeline-application/src/main/resources/META-INF/services/" +
+                    "dev.rubentxu.pipeline.v2.application.Steps",
+            ),
+        )
+    }
+
+    @Test
+    fun `META-INF services change in any module is a production path`() {
+        assertTrue(
+            ImpactResolver.isProductionPath(
+                "v2/pipeline-scripting-kotlin24/src/main/resources/META-INF/services/" +
+                    "javax.script.ScriptEngineFactory",
+            ),
+        )
+    }
 }
 
 /** Path helper kept explicit so the adversarial tests never depend on ambient state. */

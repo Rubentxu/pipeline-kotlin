@@ -59,7 +59,32 @@ def blocked_v2_paths(inventory_csv: Path) -> list[Path]:
                 and row["module"].startswith("v2/")
             ):
                 paths.append(Path(row["path"]))
+    # Per `docs/v2/05-roadmap/RESPONSIBILITY_MIGRATION_ROADMAP.md` §2
+    # and §3, `UatLocal005BannedImportsTest` is the **only** test
+    # among the 46 inventory UATs that **stays** in this repo: it
+    # is an architectural fitness gate (no JGit imports, no
+    # hardcoded git binary paths), not a UAT of the installed
+    # binary. Marking it `@Disabled("migrated-pending")` would
+    # silently disable a permanent internal guarantee. The
+    # allow-list is fail-closed: any future re-run of this script
+    # MUST refuse to disable this file even if the inventory
+    # heuristic would otherwise select it.
+    paths = [p for p in paths if not is_permanent_fitness(p)]
     return paths
+
+
+# Per `RESPONSIBILITY_MIGRATION_ROADMAP.md` §2/§3 and
+# `F-ARCH-L5-001` (CLI-git not JGit), this is the only V2 test that
+# is an architectural fitness, not an installable UAT. Adding to
+# this set requires a new ADR.
+PERMANENT_FITNESS_TESTS: frozenset[str] = frozenset({
+    "v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UatLocal005BannedImportsTest.kt",
+})
+
+
+def is_permanent_fitness(path: Path) -> bool:
+    posix = path.as_posix()
+    return posix in PERMANENT_FITNESS_TESTS
 
 
 def already_migrated(text: str) -> bool:

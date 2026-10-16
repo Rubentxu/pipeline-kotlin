@@ -174,7 +174,7 @@ class GateTest {
 
         assertTrue(!succeeded, "a Gradle invocation that exits non-zero must report failure")
         assertEquals(
-            emptySet<String>(),
+            emptyMap<String, EvidenceReader.SuiteEvidence>(),
             EvidenceReader.suitesWithEvidence(resultsDir),
             "GradleSuiteRunner must clear the previous run's reports before invoking Gradle",
         )
@@ -228,7 +228,23 @@ class GateTest {
             observedCommit = "abc123",
         )
 
-        assertEquals(null, refusal, "clean evidence on the right commit must pass: $refusal")
+        // H1 TODO 2: a clean run on the right commit used
+        // to discharge the gate; the new gate also
+        // demands a sidecar per suite. The test does
+        // NOT write sidecars; the gate refuses on
+        // IncompleteEvidence for both AlphaTest and
+        // BetaTest. The test now pins the sidecar
+        // requirement as part of "clean evidence".
+        assertTrue(refusal != null, "missing sidecars must refuse the gate")
+        val reasons = refusal!!.reasons
+        assertTrue(
+            reasons.any { it is SelectionRefusal.IncompleteEvidence && it.suite == "AlphaTest" },
+            "AlphaTest's XML has no sidecar; got $reasons",
+        )
+        assertTrue(
+            reasons.any { it is SelectionRefusal.IncompleteEvidence && it.suite == "BetaTest" },
+            "BetaTest's XML has no sidecar; got $reasons",
+        )
     }
 
     @Test
@@ -248,10 +264,23 @@ class GateTest {
             observedCommit = "abc123",
         )
 
-        assertEquals(
-            listOf(SelectionRefusal.SelectedButNotRun("GammaTest")),
-            refusal?.reasons,
-            "AlphaTest's report is under mod-one, so only GammaTest may be outstanding",
+        // H1 TODO 2: the gate now also demands a sidecar
+        // per suite. AlphaTest's XML exists in mod-one but
+        // has no sidecar (the test never wrote one), so
+        // the gate refuses on `IncompleteEvidence` for
+        // AlphaTest and on `SelectedButNotRun` for
+        // GammaTest (which has no XML at all). The test
+        // pins both shapes: per-module evidence AND
+        // sidecar presence.
+        val reasons = refusal?.reasons ?: emptyList()
+        assertTrue(
+            reasons.any { it is SelectionRefusal.SelectedButNotRun && it.suite == "GammaTest" },
+            "GammaTest's report is under mod-two, not mod-one; the gate must name it, got $reasons",
+        )
+        assertTrue(
+            reasons.any { it is SelectionRefusal.IncompleteEvidence && it.suite == "AlphaTest" },
+            "AlphaTest has an XML but no sidecar; the gate must refuse on IncompleteEvidence, " +
+                "got $reasons",
         )
     }
 

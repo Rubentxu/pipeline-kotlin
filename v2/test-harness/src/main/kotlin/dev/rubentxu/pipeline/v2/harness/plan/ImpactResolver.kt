@@ -177,17 +177,23 @@ object ImpactResolver {
      *
      * @param expectedCommit the commit the evidence must have been produced from.
      * @param observedCommit what the binary that produced the evidence reports.
-     * @param executedSuites the suites whose evidence exists for this run.
+     * @param executedSuites the suites whose evidence exists for this
+     *        run, keyed by the binding's filter (simple class
+     *        name). H1 TODO 2: the value carries the
+     *        [EvidenceReader.SuiteEvidence] so the gate can
+     *        demand a sidecar, a fresh binary, and a fidelity
+     *        that discharges the plan.
      */
     fun adjudicate(
         plan: ValidationPlan,
-        executedSuites: Set<String>,
+        executedSuites: Map<String, EvidenceReader.SuiteEvidence>,
         expectedCommit: String,
         observedCommit: String?,
     ): ValidationPlan.Refused? {
         if (plan is ValidationPlan.Refused) return plan
 
         val selected = plan as ValidationPlan.Selected
+        val requiredFidelities = selected.minimumFidelities.map { it.name }.toSet()
         val refusals = buildList {
             if (observedCommit != expectedCommit) {
                 add(
@@ -197,9 +203,42 @@ object ImpactResolver {
                     ),
                 )
             }
-            selected.suites
-                .filter { it.filter !in executedSuites }
-                .forEach { add(SelectionRefusal.SelectedButNotRun(it.filter)) }
+            for (suite in selected.suites) {
+                val evidence = executedSuites[suite.filter]
+                when {
+                    evidence == null -> {
+                        add(SelectionRefusal.SelectedButNotRun(suite.filter))
+                    }
+                    evidence.manifest == null -> {
+                        // The XML exists and passes the
+                        // gates, but the sidecar is
+                        // missing or malformed. H1
+                        // mandate: "Datos incompletos →
+                        // Refused, no passed".
+                        add(SelectionRefusal.IncompleteEvidence(
+                            suite = suite.filter,
+                            missingField = "sidecar (EvidenceManifest JSON)",
+                        ))
+                    }
+                    else -> {
+                        val m = evidence.manifest
+                        if (m.sourceCommit != expectedCommit) {
+                            add(SelectionRefusal.StaleBinary(
+                                suite = suite.filter,
+                                expected = expectedCommit,
+                                observed = m.sourceCommit,
+                            ))
+                        }
+                        if (requiredFidelities.isNotEmpty() && m.hf !in requiredFidelities) {
+                            add(SelectionRefusal.InsufficientFidelity(
+                                suite = suite.filter,
+                                observed = m.hf,
+                                required = requiredFidelities,
+                            ))
+                        }
+                    }
+                }
+            }
         }
         return if (refusals.isEmpty()) null else ValidationPlan.Refused(refusals)
     }

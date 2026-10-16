@@ -67,9 +67,18 @@ object Gate {
             )
         }
 
-        val executed = byModule.keys
-            .flatMap { project -> EvidenceReader.suitesWithEvidence(resultsDirFor(resultsRoot, project)) }
-            .toSet()
+        // H1 TODO 2: the evidence map is keyed by
+        // simple class name (the binding's filter).
+        // We union the maps from every project's
+        // results directory; later writes win on
+        // collision, but the gate reads each suite
+        // exactly once because the plan's suite
+        // filters are unique.
+        val executed: Map<String, EvidenceReader.SuiteEvidence> = byModule.keys
+            .flatMap { project ->
+                EvidenceReader.suitesWithEvidence(resultsDirFor(resultsRoot, project)).toList()
+            }
+            .toMap()
 
         return ImpactResolver.adjudicate(
             plan = plan,

@@ -96,6 +96,50 @@ sealed interface SelectionRefusal {
         val proposedOwner: String? = null,
     ) : SelectionRefusal
 
+    /**
+     * H1 TODO 2: a suite in the plan has no sidecar
+     * evidence at all (no JSON file alongside the JUnit
+     * XML), or the sidecar is missing required fields.
+     * The mandate says "Datos incompletos → Refused, no
+     * passed". The [suite] is the binding's filter; the
+     * refusal names the suite and the missing field so
+     * the operator can re-run with the sidecar writer
+     * enabled.
+     */
+    data class IncompleteEvidence(
+        val suite: String,
+        val missingField: String,
+    ) : SelectionRefusal
+
+    /**
+     * H1 TODO 2: the suite's sidecar evidence declares
+     * a different binary SHA than the expected commit.
+     * The mandate says "SHA/artefacto y HF observado" —
+     * the binary that produced the XML must match the
+     * commit the plan is closing against. A mismatch is
+     * a stale binary; the gate refuses until the build
+     * is re-anchored.
+     */
+    data class StaleBinary(
+        val suite: String,
+        val expected: String,
+        val observed: String,
+    ) : SelectionRefusal
+
+    /**
+     * H1 TODO 2: the suite's sidecar evidence declares
+     * a fidelity that is not in the plan's
+     * `minimumFidelities`. The plan's `minimumFidelities`
+     * is the union of every contract's `minFidelity`
+     * required by the change; a suite that ran at a
+     * lower fidelity discharged nothing.
+     */
+    data class InsufficientFidelity(
+        val suite: String,
+        val observed: String,
+        val required: Set<String>,
+    ) : SelectionRefusal
+
     /** A required suite has no runnable target in the policy. Action: restore the suite binding. */
     data class MissingSuite(val capability: String, val suite: String) : SelectionRefusal
 

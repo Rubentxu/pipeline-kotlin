@@ -4,18 +4,29 @@
   "asset": {
     "name": "pipelinek-0.62.0.zip",
     "archive_root": "pipelinek-0.62.0",
-    "size": 93354630,
-    "sha256": "b14794ec7d5bd1aabd45074d78fcf846a11ce0af6a26ad14d5d927f18b07506c",
+    "size": 93354627,
+    "sha256": "5b78b91a3c4b6ca86010b52a5fd0c9a5920363e21e09a5c59997dbec3c485964",
     "implementation_version": "0.62.0"
   },
   "source": {
-    "git_commit": "f32bd4395709b09790bc4a074fb88416e01b9ac6",
+    "git_commit": "dcb98b1d00a1112cffc736e4272efd3e2f8a5245",
     "git_tag": "v0.62.0-rc5",
     "toolchain": "Gradle candidate-admission (product 0.62.0)"
   },
   "sbom": {
     "name": "pipelinek-0.62.0.sbom.json",
-    "sha256": "0e9c0f4e0f8c5910a0e460eb4e7e9072b35636733c02db5125a677395bb0d1aa"
+    "sha256": "5fc2f5e135cf195ed01b64382fb8fc75b0761bb26a2958b70aa9190e3e4f2894"
   },
-  "sha256sums": null
+  "sdk": {
+    "name": "pipelinek-0.62.0.sdk.zip",
+    "sha256": "7824bf627758635663e5b9045bbc4709c4abc5a9544c179c051d3e4bbbf1863a"
+  },
+  "bom": {
+    "name": "pipelinek-bom-0.62.0.json",
+    "sha256": "91e66acf2adb6aff56dd0ca4cc534466bde3d61c7b55f8ddfb5c00ef22b7b050"
+  },
+  "sha256sums": {
+    "name": "SHA256SUMS",
+    "sha256": "0819d58bd56f74feca5ba3405e17082180e9de05bbfbf982bd14d8c4a1f496ab"
+  }
 }

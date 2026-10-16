@@ -2,9 +2,10 @@
 type: adr
 id: ADR-PK-DF-001
 title: "Una autoridad sobre el conjunto de assets público; conciliación del publisher actual con la política §8"
-status: draft
+status: accepted
 date: 2026-10-16
-deciders: "product owner — pendiente de aceptación"
+accepted: 2026-10-16
+deciders: "Rubentxu (product owner)"
 supersedes: null
 superseded_by: null
 related:
@@ -24,20 +25,41 @@ related:
 
 ## Status
 
-**DRAFT.** This ADR mirrors the proposal at
+**ACCEPTED 2026-10-16.** This ADR mirrors the proposal at
 `docs/pipelinek-delivery-first-2026-10-16/overlay/docs/v2/04-adrs/ADR-PK-DF-001-release-asset-policy-transition.md`
 so it lives at the tracked ADR location and can be referenced by
-existing ADRs (`ADR-0105`, `ADR-PK-QV-004`). The status is `draft`,
-not `accepted`, per the proposal's own "Esta ADR es una propuesta,
-no un mandato de cambiar automáticamente la regla aceptada §8".
+existing ADRs (`ADR-0105`, `ADR-PK-QV-004`).
 
-The **conciliation** the H2 TODO 1 mandate asked for is in the
-section "Conciliación del publisher con §8" below: the H2 work
-on `origin/main` (`efd569fe`, `53ab91c9`, `5e4cea31`) implements
-Option A (the "compatible-today" option). The **decision** between
-Option A and Option B is the user's; this draft records the
-conciliation and the conditions for Option B without prejudging
-the decision.
+**Decision: Option A is accepted as the executable law for the
+H0..H4 closure scope.** The five-asset set per AGENTS.md §8
+(`pipelinek-<v>.zip`, `.sbom.json`, `.sdk.zip`,
+`pipelinek-bom-<v>.json`, `SHA256SUMS`) is the contract for any
+release published from `origin/main` going forward. The local
+`v2/build/sdk-repo` is a fixture, not a remote destination;
+`SDK_PUBLISHED=BLOCKED_EXTERNAL` remains the honest verdict for
+the SDK channel until a remote Maven destination is configured.
+
+**Reconciliation evidence (H2 TODOs 2-5, all DONE at code level):**
+
+- H2 TODO 3 (commit `efd569fe`): `:pipeline-sdk-bom` pins 5
+  contract coordinates in its `api(...)` constraints.
+- H2 TODO 4 (commit `53ab91c9`): `SDK_PUBLISHED=BLOCKED_EXTERNAL`
+  recorded at `docs/v2/06-evidence/sdk-publication-status-2026-10-16.md`.
+- H2 TODO 5 (commit `5e4cea31`): two ephemeral UATs PASS.
+- H2 TODO 2 (commit `4da3d400`): `release-pipelinek.sh` refactored
+  to read the asset set from `DistributionManifest` (5 typed
+  slots: `asset`/`sbom`/`sdk`/`bom`/`sha256sums`). The script
+  uploads `${STAGED_PATHS[@]}` (the manifest-driven set, not a
+  hand-coded list) and verifies every manifest-declared asset is
+  in the published release. New compliance test
+  `scripts/test_release_publisher_assets.sh` (11/11 PASS) locks
+  the §3/§8 contract: no `HANDOFF.md` or `git-head.txt` as
+  release assets, all 5 manifest fields consumed.
+
+**Next concrete step:** v0.62.0-rc6 publication with the §8
+5-asset set (this is the first RC that will satisfy Option A
+end-to-end). The publisher is now correct; the publication is
+gated on the operator's authorization.
 
 ## Context (from the proposal)
 

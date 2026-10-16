@@ -90,6 +90,8 @@ fun main(args: Array<String>) {
  * planner remains a pure decider over an externally-built
  * `LaneSpec` (it doesn't have to know the catalogue exists).
  */
+internal fun realSpecsFromCatalogueForTests(): List<LaneSpec> = realSpecsFromCatalogue()
+
 private fun realSpecsFromCatalogue(): List<LaneSpec> {
     val catalogue = dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue
     return catalogue.CONTRACTS.map { contract ->

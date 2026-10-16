@@ -234,6 +234,27 @@ object ContractCatalogue {
             ),
             minFidelity = Fidelity.HF2,
         ),
+        // ---- UAT fixture: H0 ephemeral cycle close end-to-end ----
+        //
+        // The H0 UAT (docs/pipelinek-delivery-first-2026-10-16/,
+        // TODO 4) exercises the cycle's state machine and the
+        // PromotionEvidenceVerifier in a /tmp/-rooted workspace.
+        // The UAT's substitute contract lives at a path under
+        // `src/main/` so the resolver treats it as a production
+        // change; the contract's minFidelity is HF0 because the
+        // runner's HF0 path is the only fidelity the test-harness
+        // can run without the product classpath. The contract is
+        // fixture-only: the UAT stages the file under the cycle
+        // dir at the path below, and the runner's SHA + catalogue
+        // checks verify it.
+        Contract(
+            capability = "OutputPlane.uat.fixture",
+            owningModule = ":test-harness",
+            sourcePaths = listOf(
+                "v2/pipeline-credentials-api/src/main/kotlin/uat-fixtures/uat-001/SubstituteContract.kt",
+            ),
+            minFidelity = Fidelity.HF0,
+        ),
     )
 
     /** Changes that escalate the required level rather than only selecting contracts. */

@@ -189,6 +189,22 @@ object SuitePolicy {
             ),
             fidelity = Fidelity.HF2,
         ),
+        // H0 UAT fixture binding: the H0 ephemeral-cycle UAT
+        // (docs/pipelinek-delivery-first-2026-10-16/, TODO 4)
+        // exercises the cycle's state machine and the
+        // PromotionEvidenceVerifier at HF0. The binding points
+        // to a real test class so the SuitePolicy fitness
+        // ("every filter resolves to a real test class")
+        // passes. The UAT's contract is `OutputPlane.uat.fixture`
+        // in ContractCatalogue; the runner's HF0 path needs a
+        // suite binding to avoid MissingSuite refusal.
+        SuiteBinding(
+            capability = "OutputPlane.uat.fixture",
+            suites = listOf(
+                TestSuiteId("PromotionEvidenceVerifierTest", ":test-harness"),
+            ),
+            fidelity = Fidelity.HF0,
+        ),
     )
 
     /** The suites for [capability], empty when the capability is unbound. */

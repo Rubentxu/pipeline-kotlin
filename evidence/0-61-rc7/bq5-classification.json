@@ -1,0 +1,20 @@
+{
+  "total": 913,
+  "by_decision": {
+    "migrate_external_pending": 136,
+    "legacy_non_v2": 63,
+    "keep_core_contract": 657,
+    "test_fixture": 57
+  },
+  "by_wave": {
+    "wave_A": 702,
+    "wave_B": 18,
+    "wave_C": 117,
+    "wave_D": 76
+  },
+  "blocked_reasons": {
+
+  },
+  "retirement_authorised_a_b_c": false,
+  "retirement_authorised_d": false
+}

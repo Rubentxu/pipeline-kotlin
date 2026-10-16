@@ -65,40 +65,8 @@ object ImpactResolver {
      *     / `buildSrc/build.gradle.kts`; the explicit `endsWith("/build.gradle.kts")` is kept
      *     as documentation of intent, not as a behavioural change.
      */
-    fun isProductionPath(path: String): Boolean {
-        if (SELF_OWNED_PREFIXES.any { path.startsWith(it) }) return false
-        if (path.endsWith(".gradle.kts")) return true
-        if (path.endsWith(".proto")) return true
-        // SPI binding: any resource under META-INF/services/ is a product change.
-        if (path.contains("/META-INF/services/") && !path.endsWith("/")) return true
-        // Build-distribution resources (QUALITY_VALUE_ADDENDUM.md §BQ1, line 33).
-        // The Gradle wrapper directory: properties and jar. The catalogue's
-        // `Build.composition` `pathPatterns` already claims these paths; without
-        // these two clauses the resolver filters the change out before the
-        // catalogue is consulted and the contract never fires.
-        if (path.startsWith("v2/gradle/wrapper/") &&
-            (path.endsWith(".properties") || path.endsWith(".jar"))
-        ) return true
-        // Version catalogs (Gradle catalog DSL) and gradle.properties at any
-        // module depth. A version-catalog bump changes the resolved version of
-        // every dependency that consumes it; gradle.properties carries daemon
-        // memory, parallel mode, and a range of JVM flags.
-        if (path.endsWith("/libs.versions.toml") ||
-            path.endsWith("/gradle.properties")
-        ) return true
-        // Wrapper scripts. Renaming or removing `gradlew` is a product change
-        // because the entire build invocation flows through it.
-        if (path.endsWith("/gradlew") || path.endsWith("/gradlew.bat")) return true
-        // Any other file under `v2/gradle/`. The audit at 2026-10-16 found that
-        // the build-resource category must be recognised even when the file
-        // name is not on the explicit list above; the resolver's job is to
-        // classify, not to enumerate. A new build resource the catalogue
-        // doesn't bind will then REFUSE (UnclassifiedPath) rather than silently
-        // select nothing.
-        if (path.startsWith("v2/gradle/")) return true
-        return path.contains("/src/main/") &&
-            (path.endsWith(".kt") || path.endsWith(".java"))
-    }
+    fun isProductionPath(path: String): Boolean =
+        ChangedInputClassifier.isProductionPath(path)
 
     /**
      * Resolve [changedPaths] into a plan.
@@ -122,7 +90,32 @@ object ImpactResolver {
         changedPaths: Collection<String>,
         bindings: List<SuiteBinding>,
     ): ValidationPlan {
-        val production = changedPaths.filter { isProductionPath(it) }.sorted()
+        // H1 TODO 1: classify by *semantic effect*, not by substring.
+        // The classifier produces a sealed `ChangedInput`; the
+        // `Production` variants are the ones the catalogue is
+        // asked about. `UnknownProduction` is refused up front
+        // (the path has the surface of a product change but no
+        // rule matches it; the resolver proposes an owner /
+        // capability so the operator can add the rule).
+        val classified = changedPaths.map { ChangedInputClassifier.classify(it) }
+
+        val unknown = classified.filterIsInstance<ChangedInput.UnknownProduction>()
+        if (unknown.isNotEmpty()) {
+            return ValidationPlan.Refused(
+                unknown.map {
+                    SelectionRefusal.UnclassifiedPath(
+                        path = it.path,
+                        proposedCapability = it.proposedCapability,
+                        proposedOwner = it.proposedOwner,
+                    )
+                },
+            )
+        }
+
+        val production = classified
+            .filterIsInstance<ChangedInput.Production>()
+            .map { it.path }
+            .sorted()
         if (production.isEmpty()) {
             // No production change: nothing to certify, and that is a legitimate outcome rather
             // than a refusal, because there is genuinely no guarantee at stake.

@@ -121,6 +121,14 @@ tasks.register<JavaExec>("candidateAdmission") {
     // part of admission and stage it under the probed name — no manual step, and the
     // handoff stops shipping an SBOM hole.
     dependsOn(":pipeline-application:cyclonedxBom")
+    // §8 of the project's DISTRIBUTION-FIRST RELEASE POLICY lists
+    // `pipelinek-<v>.sdk.zip` and `pipelinek-bom-<v>.json` as required
+    // release assets. The new `:pipeline-release:sdkZip` task produces
+    // them from the local Maven repo populated by
+    // `:publishSdkForExternalPlugin`. The candidate manifest records
+    // both, distinct from the SBOM (which is the CycloneDX dependency
+    // inventory, not the SDK distribution).
+    dependsOn("sdkZip")
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("dev.rubentxu.pipeline.v2.release.CandidateAdmissionMainKt")
 
@@ -162,6 +170,24 @@ tasks.register<JavaExec>("candidateAdmission") {
             dist.resolve("bom.json"),
         ).firstOrNull { it.isFile }
 
+        val sdkZip = dist.resolve("pipelinek-$version.sdk.zip").takeIf { it.isFile }
+        val bomJson = dist.resolve("pipelinek-bom-$version.json").takeIf { it.isFile }
+
+        // §8 — the materializer writes SHA256SUMS covering these four
+        // distributable assets. The list is `;`-separated on the CLI.
+        // `covered` is required to be non-empty: a SHA256SUMS file
+        // covering nothing is the kind of unbacked claim the protocol
+        // bans. The materializer refuses to materialise a candidate
+        // whose `covered` is non-empty AND `sha256sums` is null (a
+        // strict invariant enforced at runtime, see
+        // `CandidateMaterializer.materialize`).
+        val covered = listOfNotNull(
+            zip,
+            sbom,
+            sdkZip,
+            bomJson,
+        )
+
         args = listOf(
             zip.absolutePath,
             version,
@@ -170,16 +196,97 @@ tasks.register<JavaExec>("candidateAdmission") {
             candidateTag,
             candidateSequence,
             sbom?.absolutePath ?: "-",
+            sdkZip?.absolutePath ?: "-",
+            bomJson?.absolutePath ?: "-",
             // P0.5 — the repository whose version control state defines this
             // candidate's provenance. RootProject lives in v2/, whose parent
             // holds the .git directory.
             rootProject.projectDir.parentFile.absolutePath,
+            covered.joinToString(";") { it.absolutePath },
         )
     }
 
     // Any non-zero exit means the candidate was refused. Propagate it verbatim:
     // the diagnostic printed by the model is the operator-facing message, and
     // wrapping or swallowing it would hide the reason.
+    isIgnoreExitValue = false
+}
+
+
+/**
+ * Build the SDK distribution ZIP and the SDK BOM JSON manifest.
+ *
+ * §8 of the project's DISTRIBUTION-FIRST RELEASE POLICY requires both
+ * `pipelinek-<v>.sdk.zip` and `pipelinek-bom-<v>.json` as exact release
+ * assets, distinct from the SBOM (which is a CycloneDX dependency
+ * inventory) and from the distribution ZIP (which is the CLI). The SDK
+ * ZIP carries the public contracts (`pipeline-domain`,
+ * `pipeline-scripting-api`, `pipeline-events`, `pipeline-output`,
+ * `pipeline-runtime-api`) and the BOM POM that pins them.
+ *
+ * Source: `<v2>/build/sdk-repo/`, the local Maven repository populated
+ * by `:publishSdkForExternalPlugin`. The builder selects every entry
+ * whose folder ends with `/<version>/` and zips it. The BOM JSON is a
+ * flat manifest of `group:artifact:version` triples plus a per-file
+ * SHA-256 inventory of the ZIP contents.
+ *
+ * The managed-coordinates list MUST mirror
+ * `publishedContractModules` in the root build. The `sdkBomModules`
+ * list (the `:pipeline-sdk-bom` POM itself) is included implicitly
+ * because the builder scans the repo.
+ */
+tasks.register<JavaExec>("sdkZip") {
+    group = "distribution"
+    description = "§8: build pipelinek-<v>.sdk.zip and pipelinek-bom-<v>.json " +
+        "from build/sdk-repo/ (the local Maven repo populated by " +
+        ":publishSdkForExternalPlugin)."
+
+    // The SDKs are published to <v2>/build/sdk-repo/ by this task; the
+    // BOM POM is published by the same task. Without this dependency
+    // the repo is empty and the builder refuses with "no SDK entries
+    // found".
+    dependsOn(":publishSdkForExternalPlugin")
+
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dev.rubentxu.pipeline.v2.release.SdkZipMainKt")
+
+    val distDir = project(":pipeline-application").layout.buildDirectory.dir("distributions")
+    val sdkRepo = rootProject.layout.buildDirectory.dir("sdk-repo")
+
+    // Declared at configuration time so the task is a real producer in
+    // the dependency graph; `candidateAdmission` reads the artifacts
+    // from `distDir` after this task has written them.
+    outputs.dir(distDir)
+    inputs.property("productVersion", project.version.toString())
+
+    // The list of `group:artifact` pairs the BOM pins. Mirrors
+    // `publishedContractModules` in the root build (the five SDK
+    // contracts). The `:pipeline-sdk-bom` POM is in the SDK ZIP
+    // implicitly; the JSON manifest only needs the contract list.
+    val managedCoordinates = listOf(
+        "dev.rubentxu.pipeline.v2:pipeline-domain",
+        "dev.rubentxu.pipeline.v2:pipeline-scripting-api",
+        "dev.rubentxu.pipeline.v2:pipeline-events",
+        "dev.rubentxu.pipeline.v2:pipeline-output",
+        "dev.rubentxu.pipeline.v2:pipeline-runtime-api",
+    )
+
+    doFirst {
+        val version = project.version.toString()
+        val sdkRepoDir = sdkRepo.get().asFile
+        if (!sdkRepoDir.isDirectory) {
+            throw GradleException(
+                "§8 sdkZip: expected SDK repository at $sdkRepoDir but the directory " +
+                    "does not exist. Did :publishSdkForExternalPlugin run?",
+            )
+        }
+        args = listOf(
+            sdkRepoDir.absolutePath,
+            version,
+            distDir.get().asFile.absolutePath,
+        ) + managedCoordinates
+    }
+
     isIgnoreExitValue = false
 }
 

@@ -57,6 +57,23 @@ data class DistributionManifest(
     val source: DistributionSource,
     /** The SBOM describing this artifact, with its own digest. */
     val sbom: DistributionArtifactRef?,
+    /**
+     * SDK distribution (compiled public contracts packaged as a ZIP for
+     * consumers). Optional: build may omit when the SDK has not been
+     * published (e.g. a snapshot only consumed in-process). Distinct from
+     * the SBOM by content: the SDK ZIP carries JARs and POMs, the SBOM
+     * carries a dependency inventory with hashes. Both MAY be present.
+     */
+    val sdk: DistributionArtifactRef?,
+    /**
+     * SDK BOM as a JSON manifest. The Maven BOM POM is part of the SDK
+     * ZIP; this JSON is a consumable summary listing the managed
+     * coordinates and their versions at the time of this build. Distinct
+     * from the SBOM by structure: this is a list of `group:artifact:version`
+     * triples pinned to `rootProject.version`, while the SBOM is a
+     * dependency graph with hashes and licences. Both MAY be present.
+     */
+    val bom: DistributionArtifactRef?,
     /** Checksum authority file covering the asset. */
     @SerialName("sha256sums") val sha256sums: DistributionArtifactRef?,
 ) {

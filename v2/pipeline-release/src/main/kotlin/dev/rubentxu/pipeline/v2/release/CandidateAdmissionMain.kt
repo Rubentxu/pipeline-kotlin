@@ -16,7 +16,7 @@ import kotlin.system.exitProcess
  *
  * ```text
  * usage: candidate-admission <zip> <productVersion> <gitCommit> <outDir>
- *                      [<candidateRef>] [<candidateSequence>] [<sbomPath>] [<repoRoot>]
+ *                      [<candidateRef>] [<candidateSequence>] [<sbomPath>] [<sdkPath>] [<bomPath>] [<repoRoot>]
  * exit  0 = admitted, 1 = refused
  * ```
  */
@@ -24,7 +24,7 @@ fun main(args: Array<String>) {
     if (args.size < 4) {
         System.err.println(
             "usage: candidate-admission <zip> <productVersion> <gitCommit> <outDir> " +
-                "[<candidateRef>] [<candidateSequence>] [<sbomPath>] [<repoRoot>]",
+                "[<candidateRef>] [<candidateSequence>] [<sbomPath>] [<sdkPath>] [<bomPath>] [<repoRoot>]",
         )
         exitProcess(2)
     }
@@ -36,6 +36,18 @@ fun main(args: Array<String>) {
     }
 
     val outDir = Paths.get(args[3])
+    // `covered` is the list of distributable assets (zip, sbom, sdk.zip,
+    // bom) whose SHA-256s are written into SHA256SUMS by the materializer.
+    // The Gradle task passes a `;`-separated list. The list is required
+    // to be non-empty when a `sha256sums` path is provided: an empty
+    // SHA256SUMS file would cover nothing and is the kind of unbacked
+    // claim the manifest protocol bans.
+    val coveredRaw = args.getOrNull(10).orEmpty()
+    val covered: List<Path> = if (coveredRaw.isBlank() || coveredRaw == "-") {
+        emptyList()
+    } else {
+        coveredRaw.split(";").map(Paths::get)
+    }
     val outcome = CandidateAdmission.admit(
         zip = zip,
         productVersion = args[1],
@@ -43,7 +55,10 @@ fun main(args: Array<String>) {
         candidateRef = args.getOrNull(4)?.takeIf { it.isNotBlank() && it != "-" },
         toolchain = "Gradle ${projectVersionOf(args)}",
         sbom = args.getOrNull(6)?.takeIf { it.isNotBlank() && it != "-" }?.let { Paths.get(it) },
-        sha256sums = null,
+        sdk = args.getOrNull(7)?.takeIf { it.isNotBlank() && it != "-" }?.let { Paths.get(it) },
+        bom = args.getOrNull(8)?.takeIf { it.isNotBlank() && it != "-" }?.let { Paths.get(it) },
+        sha256sums = outDir.resolve("SHA256SUMS"),
+        covered = covered,
         candidateSequence = args.getOrNull(5)?.takeIf { it.isNotBlank() }?.toIntOrNull() ?: 1,
         outDir = outDir,
         // P0.5 — the law is enforced from observed version control state, not
@@ -54,7 +69,7 @@ fun main(args: Array<String>) {
             // candidate's provenance. When the caller omits arg 7, the process
             // cwd (Paths.get("") — no global System property read, LFC0-006)
             // is the explicit fallback.
-            Paths.get(args.getOrNull(7) ?: Paths.get("").toAbsolutePath().toString()),
+            Paths.get(args.getOrNull(9) ?: Paths.get("").toAbsolutePath().toString()),
         ),
     )
 

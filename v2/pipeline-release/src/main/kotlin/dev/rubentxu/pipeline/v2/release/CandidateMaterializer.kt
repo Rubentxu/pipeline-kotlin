@@ -50,7 +50,10 @@ object CandidateMaterializer {
         candidateRef: String?,
         toolchain: String,
         sbom: Path?,
+        sdk: Path?,
+        bom: Path?,
         sha256sums: Path?,
+        covered: List<Path> = emptyList(),
         candidateSequence: Int,
         outDir: Path,
     ): MaterializationResult {
@@ -91,7 +94,26 @@ object CandidateMaterializer {
             ),
             source = DistributionSource(gitCommit, candidateRef, toolchain),
             sbom = sbom?.let { DistributionArtifactRef(it.fileName.toString(), sha256Of(it)) },
-            sha256sums = sha256sums?.let { DistributionArtifactRef(it.fileName.toString(), sha256Of(it)) },
+            sdk = sdk?.let { DistributionArtifactRef(it.fileName.toString(), sha256Of(it)) },
+            bom = bom?.let { DistributionArtifactRef(it.fileName.toString(), sha256Of(it)) },
+            // §8 — when the build passes a non-empty `covered` list, the
+            // materializer writes SHA256SUMS at the `sha256sums` path
+            // (overwriting any pre-existing file) and the manifest records
+            // the resulting digest. A pre-existing path with an empty
+            // `covered` is treated as a reference: the manifest records
+            // its digest but the file is not rewritten. A non-empty
+            // `covered` with a null `sha256sums` path is refused:
+            // SHA256SUMS is a contract artifact, not a courtesy.
+            sha256sums = when {
+                covered.isNotEmpty() && sha256sums != null -> {
+                    Files.createDirectories(sha256sums.parent)
+                    writeSha256Sums(sha256sums, covered)
+                    DistributionArtifactRef(sha256sums.fileName.toString(), sha256Of(sha256sums))
+                }
+                covered.isEmpty() && sha256sums != null ->
+                    DistributionArtifactRef(sha256sums.fileName.toString(), sha256Of(sha256sums))
+                else -> null
+            },
         )
 
         val handoff = CandidateHandoff(
@@ -113,6 +135,8 @@ object CandidateMaterializer {
                 builtAt = candidateRef ?: gitCommit,
             ),
             sbom = manifest.sbom?.let { CandidateFileRef(it.name, it.sha256, candidateRef ?: gitCommit) },
+            sdk = manifest.sdk?.let { CandidateFileRef(it.name, it.sha256, candidateRef ?: gitCommit) },
+            bom = manifest.bom?.let { CandidateFileRef(it.name, it.sha256, candidateRef ?: gitCommit) },
         )
 
         val verdict = evaluateCandidateHandoff(handoff, manifest, manifest.asset.sha256)

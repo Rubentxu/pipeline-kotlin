@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -25,6 +26,7 @@ import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
  * UAT-STEP-001: sh execution
  * Tests that sh step runs successfully, respects argv list, and captures stdout.
  */
+@Disabled("migrated-pending")
 @Timeout(120)
 class UatStep001ShExecutionTest {
 

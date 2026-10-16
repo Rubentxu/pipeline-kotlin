@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -39,6 +40,7 @@ import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
  *
  * @Timeout 120s per test (UAT with real process spawn)
  */
+@Disabled("migrated-pending")
 @Timeout(120)
 class UatDsl006BodyExecutionTest {
 

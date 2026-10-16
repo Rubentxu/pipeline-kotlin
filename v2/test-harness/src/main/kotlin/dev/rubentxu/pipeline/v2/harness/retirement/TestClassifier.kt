@@ -12,6 +12,16 @@ package dev.rubentxu.pipeline.v2.harness.retirement
  */
 object TestClassifier {
     fun classify(input: TestRecord): DeletionDecision {
+        if (input.migratedPending) {
+            // A file marked @Disabled("migrated-pending") is the
+            // legitimate DEFER state for a UAT that awaits the
+            // harness. It is owned by the harness and the test is
+            // already skipped at runtime; classify as
+            // MigrateExternalPending so the deletion guard still
+            // refuses retirement and the inventory shows the
+            // transition from Blocked to MigrateExternalPending.
+            return DeletionDecision.MigrateExternalPending
+        }
         if (input.kindHint == KindHint.SUPPORT_OR_ABSTRACT) {
             return DeletionDecision.TestFixture
         }
@@ -55,6 +65,7 @@ data class TestRecord(
     val disabledAnnotations: Int,
     val releaseScaleTag: Boolean,
     val contentSha256: String,
+    val migratedPending: Boolean = false,
 ) {
     init {
         require(path.isNotBlank()) { "path must not be blank" }

@@ -115,9 +115,13 @@ java -cp test-harness/build/libs/test-harness-*.jar:kotlin-stdlib.jar \
 ## Evidencia de tests
 
 ```
-:test-harness:test
+:test-harness:test --rerun-tasks
 20 clases, 139 tests, 0 skipped, 0 failures, 0 errors
-Tiempo wall: ~11s
+Tiempo wall: 39s (warm daemon, sin red)
+Comando: cd v2 && ./gradlew :test-harness:test --rerun-tasks -PpipelineTestForkEvery=0
+JDK: Temurin 21.0.8+9.0.LTS
+Evidencia: 20 XML en test-harness/build/test-results/test/TEST-*.xml
+          (canary: ningún XML preexistente; el run los regeneró)
 ```
 
 Detalle por clase nueva (BQ5 inventory refresh):
@@ -128,6 +132,43 @@ Detalle por clase nueva (BQ5 inventory refresh):
 | WaveTest (preexistente) | 9 | Asignación de oleada por metadata |
 | DeletionGuardWaveTest (preexistente) | 9 | Umbrales por oleada |
 | TestClassifierTest (preexistente, contrato) | 9 | Las 7 ramas del clasificador, no la nueva (migrated-pending se prueba por integración) |
+
+## Evidencia del clasificador
+
+`bq5-classification.json` (SHA-256
+`861cd8cc7f82ed28ac9a0a33ba274affd8941aefc7a10d44bda5b1dad9a8b2ef`),
+producido por:
+
+```bash
+java -cp test-harness/build/libs/test-harness-0.61.0.jar:$KOTLIN_STDLIB \
+  dev.rubentxu.pipeline.v2.harness.retirement.InventoryClassifierMainKt \
+  /tmp/inventory-refreshed.csv /tmp/bq5-classification.json
+```
+
+Contenido:
+
+```json
+{
+  "total": 913,
+  "by_decision": {
+    "migrate_external_pending": 136,
+    "legacy_non_v2": 63,
+    "keep_core_contract": 657,
+    "test_fixture": 57
+  },
+  "by_wave": {
+    "wave_A": 702, "wave_B": 18, "wave_C": 117, "wave_D": 76
+  },
+  "blocked_reasons": {},
+  "retirement_authorised_a_b_c": false,
+  "retirement_authorised_d": false
+}
+```
+
+`blocked_reasons: {}` es vacío por estructura: 0 filas en
+`Blocked` significa 0 razones. La clasificación reconoce las 18
+UATs marcadas como `MigrateExternalPending` (de las 136 totales;
+las otras 118 son `release-scale tag` o `process API` observado).
 
 ## STOP checks
 

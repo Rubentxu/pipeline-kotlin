@@ -43,6 +43,8 @@ class DistributionManifestTest {
             toolchain = "Gradle 9.0 / Kotlin 2.4.10 / JDK 21",
         ),
         sbom = DistributionArtifactRef("pipelinek-$version.sbom.json", "c".repeat(64)),
+        sdk = DistributionArtifactRef("pipelinek-$version.sdk.zip", "e".repeat(64)),
+        bom = DistributionArtifactRef("pipelinek-bom-$version.json", "f".repeat(64)),
         sha256sums = DistributionArtifactRef("SHA256SUMS", "d".repeat(64)),
     )
 

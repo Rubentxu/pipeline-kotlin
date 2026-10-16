@@ -87,7 +87,10 @@ class CandidateIdentityEndToEndTest {
             candidateRef = "v$declared",
             toolchain = "gradle-test",
             sbom = null,
+            sdk = null,
+            bom = null,
             sha256sums = null,
+            covered = emptyList(),
             candidateSequence = 1,
             outDir = tempDir.resolve(out),
         )

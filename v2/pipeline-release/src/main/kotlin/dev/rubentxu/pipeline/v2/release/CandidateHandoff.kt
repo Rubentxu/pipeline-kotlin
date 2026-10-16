@@ -44,6 +44,21 @@ data class CandidateHandoff(
     val artifact: CandidateArtifact,
     @SerialName("distribution_manifest") val distributionManifest: CandidateFileRef,
     val sbom: CandidateFileRef?,
+    /**
+     * SDK distribution (compiled public contracts packaged as a ZIP).
+     * Optional: the build omits it when no SDK has been published for
+     * this candidate. When present, distinct from [sbom] by content
+     * (SDK ZIP carries JARs and POMs; SBOM is a dependency inventory
+     * with hashes).
+     */
+    val sdk: CandidateFileRef?,
+    /**
+     * SDK BOM as a JSON manifest of managed coordinates. Optional:
+     * the build omits it when no BOM has been synthesised. When
+     * present, distinct from [sbom] by structure (BOM is a flat list
+     * of `group:artifact:version` triples; SBOM is a graph).
+     */
+    val bom: CandidateFileRef?,
 ) {
     init {
         require(candidateSequence > 0) {

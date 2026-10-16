@@ -239,8 +239,15 @@ class DistributionIdentityProbeTest {
         fun `every checked-out distribution ZIP has internally agreeing ZIP surfaces`() {
             val dir = distributionsDir()
             assumeTrue(Files.isDirectory(dir), "no distributions built in this checkout")
+            // The `distributions` directory may also carry the SDK ZIP
+            // (named `pipelinek-<v>.sdk.zip`); that is a Maven layout, not
+            // a distribution layout, so its identity surfaces are not the
+            // distribution's. The probe's identity check is a property of
+            // the *CLI* distribution, and the SDK has no CLI.
             val zips = Files.list(dir).use { s ->
-                s.filter { it.fileName.toString().endsWith(".zip") }.toList()
+                s.filter { it.fileName.toString().endsWith(".zip") }
+                    .filter { !it.fileName.toString().endsWith(".sdk.zip") }
+                    .toList()
             }
             assumeTrue(zips.isNotEmpty(), "no distribution ZIP present")
 

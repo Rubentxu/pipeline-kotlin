@@ -46,6 +46,8 @@ class CandidateHandoffTest {
             "2026-09-30T09:00:00Z",
         ),
         sbom = CandidateFileRef("pipelinek-$version.sbom.json", "4".repeat(64), "2026-09-30T09:00:00Z"),
+        sdk = null,
+        bom = null,
     )
 
     private fun manifest(version: String = "0.44.0", assetSha: String = digest) = DistributionManifest(
@@ -59,6 +61,8 @@ class CandidateHandoffTest {
         ),
         source = DistributionSource("2".repeat(40), "v$version", "gradle"),
         sbom = null,
+        sdk = null,
+        bom = null,
         sha256sums = null,
     )
 

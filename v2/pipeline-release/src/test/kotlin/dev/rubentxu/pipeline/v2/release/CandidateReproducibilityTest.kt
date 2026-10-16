@@ -83,7 +83,10 @@ class CandidateReproducibilityTest {
             candidateRef = "v0.44.0",
             toolchain = "gradle-test",
             sbom = null,
+            sdk = null,
+            bom = null,
             sha256sums = null,
+            covered = emptyList(),
             candidateSequence = 1,
             outDir = tempDir.resolve(outName),
         )
@@ -99,7 +102,10 @@ class CandidateReproducibilityTest {
             candidateRef = "v0.44.0-promoted",
             toolchain = "gradle-test",
             sbom = null,
+            sdk = null,
+            bom = null,
             sha256sums = null,
+            covered = emptyList(),
             candidateSequence = 7,
             outDir = tempDir.resolve(outName),
         )
@@ -148,7 +154,10 @@ class CandidateReproducibilityTest {
             candidateRef = "v0.44.0",
             toolchain = "gradle-test",
             sbom = null,
+            sdk = null,
+            bom = null,
             sha256sums = null,
+            covered = emptyList(),
             candidateSequence = 1,
             outDir = tempDir.resolve("out-mismatch"),
         )
@@ -253,7 +262,10 @@ class CandidateReproducibilityTest {
             candidateRef = "v0.43.0",
             toolchain = "gradle-test",
             sbom = null,
+            sdk = null,
+            bom = null,
             sha256sums = null,
+            covered = emptyList(),
             candidateSequence = 1,
             outDir = outDir,
         )

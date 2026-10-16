@@ -1,0 +1,21 @@
+{
+  "schema_version": "pipelinek-distribution-manifest-2",
+  "version": "0.62.0",
+  "asset": {
+    "name": "pipelinek-0.62.0.zip",
+    "archive_root": "pipelinek-0.62.0",
+    "size": 93348320,
+    "sha256": "e5999842dbd9f7df94108ba5be9073689a4395c1b6c6e7c3a93be8c477e34832",
+    "implementation_version": "0.62.0"
+  },
+  "source": {
+    "git_commit": "55180efc698473f1fcd1e2d4f15606287aa8a3d5",
+    "git_tag": "v0.62.0-rc5",
+    "toolchain": "Gradle candidate-admission (product 0.62.0)"
+  },
+  "sbom": {
+    "name": "pipelinek-0.62.0.sbom.json",
+    "sha256": "945b0b384add2ce0e37e94c3cf68da572dc8bc9c68bb36329a1b4302dd6a83b6"
+  },
+  "sha256sums": null
+}

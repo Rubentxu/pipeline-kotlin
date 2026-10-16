@@ -2,9 +2,10 @@
 type: adr
 id: ADR-PK-QV-004
 title: Per-milestone immutable candidate releases after ephemeral cleanup
-status: proposed
+status: accepted
 date: 2026-10-15
-deciders: Rubentxu (pending)
+accepted: 2026-10-16
+deciders: Rubentxu
 related:
   - ADR-0099
   - ADR-0105

@@ -2,14 +2,18 @@
 type: adr
 id: ADR-PK-QV-003
 title: Ephemeral cycle acceptance and evidence-gated retirement of legacy UAT
-status: proposed
+status: accepted
 date: 2026-10-15
-deciders: Rubentxu (pending)
+accepted: 2026-10-16
+deciders: Rubentxu
 related:
   - ADR-0071
   - ADR-0074
   - ADR-0099
   - docs/v2/05-roadmap/RESPONSIBILITY_MIGRATION_ROADMAP.md
+amends:
+  - docs/v2/05-roadmap/RESPONSIBILITY_MIGRATION_ROADMAP.md §4
+  - docs/v2/05-roadmap/RESPONSIBILITY_MIGRATION_ROADMAP.md §10
 ---
 
 # ADR-PK-QV-003 — UAT/E2E/AAT temporales y borrado seguro

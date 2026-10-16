@@ -101,6 +101,38 @@ Para que se considere **cerrado**, el siguiente criterio debe pasar (todo):
 
 Ningún movimiento puede marcarse como **cerrado** sólo porque la documentación haya viajado al harness.
 
+### §4.1 — Enmienda 2026-10-16 (ADR-PK-QV-003)
+
+A partir de la aceptación de `ADR-PK-QV-003`, una UAT clasificada como
+`MigrateExternalPending` puede pasar a `DeleteReady(proof)` y ser
+borrada **únicamente** cuando se cumple, simultáneamente:
+
+- (a) la UAT está marcada `@Disabled("migrated-pending")` y
+  referenciada por una `harnessIssue` abierta;
+- (b) la `harnessIssue` tiene `proofDigest` firmado por el
+  `pipelinek-release-harness` sobre la misma candidata que el
+  tag RC que se pretende liberar;
+- (c) el sustituto del harness ha sido ejecutado contra **el
+  mismo defecto** (mismo `failureKind`, `symptom`, `causalBoundary`,
+  `inputDigest` de la última ejecución RED de la UAT original);
+- (d) el veredicto del harness es `VERIFIED` y está publicado en
+  su `pipelinek-release-harness/docs/uat/<CODE>_MIGRATION_RECEIPT.md`;
+- (e) la retirada se ejecuta en un **único commit atómico** que
+  borra la UAT, su(s) fixture(s) exclusiva(s) y referencia la
+  `harnessIssue` en el mensaje (`Refs: pipelinek-release-harness#N`).
+
+La transición a `DeleteReady(proof)` la ejecuta el `DeletionGuard`
+únicamente cuando `retirementAuthorised=true` y el `proofDigest`
+facilitado coincide con el del recibo del harness. Mientras el
+harness no esté ejecutándose contra este repo, el guard sigue
+rechazando y los `@Disabled("migrated-pending")` permanecen en
+el árbol como estado DEFER legítimo.
+
+Cualquier intento de borrar UAT sin `proofDigest` del harness
+es **prohibido**: el guard lo rechaza, el commit no llega a
+`main` y el agente debe reabrir la `harnessIssue` antes de
+reintentar.
+
 ## 5. Calendario propuesto por fases
 
 | Fase | WUs | Tests afectados |
@@ -152,12 +184,31 @@ El recibo contiene: SHA de la candidata sobre la que se hizo equivalencia, finge
 - Pendiente: añadir el bloque espejo al AGENTS.md del harness (entregable a través del operador al crear el repo).
 - El roadmap del harness mismo es responsabilidad del agente del harness; este documento NO es ese roadmap, es la **tabla de movimientos** desde pipeline-kotlin.
 
+### §9.1 — Estado al 2026-10-16
+
+- **18/46 UATs marcadas `@Disabled("migrated-pending")`** y clasificadas
+  como `MigrateExternalPending` por `TestClassifier` (bq5-classification
+  SHA `861cd8cc…`): 0 en `Blocked`, 136 en `MigrateExternalPending`
+  (las 18 explícitas + 118 inferidas por release-scale/process-API).
+- **0/46 retiradas**. La enmienda §4.1 activa el camino
+  `MigrateExternalPending → DeleteReady(proof)` pero requiere
+  `proofDigest` del harness, que aún no se ejecuta en este entorno.
+- ADRs `ADR-PK-QV-001..004` **aceptados** por el decider el
+  2026-10-16. La habilitación del camino de retirada requiere que
+  el `pipelinek-release-harness` corra contra el ZIP `25bd767f…`
+  y emita veredicto con `proofDigest` por cada UAT migrada.
+- `v0.61.0-rc6` publicado en `main@796b9136` con 6 assets;
+  prerelease inmutable, alcanza al `v0.61.0-rc6` tag. La
+  próxima candidata será `v0.61.0-rc7` cuando el harness emita
+  veredicto sobre `25bd767f…`.
+
 ## 10. Anti-patrones explícitos
 
 NO se hace:
 
 - Mover una UAT al harness **sin antes** haber migrado un sustituto ejecutable que verifique el mismo defecto.
 - **Borrar** una UAT de pipeline-kotlin antes de su migración al harness (debe quedar `@Disabled("migrated…")` con enlace a la issue).
+- **Borrar** una UAT marcada `@Disabled("migrated-pending")` sin el `proofDigest` firmado por el `pipelinek-release-harness` (la enmienda §4.1 exige la equivalencia verificada, no basta con la marca).
 - **Incluir** mensajes "test suite eliminado para ahorrar tiempo" en recibos de release.
 - Copiar el cuerpo de una UAT a un gist o copy-paste en otra UAT; la equivalencia debe ser reproducible por huella (`input + síntoma + tipo + causa`).
 - **Bloquear** desarrollo de pipeline-kotlin esperando migración: las dos líneas avanzan en paralelo; los `@Disabled("migrated…")` se mantienen hasta que la migración es verde.

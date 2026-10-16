@@ -150,7 +150,18 @@ open class ProbeExecutor(
     }
 
     open fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome {
-        val outcome = when (manifest.expectedHF) {
+        // The executor's `execute` returns the *raw* outcome
+        // (success/failure of the verification step). The runner
+        // separately invokes `persist(probe, outcome)` so the
+        // evidence file and its `evidenceDigest` are written by
+        // the same code path whether the executor is the harness
+        // default or a product-side subclass. Splitting the two
+        // also means a subclass that wants to bypass the
+        // persistence step (e.g. an in-memory verifier) is still
+        // forced to declare its `persist` override, and the
+        // `finalise` digest check will fail loudly if the JSON
+        // was never written.
+        return when (manifest.expectedHF) {
             "HF0" -> runHF0(probe, manifest)
             "HF1" -> ProbeOutcome.BlockedExternal(
                 evidenceRef = "",
@@ -160,10 +171,6 @@ open class ProbeExecutor(
             )
             else -> ProbeOutcome.UnsupportedFidelity(manifest.expectedHF)
         }
-        return when (outcome) {
-            is ProbeOutcome.UnsupportedFidelity, is ProbeOutcome.BlockedExternal -> outcome
-            else -> persist(probe, outcome)
-        }
     }
 
     private fun runHF0(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome {
@@ -172,17 +179,73 @@ open class ProbeExecutor(
         // ImpactResolver.resolve and checks the typed result. There
         // is no `bash -c`, no shelled-out process; the answer is
         // computed from the same catalogue the producer uses.
+        //
+        // The audit (2026-10-16, P0): the previous BQ4 vertical
+        // only validated the format of `contentSha256`; a manifest
+        // with an invented digest still produced `Verified`. The
+        // fix here reads the file the manifest points to (always
+        // resolved against the cycle directory, per the
+        // `cycleDirOnly` isolation policy), computes its SHA-256
+        // with a JDK oracle, and requires the digest matches the
+        // manifest's `contentSha256`. A missing file is
+        // `NoEvidence`; a mismatched digest is `Failed`; only a
+        // matching digest on an existing file is `Verified`.
+        //
+        // The SHA check happens BEFORE the catalogue check: a
+        // manifest with a path not in the catalogue still has to
+        // prove the bytes it claims exist. The catalogue check
+        // then validates that the contract the manifest claims
+        // actually owns the path.
         val path = probe.relativePath
+        val target = try {
+            realCycleDir().resolve(path).normalize()
+        } catch (ex: java.io.IOException) {
+            return ProbeOutcome.Failed(
+                evidenceRef = realCycleDir().resolve(path).toString(),
+                reason = "could not resolve '${path}' under cycleDir",
+            )
+        }
+        if (!target.startsWith(realCycleDir())) {
+            return ProbeOutcome.Failed(
+                evidenceRef = target.toString(),
+                reason = "HF0 probe '${probe.id}' escapes the cycle directory: '$target'",
+            )
+        }
+        if (!Files.exists(target)) {
+            return ProbeOutcome.Failed(
+                evidenceRef = target.toString(),
+                reason = "HF0 probe '${probe.id}' file is absent at $target; " +
+                    "the operator must stage the source under cycleDir before prepare()",
+            )
+        }
+        val actualSha = try {
+            sha256HexOfFile(target)
+        } catch (ex: java.io.IOException) {
+            return ProbeOutcome.Failed(
+                evidenceRef = target.toString(),
+                reason = "could not read file at $target: ${ex.message}",
+            )
+        }
+        if (!actualSha.equals(probe.contentSha256, ignoreCase = true)) {
+            return ProbeOutcome.Failed(
+                evidenceRef = target.toString(),
+                reason = "contentSha256 mismatch: manifest=${probe.contentSha256}, " +
+                    "file=$actualSha",
+            )
+        }
+        // The bytes are what the manifest claims. Now verify the
+        // catalogue recognises the path AND the fidelity AND the
+        // contract binding.
         val plan = ImpactResolver.resolve(listOf(path))
         val capabilities = (plan as? ValidationPlan.Selected)?.capabilities
             ?: return ProbeOutcome.Failed(
-                evidenceRef = "",
+                evidenceRef = target.toString(),
                 reason = "ImpactResolver refused the HF0 probe path '$path': " +
                     (plan as? ValidationPlan.Refused)?.reasons?.joinToString() ?: "<no reasons>",
             )
         if (probe.contractId !in capabilities) {
             return ProbeOutcome.Failed(
-                evidenceRef = "",
+                evidenceRef = target.toString(),
                 reason = "HF0 contract mismatch: probe expects capability " +
                     "'${probe.contractId}' but the plan selected $capabilities",
             )
@@ -190,7 +253,7 @@ open class ProbeExecutor(
         val fidelities = (plan as ValidationPlan.Selected).minimumFidelities
         if (ContractCatalogue.Fidelity.HF0 !in fidelities) {
             return ProbeOutcome.Failed(
-                evidenceRef = "",
+                evidenceRef = target.toString(),
                 reason = "HF0 fidelity not in the plan's minimumFidelities: $fidelities",
             )
         }
@@ -198,7 +261,7 @@ open class ProbeExecutor(
         return ProbeOutcome.Verified(evidenceRef = "<pending>")
     }
 
-    private fun persist(probe: ProbeEntry, outcome: ProbeOutcome): ProbeOutcome {
+    internal open fun persist(probe: ProbeEntry, outcome: ProbeOutcome): ProbeOutcome {
         val outDir = realCycleDir().resolve("probes").also {
             Files.createDirectories(
                 it,
@@ -206,7 +269,17 @@ open class ProbeExecutor(
             )
         }
         val outFile = outDir.resolve("${probe.id}.json")
-        val payload = buildString {
+        // The recorded `evidenceDigest` is the SHA-256 of the
+        // body MINUS the evidenceDigest line. To make the strip
+        // on `finalise` byte-for-byte reversible, the body has
+        // its last data line ending in `,\n` (the comma that
+        // will precede the evidenceDigest line) and then a
+        // closing `\n}\n` that is NOT part of the recorded
+        // digest. The runner's regex strips exactly the
+        // `,\n  "evidenceDigest": "DIGEST"\n` substring (or its
+        // single-line equivalent); the leading newline of the
+        // substring is the same one the executor emits.
+        val body = buildString {
             append("{\n")
             append("  \"probeId\": \"${probe.id}\",\n")
             append("  \"contractId\": \"${probe.contractId}\",\n")
@@ -220,12 +293,16 @@ open class ProbeExecutor(
             } else {
                 append("  \"reason\": null\n")
             }
-            append("}\n")
         }
-        Files.writeString(outFile, payload)
+        val initialDigest = sha256Hex(body)
+        // Concatenate the evidenceDigest line as a standalone
+        // JSON line, then the closing brace. The recorded
+        // digest covers the bytes before the
+        // `,\n  "evidenceDigest":` substring; the runner strips
+        // that exact substring on `finalise`.
+        val finalBody = body + ",\n  \"evidenceDigest\": \"$initialDigest\"\n}\n"
+        Files.writeString(outFile, finalBody)
         val evidenceRef = outFile.toRealPath().toString()
-        // The decider requires a non-blank evidenceRef; replay the
-        // outcome with the now-known path.
         val persisted: ProbeOutcome = when (outcome) {
             is ProbeOutcome.Verified -> ProbeOutcome.Verified(evidenceRef)
             is ProbeOutcome.Failed -> ProbeOutcome.Failed(evidenceRef, outcome.reason)
@@ -257,6 +334,31 @@ open class ProbeExecutor(
 private fun String.escapeJson(): String =
     this.replace("\\", "\\\\").replace("\"", "\\\"")
         .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+
+/**
+ * SHA-256 of a file, returned as lowercase 64-char hex. Streams
+ * the file in 8 KB chunks so the digest is bounded by constant
+ * memory regardless of file size. The shape matches the
+ * product-side `Sha256.ofFile` so the cycle's `contentSha256`
+ * field round-trips with the same wire format.
+ *
+ * The harness re-implements this here because it is
+ * product-agnostic and cannot import `:pipeline-domain`. The
+ * implementation uses [MessageDigest] directly so a JDK upgrade
+ * is the only thing that can change the digest output.
+ */
+internal fun sha256HexOfFile(path: Path): String {
+    val md = MessageDigest.getInstance("SHA-256")
+    Files.newInputStream(path).use { stream ->
+        val buffer = ByteArray(8 * 1024)
+        while (true) {
+            val read = stream.read(buffer)
+            if (read <= 0) break
+            md.update(buffer, 0, read)
+        }
+    }
+    return md.digest().joinToString("") { "%02x".format(it) }
+}
 
 /**
  * SHA-256 of a string, returned as lowercase 64-char hex. The wire

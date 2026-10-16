@@ -146,6 +146,7 @@ dependencies {
     implementation(project(":pipeline-output"))
     implementation(project(":pipeline-output-store"))
     implementation(project(":pipeline-event-harness"))
+    implementation(project(":test-harness"))
     implementation(project(":pipeline-scripting-kotlin24"))
     implementation(project(":pipeline-scripting-api"))
     implementation(project(":pipeline-step-sdk:api"))

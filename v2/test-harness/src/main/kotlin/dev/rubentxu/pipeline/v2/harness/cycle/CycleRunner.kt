@@ -4,6 +4,13 @@ import kotlinx.serialization.json.Json
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
+import java.security.MessageDigest
+
+private fun sha256HexOfString(text: String): String {
+    val md = MessageDigest.getInstance("SHA-256")
+    val bytes = md.digest(text.toByteArray(Charsets.UTF_8))
+    return bytes.joinToString("") { "%02x".format(it) }
+}
 
 /**
  * Runner for an ephemeral acceptance test cycle.
@@ -175,16 +182,22 @@ class CycleRunner(
             ?: error("runProbes requires a parsed manifest; call prepare() first")
         val outcomes = mutableListOf<ProbeOutcome>()
         for (probe in parsed.probes) {
-            val outcome = executor.execute(probe, parsed)
+            val rawOutcome = executor.execute(probe, parsed)
+            // Persist the raw outcome only when the executor
+            // signals "I have not written evidence yet" via the
+            // `<pending>` sentinel. Executors that already wrote
+            // their own JSON (HF1 in-process, future product
+            // adapters) return a real `evidenceRef` and the
+            // runner trusts that path. The `finalise` digest
+            // check then confirms the file is intact; if the
+            // executor returned a fake `evidenceRef`, the check
+            // fails loudly.
+            val outcome = if (rawOutcome.evidenceRef == "<pending>") {
+                executor.persist(probe, rawOutcome)
+            } else {
+                rawOutcome
+            }
             outcomes += outcome
-            // Translate to the decider event. UnsupportedFidelity
-            // and BlockedExternal pass exitCode as 0 so the
-            // decider does not mis-classify them as probe
-            // failures; the cycle reaches Observed/Closed without
-            // any "failed" probe, and the recorded outcome tells
-            // the operator what actually happened. The decider's
-            // existing gates still apply (a non-empty
-            // accumulator is required to promote).
             val event = when (outcome) {
                 is ProbeOutcome.UnsupportedFidelity -> CycleEvent.ProbeFinished(
                     exitCode = 0,
@@ -262,6 +275,22 @@ class CycleRunner(
             "cycleDir must be an existing directory; got $cycleDir"
         }
         val realCycle = cycleDir.toRealPath()
+        // P0 close-out (2026-10-16, audit): every persisted
+        // evidence file carries an `evidenceDigest` field with
+        // the SHA-256 of the body excluding that field. Before
+        // deletion, recompute the digest and refuse if the file
+        // has been modified after persistence. The check uses
+        // `recomputeBodyDigest` (the runner has its own
+        // hex-of-file helper, see end of file) so the harness
+        // does not depend on `:pipeline-domain`.
+        val probesDir = realCycle.resolve("probes")
+        if (Files.isDirectory(probesDir)) {
+            Files.list(probesDir).use { stream ->
+                stream.filter { it.toString().endsWith(".json") }.forEach { jsonFile ->
+                    validateEvidenceDigest(jsonFile)
+                }
+            }
+        }
         // Recursive delete of the cycle dir, anchored on its real
         // path. The walk stays inside the cycle dir because the
         // executor never writes outside it; if a probe persisted
@@ -280,9 +309,6 @@ class CycleRunner(
                     val real = try {
                         path.toRealPath()
                     } catch (ex: java.io.IOException) {
-                        // The path no longer exists; nothing to
-                        // delete. The walker shouldn't return
-                        // missing entries, but be defensive.
                         return@forEach
                     }
                     if (!real.startsWith(realCycle)) {
@@ -296,6 +322,43 @@ class CycleRunner(
             }
         }
         return state
+    }
+
+    /**
+     * Recompute the `evidenceDigest` recorded in a persisted
+     * evidence JSON and refuse if the file's bytes no longer
+     * match. The persisted body has the `evidenceDigest` field
+     * last; we strip the trailing field and digest the rest.
+     * Mismatch raises an error; the cycle is not deleted.
+     */
+    private fun validateEvidenceDigest(jsonFile: java.nio.file.Path) {
+        val text = Files.readString(jsonFile)
+        val match = EVIDENCE_DIGIT_RE.find(text)
+            ?: error("evidence file $jsonFile has no evidenceDigest field; refusing to delete")
+        val recordedDigest = match.groupValues[1]
+        val bodyWithoutDigest = text.removeRange(match.range.first, match.range.last + 1)
+        val computed = sha256HexOfString(bodyWithoutDigest)
+        if (!computed.equals(recordedDigest, ignoreCase = true)) {
+            error(
+                "evidence file $jsonFile was modified after persistence: " +
+                    "recorded=$recordedDigest, actual=$computed; refusing to delete",
+            )
+        }
+    }
+
+    companion object {
+        // Matches the LAST data line plus the closing brace and
+        // the trailing newline, i.e. `,\n  "evidenceDigest":
+        // "DIGEST"\n}\n`. The executor's `persist` writes the
+        // body ending in `,\n` and then appends the line plus
+        // `\n}\n`. Stripping the entire matched substring leaves
+        // exactly the body that was hashed on persistence (which
+        // did not include the closing brace). The regex is
+        // anchored on the comma so the leading newline of the
+        // body's last data line stays with the body.
+        private val EVIDENCE_DIGIT_RE = Regex(
+            ",\\n  \"evidenceDigest\":\\s*\"([0-9a-fA-F]{64})\"\\n\\}\\n",
+        )
     }
 
     private fun transition(event: CycleEvent): CycleOutcome {

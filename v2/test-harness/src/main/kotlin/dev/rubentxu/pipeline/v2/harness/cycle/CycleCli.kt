@@ -68,7 +68,7 @@ fun main(args: Array<String>) {
     val manifest = runner.manifest
         ?: error("prepare returned Running but manifest is null; this is a defect")
 
-    val executor = ProbeExecutor(cycleDir = cycleDir)
+    val executor = ProbeExecutorDiscovery.resolve(cycleDir = cycleDir)
     val outcomes = runner.runProbes(executor)
 
     // The cycle's terminal state is decided by the decider, not by

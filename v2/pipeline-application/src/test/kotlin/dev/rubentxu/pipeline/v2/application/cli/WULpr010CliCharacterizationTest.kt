@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Disabled
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.Test
 import java.io.File
@@ -55,6 +56,7 @@ import java.util.concurrent.TimeUnit
  * the test ran. If a future change makes the test fail, the fix must be
  * INTENTIONALLY (i.e. close the gap) and the receipt must explain why.
  */
+@Tag("installed-contract")
 @Timeout(value = 120, unit = TimeUnit.SECONDS)
 class WULpr010CliCharacterizationTest {
 

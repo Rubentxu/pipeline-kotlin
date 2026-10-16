@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.DisplayName
@@ -67,6 +68,7 @@ import org.junit.jupiter.api.Timeout
  * at `docs/v2/07-uat/R4_WU_R4_5_INSTALLED_DIST_CANARY_RECEIPT.md` documents
  * the original BLOCKED state and the re-enable evidence.
  */
+@Tag("installed-contract")
 @Timeout(value = 10, unit = TimeUnit.MINUTES)
 @DisplayName("R4 / WU-R4.5 — cross-CLI observability verbs against installDist")
 class R4ObservabilityCliInstallDistCanaryTest {

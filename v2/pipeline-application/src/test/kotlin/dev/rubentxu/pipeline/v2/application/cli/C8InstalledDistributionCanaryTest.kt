@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import dev.rubentxu.pipeline.v2.application.support.CliRun
 import dev.rubentxu.pipeline.v2.application.support.OwnedSubprocess
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -59,6 +60,7 @@ import java.util.concurrent.TimeUnit
  *
  * See `docs/v2/07-uat/C8_WORKSPACE_ROOT_DELETION_RECEIPT.md`.
  */
+@Tag("installed-contract")
 @Timeout(value = 15, unit = TimeUnit.MINUTES)
 class C8InstalledDistributionCanaryTest {
 

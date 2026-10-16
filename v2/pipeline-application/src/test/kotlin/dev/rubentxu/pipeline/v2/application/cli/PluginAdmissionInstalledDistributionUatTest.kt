@@ -14,6 +14,7 @@ import java.util.jar.JarFile
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
@@ -72,6 +73,7 @@ import org.junit.jupiter.api.io.TempDir
  * freshly constructed artifact in another — and it asserts on discrete observations: an exit code
  * and a composition line. Nothing here reads a duration, a size or an ordering.
  */
+@Tag("installed-contract")
 @Timeout(value = 10, unit = TimeUnit.MINUTES)
 class PluginAdmissionInstalledDistributionUatTest {
 

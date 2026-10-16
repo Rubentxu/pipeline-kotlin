@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application.cli
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Timeout
 import java.io.File
 import java.nio.file.Files
@@ -27,6 +28,7 @@ import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
  *
  * Runs against the real installDist binary (HF2), like WU-LPR-010.
  */
+@Tag("installed-contract")
 @Timeout(10, unit = TimeUnit.MINUTES)
 class WULpr011ResumeLifecycleUatTest {
 

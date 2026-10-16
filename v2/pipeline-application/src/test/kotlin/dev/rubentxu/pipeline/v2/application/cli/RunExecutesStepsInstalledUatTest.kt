@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
@@ -60,6 +61,7 @@ import org.junit.jupiter.api.Timeout
  *   C8InstalledDistributionCanaryTest).
  * - Per-verb observability (covered by R4ObservabilityCliInstallDistCanaryTest).
  */
+@Tag("installed-contract")
 @Timeout(value = 5, unit = TimeUnit.MINUTES)
 @DisplayName("R4 / WU-R4.0.0 — installed distribution runs a pipeline end-to-end")
 class RunExecutesStepsInstalledUatTest {

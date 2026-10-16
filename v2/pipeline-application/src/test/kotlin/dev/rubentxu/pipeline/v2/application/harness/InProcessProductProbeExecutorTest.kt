@@ -2,7 +2,9 @@ package dev.rubentxu.pipeline.v2.application.harness
 
 import dev.rubentxu.pipeline.v2.dsl.pipeline
 import dev.rubentxu.pipeline.v2.harness.cycle.CycleRunner
+import dev.rubentxu.pipeline.v2.harness.cycle.OracleRef
 import dev.rubentxu.pipeline.v2.harness.cycle.ProbeOutcome
+import dev.rubentxu.pipeline.v2.harness.cycle.PromotionEvidence
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -286,7 +288,16 @@ class InProcessProductProbeExecutorTest {
         )
         runner.runProbes(executor)
         runner.observeAll(observedCommit = "0123456789abcdef0123456789abcdef01234567")
-        runner.requestPromote(replacementEvidence = "permanent-contract:rec")
+        runner.requestPromote(
+            evidence = PromotionEvidence.PermanentContract(
+                contractId = "test.rec",
+                boundCommit = "0123456789abcdef0123456789abcdef01234567",
+                sourcePath = "test/Contract.kt",
+                contentDigest = "0".repeat(64),
+                fidelity = "HF0",
+                oracle = OracleRef.Fitness("test.rec", ":test-harness"),
+            ),
+        )
         runner.requestClose("done")
         runner.finalise()
         // Runner-owned paths are gone: the probes/ evidence

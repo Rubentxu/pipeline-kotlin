@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Timeout
 import java.io.File
 import java.nio.file.Files
@@ -49,6 +50,7 @@ import java.time.Duration
  * subcommand and [OwnedSubprocess] for concurrent stdout/stderr
  * drain + tree reap.
  */
+@Tag("installed-contract")
 @Timeout(10, unit = java.util.concurrent.TimeUnit.MINUTES)
 class WURp023ObservationModesUatTest {
 

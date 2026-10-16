@@ -51,6 +51,36 @@ BUILD_SYSTEM_PREFIXES = ("v2/gradle/", "v2/buildSrc/", "v2/config/")
 # `just fitness`, which runs the catalogue --check).
 HARNESS_DIR = "v2/test-harness/"
 HARNESS_SUITE = "scripts/test_gen_test_harness_catalogue.py"
+# The critical-surface declaration is a shared authority: the catalogue generator
+# validates it against the tree and this planner reports which surfaces a change
+# touches. One file, two consumers, no second table.
+SURFACES_FILE = ROOT / "v2" / "test-harness" / "surfaces.json"
+
+
+def load_surfaces(path: pathlib.Path = SURFACES_FILE) -> dict:
+    """Return the declared surface map, or {} when the declaration is absent.
+
+    Absent is not an error here: the planner still plans tests. The catalogue
+    generator is the tool that fails closed on a missing declaration.
+    """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data.get("surfaces") or {}
+
+
+def surface_of(module: str, surfaces: dict) -> str | None:
+    """Declared critical surface of a module path, or None."""
+    name = module.strip("/")
+    for surface, patterns in sorted(surfaces.items()):
+        for pattern in patterns:
+            if pattern.endswith("*"):
+                if name.startswith(pattern[:-1]):
+                    return surface
+            elif name == pattern:
+                return surface
+    return None
 
 
 def _is_docs(path: str) -> bool:
@@ -253,6 +283,13 @@ def plan(files: list[str], root: pathlib.Path, *, profile: str = "dev") -> dict:
             if _module_has_build(root, consumer):
                 gradle.add(f"{gradle_path(consumer)}:test")
 
+    # Which critical surfaces does this change touch? Declared in
+    # v2/test-harness/surfaces.json; reported so a reviewer (and the L-MERGE
+    # receipt) can see coverage rather than infer it.
+    surface_map = load_surfaces()
+    covered = sorted({s for s in (surface_of(m, surface_map)
+                                  for m in touched_modules) if s})
+
     return {
         "gradle_tasks": sorted(gradle),
         "python_suites": sorted(python_suites),
@@ -262,6 +299,8 @@ def plan(files: list[str], root: pathlib.Path, *, profile: str = "dev") -> dict:
         "profile": profile,
         "touched_modules": sorted(touched_modules),
         "consumers": sorted(set(consumers)),
+        "surfaces": [] if full_gate else covered,
+        "surfaces_all": full_gate,
     }
 
 
@@ -293,6 +332,10 @@ def format_text(result: dict) -> str:
         lines.append("gradle plan: v2/gradlew -p v2 " + " ".join(result["gradle_tasks"]))
     if result.get("consumers"):
         lines.append("consumers re-run: " + ", ".join(result["consumers"]))
+    if result.get("surfaces_all"):
+        lines.append("critical surfaces: ALL (full round gate)")
+    elif result.get("surfaces"):
+        lines.append("critical surfaces touched: " + ", ".join(result["surfaces"]))
     for suite in result["python_suites"]:
         lines.append(f"python suite: python3 {suite}")
     for path in result["unclassified"]:

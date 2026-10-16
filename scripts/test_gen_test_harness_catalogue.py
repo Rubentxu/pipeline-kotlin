@@ -127,6 +127,9 @@ class RuleTests(unittest.TestCase):
         self.gate_commands = gate_commands
         self.gate_budget = int(gate_budget)
         self.uat_excludes = uat_excludes
+        # The surface map must cover exactly the fixture's modules, or the stale
+        # pattern rule (V9) fires for a reason unrelated to the case under test.
+        self.declared_modules = list(modules)
 
     def _patch_introspection(self):
         """Replace `just`/planner subprocesses with deterministic fixtures.
@@ -165,6 +168,10 @@ class RuleTests(unittest.TestCase):
 
         mod._just = fake_just
         mod.impact_plan = fake_plan
+        # V9 would otherwise fail every case for the same reason (the fixture
+        # modules are not in the real surface map); the map is patched so each case
+        # observes only the rule it is about.
+        mod.load_surfaces = lambda *a, **k: ({"fixture": self.declared_modules}, {})
         # The fixture tree has no planner script; production_modules only needs
         # build files, which _repo writes.
         return mod
@@ -258,6 +265,87 @@ class RuleTests(unittest.TestCase):
         (self.root / "scripts" / "test_empty.py").write_text("# no tests here\n")
         catalogue, violations = self._collect()
         self.assertTrue(any("V5" in v for v in violations), violations)
+
+
+class SurfaceRules(unittest.TestCase):
+    """V9: every module belongs to exactly one declared critical surface.
+
+    The mandate names CLI, plugins, credentials, events and the Output Plane as
+    surfaces that must not lose their regression coverage. A module that matches
+    no surface, a declared pattern that matches no module, and an auxiliary
+    declaration that has grown production code are all findings.
+    """
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = pathlib.Path(self.tmp.name)
+        self.mod = load_module()
+
+    def _fixture(self, modules=("mod-a", "mod-b"), main=True):
+        for name in modules:
+            module_dir = self.root / "v2" / name
+            (module_dir / "build.gradle.kts").parent.mkdir(parents=True, exist_ok=True)
+            (module_dir / "build.gradle.kts").write_text("tasks.test { }\n")
+            if main:
+                (module_dir / "src" / "main" / "kotlin").mkdir(parents=True)
+        for _name, rel, _owns in self.mod.ROLES:
+            path = self.root / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if not path.exists():
+                path.write_text("# fixture authority\n")
+
+    def _collect(self, surfaces, auxiliary=None):
+        mod = self.mod
+        mod.ROOT = self.root
+        budgets = {recipe: budget for _l, recipe, budget, _r in mod.GATES}
+
+        def fake_just(*args):
+            if args and args[0] == "--show":
+                recipe = args[1]
+                budget = budgets.get(recipe)
+                if budget is None:
+                    raise RuntimeError(f"unknown recipe {recipe}")
+                return (f'@{recipe} budget="{budget}":\n'
+                        "    timeout {{ budget }} v2/gradlew -p v2 check\n")
+            if args[:2] == ("--evaluate", "uat_excludes"):
+                return "*UatLocal*\n"
+            raise RuntimeError(f"unexpected just call {args}")
+
+        mod._just = fake_just
+        mod.impact_plan = lambda module: {
+            "gradle_tasks": [":%s:test" % module.split("/")[-1]],
+            "python_suites": [], "unclassified": [], "docs_only": False}
+        mod.load_surfaces = lambda *a, **k: (surfaces, auxiliary or {})
+        return mod.collect()
+
+    def test_module_outside_the_map_fails(self):
+        """Mutation: drop V9 -> a new module arrives with tests but no declared
+        surface, and nobody notices it left the coverage map."""
+        self._fixture(modules=("mod-a", "mod-b", "mod-c"))
+        _cat, violations = self._collect({"fixture": ["mod-a", "mod-b"]})
+        self.assertTrue(any("V9" in v and "mod-c" in v for v in violations), violations)
+
+    def test_stale_surface_pattern_fails(self):
+        """Mutation: ignore unmatched patterns -> a renamed module leaves a map
+        that claims coverage it no longer has."""
+        self._fixture()
+        _cat, violations = self._collect({"fixture": ["mod-a", "mod-b", "gone-*"]})
+        self.assertTrue(any("stale declaration" in v for v in violations), violations)
+
+    def test_auxiliary_with_production_code_fails(self):
+        """Mutation: accept an auxiliary declaration blindly -> production code
+        escapes the surface map by being called auxiliary."""
+        self._fixture(modules=("mod-a",))
+        _cat, violations = self._collect({"fixture": ["mod-a"]},
+                                         auxiliary={"mod-a": "claims to be aux"})
+        self.assertTrue(any("production code" in v for v in violations), violations)
+
+    def test_declared_map_is_published_in_the_catalogue(self):
+        self._fixture()
+        cat, violations = self._collect({"fixture": ["mod-a", "mod-b"]})
+        self.assertEqual(violations, [])
+        self.assertEqual(cat["surfaces"], {"fixture": ["v2/mod-a", "v2/mod-b"]})
 
 
 class CheckModeTests(unittest.TestCase):

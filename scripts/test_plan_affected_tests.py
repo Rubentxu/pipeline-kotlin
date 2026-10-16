@@ -92,6 +92,27 @@ class Mapping(PlannerHarness):
         self.assertEqual(dev["profile"], "dev")
         self.assertEqual(merge["profile"], "merge")
 
+    def test_surfaces_report_which_critical_surface_a_change_touches(self) -> None:
+        """Claim: the plan names the declared surface it touches.
+
+        Mutation: drop the surface report -> the must-not-lose-coverage surfaces
+        exist only in a hand-written table, and a change touching credentials looks
+        like any other change.
+        """
+        r = self.plan(["v2/pipeline-domain/src/main/kotlin/X.kt"])
+        self.assertEqual(r["surfaces"], ["runtime"])
+        self.assertFalse(r["surfaces_all"])
+        r = self.plan(["v2/pipeline-application/src/main/kotlin/X.kt"])
+        self.assertEqual(r["surfaces"], ["cli"])
+        r = self.plan(["v2/pipeline-events/src/main/kotlin/X.kt"])
+        self.assertEqual(r["surfaces"], ["events"])
+
+    def test_full_gate_covers_every_surface(self) -> None:
+        r = self.plan(["v2/settings.gradle.kts"], profile="merge")
+        self.assertTrue(r["surfaces_all"])
+        self.assertEqual(r["surfaces"], [],
+                         "'all' is stated by surfaces_all, not implied by an empty list")
+
     def test_merge_profile_does_not_recurse_without_bound(self) -> None:
         """Mutation: take the transitive closure -> the merge gate becomes the
         round gate and the ladder loses its middle rung."""

@@ -12,8 +12,9 @@ Mandato: B1.3/B1.4/B1.5 del documento *Evolución del test-harness*. Regla que l
 
 | Fichero | Naturaleza | Qué responde |
 |---|---|---|
-| `catalogue.json` | **GENERADO** (`just catalogue`) | qué módulos tienen código productivo y qué plan de impacto los cubre, qué gates existen con qué presupuesto, qué roles tienen autoridad única, cuántas suites hay |
+| `catalogue.json` | **GENERADO** (`just catalogue`) | qué módulos tienen código productivo y qué plan de impacto los cubre, qué gates existen con qué presupuesto, qué roles tienen autoridad única, **qué superficie crítica** cubre cada módulo, cuántas suites hay |
 | `CATALOGUE.md` | **GENERADO** | la misma información en tabla legible |
+| `surfaces.json` | escrito a mano | la **declaración** de superficies críticas (CLI, plugins, credenciales, eventos, Output Plane, runtime, scripting, release) y de los módulos auxiliares. Es autoridad compartida: el generador la valida contra el árbol y el planificador de impacto lee **el mismo fichero** para decir qué superficies toca un cambio |
 | `README.md` | escrito a mano | esta página: frontera, cómo se regenera y qué se verifica |
 
 No edites los generados a mano: `just fitness` falla si el catálogo commiteado no coincide
@@ -42,7 +43,7 @@ rol por su nombre, el generador se niega y no escribe nada (V2).
 ## Reglas que el generador verifica (fail-closed, no avisos)
 
 ```text
-V1  todo módulo con `src/main` tiene plan de impacto no vacío (se lo pregunta al
+V1  todo módulo con build file tiene plan de impacto no vacío (se lo pregunta al
     propio ImpactResolver por su CLI: no hay un segundo mapa de impacto aquí)
 V2  cada rol resuelve a exactamente un fichero existente; ninguna otra pieza
     reclama un nombre de rol
@@ -53,11 +54,27 @@ V4  la frontera UAT (`shard.excludes`) está enlazada a la variable del justfile
 V5  cada suite de `scripts/` existe y declara al menos un `def test_`
 V6  ninguna receta anida Gradle (más de una invocación por fase)
 V7  un módulo con `forkEvery`/`maxParallelForks` declara su motivo
+V9  cada módulo pertenece a exactamente una superficie crítica declarada (o a
+    `auxiliary_modules` con motivo); una superficie declarada que ya no casa con
+    ningún módulo es drift, y un auxiliar con `src/main` es un defecto
 ```
 
-Ejemplo de por qué V1 importa: un módulo nuevo con código productivo y sin plan de impacto
-haría que un cambio en él **no planificara nada**; hoy eso es un fallo del gate, no un
-silencio.
+Ejemplo de por qué V1/V9 importan: un módulo nuevo sin plan de impacto haría que un cambio en él
+**no planificara nada**; un módulo nuevo fuera del mapa de superficies perdería su cobertura de
+regresión sin que nadie lo notara. Hoy ambas cosas fallan el gate. Escribir V9 encontró en el
+árbol real un módulo que nadie había declarado (`pipeline-sdk-bom`), una doble declaración
+(`pipeline-step-sdk/api`) y una entrada obsoleta.
+
+## Clases de prueba y dónde corre cada una
+
+| Clase | Qué es | Dónde corre |
+|---|---|---|
+| **pura** | suites herméticas `scripts/test_*.py` (HF0: sin proceso de producto) | `just harness` (todas) y el gate afectado |
+| **in-process** | tests Kotlin de módulo (`v2/<módulo>/src/test`) | el gate del módulo, consumidores y `check` |
+| **instalada / durable** | batería UAT (CLI instalada, durabilidad, compatibilidad) | **harness externo**; excluida de los gates locales por la frontera `uat_excludes`, cuyos patrones publica el catálogo |
+
+Esta separación es la que evita aplicar `forkEvery=1` (y los costes de arranque de JVM) a
+pruebas que no lo necesitan: sólo `pipeline-application` lo declara, con motivo (V7).
 
 ## Uso
 

@@ -164,8 +164,13 @@ def xml_snapshot(results_dir: pathlib.Path | None, run_started_at: float) -> dic
 
 
 def run_once(task: str, repo_root: pathlib.Path, *, profile: bool,
-             timeout_s: int, runner=None) -> dict:
+             timeout_s: int, runner=None, rerun: bool = False) -> dict:
     argv = ["v2/gradlew", "-p", "v2", task, "--console=plain"]
+    if rerun:
+        # Measuring EXECUTION cost (not the warm no-op path) requires forcing the
+        # task to run: without it the sample reports up-to-date counts and the XML
+        # it reads is carried over from an earlier run.
+        argv.append("--rerun-tasks")
     if profile:
         argv.append("--profile")
     started = time.monotonic()
@@ -211,7 +216,8 @@ def percentile(values: list[float], p: float) -> float | None:
     return round(float(ordered[low] + (ordered[high] - ordered[low]) * fraction), 3)
 
 
-def summarize(task: str, samples: list[dict], xml: dict, *, require_work: bool) -> dict:
+def summarize(task: str, samples: list[dict], xml: dict, *, require_work: bool,
+              rerun: bool = False) -> dict:
     walls = [s["wall_s"] for s in samples]
     executed = [s.get("executed") or 0 for s in samples]
     failures = sum(1 for s in samples if s["exit_code"] != 0 or s["result"] == "FAILED")
@@ -245,12 +251,14 @@ def summarize(task: str, samples: list[dict], xml: dict, *, require_work: bool) 
         },
         "xml": xml,
         "require_work": require_work,
+        "rerun": rerun,
     }
 
 
 def format_report(task: str, samples: list[dict], summary: dict) -> str:
     lines = [f"BASELINE {task}  runs={summary['runs']}"
-             + (" (small-sample median, not a statistical P50)" if summary["small_sample"] else "")]
+             + (" (small-sample median, not a statistical P50)" if summary["small_sample"] else "")
+             + ("  [--rerun-tasks: execution cost]" if summary.get("rerun") else "")]
     for i, s in enumerate(samples, 1):
         split = f"executed={s.get('executed')} cache={s.get('from_cache')} up-to-date={s.get('up_to_date')}"
         prof = ""
@@ -282,6 +290,10 @@ def main(argv=None, *, runner=None) -> int:
     ap.add_argument("--out", help="write the full JSON report here")
     ap.add_argument("--profile", action="store_true",
                     help="pass --profile and parse the timings breakdown")
+    ap.add_argument("--rerun", action="store_true",
+                    help="pass --rerun-tasks: measure EXECUTION cost instead of the "
+                         "warm no-op path (the XML freshness oracle then reports "
+                         "rewritten files, not carried-over ones)")
     ap.add_argument("--timeout", type=int, default=1800)
     ap.add_argument("--results-dir", help="override the JUnit results directory")
     ap.add_argument("--require-work", action="store_true",
@@ -293,7 +305,7 @@ def main(argv=None, *, runner=None) -> int:
         return 2
 
     report = {"tool": "scripts/measure-harness-baseline.py",
-              "repo_root": str(ROOT), "tasks": []}
+              "repo_root": str(ROOT), "tasks": [], "rerun": args.rerun}
     refusal = False
     failed = False
     for task in args.task:
@@ -303,11 +315,12 @@ def main(argv=None, *, runner=None) -> int:
         for _ in range(args.runs):
             run_started = time.time()
             sample = run_once(task, ROOT, profile=args.profile, timeout_s=args.timeout,
-                              runner=runner)
+                              runner=runner, rerun=args.rerun)
             sample["xml"] = xml_snapshot(results_dir, run_started)
             samples.append(sample)
         xml = samples[-1]["xml"] if samples else {}
-        summary = summarize(task, samples, xml, require_work=args.require_work)
+        summary = summarize(task, samples, xml, require_work=args.require_work,
+                            rerun=args.rerun)
         if summary["verdict"] == "FAIL":
             failed = True
         if args.require_work and not summary["work_executed"]:

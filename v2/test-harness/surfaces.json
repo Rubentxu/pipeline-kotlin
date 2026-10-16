@@ -1,0 +1,18 @@
+{
+  "schema": "pipelinek-test-harness-surfaces-1",
+  "note": "Declared authority: which critical surface each module belongs to. The catalogue generator validates that every module with a build file matches exactly one surface and that no declared pattern is stale; the impact planner reads this same file to report which surfaces a change touches. A new module that matches nothing fails `just fitness` instead of silently losing its regression coverage.",
+  "surfaces": {
+    "cli": ["pipeline-application"],
+    "plugins": ["pipeline-step-sdk/*", "pipeline-binding-factory"],
+    "credentials": ["pipeline-credentials-*"],
+    "events": ["pipeline-events", "pipeline-events-store", "pipeline-event-harness", "pipeline-artefacts-local"],
+    "output-plane": ["pipeline-output", "pipeline-output-store"],
+    "runtime": ["pipeline-runtime", "pipeline-runtime-api", "pipeline-domain", "pipeline-protocol"],
+    "scripting": ["pipeline-scripting-api", "pipeline-scripting-kotlin24", "pipeline-testkit"],
+    "release": ["pipeline-release"]
+  },
+  "auxiliary_modules": {
+    "pipeline-architecture-tests": "architecture fitness only: no src/main, therefore no product surface",
+    "pipeline-sdk-bom": "BOM/platform module: declares constraints only, no production code"
+  }
+}

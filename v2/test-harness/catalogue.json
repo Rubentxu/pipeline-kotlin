@@ -54,18 +54,6 @@
   "home": "v2/test-harness/",
   "modules": [
     {
-      "fork_justification": null,
-      "fork_policy": null,
-      "impact": {
-        "gradle_tasks": [
-          "check"
-        ],
-        "python_suites": []
-      },
-      "module": "v2/buildSrc",
-      "owner": "pipeline-kotlin maintainers"
-    },
-    {
       "fork_justification": "forkEvery = 1 is deliberate while the installed-CLI UAT wedge has no structural fix (PK-0-57-RC1, recorded in .agent/TESTING-STATE.md); the module's UAT classes are excluded from local gates via shard.excludes, so the fork cost is paid only by the harness",
       "fork_policy": "forkEvery=1, maxParallelForks=1",
       "impact": {
@@ -76,7 +64,22 @@
         "python_suites": []
       },
       "module": "v2/pipeline-application",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "cli"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-architecture-tests:detekt",
+          ":pipeline-architecture-tests:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-architecture-tests",
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "auxiliary: architecture fitness only: no src/main, therefore no product surface"
     },
     {
       "fork_justification": null,
@@ -89,7 +92,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-artefacts-local",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "events"
     },
     {
       "fork_justification": null,
@@ -102,7 +106,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-binding-factory",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "plugins"
     },
     {
       "fork_justification": null,
@@ -116,7 +121,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-credentials-api",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "credentials"
     },
     {
       "fork_justification": null,
@@ -129,7 +135,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-credentials-executor",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "credentials"
     },
     {
       "fork_justification": null,
@@ -142,7 +149,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-credentials-local",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "credentials"
     },
     {
       "fork_justification": null,
@@ -155,7 +163,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-credentials-multipart",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "credentials"
     },
     {
       "fork_justification": null,
@@ -169,7 +178,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-domain",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "runtime"
     },
     {
       "fork_justification": null,
@@ -182,7 +192,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-event-harness",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "events"
     },
     {
       "fork_justification": null,
@@ -197,7 +208,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-events",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "events"
     },
     {
       "fork_justification": null,
@@ -210,7 +222,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-events-store",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "events"
     },
     {
       "fork_justification": null,
@@ -224,7 +237,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-output",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "output-plane"
     },
     {
       "fork_justification": null,
@@ -237,7 +251,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-output-store",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "output-plane"
     },
     {
       "fork_justification": null,
@@ -250,7 +265,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-protocol",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "runtime"
     },
     {
       "fork_justification": null,
@@ -263,7 +279,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-release",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "release"
     },
     {
       "fork_justification": null,
@@ -276,7 +293,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-runtime",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "runtime"
     },
     {
       "fork_justification": null,
@@ -290,7 +308,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-runtime-api",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "runtime"
     },
     {
       "fork_justification": null,
@@ -304,7 +323,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-scripting-api",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "scripting"
     },
     {
       "fork_justification": null,
@@ -317,7 +337,22 @@
         "python_suites": []
       },
       "module": "v2/pipeline-scripting-kotlin24",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "scripting"
+    },
+    {
+      "fork_justification": null,
+      "fork_policy": null,
+      "impact": {
+        "gradle_tasks": [
+          ":pipeline-sdk-bom:detekt",
+          ":pipeline-sdk-bom:test"
+        ],
+        "python_suites": []
+      },
+      "module": "v2/pipeline-sdk-bom",
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "auxiliary: BOM/platform module: declares constraints only, no production code"
     },
     {
       "fork_justification": null,
@@ -330,7 +365,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-testkit",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "scripting"
     },
     {
       "fork_justification": null,
@@ -346,7 +382,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-step-sdk/api",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "plugins"
     },
     {
       "fork_justification": null,
@@ -361,7 +398,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-step-sdk/files",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "plugins"
     },
     {
       "fork_justification": null,
@@ -376,7 +414,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-step-sdk/http",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "plugins"
     },
     {
       "fork_justification": null,
@@ -391,7 +430,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-step-sdk/junit",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "plugins"
     },
     {
       "fork_justification": null,
@@ -406,7 +446,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-step-sdk/runtime",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "plugins"
     },
     {
       "fork_justification": null,
@@ -421,7 +462,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-step-sdk/scm-git",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "plugins"
     },
     {
       "fork_justification": null,
@@ -436,7 +478,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-step-sdk/utilities",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "plugins"
     },
     {
       "fork_justification": null,
@@ -451,7 +494,8 @@
         "python_suites": []
       },
       "module": "v2/pipeline-step-sdk/workflow-control",
-      "owner": "pipeline-kotlin maintainers"
+      "owner": "pipeline-kotlin maintainers",
+      "surface": "plugins"
     }
   ],
   "policies": [
@@ -632,7 +676,7 @@
       },
       {
         "path": "scripts/test_gen_test_harness_catalogue.py",
-        "tests": 19
+        "tests": 23
       },
       {
         "path": "scripts/test_install_pipelinek.py",
@@ -640,11 +684,11 @@
       },
       {
         "path": "scripts/test_measure_harness_baseline.py",
-        "tests": 21
+        "tests": 22
       },
       {
         "path": "scripts/test_plan_affected_tests.py",
-        "tests": 22
+        "tests": 24
       },
       {
         "path": "scripts/test_regenerate_step_inventory.py",
@@ -659,8 +703,54 @@
         "tests": 17
       }
     ],
-    "python_tests": 388,
+    "python_tests": 395,
     "python_total": 23
+  },
+  "surfaces": {
+    "cli": [
+      "v2/pipeline-application"
+    ],
+    "credentials": [
+      "v2/pipeline-credentials-api",
+      "v2/pipeline-credentials-executor",
+      "v2/pipeline-credentials-local",
+      "v2/pipeline-credentials-multipart"
+    ],
+    "events": [
+      "v2/pipeline-artefacts-local",
+      "v2/pipeline-event-harness",
+      "v2/pipeline-events",
+      "v2/pipeline-events-store"
+    ],
+    "output-plane": [
+      "v2/pipeline-output",
+      "v2/pipeline-output-store"
+    ],
+    "plugins": [
+      "v2/pipeline-binding-factory",
+      "v2/pipeline-step-sdk/api",
+      "v2/pipeline-step-sdk/files",
+      "v2/pipeline-step-sdk/http",
+      "v2/pipeline-step-sdk/junit",
+      "v2/pipeline-step-sdk/runtime",
+      "v2/pipeline-step-sdk/scm-git",
+      "v2/pipeline-step-sdk/utilities",
+      "v2/pipeline-step-sdk/workflow-control"
+    ],
+    "release": [
+      "v2/pipeline-release"
+    ],
+    "runtime": [
+      "v2/pipeline-domain",
+      "v2/pipeline-protocol",
+      "v2/pipeline-runtime",
+      "v2/pipeline-runtime-api"
+    ],
+    "scripting": [
+      "v2/pipeline-scripting-api",
+      "v2/pipeline-scripting-kotlin24",
+      "v2/pipeline-testkit"
+    ]
   },
   "uat_frontier": {
     "declared_in": "justfile:uat_excludes",

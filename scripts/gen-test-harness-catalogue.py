@@ -123,6 +123,39 @@ JUSTIFIED_FORK_POLICY = {
         "so the fork cost is paid only by the harness"),
 }
 
+# --- declared critical surfaces (V9) ---------------------------------------
+# The declaration lives in `v2/test-harness/surfaces.json` because the impact
+# planner reads the SAME file: one authority, two consumers (no second table).
+SURFACES_FILE = CATALOGUE_DIR / "surfaces.json"
+
+
+def load_surfaces(path: pathlib.Path = SURFACES_FILE) -> tuple[dict, dict]:
+    """Return (surfaces, auxiliary_modules) from the declared authority file."""
+    if not path.is_file():
+        raise RuntimeError(f"surface declaration missing: {path.relative_to(ROOT)}")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"surface declaration unreadable: {path}: {exc}") from exc
+    surfaces = data.get("surfaces") or {}
+    if not surfaces:
+        raise RuntimeError(f"surface declaration lists no surface: {path}")
+    return surfaces, (data.get("auxiliary_modules") or {})
+
+
+def surface_of(module: str, surfaces: dict) -> str | None:
+    """Return the declared critical surface of a module path, or None."""
+    name = module.removeprefix("v2/")
+    for surface, patterns in sorted(surfaces.items()):
+        for pattern in patterns:
+            if pattern.endswith("*"):
+                if name.startswith(pattern[:-1]):
+                    return surface
+            elif name == pattern:
+                return surface
+    return None
+
+
 POLICIES = (
     ("test authoring, hang protocol, budgets",
      "AGENTS.md §V2 TESTING RULES"),
@@ -152,14 +185,14 @@ def _just(*args: str) -> str:
     return proc.stdout
 
 
-def production_modules(root: pathlib.Path) -> list[str]:
-    """Modules with production code, as repo-relative `v2/<module>` paths."""
+def all_modules(root: pathlib.Path) -> list[str]:
+    """Every Gradle module directory (with or without production code)."""
     modules = []
     for build in sorted(root.glob("v2/*/build.gradle.kts")):
         modules.append(build.parent.relative_to(root).as_posix())
     for build in sorted(root.glob("v2/pipeline-step-sdk/*/build.gradle.kts")):
         modules.append(build.parent.relative_to(root).as_posix())
-    return [m for m in modules if (root / m / "src" / "main").is_dir()]
+    return [m for m in modules if (root / m).name != "buildSrc"]
 
 
 def impact_plan(module: str) -> dict:
@@ -227,6 +260,7 @@ def fork_policy(module: str) -> str | None:
 def collect() -> tuple[dict, list[str]]:
     """Return (catalogue, violations)."""
     violations: list[str] = []
+    surfaces, auxiliary = load_surfaces()
 
     # V2 — roles resolve to one existing file each; names outside authority.
     role_rows = []
@@ -258,9 +292,11 @@ def collect() -> tuple[dict, list[str]]:
                 f"V2 {rel}: its name claims a harness role outside the declared "
                 "authority (second engine); rename it or declare the role")
 
-    # V1 — every production module has an impact criterion.
+    # V1 — every production module has an impact criterion; V9 — every module is
+    # assigned to exactly one declared surface (or declared auxiliary).
     module_rows = []
-    for module in production_modules(ROOT):
+    for module in all_modules(ROOT):
+        name = module.removeprefix("v2/")
         plan = impact_plan(module)
         if plan.get("unclassified"):
             violations.append(
@@ -269,22 +305,50 @@ def collect() -> tuple[dict, list[str]]:
         if not plan.get("gradle_tasks") and not plan.get("python_suites"):
             violations.append(
                 f"V1 {module}: empty impact plan ({plan}); a change here plans nothing")
+        surface = surface_of(module, surfaces)
+        if surface is None and name not in auxiliary:
+            violations.append(
+                f"V9 {module}: no declared critical surface and not declared "
+                "auxiliary in v2/test-harness/surfaces.json; a new module must not "
+                "arrive outside the coverage map")
+        if surface is not None and name in auxiliary:
+            violations.append(
+                f"V9 {module}: declared both as surface {surface!r} and as auxiliary")
         fork = fork_policy(module)
-        if fork and module.removeprefix("v2/") not in JUSTIFIED_FORK_POLICY:
+        if fork and name not in JUSTIFIED_FORK_POLICY:
             violations.append(
                 f"V7 {module}: fork policy {fork!r} without a declared reason in "
                 "JUSTIFIED_FORK_POLICY")
         module_rows.append({
             "module": module,
             "owner": "pipeline-kotlin maintainers",
+            "surface": surface or f"auxiliary: {auxiliary.get(name, 'undeclared')}",
             "impact": {
                 "gradle_tasks": plan.get("gradle_tasks", []),
                 "python_suites": plan.get("python_suites", []),
             },
             "fork_policy": fork,
-            "fork_justification": JUSTIFIED_FORK_POLICY.get(
-                module.removeprefix("v2/")),
+            "fork_justification": JUSTIFIED_FORK_POLICY.get(name),
         })
+
+    # A declared pattern that matches no module is stale: the map would claim a
+    # coverage it no longer has (renamed or deleted module).
+    for surface, patterns in sorted(surfaces.items()):
+        for pattern in patterns:
+            matched = [m for m in all_modules(ROOT)
+                       if surface_of(m, {surface: [pattern]}) == surface]
+            if not matched:
+                violations.append(
+                    f"V9 surface {surface!r}: declared pattern {pattern!r} matches no "
+                    "module (stale declaration)")
+    for name in sorted(auxiliary):
+        module = f"v2/{name}"
+        if not (ROOT / module).is_dir():
+            violations.append(
+                f"V9 auxiliary {name!r} is declared but does not exist")
+        elif (ROOT / module / "src" / "main").is_dir():
+            violations.append(
+                f"V9 auxiliary {name!r} has production code; it needs a real surface")
 
     # V3/V6 — gates exist, budgets match, one Gradle graph per recipe.
     gate_rows = []
@@ -353,6 +417,9 @@ def collect() -> tuple[dict, list[str]]:
         "roles": role_rows,
         "gates": gate_rows,
         "modules": module_rows,
+        "surfaces": {surface: sorted(
+            m["module"] for m in module_rows if m["surface"] == surface)
+            for surface in sorted(surfaces)},
         "suites": {
             "python": suites,
             "python_total": len(suites),
@@ -393,13 +460,19 @@ def render_markdown(cat: dict) -> str:
                      f"{gate['budget_s']} | {gate['gradle_invocations']} | {via} | "
                      f"{gate['runs']} |\n")
     lines.append("\n## Modules with production code\n\n")
-    lines.append("| Module | Impact (Gradle) | Fork policy | Justification |\n|---"
-                 "|---|---|---|\n")
+    lines.append("| Module | Surface | Impact (Gradle) | Fork policy | Justification |\n")
+    lines.append("|---|---|---|---|---|\n")
     for module in cat["modules"]:
         tasks = ", ".join(f"`{t}`" for t in module["impact"]["gradle_tasks"]) or "—"
         fork = module["fork_policy"] or "default"
         reason = (module["fork_justification"] or "—").split("\n")[0]
-        lines.append(f"| `{module['module']}` | {tasks} | {fork} | {reason} |\n")
+        lines.append(f"| `{module['module']}` | {module['surface']} | {tasks} | "
+                     f"{fork} | {reason} |\n")
+    lines.append("\n## Critical surfaces (declared in `surfaces.json`)\n\n")
+    lines.append("| Surface | Modules |\n|---|---|\n")
+    for surface, modules in cat.get("surfaces", {}).items():
+        joined = ", ".join(f"`{m.removeprefix('v2/')}`" for m in modules) or "—"
+        lines.append(f"| {surface} | {joined} |\n")
     lines.append(f"\n## Suites\n\n- python suites: **{cat['suites']['python_total']}** "
                  f"({cat['suites']['python_tests']} `def test_` bodies)\n")
     lines.append(f"- Kotlin modules with `src/test`: "

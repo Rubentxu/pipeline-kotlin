@@ -113,3 +113,45 @@ propio árbol de procesos (si no, `just`, cuyo cmdline menciona la receta, bloqu
 
 **Suites del harness:** `just harness` → **23 suites, fail=0**. `just fitness` → rc 0
 (registro tool↔suite + `catalogue --check` OK-IDENTICAL).
+
+## 8. Línea base de EJECUCIÓN (no la de overhead)
+
+El bloque §1 midió la ruta cálida sin trabajo (`work_executed=False`): eso es overhead de
+Gradle, útil para rule 2 pero no es "ejecución". El medidor ahora tiene `--rerun` (con
+`--require-work`) para forzar la tarea y exigir que el oráculo de frescura vea XML
+**reescrito**:
+
+```text
+$ python3 scripts/measure-harness-baseline.py --task ':pipeline-domain:test' --runs 3 \
+      --rerun --require-work
+BASELINE :pipeline-domain:test  runs=3 (small-sample median, not a statistical P50)  [--rerun-tasks: execution cost]
+  run 1: exit=0 SUCCESS wall=60.369s executed=8 up-to-date=0
+  run 2: exit=0 SUCCESS wall=22.910s executed=8 up-to-date=0
+  run 3: exit=0 SUCCESS wall=21.586s executed=8 up-to-date=0
+  p50=22.91s p95=56.623s (p95 unreliable below 20 runs) mean=34.955s stdev=22.019s
+  min=21.586s max=60.369s verdict=PASS work_executed=True
+  xml: files=137 rewritten=137 tests=735 failures=0 errors=0 skipped=0 unreadable=0
+```
+
+Lectura honesta: la primera ejecución cuesta 60 s (incluye compilación), las siguientes ~22 s
+(ejecución con clases ya compiladas); la ruta cálida sin trabajo es ~2.1 s (§1). `rewritten=137`
+prueba que los 735 tests son de ESTAS ejecuciones y no XML heredado; `skipped=0`. Con n=3 el P50
+es una mediana pequeña y el P95 lo marca el propio informe como no fiable: no se deriva ningún
+presupuesto de aquí, se publican los números y su etiqueta.
+
+## 9. Superficies críticas (V9) y qué encontró
+
+`v2/test-harness/surfaces.json` declara las superficies que el mandato nombra (CLI, plugins,
+credenciales, eventos, Output Plane, más runtime/scripting/release) y los módulos auxiliares con
+motivo. El generador valida la cobertura y el planificador **lee el mismo fichero** para decir
+qué superficies toca un cambio (`critical surfaces touched: runtime`, etc.). Escribir la regla
+encontró, en el árbol real:
+
+```text
+- V9 v2/pipeline-sdk-bom: ningún módulo lo había declarado (BOM: se declara auxiliar con motivo)
+- V9 v2/pipeline-step-sdk/api: declarado a la vez como superficie (glob plugins) y como auxiliar
+- V9 auxiliary 'pipeline-step-sdk/processor' ya no existe (declaración obsoleta)
+```
+
+Tres defectos reales de un mapa que antes no existía, corregidos en el mismo commit y con tests
+que los reproducen en un árbol hermenéutico.

@@ -284,5 +284,25 @@ class PercentileTests(unittest.TestCase):
         self.assertTrue(summary["p95_reliable"])
         self.assertNotIn("unreliable", mod.format_report(":m:detekt", samples, summary))
 
+    def test_rerun_mode_forces_the_task_and_says_so(self):
+        """Mutation: skip --rerun-tasks -> the sample reports up-to-date counts
+        and the XML it reads belongs to an earlier run (the instrument then calls
+        that a baseline of execution, which it is not)."""
+        mod = load_module()
+        seen = {}
+
+        def runner(argv):
+            seen["argv"] = list(argv)
+            return 0, "BUILD SUCCESSFUL in 1s\n8 actionable tasks: 8 executed"
+
+        sample = mod.run_once(":m:test", pathlib.Path("."), profile=False,
+                              timeout_s=5, runner=runner, rerun=True)
+        self.assertIn("--rerun-tasks", seen["argv"])
+        self.assertEqual(sample["executed"], 8)
+        sample = mod.run_once(":m:test", pathlib.Path("."), profile=False,
+                              timeout_s=5, runner=runner, rerun=False)
+        self.assertNotIn("--rerun-tasks", seen["argv"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

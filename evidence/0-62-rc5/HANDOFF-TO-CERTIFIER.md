@@ -1,9 +1,9 @@
 # v0.62.0-rc5 — Handoff al certifier (pipelinek-release-harness)
 
 **Fecha**: 2026-10-16
-**Estado**: §8-CONFORME — los 5 assets buildable y el manifest los referencia. Listo para `publish_rc_release.py`.
+**Estado**: §8-CONFORME + consumer-verified — los 5 assets buildable, el manifest los referencia, y el SDK ZIP extrae como un repositorio Maven utilizable. Listo para `publish_rc_release.py`.
 **Camino de publicación**: `python3 scripts/publish_rc_release.py` (per AGENTS.md §8 camino único)
-**Origen**: BQ4 v2 (cierre de auditoría externa 2026-10-16) + corrección de build + cierre del gap §8
+**Origen**: BQ4 v2 (cierre de auditoría externa 2026-10-16) + corrección de build + cierre del gap §8 + SdkZipBuilder relative-path fix
 
 ## Identidad del candidato
 
@@ -12,8 +12,8 @@
 | `product_version` | `0.62.0` |
 | `release_train` | `0.62.0` |
 | `candidate_sequence` | `5` |
-| `candidate_id` | `sha256:6fa9a89fde86d957d61747a21b26193bcd7d631692d01f5872a5b5f56c44d5b9` |
-| `source_commit` | `49d4c1b8c407de51570e5b4c346111d48a354d07` |
+| `candidate_id` | `sha256:71678cb5c3f775983cf26ab7e9e174b2a5bd9c175b742b2488422071cfb1eadb` |
+| `source_commit` | `c01e8e5f3771550a0d6e7d6c8b8991d70e3b6100` |
 | `git_tag` | `v0.62.0-rc5` |
 | `archive_root` | `pipelinek-0.62.0` |
 | `implementation_version` | `0.62.0` |
@@ -22,11 +22,11 @@
 
 | Asset | SHA-256 | Tamaño |
 |---|---|---|
-| `pipelinek-0.62.0.zip` | `6fa9a89fde86d957d61747a21b26193bcd7d631692d01f5872a5b5f56c44d5b9` | 89.0M |
-| `pipelinek-0.62.0.sbom.json` | `7154a78633a7963e8eebf538313e680383d40614b1e6f604cee9550061f5ca82` | 1.3M |
-| `pipelinek-0.62.0.sdk.zip` | `76c55194dee8a1af6ee08ba0eb91f66c8d9bc02f0c714ff8cae0f648673296fc` | 2.2M |
-| `pipelinek-bom-0.62.0.json` | `91e66acf2adb6aff56dd0ca4cc534466bde3d61c7b55f8ddfb5c00ef22b7b050` | 22.5K |
-| `SHA256SUMS` | `<digest del archivo en build/candidate/SHA256SUMS>` | 363B |
+| `pipelinek-0.62.0.zip` | `71678cb5c3f775983cf26ab7e9e174b2a5bd9c175b742b2488422071cfb1eadb` | 89.0M |
+| `pipelinek-0.62.0.sbom.json` | `f3d212c4ae2a455816c618261b8d39f1b1680f3fa9436a3f45fa20e5d4a85f64` | 1.3M |
+| `pipelinek-0.62.0.sdk.zip` | `5d0aa6956f66cd77534b0ec300373975907aa4db5953ed9542e72414c88d4b49` | 2.2M |
+| `pipelinek-bom-0.62.0.json` | `83e43e72dbf2d0d88b91168da03332ee6c4509177d1cc1cafa2611e4bdd45a8b` | 22.5K |
+| `SHA256SUMS` | (363B, cubre los 4 assets distribuibles) | |
 
 `SHA256SUMS` contiene las 4 entradas de los assets distribuibles (zip, sbom, sdk.zip, bom) — el formato `sha256sum` estándar, así que `sha256sum -c SHA256SUMS` funciona sin cambios.
 
@@ -66,7 +66,7 @@ Resultado: `candidate admission PASSED` con `provenance: source provenance VERIF
 
 **No se verificó `RUNTIME_VERSION` ni `MANIFEST_VERSION`** (la identity probe marca `INCOMPLETE` para esos dos). El primero requiere ejecutar el binario instalado (lane pesado del harness); el segundo requiere el manifest del JAR de aplicación extraído. Ambos son responsabilidad del harness per el comentario de `CandidateMaterializer.materialize`. El certifier debe verificar `RUNTIME_VERSION` ejecutando el binario.
 
-## Commits incluidos en el SHA `49d4c1b8`
+## Commits incluidos en el SHA `c01e8e5f`
 
 ```
 fe58d574  fix(cycle): BQ4 v3 — close external-audit P0 defects A/B/C/D
@@ -74,7 +74,27 @@ f32bd439  build(test): declare external plugin builds as test task inputs
 6e780224  evidence: stage v0.62.0-rc5 partial candidate for certifier
 dcb98b1d  feat(release): §8 SDK ZIP + bom/sbom split — close releaseGate contract gap
 49d4c1b8  evidence: stage v0.62.0-rc5 §8-conforme (5 assets) for certifier
+132aae00  evidence: refresh v0.62.0-rc5 against HEAD 49d4c1b8
+c01e8e5f  fix(sdk-zip): use repo-relative paths so the ZIP is a usable Maven layout
 ```
+
+`c01e8e5f` es el fix que **consumer-verifica** el SDK ZIP — los SHAs de `dcb98b1d` / `49d4c1b8` no eran utilizables por un consumer real. Antes del fix, `unzip pipelinek-0.62.0.sdk.zip` extraía a un directorio vacío porque las entradas tenían paths absolutos del filesystem (`/var/home/.../sdk-repo/...`) y `unzip` los strip'ea silenciosamente. Después del fix, las entradas son relativas al SDK repo root y la extracción produce un repositorio Maven utilizable.
+
+## Consumer verification (lens `consumer-verification`)
+
+Verificado en un consumer limpio:
+
+```text
+mkdir -p /tmp/sdk-consumer
+cd /tmp/sdk-consumer
+unzip /ruta/pipelinek-0.62.0.sdk.zip
+
+# resultado: dev/rubentxu/pipeline/v2/{pipeline-domain,scripting-api,events,
+# output,runtime-api,sdk-bom}/0.62.0/
+# cada uno con .jar, .pom, .module, .md5, .sha1, .sha256, .sha512
+```
+
+`unzip -p ...pipeline-domain-0.62.0.pom` extrae un POM Maven 4.0.0 válido con `<groupId>dev.rubentxu.pipeline.v2</groupId>` y `<artifactId>pipeline-domain</artifactId>`. Un consumer Kotlin con `mavenLocal()` apuntando a este directorio resuelve las coordenadas correctamente.
 
 `dcb98b1d` es el commit que **cierra el gap §8** que bloqueaba la publicación. `49d4c1b8` regenera la evidencia contra ese commit.
 

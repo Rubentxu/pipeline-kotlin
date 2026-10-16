@@ -55,6 +55,11 @@ include(
     // carries no SQLite schema, no filesystem store and no replay protocol. Not published.
     ":pipeline-events-store",
     ":pipeline-event-harness",
+    // BQ1: pure impact / evidence / validation harness. No dependency on
+    // :pipeline-application or :pipeline-domain — the deciders are total
+    // functions over their inputs. Self-contained, stdlib + serialization
+    // (XML is parsed via DocumentBuilderFactory with XXE disabled).
+    ":test-harness",
     // M1: the Output Plane. Separate from :pipeline-events on purpose — output continuation is
     // an independent order (ADR-M1 D3), and the module graph is what keeps it independent.
     // PUBLISHED CONTRACT: the read side an external consumer (Fabric) needs, and nothing else.

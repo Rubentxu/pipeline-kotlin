@@ -748,13 +748,31 @@ sealed interface ConsoleCliRefusal {
     ) : ConsoleCliRefusal
 }
 
+/**
+ * The multi-line usage for `pipeline console`. Read top-to-bottom: the byte-budgeted
+ * legacy path, the byte-span path, and the per-frame path. Each is mutually
+ * exclusive with the others; the per-frame path's options are listed in the
+ * block under `--frames`.
+ *
+ * The line is intentionally longer than the legacy single-line form: the H3
+ * mandate's "UX observable" requires the operator to see every verb on
+ * `pipelinek console` with no args, not just the byte-budgeted affordance that
+ * shipped in M1-P3. `--frame-limit`, `--after-ordinal`, `--follow`, `--stage`,
+ * `--step`, `--kind` are the per-frame options the R4 console work added; their
+ * presence in the usage line closes the gap between the parser (which accepts
+ * them) and the help text (which previously did not advertise them).
+ */
+internal const val CONSOLE_USAGE_TEXT: String =
+    "Usage: pipeline console --control-dir <path> <runId> <opId> " +
+        "[--max-bytes N] [--after-cursor TOKEN] [--format text|jsonl]\n" +
+        "       | --range FROM:TO [--format text|jsonl]\n" +
+        "       | --frames [--frame-limit N] [--after-ordinal N] [--follow]\n" +
+        "                  [--stage S]... [--step N]... [--kind K]...\n" +
+        "                  [--format text|jsonl]"
+
 /** One stable line per refusal, so a script can branch on the reason. */
 fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal) {
-    ConsoleCliRefusal.MissingArgument ->
-        "Usage: pipeline console --control-dir <path> <runId> <opId> " +
-            "[--max-bytes N] [--after-cursor TOKEN] " +
-            "[--format text|jsonl] " +
-            "| --range FROM:TO [--format text|jsonl]"
+    ConsoleCliRefusal.MissingArgument -> CONSOLE_USAGE_TEXT
     is ConsoleCliRefusal.UnknownOption -> "Error: unknown option: ${refusal.option}"
     is ConsoleCliRefusal.UnexpectedArgument -> "Error: unexpected extra argument: ${refusal.value}"
     is ConsoleCliRefusal.NotAnInteger ->

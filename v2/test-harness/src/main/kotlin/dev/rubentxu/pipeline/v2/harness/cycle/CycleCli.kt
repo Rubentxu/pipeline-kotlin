@@ -25,6 +25,8 @@ import java.nio.file.attribute.PosixFilePermissions
  *     --manifest <path-to-manifest.json> \
  *     [--cycle-dir <path>] \
  *     [--source-sha <40-hex>] \
+ *     [--repo-root <path>]      (default: current dir)
+ *     [--oracle-ledger <path>]  (default: refuse all oracles)
  *     [--dry-run]
  *
  * Exit codes:
@@ -52,10 +54,16 @@ fun main(args: Array<String>) {
         PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")),
     )
 
+    val oracleLedger: OracleLedger = parsed.oracleLedgerPath
+        ?.let { JsonOracleLedger.load(it) }
+        ?: EmptyOracleLedger
+
     val runner = CycleRunner(
         cycleId = parsed.cycleId,
         manifestPath = parsed.manifestPath,
         cycleDir = cycleDir,
+        oracleLedger = oracleLedger,
+        repoRoot = parsed.repoRoot ?: Paths.get(""),
     )
 
     val prepareOutcome = runner.prepare()
@@ -113,6 +121,8 @@ private const val USAGE = """usage: CycleCliKt
     --manifest <path>         (required; snake_case JSON)
     [--cycle-dir <path>]      (default: workspace/.pipelinek-cycles/<cycle-id>/)
     [--source-sha <40-hex>]   (default: 40 zeros, accept-only for now)
+    [--repo-root <path>]      (default: current dir; for resolving evidence.sourcePath)
+    [--oracle-ledger <path>]  (default: refuse all oracles; JSON file required for a Verified cycle)
     [--dry-run]               (do not call finalise; keep cycle dir for inspection)
 """
 
@@ -121,6 +131,8 @@ private data class CliArgs(
     val manifestPath: Path,
     val cycleDir: Path?,
     val sourceSha: String,
+    val repoRoot: Path?,
+    val oracleLedgerPath: Path?,
     val dryRun: Boolean,
 )
 
@@ -129,6 +141,8 @@ private fun parseArgs(args: Array<String>): CliArgs? {
     var manifestPath: Path? = null
     var cycleDir: Path? = null
     var sourceSha: String = "0".repeat(40)
+    var repoRoot: Path? = null
+    var oracleLedgerPath: Path? = null
     var dryRun = false
     var i = 0
     while (i < args.size) {
@@ -153,6 +167,16 @@ private fun parseArgs(args: Array<String>): CliArgs? {
                 sourceSha = args[i + 1]
                 i += 2
             }
+            "--repo-root" -> {
+                require(i + 1 < args.size) { "--repo-root requires a value" }
+                repoRoot = Paths.get(args[i + 1])
+                i += 2
+            }
+            "--oracle-ledger" -> {
+                require(i + 1 < args.size) { "--oracle-ledger requires a value" }
+                oracleLedgerPath = Paths.get(args[i + 1])
+                i += 2
+            }
             "--dry-run" -> {
                 dryRun = true
                 i++
@@ -173,6 +197,8 @@ private fun parseArgs(args: Array<String>): CliArgs? {
         manifestPath = manifestPath,
         cycleDir = cycleDir,
         sourceSha = sourceSha,
+        repoRoot = repoRoot,
+        oracleLedgerPath = oracleLedgerPath,
         dryRun = dryRun,
     )
 }

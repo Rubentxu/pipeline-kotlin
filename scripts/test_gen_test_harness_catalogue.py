@@ -139,7 +139,8 @@ class RuleTests(unittest.TestCase):
         unrelated reason.
         """
         mod = self.mod
-        default_command = "    timeout {{ budget }} v2/gradlew -p v2 check"
+        default_command = ("    if [[ ! \"{{ budget }}\" =~ ^[0-9]+$ ]]; then exit 2; fi\n"
+                           "    timeout {{ budget }} v2/gradlew -p v2 check")
 
         def body_for(recipe, budget, commands=None):
             lines = [f'@{recipe} budget="{budget}":']
@@ -307,6 +308,7 @@ class SurfaceRules(unittest.TestCase):
                 if budget is None:
                     raise RuntimeError(f"unknown recipe {recipe}")
                 return (f'@{recipe} budget="{budget}":\n'
+                        "    if [[ ! \"{{ budget }}\" =~ ^[0-9]+$ ]]; then exit 2; fi\n"
                         "    timeout {{ budget }} v2/gradlew -p v2 check\n")
             if args[:2] == ("--evaluate", "uat_excludes"):
                 return "*UatLocal*\n"
@@ -346,6 +348,71 @@ class SurfaceRules(unittest.TestCase):
         cat, violations = self._collect({"fixture": ["mod-a", "mod-b"]})
         self.assertEqual(violations, [])
         self.assertEqual(cat["surfaces"], {"fixture": ["v2/mod-a", "v2/mod-b"]})
+
+
+class ParameterTrapTests(unittest.TestCase):
+    """V10: a gate recipe must not offer an empty-default parameter.
+
+    Measured in acceptance testing, not theorised: `just rc force=1 budget=90`
+    put "force=1" into the budget parameter and "budget=90" into force, producing
+    `timeout force=1 v2/gradlew ...` (exit 125) and a concurrency bypass nobody
+    asked for. `just` assigns positionally, in declaration order.
+    """
+
+    def test_empty_default_parameter_is_reported(self):
+        """Mutation: drop V10 -> the trap returns with the next convenience flag."""
+        mod = load_module()
+        body = '@rc budget="2400" force="":\n    timeout {{ budget }} v2/gradlew -p v2 x\n'
+        self.assertEqual(mod.empty_default_parameters(body), ["force"])
+
+    def test_non_empty_defaults_are_accepted(self):
+        mod = load_module()
+        for body in ('@gate budget="1270":\n    x\n',
+                     '@dev base="HEAD" budget="900":\n    x\n'):
+            self.assertEqual(mod.empty_default_parameters(body), [], body)
+
+    def test_real_gate_recipes_have_no_empty_default(self):
+        """The rule's own conclusion about the real justfile, not a fixture."""
+        mod = load_module()
+        for _level, recipe, _budget, _runs in mod.GATES:
+            body = mod._just("--show", recipe)
+            self.assertEqual(mod.empty_default_parameters(body), [],
+                             f"just {recipe} declares an empty-default parameter")
+
+    def test_unvalidated_budget_is_reported(self):
+        """Mutation: drop V11 -> `just rc budget=60` reaches the command line as
+        `timeout budget=60 v2/gradlew ...` again (observed, exit 125/2 with a
+        confusing message instead of a refusal that says how to pass it)."""
+        mod = load_module()
+        body = "@rc budget=\"2400\":\n    timeout {{ budget }} v2/gradlew -p v2 x\n"
+        self.assertFalse(mod.budget_is_validated(body))
+        guarded = ("@rc budget=\"2400\":\n"
+                   "    if [[ ! \"{{ budget }}\" =~ ^[0-9]+$ ]]; then exit 2; fi\n"
+                   "    timeout {{ budget }} v2/gradlew -p v2 x\n")
+        self.assertTrue(mod.budget_is_validated(guarded))
+
+    def test_real_gate_recipes_validate_their_budget(self):
+        """The real justfile, not a fixture: every budget-interpolating gate
+        refuses a non-numeric value."""
+        mod = load_module()
+        for _level, recipe, _budget, _runs in mod.GATES:
+            body = mod._just("--show", recipe)
+            if "{{budget}}" in body.replace(" ", ""):
+                self.assertTrue(mod.budget_is_validated(body),
+                                f"just {recipe} does not validate its budget")
+
+    def test_real_justfile_rejects_a_recipe_argument_string(self):
+        """The defect this rule exists for, observed through the real CLI.
+
+        `just --show` renders the guard with the interpolated value, so a
+        non-numeric value is refused before it can reach `timeout`. This asserts
+        the rendering (the CLI behaviour itself is observed in the acceptance
+        receipt), keeping the suite hermetic.
+        """
+        mod = load_module()
+        body = mod._just("--show", "rc")
+        rendered = body.replace("{{ budget }}", "budget=60")
+        self.assertIn('[[ ! "budget=60" =~ ^[0-9]+$ ]]', rendered)
 
 
 class CheckModeTests(unittest.TestCase):

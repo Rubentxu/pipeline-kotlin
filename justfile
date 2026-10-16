@@ -81,13 +81,20 @@ set dotenv-load := false
 uat_excludes := '*UatLocal*,*UatCompat*,*UatDsl*,*UatStep*,*UatEvt*,*UatDurable*,*Lpr011*,*PublishHtml*,*StashOps*'
 
 # Round gate. Concurrency guard (B3.2): refuses while another gate runs on this
-# host. Deliberate overlap: `just gate force=1` (recorded bypass).
-@gate budget="1270" force="":
+# host. Deliberate overlap is the ENVIRONMENT variable, not a recipe parameter:
+# `PIPELINEK_GATE_ALLOW_CONCURRENT=1 just gate`.
+# Why not a parameter: `just` assigns positional arguments in declaration order,
+# so `just rc force=1 budget=90` silently put "force=1" into the budget parameter
+# and produced `timeout force=1 v2/gradlew ...` (exit 125). An empty-default
+# parameter that reaches a command line is a trap; the catalogue refuses it (V10).
+@gate budget="1270":
     #!/usr/bin/env bash
     set -Eeuo pipefail
-    guard=()
-    if [[ -n "{{force}}" ]]; then guard+=(--force); fi
-    python3 scripts/gate-resource-guard.py --gate L-ROUND "${guard[@]}"
+    if [[ ! "{{budget}}" =~ ^[0-9]+$ ]]; then
+        echo "gate: budget must be seconds; got '{{budget}}'. Pass it positionally: just gate 300" >&2
+        exit 2
+    fi
+    python3 scripts/gate-resource-guard.py --gate L-ROUND
     timeout {{budget}} v2/gradlew -p v2 check -Pshard.excludes='{{uat_excludes}}'
 
 # Legacy behaviour: round gate INCLUDING the UAT battery (belongs to the harness)
@@ -95,12 +102,14 @@ uat_excludes := '*UatLocal*,*UatCompat*,*UatDsl*,*UatStep*,*UatEvt*,*UatDurable*
     timeout {{budget}} v2/gradlew -p v2 check
 
 # Escalation only: after a killed run or suspected stale green (rule 2)
-@gate-escalate budget="1270" force="":
+@gate-escalate budget="1270":
     #!/usr/bin/env bash
     set -Eeuo pipefail
-    guard=()
-    if [[ -n "{{force}}" ]]; then guard+=(--force); fi
-    python3 scripts/gate-resource-guard.py --gate L-ROUND-ESCALATED "${guard[@]}"
+    if [[ ! "{{budget}}" =~ ^[0-9]+$ ]]; then
+        echo "gate-escalate: budget must be seconds; got '{{budget}}'. Pass it positionally: just gate-escalate 300" >&2
+        exit 2
+    fi
+    python3 scripts/gate-resource-guard.py --gate L-ROUND-ESCALATED
     timeout {{budget}} v2/gradlew -p v2 check --rerun-tasks -Pshard.excludes='{{uat_excludes}}'
 
 # Escalation with the UAT battery included
@@ -112,12 +121,14 @@ uat_excludes := '*UatLocal*,*UatCompat*,*UatDsl*,*UatStep*,*UatEvt*,*UatDurable*
 # other local gates. Budget is DECLARED, not measured: releaseGate has never
 # completed on this base (PK-58A F6), so re-derive it from the first complete run.
 # The bytes it certifies are the bytes handed to the external harness.
-@rc budget="2400" force="":
+@rc budget="2400":
     #!/usr/bin/env bash
     set -Eeuo pipefail
-    guard=()
-    if [[ -n "{{force}}" ]]; then guard+=(--force); fi
-    python3 scripts/gate-resource-guard.py --gate L-RC "${guard[@]}"
+    if [[ ! "{{budget}}" =~ ^[0-9]+$ ]]; then
+        echo "rc: budget must be seconds; got '{{budget}}'. Pass it positionally: just rc 300" >&2
+        exit 2
+    fi
+    python3 scripts/gate-resource-guard.py --gate L-RC
     timeout {{budget}} v2/gradlew -p v2 :pipeline-release:releaseGate -Pshard.excludes='{{uat_excludes}}'
 
 # Single corpus fixture by number 1..13, e.g.: just corpus 11
@@ -138,6 +149,14 @@ uat_excludes := '*UatLocal*,*UatCompat*,*UatDsl*,*UatStep*,*UatEvt*,*UatDurable*
 @dev base="HEAD" budget="900":
     #!/usr/bin/env bash
     set -Eeuo pipefail
+    if [[ ! "{{budget}}" =~ ^[0-9]+$ ]]; then
+        echo "dev: budget must be seconds; got '{{budget}}'. Pass it positionally: just dev HEAD 600" >&2
+        exit 2
+    fi
+    if [[ -z "{{base}}" || "{{base}}" == *" "* ]]; then
+        echo "dev: base must be a single git revision; got '{{base}}'" >&2
+        exit 2
+    fi
     plan_out=$(python3 scripts/plan-affected-tests.py --base {{base}} --format json) || exit $?
     py=$(python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin)["python_suites"]))' <<<"$plan_out")
     g=$(python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin)["gradle_tasks"]))' <<<"$plan_out")
@@ -181,6 +200,10 @@ uat_excludes := '*UatLocal*,*UatCompat*,*UatDsl*,*UatStep*,*UatEvt*,*UatDurable*
 @harness budget="900":
     #!/usr/bin/env bash
     set -Eeuo pipefail
+    if [[ ! "{{budget}}" =~ ^[0-9]+$ ]]; then
+        echo "harness: budget must be seconds; got '{{budget}}'. Pass it positionally: just harness 600" >&2
+        exit 2
+    fi
     tmp=$(mktemp -d)
     trap 'rm -rf "$tmp"' EXIT
     fail=0; total=0
@@ -209,6 +232,16 @@ uat_excludes := '*UatLocal*,*UatCompat*,*UatDsl*,*UatStep*,*UatEvt*,*UatDurable*
 # L-MERGE: one Gradle graph. The integration tool holds the graph (it applies the
 # same concurrency guard for its Gradle phase, so this recipe does not duplicate it).
 @integration base="HEAD" budget="1800":
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+    if [[ ! "{{budget}}" =~ ^[0-9]+$ ]]; then
+        echo "integration: budget must be seconds; got '{{budget}}'. Pass it positionally: just integration HEAD 600" >&2
+        exit 2
+    fi
+    if [[ -z "{{base}}" || "{{base}}" == *" "* ]]; then
+        echo "integration: base must be a single git revision; got '{{base}}'" >&2
+        exit 2
+    fi
     python3 scripts/run-integration-gate.py --base {{base}} --budget {{budget}}
 
 # B4 candidate receipt: bind a built candidate ZIP to its SHA, hashes and identity.

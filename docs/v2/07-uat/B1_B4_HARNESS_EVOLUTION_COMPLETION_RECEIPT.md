@@ -194,3 +194,46 @@ Comparación honesta de las tres regímenes medidos en este host: **cálido sin 
 y **ejecución en frío 60.4 s** (§8, incluye compilación; n=3). El n=3 previo mostraba stdev 22 s
 porque mezclaba una compilación con dos ejecuciones y contención: con n=20 el P95 ya es un dato
 de cola y no un máximo con modales.
+
+## 11. Prueba de aceptación: los comandos documentados, ejecutados como los usa un agente
+
+No es inspección: son las recetas que aparecen en AGENTS.md / la escalera, corridas sobre diffs y
+bytes reales en este worktree.
+
+| Comando ejecutado | Comportamiento observado |
+|---|---|
+| `just changed HEAD~1` | plan advisory que nombra exactamente las dos suites afectadas |
+| `just dev HEAD~1` | **exit 0** en 6 s: corre las suites afectadas, sin Gradle (no toca módulos) |
+| `just integration HEAD~1` | **verdict=PASS** (exit 0, 7 s): fitness + suites del plan, `gradle NOT_RUN` |
+| `just catalogue-check` | `OK-IDENTICAL (30 módulos, 6 gates, 24 suites)` |
+| `just fitness` | rc 0: registro tool↔suite **y** catálogo |
+| `just harness` | **24 suite(s), fail=0** |
+| `just rc 45` | guard `allowed` → `releaseGate` arranca (`:buildSrc:*` ejecutándose) → muere por su propio presupuesto (exit 124) |
+| `just rc budget=60` | **REFUSED** con mensaje accionable (`pásalo posicionalmente: just rc 300`), exit 2 |
+| `just harness budget=600` | **REFUSED** igual (antes producía `timeout budget=600 ...`) |
+| `just rc` con otro gate (ajeno) corriendo | **REFUSED** nombrando pid y cmdline del gate ajeno: `timeout 180 ./gradlew :testkit:conformance:test …` |
+
+### Dos defectos reales que sólo aparecieron al ejecutar la ruta de aceptación
+
+1. **`just rc force=1 budget=90` mal-asignó los parámetros**: `just` asigna por orden de
+   declaración, así que quedó `budget="force=1"` y `force="budget=90"` → `timeout force=1
+   v2/gradlew …` (exit 125) **y un bypass de concurrencia que nadie pidió**. Causa raíz: un
+   parámetro con default vacío que acaba en la línea de comandos. Arreglado (parámetro eliminado;
+   el bypass es la variable de entorno documentada) y mecanizado por **V10** (ninguna receta de
+   gate declara parámetros con default vacío).
+2. **`just harness budget=600` no validaba el presupuesto**: producía `timeout budget=600 …`. Lo
+   detectó **V11** (toda receta que interpola el presupuesto debe validarlo numéricamente) en
+   cuanto la regla existió, y ahora las seis recetas del catálogo lo validan y fallan cerrado con
+   un mensaje que dice cómo se pasa.
+
+Estos dos son exactamente el tipo de defecto que la inspección no ve: el primero sólo se manifiesta
+con una invocación concreta y el segundo sólo cuando alguien escribe el argumento con `=`.
+
+### Rutas de aceptación externamente bloqueadas (declaradas, no simuladas)
+
+```text
+- GitHub Actions: retirado por decisión registrada (754ddda0); no hay superficie de CI remota.
+- Ejecución del harness externo y publicación del Release: requieren credenciales del operador.
+- SAST / dependency scan: no existe superficie aprobada en este repositorio.
+- PRODUCT-GATE: no puede declararse verde mientras los pines de certificación estén rojos (§5).
+```

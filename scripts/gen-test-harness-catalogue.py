@@ -244,6 +244,45 @@ def count_gradle_invocations(body: str) -> int:
     return count
 
 
+def recipe_parameters(body: str) -> list[tuple[str, str]]:
+    """(name, default) for each declared recipe parameter.
+
+    `just --show` prints the signature line, e.g.
+    `@rc budget="2400" force="":` -> [("budget", "2400"), ("force", "")].
+    """
+    first = body.splitlines()[0] if body.splitlines() else ""
+    # Drop the recipe name and the trailing colon.
+    signature = first.split(" ", 1)[1] if " " in first else ""
+    signature = signature.rstrip(":")
+    return re.findall(r"(\w+)=\"([^\"]*)\"", signature)
+
+
+def empty_default_parameters(body: str) -> list[str]:
+    """Parameters that default to the empty string (V10).
+
+    `just` assigns positional arguments in DECLARATION ORDER, so an
+    empty-default parameter silently swallows a later one. Measured in
+    acceptance testing: `just rc force=1 budget=90` mapped `budget="force=1"`
+    and `force="budget=90"`, producing `timeout force=1 v2/gradlew ...` (exit
+    125) and a bypass nobody asked for. A gate recipe must not offer that trap;
+    the environment variable is the documented bypass.
+    """
+    return [name for name, default in recipe_parameters(body) if default == ""]
+
+
+def budget_is_validated(body: str) -> bool:
+    """True when the recipe validates `{{budget}}` as an integer before using it.
+
+    V11: `just` does not interpret `name=value` on the command line for recipe
+    parameters - `just rc budget=60` passes the literal string "budget=60" as the
+    first positional value, which produced `timeout budget=60 v2/gradlew ...` and
+    a nonsense exit. A recipe that interpolates the budget into a command line
+    must refuse a non-numeric value with a message that says how to pass it.
+    """
+    pattern = r'"\{\{\s*budget\s*\}\}"\s*=~\s*\^\[0-9\]'
+    return re.search(pattern, body) is not None
+
+
 def fork_policy(module: str) -> str | None:
     build = ROOT / module / "build.gradle.kts"
     if not build.is_file():
@@ -369,6 +408,18 @@ def collect() -> tuple[dict, list[str]]:
             violations.append(
                 f"V6 gate {level} (`{recipe}`): {gradle_calls} gradlew invocations; "
                 "one graph per phase")
+        traps = empty_default_parameters(body)
+        if traps:
+            violations.append(
+                f"V10 gate {level} (`{recipe}`): parameter(s) {traps} default to the "
+                "empty string; just assigns positionally, so a later parameter "
+                "would be swallowed (use an environment variable instead)")
+        if "{{budget}}" in body.replace(" ", "") and not budget_is_validated(body):
+            violations.append(
+                f"V11 gate {level} (`{recipe}`): interpolates the budget without "
+                "validating it; a non-numeric value (e.g. `just {recipe} "
+                "budget=60`, which just passes as a positional string) would reach "
+                "the command line as `timeout budget=60 ...`")
         # A recipe may delegate the graph to a tool (the integration gate does).
         # Recording it keeps "how many graphs does this phase run" answerable
         # from the catalogue instead of from the recipe body. A recipe that

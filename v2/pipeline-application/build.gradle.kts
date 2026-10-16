@@ -220,29 +220,33 @@ dependencies {
 // state after any prior `:pipeline-application:installDist`.
 
 tasks.test {
-    // Gradle 8.x strict task-dependency validation refuses to
-    // schedule a task whose inputs include files produced by a
-    // task not declared in the dependency graph. The
-    // `testImplementation(files(...))` lines below add
-    // `example-block-plugin-0.1.0.jar` (and its peers) as a
-    // compile-classpath file; the build that produces it
-    // (`:buildExampleBlockPlugin`) MUST be in the dependency
-    // graph or Gradle aborts with an "implicit dependency"
-    // error. Declare the three external plugin builds here so
-    // the lane is correct on a clean checkout; the JARs are
-    // cached after the first run, so this is a one-time cost.
-    dependsOn(
-        ":buildExamplePlugin",
-        ":buildExternalDirectivePlugin",
-        ":buildExampleBlockPlugin",
-    )
+    // H1 TODO 3: the fast lane (`:test`) MUST NOT depend on
+    // `:buildExamplePlugin` / `:buildExternalDirectivePlugin`
+    // / `:buildExampleBlockPlugin`. Those three tasks build
+    // the example plugin JARs and were a per-run cost of
+    // ~tens of seconds for every inner-loop run, even when
+    // the change under test does not exercise the installed
+    // CLI at all. The installed CLI lane is `:installedContractTest`
+    // (defined below); it carries the dependsOn for the
+    // three example plugin builds.
+    //
+    // The `testImplementation(files(...))` lines at the top
+    // of the dependencies block reference the same JARs.
+    // Gradle's strict task-dependency validation refuses to
+    // schedule `:test` if those JAR files are missing at
+    // test time. The pre-existing JARs on disk (from any
+    // prior `:publishSdkForExternalPlugin` or
+    // `:installedContractTest` run) satisfy the file()s; a
+    // truly fresh checkout will fail fast at the
+    // `testImplementation` resolution step rather than at a
+    // silent no-op later. The fast lane is honest about
+    // its dependency on the JARs being on disk; it just
+    // does not PAY for them on every run.
+    //
     // BQ2 (2026-10-16 audit, RC3 close-out): the previous
     // configuration coupled `:test` to
     // `:pipeline-application:installDist` and three external
-    // plugin builds. That made every inner-loop run pay for an
-    // installed-CLI distribution and three JAR rebuilds even
-    // when the change being tested does not exercise any
-    // installed-CLI code. The fix splits the work into two
+    // plugin builds. The fix splits the work into two
     // tasks:
     //   - `:test` (default) is the fast lane. It does NOT
     //     depend on `installDist` and runs the in-process,
@@ -266,15 +270,6 @@ tasks.test {
     // so a typical test that only references the plugin
     // from the JVM does not need `installDist` at all.
     //
-    // The previous `:test` block had
-    //   dependsOn(":buildExamplePlugin", ...)
-    //   dependsOn(":pipeline-step-sdk:http:jar", ...)
-    // which forced three external builds and four SDK JAR
-    // builds on every run. The fast lane now relies on the
-    // JARs being on disk (steady state after any prior
-    // installDist or :publishSdkForExternalPlugin). The
-    // installedContractTest task below is the lane that
-    // builds them when needed.
     // S6/C: BuiltPluginManifestArtifactTest admits the REAL utilities artifact from the filesystem
     // at runtime, NOT from the compile classpath. The fast lane does NOT need this JAR to be
     // present at compile time; the test that needs it is in the installed lane.
@@ -284,7 +279,6 @@ tasks.test {
     // test runs. Same reasoning as the plugin jars above: the subject is resolved from the
     // filesystem at runtime, not from the compile classpath.
     dependsOn(tasks.named("jar"))
-    useJUnitPlatform()
 
     // BLOCK 2.5 / PK-R1: DirectivePluginShaReproducibilityTest rebuilds the example directive
     // plugin from a clean state, and the rebuild resolves its pipeline-domain coordinate from

@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -60,6 +61,7 @@ import java.util.concurrent.TimeUnit
  * Everything asserted here is discrete: a kind present, an identity equal, a payload equal, an
  * ordering relation. No duration, no count of spawned processes, no wall clock.
  */
+@Tag("installed-contract")
 @Timeout(value = 30, unit = TimeUnit.MINUTES)
 class P3DPluginEventInstalledDistributionUatTest {
 

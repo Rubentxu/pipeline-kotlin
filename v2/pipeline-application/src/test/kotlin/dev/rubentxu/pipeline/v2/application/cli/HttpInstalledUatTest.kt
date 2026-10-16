@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.domain.credentials.Credential
 import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
 import dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -57,6 +58,7 @@ import java.util.concurrent.TimeUnit
  * script uses `"POST"` and `"200,204"`; these scripts cannot, and that difference is the
  * product working as designed rather than as documented.
  */
+@Tag("installed-contract")
 @Timeout(value = 15, unit = TimeUnit.MINUTES)
 class HttpInstalledUatTest {
 

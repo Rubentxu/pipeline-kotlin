@@ -25,6 +25,10 @@ import org.junit.jupiter.api.io.TempDir
  *
  * This is the W5 fold: stale heartbeat detection.
  */
+@Disabled("migrated-pending")
+// Migrated-pending per docs/v2/05-roadmap/QUALITY_VALUE_ADDENDUM.md BQ5.
+// The harness is the owner of the equivalence proof; the source stays in place
+// until that proof arrives and the deletion guard (retirement_guard.py) authorises it.
 @Timeout(120)
 class UatLocal006LostHeartbeatTest {
 

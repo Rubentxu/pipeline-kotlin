@@ -9,6 +9,10 @@ import java.nio.file.Paths
 /**
  * UAT / Comp / 001 — Script compiles successfully and cache key is stable.
  */
+@Disabled("migrated-pending")
+// Migrated-pending per docs/v2/05-roadmap/QUALITY_VALUE_ADDENDUM.md BQ5.
+// The harness is the owner of the equivalence proof; the source stays in place
+// until that proof arrives and the deletion guard (retirement_guard.py) authorises it.
 class UatComp001ScriptCompilesTest {
 
     private val scriptingHost: ScriptingHost = Kotlin24ScriptingHost()

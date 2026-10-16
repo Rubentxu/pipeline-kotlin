@@ -32,6 +32,10 @@ import org.junit.jupiter.api.io.TempDir
  * Uses DurableShellExecutor timeout watchdog (SIGKILL via setsid).
  * All tests use --control-root to enable durable execution.
  */
+@Disabled("migrated-pending")
+// Migrated-pending per docs/v2/05-roadmap/QUALITY_VALUE_ADDENDUM.md BQ5.
+// The harness is the owner of the equivalence proof; the source stays in place
+// until that proof arrives and the deletion guard (retirement_guard.py) authorises it.
 @Timeout(120)
 class UatLocal004TimeoutTest {
 

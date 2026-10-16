@@ -24,6 +24,10 @@ import org.junit.jupiter.api.io.TempDir
  * Note: DSL keyword returnStdout=true may not yet expose captured stdout as
  * Kotlin return value — tests execution contract (output.txt written), not DSL return.
  */
+@Disabled("migrated-pending")
+// Migrated-pending per docs/v2/05-roadmap/QUALITY_VALUE_ADDENDUM.md BQ5.
+// The harness is the owner of the equivalence proof; the source stays in place
+// until that proof arrives and the deletion guard (retirement_guard.py) authorises it.
 @Timeout(120)
 class UatLocal003ReturnStdoutTest {
 

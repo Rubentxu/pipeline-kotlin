@@ -32,6 +32,10 @@ import java.util.concurrent.TimeUnit
  * @see <a href="ADR-0050">ADR-0050 §Architecture</a>
  * @see <a href="F-ARCH-L5-001">F-ARCH-L5-001 — CLI-git not JGit</a>
  */
+@Disabled("migrated-pending")
+// Migrated-pending per docs/v2/05-roadmap/QUALITY_VALUE_ADDENDUM.md BQ5.
+// The harness is the owner of the equivalence proof; the source stays in place
+// until that proof arrives and the deletion guard (retirement_guard.py) authorises it.
 @Timeout(60)
 class UatLocal005BannedImportsTest {
 

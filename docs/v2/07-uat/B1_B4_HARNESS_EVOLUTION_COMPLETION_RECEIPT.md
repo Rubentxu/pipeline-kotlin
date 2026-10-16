@@ -87,3 +87,29 @@ suites nuevas                catálogo 18, guard 9, planificador 20, gate 15, ba
 tests de mutación            una por regla nueva (V1..V7, contadores, guard, p95)
 admission (HEAD del bloque)  R4/R5/R8 PASS; R7 FAIL pre-existente (62 commits por detrás de origin/main)
 ```
+
+## 7. Evidencia viva del bloque (no sólo tests)
+
+**L-MERGE real** sobre el diff del commit de gobierno (`--base ea939602~1`), árbol limpio:
+
+```text
+INTEGRATION GATE  head=ea939602f963  verdict=PASS
+  base=ea939602~1  tree=clean  plan: gradle=[] python=[test_gate_resource_guard,
+      test_gen_test_harness_catalogue, test_measure_harness_baseline,
+      test_plan_affected_tests, test_run_integration_gate]
+  [ran] fitness: exit=0 0.087s
+  [ran] python:… (5 suites, todas exit=0)
+  [NOT_RUN] gradle: exit=0 0.0s        <- honesto: este diff no toca código de módulo
+exit=0  wall=4s
+```
+
+Perfil `merge` registrado en el recibo; `consumers=[]` porque ningún módulo se tocó. La fase
+`gradle` se registra como `NOT_RUN`, no como verde por ausencia.
+
+**Guard de concurrencia, en vivo:** `python3 scripts/gate-resource-guard.py --gate L-MERGE`
+→ `allowed (no other gate running)` (exit 0). Con otro gate en marcha se niega (exit 2, nombra
+pid y cmdline); eso está pinzado por los 9 tests herméticos del guard, incluida la exclusión del
+propio árbol de procesos (si no, `just`, cuyo cmdline menciona la receta, bloquearía siempre).
+
+**Suites del harness:** `just harness` → **23 suites, fail=0**. `just fitness` → rc 0
+(registro tool↔suite + `catalogue --check` OK-IDENTICAL).

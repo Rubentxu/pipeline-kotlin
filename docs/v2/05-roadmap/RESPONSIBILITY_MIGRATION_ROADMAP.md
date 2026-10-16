@@ -198,9 +198,13 @@ El recibo contiene: SHA de la candidata sobre la que se hizo equivalencia, finge
   el `pipelinek-release-harness` corra contra el ZIP `25bd767f…`
   y emita veredicto con `proofDigest` por cada UAT migrada.
 - `v0.61.0-rc6` publicado en `main@796b9136` con 6 assets;
-  prerelease inmutable, alcanza al `v0.61.0-rc6` tag. La
-  próxima candidata será `v0.61.0-rc7` cuando el harness emita
-  veredicto sobre `25bd767f…`.
+  prerelease inmutable, alcanza al `v0.61.0-rc6` tag. **La
+  numeración salta a `0.62.0-rcN`** por instrucción del
+  decider 2026-10-16: la base `0.61.0` queda cerrada en
+  este RC; `0.62.0-rc1` será la primera candidata del
+  nuevo ciclo, que arranca del `main@dc6af559` (ADRs
+  aceptados + harness-verdict producer hook) y no del
+  `main@796b9136` (rc6).
 
 ## 10. Anti-patrones explícitos
 

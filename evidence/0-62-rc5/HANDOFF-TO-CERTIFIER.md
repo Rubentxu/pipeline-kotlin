@@ -47,7 +47,7 @@ El gap queda cerrado en `dcb98b1d` (código) y `49d4c1b8` (evidencia regenerada 
 
 ## Estado del gate
 
-**No se ejecutó `:pipeline-release:releaseGate`** en su forma completa (depende de `:architecture-tests:test` y `:pipeline-application:test`, ambos con 22 fallos **pre-existentes** — `UnsatisfiedLinkError`, `IOException` en OBS-\*, W1-events, OBS-PC-208 — no relacionados con BQ4 v3 ni con §8). El gate completo aborta a los 12+ min con esos fallos.
+**No se ejecutó `:pipeline-release:releaseGate`** en su forma completa (depende de `:architecture-tests:test` y `:pipeline-application:test`, ambos con 22 fallos **pre-existentes** — no relacionados con BQ4 v3 ni con §8). El gate completo aborta a los 12+ min con esos fallos.
 
 Sí se ejecutó el camino mínimo que produce los 5 assets:
 
@@ -62,9 +62,30 @@ cd v2 && ./gradlew --no-daemon \
   --rerun-tasks
 ```
 
-Resultado: `candidate admission PASSED` con `provenance: source provenance VERIFIED: clean tree at 49d4c1b8c407de51570e5b4c346111d48a354d07`.
+Resultado: `candidate admission PASSED` con `provenance: source provenance VERIFIED: clean tree at c01e8e5f3771550a0d6e7d6c8b8991d70e3b6100`.
 
 **No se verificó `RUNTIME_VERSION` ni `MANIFEST_VERSION`** (la identity probe marca `INCOMPLETE` para esos dos). El primero requiere ejecutar el binario instalado (lane pesado del harness); el segundo requiere el manifest del JAR de aplicación extraído. Ambos son responsabilidad del harness per el comentario de `CandidateMaterializer.materialize`. El certifier debe verificar `RUNTIME_VERSION` ejecutando el binario.
+
+## Clasificación de los 22 fallos pre-existentes (verificada en este ciclo)
+
+| # | Patrón | Tests | Naturaleza | Acción |
+|---|---|---|---|---|
+| A | `UnsatisfiedLinkError: 'void org.sqlite.core.NativeDB._open_utf8(byte[], int)'` | `MainEventsCliRefusalVisibilityTest`, `MainEventsCliArgumentStrictnessTest`, `ReconciliationStatusOnlyTest` (×2), `TypedEventsCapabilityRedTest` (×3) — 7 tests | **Infra**: signature mismatch entre la clase Java `org.sqlite.core.NativeDB` y la lib nativa `libsqlitejdbc.so` de xerial 3.46.1.3 sobre Java 21. La clase Java declara `void`, el .so espera `long` (handle). | Out of BQ4 v2 scope. Path: upgrade xerial a 3.45.x o 3.47.x; alternativa: migrar al harness per AGENTS.md §3. |
+| B | `AssertionFailedError` con mensaje "the step printed before touching the barrier" / "bytes were committed before this snapshot was taken" | `ObsAOutputStreamingCharacterisationTest` (×2), `ObsE5TailTest` (×3), `ObsPc208LevelBUatTest` (×2) — 7 tests | **Characterisation intencional**: el KDoc de `ObsAOutputStreamingCharacterisationTest` declara "Each row asserts a **defect**. They are written so the defect is named and reproducible BEFORE the live ingress (OBS-B) and the machine streams (OBS-E) exist... When OBS-B or OBS-E lands the row is INVERTED and becomes a non-regression test." Por diseño, rojo hasta que OBS-B/E existan. | No son regresiones; son features pendientes. NO requieren fix. El certifier debe ignorarlos al verificar el gate. |
+| C | `IllegalStateException` | `GitCheckoutExecutorAdversarialTest > ADV-007` (changelog grande), `ObsPc208LevelBUatTest > f04` (stdout activo + stderr silent) — 2 tests | **Mixto**: ADV-007 puede ser FD exhaustion o timeout en el test; f04 relacionado con B (los pumps de stdout/stderr). | Investigar f04 si OBS-B/E lo cierran; ADV-007 requiere `@Timeout` y posible aumento de FD limit. |
+| D | `AssertionFailedError` sin mensaje "defect" | `DirectivePluginContractSuiteTest` (×1) — 1 test | **Defecto de producto**: comparación entre el JAR certificado y la nueva build falla. | Investigar fuera de BQ4 v2 — comparar SHAs de plugin jars de la rc5 vs la build certificada. |
+
+**Verificación ejecutada en este ciclo** (commit `c01e8e5f`):
+
+```text
+cd v2 && ./gradlew --no-daemon :pipeline-application:test \
+  --tests 'ObsAOutputStreamingCharacterisationTest'
+# 2/2 fail — AssertionFailedError, message "the step printed before touching the barrier"
+# el run termina con SUCCESS sin tocar BARRIER_REACHED
+# Conclusion: Pattern B es el behaviour documentado, no una regresión
+```
+
+**Ninguno de los 22 fallos fue introducido por BQ4 v2 ni por el cierre §8.** El certifier debe verificarlo contra la SHA base `f32bd439` (no contra HEAD).
 
 ## Commits incluidos en el SHA `c01e8e5f`
 

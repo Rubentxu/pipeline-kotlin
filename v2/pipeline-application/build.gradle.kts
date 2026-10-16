@@ -280,6 +280,18 @@ tasks.test {
     // filesystem at runtime, not from the compile classpath.
     dependsOn(tasks.named("jar"))
 
+    // H0..H4 closure (2026-10-16): the test classpath references the
+    // three example plugin JARs. Gradle's strict task-dependency
+    // validation refuses the configuration phase if no explicit
+    // ordering exists. `mustRunAfter` (not `dependsOn`) preserves the
+    // H1 TODO 3 fast-lane performance contract: the plugin builds
+    // run only if the JARs are not already current, and a stale
+    // build cache turns this into a no-op. The release gate
+    // (`v2/pipeline-release/build.gradle.kts` `releaseGate` task)
+    // adds the three plugin builds to its own `dependsOn` so the
+    // gate always sees a fresh artifact set.
+    mustRunAfter(":buildExamplePlugin", ":buildExternalDirectivePlugin", ":buildExampleBlockPlugin")
+
     // BLOCK 2.5 / PK-R1: DirectivePluginShaReproducibilityTest rebuilds the example directive
     // plugin from a clean state, and the rebuild resolves its pipeline-domain coordinate from
     // v2/build/sdk-repo. Which version under that repo? The one this build just published via

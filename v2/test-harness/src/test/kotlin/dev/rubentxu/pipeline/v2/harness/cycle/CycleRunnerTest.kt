@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 
 /**
  * The runner is a thin interpreter over [Cycle.decide]. Its job is
@@ -18,10 +19,12 @@ import java.nio.file.Path
  * BQ4 audit (2026-10-16, vertical): the runner now parses the
  * manifest in `prepare`, drives probes via [ProbeExecutor] in
  * `runProbes`, refuses `Observed -> Closed` at the decider level,
- * and owns deletion in `finalise` (no callback). The tests below
- * use a [ScriptedExecutor] stub that returns a known [ProbeOutcome]
- * per probe, so the runner's state-machine discipline is exercised
- * without coupling to product-side machinery.
+ * and owns deletion in `finalise` (no callback). The
+ * `requestPromote` path now routes through
+ * [PromotionEvidenceVerifier] before the decider sees the
+ * `PromoteRequested` event, so the tests below use a
+ * [MapOracleLedger] and a real contract file staged in the
+ * temp dir.
  */
 class CycleRunnerTest {
 
@@ -73,6 +76,32 @@ class CycleRunnerTest {
         runProbes(TrivialVerifiedExecutor(ref = "ref-1"))
     }
 
+    /**
+     * The "well-formed but never verified" evidence the
+     * non-promote tests use. The verifier never runs in those
+     * tests, so a real file and a real oracle are not
+     * required — the carrier just has to be parseable JSON.
+     */
+    private fun stubEvidence(sourceSha: String, expectedHF: String): PromotionEvidence {
+        val oracle = OracleRef.Fitness("CycleRunnerTest.fixture", ":test-harness")
+        return PromotionEvidence.PermanentContract(
+            contractId = "OutputPlane.redaction.streaming",
+            boundCommit = sourceSha,
+            sourcePath = "staging/StreamingRedactor.kt",
+            contentDigest = "0".repeat(64),
+            fidelity = expectedHF,
+            oracle = oracle,
+        )
+    }
+
+    /**
+     * Write a manifest with the BQ4 v2 wire format
+     * (`replacement.evidence` is a typed [PromotionEvidence],
+     * not a free-form string). The `evidence` defaults to a
+     * stub carrier that the runner accepts at parse time; tests
+     * that exercise `requestPromote` replace it with a real
+     * carrier and stage a real contract file.
+     */
     private fun writeManifest(
         path: Path,
         cycleId: String = "cyc-1",
@@ -80,13 +109,39 @@ class CycleRunnerTest {
         expectedHF: String = "HF0",
         contractId: String = "OutputPlane.redaction.streaming",
         relativePath: String = "v2/pipeline-credentials-api/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/api/StreamingRedactor.kt",
+        evidence: PromotionEvidence = stubEvidence(sourceSha, expectedHF),
     ) {
-        val replacementKind = "PERMANENT_CONTRACT"
-        val kind = "AAT"
-        val verdict = "PASS"
-        val replacementEvidence = "new-test-class"
-        // contentSha256 is just a 64-char hex stub here; the
-        // runner does not verify it against the file (only
+        val oracle = when (val o = evidence.oracle) {
+            is OracleRef.Fitness ->
+                """{"type":"fitness","name":"${o.name}","module":"${o.module}"}"""
+            is OracleRef.Junit ->
+                """{"type":"junit","test_class":"${o.testClass}","test_method":"${o.testMethod}","module":"${o.module}"}"""
+        }
+        val evidenceJson = when (evidence) {
+            is PromotionEvidence.PermanentContract -> """
+                {
+                  "type": "permanent_contract",
+                  "contract_id": "${evidence.contractId}",
+                  "bound_commit": "${evidence.boundCommit}",
+                  "source_path": "${evidence.sourcePath}",
+                  "content_digest": "${evidence.contentDigest}",
+                  "fidelity": "${evidence.fidelity}",
+                  "oracle": $oracle
+                }
+            """.trimIndent()
+            is PromotionEvidence.CertifierReceipt -> """
+                {
+                  "type": "certifier_receipt",
+                  "receipt_id": "${evidence.receiptId}",
+                  "signed_commit": "${evidence.boundCommit}",
+                  "receipt_digest": "${evidence.receiptDigest}",
+                  "fidelity": "${evidence.fidelity}",
+                  "oracle": $oracle
+                }
+            """.trimIndent()
+        }
+        // contentSha256 on the probe is just a 64-char hex stub;
+        // the runner does not verify it against the file (only
         // validates the format and that the resolved path is
         // inside the cycle dir).
         val sha = "0".repeat(64)
@@ -97,9 +152,7 @@ class CycleRunnerTest {
               "expected_hf": "$expectedHF",
               "isolation_policy": "cycleDirOnly",
               "replacement": {
-                "kind": "$replacementKind",
-                "id": "$replacementEvidence",
-                "evidence": "$replacementEvidence"
+                "evidence": $evidenceJson
               },
               "contracts": [
                 {
@@ -113,20 +166,84 @@ class CycleRunnerTest {
                   "id": "probe-1",
                   "contract_id": "$contractId",
                   "relative_path": "$relativePath",
-                  "kind": "$kind",
+                  "kind": "AAT",
                   "executed": 1,
                   "skipped": 0,
-                  "verdict": "$verdict",
+                  "verdict": "PASS",
                   "mutation_or_negative": "redact transcript",
-                  "replacement_kind": "$replacementKind",
-                  "replacement_id": "$replacementEvidence",
-                  "replacement_evidence": "$replacementEvidence",
+                  "replacement_kind": "PERMANENT_CONTRACT",
+                  "replacement_id": "x",
+                  "replacement_evidence": "x",
                   "content_sha256": "$sha"
                 }
               ]
             }
         """.trimIndent()
         Files.writeString(path, manifest)
+    }
+
+    /**
+     * SHA-256 of the file at [path], lowercase hex (64 chars).
+     * Mirrors the runner's `sha256HexOfFile` so the test can
+     * build a contract file whose digest matches the manifest
+     * claim exactly.
+     */
+    private fun sha256HexOfFile(path: Path): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        Files.newInputStream(path).use { input ->
+            val buf = ByteArray(8192)
+            while (true) {
+                val n = input.read(buf)
+                if (n <= 0) break
+                md.update(buf, 0, n)
+            }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * Build a runner whose verifier will accept a
+     * [PromotionEvidence.PermanentContract]: stage a real
+     * contract file under [tmp], compute its digest, write a
+     * manifest pointing at it, and inject a
+     * [MapOracleLedger] that records a PASS at the
+     * [sourceSha]. Returns the runner, the staged contract
+     * file, and the structured evidence.
+     */
+    private data class PromotableRunner(
+        val runner: CycleRunner,
+        val evidence: PromotionEvidence,
+        val contractFile: Path,
+    )
+
+    private fun setupPromotableRunner(
+        tmp: Path,
+        sourceSha: String = "0123456789abcdef0123456789abcdef01234567",
+        expectedHF: String = "HF0",
+    ): PromotableRunner {
+        val contractFile = tmp.resolve("MyContract.kt")
+        Files.writeString(contractFile, "// permanent contract body\nclass MyContract\n")
+        val contractDigest = sha256HexOfFile(contractFile)
+        val oracle = OracleRef.Fitness("TestRunner.fixture", ":test-harness")
+        val evidence = PromotionEvidence.PermanentContract(
+            contractId = "OutputPlane.redaction.streaming",
+            boundCommit = sourceSha,
+            sourcePath = "MyContract.kt",
+            contentDigest = contractDigest,
+            fidelity = expectedHF,
+            oracle = oracle,
+        )
+        val manifest = tmp.resolve("manifest.json")
+        writeManifest(manifest, sourceSha = sourceSha, expectedHF = expectedHF, evidence = evidence)
+        val ledger = MapOracleLedger(mapOf(oracle to setOf(sourceSha)))
+        val runner = CycleRunner(
+            cycleId = "cyc-1",
+            manifestPath = manifest,
+            cycleDir = tmp.resolve("cycles/cyc-1"),
+            oracleLedger = ledger,
+            repoRoot = tmp,
+        )
+        return PromotableRunner(runner, evidence, contractFile)
     }
 
     @Test
@@ -180,7 +297,7 @@ class CycleRunnerTest {
     fun `runProbes keeps the cycle in Running after a Verified probe`(@TempDir tmp: Path) {
         val manifest = tmp.resolve("manifest.json")
         writeManifest(manifest)
-        val runner = CycleRunner("cyc-1", manifest, tmp.resolve("cycles/cyc-1"))
+        val runner = CycleRunner(cycleId = "cyc-1", manifestPath = manifest, cycleDir = tmp.resolve("cycles/cyc-1"))
         runner.prepare()
         runner.runProbesWithVerified()
         assertEquals(CycleState.Running, runner.state)
@@ -192,7 +309,7 @@ class CycleRunnerTest {
     fun `adjudicate moves Running to Observed with the commit`(@TempDir tmp: Path) {
         val manifest = tmp.resolve("manifest.json")
         writeManifest(manifest)
-        val runner = CycleRunner("cyc-1", manifest, tmp.resolve("cycles/cyc-1"))
+        val runner = CycleRunner(cycleId = "cyc-1", manifestPath = manifest, cycleDir = tmp.resolve("cycles/cyc-1"))
         runner.prepare()
         runner.runProbesWithVerified()
         runner.observeAll(observedCommit = "abc123")
@@ -200,26 +317,160 @@ class CycleRunnerTest {
     }
 
     @Test
-    fun `adjudicate moves Observed to Promoted`(@TempDir tmp: Path) {
-        val manifest = tmp.resolve("manifest.json")
-        writeManifest(manifest)
-        val runner = CycleRunner("cyc-1", manifest, tmp.resolve("cycles/cyc-1"))
+    fun `adjudicate moves Observed to Promoted when verifier accepts`(@TempDir tmp: Path) {
+        // BQ4 v2: the runner routes requestPromote through
+        // PromotionEvidenceVerifier. The verifier checks
+        // existence + digest + commit + fidelity + oracle; the
+        // test below stages a real contract file with a real
+        // digest, matches the bound commit to the manifest's
+        // source_sha, and injects a MapOracleLedger that says
+        // PASS at that commit. The cycle advances to Promoted.
+        val (runner, _, _) = setupPromotableRunner(tmp)
         runner.prepare()
         runner.runProbesWithVerified()
         runner.observeAll("abc123")
-        runner.requestPromote(replacementEvidence = "permanent-contract:rec-1")
-        assertEquals(CycleState.Promoted("abc123"), runner.state)
+        runner.requestPromote(evidence = requireNotNull(runner.manifest).replacement.evidence)
+        assertEquals(CycleState.Promoted("abc123"), runner.state) { "got ${runner.state}" }
+    }
+
+    @Test
+    fun `requestPromote refuses on OtherCommit (verifier commit-mismatch)`(@TempDir tmp: Path) {
+        // BQ4 v2: an evidence whose boundCommit does not match
+        // the runner's sourceSha is refused with
+        // "other commit: ..." (the exact reason string the
+        // verifier produces). The previous shape accepted any
+        // non-blank string; the new shape refuses on the ADT.
+        val (runner, _, _) = setupPromotableRunner(tmp)
+        runner.prepare()
+        runner.runProbesWithVerified()
+        runner.observeAll("abc123")
+        val mismatched = PromotionEvidence.PermanentContract(
+            contractId = "OutputPlane.redaction.streaming",
+            boundCommit = "fedcba9876543210fedcba9876543210fedcba98",
+            sourcePath = "MyContract.kt",
+            contentDigest = "0".repeat(64),
+            fidelity = "HF0",
+            oracle = OracleRef.Fitness("TestRunner.fixture", ":test-harness"),
+        )
+        val outcome = runner.requestPromote(mismatched)
+        assertTrue(outcome is CycleOutcome.Next) { "got $outcome" }
+        val state = (outcome as CycleOutcome.Next).nextState
+        assertTrue(state is CycleState.Refused) { "expected Refused on commit-mismatch, got $state" }
+        val reason = (state as CycleState.Refused).reason
+        assertTrue(reason.startsWith("other commit:"), "got '$reason'")
+    }
+
+    @Test
+    fun `requestPromote refuses on content_digest mismatch`(@TempDir tmp: Path) {
+        // BQ4 v2: a contract whose recorded content_digest
+        // does not match the SHA-256 of the file at sourcePath
+        // is refused. The previous shape accepted any string;
+        // the new shape refuses on the digest property.
+        val (runner, _, _) = setupPromotableRunner(tmp)
+        runner.prepare()
+        runner.runProbesWithVerified()
+        runner.observeAll("abc123")
+        val oracle = OracleRef.Fitness("TestRunner.fixture", ":test-harness")
+        val ledger = MapOracleLedger(mapOf(oracle to setOf("0123456789abcdef0123456789abcdef01234567")))
+        val badEvidence = PromotionEvidence.PermanentContract(
+            contractId = "OutputPlane.redaction.streaming",
+            boundCommit = "0123456789abcdef0123456789abcdef01234567",
+            sourcePath = "MyContract.kt",
+            contentDigest = "deadbeef".repeat(8),
+            fidelity = "HF0",
+            oracle = oracle,
+        )
+        val outcome = runner.requestPromote(badEvidence)
+        val state = (outcome as CycleOutcome.Next).nextState
+        assertTrue(state is CycleState.Refused) { "expected Refused on digest-mismatch, got $state" }
+        assertTrue(
+            (state as CycleState.Refused).reason.contains("content_digest mismatch"),
+            "got '${state.reason}'",
+        )
+    }
+
+    @Test
+    fun `requestPromote refuses when contract file is missing`(@TempDir tmp: Path) {
+        // BQ4 v2: existence is the first property the verifier
+        // checks for a PermanentContract. A manifest that
+        // names a file which is not on disk is refused.
+        val (runner, _, _) = setupPromotableRunner(tmp)
+        runner.prepare()
+        runner.runProbesWithVerified()
+        runner.observeAll("abc123")
+        val sourceSha = "0123456789abcdef0123456789abcdef01234567"
+        val oracle = OracleRef.Fitness("TestRunner.fixture", ":test-harness")
+        val ledger = MapOracleLedger(mapOf(oracle to setOf(sourceSha)))
+        // Replace the runner with one that has an empty
+        // repoRoot so sourcePath does not resolve.
+        val manifest = tmp.resolve("manifest-missing.json")
+        val evidence = PromotionEvidence.PermanentContract(
+            contractId = "OutputPlane.redaction.streaming",
+            boundCommit = sourceSha,
+            sourcePath = "does-not-exist/MyContract.kt",
+            contentDigest = "0".repeat(64),
+            fidelity = "HF0",
+            oracle = oracle,
+        )
+        writeManifest(manifest, sourceSha = sourceSha, evidence = evidence)
+        val runner2 = CycleRunner(
+            cycleId = "cyc-1",
+            manifestPath = manifest,
+            cycleDir = tmp.resolve("cycles/cyc-1-missing"),
+            oracleLedger = ledger,
+            repoRoot = tmp,
+        )
+        runner2.prepare()
+        runner2.runProbesWithVerified()
+        runner2.observeAll("abc123")
+        val outcome = runner2.requestPromote(evidence)
+        val state = (outcome as CycleOutcome.Next).nextState
+        assertTrue(state is CycleState.Refused) { "expected Refused on missing file, got $state" }
+        assertTrue(
+            (state as CycleState.Refused).reason.contains("contract file missing"),
+            "got '${(state as CycleState.Refused).reason}'",
+        )
+    }
+
+    @Test
+    fun `requestPromote with CertifierReceipt transitions to BlockedExternal`(@TempDir tmp: Path) {
+        // BQ4 v2: a signed receipt cannot be verified in-process;
+        // the cycle becomes BlockedExternal (a `CertifierReceipt`
+        // is deferred to the certifier). The carrier still
+        // carries the bound commit, digest and oracle so the
+        // certifier can verify the receipt's evidence on its
+        // side; the runner's job is to refuse to pretend it
+        // already did.
+        val (runner, _, _) = setupPromotableRunner(tmp)
+        runner.prepare()
+        runner.runProbesWithVerified()
+        runner.observeAll("abc123")
+        val sourceSha = "0123456789abcdef0123456789abcdef01234567"
+        val oracle = OracleRef.Fitness("TestRunner.fixture", ":test-harness")
+        val receipt = PromotionEvidence.CertifierReceipt(
+            receiptId = "v0.62.0-rc5",
+            boundCommit = sourceSha,
+            receiptDigest = "0".repeat(64),
+            fidelity = "HF0",
+            oracle = oracle,
+        )
+        val outcome = runner.requestPromote(receipt)
+        assertTrue(outcome is CycleOutcome.Next) { "got $outcome" }
+        val state = (outcome as CycleOutcome.Next).nextState
+        assertTrue(state is CycleState.BlockedExternal) { "expected BlockedExternal, got $state" }
+        assertTrue(
+            (state as CycleState.BlockedExternal).blocker.contains("certifier receipt"),
+            "got '${(state as CycleState.BlockedExternal).blocker}'",
+        )
     }
 
     @Test
     fun `close moves Promoted to Closed with the close reason`(@TempDir tmp: Path) {
-        val manifest = tmp.resolve("manifest.json")
-        writeManifest(manifest)
-        val runner = CycleRunner("cyc-1", manifest, tmp.resolve("cycles/cyc-1"))
+        val (runner, _, _) = setupPromotableRunner(tmp)
         runner.prepare()
         runner.runProbesWithVerified()
         runner.observeAll("abc123")
-        runner.requestPromote("permanent-contract:rec-1")
+        runner.requestPromote(evidence = requireNotNull(runner.manifest).replacement.evidence)
         runner.requestClose("temporary probes retired")
         assertEquals(CycleState.Closed("temporary probes retired"), runner.state)
     }
@@ -228,7 +479,7 @@ class CycleRunnerTest {
     fun `close moves Observed to Closed is IllegalTransition (BQ4 audit)`(@TempDir tmp: Path) {
         val manifest = tmp.resolve("manifest.json")
         writeManifest(manifest)
-        val runner = CycleRunner("cyc-1", manifest, tmp.resolve("cycles/cyc-1"))
+        val runner = CycleRunner(cycleId = "cyc-1", manifestPath = manifest, cycleDir = tmp.resolve("cycles/cyc-1"))
         runner.prepare()
         runner.runProbesWithVerified()
         runner.observeAll("abc123")
@@ -245,7 +496,7 @@ class CycleRunnerTest {
     fun `close from Draft is Refused (manifest never produced evidence)`(@TempDir tmp: Path) {
         val manifest = tmp.resolve("manifest.json")
         writeManifest(manifest)
-        val runner = CycleRunner("cyc-1", manifest, tmp.resolve("cycles/cyc-1"))
+        val runner = CycleRunner(cycleId = "cyc-1", manifestPath = manifest, cycleDir = tmp.resolve("cycles/cyc-1"))
         runner.requestClose("manifest invalid")
         assertTrue(runner.state is CycleState.Refused) { "got ${runner.state}" }
     }
@@ -254,7 +505,7 @@ class CycleRunnerTest {
     fun `close from Running is Refused (probes never finished)`(@TempDir tmp: Path) {
         val manifest = tmp.resolve("manifest.json")
         writeManifest(manifest)
-        val runner = CycleRunner("cyc-1", manifest, tmp.resolve("cycles/cyc-1"))
+        val runner = CycleRunner(cycleId = "cyc-1", manifestPath = manifest, cycleDir = tmp.resolve("cycles/cyc-1"))
         runner.prepare()
         // No probe run; the cycle is still Running.
         runner.requestClose("probes never finished")
@@ -264,16 +515,28 @@ class CycleRunnerTest {
     @Test
     fun `finalise deletes the cycle directory only when state is Closed`(@TempDir tmp: Path) {
         val dir = tmp.resolve("cycles/cyc-1")
-        val manifest = tmp.resolve("manifest.json")
-        writeManifest(manifest)
-        val runner = CycleRunner("cyc-1", manifest, dir)
-        runner.prepare()
-        runner.runProbesWithVerified()
-        runner.observeAll("abc123")
-        runner.requestPromote("permanent-contract:rec-1")
-        runner.requestClose("done")
+        val (runner, _, _) = setupPromotableRunner(tmp)
+        // Use the freshly-built runner but route the cycle dir
+        // to the path this test expects.
+        val aligned = CycleRunner(
+            cycleId = "cyc-1",
+            manifestPath = runner.manifestPath,
+            cycleDir = dir,
+            oracleLedger = MapOracleLedger(
+                mapOf(
+                    OracleRef.Fitness("TestRunner.fixture", ":test-harness") to
+                        setOf("0123456789abcdef0123456789abcdef01234567"),
+                ),
+            ),
+            repoRoot = tmp,
+        )
+        aligned.prepare()
+        aligned.runProbesWithVerified()
+        aligned.observeAll("abc123")
+        aligned.requestPromote(evidence = requireNotNull(aligned.manifest).replacement.evidence)
+        aligned.requestClose("done")
         assertTrue(Files.isDirectory(dir), "cycle dir must exist before finalise")
-        runner.finalise()
+        aligned.finalise()
         assertFalse(Files.exists(dir), "finalise must delete the cycle dir")
     }
 
@@ -281,7 +544,7 @@ class CycleRunnerTest {
     fun `finalise refuses when state is not Closed`(@TempDir tmp: Path) {
         val manifest = tmp.resolve("manifest.json")
         writeManifest(manifest)
-        val runner = CycleRunner("cyc-1", manifest, tmp.resolve("cycles/cyc-1"))
+        val runner = CycleRunner(cycleId = "cyc-1", manifestPath = manifest, cycleDir = tmp.resolve("cycles/cyc-1"))
         runner.prepare()
         runner.runProbesWithVerified()
         runner.observeAll("abc123")
@@ -298,7 +561,7 @@ class CycleRunnerTest {
     fun `blockExternal moves any non-terminal state to BlockedExternal`(@TempDir tmp: Path) {
         val manifest = tmp.resolve("manifest.json")
         writeManifest(manifest)
-        val runner = CycleRunner("cyc-1", manifest, tmp.resolve("cycles/cyc-1"))
+        val runner = CycleRunner(cycleId = "cyc-1", manifestPath = manifest, cycleDir = tmp.resolve("cycles/cyc-1"))
         runner.prepare()
         runner.blockExternal("harness verdict missing")
         assertTrue(runner.state is CycleState.BlockedExternal) { "got ${runner.state}" }
@@ -315,7 +578,7 @@ class CycleRunnerTest {
         // Refused state, NOT an evidence row in the accumulator.
         val manifest = tmp.resolve("manifest.json")
         writeManifest(manifest, expectedHF = "HF0")
-        val runner = CycleRunner("cyc-1", manifest, tmp.resolve("cycles/cyc-1"))
+        val runner = CycleRunner(cycleId = "cyc-1", manifestPath = manifest, cycleDir = tmp.resolve("cycles/cyc-1"))
         runner.prepare()
         val outcomes = runner.runProbes(object : ProbeExecutor(Path.of("/n")) {
             override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome =
@@ -349,7 +612,7 @@ class CycleRunnerTest {
         // transitions the cycle to BlockedExternal directly.
         val manifest = tmp.resolve("manifest.json")
         writeManifest(manifest, expectedHF = "HF1")
-        val runner = CycleRunner("cyc-1", manifest, tmp.resolve("cycles/cyc-1"))
+        val runner = CycleRunner(cycleId = "cyc-1", manifestPath = manifest, cycleDir = tmp.resolve("cycles/cyc-1"))
         runner.prepare()
         runner.runProbes(object : ProbeExecutor(Path.of("/n")) {
             override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome =

@@ -97,7 +97,7 @@ sealed interface CycleState {
  */
 data class CycleContext(
     val probeOutcomes: List<ProbeFinished> = emptyList(),
-    val latestReplacementEvidence: String = "",
+    val latestReplacementEvidence: PromotionEvidence? = null,
 ) {
     init {
         require(probeOutcomes.all { it.outcome is ProbeOutcome.Verified }) {
@@ -112,7 +112,7 @@ data class CycleContext(
     fun withProbe(probe: ProbeFinished): CycleContext =
         copy(probeOutcomes = probeOutcomes + probe)
 
-    fun withReplacementEvidence(evidence: String): CycleContext =
+    fun withReplacementEvidence(evidence: PromotionEvidence): CycleContext =
         copy(latestReplacementEvidence = evidence)
 }
 
@@ -156,12 +156,16 @@ sealed interface CycleEvent {
     data class ProbeFinished(val outcome: ProbeOutcome) : CycleEvent
     data class AllProbesObserved(val observedCommit: String) : CycleEvent
     /**
-     * Blank replacement evidence is refused on the promote path. The
-     * audit also requires the evidence to be a non-blank reference whose
-     * shape is a known kind (the [ReplacementPlan] from the manifest);
-     * the decider's verifier is below.
+     * The substitute guarantee the cycle retires with. The carrier
+     * is a typed [PromotionEvidence] (a sealed interface with
+     * `PermanentContract` and `CertifierReceipt` variants). The
+     * runner has already verified the carrier via
+     * [PromotionEvidenceVerifier] before emitting this event; the
+     * decider's only job is to record the evidence and advance the
+     * state. A blank carrier is impossible by construction
+     * (the carrier's data class init refuses blanks).
      */
-    data class PromoteRequested(val replacementEvidence: String) : CycleEvent
+    data class PromoteRequested(val replacementEvidence: PromotionEvidence) : CycleEvent
     data class CloseRequested(val closeReason: String) : CycleEvent
     data class ExternalBlockerRaised(val blocker: String) : CycleEvent
 }

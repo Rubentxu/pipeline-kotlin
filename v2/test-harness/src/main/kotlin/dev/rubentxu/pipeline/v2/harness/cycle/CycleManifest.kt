@@ -85,27 +85,25 @@ data class ContractRef(
 }
 
 /**
- * The substitute guarantee left behind when the cycle retires. Either
- * a permanent contract (in-repo test/fitness/property) or an external
- * certifier (the harness) that will produce a `proofDigest` later.
+ * The substitute guarantee left behind when the cycle retires.
+ *
+ * BQ4 audit (2026-10-16, P0-D, vertical): the previous shape
+ * carried `kind` (an enum) + `id` (a free string) + `evidence` (a
+ * free string); the decider validated `evidence` by string
+ * prefix, which the audit named as a class of false green — a
+ * textual reference like `permanent-contract:foo` was a label,
+ * not a verified substitute.
+ *
+ * The new shape drops the redundant `kind` and `id` fields; the
+ * [PromotionEvidence] carrier carries both the kind (its sealed
+ * variant) and the identity (its typed payload). The runner's
+ * [PromotionEvidenceVerifier] is the single authority on
+ * whether the carrier is a valid substitute.
  */
 @Serializable
 data class ReplacementPlan(
-    @SerialName("kind") val kind: ReplacementKind,
-    @SerialName("id") val id: String,
-    @SerialName("evidence") val evidence: String,
-) {
-    init {
-        require(id.isNotBlank()) { "ReplacementPlan.id must not be blank" }
-        require(evidence.isNotBlank()) { "ReplacementPlan.evidence must not be blank" }
-    }
-
-    @Serializable
-    enum class ReplacementKind {
-        @SerialName("PERMANENT_CONTRACT") PERMANENT_CONTRACT,
-        @SerialName("EXTERNAL_CERTIFIER") EXTERNAL_CERTIFIER,
-    }
-}
+    @SerialName("evidence") val evidence: PromotionEvidence,
+)
 
 @Serializable
 data class ProbeEntry(

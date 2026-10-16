@@ -79,29 +79,14 @@ fun main(args: Array<String>) {
     // observe / promote / close path. The exit code is the cycle's
     // own verdict; the CLI does not invent one.
     runner.observeAll(parsed.sourceSha)
-    // P0-D (audit 2026-10-16): a textual reference like
-    // `replacement:foo` is a label, not a verified substitute.
-    // The decider now refuses any `replacementEvidence` whose
-    // shape is not `permanent-contract:<id>` (an in-repo test or
-    // fitness) or `certifier-receipt:<sha256>` (a signed
-    // receipt). The CLI composes one of those two depending on
-    // what the manifest's `ReplacementPlan.kind` declares:
-    //   PERMANENT_CONTRACT -> "permanent-contract:<id>"
-    //   EXTERNAL_CERTIFIER -> "certifier-receipt:<id>" (the id
-    //     here is the receipt id; the certifier will overwrite
-    //     it with a real sha256 once the receipt is signed)
-    val substituteEvidence = when (manifest.replacement.kind) {
-        ReplacementPlan.ReplacementKind.PERMANENT_CONTRACT ->
-            "permanent-contract:${manifest.replacement.id}"
-        ReplacementPlan.ReplacementKind.EXTERNAL_CERTIFIER ->
-            // The certifier-receipt id is the manifest's
-            // declared id; the certifier will sign a sha256
-            // later and the cycle is blocked-external until it
-            // does. We refuse to use a free-form string here:
-            // the shape must match the verifier.
-            "certifier-receipt:${manifest.replacement.id}"
-    }
-    runner.requestPromote(replacementEvidence = substituteEvidence)
+    // P0-D (audit 2026-10-16, vertical): the substitute evidence
+    // is a typed [PromotionEvidence] carrier from the manifest, not
+    // a free-form string composed here. The CLI's only role is to
+    // hand the carrier to the runner; the runner's
+    // [PromotionEvidenceVerifier] checks existence, identity,
+    // fidelity, digest and oracle, and refuses the cycle if any
+    // property fails. The decider never sees a string.
+    runner.requestPromote(evidence = manifest.replacement.evidence)
     runner.requestClose("cycle closed by CycleCli")
 
     val terminal = runner.state

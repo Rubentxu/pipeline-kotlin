@@ -11,6 +11,23 @@ class CycleTest {
     private val commit = "0123456789abcdef0123456789abcdef01234567"
 
     /**
+     * Build a well-formed [PromotionEvidence.PermanentContract]
+     * with stable fields for use in decider tests. The decider
+     * does not consult the carrier's payload (it is the
+     * runner's authority), so a static, well-formed carrier is
+     * sufficient.
+     */
+    private fun permanentContract(boundCommit: String): PromotionEvidence.PermanentContract =
+        PromotionEvidence.PermanentContract(
+            contractId = "test",
+            boundCommit = boundCommit,
+            sourcePath = "test/Contract.kt",
+            contentDigest = "0".repeat(64),
+            fidelity = "HF0",
+            oracle = OracleRef.Fitness("test.fixture", ":test-harness"),
+        )
+
+    /**
      * Walk a list of (event, context-in) tuples through the
      * decider, threading the accumulator across calls, and
      * return the final state. Helper for the happy-path tests.
@@ -66,11 +83,12 @@ class CycleTest {
                 ),
             )
             assertEquals(CycleState.Observed(commit), obsState)
-            val outcome = Cycle.decide(obsState, CycleEvent.PromoteRequested("permanent-contract:test"), obsCtx)
+            val evidence = permanentContract(commit)
+            val outcome = Cycle.decide(obsState, CycleEvent.PromoteRequested(evidence), obsCtx)
             val next = outcome as CycleOutcome.Next
             val promoted = next.nextState as CycleState.Promoted
             assertEquals(commit, promoted.promotedAtCommit)
-            assertEquals("permanent-contract:test", next.nextContext.latestReplacementEvidence)
+            assertEquals(evidence, next.nextContext.latestReplacementEvidence)
         }
 
         @Test
@@ -81,7 +99,7 @@ class CycleTest {
                     CycleEvent.PrepareStarted,
                     CycleEvent.ProbeFinished(ProbeOutcome.Verified("ev")),
                     CycleEvent.AllProbesObserved(commit),
-                    CycleEvent.PromoteRequested("permanent-contract:test"),
+                    CycleEvent.PromoteRequested(permanentContract(commit)),
                     CycleEvent.CloseRequested("temporary probes retired"),
                 ),
             )
@@ -217,7 +235,18 @@ class CycleTest {
         }
 
         @Test
-        fun `PromoteRequested with blank replacementEvidence is Refused`() {
+        fun `PromoteRequested with a typed carrier advances to Promoted (BQ4 v2, the decider is a pure transition)`() {
+            // BQ4 v2: the decider no longer string-prefix-validates
+            // the evidence; the runner's PromotionEvidenceVerifier
+            // has already done that before the event reached the
+            // decider. A typed carrier is therefore guaranteed
+            // valid by construction; the decider just records
+            // it and advances the state. A blank carrier is
+            // impossible: the PromotionEvidence data class init
+            // refuses blanks, so the only way to get an empty
+            // replacementEvidence is to construct an empty
+            // PromotionEvidence (impossible by typed carrier)
+            // — the data class init throws first.
             val (obsState, obsCtx) = walk(
                 start = CycleState.Draft,
                 events = listOf(
@@ -228,15 +257,13 @@ class CycleTest {
             )
             val outcome = Cycle.decide(
                 obsState,
-                CycleEvent.PromoteRequested(""),
+                CycleEvent.PromoteRequested(permanentContract(commit)),
                 obsCtx,
             )
             val next = outcome as CycleOutcome.Next
-            val refused = next.nextState as CycleState.Refused
-            assertTrue(
-                refused.reason.contains("blank replacementEvidence"),
-                "refusal must name the missing replacement evidence, got ${refused.reason}",
-            )
+            assertTrue(next.nextState is CycleState.Promoted) {
+                "got ${next.nextState}; the decider's only job is to advance"
+            }
         }
 
         @Test

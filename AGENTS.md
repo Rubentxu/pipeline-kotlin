@@ -2304,6 +2304,49 @@ Una entrega de aplicación solo puede declararse PUBLISHED cuando existen artefa
 
 Esta política no modifica automáticamente los contratos de bibliotecas o SDK publicados en Maven/Nexus. Sus artefactos y metadatos se rigen por sus propias especificaciones públicas.
 
+### 8. Contrato ejecutable de esta aplicación (PipelineK)
+
+**Conjunto exacto de assets de una release** — ni más ni menos:
+
+| Asset | Función |
+| --- | --- |
+| `pipelinek-<v>.zip` | distribución: lanzador `bin/pipelinek` + `lib/*.jar` |
+| `pipelinek-<v>.sbom.json` | procedencia e integridad |
+| `pipelinek-<v>.sdk.zip` | SDK compilado (contrato del perfil `ga`) |
+| `pipelinek-bom-<v>.json` | manifiesto de componentes |
+| `SHA256SUMS` | digests de los cuatro anteriores (no se declara a sí mismo) |
+
+**Nunca como asset**: `HANDOFF.md` / `HANDOFF-TO-CERTIFIER.md`, `git-head.txt`,
+`bq5-classification.json`, duplicados tipo `SHA256SUMS.txt`, logs, XML de tests, inventarios,
+ni directorios de fuentes/tests/fixtures. Medido el 2026-10-16: la rc6 se publicó con los tres
+primeros adjuntos y el certifier la dejó en `CERTIFICATION_FAILED` (gate
+`assets.distribution-allowlist`), no promovible hasta retirarlos del release.
+
+**Canal del certifier, no la release**: el handoff y los recibos internos viven en este
+repositorio junto a la candidata (`docs/historico/<train>/HANDOFF-TO-CERTIFIER.md`, como en
+`0-61-rc2`) y, si el certifier necesita los bytes, en el harness (`inputs/`, `evidence/`). El
+veredicto del harness nunca viaja como asset.
+
+**Cómo se publica (camino único)**, desde el harness `pipelinek-release-harness`:
+
+```bash
+python3 scripts/publish_rc_release.py --version <v> \
+  --asset-dir <dir-con-el-conjunto> --notes-file <notas-publicas.md> [--publish]
+```
+
+Audita el conjunto **antes** de tocar GitHub (allowlist + inventario del perfil `ga` +
+identidad del ZIP == versión), crea la release en **draft**, sube, re-descarga cada asset y
+compara digests, y sólo con `--publish` la publica. Si el conjunto lleva un recibo interno no
+llega a llamar a `gh`. Después, la certificación externa:
+
+```bash
+python3 -m harness.candidate_certifier v<v> --out <v2.json> --key-purpose production
+scripts/certify_battery.sh --certify-root <dir-vacio> --release-result <v2.json> \
+  localhost/pipelinek-harness:dogfood-<v> <candidate-id>
+```
+
+Estados separados: `CANDIDATE_PUBLISHED` != `CERTIFIED` != `STABLE`.
+
 ## Frontera de responsabilidad — pipeline-kotlin vs pipelinek-release-harness
 
 La frontera entre desarrollo y certificación es una propiedad arquitectónica, no una decisión coyuntural. Estas reglas son vinculantes para cualquier trabajo en este repositorio:

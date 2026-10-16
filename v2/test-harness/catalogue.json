@@ -70,6 +70,7 @@
       "fork_policy": "forkEvery=1, maxParallelForks=1",
       "impact": {
         "gradle_tasks": [
+          ":pipeline-application:detekt",
           ":pipeline-application:test"
         ],
         "python_suites": []
@@ -82,6 +83,7 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-artefacts-local:detekt",
           ":pipeline-artefacts-local:test"
         ],
         "python_suites": []
@@ -94,6 +96,7 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-binding-factory:detekt",
           ":pipeline-binding-factory:test"
         ],
         "python_suites": []
@@ -106,6 +109,8 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-credentials-api:apiCheck",
+          ":pipeline-credentials-api:detekt",
           ":pipeline-credentials-api:test"
         ],
         "python_suites": []
@@ -118,6 +123,7 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-credentials-executor:detekt",
           ":pipeline-credentials-executor:test"
         ],
         "python_suites": []
@@ -130,6 +136,7 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-credentials-local:detekt",
           ":pipeline-credentials-local:test"
         ],
         "python_suites": []
@@ -142,6 +149,7 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-credentials-multipart:detekt",
           ":pipeline-credentials-multipart:test"
         ],
         "python_suites": []
@@ -154,6 +162,8 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-domain:apiCheck",
+          ":pipeline-domain:detekt",
           ":pipeline-domain:test"
         ],
         "python_suites": []
@@ -166,6 +176,7 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-event-harness:detekt",
           ":pipeline-event-harness:test"
         ],
         "python_suites": []
@@ -179,6 +190,8 @@
       "impact": {
         "gradle_tasks": [
           ":pipeline-architecture-tests:test",
+          ":pipeline-events:apiCheck",
+          ":pipeline-events:detekt",
           ":pipeline-events:test"
         ],
         "python_suites": []
@@ -191,6 +204,7 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-events-store:detekt",
           ":pipeline-events-store:test"
         ],
         "python_suites": []
@@ -203,6 +217,8 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-output:apiCheck",
+          ":pipeline-output:detekt",
           ":pipeline-output:test"
         ],
         "python_suites": []
@@ -215,6 +231,7 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-output-store:detekt",
           ":pipeline-output-store:test"
         ],
         "python_suites": []
@@ -227,6 +244,7 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-protocol:detekt",
           ":pipeline-protocol:test"
         ],
         "python_suites": []
@@ -239,6 +257,7 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-release:detekt",
           ":pipeline-release:test"
         ],
         "python_suites": []
@@ -251,6 +270,7 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-runtime:detekt",
           ":pipeline-runtime:test"
         ],
         "python_suites": []
@@ -263,6 +283,8 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-runtime-api:apiCheck",
+          ":pipeline-runtime-api:detekt",
           ":pipeline-runtime-api:test"
         ],
         "python_suites": []
@@ -275,6 +297,8 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-scripting-api:apiCheck",
+          ":pipeline-scripting-api:detekt",
           ":pipeline-scripting-api:test"
         ],
         "python_suites": []
@@ -287,6 +311,7 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-scripting-kotlin24:detekt",
           ":pipeline-scripting-kotlin24:test"
         ],
         "python_suites": []
@@ -299,6 +324,7 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-testkit:detekt",
           ":pipeline-testkit:test"
         ],
         "python_suites": []
@@ -311,7 +337,10 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-application:detekt",
           ":pipeline-application:test",
+          ":pipeline-step-sdk:api:apiCheck",
+          ":pipeline-step-sdk:api:detekt",
           ":pipeline-step-sdk:api:test"
         ],
         "python_suites": []
@@ -324,7 +353,9 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-application:detekt",
           ":pipeline-application:test",
+          ":pipeline-step-sdk:files:detekt",
           ":pipeline-step-sdk:files:test"
         ],
         "python_suites": []
@@ -337,7 +368,9 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-application:detekt",
           ":pipeline-application:test",
+          ":pipeline-step-sdk:http:detekt",
           ":pipeline-step-sdk:http:test"
         ],
         "python_suites": []
@@ -350,7 +383,9 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-application:detekt",
           ":pipeline-application:test",
+          ":pipeline-step-sdk:junit:detekt",
           ":pipeline-step-sdk:junit:test"
         ],
         "python_suites": []
@@ -363,7 +398,9 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-application:detekt",
           ":pipeline-application:test",
+          ":pipeline-step-sdk:runtime:detekt",
           ":pipeline-step-sdk:runtime:test"
         ],
         "python_suites": []
@@ -376,7 +413,9 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-application:detekt",
           ":pipeline-application:test",
+          ":pipeline-step-sdk:scm-git:detekt",
           ":pipeline-step-sdk:scm-git:test"
         ],
         "python_suites": []
@@ -389,7 +428,9 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-application:detekt",
           ":pipeline-application:test",
+          ":pipeline-step-sdk:utilities:detekt",
           ":pipeline-step-sdk:utilities:test"
         ],
         "python_suites": []
@@ -402,7 +443,9 @@
       "fork_policy": null,
       "impact": {
         "gradle_tasks": [
+          ":pipeline-application:detekt",
           ":pipeline-application:test",
+          ":pipeline-step-sdk:workflow-control:detekt",
           ":pipeline-step-sdk:workflow-control:test"
         ],
         "python_suites": []
@@ -568,6 +611,10 @@
         "tests": 22
       },
       {
+        "path": "scripts/test_gate_resource_guard.py",
+        "tests": 9
+      },
+      {
         "path": "scripts/test_gen_current_state_projection.py",
         "tests": 6
       },
@@ -593,11 +640,11 @@
       },
       {
         "path": "scripts/test_measure_harness_baseline.py",
-        "tests": 16
+        "tests": 21
       },
       {
         "path": "scripts/test_plan_affected_tests.py",
-        "tests": 16
+        "tests": 22
       },
       {
         "path": "scripts/test_regenerate_step_inventory.py",
@@ -605,15 +652,15 @@
       },
       {
         "path": "scripts/test_run_integration_gate.py",
-        "tests": 13
+        "tests": 15
       },
       {
         "path": "scripts/test_run_scoped_junit_report.py",
         "tests": 17
       }
     ],
-    "python_tests": 366,
-    "python_total": 22
+    "python_tests": 388,
+    "python_total": 23
   },
   "uat_frontier": {
     "declared_in": "justfile:uat_excludes",

@@ -39,9 +39,26 @@ Prueba negativa esencial: la ausencia de una capacidad rechaza antes del efecto.
 | Nivel | Comando | Alcance |
 |---|---|---|
 | L-DEV | `just dev [base]` | pruebas del módulo afectado + suites del harness afectadas, **un** grafo Gradle incremental, sin `--rerun-tasks`; falla cerrado ante rutas sin clasificar |
-| L-MERGE | `just integration [base]` | lo anterior + fitness de cobertura; veredicto tipado `PASS\|FAIL\|BLOCKED\|STALE` con `NOT_RUN` por fase y recibo ligado al SHA |
+| L-MERGE | `just integration [base]` | lo anterior + fitness + **lint (detekt) + ABI (`apiCheck`) + consumidores directos** de los módulos tocados, en el mismo grafo; veredicto tipado `PASS\|FAIL\|BLOCKED\|STALE` con `NOT_RUN` por fase y recibo ligado al SHA |
 | L-ROUND | `just gate` | `check` completo con la **batería UAT excluida** (`just gate-full` la incluye); el L5 local verifica contratos internos y regresiones |
-| L-RC | `:pipeline-release:releaseGate` | distZip + SBOM + `candidateAdmission` + suites de release; los bytes certificados son los mismos que se entregan al harness externo |
+| L-RC (`candidateGate`) | `just rc` | `:pipeline-release:releaseGate` = distZip + SBOM + `candidateAdmission` + suites de arquitectura/aplicación/release, batería UAT excluida; los bytes certificados son los mismos que se entregan al harness externo |
+
+**L-RC es el `candidateGate`**: separado del gate rápido (L-DEV/L-MERGE) y sin debilitar la certificación. Su presupuesto por defecto (2400 s) es **declarado, no medido**: `releaseGate` nunca ha completado sobre esta base (PK-58A F6), así que debe re-derivarse (regla 4 de AGENTS.md) en la primera ejecución completa.
+
+**Matriz RC: qué corre aquí y qué sólo puede correr el harness externo.**
+
+| Ítem de la matriz RC | Dónde se verifica | Comando/evidencia |
+|---|---|---|
+| tests de producto + arquitectura + release | local | `just rc` (releaseGate) |
+| fitness estructural y de catálogo | local | `just fitness` (registro tool↔suite + catálogo `--check`) |
+| empaquetado reproducible (distZip) + SBOM | local | `:pipeline-application:distZip`, `:pipeline-application:cyclonedxBom` |
+| admisión de la candidata | local | `:pipeline-release:candidateAdmission` |
+| identidad de la candidata (bytes, digests, ley de identidad) | local | `scripts/emit-candidate-receipt.py` |
+| consumidor del veredicto externo | local (contra GitHub) | `scripts/consult-harness-verdict.py` |
+| UAT instaladas, durabilidad, compatibilidad y proyectos reales | **harness externo** | `pipelinek-release-harness` sobre los mismos bytes |
+| seguridad (SAST/dependency scan) | **no local** | sin superficie aprobada aquí; se declara NOT_RUN, nunca PASS por ausencia |
+
+El catálogo verificado (`v2/test-harness/catalogue.json`) publica esta escalera con presupuestos y el dueño del grafo de cada nivel: `just catalogue` para regenerarlo, `just fitness` falla si deriva.
 
 La batería UAT pertenece al `pipelinek-release-harness` externo. La selección vive en `scripts/plan-affected-tests.py` (fuente única). Un veredicto local `PASS` no es una certificación.
 

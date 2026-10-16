@@ -5,11 +5,13 @@ Phases
 ------
   P1  harness coverage fitness          (`fitness-harness-coverage.py`)
   P2  affected python suites            (from plan-affected-tests.py)
-  P3  one Gradle invocation             (affected :module:test tasks, or the full
-                                         round gate when the plan says so), UAT battery
-                                         excluded, incremental, with a boundary file
-                                         created BEFORE the run so the fresh JUnit
-                                         evidence can be adjudicated
+  P3  one Gradle invocation             (affected :module:test tasks + lint
+                                         (detekt) + ABI (apiCheck) + the direct
+                                         consumers of the touched modules, or the
+                                         full round gate when the plan says so),
+                                         UAT battery excluded, incremental, with a
+                                         boundary file created BEFORE the run so
+                                         the fresh JUnit evidence can be adjudicated
 
 Verdict (typed, never inferred):
   PASS      every phase that ran exited 0
@@ -71,7 +73,10 @@ def git_sha(root: pathlib.Path, *args: str) -> str:
 def build_plan(base: str, root: pathlib.Path) -> dict:
     planner = _planner()
     files = planner.changed_files(base, root)
-    result = planner.plan(files, root)
+    # Merge profile: affected tests + lint + ABI + the direct consumers of the
+    # touched modules. Derived from the build files by the planner, so this gate
+    # holds no second mapping of its own.
+    result = planner.plan(files, root, profile="merge")
     result["changed_files"] = files
     return result
 
@@ -189,6 +194,24 @@ def main(argv=None, *, runner=None, evidence_fn=None) -> int:
             phases.append(phase)
 
         if plan["gradle_tasks"]:
+            # B3.2 concurrency limit: the heavy phase must not start while another
+            # gate runs on this host (measured: contention killed a test executor
+            # with SIGKILL 137 and produced meaningless timings). The refusal is a
+            # typed phase, so the verdict becomes BLOCKED (not FAIL) and the
+            # reason travels in the receipt.
+            guard = run_phase(
+                "guard",
+                ["python3", "scripts/gate-resource-guard.py", "--gate", "L-MERGE"],
+                root, timeout_s=60, runner=runner)
+            guard["ran"] = True
+            phases.append(guard)
+            if guard["exit_code"] != 0:
+                blocked_reason = (
+                    "concurrency guard refused: another gate is running on this "
+                    "host; wait, or record a deliberate bypass with "
+                    "PIPELINEK_GATE_ALLOW_CONCURRENT=1")
+
+        if plan["gradle_tasks"] and blocked_reason is None:
             boundary = time.time()
             gradle_argv = ["v2/gradlew", "-p", "v2", *plan["gradle_tasks"],
                            "-Pshard.excludes=" + UAT_EXCLUDES, "--console=plain"]
@@ -217,7 +240,9 @@ def main(argv=None, *, runner=None, evidence_fn=None) -> int:
         "base": args.base,
         "plan": {"gradle_tasks": plan["gradle_tasks"],
                  "python_suites": plan["python_suites"],
-                 "changed_files": plan["changed_files"]},
+                 "changed_files": plan["changed_files"],
+                 "profile": plan.get("profile"),
+                 "consumers": plan.get("consumers", [])},
         "blocked_reason": blocked_reason,
         "phases": phases,
         "evidence": evidence,

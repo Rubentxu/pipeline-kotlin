@@ -34,38 +34,38 @@ Schema: `pipelinek-test-harness-catalogue-1` · home: `v2/test-harness/`
 | Module | Impact (Gradle) | Fork policy | Justification |
 |---|---|---|---|
 | `v2/buildSrc` | `check` | default | — |
-| `v2/pipeline-application` | `:pipeline-application:test` | forkEvery=1, maxParallelForks=1 | forkEvery = 1 is deliberate while the installed-CLI UAT wedge has no structural fix (PK-0-57-RC1, recorded in .agent/TESTING-STATE.md); the module's UAT classes are excluded from local gates via shard.excludes, so the fork cost is paid only by the harness |
-| `v2/pipeline-artefacts-local` | `:pipeline-artefacts-local:test` | default | — |
-| `v2/pipeline-binding-factory` | `:pipeline-binding-factory:test` | default | — |
-| `v2/pipeline-credentials-api` | `:pipeline-credentials-api:test` | default | — |
-| `v2/pipeline-credentials-executor` | `:pipeline-credentials-executor:test` | default | — |
-| `v2/pipeline-credentials-local` | `:pipeline-credentials-local:test` | default | — |
-| `v2/pipeline-credentials-multipart` | `:pipeline-credentials-multipart:test` | default | — |
-| `v2/pipeline-domain` | `:pipeline-domain:test` | default | — |
-| `v2/pipeline-event-harness` | `:pipeline-event-harness:test` | default | — |
-| `v2/pipeline-events` | `:pipeline-architecture-tests:test`, `:pipeline-events:test` | default | — |
-| `v2/pipeline-events-store` | `:pipeline-events-store:test` | default | — |
-| `v2/pipeline-output` | `:pipeline-output:test` | default | — |
-| `v2/pipeline-output-store` | `:pipeline-output-store:test` | default | — |
-| `v2/pipeline-protocol` | `:pipeline-protocol:test` | default | — |
-| `v2/pipeline-release` | `:pipeline-release:test` | default | — |
-| `v2/pipeline-runtime` | `:pipeline-runtime:test` | default | — |
-| `v2/pipeline-runtime-api` | `:pipeline-runtime-api:test` | default | — |
-| `v2/pipeline-scripting-api` | `:pipeline-scripting-api:test` | default | — |
-| `v2/pipeline-scripting-kotlin24` | `:pipeline-scripting-kotlin24:test` | default | — |
-| `v2/pipeline-testkit` | `:pipeline-testkit:test` | default | — |
-| `v2/pipeline-step-sdk/api` | `:pipeline-application:test`, `:pipeline-step-sdk:api:test` | default | — |
-| `v2/pipeline-step-sdk/files` | `:pipeline-application:test`, `:pipeline-step-sdk:files:test` | default | — |
-| `v2/pipeline-step-sdk/http` | `:pipeline-application:test`, `:pipeline-step-sdk:http:test` | default | — |
-| `v2/pipeline-step-sdk/junit` | `:pipeline-application:test`, `:pipeline-step-sdk:junit:test` | default | — |
-| `v2/pipeline-step-sdk/runtime` | `:pipeline-application:test`, `:pipeline-step-sdk:runtime:test` | default | — |
-| `v2/pipeline-step-sdk/scm-git` | `:pipeline-application:test`, `:pipeline-step-sdk:scm-git:test` | default | — |
-| `v2/pipeline-step-sdk/utilities` | `:pipeline-application:test`, `:pipeline-step-sdk:utilities:test` | default | — |
-| `v2/pipeline-step-sdk/workflow-control` | `:pipeline-application:test`, `:pipeline-step-sdk:workflow-control:test` | default | — |
+| `v2/pipeline-application` | `:pipeline-application:detekt`, `:pipeline-application:test` | forkEvery=1, maxParallelForks=1 | forkEvery = 1 is deliberate while the installed-CLI UAT wedge has no structural fix (PK-0-57-RC1, recorded in .agent/TESTING-STATE.md); the module's UAT classes are excluded from local gates via shard.excludes, so the fork cost is paid only by the harness |
+| `v2/pipeline-artefacts-local` | `:pipeline-artefacts-local:detekt`, `:pipeline-artefacts-local:test` | default | — |
+| `v2/pipeline-binding-factory` | `:pipeline-binding-factory:detekt`, `:pipeline-binding-factory:test` | default | — |
+| `v2/pipeline-credentials-api` | `:pipeline-credentials-api:apiCheck`, `:pipeline-credentials-api:detekt`, `:pipeline-credentials-api:test` | default | — |
+| `v2/pipeline-credentials-executor` | `:pipeline-credentials-executor:detekt`, `:pipeline-credentials-executor:test` | default | — |
+| `v2/pipeline-credentials-local` | `:pipeline-credentials-local:detekt`, `:pipeline-credentials-local:test` | default | — |
+| `v2/pipeline-credentials-multipart` | `:pipeline-credentials-multipart:detekt`, `:pipeline-credentials-multipart:test` | default | — |
+| `v2/pipeline-domain` | `:pipeline-domain:apiCheck`, `:pipeline-domain:detekt`, `:pipeline-domain:test` | default | — |
+| `v2/pipeline-event-harness` | `:pipeline-event-harness:detekt`, `:pipeline-event-harness:test` | default | — |
+| `v2/pipeline-events` | `:pipeline-architecture-tests:test`, `:pipeline-events:apiCheck`, `:pipeline-events:detekt`, `:pipeline-events:test` | default | — |
+| `v2/pipeline-events-store` | `:pipeline-events-store:detekt`, `:pipeline-events-store:test` | default | — |
+| `v2/pipeline-output` | `:pipeline-output:apiCheck`, `:pipeline-output:detekt`, `:pipeline-output:test` | default | — |
+| `v2/pipeline-output-store` | `:pipeline-output-store:detekt`, `:pipeline-output-store:test` | default | — |
+| `v2/pipeline-protocol` | `:pipeline-protocol:detekt`, `:pipeline-protocol:test` | default | — |
+| `v2/pipeline-release` | `:pipeline-release:detekt`, `:pipeline-release:test` | default | — |
+| `v2/pipeline-runtime` | `:pipeline-runtime:detekt`, `:pipeline-runtime:test` | default | — |
+| `v2/pipeline-runtime-api` | `:pipeline-runtime-api:apiCheck`, `:pipeline-runtime-api:detekt`, `:pipeline-runtime-api:test` | default | — |
+| `v2/pipeline-scripting-api` | `:pipeline-scripting-api:apiCheck`, `:pipeline-scripting-api:detekt`, `:pipeline-scripting-api:test` | default | — |
+| `v2/pipeline-scripting-kotlin24` | `:pipeline-scripting-kotlin24:detekt`, `:pipeline-scripting-kotlin24:test` | default | — |
+| `v2/pipeline-testkit` | `:pipeline-testkit:detekt`, `:pipeline-testkit:test` | default | — |
+| `v2/pipeline-step-sdk/api` | `:pipeline-application:detekt`, `:pipeline-application:test`, `:pipeline-step-sdk:api:apiCheck`, `:pipeline-step-sdk:api:detekt`, `:pipeline-step-sdk:api:test` | default | — |
+| `v2/pipeline-step-sdk/files` | `:pipeline-application:detekt`, `:pipeline-application:test`, `:pipeline-step-sdk:files:detekt`, `:pipeline-step-sdk:files:test` | default | — |
+| `v2/pipeline-step-sdk/http` | `:pipeline-application:detekt`, `:pipeline-application:test`, `:pipeline-step-sdk:http:detekt`, `:pipeline-step-sdk:http:test` | default | — |
+| `v2/pipeline-step-sdk/junit` | `:pipeline-application:detekt`, `:pipeline-application:test`, `:pipeline-step-sdk:junit:detekt`, `:pipeline-step-sdk:junit:test` | default | — |
+| `v2/pipeline-step-sdk/runtime` | `:pipeline-application:detekt`, `:pipeline-application:test`, `:pipeline-step-sdk:runtime:detekt`, `:pipeline-step-sdk:runtime:test` | default | — |
+| `v2/pipeline-step-sdk/scm-git` | `:pipeline-application:detekt`, `:pipeline-application:test`, `:pipeline-step-sdk:scm-git:detekt`, `:pipeline-step-sdk:scm-git:test` | default | — |
+| `v2/pipeline-step-sdk/utilities` | `:pipeline-application:detekt`, `:pipeline-application:test`, `:pipeline-step-sdk:utilities:detekt`, `:pipeline-step-sdk:utilities:test` | default | — |
+| `v2/pipeline-step-sdk/workflow-control` | `:pipeline-application:detekt`, `:pipeline-application:test`, `:pipeline-step-sdk:workflow-control:detekt`, `:pipeline-step-sdk:workflow-control:test` | default | — |
 
 ## Suites
 
-- python suites: **22** (366 `def test_` bodies)
+- python suites: **23** (388 `def test_` bodies)
 - Kotlin modules with `src/test`: **30**
 
 ## UAT frontier

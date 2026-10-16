@@ -80,7 +80,14 @@ set dotenv-load := false
 # skipped — they stay runnable via `just gate-full`.
 uat_excludes := '*UatLocal*,*UatCompat*,*UatDsl*,*UatStep*,*UatEvt*,*UatDurable*,*Lpr011*,*PublishHtml*,*StashOps*'
 
-@gate budget="1270":
+# Round gate. Concurrency guard (B3.2): refuses while another gate runs on this
+# host. Deliberate overlap: `just gate force=1` (recorded bypass).
+@gate budget="1270" force="":
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+    guard=()
+    if [[ -n "{{force}}" ]]; then guard+=(--force); fi
+    python3 scripts/gate-resource-guard.py --gate L-ROUND "${guard[@]}"
     timeout {{budget}} v2/gradlew -p v2 check -Pshard.excludes='{{uat_excludes}}'
 
 # Legacy behaviour: round gate INCLUDING the UAT battery (belongs to the harness)
@@ -88,7 +95,12 @@ uat_excludes := '*UatLocal*,*UatCompat*,*UatDsl*,*UatStep*,*UatEvt*,*UatDurable*
     timeout {{budget}} v2/gradlew -p v2 check
 
 # Escalation only: after a killed run or suspected stale green (rule 2)
-@gate-escalate budget="1270":
+@gate-escalate budget="1270" force="":
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+    guard=()
+    if [[ -n "{{force}}" ]]; then guard+=(--force); fi
+    python3 scripts/gate-resource-guard.py --gate L-ROUND-ESCALATED "${guard[@]}"
     timeout {{budget}} v2/gradlew -p v2 check --rerun-tasks -Pshard.excludes='{{uat_excludes}}'
 
 # Escalation with the UAT battery included
@@ -100,7 +112,12 @@ uat_excludes := '*UatLocal*,*UatCompat*,*UatDsl*,*UatStep*,*UatEvt*,*UatDurable*
 # other local gates. Budget is DECLARED, not measured: releaseGate has never
 # completed on this base (PK-58A F6), so re-derive it from the first complete run.
 # The bytes it certifies are the bytes handed to the external harness.
-@rc budget="2400":
+@rc budget="2400" force="":
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+    guard=()
+    if [[ -n "{{force}}" ]]; then guard+=(--force); fi
+    python3 scripts/gate-resource-guard.py --gate L-RC "${guard[@]}"
     timeout {{budget}} v2/gradlew -p v2 :pipeline-release:releaseGate -Pshard.excludes='{{uat_excludes}}'
 
 # Single corpus fixture by number 1..13, e.g.: just corpus 11
@@ -189,6 +206,8 @@ uat_excludes := '*UatLocal*,*UatCompat*,*UatDsl*,*UatStep*,*UatEvt*,*UatDurable*
 # B3 integrationGate: fitness + affected python suites + ONE Gradle graph (UAT
 # battery excluded, incremental) + typed receipt PASS|FAIL|BLOCKED|STALE|NOT_RUN.
 # Add --out <path> to persist the receipt JSON.
+# L-MERGE: one Gradle graph. The integration tool holds the graph (it applies the
+# same concurrency guard for its Gradle phase, so this recipe does not duplicate it).
 @integration base="HEAD" budget="1800":
     python3 scripts/run-integration-gate.py --base {{base}} --budget {{budget}}
 

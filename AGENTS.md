@@ -1355,6 +1355,17 @@ the local ladder verifies internal contracts and regressions. Selection lives
 in `scripts/plan-affected-tests.py` (single source of truth). A local gate is
 never a substitute for STEP-CERT or PRODUCT-GATE.
 
+**Harness governance home: `v2/test-harness/`** (B1.3/B1.4). `catalogue.json`
+and `CATALOGUE.md` are GENERATED (`just catalogue`) and list, per module, the
+impact plan that covers it; per gate, its budget and the owner of its Gradle
+graph; and per role (ContractCatalogue, ImpactResolver, SuitePolicy, Dispatch,
+Gate, EvidenceReader, BaselineMeter, CandidateReceipt, VerdictConsumer) its
+SINGLE authority — a second file claiming a role name fails the generator, so
+there is no second selection engine. `just fitness` runs the tool<->suite
+registry AND `just catalogue-check`, so catalog/budget/UAT-frontier drift fails
+the same gate. Product tests stay in their own modules; policies are indexed,
+not copied.
+
 ### Test design ( hangs and processes )
 
 7. Every UAT / integration test class MUST declare JUnit `@Timeout`

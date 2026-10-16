@@ -154,12 +154,54 @@ class MainFlow(unittest.TestCase):
         self.assertEqual(rc, 0, out)
         receipt = json.loads(out_path.read_text())
         self.assertEqual(receipt["verdict"], "PASS")
-        self.assertEqual(receipt["plan"]["gradle_tasks"], [":pipeline-domain:test"])
+        self.assertEqual(receipt["plan"]["gradle_tasks"],
+                         [":pipeline-domain:detekt", ":pipeline-domain:test"])
+        self.assertEqual(receipt["plan"]["profile"], "merge",
+                         "the merge gate plans lint/ABI/consumers, not just tests")
+        self.assertEqual(receipt["plan"]["consumers"], [])
         gradle_argv = [p["argv"] for p in receipt["phases"] if p["phase"] == "gradle"][0]
         self.assertIn(":pipeline-domain:test", gradle_argv)
+        self.assertIn(":pipeline-domain:detekt", gradle_argv,
+                      "lint must travel in the same single Gradle graph")
         self.assertTrue(any(a.startswith("-Pshard.excludes=") for a in gradle_argv))
         self.assertNotIn("--rerun-tasks", gradle_argv)
         self.assertIn("fresh XML: 4 file(s)", out)
+
+    def test_concurrency_guard_blocks_the_gradle_phase(self) -> None:
+        """Claim: the heavy phase does not start while another gate runs.
+
+        Mutation: ignore the guard's exit code -> two full gates run at once, the
+        timings describe the machine and an executor can be SIGKILLed (measured).
+        """
+        (self.repo / "v2" / "pipeline-domain" / "src.kt").write_text("val x = 3\n")
+        calls: list[list[str]] = []
+
+        def runner(argv):
+            calls.append(argv)
+            if any("gate-resource-guard.py" in a for a in argv):
+                return 2, "REFUSED"
+            return 0, ""
+
+        out_path = self.repo / "blocked.json"
+        rc, out = self._main(["--root", str(self.repo), "--base", "HEAD",
+                              "--out", str(out_path)], runner)
+        self.assertEqual(rc, 2, "a refused gate is BLOCKED, not FAIL")
+        self.assertIn("BLOCKED", out)
+        self.assertIn("concurrency guard refused", out)
+        receipt = json.loads(out_path.read_text())
+        guard = [p for p in receipt["phases"] if p["phase"] == "guard"][0]
+        self.assertTrue(guard["ran"])
+        gradle = [p for p in receipt["phases"] if p["phase"] == "gradle"][0]
+        self.assertFalse(gradle["ran"], "gradle must not have been invoked")
+        self.assertFalse(any(a and a[0].endswith("gradlew") for a in calls),
+                         "no Gradle process may have been spawned")
+
+    def test_failing_gradle_phase_is_fail_not_blocked(self) -> None:
+        (self.repo / "v2" / "pipeline-domain" / "src.kt").write_text("val x = 4\n")
+        runner, _calls = self._runner({"gradle": 1, "python": 0, "fitness": 0})
+        rc, out = self._main(["--root", str(self.repo), "--base", "HEAD"], runner)
+        self.assertEqual(rc, 1)
+        self.assertIn("verdict=FAIL", out)
 
     def test_failing_fitness_phase_fails_the_gate(self) -> None:
         (self.repo / "v2" / "pipeline-domain" / "src.kt").write_text("val x = 3\n")
@@ -190,7 +232,10 @@ class MainFlow(unittest.TestCase):
         self.assertEqual(calls, [], "a blocked gate must not run any phase")
 
     def test_unclassified_path_is_blocked(self) -> None:
-        cfg = self.repo / "v2" / "config"
+        # `v2/config/**` was the example here until build configuration became a
+        # first-class classification (full round gate). A path with no
+        # classification at all still blocks the gate.
+        cfg = self.repo / "v2" / "not-a-module"
         cfg.mkdir()
         (cfg / "x.yml").write_text("a: 1\n")
         runner, calls = self._runner({})

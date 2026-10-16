@@ -169,7 +169,8 @@ class SummaryVerdict(unittest.TestCase):
 
     def test_cache_warm_sample_is_marked_workless(self) -> None:
         samples = [self._sample(0, "SUCCESS", 0.4, 0)]
-        s = self.mod.summarize(":x:test", samples, {"rewritten_files": 0},
+        s = self.mod.summarize(":x:test", samples, {"files": 0, "rewritten_files": 0, "tests": 0, "failures": 0,
+                    "errors": 0, "skipped": 0, "unreadable_files": 0},
                                require_work=True)
         self.assertFalse(s["work_executed"])
 
@@ -230,6 +231,58 @@ class MainFlow(unittest.TestCase):
         rc, _ = self._run(["--task", ":x:test", "--runs", "0"], lambda _a: (0, ""))
         self.assertEqual(rc, 2)
 
+
+
+class PercentileTests(unittest.TestCase):
+    """Claim: the baseline names P50/P95 with a stated definition.
+
+    The number is the product of this tool and it drives rule 4's budget, so the
+    statistic is pinned directly instead of being trusted.
+    """
+
+    def test_percentile_interpolates_between_ranks(self):
+        """Mutation: return ordered[round(rank)] -> the p95 of the measured
+        sample jumps by up to a full sample and the budget drifts with it."""
+        mod = load_module()
+        values = [1.0, 2.0, 3.0, 4.0, 18.674]
+        # rank = 4 * 0.95 = 3.8 -> 4.0 + (18.674 - 4.0) * 0.8
+        self.assertAlmostEqual(mod.percentile(values, 95), 15.739, places=3)
+
+    def test_percentile_of_single_value_is_that_value(self):
+        mod = load_module()
+        self.assertEqual(mod.percentile([2.5], 95), 2.5)
+
+    def test_percentile_of_empty_is_none(self):
+        mod = load_module()
+        self.assertIsNone(mod.percentile([], 95))
+
+    def test_summary_flags_p95_unreliable_below_twenty_runs(self):
+        """Mutation: report p95 without the flag -> a five-sample maximum reads
+        as a tail estimate and a reader derives a budget from noise."""
+        mod = load_module()
+        samples = [{"wall_s": float(i), "reported_s": 1.0, "executed": 0,
+                    "from_cache": 0, "up_to_date": 1, "exit_code": 0,
+                    "result": "SUCCESS"} for i in range(1, 6)]
+        summary = mod.summarize(":m:detekt", samples, {"files": 0, "rewritten_files": 0, "tests": 0, "failures": 0,
+                    "errors": 0, "skipped": 0, "unreadable_files": 0}, require_work=False)
+        self.assertEqual(summary["runs"], 5)
+        self.assertFalse(summary["p95_reliable"])
+        self.assertEqual(summary["wall_s"]["p50"], 3.0)
+        self.assertIsNotNone(summary["wall_s"]["mean"])
+        self.assertIsNotNone(summary["wall_s"]["stdev"])
+        report = mod.format_report(":m:detekt", samples, summary)
+        self.assertIn("p50=3.0s", report)
+        self.assertIn("p95 unreliable below 20 runs", report)
+
+    def test_twenty_runs_make_p95_reliable(self):
+        mod = load_module()
+        samples = [{"wall_s": 1.0, "reported_s": 1.0, "executed": 0,
+                    "from_cache": 0, "up_to_date": 1, "exit_code": 0,
+                    "result": "SUCCESS"} for _ in range(20)]
+        summary = mod.summarize(":m:detekt", samples, {"files": 0, "rewritten_files": 0, "tests": 0, "failures": 0,
+                    "errors": 0, "skipped": 0, "unreadable_files": 0}, require_work=False)
+        self.assertTrue(summary["p95_reliable"])
+        self.assertNotIn("unreliable", mod.format_report(":m:detekt", samples, summary))
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import math
 import os
 import pathlib
 import re
@@ -190,6 +191,26 @@ def run_once(task: str, repo_root: pathlib.Path, *, profile: bool,
     return sample
 
 
+def percentile(values: list[float], p: float) -> float | None:
+    """Linear-interpolation percentile (the definition the report names).
+
+    Kept as a pure function because the number is the product of this tool: a
+    wrong percentile is a wrong baseline, and a baseline drives rule 4's budget.
+    """
+    if not values:
+        return None
+    if len(values) == 1:
+        return round(float(values[0]), 3)
+    ordered = sorted(values)
+    rank = (len(ordered) - 1) * (p / 100.0)
+    low = math.floor(rank)
+    high = math.ceil(rank)
+    if low == high:
+        return round(float(ordered[int(rank)]), 3)
+    fraction = rank - low
+    return round(float(ordered[low] + (ordered[high] - ordered[low]) * fraction), 3)
+
+
 def summarize(task: str, samples: list[dict], xml: dict, *, require_work: bool) -> dict:
     walls = [s["wall_s"] for s in samples]
     executed = [s.get("executed") or 0 for s in samples]
@@ -200,10 +221,18 @@ def summarize(task: str, samples: list[dict], xml: dict, *, require_work: bool) 
         "task": task,
         "runs": n,
         "small_sample": n < 5,
+        # A P95 out of five samples is the maximum with better manners; the flag
+        # says so instead of letting the reader treat it as a tail estimate.
+        "p95_reliable": n >= 20,
         "verdict": "FAIL" if failures else "PASS",
         "failures": failures,
         "wall_s": {
+            "p50": percentile(walls, 50),
+            "p95": percentile(walls, 95),
             "median": round(statistics.median(walls), 3) if walls else None,
+            "mean": round(statistics.fmean(walls), 3) if walls else None,
+            "stdev": (round(statistics.stdev(walls), 3)
+                      if len(walls) > 1 else None),
             "min": round(min(walls), 3) if walls else None,
             "max": round(max(walls), 3) if walls else None,
             "samples": walls,
@@ -232,8 +261,12 @@ def format_report(task: str, samples: list[dict], summary: dict) -> str:
         lines.append(f"  run {i}: exit={s['exit_code']} {s['result']} "
                      f"wall={s['wall_s']}s gradle={s['reported_s']}s {split}{prof}")
     w = summary["wall_s"]
-    lines.append(f"  median={w['median']}s min={w['min']}s max={w['max']}s "
-                 f"verdict={summary['verdict']} work_executed={summary['work_executed']}")
+    tail = ("" if summary.get("p95_reliable")
+            else " (p95 unreliable below 20 runs)")
+    lines.append(f"  p50={w['p50']}s p95={w['p95']}s{tail} mean={w['mean']}s "
+                 f"stdev={w['stdev']}s median={w['median']}s min={w['min']}s "
+                 f"max={w['max']}s verdict={summary['verdict']} "
+                 f"work_executed={summary['work_executed']}")
     lines.append(f"  xml: files={summary['xml']['files']} rewritten={summary['xml']['rewritten_files']} "
                  f"tests={summary['xml']['tests']} failures={summary['xml']['failures']} "
                  f"errors={summary['xml']['errors']} skipped={summary['xml']['skipped']} "

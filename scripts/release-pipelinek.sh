@@ -35,8 +35,8 @@
 #   pipelinek-<train>.zip          the candidate bytes
 #   pipelinek-<train>.sbom.json    the SBOM
 #   SHA256SUMS                     the digest authority, covering ALL of the below
-#   HANDOFF.md                     the release notes
-#   git-head.txt                   the commit the ARTEFACT was built from
+#   (HANDOFF.md is release notes, not an uploaded asset)
+#   (git-head.txt stays internal; tag and manifest carry provenance)
 #
 # SHA256SUMS covers every one of those except itself, because a manifest cannot
 # carry its own digest. git-head.txt is included deliberately: §4's "optional
@@ -229,7 +229,7 @@ carries receipts ABOUT a candidate and cannot be the source of its bytes.
 
 ## Published assets
 
-Every asset below carries an entry in \`SHA256SUMS\`, which is itself the only
+Every downloadable data asset below carries an entry in \`SHA256SUMS\`, which is itself the only
 asset that does not (a manifest cannot contain its own digest). Resolve digests
 with \`scripts/release/resolve-release-digest.sh\`; never consult a per-asset
 \`<asset>.sha256\` sidecar, which does not exist on a real release.
@@ -238,8 +238,8 @@ with \`scripts/release/resolve-release-digest.sh\`; never consult a per-asset
 |---|---|
 | \`${EXPECTED_ZIP_NAME}\` | the candidate bytes |
 | \`pipelinek-${PIPELINEK_RELEASE_TRAIN}.sbom.json\` | the SBOM |
-| \`HANDOFF.md\` | these release notes |
-| \`git-head.txt\` | provenance: the artefact build commit |
+| Release notes (not a separate asset) | this handoff |
+| Git tag / internal distribution manifest | artefact provenance |
 | \`SHA256SUMS\` | the digest authority for all of the above |
 
 ## What the certifier must do
@@ -276,9 +276,7 @@ cp "$SBOM" "${EVIDENCE_DIR}/${SBOM_NAME}"
 "${REPO_ROOT}/scripts/release/build-release-manifest.sh" \
     --out "$SUMS" \
     "${EVIDENCE_DIR}/${EXPECTED_ZIP_NAME}" \
-    "${EVIDENCE_DIR}/${SBOM_NAME}" \
-    "${EVIDENCE_DIR}/HANDOFF.md" \
-    "${EVIDENCE_DIR}/git-head.txt"
+    "${EVIDENCE_DIR}/${SBOM_NAME}"
 
 # ----------------------------------------------------------------------------
 # 6. Tag, then confirm the tag landed where the handoff says it would.
@@ -312,23 +310,21 @@ gh release create "${PIPELINEK_RELEASE_TAG}" \
     --notes-file "${EVIDENCE_DIR}/HANDOFF.md" \
     "${EVIDENCE_DIR}/${EXPECTED_ZIP_NAME}" \
     "${EVIDENCE_DIR}/${SBOM_NAME}" \
-    "${EVIDENCE_DIR}/HANDOFF.md" \
-    "${EVIDENCE_DIR}/git-head.txt" \
     "$SUMS"
 
 # Fail closed if the release did not end up carrying the whole set. `gh` exits
 # 0 on a partial upload in some failure modes, and a release missing its digest
 # authority is the defect this script was changed to close.
 PUBLISHED=$(gh release view "${PIPELINEK_RELEASE_TAG}" --json assets --jq '.assets[].name')
-for required in "${EXPECTED_ZIP_NAME}" "${SBOM_NAME}" HANDOFF.md git-head.txt SHA256SUMS; do
-    if ! printf '%s\n' "$PUBLISHED" | grep -Fxq "$required"; then
-        echo "release-pipelinek: published release is missing required asset '${required}'." >&2
-        echo "    DISTRIBUTION_RELEASE_SPEC.md §4 requires it. Published:" >&2
-        printf '      %s\n' "$PUBLISHED" >&2
-        exit 1
-    fi
-done
-echo "release-pipelinek: published asset set verified complete (5 assets)."
+# Exact set comparison: no unanticipated source archives, test evidence or stale SDK JARs.
+EXPECTED_ASSETS=$(printf '%s\n' "${EXPECTED_ZIP_NAME}" "${SBOM_NAME}" SHA256SUMS | LC_ALL=C sort)
+ACTUAL_ASSETS=$(printf '%s\n' "$PUBLISHED" | sed '/^$/d' | LC_ALL=C sort)
+if [ "$ACTUAL_ASSETS" != "$EXPECTED_ASSETS" ]; then
+    echo "release-pipelinek: remote release assets are missing or unexpected:" >&2
+    printf 'expected:\n%s\nactual:\n%s\n' "$EXPECTED_ASSETS" "$ACTUAL_ASSETS" >&2
+    exit 1
+fi
+echo "release-pipelinek: consumer asset set verified complete (3 assets)."
 
 # Commit the SMALL TEXT evidence only. This commit is a *post-publish*
 # documentation commit; it does not move the tag, because the tag was

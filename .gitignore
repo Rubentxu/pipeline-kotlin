@@ -96,3 +96,11 @@ __pycache__/
 # Standing constraint: .agent/HANDOFF-S1-TRAIN-20260929.md ("do not
 # commit/delete"). Ignored rather than deleted so the file stays on disk.
 BACKLOG.md
+
+# Distribution-first: prevent NEW compiled candidate archives entering Git.
+# Historical tracked blobs need a separate authorised cleanup.
+/evidence/**/*.zip
+/evidence/**/*.jar
+/docs/v2/07-uat/evidence/**/*.zip
+/docs/v2/07-uat/evidence/**/*.jar
+/docs/historico/**/*.zip

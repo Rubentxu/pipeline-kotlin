@@ -2304,6 +2304,14 @@ Una entrega de aplicación solo puede declararse PUBLISHED cuando existen artefa
 
 Esta política no modifica automáticamente los contratos de bibliotecas o SDK publicados en Maven/Nexus. Sus artefactos y metadatos se rigen por sus propias especificaciones públicas.
 
+### 8. SDK/JAR-FIRST — publicación de bibliotecas compiladas
+
+- **Producto SDK:** JAR compilados de los módulos públicos definidos en `publishedContractModules`, más el BOM `pipeline-sdk-bom` (POM, no JAR), POM de dependencias transitivas y Gradle `.module` cuando corresponda.
+- **Canal SDK:** repositorio Maven remoto real y autorizado (Nexus/GitHub Packages); `v2/build/sdk-repo` es staging local, nunca una publicación remota.
+- **Sin fuentes añadidos:** prohibidos source ZIP/tarball, `-sources.jar`, fixtures, tests, logs y handoffs como assets de GitHub Releases. En repositorios Maven que permiten omitir fuentes, no generarlas ni subirlas; Maven Central puede exigir sources/javadoc y se debe elegir un canal compatible en vez de fingir éxito.
+- **Producto CLI diferente:** el JAR simple de la aplicación puede necesitar classpath. Mantener el ZIP JVM **ejecutable** exigido por `DISTRIBUTION_RELEASE_SPEC.md`, SDKMAN e instaladores existentes hasta migrar esos consumidores con su propia verificación. Ese ZIP de runtime no es un ZIP de sources.
+- **Cierre:** `SDK_PUBLISHED` solo tras resolver coordenadas reales desde el remoto con un consumidor externo y verificar binarios/versiones/ABI/dependencias. `CANDIDATE_PUBLISHED` de la CLI no demuestra `SDK_PUBLISHED`, ni viceversa.
+
 ## Frontera de responsabilidad — pipeline-kotlin vs pipelinek-release-harness
 
 La frontera entre desarrollo y certificación es una propiedad arquitectónica, no una decisión coyuntural. Estas reglas son vinculantes para cualquier trabajo en este repositorio:

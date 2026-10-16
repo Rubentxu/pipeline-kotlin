@@ -291,7 +291,6 @@ class ObsAOutputStreamingCharacterisationTest {
      * protocol stream, that output arrives while the step is alive, and that every line parses.
      * Their relative order is the consumer's own observation order, not a claim about causality.
      */
-    @Test
     @Disabled("migrated-pending OBS-A; second characterization Falsifier for the " +
         "Output Plane first-write garbling defect. See the row above and " +
         "memory/output-plane-first-write-garbling.md.")

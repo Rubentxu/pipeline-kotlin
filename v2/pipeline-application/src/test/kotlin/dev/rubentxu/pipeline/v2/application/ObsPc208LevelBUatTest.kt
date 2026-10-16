@@ -477,8 +477,12 @@ class ObsPc208LevelBUatTest {
     @DisplayName("OBS-PC-208 — falsificadores")
     inner class Falsifiers {
 
-        @Disabled("migrated-pending OBS-PC-208; characterization Falsifier for the Output Plane first-write garbling defect. See the row above and memory/output-plane-first-write-garbling.md.")
-@Test
+        @Disabled("migrated-pending OBS-PC-208; characterization Falsifier for the " +
+            "Output Plane first-write garbling defect. The byte at line 6 (f04) / line 26 (f01) " +
+            "is missing because the reader withholds the bytes. The defect is real and the " +
+            "fix is a separate WU; the harness re-hosts the characterization per the " +
+            "migrated-pending contract (AGENTS.md §1).")
+        @Test
         @Timeout(300)
         fun `f01 — bytes without newline terminator are committed`() {
             val workspace = Files.createDirectories(root.resolve("workspace"))
@@ -525,8 +529,7 @@ class ObsPc208LevelBUatTest {
             }
         }
 
-        @Disabled("migrated-pending OBS-PC-208; characterization Falsifier for the Output Plane first-write garbling defect. See the row above and memory/output-plane-first-write-garbling.md.")
-@Test
+        @Test
         @Timeout(300)
         fun `f02 — secret split across multiple FIFO writes is sanitised`() {
             val workspace = Files.createDirectories(root.resolve("workspace"))
@@ -577,8 +580,12 @@ class ObsPc208LevelBUatTest {
             )
         }
 
-        @Disabled("migrated-pending OBS-PC-208; characterization Falsifier for the Output Plane first-write garbling defect. See the row above and memory/output-plane-first-write-garbling.md.")
-@Test
+        @Disabled("migrated-pending OBS-PC-208; characterization Falsifier for the " +
+            "Output Plane first-write garbling defect. The byte at line 6 (f04) / line 26 (f01) " +
+            "is missing because the reader withholds the bytes. The defect is real and the " +
+            "fix is a separate WU; the harness re-hosts the characterization per the " +
+            "migrated-pending contract (AGENTS.md §1).")
+        @Test
         @Timeout(300)
         fun `f04 — stdout active while stderr silent — both channels isolated`() {
             val workspace = Files.createDirectories(root.resolve("workspace"))
@@ -628,8 +635,7 @@ class ObsPc208LevelBUatTest {
             }
         }
 
-        @Disabled("migrated-pending OBS-PC-208; characterization Falsifier for the Output Plane first-write garbling defect. See the row above and memory/output-plane-first-write-garbling.md.")
-@Test
+        @Test
         @Timeout(180)
         fun `f05 — producer that exits without writing anything does not deadlock the agent`() {
             val workspace = Files.createDirectories(root.resolve("workspace"))
@@ -658,8 +664,7 @@ class ObsPc208LevelBUatTest {
             assertEquals(0, text.size, "f05: empty producer must produce an empty plane")
         }
 
-        @Disabled("migrated-pending OBS-PC-208; characterization Falsifier for the Output Plane first-write garbling defect. See the row above and memory/output-plane-first-write-garbling.md.")
-@Test
+        @Test
         @Timeout(300)
         fun `f08 — two operations of the same run, no streamId or ownership mixing`() {
             val workspace = Files.createDirectories(root.resolve("workspace"))
@@ -725,8 +730,7 @@ class ObsPc208LevelBUatTest {
             assertNotEquals(streamA, streamB, "f08: stream ids are distinct per opId")
         }
 
-        @Disabled("migrated-pending OBS-PC-208; characterization Falsifier for the Output Plane first-write garbling defect. See the row above and memory/output-plane-first-write-garbling.md.")
-@Test
+        @Test
         @Timeout(300)
         fun `f06 — FIFO rendezvous is owner-only, named pipe, no symlink`() {
             // R2.3(b) / TODO 5: the runtime must not leave the FIFO rendezvous
@@ -801,8 +805,7 @@ class ObsPc208LevelBUatTest {
             }
         }
 
-        @Disabled("migrated-pending OBS-PC-208; characterization Falsifier for the Output Plane first-write garbling defect. See the row above and memory/output-plane-first-write-garbling.md.")
-@Test
+        @Test
         @Timeout(300)
         fun `f03 — agent survives child kill (not runtime kill)`() {
             val workspace = Files.createDirectories(root.resolve("workspace"))
@@ -868,8 +871,7 @@ class ObsPc208LevelBUatTest {
             }
         }
 
-        @Disabled("migrated-pending OBS-PC-208; characterization Falsifier for the Output Plane first-write garbling defect. See the row above and memory/output-plane-first-write-garbling.md.")
-@Test
+        @Test
         @Timeout(300)
         fun `f07 — large output (1MB) is committed without loss`() {
             val workspace = Files.createDirectories(root.resolve("workspace"))
@@ -918,8 +920,7 @@ class ObsPc208LevelBUatTest {
             )
         }
 
-        @Disabled("migrated-pending OBS-PC-208; characterization Falsifier for the Output Plane first-write garbling defect. See the row above and memory/output-plane-first-write-garbling.md.")
-@Test
+        @Test
         @Timeout(300)
         fun `f09 — stream is sealed correctly when agent exits`() {
             val workspace = Files.createDirectories(root.resolve("workspace"))
@@ -998,8 +999,7 @@ class ObsPc208LevelBUatTest {
             )
         }
 
-        @Disabled("migrated-pending OBS-PC-208; characterization Falsifier for the Output Plane first-write garbling defect. See the row above and memory/output-plane-first-write-garbling.md.")
-@Test
+        @Test
         @Timeout(300)
         fun `f10 — concurrent reads do not corrupt the stream`() {
             val workspace = Files.createDirectories(root.resolve("workspace"))

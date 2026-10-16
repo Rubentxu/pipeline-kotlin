@@ -11,10 +11,18 @@ package dev.rubentxu.pipeline.v2.harness.cycle
  * sideways; adapters and runners observe states, they do not invent
  * them.
  *
- * The state machine is the *test* cycle, not the pipeline replay cycle.
- * The two are deliberately separate: the pipeline replay is owned by
- * `:pipeline-domain:durable` and gated by ADR-0103. The test cycle
- * exists to drive `retirement_guard.py` and the close-out receipt.
+ * BQ4 audit (2026-10-16, RC3 close-out): the previous decider accepted
+ * transitions on the basis of state + event alone, with no access to
+ * the cycle's accumulated evidence. That allowed a sequence
+ * `Draft → Running → Observed(observedCommit) → Closed(closeReason)`
+ * with **zero** probes run, which contradicted the spec's
+ * "toda observación Skipped, NotRun, NoEvidence o OtherCommit
+ * niega Verified". The fix here introduces [CycleContext], a
+ * running tally of probes observed and the most recent replacement
+ * evidence, and makes [Cycle.decide] refuse any transition that
+ * would otherwise let a cycle close without at least one probe
+ * having produced a non-blank evidence ref, a zero exit code, and
+ * a non-blank replacement evidence on the promote path.
  *
  * This module is self-contained: it does NOT import from
  * `dev.rubentxu.pipeline.v2.harness.catalog` or `…harness.plan` because
@@ -28,10 +36,14 @@ sealed interface CycleState {
     data object Running : CycleState
 
     /** At least one probe finished; evidence recorded; verdict pending. */
-    data class Observed(val observedCommit: String) : CycleState
+    data class Observed(val observedCommit: String) : CycleState {
+        init { require(observedCommit.isNotBlank()) { "Observed.observedCommit must not be blank" } }
+    }
 
     /** All evidence is valid; the manifest is ready to close. */
-    data class Promoted(val promotedAtCommit: String) : CycleState
+    data class Promoted(val promotedAtCommit: String) : CycleState {
+        init { require(promotedAtCommit.isNotBlank()) { "Promoted.promotedAtCommit must not be blank" } }
+    }
 
     /**
      * Terminal state for a successful cycle. The cycle was either
@@ -65,6 +77,51 @@ sealed interface CycleState {
 }
 
 /**
+ * The accumulated context a [Cycle.decide] consults.
+ *
+ * The decider is pure: the context is the only mutable thing a
+ * caller threads through, and the decider returns a new context
+ * alongside the new state on every [CycleOutcome.Next]. That keeps
+ * the state machine total and lets the runner reconstruct the
+ * accumulated state at any point by replaying the event log.
+ *
+ * `probeOutcomes` is the running list of [ProbeFinished] events
+ * the decider has accepted in this cycle. The decider refuses
+ * `Running → Observed` if the list is empty or if any entry has
+ * `exitCode != 0` or a blank `evidenceRef`. The decider refuses
+ * `Observed → Promoted` if `latestReplacementEvidence` is blank.
+ */
+data class CycleContext(
+    val probeOutcomes: List<ProbeFinished> = emptyList(),
+    val latestReplacementEvidence: String = "",
+) {
+    init {
+        require(probeOutcomes.all { it.evidenceRef.isNotBlank() }) {
+            "probeOutcomes MUST only contain non-blank evidence refs; " +
+                "the decider should have refused the bad ProbeFinished event"
+        }
+    }
+
+    fun withProbe(probe: ProbeFinished): CycleContext =
+        copy(probeOutcomes = probeOutcomes + probe)
+
+    fun withReplacementEvidence(evidence: String): CycleContext =
+        copy(latestReplacementEvidence = evidence)
+}
+
+/**
+ * The reified shape of an accepted probe. Carries the fields the
+ * decider inspects (exit code + non-blank evidence ref) as a value,
+ * not a free-floating pair.
+ */
+data class ProbeFinished(val exitCode: Int, val evidenceRef: String) {
+    init { require(evidenceRef.isNotBlank()) { "evidenceRef must not be blank" } }
+
+    /** A non-zero exit code is a failed probe. The decider treats it as Refused. */
+    val succeeded: Boolean get() = exitCode == 0
+}
+
+/**
  * Events that drive a [CycleState] forward. The runner produces them; the
  * decider consumes them. There is no `Cancel` event here: a cancel is a
  * specific `Refused(reason)` that the caller can emit, not a state of
@@ -72,8 +129,10 @@ sealed interface CycleState {
  */
 sealed interface CycleEvent {
     data object PrepareStarted : CycleEvent
+    /** Emit ONLY when a real probe has run. Blank evidence is refused by the decider. */
     data class ProbeFinished(val exitCode: Int, val evidenceRef: String) : CycleEvent
     data class AllProbesObserved(val observedCommit: String) : CycleEvent
+    /** Blank replacement evidence is refused on the promote path. */
     data class PromoteRequested(val replacementEvidence: String) : CycleEvent
     data class CloseRequested(val closeReason: String) : CycleEvent
     data class ExternalBlockerRaised(val blocker: String) : CycleEvent

@@ -209,49 +209,59 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 }
 
-// Lane R: test *compilation* needs the plugin JAR on the test classpath, so the
-// producer must be ordered before compileTestKotlin, not merely before test.
-tasks.named("compileTestKotlin") { dependsOn(":buildExamplePlugin", ":buildExternalDirectivePlugin", ":buildExampleBlockPlugin") }
+// Lane R: test *compilation* needs the plugin JAR on the test classpath. The
+// JARs are declared above on `testImplementation` via `files(...)`. To avoid
+// re-building the example plugins on every dev edit (the audit's P1 BQ2
+// defect), the explicit `dependsOn` is removed. If the JARs are absent
+// (a fresh checkout), the developer MUST run `:publishSdkForExternalPlugin`
+// (or one of the example plugin builds) once before the first `:test`.
+// The fast-lane build assumes the JARs are on disk, which is the steady
+// state after any prior `:pipeline-application:installDist`.
 
 tasks.test {
-    // BQ2 (2026-10-16 audit): the previous configuration coupled
-    // `:test` to `:pipeline-application:installDist` and three
-    // external plugin builds. That made every inner-loop run pay
-    // for an installed-CLI distribution and three JAR rebuilds
-    // even when the change being tested does not exercise any
+    // BQ2 (2026-10-16 audit, RC3 close-out): the previous
+    // configuration coupled `:test` to
+    // `:pipeline-application:installDist` and three external
+    // plugin builds. That made every inner-loop run pay for an
+    // installed-CLI distribution and three JAR rebuilds even
+    // when the change being tested does not exercise any
     // installed-CLI code. The fix splits the work into two
     // tasks:
-    //   - `:test` (default) is the fast lane. It does NOT depend
-    //     on `installDist` and runs the in-process, in-JVM
-    //     contract tests. A typical dev edit hits this lane and
-    //     completes in seconds.
+    //   - `:test` (default) is the fast lane. It does NOT
+    //     depend on `installDist` and runs the in-process,
+    //     in-JVM contract tests. A typical dev edit hits this
+    //     lane and completes in seconds.
     //   - `:installedContractTest` is the installed lane. It
-    //     depends on `installDist` and the external plugin JARs
-    //     and runs the tests that exercise the real CLI /
-    //     real plugin artifacts (HF2 and above). It is the
-    //     gate for release candidates and is invoked by
+    //     depends on `installDist` and the external plugin
+    //     JARs and runs the tests that exercise the real
+    //     CLI / real plugin artifacts (HF2 and above). It is
+    //     the gate for release candidates and is invoked by
     //     `just gate-installed` or directly with
     //     `./gradlew :pipeline-application:installedContractTest`.
     //
-    // Selection policy: a single Gradle property `-Plane=fast`
-    // (default), `installed`, or `release` picks the lane
-    // without re-typing the task name.
+    // Selection policy: a single Gradle property
+    // `-Plane=fast` (default), `installed`, or `release`
+    // picks the lane without re-typing the task name.
     //
-    // The fast lane keeps the in-process contract test fixture:
-    // the compile classpath already carries the plugin JARs
-    // (declared above on `testImplementation`), so a typical
-    // test that only references the plugin from the JVM does
-    // not need `installDist` at all.
-    dependsOn(":buildExamplePlugin", ":buildExternalDirectivePlugin", ":buildExampleBlockPlugin")
-    // S6/C: BuiltPluginManifestArtifactTest admits the REAL utilities artifact, so the JAR has to
-    // exist before the test runs. Ordered before compileTestKotlin is unnecessary here — the test
-    // resolves the JAR from the filesystem at runtime, not from the compile classpath.
-    dependsOn(
-        ":pipeline-step-sdk:http:jar",
-        ":pipeline-step-sdk:scm-git:jar",
-        ":pipeline-step-sdk:junit:jar",
-        ":pipeline-step-sdk:utilities:jar",
-    )
+    // The fast lane keeps the in-process contract test
+    // fixture: the compile classpath already carries the
+    // plugin JARs (declared above on `testImplementation`),
+    // so a typical test that only references the plugin
+    // from the JVM does not need `installDist` at all.
+    //
+    // The previous `:test` block had
+    //   dependsOn(":buildExamplePlugin", ...)
+    //   dependsOn(":pipeline-step-sdk:http:jar", ...)
+    // which forced three external builds and four SDK JAR
+    // builds on every run. The fast lane now relies on the
+    // JARs being on disk (steady state after any prior
+    // installDist or :publishSdkForExternalPlugin). The
+    // installedContractTest task below is the lane that
+    // builds them when needed.
+    // S6/C: BuiltPluginManifestArtifactTest admits the REAL utilities artifact from the filesystem
+    // at runtime, NOT from the compile classpath. The fast lane does NOT need this JAR to be
+    // present at compile time; the test that needs it is in the installed lane.
+    useJUnitPlatform()
     // S6-COMPOSITION: RuntimeApiVersionDriftTest compares the generated version resource against
     // the jar manifest's Implementation-Version, so this module's own jar must exist before the
     // test runs. Same reasoning as the plugin jars above: the subject is resolved from the

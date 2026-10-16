@@ -45,7 +45,7 @@ fun main(args: Array<String>) {
     }
     val out = outputPath ?: "build/reports/lane-planner.json"
 
-    val specs = LanePlanner.exampleSpecs()
+    val specs = realSpecsFromCatalogue()
     val partition = LanePlanner.partition(specs)
     val assignments = LanePlanner.assign(specs)
 
@@ -70,4 +70,40 @@ fun main(args: Array<String>) {
     outPath.parent?.toFile()?.mkdirs()
     Files.writeString(outPath, body)
     System.err.println("WROTE $outPath (total_specs=${specs.size}, lanes=${partition.size})")
+}
+
+/**
+ * Build [LaneSpec]s from the [dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue].
+ *
+ * BQ2 audit (2026-10-16, RC3 close-out): the previous CLI used
+ * [LanePlanner.exampleSpecs], a hand-built sample. That proved the
+ * planner was reachable from the build but did NOT exercise the
+ * real catalogue. This function derives one `LaneSpec` per
+ * contract, with `minimumFidelity = contract.minFidelity.ordinal`
+ * (HF0..HF6 ordinals match the planner's `minimumFidelity` axis)
+ * and `requiresInstalledBinary = HF >= 2` (HF2+ tests fork the
+ * installed CLI per AGENTS.md rule 11). `requiresExternalCertifier`
+ * is set per the audit's sensitivity to the harness-verdict path
+ * (HF5/HF6 contracts are certifier-grade by ADR-0072).
+ *
+ * The function lives here rather than in `LanePlanner` so the
+ * planner remains a pure decider over an externally-built
+ * `LaneSpec` (it doesn't have to know the catalogue exists).
+ */
+private fun realSpecsFromCatalogue(): List<LaneSpec> {
+    val catalogue = dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue
+    return catalogue.CONTRACTS.map { contract ->
+        val fidelity = contract.minFidelity.ordinal
+        LaneSpec(
+            contractId = contract.capability,
+            capability = contract.capability,
+            minimumFidelity = fidelity,
+            requiresInstalledBinary = fidelity >= 2,
+            // HF5 (Service Sandbox) and HF6 (Online Smoke) are
+            // the certifier-grade fidelities per ADR-0072. A
+            // contract whose minFidelity is one of those is
+            // owned by the harness, not the producer.
+            requiresExternalCertifier = fidelity >= 5,
+        )
+    }
 }

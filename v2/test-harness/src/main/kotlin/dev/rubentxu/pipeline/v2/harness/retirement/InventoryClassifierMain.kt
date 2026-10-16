@@ -31,6 +31,7 @@ fun main(args: Array<String>) {
             val row = iter.next().split(",")
             if (row.size < header.size) continue
             total++
+            val migratedPending = ix["migrated_pending"]?.let { row[it] == "true" } ?: false
             val record = TestRecord(
                 path = row[ix.getValue("path")],
                 kindHint = parseKind(row[ix.getValue("kind_hint")]),
@@ -40,6 +41,7 @@ fun main(args: Array<String>) {
                 disabledAnnotations = row[ix.getValue("disabled_annotations")].toInt(),
                 releaseScaleTag = row[ix.getValue("release_scale_tags")].toInt() > 0,
                 contentSha256 = row[ix.getValue("content_sha256")],
+                migratedPending = migratedPending,
             )
             val d = TestClassifier.classify(record)
             val w = Wave.forRecord(record)

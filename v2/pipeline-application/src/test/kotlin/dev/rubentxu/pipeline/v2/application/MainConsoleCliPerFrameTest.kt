@@ -103,6 +103,41 @@ class MainConsoleCliPerFrameTest {
         assertTrue(rendered.contains("frames") || rendered.contains("frame"), "rendered refusal must mention the per-frame context; got: $rendered")
     }
 
+    /**
+     * H3 mandate: "UX observable" requires an operator running `pipelinek console`
+     * with no args to see every verb the parser accepts. The legacy single-line
+     * usage emitted by [renderConsoleCliRefusal] for [ConsoleCliRefusal.MissingArgument]
+     * used to list only the byte-budgeted options (`--max-bytes`, `--after-cursor`,
+     * `--format`, `--range`); the R4 per-frame options (`--frames`, `--frame-limit`,
+     * `--after-ordinal`, `--follow`, `--stage`, `--step`, `--kind`) were accepted by
+     * the parser but not advertised in the help text, so an operator would not
+     * know they exist without reading the source. This test pins the new usage
+     * line so a future regression that drops a per-frame option fails here.
+     */
+    @Test
+    fun `MissingArgument usage line advertises every per-frame option the parser accepts`() {
+        val rendered = renderConsoleCliRefusal(ConsoleCliRefusal.MissingArgument)
+        // The legacy byte-budgeted options stay in the help text.
+        assertTrue(rendered.contains("--max-bytes"), "usage must still list --max-bytes; got: $rendered")
+        assertTrue(rendered.contains("--after-cursor"), "usage must still list --after-cursor; got: $rendered")
+        assertTrue(rendered.contains("--range"), "usage must still list --range; got: $rendered")
+        // The per-frame options the R4 work added must now be in the help text.
+        for (flag in listOf(
+            "--frames",
+            "--frame-limit",
+            "--after-ordinal",
+            "--follow",
+            "--stage",
+            "--step",
+            "--kind",
+        )) {
+            assertTrue(
+                rendered.contains(flag),
+                "usage must list $flag so an operator learns it exists; got: $rendered",
+            )
+        }
+    }
+
     // ------------------------------------------------------------------ HF1 parser + emit wiring
 
     private data class CliResult(val exitCode: Int, val stdout: String, val stderr: String)

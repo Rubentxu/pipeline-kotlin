@@ -9,9 +9,9 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
@@ -227,7 +227,7 @@ class ObsAOutputStreamingCharacterisationTest {
      * `startLiveOutputObserver` follows the Output Plane on its own thread while the run is in
      * flight, and the observation is of DURABLE committed bytes.
      */
-    @Disabled("migrated-pending OBS-A; characterization Falsifier proving the " +
+        @Disabled("migrated-pending OBS-A; characterization Falsifier proving the " +
         "Output Plane first-write garbling defect documented at " +
         "memory/output-plane-first-write-garbling.md. The release-gate cannot pass with " +
         "this row RED; it is the harness's responsibility to re-host the characterization " +
@@ -291,7 +291,7 @@ class ObsAOutputStreamingCharacterisationTest {
      * protocol stream, that output arrives while the step is alive, and that every line parses.
      * Their relative order is the consumer's own observation order, not a claim about causality.
      */
-    @Disabled("migrated-pending OBS-A; second characterization Falsifier for the " +
+        @Disabled("migrated-pending OBS-A; second characterization Falsifier for the " +
         "Output Plane first-write garbling defect. See the row above and " +
         "memory/output-plane-first-write-garbling.md.")
     @Test

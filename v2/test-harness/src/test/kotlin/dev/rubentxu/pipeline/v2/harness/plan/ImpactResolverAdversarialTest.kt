@@ -263,6 +263,119 @@ class ImpactResolverAdversarialTest {
             ),
         )
     }
+
+    // ---- BQ1 audit (rc4 follow-up, 2026-10-16): build-distribution resources
+    // The rc4 HANDOFF claimed that the new
+    // `Build.composition.pathPatterns = listOf("v2/gradle/wrapper/gradle-wrapper.properties")`
+    // would fire on a change to that path. The audit found the resolver's
+    // `isProductionPath` filtered the change out before the catalogue was
+    // consulted, so the contract never entered the plan. These tests pin the
+    // extended heuristic (see `ImpactResolver.isProductionPath` KDoc and the
+    // `QUALITY_VALUE_ADDENDUM.md` §BQ1 line 33 audit scope).
+
+    @Test
+    fun `gradle wrapper properties is a production path`() {
+        // AAT-BQ1-05: a change to the Gradle wrapper properties
+        // is a production change (which build runs the project).
+        assertTrue(
+            ImpactResolver.isProductionPath(
+                "v2/gradle/wrapper/gradle-wrapper.properties",
+            ),
+        )
+    }
+
+    @Test
+    fun `gradle wrapper jar is a production path`() {
+        // AAT-BQ1-06 (companion of AAT-BQ1-05): the wrapper
+        // jar that bootstraps the Gradle distribution.
+        assertTrue(
+            ImpactResolver.isProductionPath("v2/gradle/wrapper/gradle-wrapper.jar"),
+        )
+    }
+
+    @Test
+    fun `root gradle properties is a production path`() {
+        // AAT-BQ1-07: gradle.properties carries daemon
+        // memory, parallel mode, and JVM flags. A change
+        // here invalidates prior build provenance.
+        assertTrue(ImpactResolver.isProductionPath("v2/gradle.properties"))
+    }
+
+    @Test
+    fun `libs versions toml at any depth is a production path`() {
+        // AAT-BQ1-08: the version catalog at any module
+        // depth. A version bump in `libs.versions.toml`
+        // changes the resolved version of every dependency
+        // that consumes it.
+        assertTrue(
+            ImpactResolver.isProductionPath(
+                "v2/pipeline-application/gradle/libs.versions.toml",
+            ),
+        )
+    }
+
+    @Test
+    fun `gradlew script is a production path`() {
+        // AAT-BQ1-09: the wrapper script. Renaming or
+        // removing `gradlew` is a product change because
+        // the entire build invocation flows through it.
+        assertTrue(ImpactResolver.isProductionPath("v2/gradlew"))
+    }
+
+    @Test
+    fun `unknown build resource under v2 gradle is classified production but refuses when unclassified`() {
+        // AAT-BQ1-10: the shape of the remaining defect. A
+        // real build file the catalogue does not bind must
+        // REFUSE rather than silently select nothing. The
+        // path is under `v2/gradle/` so the new heuristic
+        // recognises it as production; the catalogue's
+        // `Build.composition` does not list it, so the
+        // resolver must surface `UnclassifiedPath` instead
+        // of returning an empty `Selected`.
+        val unknown = "v2/gradle/custom-thing.txt"
+        assertTrue(
+            ImpactResolver.isProductionPath(unknown),
+            "a path under v2/gradle/ must be classified as production",
+        )
+        val plan = ImpactResolver.resolve(listOf(unknown))
+        assertTrue(
+            plan is ValidationPlan.Refused,
+            "an unclassified build resource must refuse, got $plan",
+        )
+        val reasons = (plan as ValidationPlan.Refused).reasons
+        assertTrue(
+            reasons.any { it is SelectionRefusal.UnclassifiedPath && it.path == unknown },
+            "the refusal must name the unclassified build resource, got $reasons",
+        )
+    }
+
+    @Test
+    fun `changing gradle-wrapper properties selects Build composition contract end to end`() {
+        // AAT-BQ1-11: the end-to-end shape. The contract
+        // that claims this path must actually appear in the
+        // plan with the suites the catalogue binds to it.
+        // This is the test that proves the rc4 claim is now
+        // backed by the resolver, not just the catalogue.
+        val plan = ImpactResolver.resolve(
+            listOf("v2/gradle/wrapper/gradle-wrapper.properties"),
+        )
+        assertTrue(
+            plan is ValidationPlan.Selected,
+            "the plan must be Selected, got $plan",
+        )
+        val selected = plan as ValidationPlan.Selected
+        assertTrue(
+            selected.capabilities.contains("Build.composition"),
+            "Build.composition must be selected, got ${selected.capabilities}",
+        )
+        val suiteFilters = selected.suites.map { it.filter }.toSet()
+        assertTrue(
+            suiteFilters.containsAll(
+                setOf("CompatibilityCorpusTest", "ContractCatalogueFitnessTest"),
+            ),
+            "the suites bound to Build.composition must be selected, got $suiteFilters",
+        )
+    }
 }
 
 /** Path helper kept explicit so the adversarial tests never depend on ambient state. */

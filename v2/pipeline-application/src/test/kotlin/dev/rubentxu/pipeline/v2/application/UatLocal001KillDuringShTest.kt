@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -29,6 +30,7 @@ import org.junit.jupiter.api.io.TempDir
  *
  * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
  */
+@Disabled("migrated to harness; see PR #140 (h4 batch 3)")
 @Tag("uat-local")
 @Timeout(120)
 class UatLocal001KillDuringShTest {

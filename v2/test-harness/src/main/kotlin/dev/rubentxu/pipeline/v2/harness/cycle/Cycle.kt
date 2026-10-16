@@ -143,25 +143,20 @@ object Cycle {
                     }
                 }
                 is CycleEvent.CloseRequested -> {
-                    // The audit's other concern: an Observed
-                    // cycle closing without promotion must
-                    // STILL have at least one probe in the
-                    // accumulator. A cycle that observed without
-                    // any probe is Refused, not Closed.
-                    if (context.probeOutcomes.isEmpty()) {
-                        CycleOutcome.Next(
-                            nextState = CycleState.Refused(
-                                "CloseRequested from Observed without any ProbeFinished; " +
-                                    "the cycle never collected evidence",
-                            ),
-                            nextContext = context,
-                        )
-                    } else {
-                        CycleOutcome.Next(
-                            nextState = CycleState.Closed(event.closeReason),
-                            nextContext = context,
-                        )
-                    }
+                    // BQ4 audit (2026-10-16, vertical): the spec
+                    // `EPHEMERAL_CYCLE_LIFECYCLE_SPEC.md` defines the
+                    // single success path as
+                    // `Draft -> Running -> Observed -> Promoted -> Closed`.
+                    // Allowing `Observed -> Closed` lets a cycle skip the
+                    // promote step, which is where the replacement
+                    // evidence (a permanent contract or an external
+                    // certifier receipt) is checked. A cycle that
+                    // observed with at least one probe but did not
+                    // request promotion MUST transition through
+                    // `Promoted` before closing. `CloseRequested` from
+                    // `Observed` is therefore `IllegalTransition`; the
+                    // caller has to emit `PromoteRequested` first.
+                    illegal(state, event)
                 }
                 is CycleEvent.ExternalBlockerRaised -> CycleOutcome.Next(
                     nextState = CycleState.BlockedExternal(event.blocker),

@@ -29,8 +29,36 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 }
 
+tasks.withType<Test>().configureEach {
+    // The fast lane must run with fresh JVMs only when a test actually
+    // mutates global state. The deciders here are pure, so a single JVM
+    // is enough and parallel forks would be wasted overhead.
+    maxParallelForks = 1
+    forkEvery = 0
+}
+
 tasks.test {
     useJUnitPlatform()
+    testLogging {
+        events("passed", "skipped", "failed", "standardError")
+    }
+}
+
+// BQ2: explicit `validateFast` task that runs the test-harness deciders
+// in-process. It does NOT depend on `:pipeline-application:installDist`
+// or any of the `:buildExamplePlugin` family. The deciders here are pure
+// total functions; no I/O; no subprocess. This is the lane a developer
+// runs while iterating on a reducer, a codec, or a contract.
+//
+// The default `test` task already does this (it is the only test source
+// in this module), so `validateFast` is an alias that documents intent
+// and gives a name the CI matrix can target without ambiguity.
+tasks.register<Test>("validateFast") {
+    description = "Fast lane: in-process deciders, no installDist, no plugin build."
+    group = "verification"
+    useJUnitPlatform()
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
     testLogging {
         events("passed", "skipped", "failed", "standardError")
     }

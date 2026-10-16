@@ -202,6 +202,20 @@ object ContractCatalogue {
                 // remove a plugin from the product while every per-module test still passes.
                 "v2/settings.gradle.kts",
             ),
+            // BQ1 audit (2026-10-16, RC3 close-out): the
+            // contract used to be a closed list of paths only.
+            // The pathPatterns field (added in RC2) lets a
+            // contract claim broader coverage without
+            // enumerating every file. This is the first
+            // contract to use it: the catalog has a single
+            // literal path (settings.gradle.kts) and a glob
+            // that catches other build-composition files
+            // (gradle wrapper properties) without claiming
+            // every build.gradle.kts (those are owned by
+            // Provenance.build.identity). The literal path
+            // remains required (the fitness test asserts
+            // sourcePaths is non-empty).
+            pathPatterns = listOf("v2/gradle/wrapper/gradle-wrapper.properties"),
             minFidelity = Fidelity.HF2,
         ),
     )

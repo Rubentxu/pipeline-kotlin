@@ -16,7 +16,9 @@ import java.nio.file.Path
  *      timeout and process isolation. The runner does NOT inspect
  *      probe output: it collects exit codes and evidence refs
  *      and emits `CycleEvent.ProbeFinished` for each. The decider
- *      is the only authority that classifies the cycle.
+ *      is the only authority that classifies the cycle, and the
+ *      decider now threads a [CycleContext] that records every
+ *      accepted probe.
  *   3. `adjudicate` — combines the manifest, the probe outcomes,
  *      and the harness verdict (if any) into a single typed
  *      decision. This is `Cycle.decide`'s caller.
@@ -34,8 +36,10 @@ import java.nio.file.Path
  * and the harness-verdict fetcher is left to the operator. What
  * the runner guarantees is the *state-machine discipline*:
  * every transition goes through `Cycle.decide`, the close action
- * is gated on a `Closed` decision, and the temporary directory
- * is never deleted unless that gate is satisfied.
+ * is gated on a `Closed` decision (which itself requires at least
+ * one probe to have succeeded in the new audit-closed decider),
+ * and the temporary directory is never deleted unless that gate
+ * is satisfied.
  */
 class CycleRunner(
     val cycleId: String,
@@ -60,13 +64,21 @@ class CycleRunner(
         private set
 
     /**
+     * The accumulated context. The runner threads this through
+     * every `Cycle.decide` call and exposes the latest value
+     * so the operator can read the evidence trail.
+     */
+    var context: CycleContext = CycleContext()
+        private set
+
+    /**
      * `prepare`: validates the manifest exists and is readable,
      * and reserves the cycle directory. Returns the new state
      * (`Running` on success) and the outcome of the decision.
      */
     fun prepare(): CycleOutcome {
         val outcome = transition(CycleEvent.PrepareStarted)
-        if (outcome is CycleOutcome.Next && outcome.state is CycleState.Running) {
+        if (outcome is CycleOutcome.Next && outcome.nextState is CycleState.Running) {
             cycleDir.toFile().mkdirs()
         }
         return outcome
@@ -77,13 +89,19 @@ class CycleRunner(
      * The probe executor is responsible for invoking the probe,
      * collecting its exit code and evidence, and calling this
      * method.
+     *
+     * The decider refuses:
+     *   - `exitCode != 0` (refused to `Refused` so the cycle cannot
+     *     observe on a failed probe);
+     *   - blank `evidenceRef` (refused at the data-class init).
      */
     fun reportProbe(exitCode: Int, evidenceRef: String): CycleOutcome =
         transition(CycleEvent.ProbeFinished(exitCode, evidenceRef))
 
     /**
      * `adjudicate`: declare the cycle has observed all its
-     * probes and is ready for promotion.
+     * probes and is ready for promotion. The decider refuses
+     * if no probe has succeeded in the accumulator.
      */
     fun observeAll(observedCommit: String): CycleOutcome =
         transition(CycleEvent.AllProbesObserved(observedCommit))
@@ -93,6 +111,9 @@ class CycleRunner(
      * whether the cycle is `Promoted` or stays in `Observed`
      * (the latter is a typed refusal of the promotion request
      * — the state machine does not move).
+     *
+     * The decider refuses a blank `replacementEvidence` so a
+     * cycle cannot promote without naming a substitute.
      */
     fun requestPromote(replacementEvidence: String): CycleOutcome =
         transition(CycleEvent.PromoteRequested(replacementEvidence))
@@ -102,10 +123,11 @@ class CycleRunner(
      *
      * The decision is:
      *   - `Closed(reason)` if the cycle is in `Promoted` or
-     *     `Observed` state (success path),
+     *     `Observed` state with at least one probe in the
+     *     accumulator (success path);
      *   - `Refused(reason)` if the cycle is in `Draft` or
      *     `Running` (closed without evidence; the manifest was
-     *     invalid or the probes never finished),
+     *     invalid or the probes never finished);
      *   - `IllegalTransition` if the cycle is already `Closed`,
      *     `Refused`, or `BlockedExternal`.
      *
@@ -133,11 +155,11 @@ class CycleRunner(
      * side-effect free outside the cycle directory.
      *
      * The method returns the closed state when the deletion
-     * was authorised, and an `IllegalTransition` when the
-     * cycle is not in `Closed` state. It is deliberately not
-     * possible to bypass the gate: a `Refused` cycle keeps
-     * its files for inspection; a `BlockedExternal` cycle
-     * does the same.
+     * was authorised, and throws an [IllegalStateException]
+     * when the cycle is not in `Closed` state. It is
+     * deliberately not possible to bypass the gate: a
+     * `Refused` cycle keeps its files for inspection; a
+     * `BlockedExternal` cycle does the same.
      */
     fun finalise(deleteDirectory: () -> Unit): CycleState {
         if (state !is CycleState.Closed) {
@@ -148,9 +170,10 @@ class CycleRunner(
     }
 
     private fun transition(event: CycleEvent): CycleOutcome {
-        val outcome = Cycle.decide(state, event)
+        val outcome = Cycle.decide(state, event, context)
         if (outcome is CycleOutcome.Next) {
-            state = outcome.state
+            state = outcome.nextState
+            context = outcome.nextContext
         }
         return outcome
     }

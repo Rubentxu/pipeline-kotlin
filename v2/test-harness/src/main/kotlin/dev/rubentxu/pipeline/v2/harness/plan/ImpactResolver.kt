@@ -48,14 +48,22 @@ object ImpactResolver {
      * Paths that are production code, i.e. paths whose change invalidates a guarantee.
      *
      * A path is production when it is a `src/main` source, a Gradle build file, a protobuf
-     * schema, or a `META-INF/services/` resource (ServiceLoader binding). The audit at
-     * 2026-10-16 found two production-impacting extensions missing from this check:
-     *   - `.proto` files declare wire contracts; a schema change is a product change.
-     *   - files under `META-INF/services/` are SPI bindings: renaming or removing a
-     *     ServiceLoader line changes which implementation is loaded at runtime and is
-     *     effectively a product change.
-     * Both extensions are now part of the heuristic. The BQ1 acceptance matrix names
-     * both as adversarial cases (AAT-BQ1-03 alters a META-INF services resource).
+     * schema, a `META-INF/services/` resource (ServiceLoader binding), or a build-distribution
+     * resource (Gradle wrapper, version catalog, settings, or the wrapper script). The audit at
+     * 2026-10-16 (rc4 follow-up) found one further gap:
+     *   - `v2/gradle/wrapper/gradle-wrapper.properties` (and its companion `.jar`), the
+     *     `gradlew`/`gradlew.bat` scripts, `gradle.properties`, and `libs.versions.toml` are
+     *     build-distribution resources. `QUALITY_VALUE_ADDENDUM.md` §BQ1 (line 33) lists
+     *     "scripts de build/distribución" as production-impacting inputs, and the catalogue
+     *     already binds `Build.composition` to `v2/gradle/wrapper/gradle-wrapper.properties` via
+     *     `pathPatterns` (see `ContractCatalogue.Build.composition`); without this clause the
+     *     resolver filters the change out at line 92 before the catalogue is consulted and the
+     *     `Build.composition` contract never fires. The new clauses cover the Gradle wrapper
+     *     under `v2/gradle/wrapper/`, version catalogs at any depth (`libs.versions.toml`),
+     *     `gradle.properties` at any depth, and the wrapper scripts. The pre-existing
+     *     `endsWith(".gradle.kts")` rule already covers `build.gradle.kts` / `settings.gradle.kts`
+     *     / `buildSrc/build.gradle.kts`; the explicit `endsWith("/build.gradle.kts")` is kept
+     *     as documentation of intent, not as a behavioural change.
      */
     fun isProductionPath(path: String): Boolean {
         if (SELF_OWNED_PREFIXES.any { path.startsWith(it) }) return false
@@ -63,6 +71,31 @@ object ImpactResolver {
         if (path.endsWith(".proto")) return true
         // SPI binding: any resource under META-INF/services/ is a product change.
         if (path.contains("/META-INF/services/") && !path.endsWith("/")) return true
+        // Build-distribution resources (QUALITY_VALUE_ADDENDUM.md §BQ1, line 33).
+        // The Gradle wrapper directory: properties and jar. The catalogue's
+        // `Build.composition` `pathPatterns` already claims these paths; without
+        // these two clauses the resolver filters the change out before the
+        // catalogue is consulted and the contract never fires.
+        if (path.startsWith("v2/gradle/wrapper/") &&
+            (path.endsWith(".properties") || path.endsWith(".jar"))
+        ) return true
+        // Version catalogs (Gradle catalog DSL) and gradle.properties at any
+        // module depth. A version-catalog bump changes the resolved version of
+        // every dependency that consumes it; gradle.properties carries daemon
+        // memory, parallel mode, and a range of JVM flags.
+        if (path.endsWith("/libs.versions.toml") ||
+            path.endsWith("/gradle.properties")
+        ) return true
+        // Wrapper scripts. Renaming or removing `gradlew` is a product change
+        // because the entire build invocation flows through it.
+        if (path.endsWith("/gradlew") || path.endsWith("/gradlew.bat")) return true
+        // Any other file under `v2/gradle/`. The audit at 2026-10-16 found that
+        // the build-resource category must be recognised even when the file
+        // name is not on the explicit list above; the resolver's job is to
+        // classify, not to enumerate. A new build resource the catalogue
+        // doesn't bind will then REFUSE (UnclassifiedPath) rather than silently
+        // select nothing.
+        if (path.startsWith("v2/gradle/")) return true
         return path.contains("/src/main/") &&
             (path.endsWith(".kt") || path.endsWith(".java"))
     }

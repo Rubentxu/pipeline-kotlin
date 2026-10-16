@@ -201,21 +201,37 @@ object ContractCatalogue {
                 // Which modules exist, and which are wired into the distribution. A change here can
                 // remove a plugin from the product while every per-module test still passes.
                 "v2/settings.gradle.kts",
+                // The Gradle wrapper properties: the canonical "which Gradle version runs this
+                // build" resource. Listed as a literal so the fitness test's `everyNamedPathExists`
+                // assertion continues to pass for a file that already exists on disk.
+                "v2/gradle/wrapper/gradle-wrapper.properties",
+                // The version catalog and the gradle.properties at the build root.
+                "v2/gradle.properties",
             ),
-            // BQ1 audit (2026-10-16, RC3 close-out): the
+            // BQ1 audit (2026-10-16, RC4 close-out): the
             // contract used to be a closed list of paths only.
             // The pathPatterns field (added in RC2) lets a
             // contract claim broader coverage without
-            // enumerating every file. This is the first
-            // contract to use it: the catalog has a single
-            // literal path (settings.gradle.kts) and a glob
-            // that catches other build-composition files
-            // (gradle wrapper properties) without claiming
-            // every build.gradle.kts (those are owned by
-            // Provenance.build.identity). The literal path
-            // remains required (the fitness test asserts
-            // sourcePaths is non-empty).
-            pathPatterns = listOf("v2/gradle/wrapper/gradle-wrapper.properties"),
+            // enumerating every file. After the RC3 closure
+            // this was used to claim the gradle wrapper
+            // properties; the RC4 audit showed that the
+            // resolver was filtering the path out at the
+            // `isProductionPath` boundary before the
+            // catalogue was consulted, so the contract never
+            // fired. The resolver was extended (see
+            // `ImpactResolver.isProductionPath`) to recognise
+            // build-distribution resources, and the patterns
+            // here now cover the full Gradle wrapper directory
+            // plus version catalogs and gradle.properties at
+            // any depth, without claiming every
+            // `build.gradle.kts` (those are owned by
+            // Provenance.build.identity).
+            pathPatterns = listOf(
+                "v2/gradle/wrapper/gradle-wrapper.properties",
+                "v2/gradle/wrapper/gradle-wrapper.jar",
+                "v2/**/libs.versions.toml",
+                "v2/**/gradle.properties",
+            ),
             minFidelity = Fidelity.HF2,
         ),
     )

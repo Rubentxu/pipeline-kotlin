@@ -208,10 +208,7 @@ class SdkZipBuilderTest {
             "extraction did not produce a Maven layout under dev/rubentxu/pipeline/v2/; " +
                 "got: ${m2Root.toFile().list().orEmpty().joinToString()}",
         )
-        for ((_, artifact) in listOf(
-            "pipeline-domain" to version,
-            "pipeline-events" to version,
-        )) {
+        for (artifact in listOf("pipeline-domain", "pipeline-events")) {
             val versioned = devRoot.resolve("$artifact/$version")
             assertTrue(
                 Files.isDirectory(versioned),

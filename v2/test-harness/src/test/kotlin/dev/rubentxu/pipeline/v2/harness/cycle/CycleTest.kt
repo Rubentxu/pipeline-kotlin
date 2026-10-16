@@ -46,8 +46,8 @@ class CycleTest {
                 start = CycleState.Draft,
                 events = listOf(
                     CycleEvent.PrepareStarted,
-                    CycleEvent.ProbeFinished(0, "ev-1"),
-                    CycleEvent.ProbeFinished(0, "ev-2"),
+                    CycleEvent.ProbeFinished(ProbeOutcome.Verified("ev-1")),
+                    CycleEvent.ProbeFinished(ProbeOutcome.Verified("ev-2")),
                     CycleEvent.AllProbesObserved(commit),
                 ),
             )
@@ -61,16 +61,16 @@ class CycleTest {
                 start = CycleState.Draft,
                 events = listOf(
                     CycleEvent.PrepareStarted,
-                    CycleEvent.ProbeFinished(0, "ev"),
+                    CycleEvent.ProbeFinished(ProbeOutcome.Verified("ev")),
                     CycleEvent.AllProbesObserved(commit),
                 ),
             )
             assertEquals(CycleState.Observed(commit), obsState)
-            val outcome = Cycle.decide(obsState, CycleEvent.PromoteRequested("permanent contract"), obsCtx)
+            val outcome = Cycle.decide(obsState, CycleEvent.PromoteRequested("permanent-contract:test"), obsCtx)
             val next = outcome as CycleOutcome.Next
             val promoted = next.nextState as CycleState.Promoted
             assertEquals(commit, promoted.promotedAtCommit)
-            assertEquals("permanent contract", next.nextContext.latestReplacementEvidence)
+            assertEquals("permanent-contract:test", next.nextContext.latestReplacementEvidence)
         }
 
         @Test
@@ -79,9 +79,9 @@ class CycleTest {
                 start = CycleState.Draft,
                 events = listOf(
                     CycleEvent.PrepareStarted,
-                    CycleEvent.ProbeFinished(0, "ev"),
+                    CycleEvent.ProbeFinished(ProbeOutcome.Verified("ev")),
                     CycleEvent.AllProbesObserved(commit),
-                    CycleEvent.PromoteRequested("permanent contract"),
+                    CycleEvent.PromoteRequested("permanent-contract:test"),
                     CycleEvent.CloseRequested("temporary probes retired"),
                 ),
             )
@@ -134,7 +134,7 @@ class CycleTest {
     inner class IllegalTransitions {
         @Test
         fun `Draft cannot receive ProbeFinished`() {
-            val outcome = Cycle.decide(CycleState.Draft, CycleEvent.ProbeFinished(0, "ev"))
+            val outcome = Cycle.decide(CycleState.Draft, CycleEvent.ProbeFinished(ProbeOutcome.Verified("ev")))
             assertTrue(outcome is CycleOutcome.IllegalTransition) { "got $outcome" }
         }
     }
@@ -192,22 +192,27 @@ class CycleTest {
             ) as CycleOutcome.Next).nextState
             val okOutcome = Cycle.decide(
                 running,
-                CycleEvent.ProbeFinished(0, "ok-1"),
+                CycleEvent.ProbeFinished(ProbeOutcome.Verified("ok-1")),
             )
             assertTrue(okOutcome is CycleOutcome.Next) { "got $okOutcome" }
             val stillRunning = (okOutcome as CycleOutcome.Next).nextState
             assertEquals(CycleState.Running, stillRunning)
             // Now the failing probe: the cycle MUST refuse
-            // immediately, NOT stay in Running.
+            // immediately, NOT stay in Running. The new
+            // decider refuses Failed on the ADT directly,
+            // with a typed reason that names the failing
+            // probe by its evidence ref and the underlying
+            // reason.
             val badOutcome = Cycle.decide(
                 stillRunning,
-                CycleEvent.ProbeFinished(1, "bad-1"),
+                CycleEvent.ProbeFinished(ProbeOutcome.Failed("bad-1", "test fail")),
             )
             val next = badOutcome as CycleOutcome.Next
             val refused = next.nextState as CycleState.Refused
             assertTrue(
-                refused.reason.contains("failed with exitCode=1"),
-                "refusal must name the failing probe, got ${refused.reason}",
+                refused.reason.contains("bad-1") && refused.reason.contains("Failed") &&
+                    refused.reason.contains("test fail"),
+                "refusal must name the failing probe and the reason, got ${refused.reason}",
             )
         }
 
@@ -217,7 +222,7 @@ class CycleTest {
                 start = CycleState.Draft,
                 events = listOf(
                     CycleEvent.PrepareStarted,
-                    CycleEvent.ProbeFinished(0, "ev"),
+                    CycleEvent.ProbeFinished(ProbeOutcome.Verified("ev")),
                     CycleEvent.AllProbesObserved(commit),
                 ),
             )
@@ -263,7 +268,7 @@ class CycleTest {
             ) as CycleOutcome.Next).nextState
             val outcome = Cycle.decide(
                 running,
-                CycleEvent.ProbeFinished(1, "bad-1"),
+                CycleEvent.ProbeFinished(ProbeOutcome.Failed("bad-1", "test fail")),
             )
             val next = outcome as CycleOutcome.Next
             assertTrue(next.nextState is CycleState.Refused) {
@@ -273,30 +278,30 @@ class CycleTest {
 
         @Test
         fun `a probe with blank evidenceRef is refused at the data class init`() {
-            // The ProbeFinished data class requires a non-blank
-            // evidenceRef. A caller that produces a blank
+            // The ProbeFinished data class requires a Verified
+            // outcome with a non-blank evidenceRef. A blank
             // evidence ref gets the refusal at the call site,
             // before the decider is even consulted.
             val ex = org.junit.jupiter.api.Assertions.assertThrows(
                 IllegalArgumentException::class.java,
             ) {
-                ProbeFinished(exitCode = 0, evidenceRef = "")
+                ProbeFinished(ProbeOutcome.Verified(""))
             }
             assertNotNull(ex.message)
         }
 
         @Test
         fun `a probe with blank evidenceRef as an event is rejected by the decider`() {
-            // The decider creates a ProbeFinished internally,
-            // and the data-class init refuses the construction.
-            // The exception type is the same; either way a
-            // blank evidence ref cannot enter the accumulator.
+            // The new shape refuses a blank evidence ref at the
+            // ProbeFinished construction, which is what the
+            // decider would have to do. Either way a blank
+            // evidence ref cannot enter the accumulator.
             val running = (Cycle.decide(
                 CycleState.Draft,
                 CycleEvent.PrepareStarted,
             ) as CycleOutcome.Next).nextState
             org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException::class.java) {
-                Cycle.decide(running, CycleEvent.ProbeFinished(0, ""))
+                Cycle.decide(running, CycleEvent.ProbeFinished(ProbeOutcome.Verified("")))
             }
         }
     }

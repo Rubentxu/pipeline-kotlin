@@ -90,6 +90,20 @@ class CycleRunner(
         private set
 
     /**
+     * Snapshot of the cycle dir's contents at the moment `prepare()`
+     * took ownership of it. The runner treats everything in the
+     * snapshot as "owned by the operator" (already there when the
+     * cycle started) and everything NOT in the snapshot as
+     * "owned by the runner or the executor" (created during the
+     * cycle's run). The deletion phase in `finalise` is the
+     * second set; the first set is left alone. This is the
+     * "manifest of property" the 2026-10-16 audit named: the
+     * runner no longer over-deletes a directory it does not own.
+     */
+    private var operatorOwnedSnapshot: Set<Path> = emptySet()
+        private set
+
+    /**
      * `prepare`: reads the manifest from `manifestPath`, parses it,
      * validates all required fields, anchors the manifest's
      * `relativePath` entries inside the cycle directory, and
@@ -133,9 +147,29 @@ class CycleRunner(
             } catch (ex: java.io.IOException) {
                 return fail("could not create cycleDir '$cycleDir': ${ex.message}")
             }
+            // Snapshot the cycle dir's contents RIGHT NOW, before
+            // any executor writes anything. `finalise` will
+            // delete everything created AFTER this snapshot and
+            // leave the operator's pre-existing files alone. The
+            // audit's "manifest of property" requirement is
+            // pinned here, where the property boundary is real.
+            operatorOwnedSnapshot = snapshotOwned(cycleDir)
             manifest = parsed
         }
         return transition
+    }
+
+    /**
+     * Snapshot every existing entry under [root]. Returns the
+     * real-path of each immediate child (not the recursive tree:
+     * the snapshot is what existed at `prepare()` time, the rest
+     * is by definition runner-owned).
+     */
+    private fun snapshotOwned(root: Path): Set<Path> {
+        if (!Files.isDirectory(root)) return emptySet()
+        return Files.list(root).use { stream ->
+            stream.map { it.toRealPath() }.collect(java.util.stream.Collectors.toSet())
+        }
     }
 
     /**
@@ -198,21 +232,14 @@ class CycleRunner(
                 rawOutcome
             }
             outcomes += outcome
-            val event = when (outcome) {
-                is ProbeOutcome.UnsupportedFidelity -> CycleEvent.ProbeFinished(
-                    exitCode = 0,
-                    evidenceRef = "unsupported:${outcome.fidelity}",
-                )
-                is ProbeOutcome.BlockedExternal -> CycleEvent.ProbeFinished(
-                    exitCode = 0,
-                    evidenceRef = "blocked:${outcome.blocker}",
-                )
-                else -> CycleEvent.ProbeFinished(
-                    exitCode = outcome.exitCode,
-                    evidenceRef = outcome.evidenceRef,
-                )
-            }
-            val transition = transition(event)
+            // The runner now passes the typed ADT to the decider
+            // unchanged. The previous shape collapsed
+            // UnsupportedFidelity and BlockedExternal to
+            // exitCode=0 and let the decider read them as success;
+            // that is the P0 defect the 2026-10-16 external audit
+            // named. The decider is now the sole authority on what
+            // a Verified probe is.
+            val transition = transition(CycleEvent.ProbeFinished(outcome))
             if (transition is CycleOutcome.IllegalTransition) break
         }
         return outcomes
@@ -291,38 +318,102 @@ class CycleRunner(
                 }
             }
         }
-        // Recursive delete of the cycle dir, anchored on its real
-        // path. The walk stays inside the cycle dir because the
-        // executor never writes outside it; if a probe persisted
-        // a symlink that escapes, `toRealPath()` on the walker
-        // would follow it and Files.deleteIfExists would resolve
-        // an out-of-tree target. To stay safe, the walker visits
-        // only what the directory contains; the contents are
-        // validated as we go.
+        // P0-C (audit 2026-10-16, deletion scope): delete only
+        // the files the runner or the executor created during
+        // this cycle, NOT everything under the cycle dir. The
+        // property boundary is the [operatorOwnedSnapshot] the
+        // runner took at `prepare()` time: an entry that was
+        // already there when the cycle started is the
+        // operator's property and the runner will not touch it;
+        // an entry created AFTER the snapshot is the
+        // runner/executor's property and the runner owns its
+        // deletion. Symlinks whose real path leaves the cycle
+        // dir are refused; the cycle is a closed world.
         if (asFile.exists()) {
-            Files.walk(realCycle).use { stream ->
-                stream.sorted(Comparator.reverseOrder()).forEach { path ->
-                    if (path == realCycle) {
-                        Files.deleteIfExists(path)
-                        return@forEach
-                    }
-                    val real = try {
-                        path.toRealPath()
-                    } catch (ex: java.io.IOException) {
-                        return@forEach
-                    }
-                    if (!real.startsWith(realCycle)) {
-                        error(
-                            "refusing to delete path '$real' that escapes the cycle " +
-                                "directory '$realCycle' (symlink escape?)",
-                        )
-                    }
-                    Files.deleteIfExists(real)
+            val currentEntries: Set<Path> = Files.list(realCycle).use { stream ->
+                stream.map { it.toRealPath() }.collect(java.util.stream.Collectors.toSet())
+            }
+            val runnerOwned = currentEntries - operatorOwnedSnapshot
+            for (target in runnerOwned) {
+                if (!target.startsWith(realCycle) && target != realCycle) {
+                    error(
+                        "refusing to delete path '$target' that escapes the cycle " +
+                            "directory '$realCycle' (symlink escape?)",
+                    )
                 }
+                deleteRecursively(target, realCycle)
+            }
+            // After the runner-owned children are gone, the
+            // cycle dir either contains only operator-owned
+            // content (in which case the audit says we leave
+            // it alone — the operator may still want to
+            // inspect) or is empty. We only delete the cycle
+            // dir if it is empty AND was originally empty
+            // before the cycle started (i.e. the operator
+            // did not put any sidecar files in it).
+            val postDeletion = if (Files.exists(realCycle)) {
+                Files.list(realCycle).use { stream ->
+                    stream.map { it.toRealPath() }.collect(java.util.stream.Collectors.toSet())
+                }
+            } else emptySet()
+            if (postDeletion.isEmpty() && operatorOwnedSnapshot.isEmpty()) {
+                Files.deleteIfExists(realCycle)
+            } else if (postDeletion.isNotEmpty()) {
+                // The cycle dir still has operator-owned content.
+                // Leaving the dir in place is the audit-aligned
+                // answer: the operator kept those files, the
+                // runner does not own them, the audit's "do
+                // not over-delete" rule wins.
+                return state
+            }
+            // postDeletion is empty AND operatorOwnedSnapshot is
+            // non-empty: the dir is empty now but the operator
+            // stashed something that we already deleted because
+            // it was in our runner-owned set... actually we
+            // would NOT have deleted an operator-owned file
+            // because runnerOwned excludes the snapshot, so
+            // postDeletion being empty implies the dir is empty
+            // for good. Remove the empty dir.
+            if (Files.exists(realCycle)) {
+                Files.deleteIfExists(realCycle)
             }
         }
         return state
     }
+
+    /**
+     * Recursive delete confined to the cycle dir. Any path whose
+     * real-path target leaves the cycle dir is refused; symlinks
+     * are followed only if they resolve under the cycle dir.
+     * The audit (P0-C) called the previous "delete every file
+     * under cycleDir" walker a too-broad delete; this helper is
+     * what `finalise` actually calls.
+     */
+    private fun deleteRecursively(target: Path, realCycle: Path) {
+        if (!Files.exists(target)) return
+        if (Files.isDirectory(target)) {
+            Files.list(target).use { children ->
+                children.forEach { child ->
+                    val childReal = try {
+                        child.toRealPath()
+                    } catch (ex: java.io.IOException) {
+                        return@forEach
+                    }
+                    if (!childReal.startsWith(realCycle)) {
+                        error(
+                            "refusing to delete child '$childReal' of '$target' that " +
+                                "escapes the cycle directory '$realCycle'",
+                        )
+                    }
+                    deleteRecursively(child, realCycle)
+                }
+            }
+        }
+        Files.deleteIfExists(target)
+    }
+
+    private fun isEmptyDirectory(path: Path): Boolean =
+        Files.isDirectory(path) && Files.list(path).use { stream -> !stream.findAny().isPresent }
 
     /**
      * Recompute the `evidenceDigest` recorded in a persisted

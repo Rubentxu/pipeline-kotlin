@@ -444,6 +444,10 @@ class RetryAcceptanceMatrixTest {
  * driver (which is plan-only by ADR-0075 §11 anyway, but this makes the
  * property observable in the test).
  */
+@Disabled("migrated-pending")
+// Migrated-pending per docs/v2/05-roadmap/QUALITY_VALUE_ADDENDUM.md BQ5.
+// The harness is the owner of the equivalence proof; the source stays in place
+// until that proof arrives and the deletion guard (retirement_guard.py) authorises it.
 internal class OperationJournalForTest : OperationJournal {
     private val byId = mutableMapOf<String, MemoizedOperation>()
 

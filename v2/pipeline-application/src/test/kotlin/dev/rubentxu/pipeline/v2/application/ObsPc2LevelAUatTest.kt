@@ -100,6 +100,10 @@ import kotlin.concurrent.thread
  * final acknowledged line all pass through it. One guard for three rows is the correct shape here, not
  * an attribution failure.
  */
+@Disabled("migrated-pending")
+// Migrated-pending per docs/v2/05-roadmap/QUALITY_VALUE_ADDENDUM.md BQ5.
+// The harness is the owner of the equivalence proof; the source stays in place
+// until that proof arrives and the deletion guard (retirement_guard.py) authorises it.
 @Timeout(300)
 @DisplayName("OBS-2 Nivel A — returnStdout sin duplicar y timeout que conserva el prefijo")
 class ObsPc2LevelAUatTest {

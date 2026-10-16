@@ -65,6 +65,10 @@ import kotlin.concurrent.thread
  * the sanitized bytes while the child is provably still alive, with a sentinel file as the barrier
  * and no duration assertions at all.
  */
+@Disabled("migrated-pending")
+// Migrated-pending per docs/v2/05-roadmap/QUALITY_VALUE_ADDENDUM.md BQ5.
+// The harness is the owner of the equivalence proof; the source stays in place
+// until that proof arrives and the deletion guard (retirement_guard.py) authorises it.
 @Timeout(240)
 class Lpr011r2SecretRedactionAtRestUatTest {
 

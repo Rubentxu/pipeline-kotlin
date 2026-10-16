@@ -105,27 +105,22 @@ fun main(args: Array<String>) {
     runner.requestClose("cycle closed by CycleCli")
 
     val terminal = runner.state
-    val exitCode = when (terminal) {
-        is CycleState.Closed -> {
-            if (!parsed.dryRun) {
-                runner.finalise()
-            }
-            0
-        }
-        is CycleState.Refused -> {
-            val reason = terminal.reason
-            if (reason.startsWith("UnsupportedFidelity")) 64 else 1
-        }
-        is CycleState.BlockedExternal -> 75
-        else -> {
-            System.err.println("cycle did not reach a terminal state: $terminal")
-            1
-        }
+    // Project the terminal state into a typed `ExitVerdict` BEFORE
+    // touching the JVM exit code. The projection is the only
+    // authority on which process exit code corresponds to which
+    // cycle outcome; no `exitCode` is read off a probe or a string
+    // match on the refusal reason (the 2026-10-16 audit closed
+    // that defect class). `Verified` triggers `finalise`; every
+    // other variant is read-only here.
+    val verdict = ExitVerdict.from(terminal)
+    if (verdict is ExitVerdict.Verified && !parsed.dryRun) {
+        runner.finalise()
     }
     System.err.println("outcomes:")
     outcomes.forEach { System.err.println("  $it") }
     System.err.println("terminal state: $terminal")
-    System.exit(exitCode)
+    System.err.println("verdict: ${verdict::class.simpleName} (exit ${verdict.exitCode})")
+    System.exit(verdict.exitCode)
 }
 
 private const val USAGE = """usage: CycleCliKt

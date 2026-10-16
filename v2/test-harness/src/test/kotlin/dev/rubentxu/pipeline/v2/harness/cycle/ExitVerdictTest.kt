@@ -1,0 +1,111 @@
+package dev.rubentxu.pipeline.v2.harness.cycle
+
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Nested
+import org.junit.jupiter.api.Test
+
+/**
+ * BQ4 v2 close-out (2026-10-16 audit, vertical): the cycle's exit
+ * code projection is a typed carrier, never a string match and never
+ * an isolated probe's `exitCode`.
+ *
+ * Each test pins ONE property of [ExitVerdict.from]; the whole class
+ * exists so a future case (e.g. an `Incomplete` refinement) breaks
+ * the compiler at the `when` in [ExitVerdict.from] rather than at a
+ * runtime string match deep in a CI log.
+ */
+class ExitVerdictTest {
+
+    @Nested
+    inner class ProjectingTerminalCycleStates {
+
+        @Test
+        fun `a Closed cycle projects to Verified with exit 0`() {
+            val verdict = ExitVerdict.from(CycleState.Closed("done"))
+            assertSame(ExitVerdict.Verified, verdict, "Closed is the only Verified terminal")
+            assertEquals(0, verdict.exitCode)
+        }
+
+        @Test
+        fun `a BlockedExternal cycle projects to BlockedExternal with exit 75`() {
+            val verdict = ExitVerdict.from(CycleState.BlockedExternal("harness verdict pending"))
+            assertTrue(verdict is ExitVerdict.BlockedExternal)
+            assertEquals(75, verdict.exitCode)
+            assertEquals("harness verdict pending", (verdict as ExitVerdict.BlockedExternal).reason)
+        }
+
+        @Test
+        fun `non-terminal states project to Incomplete, not to a fake Verified`() {
+            // The decider never closed the cycle. A previous shape read
+            // a raw `exitCode == 0` from an isolated probe and called
+            // the cycle "Verified"; that is the defect this entire
+            // module closes. Pin the projection: a non-terminal state
+            // is Incomplete, exit 1, with the state name in the reason.
+            val drafts = listOf(
+                CycleState.Draft,
+                CycleState.Running,
+                CycleState.Observed("0123456789abcdef0123456789abcdef01234567"),
+                CycleState.Promoted("0123456789abcdef0123456789abcdef01234567"),
+            )
+            for (state in drafts) {
+                val verdict = ExitVerdict.from(state)
+                assertTrue(
+                    verdict is ExitVerdict.Incomplete,
+                    "non-terminal $state must project to Incomplete, got $verdict",
+                )
+                assertEquals(1, verdict.exitCode)
+                assertTrue(
+                    (verdict as ExitVerdict.Incomplete).reason.contains(state::class.simpleName!!),
+                    "Incomplete reason must name the state for the operator; got '${verdict.reason}'",
+                )
+            }
+        }
+    }
+
+    @Nested
+    inner class ClassifyingRefusals {
+
+        @Test
+        fun `a no-evidence refusal routes to NoEvidence with exit 1`() {
+            val verdict = ExitVerdict.from(
+                CycleState.Refused("no probe succeeded: cycle observed zero verified outcomes"),
+            )
+            assertTrue(verdict is ExitVerdict.Refusal.NoEvidence)
+            assertEquals(1, verdict.exitCode)
+        }
+
+        @Test
+        fun `an other-commit refusal routes to OtherCommit with exit 1`() {
+            val verdict = ExitVerdict.from(
+                CycleState.Refused("other commit: cycle expected 0123456789abcdef, runner saw fedcba9876543210"),
+            )
+            assertTrue(verdict is ExitVerdict.Refusal.OtherCommit)
+            assertEquals(1, verdict.exitCode)
+        }
+
+        @Test
+        fun `an UnsupportedFidelity refusal routes to UnsupportedFidelity with exit 64`() {
+            // Distinct exit code: 64 vs 1. The previous shape mapped
+            // every Refused to 1 unless the reason started with the
+            // literal "UnsupportedFidelity". A future "other commit"
+            // refusal that happens to begin with that prefix would
+            // silently misroute. The typed carrier makes that impossible.
+            val verdict = ExitVerdict.from(
+                CycleState.Refused("UnsupportedFidelity: HF2 not supported in this build"),
+            )
+            assertTrue(verdict is ExitVerdict.Refusal.UnsupportedFidelity)
+            assertEquals(64, verdict.exitCode)
+        }
+
+        @Test
+        fun `a generic refusal keeps the reason verbatim and routes to Generic with exit 1`() {
+            val reason = "manifest cycleId does not match --cycle-id: declared 'foo' got 'bar'"
+            val verdict = ExitVerdict.from(CycleState.Refused(reason))
+            assertTrue(verdict is ExitVerdict.Refusal.Generic)
+            assertEquals(1, verdict.exitCode)
+            assertEquals(reason, (verdict as ExitVerdict.Refusal.Generic).reason)
+        }
+    }
+}

@@ -85,6 +85,20 @@ object ContractCatalogue {
         val owningModule: String,
         val sourcePaths: List<String>,
         val minFidelity: Fidelity,
+        /**
+         * Optional glob patterns that ALSO select this contract.
+         * The patterns are matched against the **full** path of a
+         * change (repository-relative, forward-slash). A pattern
+         * that uses only `*` is a single-segment wildcard; `**`
+         * is a recursive wildcard. This is the BQ1 closure: a
+         * contract is no longer restricted to a hand-picked list
+         * of literal paths; the catalogue can declare "every
+         * `.kt` file under this module selects this contract"
+         * without losing the explicit-fitness test (the
+         * `ContractCatalogueFitnessTest` still asserts that at
+         * least one source path matches each contract).
+         */
+        val pathPatterns: List<String> = emptyList(),
     )
 
     /**
@@ -220,11 +234,72 @@ object ContractCatalogue {
         ),
     )
 
-    /** Every contract a change to [path] must reconsider, deduplicated and ordered. */
+    /**
+     * Every contract a change to [path] must reconsider, deduplicated and ordered.
+     *
+     * BQ1 audit (2026-10-16, RC2): the previous matcher used
+     * `it == path || it.endsWith(path)`, which has two flaws:
+     *   1. `endsWith` collides across owners: a path
+     *      `v2/pipeline-application/build.gradle.kts` matches
+     *      a contract that ends with the same suffix
+     *      regardless of which module the contract belongs
+     *      to. The fitness test in [ContractCatalogueFitnessTest]
+     *      documented the symptom; the fix here is to require
+     *      a path-segment boundary (`/` separator on either
+     *      side) for suffix matches.
+     *   2. The matcher was a closed list of literal paths:
+     *      a contract that wanted to claim "every `.kt` file
+     *      under this module" had to enumerate them. The
+     *      fix is the `pathPatterns` field on [Contract]
+     *      (BQ1 RC2): patterns use `*` for a single
+     *      segment and `**` for a recursive match, matched
+     *      by [matchesPattern].
+     */
     fun contractsFor(path: String): List<Contract> =
-        CONTRACTS.filter { contract ->
-            contract.sourcePaths.any { it == path || it.endsWith(path) }
+        CONTRACTS.filter { contract -> contract.matches(path) }
+
+    private fun Contract.matches(path: String): Boolean {
+        // Literal paths require an EXACT match, not a suffix
+        // match. A path that ends with a different module's
+        // file name is not a match for this contract.
+        if (path in sourcePaths) return true
+        // Pattern matches: each glob is a "this contract owns
+        // everything that matches the glob" claim.
+        return pathPatterns.any { matchesPattern(path, it) }
+    }
+
+    /**
+     * Glob matcher with `*` (single segment) and `**` (recursive).
+     * Backed by a regex compiled from the pattern; cached for the
+     * lifetime of the call. `*` does not match `/`; `**` does.
+     */
+    fun matchesPattern(path: String, pattern: String): Boolean {
+        val regex = buildString {
+            append('^')
+            var i = 0
+            while (i < pattern.length) {
+                when {
+                    pattern.startsWith("**", i) -> {
+                        append(".*")
+                        i += 2
+                    }
+                    pattern[i] == '*' -> {
+                        append("[^/]*")
+                        i++
+                    }
+                    pattern[i] == '.' || pattern[i] == '(' || pattern[i] == ')' ||
+                        pattern[i] == '+' || pattern[i] == '|' || pattern[i] == '^' ||
+                        pattern[i] == '$' || pattern[i] == '{' || pattern[i] == '}' ||
+                        pattern[i] == '\\' -> {
+                        append('\\'); append(pattern[i]); i++
+                    }
+                    else -> { append(pattern[i]); i++ }
+                }
+            }
+            append('$')
         }
+        return Regex(regex).matches(path)
+    }
 
     /** The fidelity required for [path], accounting for escalation. Deduplicated and ordered. */
     fun requiredFidelityFor(path: String): Set<Fidelity> {

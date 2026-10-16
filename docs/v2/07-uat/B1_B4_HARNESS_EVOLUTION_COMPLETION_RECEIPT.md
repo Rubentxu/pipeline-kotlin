@@ -58,7 +58,7 @@ equivalencia de contratos: el plan afectado usa el mismo grafo que el gate, sin 
 | Separar `candidateGate` del gate rápido | **hecho** | `just rc` = L-RC = `releaseGate` con la frontera UAT; presupuesto **declarado** (2400 s) pendiente de la primera ejecución completa (PK-58A F6) |
 | Receipt inmutable ligado a SHA, entradas, artefactos y hashes | **hecho** | `emit-candidate-receipt.py` (16/16 checks) |
 | Entregar al harness externo | **preparado, no ejecutado** | `docs/v2/07-uat/evidence/candidate-e79fbff7/handoff-to-release-harness.md`: bytes exactos, pasos de publicación (tag + Release + verificación del asset) y lo que NO se reclama. Publicar requiere credenciales del operador |
-| Integridad/inventario/descarga como consumidor, sin reconstruir | **parcial** | `install-pipelinek.sh` (digest + identidad exacta, transaccional) y `consult-harness-verdict.py` (verifica el ZIP contra GitHub Releases bajo una autoridad de publisher comprometida). La descarga+inventario del asset publicado se ejecuta en el camino de instalación, no hay aún un verificador de release independiente |
+| Integridad/inventario/descarga como consumidor, sin reconstruir | **hecho** | `scripts/verify-published-release.py`: descarga el asset y un fichero independiente (sidecar `<asset>.sha256` / `zip.sha256`, o inventario `SHA256SUMS`), verifica los bytes, la raíz del archivo y el `Implementation-Version` embebido con el lector existente (`emit-candidate-receipt.py`), con veredicto tipado `VERIFIED\|MISMATCH\|BLOCKED\|MISSING`. Verificado contra los **bytes reales** de la candidata (§10). `install-pipelinek.sh` sigue cubriendo la instalación; `consult-harness-verdict.py` el veredicto externo |
 
 ## 5. Lo que NO está hecho, y por qué (sin adornos)
 
@@ -155,3 +155,42 @@ encontró, en el árbol real:
 
 Tres defectos reales de un mapa que antes no existía, corregidos en el mismo commit y con tests
 que los reproducen en un árbol hermenéutico.
+
+## 10. Verificación de release publicada (B4.6) y P50/P95 de ejecución fiables
+
+**Verificador de release publicado** (`scripts/verify-published-release.py`, 10 tests herméticos
+con ZIPs reales servidos por un espejo loopback real): descarga el asset y un fichero de digest
+**independiente** (sidecar `<asset>.sha256` o `zip.sha256`, o inventario `SHA256SUMS`), exige que
+los bytes coincidan, y lee la raíz del archivo y el `Implementation-Version` embebido con el lector
+que ya existía (`emit-candidate-receipt.py`: no hay una segunda implementación de "qué dice ser el
+archivo"). Veredictos tipados: `VERIFIED` (0), `MISMATCH` (1), `BLOCKED` (3), `MISSING` (4).
+Sin fichero independiente → `MISSING`: "se descargó" no es identidad.
+
+Ejecutado contra los **bytes reales** de la candidata (espejo loopback sirviendo el ZIP de build,
+sin reconstruir nada):
+
+```text
+PUBLISHED RELEASE  verdict=VERIFIED
+  [PASS] asset downloaded: pipelinek-0.61.0.zip: 92985677 bytes
+  [PASS] an independent digest is published: digest source=SHA256SUMS
+  [PASS] download matches the published digest: declared=1b1a2c01…60b7 downloaded=1b1a2c01…60b7
+  [PASS] archive root is an exact token: zip=pipelinek-0.61.0 expected=pipelinek-0.61.0
+  [PASS] embedded Implementation-Version is an exact token:
+         jar=pipeline-application-0.61.0.jar version=0.61.0 expected=0.61.0
+exit=0
+```
+
+**P50/P95 de ejecución, con muestra suficiente** (`--rerun --require-work`, n=20, XML reescrito):
+
+```text
+BASELINE :pipeline-domain:test  runs=20  [--rerun-tasks: execution cost]
+  p50=17.145s p95=18.131s mean=17.315s stdev=0.464s min=16.805s max=18.583s
+  verdict=PASS work_executed=True
+  xml: files=137 rewritten=137 tests=735 failures=0 errors=0 skipped=0 unreadable=0
+```
+
+Comparación honesta de las tres regímenes medidos en este host: **cálido sin trabajo ~2.1 s**
+(§1; overhead), **ejecución en caliente ~17.1 s de mediana** (aquí, con n=20 y dispersión 0.46 s)
+y **ejecución en frío 60.4 s** (§8, incluye compilación; n=3). El n=3 previo mostraba stdev 22 s
+porque mezclaba una compilación con dos ejecuciones y contención: con n=20 el P95 ya es un dato
+de cola y no un máximo con modales.

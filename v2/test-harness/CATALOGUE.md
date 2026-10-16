@@ -79,7 +79,7 @@ Schema: `pipelinek-test-harness-catalogue-1` · home: `v2/test-harness/`
 
 ## Suites
 
-- python suites: **23** (395 `def test_` bodies)
+- python suites: **24** (405 `def test_` bodies)
 - Kotlin modules with `src/test`: **30**
 
 ## UAT frontier

@@ -701,10 +701,14 @@
       {
         "path": "scripts/test_run_scoped_junit_report.py",
         "tests": 17
+      },
+      {
+        "path": "scripts/test_verify_published_release.py",
+        "tests": 10
       }
     ],
-    "python_tests": 395,
-    "python_total": 23
+    "python_tests": 405,
+    "python_total": 24
   },
   "surfaces": {
     "cli": [

@@ -157,6 +157,104 @@ class SdkZipBuilderTest {
         )
     }
 
+    /**
+     * REGRESSION (commit c01e8e5f closed this gap; this test pins the fix).
+     *
+     * Before c01e8e5f, [SdkZipBuilder.writeSdkZip] wrote each entry's name as
+     * the absolute filesystem path returned by [java.nio.file.Files.walk],
+     * e.g. `/var/home/.../v2/build/sdk-repo/dev/rubentxu/pipeline/v2/...`.
+     * On extraction `unzip` silently strips the leading slash, so a
+     * consumer doing `unzip sdk.zip -d .m2/` ended up with an empty
+     * `.m2/`. The SHA-256s in `SHA256SUMS` proved the bytes were intact;
+     * what the contract needed — and what this test pins — is that the
+     * ZIP is a usable local Maven repository.
+     *
+     * The test extracts the produced ZIP into a clean `m2Root` and walks
+     * the result. A green run shows every coordinate's `<version>/`
+     * directory present with at least a `.jar` and a `.pom`. A red run
+     * catches the regression immediately: empty `m2Root`, or paths like
+     * `var/...` instead of `dev/...`.
+     */
+    @Test
+    fun `the produced SDK ZIP extracts into a usable Maven layout`(
+        @TempDir tmp: Path,
+    ) {
+        val repo = tmp.resolve("sdk-repo")
+        val group = repo.resolve("dev/rubentxu/pipeline/v2")
+        val version = "0.62.0"
+        writeArtifact(group, "pipeline-domain", version, body = "domain-bytes".toByteArray())
+        writeArtifact(group, "pipeline-events", version, body = "events-bytes".toByteArray())
+
+        val (sdkZip, _) = SdkZipBuilder.build(
+            sdkRepo = repo,
+            version = version,
+            managedCoordinates = listOf(
+                "dev.rubentxu.pipeline.v2" to "pipeline-domain",
+                "dev.rubentxu.pipeline.v2" to "pipeline-events",
+            ),
+            distDir = tmp.resolve("dist"),
+        )
+
+        // Cross the productive authority: a fresh `unzip` extraction,
+        // exactly as a consumer would do, NOT the builder's `Files.walk`
+        // we already know succeeds. The test fails loudly if the path
+        // is absolute (unzip strips it) or the layout is wrong.
+        val m2Root = tmp.resolve("m2")
+        unzipInto(sdkZip, m2Root)
+
+        val devRoot = m2Root.resolve("dev/rubentxu/pipeline/v2")
+        assertTrue(
+            Files.isDirectory(devRoot),
+            "extraction did not produce a Maven layout under dev/rubentxu/pipeline/v2/; " +
+                "got: ${m2Root.toFile().list().orEmpty().joinToString()}",
+        )
+        for ((_, artifact) in listOf(
+            "pipeline-domain" to version,
+            "pipeline-events" to version,
+        )) {
+            val versioned = devRoot.resolve("$artifact/$version")
+            assertTrue(
+                Files.isDirectory(versioned),
+                "missing coordinate directory: $versioned",
+            )
+            val jar = versioned.resolve("$artifact-$version.jar")
+            val pom = versioned.resolve("$artifact-$version.pom")
+            assertTrue(Files.isRegularFile(jar), "missing JAR: $jar")
+            assertTrue(Files.isRegularFile(pom), "missing POM: $pom")
+        }
+    }
+
+    /**
+     * Minimal ZIP extraction that uses ONLY the JDK's `ZipInputStream`.
+     * We deliberately do NOT use `ProcessBuilder("unzip", ...)` here: a
+     * system without `unzip` installed would fail this test for the
+     * wrong reason (env, not code). The JDK extractor is the minimum
+     * authority this contract needs: any consumer with a JDK can do
+     * what this test does.
+     */
+    private fun unzipInto(zip: Path, target: Path) {
+        Files.createDirectories(target)
+        java.util.zip.ZipInputStream(Files.newInputStream(zip)).use { zin ->
+            var entry = zin.nextEntry
+            while (entry != null) {
+                val out = target.resolve(entry.name).normalize()
+                // Containment check: a malicious ZIP cannot write
+                // outside `target`. Same defense as `CycleRunner.finalise`
+                // for the cycle directory (cf. audit 2026-10-16 P0-C).
+                if (!out.startsWith(target)) {
+                    throw IllegalStateException("ZIP entry escapes target: ${entry.name}")
+                }
+                if (entry.isDirectory) {
+                    Files.createDirectories(out)
+                } else {
+                    Files.createDirectories(out.parent)
+                    Files.copy(zin, out)
+                }
+                entry = zin.nextEntry
+            }
+        }
+    }
+
     private fun writeArtifact(
         group: Path,
         name: String,

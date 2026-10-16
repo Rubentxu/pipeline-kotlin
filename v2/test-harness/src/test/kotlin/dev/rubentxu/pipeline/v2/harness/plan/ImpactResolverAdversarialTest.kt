@@ -146,7 +146,7 @@ class ImpactResolverAdversarialTest {
         val plan = selected(listOf(redactor))
         val refusal = ImpactResolver.adjudicate(
             plan = plan,
-            executedSuites = emptySet(),
+            executedSuites = adjudicateEvidence(plan, emptySet(), expectedCommit = "abc123"),
             expectedCommit = "abc123",
             observedCommit = "abc123",
         )
@@ -165,7 +165,7 @@ class ImpactResolverAdversarialTest {
         val executed = plan.suites.map { it.filter }.toSet()
         val refusal = ImpactResolver.adjudicate(
             plan = plan,
-            executedSuites = executed,
+            executedSuites = adjudicateEvidence(plan, executed, expectedCommit = "abc123"),
             expectedCommit = "abc123",
             observedCommit = "def456",
         )
@@ -183,8 +183,14 @@ class ImpactResolverAdversarialTest {
     fun `a fully executed plan on the matching commit adjudicates clean`() {
         val plan = selected(listOf(redactor))
         val executed = plan.suites.map { it.filter }.toSet()
+        val commit40 = "0".repeat(40)
         assertNull(
-            ImpactResolver.adjudicate(plan, executed, "abc123", "abc123"),
+            ImpactResolver.adjudicate(
+                plan,
+                adjudicateEvidence(plan, executed, expectedCommit = commit40),
+                commit40,
+                commit40,
+            ),
             "a plan whose suites all ran on the expected commit must not refuse",
         )
     }

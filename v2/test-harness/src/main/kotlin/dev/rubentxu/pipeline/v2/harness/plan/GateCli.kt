@@ -229,6 +229,12 @@ object GateCli {
             "suite ${refusal.suite} did not run: Gradle failed for ${refusal.gradleProject}"
         is SelectionRefusal.StaleEvidence ->
             "evidence was produced by commit ${refusal.observed}, not ${refusal.expected}"
+        is SelectionRefusal.IncompleteEvidence ->
+            "suite ${refusal.suite} evidence is incomplete: ${refusal.missingField}"
+        is SelectionRefusal.StaleBinary ->
+            "suite ${refusal.suite} ran against commit ${refusal.observed}, not ${refusal.expected}"
+        is SelectionRefusal.InsufficientFidelity ->
+            "suite ${refusal.suite} ran at ${refusal.observed}, required one of ${refusal.required}"
     }
 }
 

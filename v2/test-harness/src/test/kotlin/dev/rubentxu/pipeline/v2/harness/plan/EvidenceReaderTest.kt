@@ -32,6 +32,9 @@ class EvidenceReaderTest {
         tests: Int = 1,
         skipped: Int = 0,
         corrupt: Boolean = false,
+        sidecar: Boolean = false,
+        sourceCommit: String = "0".repeat(40),
+        hf: String = "HF0",
     ) {
         val body = if (corrupt) {
             "<testsuite name=\"$className\" tests=\"1\" failures=\"0\" errors=\"0\">"
@@ -40,14 +43,32 @@ class EvidenceReaderTest {
                 "failures=\"$failures\" errors=\"$errors\"/>"
         }
         Files.writeString(dir.resolve("TEST-$className.xml"), body)
+        // H1 TODO 2: the gate requires a sidecar per
+        // suite. Tests that exercise the "clean" path
+        // (matching commit, every suite ran) write
+        // the sidecar; tests that exercise "evidence
+        // is incomplete" pass sidecar=false.
+        if (sidecar) {
+            val sidecarJson = """
+                {
+                  "class_name": "$className",
+                  "gradle_path": ":test-harness",
+                  "invocation": "gradle :test-harness:test --tests $className",
+                  "binary_sha256": "${"0".repeat(64)}",
+                  "hf": "$hf",
+                  "source_commit": "$sourceCommit"
+                }
+            """.trimIndent()
+            Files.writeString(dir.resolve("$className.json"), sidecarJson)
+        }
     }
 
     @Test
     fun `a clean report counts as evidence`(@TempDir dir: Path) {
         report(dir, "ShTranscriptRedactionReproductionTest")
         assertEquals(
-            setOf("ShTranscriptRedactionReproductionTest"),
-            EvidenceReader.suitesWithEvidence(dir),
+            setOf("ShTranscriptRedactionReproductionTest") /* placeholder */,
+            EvidenceReader.suitesWithEvidence(dir).keys,
         )
     }
 
@@ -116,7 +137,7 @@ class EvidenceReaderTest {
         report(dir, "MostlySkipped", tests = 5, skipped = 4)
         assertEquals(
             setOf("MostlySkipped"),
-            EvidenceReader.suitesWithEvidence(dir),
+            EvidenceReader.suitesWithEvidence(dir).keys,
         )
     }
 
@@ -151,18 +172,28 @@ class EvidenceReaderTest {
     @Test
     fun `a fully executed plan on the matching commit verifies clean`(@TempDir dir: Path) {
         val plan = ImpactResolver.resolve(listOf(redactor)) as ValidationPlan.Selected
-        plan.suites.forEach { report(dir, it.filter) }
+        val commit = "0".repeat(40)
+        // The plan's minimumFidelities is HF2 (the catalogue
+        // entry for OutputPlane.redaction.streaming is HF2).
+        // The sidecar must declare the same fidelity, or
+        // the gate refuses on InsufficientFidelity.
+        val hf = plan.minimumFidelities.firstOrNull()?.name ?: "HF0"
+        plan.suites.forEach {
+            report(dir, it.filter, sidecar = true, sourceCommit = commit, hf = hf)
+        }
         assertNull(
-            EvidenceReader.verify(plan, dir, "abc123", "abc123"),
-            "every selected suite ran and the commit matches, so there is nothing to refuse",
+            EvidenceReader.verify(plan, dir, commit, commit),
+            "every selected suite ran with a sidecar and the commit matches; " +
+                "the gate must not refuse",
         )
     }
 
     @Test
     fun `evidence from another commit refuses even when every suite ran`(@TempDir dir: Path) {
         val plan = ImpactResolver.resolve(listOf(redactor)) as ValidationPlan.Selected
-        plan.suites.forEach { report(dir, it.filter) }
-        val refusal = EvidenceReader.verify(plan, dir, "abc123", "def456")
+        val commit = "0".repeat(40)
+        plan.suites.forEach { report(dir, it.filter, sidecar = true, sourceCommit = commit) }
+        val refusal = EvidenceReader.verify(plan, dir, commit, "abc123")
         assertNotNull(refusal, "a stale binary's green is not this commit's green")
         assertTrue(
             (refusal as ValidationPlan.Refused).reasons.any { it is SelectionRefusal.StaleEvidence },

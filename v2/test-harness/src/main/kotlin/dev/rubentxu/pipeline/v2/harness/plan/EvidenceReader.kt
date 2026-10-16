@@ -26,6 +26,26 @@ import javax.xml.parsers.DocumentBuilderFactory
  * that. That distinction is the whole point: the failure mode being closed is an absence being
  * read as a green.
  *
+ * ## H1 TODO 2: sidecar evidence is the new contract
+ *
+ * The XML alone is no longer sufficient. The H1 mandate
+ * says "EvidenceReader exige ejecución real, `tests>skips`,
+ * `failures/errors=0`, FQCN+Gradle path+invocación,
+ * SHA/artefacto y HF observado. Datos incompletos → Refused,
+ * no passed."
+ *
+ * A sidecar JSON file lives next to each XML
+ * (`<resultsDir>/<class>.json` next to
+ * `<resultsDir>/TEST-<class>.xml`). The sidecar is the
+ * self-describing carrier: FQCN, Gradle path, invocation,
+ * binary SHA-256, HF, source commit. The reader joins the
+ * XML (test count, failures, errors) with the sidecar
+ * (provenance + invocation). A missing sidecar is
+ * [SelectionRefusal.IncompleteEvidence]; a sidecar with a
+ * stale binary is [SelectionRefusal.StaleBinary]; a sidecar
+ * at a fidelity below the plan's `minimumFidelities` is
+ * [SelectionRefusal.InsufficientFidelity].
+ *
  * ## What it deliberately does not do
  *
  * It does not run anything. Selection, execution and adjudication are three decisions and merging
@@ -33,26 +53,67 @@ import javax.xml.parsers.DocumentBuilderFactory
  */
 object EvidenceReader {
 
-    /** The suites whose evidence exists, read from the JUnit XML of [resultsDir]. */
-    fun suitesWithEvidence(resultsDir: Path): Set<String> {
-        if (!Files.isDirectory(resultsDir)) return emptySet()
-        val classes = mutableSetOf<String>()
-        // newDirectoryStream rather than Files.list(...).use: the Kotlin Stream extensions need an
-        // explicit type parameter here, and DirectoryStream is a plain Iterable<Path> that reads
-        // without the ceremony.
+    /**
+     * The XML + sidecar evidence for a single suite.
+     * [xml] is the JUnit XML path; [manifest] is the
+     * [EvidenceManifest] (null when the sidecar is
+     * missing or malformed). The gate refuses when
+     * [manifest] is null.
+     */
+    data class SuiteEvidence(
+        val xml: Path,
+        val manifest: EvidenceManifest?,
+    )
+
+    /**
+     * Read every `TEST-*.xml` in [resultsDir] and
+     * attempt to load the sidecar of the same basename.
+     * The returned map is keyed by the simple class
+     * name the XML declares (the gate identifies
+     * suites by their simple class name, matching
+     * [TestSuiteId.filter]).
+     */
+    fun suitesWithEvidence(resultsDir: Path): Map<String, SuiteEvidence> {
+        if (!Files.isDirectory(resultsDir)) return emptyMap()
+        val out = mutableMapOf<String, SuiteEvidence>()
         Files.newDirectoryStream(resultsDir).use { entries ->
             for (entry in entries) {
                 val name = entry.fileName.toString()
                 if (name.startsWith("TEST-") && name.endsWith(".xml")) {
-                    classNameFrom(entry)?.let { classes.add(it) }
+                    val className = suiteClassNameFrom(entry) ?: continue
+                    val sidecar = EvidenceManifest.sidecarFor(entry)
+                    val manifest = if (Files.isRegularFile(sidecar)) {
+                        try {
+                            EvidenceManifest.load(sidecar)
+                        } catch (ex: Exception) {
+                            // Malformed sidecar: refuse on
+                            // IncompleteEvidence. The
+                            // reader does not invent a
+                            // default.
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                    out[className] = SuiteEvidence(xml = entry, manifest = manifest)
                 }
             }
         }
-        return classes
+        return out
     }
 
-    /** The simple class name of a JUnit report, e.g. `TEST-FooTest.xml` -> `FooTest`. */
-    private fun classNameFrom(xml: Path): String? = try {
+    /**
+     * The simple class name of a JUnit report, e.g. `TEST-FooTest.xml` -> `FooTest`.
+     *
+     * The XML is parsed; the suite's class name comes
+     * from the `<testsuite name="...">` attribute. The
+     * count, failure, error, skip gates (H1 mandate:
+     * `tests>0`, `tests-skipped>0`, `failures=0`,
+     * `errors=0`) are applied: an XML that fails any of
+     * these gates is NOT a suite with evidence. A
+     * corrupt XML returns null for the same reason.
+     */
+    private fun suiteClassNameFrom(xml: Path): String? = try {
         val factory = DocumentBuilderFactory.newInstance().apply {
             // The XML comes from our own build, but a parser that will fetch a DTD over the
             // network turns a malformed report into an outbound request. Disable it explicitly.
@@ -64,12 +125,6 @@ object EvidenceReader {
         val name = root.getAttribute("name")
         val failures = root.getAttribute("failures").toIntOrNull() ?: 0
         val errors = root.getAttribute("errors").toIntOrNull() ?: 0
-        // Evidence gate. The previous version rejected only on
-        // failures/errors; that admitted a silent-green path: an
-        // XML with tests="0" failures="0" errors="0" (or
-        // tests="5" skipped="5") was counted as a suite that
-        // passed. A report with no executed tests, or with every
-        // test skipped, is NOT evidence that the suite ran.
         val tests = root.getAttribute("tests").toIntOrNull() ?: 0
         val skipped = root.getAttribute("skipped").toIntOrNull() ?: 0
         if (failures > 0 || errors > 0) {
@@ -87,8 +142,6 @@ object EvidenceReader {
         null
     }
 
-    /** The commit the binary reports is NOT read here; see [verify]'s observedCommit argument. */
-
     /**
      * The gate proper.
      *
@@ -103,12 +156,15 @@ object EvidenceReader {
         resultsDir: Path,
         expectedCommit: String,
         observedCommit: String?,
-    ): ValidationPlan.Refused? = ImpactResolver.adjudicate(
-        plan = plan,
-        executedSuites = suitesWithEvidence(resultsDir),
-        expectedCommit = expectedCommit,
-        observedCommit = observedCommit,
-    )
+    ): ValidationPlan.Refused? {
+        val evidence = suitesWithEvidence(resultsDir)
+        return ImpactResolver.adjudicate(
+            plan = plan,
+            executedSuites = evidence,
+            expectedCommit = expectedCommit,
+            observedCommit = observedCommit,
+        )
+    }
 
     /** The conventional location of a module's test results, for callers that need it. */
     fun resultsDirFor(repoRoot: Path, module: String): Path =

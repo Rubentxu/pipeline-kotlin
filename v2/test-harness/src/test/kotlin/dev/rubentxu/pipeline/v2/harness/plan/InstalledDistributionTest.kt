@@ -139,10 +139,12 @@ class InstalledDistributionTest {
          */
         @Test
         fun `adjudication refuses when the distribution could not be read`() {
+            val plan = aPlanFor("SomeSuite")
+            val commit40 = "a".repeat(40)
             val refusal = ImpactResolver.adjudicate(
-                plan = aPlanFor("SomeSuite"),
-                executedSuites = setOf("SomeSuite"),
-                expectedCommit = "abc123",
+                plan = plan,
+                executedSuites = adjudicateEvidence(plan, setOf("SomeSuite"), expectedCommit = commit40),
+                expectedCommit = commit40,
                 observedCommit = ObservedProvenance.Unreadable("no distribution").commitOrNull(),
             )
 
@@ -156,11 +158,13 @@ class InstalledDistributionTest {
 
         @Test
         fun `a matching reported commit discharges the same plan`() {
+            val plan = aPlanFor("SomeSuite")
+            val commit40 = "a".repeat(40)
             val refusal = ImpactResolver.adjudicate(
-                plan = aPlanFor("SomeSuite"),
-                executedSuites = setOf("SomeSuite"),
-                expectedCommit = "abc123",
-                observedCommit = ObservedProvenance.Reported("abc123").commitOrNull(),
+                plan = plan,
+                executedSuites = adjudicateEvidence(plan, setOf("SomeSuite"), expectedCommit = commit40),
+                expectedCommit = commit40,
+                observedCommit = ObservedProvenance.Reported(commit40).commitOrNull(),
             )
 
             assertNull(refusal)
@@ -174,18 +178,21 @@ class InstalledDistributionTest {
          */
         @Test
         fun `a distribution built from a different commit refuses`() {
+            val plan = aPlanFor("SomeSuite")
+            val commit40 = "a".repeat(40)
+            val otherCommit = "9".repeat(40)
             val refusal = ImpactResolver.adjudicate(
-                plan = aPlanFor("SomeSuite"),
-                executedSuites = setOf("SomeSuite"),
-                expectedCommit = "abc123",
-                observedCommit = ObservedProvenance.Reported("9999999").commitOrNull(),
+                plan = plan,
+                executedSuites = adjudicateEvidence(plan, setOf("SomeSuite"), expectedCommit = commit40),
+                expectedCommit = commit40,
+                observedCommit = ObservedProvenance.Reported(otherCommit).commitOrNull(),
             )
 
             assertTrue(refusal is ValidationPlan.Refused) {
                 "a stale distribution must refuse"
             }
             assertEquals(
-                SelectionRefusal.StaleEvidence(expected = "abc123", observed = "9999999"),
+                SelectionRefusal.StaleEvidence(expected = commit40, observed = otherCommit),
                 refusal!!.reasons.single { it is SelectionRefusal.StaleEvidence },
             )
         }

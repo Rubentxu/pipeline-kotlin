@@ -102,7 +102,14 @@ object GateCli {
      * contain it, and the untracked-source refusal never fired. Reading both halves in one value
      * makes that unrepresentable rather than something a future edit can undo by accident.
      */
-    data class StatusRow(val untracked: Boolean, val path: String)
+    data class StatusRow(val untracked: Boolean, val path: String) {
+        // BQ4 v18 (plan carrier self-protect, 2026-10-17):
+        // a blank `path` is the git status's record of
+        // "this path is untracked" for a path that has
+        // no name — a fabrication. The carrier refuses
+        // blanks at construction.
+        init { require(path.isNotBlank()) { "StatusRow.path must not be blank" } }
+    }
 
     /**
      * True for a file Gradle would compile into the candidate, by extension and tree.
@@ -154,7 +161,18 @@ object GateCli {
         data class Refused(val plan: ValidationPlan.Refused) : Outcome
 
         /** The tree is dirty, so no evidence could be attributed to a commit. */
-        data class DirtyTree(val paths: List<String>) : Outcome
+        data class DirtyTree(val paths: List<String>) : Outcome {
+            // BQ4 v18 (plan carrier self-protect, 2026-10-17):
+            // a blank `paths` entry is the gate's record
+            // of "this file is dirty" for a file that
+            // has no name — a fabrication. The carrier
+            // refuses blank entries at construction.
+            init {
+                require(paths.all { it.isNotBlank() }) {
+                    "DirtyTree.paths must not contain blank entries; got $paths"
+                }
+            }
+        }
     }
 
     /**

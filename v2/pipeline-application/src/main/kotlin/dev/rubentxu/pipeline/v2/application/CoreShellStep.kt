@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.classifyShellTerminal
+import dev.rubentxu.pipeline.v2.domain.decideShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.FailureRecord
@@ -128,19 +129,10 @@ object CoreShellStep {
             // `"returnMode"` (closed enum). Both shapes are canonical for the same Step;
             // we accept either so registry routing works for real `.pipeline.kts` files.
             val returnMode = obj["returnMode"]?.jsonPrimitive?.content?.let { ShellReturnMode.valueOf(it) }
-                ?: run {
-                    val returnStdout = obj["returnStdout"]?.jsonPrimitive?.booleanOrNull == true
-                    val returnStatus = obj["returnStatus"]?.jsonPrimitive?.booleanOrNull == true
-                    when {
-                        returnStdout && returnStatus ->
-                            throw IllegalArgumentException(
-                                "Shell payload cannot enable both returnStdout and returnStatus",
-                            )
-                        returnStdout -> ShellReturnMode.STDOUT
-                        returnStatus -> ShellReturnMode.STATUS
-                        else -> ShellReturnMode.NONE
-                    }
-                }
+                ?: decideShellReturnMode(
+                    returnStdout = obj["returnStdout"]?.jsonPrimitive?.booleanOrNull == true,
+                    returnStatus = obj["returnStatus"]?.jsonPrimitive?.booleanOrNull == true,
+                )
             return CoreShellInput(
                 command = ShellCommand(
                     script = script,

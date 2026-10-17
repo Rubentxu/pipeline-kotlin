@@ -7,6 +7,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.FailureRecord
 import dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind
 import dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class ShellInvocationResultTest {
@@ -95,5 +97,40 @@ class ShellInvocationResultTest {
         val result = classifyShellTerminal(terminal, ShellReturnMode.NONE)
 
         assertEquals(ShellInvocationResult.Interrupted(interruption), result)
+    }
+
+    @Test
+    fun `decideShellReturnMode — both flags true is refused with IllegalArgumentException`() {
+        val ex = assertThrows(IllegalArgumentException::class.java) {
+            decideShellReturnMode(returnStdout = true, returnStatus = true)
+        }
+        assertTrue(
+            ex.message!!.contains("returnStdout") && ex.message!!.contains("returnStatus"),
+            "rejection message must name both flags so a JSON-author can locate the conflict: ${ex.message}",
+        )
+    }
+
+    @Test
+    fun `decideShellReturnMode — only returnStdout projects to STDOUT`() {
+        assertEquals(ShellReturnMode.STDOUT, decideShellReturnMode(returnStdout = true, returnStatus = false))
+    }
+
+    @Test
+    fun `decideShellReturnMode — only returnStatus projects to STATUS`() {
+        assertEquals(ShellReturnMode.STATUS, decideShellReturnMode(returnStdout = false, returnStatus = true))
+    }
+
+    @Test
+    fun `decideShellReturnMode — both false projects to NONE`() {
+        assertEquals(ShellReturnMode.NONE, decideShellReturnMode(returnStdout = false, returnStatus = false))
+    }
+
+    @Test
+    fun `decideShellReturnMode is a pure function of the two booleans`() {
+        val first = decideShellReturnMode(returnStdout = true, returnStatus = false)
+        val second = decideShellReturnMode(returnStdout = true, returnStatus = false)
+        val third = decideShellReturnMode(returnStdout = true, returnStatus = false)
+        assertEquals(first, second)
+        assertEquals(second, third)
     }
 }

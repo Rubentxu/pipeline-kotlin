@@ -452,8 +452,13 @@ tasks.test {
     // `maxParallelForks` is left unset (Gradle default) so the
     // value is governed by the daemon's available cores. The
     // WU-RP-005 measure used 2 explicitly; here we trust the
-    // daemon and rely on `-PpipelineTestForkEvery=0` from the
-    // inner-loop recipe to opt out of fork-every entirely.
+    // daemon.
+    //
+    // This lane does not set `forkEvery` at all, so the fork is
+    // REUSED across classes and the per-class JUnit-discovery cost the two
+    // certification lanes pay (see forkEveryPerClass) does not apply here.
+    // An earlier revision of this comment claimed the inner loop opted out with
+    // `-PpipelineTestForkEvery=0`; the flag was never read by any build file.
     //
     // PK-0-57-RC1 (T3) defence retained on the installed lane
     // (see `:installedContractTest` below) because THAT lane
@@ -518,6 +523,36 @@ tasks.test {
     }
 }
 
+// FORK ECONOMY, declared ONCE (2026-10-17).
+//
+// Both certification lanes below hardcoded `forkEvery = 1`, and a comment in `tasks.test`
+// claimed the inner loop could opt out with `-PpipelineTestForkEvery=0`. That flag appeared
+// exactly once in the whole repository -- inside the comment. No build file read it and the
+// justfile never passed it, so the escape hatch did not exist. This is the fourth instance
+// in this module of a comment asserting a property the wiring does not have.
+//
+// The cost it hides is real and was measured. `forkEvery = 1` starts a fresh JVM per test
+// CLASS, and a fresh JVM pays for full JUnit engine discovery before it runs anything: a
+// thread dump taken 1s into a worker on this module showed `EngineDiscoveryOrchestrator`
+// scanning the classpath, not a test executing.
+//
+// Measured on `pluginContractTest` (6 classes / 59 tests, `--rerun` on the test task alone so
+// dependency rebuilds stay out of the number): 47 s at the default, 7 s with
+// `-PpipelineTestForkEvery=0`. Both arms green. The saving scales with class count, which is
+// why the inner loop on a focused installed-lane class matters most; that larger figure is
+// NOT measured here and should not be quoted until it is.
+//
+// `maxParallelForks = 1` is the wedge (one forked binary at a time); `forkEvery = 1` is a
+// different axis (isolation between classes) and it is what costs the discovery. The default
+// is unchanged at 1 so no gate's behaviour moves; the flag now exists and does what the
+// comment always said it did.
+//
+// One declaration, both lanes: two copies of this value would be the second authority this
+// module keeps having to be closed against.
+val forkEveryPerClass: Long = providers.gradleProperty("pipelineTestForkEvery")
+    .map { it.toLong() }
+    .getOrElse(1L)
+
 // The plugin-certification lane. It owns the three external example plugin JARs: they
 // are on ITS compile classpath and it builds them, through the buildable file collection
 // declared in the FAST-LANE SPLIT block. No wiring from the root build is involved, and
@@ -531,9 +566,10 @@ tasks.register<Test>("pluginContractTest") {
     testClassesDirs = pluginContractTest.output.classesDirs
     classpath = pluginContractTest.runtimeClasspath
     useJUnitPlatform()
-    // Same fork economy as the other lanes in this module: one fork at a time.
+    // Same fork economy as the other lanes in this module: one fork at a time, and one
+    // JVM per class unless -PpipelineTestForkEvery says otherwise. See forkEveryPerClass.
     maxParallelForks = 1
-    forkEvery = 1
+    forkEvery = forkEveryPerClass
 }
 
 // `check` must carry the plugin certification, or the split would have quietly retired
@@ -581,7 +617,7 @@ tasks.register<Test>("installedContractTest") {
     // one fork at a time. A future ticket may relax this when
     // the wedge has a structural fix.
     maxParallelForks = 1
-    forkEvery = 1
+    forkEvery = forkEveryPerClass
 }
 
 // Lane selection: a single Gradle property `-Plane=...` picks the

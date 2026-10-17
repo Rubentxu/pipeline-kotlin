@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.harness.cycle
 
+import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Fidelity
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -82,7 +83,7 @@ class CycleRunnerTest {
      * tests, so a real file and a real oracle are not
      * required — the carrier just has to be parseable JSON.
      */
-    private fun stubEvidence(sourceSha: String, expectedHF: String): PromotionEvidence {
+    private fun stubEvidence(sourceSha: String, expectedHF: Fidelity): PromotionEvidence {
         val oracle = OracleRef.Fitness("CycleRunnerTest.fixture", ":test-harness")
         return PromotionEvidence.PermanentContract(
             contractId = "OutputPlane.redaction.streaming",
@@ -106,7 +107,7 @@ class CycleRunnerTest {
         path: Path,
         cycleId: String = "cyc-1",
         sourceSha: String = "0123456789abcdef0123456789abcdef01234567",
-        expectedHF: String = "HF0",
+        expectedHF: Fidelity = Fidelity.HF0,
         contractId: String = "OutputPlane.redaction.streaming",
         relativePath: String = "v2/pipeline-credentials-api/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/api/StreamingRedactor.kt",
         evidence: PromotionEvidence = stubEvidence(sourceSha, expectedHF),
@@ -149,7 +150,7 @@ class CycleRunnerTest {
             {
               "cycle_id": "$cycleId",
               "source_sha": "$sourceSha",
-              "expected_hf": "$expectedHF",
+              "expected_hf": "${expectedHF.name}",
               "isolation_policy": "cycleDirOnly",
               "replacement": {
                 "evidence": $evidenceJson
@@ -206,7 +207,7 @@ class CycleRunnerTest {
     private fun setupPromotableRunner(
         tmp: Path,
         sourceSha: String = "0123456789abcdef0123456789abcdef01234567",
-        expectedHF: String = "HF0",
+        expectedHF: Fidelity = Fidelity.HF0,
     ): PromotableRunner {
         val contractFile = tmp.resolve("MyContract.kt")
         Files.writeString(contractFile, "// permanent contract body\nclass MyContract\n")
@@ -261,7 +262,7 @@ class CycleRunnerTest {
     @Test
     fun `prepare refuses when the manifest declares expectedHF=HF2`(@TempDir tmp: Path) {
         val manifest = tmp.resolve("manifest.json")
-        writeManifest(manifest, expectedHF = "HF2")
+        writeManifest(manifest, expectedHF = Fidelity.HF2)
         val runner = CycleRunner("cyc-1", manifest, tmp.resolve("cycles/cyc-1"))
         val outcome = runner.prepare()
         val next = outcome as CycleOutcome.Next
@@ -336,7 +337,7 @@ class CycleRunnerTest {
             boundCommit = "fedcba9876543210fedcba9876543210fedcba98",
             sourcePath = "MyContract.kt",
             contentDigest = "0".repeat(64),
-            fidelity = "HF0",
+            fidelity = Fidelity.HF0,
             oracle = OracleRef.Fitness("TestRunner.fixture", ":test-harness"),
         )
         val outcome = runner.requestPromote(mismatched)
@@ -364,7 +365,7 @@ class CycleRunnerTest {
             boundCommit = "0123456789abcdef0123456789abcdef01234567",
             sourcePath = "MyContract.kt",
             contentDigest = "deadbeef".repeat(8),
-            fidelity = "HF0",
+            fidelity = Fidelity.HF0,
             oracle = oracle,
         )
         val outcome = runner.requestPromote(badEvidence)
@@ -396,7 +397,7 @@ class CycleRunnerTest {
             boundCommit = sourceSha,
             sourcePath = "does-not-exist/MyContract.kt",
             contentDigest = "0".repeat(64),
-            fidelity = "HF0",
+            fidelity = Fidelity.HF0,
             oracle = oracle,
         )
         writeManifest(manifest, sourceSha = sourceSha, evidence = evidence)
@@ -438,7 +439,7 @@ class CycleRunnerTest {
             receiptId = "v0.62.0-rc5",
             boundCommit = sourceSha,
             receiptDigest = "0".repeat(64),
-            fidelity = "HF0",
+            fidelity = Fidelity.HF0,
             oracle = oracle,
         )
         val outcome = runner.requestPromote(receipt)
@@ -564,7 +565,7 @@ class CycleRunnerTest {
         // cycle on the ADT directly: an UnsupportedFidelity is a
         // Refused state, NOT an evidence row in the accumulator.
         val manifest = tmp.resolve("manifest.json")
-        writeManifest(manifest, expectedHF = "HF0")
+        writeManifest(manifest, expectedHF = Fidelity.HF0)
         val runner = CycleRunner(cycleId = "cyc-1", manifestPath = manifest, cycleDir = tmp.resolve("cycles/cyc-1"))
         runner.prepare()
         val outcomes = runner.runProbes(object : ProbeExecutor(Path.of("/n")) {
@@ -600,7 +601,7 @@ class CycleRunnerTest {
         // decider accepted it as success. The new shape
         // transitions the cycle to BlockedExternal directly.
         val manifest = tmp.resolve("manifest.json")
-        writeManifest(manifest, expectedHF = "HF1")
+        writeManifest(manifest, expectedHF = Fidelity.HF1)
         val runner = CycleRunner(cycleId = "cyc-1", manifestPath = manifest, cycleDir = tmp.resolve("cycles/cyc-1"))
         runner.prepare()
         runner.runProbes(object : ProbeExecutor(Path.of("/n")) {

@@ -286,7 +286,7 @@ class CycleRunner(
         val verdict = PromotionEvidenceVerifier.verify(
             evidence = evidence,
             runnerSourceSha = parsed.sourceSha,
-            manifestExpectedHF = parsed.expectedHF,
+            manifestExpectedHF = parsed.expectedFidelity,
             repoRoot = repoRoot,
             oracleLedger = oracleLedger,
         )

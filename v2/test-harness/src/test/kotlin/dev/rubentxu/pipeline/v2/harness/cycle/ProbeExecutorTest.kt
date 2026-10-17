@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.harness.cycle
 
+import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Fidelity
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -291,7 +292,7 @@ class ProbeExecutorTest {
             boundCommit = sourceSha,
             sourcePath = "MyContract.kt",
             contentDigest = contractDigest,
-            fidelity = "HF0",
+            fidelity = Fidelity.HF0,
             oracle = oracle,
         )
         val ledger = MapOracleLedger(mapOf(oracle to setOf(sourceSha)))

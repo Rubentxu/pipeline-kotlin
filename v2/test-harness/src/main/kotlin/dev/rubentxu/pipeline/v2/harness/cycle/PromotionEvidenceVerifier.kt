@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.harness.cycle
 
+import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Fidelity
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -70,13 +71,9 @@ object PromotionEvidenceVerifier {
                     "other commit: evidence bound to $observedCommit, runner saw $expectedCommit"
             }
             data class FidelityMismatch(
-                val observed: String,
-                val expected: String,
+                val observed: Fidelity,
+                val expected: Fidelity,
             ) : Refused {
-                init {
-                    require(observed.isNotBlank()) { "FidelityMismatch.observed must not be blank" }
-                    require(expected.isNotBlank()) { "FidelityMismatch.expected must not be blank" }
-                }
                 override val reason: String get() =
                     "fidelity mismatch: evidence=$observed, expected=$expected"
             }
@@ -147,7 +144,7 @@ object PromotionEvidenceVerifier {
     fun verify(
         evidence: PromotionEvidence,
         runnerSourceSha: String,
-        manifestExpectedHF: String,
+        manifestExpectedHF: Fidelity,
         repoRoot: Path,
         oracleLedger: OracleLedger,
     ): Verdict {

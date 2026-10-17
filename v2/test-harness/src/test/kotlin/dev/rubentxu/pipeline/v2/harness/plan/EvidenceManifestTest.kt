@@ -352,8 +352,8 @@ class EvidenceManifestTest {
         val reasons = refusal!!.reasons
         val insufficient = reasons.filterIsInstance<SelectionRefusal.InsufficientFidelity>()
         assertTrue(insufficient.isNotEmpty(), "expected InsufficientFidelity, got $reasons")
-        assertEquals("HF0", insufficient.first().observed)
-        assertTrue(insufficient.first().required.contains("HF2"))
+        assertEquals(ContractCatalogue.Fidelity.HF0, insufficient.first().observed)
+        assertTrue(insufficient.first().required.contains(ContractCatalogue.Fidelity.HF2))
     }
 
     @Test
@@ -391,5 +391,81 @@ class EvidenceManifestTest {
         )
         val refusal = EvidenceReader.verify(plan, dir, validSourceCommit, validSourceCommit)
         assertEquals(null, refusal, "a sidecar that matches every gate property must pass")
+    }
+
+    @Test
+    fun `a sidecar whose hf is not a known Fidelity name is refused at load`(
+        @TempDir tmp: Path,
+    ) {
+        // BQ4 v4 (typed sidecar fidelity, 2026-10-17): the
+        // previous shape accepted any non-blank `hf` String
+        // and let the gate's `m.hf !in requiredFidelities`
+        // comparison fail silently. A malformed fidelity
+        // (e.g. "HFX", "hf0", "") was structurally valid
+        // but semantically unreachable. The init now
+        // strict-validates `hf` against the closed
+        // [Fidelity] enum's name set; a throw with a
+        // precise message names the format requirement.
+        val dir = tmp.resolve("results")
+        Files.createDirectories(dir)
+        writeXml(dir, validClassName)
+        writeSidecar(
+            dir,
+            validClassName,
+            body = """
+                {
+                  "class_name": "FooTest",
+                  "gradle_path": "$validGradlePath",
+                  "invocation": "$validInvocation",
+                  "binary_sha256": "$validBinarySha",
+                  "hf": "HFX",
+                  "source_commit": "$validSourceCommit"
+                }
+            """.trimIndent(),
+        )
+        val file = dir.resolve("$validClassName.json")
+        val ex = assertThrows<IllegalArgumentException> {
+            EvidenceManifest.load(file)
+        }
+        assertTrue(
+            (ex.message ?: "").contains("HF0, HF1, HF2"),
+            "refusal must name the allowed-set requirement; got ${ex.message}",
+        )
+    }
+
+    @Test
+    fun `a sidecar whose hf is lowercase is refused at load`(
+        @TempDir tmp: Path,
+    ) {
+        // The wire format is uppercase per the Fidelity
+        // enum's `name` (HF0..HF6). A lowercase entry is
+        // a different byte sequence; the typed view's
+        // Fidelity.valueOf would throw, so the init
+        // refuses it before any consumer sees it.
+        val dir = tmp.resolve("results")
+        Files.createDirectories(dir)
+        writeXml(dir, validClassName)
+        writeSidecar(
+            dir,
+            validClassName,
+            body = """
+                {
+                  "class_name": "FooTest",
+                  "gradle_path": "$validGradlePath",
+                  "invocation": "$validInvocation",
+                  "binary_sha256": "$validBinarySha",
+                  "hf": "hf0",
+                  "source_commit": "$validSourceCommit"
+                }
+            """.trimIndent(),
+        )
+        val file = dir.resolve("$validClassName.json")
+        val ex = assertThrows<IllegalArgumentException> {
+            EvidenceManifest.load(file)
+        }
+        assertTrue(
+            (ex.message ?: "").contains("HF0, HF1, HF2"),
+            "refusal must name the allowed-set requirement; got ${ex.message}",
+        )
     }
 }

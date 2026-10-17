@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.harness.plan
 
+import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Fidelity
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -87,6 +88,9 @@ data class EvidenceManifest(
             "EvidenceManifest.binarySha256 must be lowercase hex"
         }
         require(hf.isNotBlank()) { "EvidenceManifest.hf must not be blank" }
+        require(hf in ALLOWED_HF_NAMES) {
+            "EvidenceManifest.hf must be one of $ALLOWED_HF_NAMES; got '$hf'"
+        }
         require(sourceCommit.length == 40) {
             "EvidenceManifest.sourceCommit must be a 40-hex SHA-1; " +
                 "got ${sourceCommit.length} chars"
@@ -96,8 +100,33 @@ data class EvidenceManifest(
         }
     }
 
+    /**
+     * The typed view of [hf]. The wire field stays a [String] for
+     * round-trip with the JSON consumer; this accessor parses the
+     * validated string into the closed [Fidelity] enum the gate
+     * dispatches on. The [init] guarantees the string is one of
+     * [ALLOWED_HF_NAMES] before this is ever called, so
+     * [Fidelity.valueOf] cannot throw.
+     */
+    val fidelity: Fidelity
+        get() = Fidelity.valueOf(hf)
+
     companion object {
         private val json = Json { ignoreUnknownKeys = true; isLenient = false }
+
+        /**
+         * The set of wire-format HF names the sidecar accepts.
+         * Anything outside this set is rejected at construction
+         * (a malformed `hf` is a refuse, not a silent
+         * comparison-fails-forever). The names are the closed
+         * [Fidelity] enum's `name` field, kept here as a `Set<String>`
+         * because the init cannot import a derived-from-enum value
+         * (Kotlin forbids it without a companion-object forward
+         * reference) and the sidecar wire format uses the enum name
+         * verbatim.
+         */
+        val ALLOWED_HF_NAMES: Set<String> =
+            setOf("HF0", "HF1", "HF2", "HF3", "HF4", "HF5", "HF6")
 
         /**
          * The path of the sidecar for a JUnit XML.

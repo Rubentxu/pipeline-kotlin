@@ -234,7 +234,7 @@ object ImpactResolver {
             is ValidationPlan.Refused -> return plan
             is ValidationPlan.Selected -> plan
         }
-        val requiredFidelities = selected.minimumFidelities.map { it.name }.toSet()
+        val requiredFidelities = selected.minimumFidelities
         val refusals = buildList {
             if (observedCommit != expectedCommit) {
                 // The previous shape stuffed `<binary reported no commit>` into the
@@ -281,10 +281,10 @@ object ImpactResolver {
                                 observed = m.sourceCommit,
                             ))
                         }
-                        if (requiredFidelities.isNotEmpty() && m.hf !in requiredFidelities) {
+                        if (requiredFidelities.isNotEmpty() && m.fidelity !in requiredFidelities) {
                             add(SelectionRefusal.InsufficientFidelity(
                                 suite = suite.filter,
-                                observed = m.hf,
+                                observed = m.fidelity,
                                 required = requiredFidelities,
                             ))
                         }

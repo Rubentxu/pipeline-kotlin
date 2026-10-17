@@ -19,6 +19,18 @@ import kotlinx.serialization.Serializable
  * refuse unsupported fidelities, validate path containment, and produce
  * a manifest that round-trips with `retirement_guard.py`.
  *
+ * BQ4 P0-D (2026-10-17, vertical close-out): the per-probe
+ * `replacement_kind` / `replacement_id` / `replacement_evidence` triple
+ * was a parallel legacy of the cycle-level `replacement.evidence` flat
+ * shape the BQ4 audit closed. The cycle-level `PromotionEvidence`
+ * carrier is the single authority for the substitute guarantee; the
+ * per-probe triple was a free-form copy that the runner never
+ * consumed. Dropping it removes the parallel authority, the
+ * `ReplacementKind` discriminator, and the string-prefix false-green
+ * class the audit named. A future per-probe evidence row, if ever
+ * needed, is one new `replacement: PromotionEvidence?` field on
+ * [ProbeEntry].
+ *
  * The wire format uses snake_case keys (the `retirement_guard.py`
  * consumer expects exactly `cycle_id`, `source_sha`, `expected_hf`,
  * `probes[*].relative_path`, `probes[*].content_sha256`, ...). Kotlin
@@ -115,9 +127,6 @@ data class ProbeEntry(
     @SerialName("skipped") val skipped: Int,
     @SerialName("verdict") val verdict: Verdict,
     @SerialName("mutation_or_negative") val mutationOrNegative: String,
-    @SerialName("replacement_kind") val replacementKind: ReplacementKind,
-    @SerialName("replacement_id") val replacementId: String,
-    @SerialName("replacement_evidence") val replacementEvidence: String,
     @SerialName("content_sha256") val contentSha256: String,
 ) {
     init {
@@ -139,8 +148,6 @@ data class ProbeEntry(
         require(executed >= 0) { "executed must be non-negative" }
         require(skipped in 0..executed) { "skipped must be 0..executed" }
         require(mutationOrNegative.isNotBlank()) { "mutationOrNegative must not be blank" }
-        require(replacementId.isNotBlank()) { "replacementId must not be blank" }
-        require(replacementEvidence.isNotBlank()) { "replacementEvidence must not be blank" }
         require(contentSha256.length == 64) {
             "contentSha256 must be a 64-char hex; got ${contentSha256.length} chars"
         }
@@ -195,11 +202,5 @@ data class ProbeEntry(
     enum class Verdict {
         @SerialName("PASS") PASS,
         @SerialName("FAIL") FAIL,
-    }
-
-    @Serializable
-    enum class ReplacementKind {
-        @SerialName("PERMANENT_CONTRACT") PERMANENT_CONTRACT,
-        @SerialName("EXTERNAL_CERTIFIER") EXTERNAL_CERTIFIER,
     }
 }

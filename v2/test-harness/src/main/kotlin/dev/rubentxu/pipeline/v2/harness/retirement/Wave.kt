@@ -35,11 +35,11 @@ package dev.rubentxu.pipeline.v2.harness.retirement
  *   carry `LEGACY` disposition and the guard rejects retirement until
  *   the operator marks the wave D autoritative.
  */
-enum class Wave(val label: String, val ordinalRank: Int) {
-    A("smoke duplicates", 0),
-    B("cli / distribution UAT", 1),
-    C("kill / restart / sandbox / secrets", 2),
-    D("v1 legacy / scripts", 3);
+enum class Wave(val label: String) {
+    A("smoke duplicates"),
+    B("cli / distribution UAT"),
+    C("kill / restart / sandbox / secrets"),
+    D("v1 legacy / scripts");
 
     companion object {
         /** Pure: derive the wave from the test record metadata. */

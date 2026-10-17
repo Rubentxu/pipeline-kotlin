@@ -34,7 +34,16 @@ import java.nio.file.Path
 sealed interface ObservedProvenance {
 
     /** The installed distribution reported a commit. */
-    data class Reported(val commit: String) : ObservedProvenance
+    data class Reported(val commit: String) : ObservedProvenance {
+        // BQ4 v15 (plan carrier self-protect, 2026-10-17):
+        // a blank `commit` is the gate's record of "an
+        // installed distribution reported a commit" for a
+        // commit that has no SHA — a fabrication. The
+        // carrier refuses blanks at construction; the
+        // launcher-level parsing in [InstalledDistribution.parse]
+        // also rejects non-hex / non-40-char values.
+        init { require(commit.isNotBlank()) { "Reported.commit must not be blank" } }
+    }
 
     /**
      * No commit could be read.
@@ -42,7 +51,9 @@ sealed interface ObservedProvenance {
      * [reason] names the cause rather than a bare null, so the refusal is an operator instruction
      * ("run `installDist`") instead of a puzzle.
      */
-    data class Unreadable(val reason: String) : ObservedProvenance
+    data class Unreadable(val reason: String) : ObservedProvenance {
+        init { require(reason.isNotBlank()) { "Unreadable.reason must not be blank" } }
+    }
 
     /**
      * What [ImpactResolver.adjudicate] compares against.

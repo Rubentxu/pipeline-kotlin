@@ -92,7 +92,14 @@ sealed interface HarnessVerdict {
      * row stays `MigrateExternalPending`. This is the default
      * observation before the harness runs.
      */
-    data class Pending(override val path: String) : HarnessVerdict
+    data class Pending(override val path: String) : HarnessVerdict {
+        // BQ4 v14 (retirement carrier self-protect,
+        // 2026-10-17): a blank `path` would be the
+        // producer's record of "no verdict yet" for a
+        // test that has no name — a fabrication. The
+        // carrier refuses blanks at construction.
+        init { require(path.isNotBlank()) { "Pending.path must not be blank" } }
+    }
 }
 
 /**
@@ -155,12 +162,32 @@ private fun requireSha256(fieldName: String, value: String) {
  */
 sealed interface VerdictApplication {
     data object NotApplicable : VerdictApplication
-    data class Promoted(val proofDigest: String) : VerdictApplication
+    // BQ4 v14 (retirement carrier self-protect,
+    // 2026-10-17): `proofDigest` is the SHA-256 hex of
+    // the substitute evidence emitted by the harness.
+    // The strict-validate mirrors the Verified.contentDigest
+    // / proofDigest format requirement; a blank or
+    // non-hex value is refused at construction.
+    data class Promoted(val proofDigest: String) : VerdictApplication {
+        init {
+            require(proofDigest.length == 64 && proofDigest.all { it in '0'..'9' || it in 'a'..'f' }) {
+                "Promoted.proofDigest must be a 64-char lowercase hex SHA-256"
+            }
+        }
+    }
     sealed interface Refused : VerdictApplication {
         val reason: String
-        data class PathMismatch(override val reason: String) : Refused
-        data class ShaMismatch(override val reason: String) : Refused
-        data class FingerprintMissing(override val reason: String) : Refused
-        data class AlreadyDecided(override val reason: String) : Refused
+        data class PathMismatch(override val reason: String) : Refused {
+            init { require(reason.isNotBlank()) { "PathMismatch.reason must not be blank" } }
+        }
+        data class ShaMismatch(override val reason: String) : Refused {
+            init { require(reason.isNotBlank()) { "ShaMismatch.reason must not be blank" } }
+        }
+        data class FingerprintMissing(override val reason: String) : Refused {
+            init { require(reason.isNotBlank()) { "FingerprintMissing.reason must not be blank" } }
+        }
+        data class AlreadyDecided(override val reason: String) : Refused {
+            init { require(reason.isNotBlank()) { "AlreadyDecided.reason must not be blank" } }
+        }
     }
 }

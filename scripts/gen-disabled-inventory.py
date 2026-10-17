@@ -41,6 +41,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -341,10 +342,16 @@ def classify(rel: str, method: str, reason: str = "") -> tuple:
 def extract_entries(rel_path: str, abs_path: str):
     src = open(abs_path, encoding="utf-8").read()
     entries = []
-    # match @Disabled("...") possibly multiline, followed by optional annotations
-    # then `fun \`name\`` or `class Name`
-    for m in re.finditer(r'(?:@|^|\s)@(?:org\.junit\.jupiter\.api\.)?Disabled\(\s*"((?:[^"\\]|\\.)*)"', src, re.S):
-        tail = src[m.end():m.end() + 600]
+    # Scan ANNOTATION POSITION only, over source whose comments and literal
+    # CONTENTS have been blanked. The reason is then read from the RAW text at the
+    # matched offset, because the scanner that locates the annotation necessarily
+    # blanks the very string that IS the reason.
+    for m in ANNOTATION.finditer(strip_comments_and_literals(src)):
+        raw = re.match(r'\s*"((?:[^"\\]|\\.)*)"', src[m.end():])
+        if raw is None:
+            continue
+        end = m.end() + raw.end()
+        tail = src[end:end + 600]
         fm = re.search(r'(?:@[^\n@]*\n\s*)*fun `([^`]+)`', tail)
         cm = re.search(r'class\s+(\w+)', tail)
         if fm:
@@ -353,9 +360,158 @@ def extract_entries(rel_path: str, abs_path: str):
             target = f"class {cm.group(1)} (whole class)"
         else:
             target = "<unresolved>"
-        reason = m.group(1).replace("\\\"", "\"")
+        reason = raw.group(1).replace("\\\"", "\"")
         entries.append((target, reason))
     return entries
+
+
+def strip_comments_and_literals(src: str) -> str:
+    """Blank out comments AND string/char literal contents, preserving offsets.
+
+    Two independent reasons, each measured:
+
+    1. Comments. `(?:@|^|\\s)@Disabled(` matches `@Disabled("...")` inside a
+       KDoc paragraph, so this generator filed `FArchRP040DisabledTestClassificationTest`
+       as `class … (whole class)` UNKNOWN while the class carries no annotation at
+       all and runs green (`skipped="0"`). A fail-closed gate must not contain a
+       row invented out of documentation.
+
+    2. Literals. A naive `re.sub(r'/\\*[\\s\\S]*?\\*/', '', src)` is NOT a comment
+       stripper on Kotlin: `artifacts = "build/libs/*.jar"` opens a phantom block
+       comment that swallows the next 353 lines, including three REAL `@Disabled`
+       annotations. Measured: that strip alone dropped `CoreArchiveArtifactsStepUnitTest`
+       from 3 entries to 0. Several detector tests also keep `@Disabled` as string
+       CONTENT as a fixture — the same confusion wearing a different hat.
+
+    Offsets are preserved, so the anchor below still reports honest line numbers.
+    """
+    out = []
+    i, n = 0, len(src)
+    while i < n:
+        c = src[i]
+        if c == '"':
+            raw = src[i:i + 3] == '"""'
+            j = i + (3 if raw else 1)
+            while j < n:
+                if src[j] == '\\':
+                    j += 2
+                    continue
+                if raw and src[j:j + 3] == '"""':
+                    j += 3
+                    break
+                if not raw and src[j] == '"':
+                    j += 1
+                    break
+                j += 1
+            out.append(' ' * (j - i))
+            i = j
+            continue
+        if c == "'":
+            j = i + 1
+            while j < n:
+                if src[j] == '\\':
+                    j += 2
+                    continue
+                if src[j] == "'":
+                    j += 1
+                    break
+                j += 1
+            out.append(' ' * (j - i))
+            i = j
+            continue
+        if src[i:i + 2] == '//':
+            j = src.find('\n', i)
+            j = n if j < 0 else j
+            out.append(' ' * (j - i))
+            i = j
+            continue
+        if src[i:i + 2] == '/*':
+            j = src.find('*/', i + 2)
+            j = n if j < 0 else j + 2
+            out.append(''.join(ch if ch == '\n' else ' ' for ch in src[i:j]))
+            i = j
+            continue
+        out.append(c)
+        i += 1
+    return ''.join(out)
+
+
+# An annotation lives in ANNOTATION POSITION: only whitespace before it on its
+# line, possibly behind other annotations. `FArchRP040DisabledTestClassificationTest`
+# already uses exactly this anchor (`^\\s*@Disabled`) for exactly this reason, so
+# this generator and that fitness now agree on what a real annotation is instead
+# of each holding a private definition of it.
+ANNOTATION = re.compile(
+    r'(?m)^[ \t]*(?:@\w+(?:\.\w+)*(?:\([^\n]*\))?[ \t]*)*'
+    r'@(?:org\.junit\.jupiter\.api\.)?Disabled\(',
+)
+
+
+def scanner_selftest() -> list:
+    """The generator refuses to publish an inventory its own scanner gets wrong.
+
+    A GREEN here is only information because every fixture is a case that was
+    measured to break a previous version of this file.
+    """
+    cases = [
+        ("a real annotation is counted",
+         '    @Disabled("migrated-pending")\n    fun a() = Unit\n', 1),
+        ("an annotation behind another annotation is counted",
+         '    @Test\n    @Disabled("migrated-pending")\n    fun a() = Unit\n', 1),
+        ("an annotation inside KDoc is not counted",
+         '/**\n *  1. Every `@Disabled` annotation MUST carry a reason\n'
+         ' *     (the @Disabled("...") string argument).\n */\nclass A\n', 0),
+        ("an annotation inside a line comment is not counted",
+         '    // do not write @Disabled("migrated-pending") here\n    fun a() = Unit\n', 0),
+        ("an annotation inside a string fixture is not counted",
+         '        val src = """\n            @Disabled("migrated-pending")\n        """\n', 0),
+        ("a glob inside a string literal does not open a phantom block comment",
+         '        artifacts = "build/libs/*.jar"\n'
+         '        @Disabled("migrated-pending")\n    fun a() = Unit\n', 1),
+        # The anchor's ONLY load-bearing case. Measured: on today's tree the
+        # anchor changes nothing (133 entries either way), because every real
+        # annotation is already in annotation position once comments and literals
+        # are blanked. This fixture is what makes it defensible rather than
+        # decorative — it pins the invariant for the file that breaks it.
+        ("an annotation token mid-line in CODE is not counted",
+         '    val f = listOf(1) @Disabled("why")\n', 0),
+        # Offset preservation. The first version of the `//` branch emitted ONE
+        # space instead of one space per comment character, so every match after
+        # a line comment was indexed into the raw source at a shifted offset and
+        # the reason came back as arbitrary code — silently dropping 73 of 133 real
+        # entries. Count-based fixtures cannot see this: they do not read the
+        # reason. `extract_entries_reason_is_surviving_prose` below does.
+        ("a real annotation AFTER a line comment keeps its reason",
+         '    // a comment\n    @Disabled("kept: the reason survives")\n    fun a() = Unit\n',
+         1),
+    ]
+    failures = []
+    for label, source, expected in cases:
+        actual = len(ANNOTATION.findall(strip_comments_and_literals(source)))
+        if actual != expected:
+            failures.append(f"{label}: expected {expected}, scanner found {actual}")
+
+    # Count alone cannot see an offset shift, so the reason is asserted too: this
+    # is the check that would have caught the `//`-branch regression which
+    # silently dropped 73 real entries while every count stayed plausible.
+    reason_fixture = (
+        '    // a comment\n'
+        '    @Disabled("kept: the reason survives")\n'
+        '    fun `named member`() = Unit\n'
+    )
+    with tempfile.NamedTemporaryFile('w', suffix='.kt', delete=False) as handle:
+        handle.write(reason_fixture)
+        reason_path = handle.name
+    try:
+        recovered = extract_entries("selftest", reason_path)
+    finally:
+        os.unlink(reason_path)
+    if recovered != [("`named member`", "kept: the reason survives")]:
+        failures.append(
+            "the reason is read at the wrong offset after a line comment: "
+            f"expected the member and its prose, got {recovered}"
+        )
+    return failures
 
 
 # Only the TABLE is truncated. classify() always sees the whole reason: a
@@ -366,6 +522,20 @@ DISPLAY_REASON_CHARS = 160
 
 
 def main():
+    # Fail closed on the instrument BEFORE trusting its verdict. Publishing counts
+    # produced by a scanner that cannot tell an annotation from its documentation
+    # is how a gate acquires a row that never existed.
+    selftest_failures = scanner_selftest()
+    if selftest_failures:
+        for failure in selftest_failures:
+            print(f"SCANNER SELFTEST FAILED: {failure}", file=sys.stderr)
+        print(
+            "El escaner no distingue una anotacion de su documentacion. "
+            "NO se publica ningun inventario.",
+            file=sys.stderr,
+        )
+        sys.exit(3)
+
     rows = []
     counts = dict.fromkeys(CATEGORIES + (UNTRIAGED,), 0)
     untriaged = []

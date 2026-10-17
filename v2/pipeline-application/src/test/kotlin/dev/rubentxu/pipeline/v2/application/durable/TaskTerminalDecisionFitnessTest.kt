@@ -38,13 +38,28 @@ class TaskTerminalDecisionFitnessTest {
 
     private val appMainRoot: Path = Paths.get("src/main/kotlin")
     private val sdkRuntimeMainRoot: Path = Paths.get("../pipeline-step-sdk/runtime/src/main/kotlin")
+    private val sdkScmGitMainRoot: Path = Paths.get("../pipeline-step-sdk/scm-git/src/main/kotlin")
+    private val sdkHttpMainRoot: Path = Paths.get("../pipeline-step-sdk/http/src/main/kotlin")
+    private val sdkJunitMainRoot: Path = Paths.get("../pipeline-step-sdk/junit/src/main/kotlin")
+    private val sdkUtilitiesMainRoot: Path = Paths.get("../pipeline-step-sdk/utilities/src/main/kotlin")
+    private val sdkFilesMainRoot: Path = Paths.get("../pipeline-step-sdk/files/src/main/kotlin")
 
     private fun kotlinSources(): List<Path> {
-        // Aggregate both roots so a regression in either module fires the same assertion.
-        // Either root missing (e.g. running outside the module directory) is a no-op.
-        val roots = listOf(appMainRoot, sdkRuntimeMainRoot).filter { Files.isDirectory(it) }
+        // Aggregate every pipeline-step-sdk sub-module so a regression in any of them fires
+        // the same assertion. Each root missing (e.g. running outside the right module
+        // directory) is a no-op; the assertion fires as long as at least one root is
+        // present.
+        val roots = listOf(
+            appMainRoot,
+            sdkRuntimeMainRoot,
+            sdkScmGitMainRoot,
+            sdkHttpMainRoot,
+            sdkJunitMainRoot,
+            sdkUtilitiesMainRoot,
+            sdkFilesMainRoot,
+        ).filter { Files.isDirectory(it) }
         require(roots.isNotEmpty()) {
-            "no scan roots found (looked for $appMainRoot and $sdkRuntimeMainRoot); " +
+            "no scan roots found (looked for $appMainRoot and step-sdk sub-modules); " +
                 "run from v2/pipeline-application"
         }
         return roots.flatMap { root ->
@@ -77,9 +92,14 @@ class TaskTerminalDecisionFitnessTest {
         val sources = kotlinSources()
         assertTrue(sources.isNotEmpty(), "no kotlin sources found under $appMainRoot or $sdkRuntimeMainRoot — run from v2/pipeline-application")
 
+        // Refined regex: only `result.timedOut` / `result.cancelled` (TaskExecutionResult
+        // consumers). `captured.timedOut` / `captured.cancelled` belong to CapturedRun, a
+        // separate domain with its own coarse boolean projection; that domain has its own
+        // refactor and its own fitness test (out of scope here).
+        val taskExecutionResultReads = Regex("""(?<![a-zA-Z_])result\.(?:timedOut|cancelled)\b""")
         val offending = sources.flatMap { file ->
             val ownDefinition = ownBooleans.containsMatchIn(stripComments(Files.readString(file)))
-            val booleanUses = linesReferencing(file, Regex("""\.timedOut|\.cancelled"""))
+            val booleanUses = linesReferencing(file, taskExecutionResultReads)
                 .filterNot { ownDefinition && (it.contains("val timedOut") || it.contains("val cancelled")) }
             if (file.fileName.toString() == "TaskTerminalDecision.kt") emptyList()
             else booleanUses

@@ -190,4 +190,77 @@ class JsonOracleLedgerTest {
         assertEquals(emptySet<String>(), setOf<String>().let { it })
         assertFalse(ledger.hasPassed(oracle, "0123456789abcdef0123456789abcdef01234567"))
     }
+
+    @Test
+    fun `a passCommits entry that is not a 40-char hex SHA-1 is refused at load`(
+        @TempDir tmp: Path,
+    ) {
+        // BQ4 P0-D follow-up (2026-10-17): the previous shape
+        // accepted passCommits verbatim. A non-SHA-1 string
+        // ("main", "v1.0", "abc") would silently fail every
+        // `hasPassed` query and the verifier would record a
+        // refused cycle with a "no oracle PASSed" reason —
+        // the dual shape that hid the malformed data. The
+        // loader's init is now strict: each passCommits
+        // entry MUST be a 40-char lowercase hex SHA-1.
+        val file = tmp.resolve("ledger.json")
+        Files.writeString(
+            file,
+            """
+            {
+              "oracles": [
+                {
+                  "type": "fitness",
+                  "module": ":test-harness",
+                  "name": "Test.fixture",
+                  "pass_commits": ["main"]
+                }
+              ]
+            }
+            """.trimIndent(),
+        )
+        val ex = assertThrows<IllegalArgumentException> {
+            JsonOracleLedger.load(file)
+        }
+        assertTrue(
+            (ex.message ?: "").contains("40-hex SHA-1"),
+            "refusal must name the format requirement; got ${ex.message}",
+        )
+    }
+
+    @Test
+    fun `a passCommits entry that is uppercase hex is refused at load`(
+        @TempDir tmp: Path,
+    ) {
+        // The wire format is lowercase hex per the SHA-1
+        // convention used throughout the harness. An
+        // uppercase entry is a different byte sequence
+        // (`a` and `A` are different hex digits) and the
+        // verifier's set-contains would never match the
+        // binary's lowercase digest, so the cycle would
+        // be silently refused for the wrong reason.
+        val file = tmp.resolve("ledger.json")
+        Files.writeString(
+            file,
+            """
+            {
+              "oracles": [
+                {
+                  "type": "fitness",
+                  "module": ":test-harness",
+                  "name": "Test.fixture",
+                  "pass_commits": ["0123456789ABCDEF0123456789ABCDEF01234567"]
+                }
+              ]
+            }
+            """.trimIndent(),
+        )
+        val ex = assertThrows<IllegalArgumentException> {
+            JsonOracleLedger.load(file)
+        }
+        assertTrue(
+            (ex.message ?: "").contains("lowercase hex"),
+            "refusal must name the lowercase-hex requirement; got ${ex.message}",
+        )
+    }
 }

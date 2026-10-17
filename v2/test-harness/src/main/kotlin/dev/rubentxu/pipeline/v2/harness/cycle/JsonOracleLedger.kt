@@ -73,6 +73,34 @@ class JsonOracleLedger(
             val parsed = json.decodeFromString(LedgerFile.serializer(), text)
             val map = mutableMapOf<OracleRef, Set<String>>()
             for (entry in parsed.oracles) {
+                // BQ4 P0-D follow-up (2026-10-17): the previous
+                // shape accepted passCommits verbatim and
+                // matched by Set.contains at hasPassed time.
+                // A non-SHA-1 string ("abc", "v1.0", "main")
+                // would silently fail every query and the
+                // verifier would record a refused cycle with
+                // a "no oracle PASSed" reason — the dual
+                // shape that hid the malformed data. The
+                // init is now strict: each passCommits entry
+                // MUST be a 40-char lowercase hex SHA-1, and
+                // the ledger's `module` field MUST be a
+                // non-blank Gradle project path. A malformed
+                // entry is a programmer error, not a soft
+                // failure: the throw is intentional, the
+                // same as the malformed-JSON throw above.
+                for (commit in entry.passCommits) {
+                    require(commit.length == 40) {
+                        "ledger entry '${entry.module}' has passCommits entry of length " +
+                            "${commit.length}; must be a 40-hex SHA-1; got '$commit'"
+                    }
+                    require(commit.all { it in '0'..'9' || it in 'a'..'f' }) {
+                        "ledger entry '${entry.module}' has non-lowercase-hex passCommits " +
+                            "entry '$commit'; the wire format is a 40-char SHA-1 in lowercase hex"
+                    }
+                }
+                require(entry.module.isNotBlank()) {
+                    "ledger entry has blank module; every oracle needs a Gradle project"
+                }
                 val oracle: OracleRef = when (entry) {
                     is LedgerEntry.Fitness -> OracleRef.Fitness(
                         name = entry.name,

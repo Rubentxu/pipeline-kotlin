@@ -631,14 +631,24 @@ val buildExamplePlugin by tasks.registering(Exec::class) {
 // external builds below were kept out of `check` to avoid. It is paid here because the other
 // tasks produce artifacts nothing under `check` inspects, while this one produces the artifact
 // that decides whether BLOCK 1-I is real.
-// `withPlugin` and not a bare `tasks.named("test")`: this root script is evaluated BEFORE the
-// Kotlin JVM plugin has created the task in the subproject, so naming it directly fails the
-// configuration of every build. The BCV block below hooks the same way for the same reason.
-project(":pipeline-application").pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
-    project(":pipeline-application").tasks.named("test") {
-        dependsOn(buildExamplePlugin)
-    }
-}
+//
+// FAST LANE (2026-10-17): the subject test now lives in `:pipeline-application`'s
+// `pluginContractTest` lane, which declares the three JARs as a buildable file collection
+// over the tasks that produce them. THIS WIRING IS NOW REDUNDANT AND DELETED, and that is
+// the whole point of the change. It used to read
+// `tasks.named("test") { dependsOn(buildExamplePlugin) }`: the INNER LOOP paid for external
+// certification — republishing the SDK to sdk-repo and forking a second
+// Gradle — on every run after a `pipeline-domain` edit, which is the most common edit there
+// is. That contradicted the fast-lane contract `pipeline-application/build.gradle.kts`
+// documents 600 lines away, and the two files could each be read in isolation without the
+// contradiction being visible. `:pipeline-application`'s `tasks.test` now carries a `doFirst`
+// invariant that fails the build if an external plugin build reappears in the RESOLVED
+// fast-lane graph, so this cannot be re-introduced from a second file.
+//
+//
+// The `withPlugin` hook this block used is gone with it. The BCV block below hooks the
+// same way for the same reason (the root script is evaluated before the Kotlin JVM plugin
+// creates the subproject's tasks).
 
 // S1-D: the directive analogue of buildExamplePlugin. The external directive
 // plugin proves the directive kernel is open by key from outside the build.

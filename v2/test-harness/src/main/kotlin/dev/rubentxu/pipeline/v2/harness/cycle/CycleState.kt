@@ -65,10 +65,124 @@ sealed interface CycleState {
         }
     }
 
-    /** A probe or the runner rejected; the cycle is closed. */
-    data class Refused(val reason: String) : CycleState {
-        init {
-            require(reason.isNotBlank()) { "Refused.reason must not be blank" }
+    /**
+     * A probe or the runner rejected; the cycle is closed. The interface
+     * is sealed so the [ExitVerdict] projection and the [Cycle] decider
+     * see the same closed set of cases; adding a new refusal shape
+     * (e.g. a new `ProbeOutcome` variant) fails the build at both
+     * sites at compile time, not at a runtime string match.
+     *
+     * BQ4 audit (2026-10-16, RC3 close-out, vertical): the previous
+     * shape was a `data class Refused(val reason: String)` and the
+     * decider emitted well-known reason strings (`"probe ... Failed"`,
+     * `"other commit: ..."`, `"UnsupportedFidelity: ..."`, ...). The
+     * runner's [ExitVerdict.classifyRefusal] then re-parsed those
+     * strings with `startsWith` to recover the typed case — a
+     * dual-authority defect (emitter + re-parser) the AGENTS.md §3
+     * stringly-typed rule forbids. The new shape makes each case a
+     * distinct data class with typed fields; the carrier [reason] is
+     * preserved verbatim so the operator-facing receipt text survives
+     * the refactor.
+     */
+    sealed interface Refused : CycleState {
+        /**
+         * Operator-facing text for the receipt and the CI log. Preserved
+         * verbatim across subtypes: each subtype computes [reason] from
+         * its typed payload, so the string is the typed view, not a
+         * parallel string that could drift.
+         */
+        val reason: String
+
+        /** A single probe reported [ProbeOutcome.Failed]. */
+        data class ProbeFailed(
+            val evidenceRef: String,
+            val failureReason: String,
+        ) : Refused {
+            init {
+                require(evidenceRef.isNotBlank()) { "ProbeFailed.evidenceRef must not be blank" }
+                require(failureReason.isNotBlank()) { "ProbeFailed.failureReason must not be blank" }
+            }
+            override val reason: String get() = "probe $evidenceRef Failed: $failureReason"
+        }
+
+        /** A single probe reported [ProbeOutcome.Skipped]. */
+        data class ProbeSkipped(val evidenceRef: String) : Refused {
+            init { require(evidenceRef.isNotBlank()) { "ProbeSkipped.evidenceRef must not be blank" } }
+            override val reason: String get() =
+                "probe $evidenceRef Skipped; the spec rejects a Skipped probe from " +
+                    "advancing to Observed (the AAT or E2E has no mutation target)"
+        }
+
+        /** A single probe reported [ProbeOutcome.NotRun]. */
+        data class ProbeNotRun(val evidenceRef: String, val notRunReason: String) : Refused {
+            init {
+                require(evidenceRef.isNotBlank()) { "ProbeNotRun.evidenceRef must not be blank" }
+                require(notRunReason.isNotBlank()) { "ProbeNotRun.notRunReason must not be blank" }
+            }
+            override val reason: String get() = "probe $evidenceRef NotRun: $notRunReason"
+        }
+
+        /** A single probe reported [ProbeOutcome.NoEvidence]. */
+        data class ProbeNoEvidence(val evidenceRef: String) : Refused {
+            init { require(evidenceRef.isNotBlank()) { "ProbeNoEvidence.evidenceRef must not be blank" } }
+            override val reason: String get() =
+                "probe $evidenceRef NoEvidence; the cycle cannot observe a probe " +
+                    "that produced no observable evidence"
+        }
+
+        /** A single probe reported [ProbeOutcome.OtherCommit] — runner and probe disagree on the source. */
+        data class ProbeOtherCommit(val evidenceRef: String, val observed: String) : Refused {
+            init {
+                require(evidenceRef.isNotBlank()) { "ProbeOtherCommit.evidenceRef must not be blank" }
+                require(observed.isNotBlank()) { "ProbeOtherCommit.observed must not be blank" }
+            }
+            override val reason: String get() =
+                "probe $evidenceRef OtherCommit=$observed; the manifest's source_sha is the only " +
+                    "authoritative source identity"
+        }
+
+        /**
+         * A single probe reported [ProbeOutcome.UnsupportedFidelity] — the manifest
+         * requested a fidelity the executor cannot honour. Distinct exit code (64)
+         * downstream so a CI matrix can route this refusal separately from a
+         * generic `1`.
+         */
+        data class ProbeUnsupportedFidelity(val evidenceRef: String, val fidelity: String) : Refused {
+            init {
+                require(evidenceRef.isNotBlank()) { "ProbeUnsupportedFidelity.evidenceRef must not be blank" }
+                require(fidelity.isNotBlank()) { "ProbeUnsupportedFidelity.fidelity must not be blank" }
+            }
+            override val reason: String get() =
+                "probe $evidenceRef UnsupportedFidelity=$fidelity; this vertical only " +
+                    "supports the fidelities declared in CycleManifest.ALLOWED_FIDELITIES"
+        }
+
+        /**
+         * The decider observed zero Verified probes. A cycle that ran
+         * but never saw a probe succeed: the spec's "no evidence"
+         * refusal. Distinct from [Generic] because the [ExitVerdict]
+         * projection routes it to [ExitVerdict.Refusal.NoEvidence]
+         * (exit code 1, typed carrier) and the operator diagnostic
+         * names the missing observation count.
+         */
+        data class NoProbesSucceeded(val observedCount: Int) : Refused {
+            init { require(observedCount == 0) { "NoProbesSucceeded.observedCount must be 0" } }
+            override val reason: String get() =
+                "AllProbesObserved but no probe succeeded (observed=$observedCount); " +
+                    "the cycle cannot advance to Observed without at least one Verified probe"
+        }
+
+        /**
+         * Generic refusal: a close reason from [CycleEvent.CloseRequested] or a
+         * prep failure from [CycleRunner.fail]. The [reason] is preserved
+         * verbatim for the receipt; the [ExitVerdict] projection routes it
+         * to [ExitVerdict.Refusal.Generic] (exit 1). The previous shape's
+         * "other commit:" / "UnsupportedFidelity:" / "no probe succeeded"
+         * string-prefix routing is now impossible: those cases have their
+         * own typed carriers above.
+         */
+        data class Generic(override val reason: String) : Refused {
+            init { require(reason.isNotBlank()) { "Generic.reason must not be blank" } }
         }
     }
 
@@ -142,7 +256,7 @@ data class ProbeFinished(val outcome: ProbeOutcome) {
 /**
  * Events that drive a [CycleState] forward. The runner produces them; the
  * decider consumes them. There is no `Cancel` event here: a cancel is a
- * specific `Refused(reason)` that the caller can emit, not a state of
+ * specific [CycleState.Refused.Generic] that the caller can emit, not a state of
  * its own.
  *
  * `ProbeFinished` carries the typed [ProbeOutcome] (not a free-floating

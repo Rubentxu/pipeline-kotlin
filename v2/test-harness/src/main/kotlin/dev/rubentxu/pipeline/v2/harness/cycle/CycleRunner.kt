@@ -507,7 +507,7 @@ class CycleRunner(
         // outcome. Returning a typed `Next` to `Refused` is the
         // simplest portable shape.
         val outcome = CycleOutcome.Next(
-            nextState = CycleState.Refused(reason),
+            nextState = CycleState.Refused.Generic(reason),
             nextContext = context,
         )
         state = outcome.nextState

@@ -189,7 +189,13 @@ class CycleTest {
                 CycleEvent.AllProbesObserved(commit),
             )
             val next = outcome as CycleOutcome.Next
-            val refused = next.nextState as CycleState.Refused
+            // BQ4 v2 (typed refactor): the "no probe succeeded"
+            // condition is now its own [CycleState.Refused.NoProbesSucceeded]
+            // case, not a stringly-typed `Refused(reason)`. The
+            // assertion is on the typed carrier; the receipt text
+            // is a derived view of that carrier.
+            val refused = next.nextState as CycleState.Refused.NoProbesSucceeded
+            assertEquals(0, refused.observedCount)
             assertTrue(
                 refused.reason.contains("no probe succeeded"),
                 "refusal must name the missing evidence, got ${refused.reason}",
@@ -226,11 +232,17 @@ class CycleTest {
                 CycleEvent.ProbeFinished(ProbeOutcome.Failed("bad-1", "test fail")),
             )
             val next = badOutcome as CycleOutcome.Next
-            val refused = next.nextState as CycleState.Refused
+            // BQ4 v2 (typed refactor): the per-probe failure is
+            // now a typed [CycleState.Refused.ProbeFailed] with
+            // its own payload (evidenceRef, failureReason). The
+            // receipt text is derived from the carrier.
+            val refused = next.nextState as CycleState.Refused.ProbeFailed
+            assertEquals("bad-1", refused.evidenceRef)
+            assertEquals("test fail", refused.failureReason)
             assertTrue(
                 refused.reason.contains("bad-1") && refused.reason.contains("Failed") &&
                     refused.reason.contains("test fail"),
-                "refusal must name the failing probe and the reason, got ${refused.reason}",
+                "refusal reason must derive from the typed fields, got ${refused.reason}",
             )
         }
 

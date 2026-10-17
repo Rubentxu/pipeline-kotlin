@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.harness.plan
 
 import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue
+import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Contract
 
 /**
  * Turns a set of changed paths into a [ValidationPlan].
@@ -128,17 +129,31 @@ object ImpactResolver {
             )
         }
 
-        val unclassified = production.filter { path -> ContractCatalogue.contractsFor(path).isEmpty() }
-        val capabilities = production
-            .flatMap { ContractCatalogue.contractsFor(it) }
+        // BQ1 v3 (resolver dedupe, 2026-10-17): the previous
+        // shape called [ContractCatalogue.contractsFor] three
+        // times per production path (once for the
+        // unclassified check, once for `capabilities`, once
+        // for `reasons`) plus a fourth time inside
+        // [ContractCatalogue.requiredFidelityFor]. The new
+        // shape builds the per-path contract list ONCE and
+        // derives every downstream view from it. A future
+        // view added here no longer implies a new catalogue
+        // traversal; the catalogue is walked exactly once
+        // per production path. The contract-aware overload
+        // of [requiredFidelityFor] lets the fidelity view
+        // reuse the same list instead of re-fetching it.
+        val perPath: Map<String, List<Contract>> =
+            production.associateWith { ContractCatalogue.contractsFor(it) }
+
+        val unclassified = perPath.filterValues { it.isEmpty() }.keys.toList()
+        val capabilities = perPath.values.flatten()
             .map { it.capability }
             .toSortedSet()
-
-        val fidelities = production.flatMap { ContractCatalogue.requiredFidelityFor(it) }.toSortedSet()
-        val reasons = production.flatMap { path ->
-            ContractCatalogue.contractsFor(path).map { contract ->
-                SelectionReason.SourceChanged(path, contract.capability)
-            }
+        val fidelities = perPath.values
+            .flatMap { ContractCatalogue.requiredFidelityFor(it) }
+            .toSortedSet()
+        val reasons = perPath.flatMap { (path, contracts) ->
+            contracts.map { SelectionReason.SourceChanged(path, it.capability) }
         }
 
         val suites = capabilities

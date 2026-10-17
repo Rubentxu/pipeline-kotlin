@@ -361,21 +361,30 @@ object ContractCatalogue {
     }
 
     /**
-     * The fidelity required for [path], accounting for
-     * escalation. Deduplicated and ordered. The previous shape
-     * called [contractsFor] twice (once for `minFidelity`, once
-     * for `capability`); the new shape computes the matching
-     * set once and derives both, halving the catalog traversal
-     * per call.
+     * The fidelity required for the contracts a path matched, accounting for
+     * escalation. Deduplicated and ordered. The contract-aware overload is the
+     * source of truth: callers that already hold the matching contracts pass
+     * them in and avoid a second catalogue traversal. The path-based overload
+     * is a thin convenience that resolves contracts first.
      */
-    fun requiredFidelityFor(path: String): Set<Fidelity> {
-        val matching = contractsFor(path)
-        if (matching.isEmpty()) return emptySet()
-        val baseFidelities = matching.map { it.minFidelity }.toSet()
-        val matchingCapabilities = matching.map { it.capability }.toSet()
+    fun requiredFidelityFor(contracts: List<Contract>): Set<Fidelity> {
+        if (contracts.isEmpty()) return emptySet()
+        val baseFidelities = contracts.map { it.minFidelity }.toSet()
+        val matchingCapabilities = contracts.map { it.capability }.toSet()
         val escalated = ESCALATIONS
             .filter { rule -> rule.capability in matchingCapabilities }
             .map { rule -> rule.to }
         return (baseFidelities + escalated).toSortedSet()
     }
+
+    /**
+     * The fidelity required for [path], accounting for escalation. Deduplicated
+     * and ordered. The previous shape called [contractsFor] twice (once for
+     * `minFidelity`, once for `capability`); the new shape derives both from a
+     * single list and the contract-aware overload does the work, so the
+     * catalogue is walked once per call. Kept as a path-based convenience for
+     * tests and one-shot callers that do not need the contracts themselves.
+     */
+    fun requiredFidelityFor(path: String): Set<Fidelity> =
+        requiredFidelityFor(contractsFor(path))
 }

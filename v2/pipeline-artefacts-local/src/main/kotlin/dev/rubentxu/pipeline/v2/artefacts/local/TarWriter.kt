@@ -6,6 +6,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.ExecutionOutputSink
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.durable.TaskStream
+import dev.rubentxu.pipeline.v2.domain.durable.decideTaskTerminal
+import dev.rubentxu.pipeline.v2.domain.durable.isSuccessFromDecision
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
 import kotlinx.coroutines.runBlocking
 import java.io.Closeable
@@ -102,7 +104,7 @@ class TarWriter(
                 }
             }
             val result = runBlocking { runtime.execute(request, sink) }
-            if (!result.succeeded) {
+            if (!isSuccessFromDecision(decideTaskTerminal(result))) {
                 val err = stderrChunks.joinToString("") { it.data.toString(Charsets.UTF_8) }
                 throw RuntimeException("tar cf failed (exit ${result.exitCode}${if (result.timedOut) " timed-out" else ""}): $err")
             }

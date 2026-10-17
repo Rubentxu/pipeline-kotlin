@@ -238,8 +238,12 @@ object GateCli {
             "suite ${refusal.suite} was selected but produced no clean evidence"
         is SelectionRefusal.SuiteDidNotRun ->
             "suite ${refusal.suite} did not run: Gradle failed for ${refusal.gradleProject}"
-        is SelectionRefusal.StaleEvidence ->
-            "evidence was produced by commit ${refusal.observed}, not ${refusal.expected}"
+        is SelectionRefusal.StaleEvidence -> when (refusal) {
+            is SelectionRefusal.StaleEvidence.Mismatched ->
+                "evidence was produced by commit ${refusal.observed}, not ${refusal.expected}"
+            is SelectionRefusal.StaleEvidence.NoCommitObserved ->
+                "binary reported no commit; expected ${refusal.expected}"
+        }
         is SelectionRefusal.IncompleteEvidence ->
             "suite ${refusal.suite} evidence is incomplete: ${refusal.missingField}"
         is SelectionRefusal.StaleBinary ->

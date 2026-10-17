@@ -309,7 +309,7 @@ class GateCliTest {
                         SelectionRefusal.MissingSuite("cap", "NoTest"),
                         SelectionRefusal.SelectedButNotRun("ZTest"),
                         SelectionRefusal.SuiteDidNotRun("WTest", ":mod"),
-                        SelectionRefusal.StaleEvidence("abc", "def"),
+                        SelectionRefusal.StaleEvidence.Mismatched("abc", "def"),
                     ),
                 ),
             ),

@@ -105,8 +105,12 @@ class PromotionEvidenceVerifierTest {
             repoRoot = tmp,
             oracleLedger = ledgerSaying(pass = true),
         )
-        assertTrue(verdict is PromotionEvidenceVerifier.Verdict.Refused) { "got $verdict" }
-        assertTrue((verdict as PromotionEvidenceVerifier.Verdict.Refused).reason.startsWith("other commit:"))
+        assertTrue(verdict is PromotionEvidenceVerifier.Verdict.Refused.OtherCommit) {
+            "got $verdict"
+        }
+        val refused = verdict as PromotionEvidenceVerifier.Verdict.Refused.OtherCommit
+        assertEquals("0123456789abcdef0123456789abcdef01234567", refused.expectedCommit)
+        assertEquals("fedcba9876543210fedcba9876543210fedcba98", refused.observedCommit)
     }
 
     @Test
@@ -132,11 +136,12 @@ class PromotionEvidenceVerifierTest {
             repoRoot = tmp,
             oracleLedger = ledgerSaying(pass = true),
         )
-        assertTrue(verdict is PromotionEvidenceVerifier.Verdict.Refused) { "got $verdict" }
-        assertTrue(
-            (verdict as PromotionEvidenceVerifier.Verdict.Refused).reason.contains("fidelity mismatch"),
-            "got '${verdict.reason}'",
-        )
+        assertTrue(verdict is PromotionEvidenceVerifier.Verdict.Refused.FidelityMismatch) {
+            "got $verdict"
+        }
+        val refused = verdict as PromotionEvidenceVerifier.Verdict.Refused.FidelityMismatch
+        assertEquals("HF1", refused.observed)
+        assertEquals("HF0", refused.expected)
     }
 
     @Test
@@ -162,11 +167,11 @@ class PromotionEvidenceVerifierTest {
             repoRoot = tmp,
             oracleLedger = ledgerSaying(pass = true),
         )
-        assertTrue(verdict is PromotionEvidenceVerifier.Verdict.Refused) { "got $verdict" }
-        assertTrue(
-            (verdict as PromotionEvidenceVerifier.Verdict.Refused).reason.contains("contract file missing"),
-            "got '${(verdict as PromotionEvidenceVerifier.Verdict.Refused).reason}'",
-        )
+        assertTrue(verdict is PromotionEvidenceVerifier.Verdict.Refused.ContractFileMissing) {
+            "got $verdict"
+        }
+        val refused = verdict as PromotionEvidenceVerifier.Verdict.Refused.ContractFileMissing
+        assertEquals("does-not-exist/MyContract.kt", refused.relativePath)
     }
 
     @Test
@@ -193,10 +198,15 @@ class PromotionEvidenceVerifierTest {
             repoRoot = tmp,
             oracleLedger = ledgerSaying(pass = true),
         )
-        assertTrue(verdict is PromotionEvidenceVerifier.Verdict.Refused) { "got $verdict" }
-        val reason = (verdict as PromotionEvidenceVerifier.Verdict.Refused).reason
-        assertTrue(reason.contains("content_digest mismatch"), "got '$reason'")
-        assertTrue(reason.contains("deadbeef"), "reason must include the manifest digest, got '$reason'")
+        assertTrue(verdict is PromotionEvidenceVerifier.Verdict.Refused.ContentDigestMismatch) {
+            "got $verdict"
+        }
+        val refused = verdict as PromotionEvidenceVerifier.Verdict.Refused.ContentDigestMismatch
+        assertEquals("deadbeef".repeat(8), refused.manifestDigest)
+        assertTrue(
+            refused.actualDigest != refused.manifestDigest,
+            "actual digest must differ from manifest digest",
+        )
     }
 
     @Test
@@ -225,9 +235,11 @@ class PromotionEvidenceVerifierTest {
             repoRoot = tmp,
             oracleLedger = EmptyOracleLedger,
         )
-        assertTrue(verdict is PromotionEvidenceVerifier.Verdict.Refused) { "got $verdict" }
-        val reason = (verdict as PromotionEvidenceVerifier.Verdict.Refused).reason
-        assertTrue(reason.contains("oracle not PASS"), "got '$reason'")
+        assertTrue(verdict is PromotionEvidenceVerifier.Verdict.Refused.OracleNotPassed) {
+            "got $verdict"
+        }
+        val refused = verdict as PromotionEvidenceVerifier.Verdict.Refused.OracleNotPassed
+        assertEquals(runnerSourceSha, refused.commit)
     }
 
     @Test
@@ -284,8 +296,11 @@ class PromotionEvidenceVerifierTest {
             repoRoot = Path.of("."),
             oracleLedger = EmptyOracleLedger,
         )
-        assertTrue(verdict is PromotionEvidenceVerifier.Verdict.Refused) { "got $verdict" }
-        assertTrue((verdict as PromotionEvidenceVerifier.Verdict.Refused).reason.startsWith("other commit:"))
+        assertTrue(verdict is PromotionEvidenceVerifier.Verdict.Refused.OtherCommit) {
+            "got $verdict"
+        }
+        val refused = verdict as PromotionEvidenceVerifier.Verdict.Refused.OtherCommit
+        assertEquals("0123456789abcdef0123456789abcdef01234567", refused.expectedCommit)
     }
 
     @Test
@@ -313,8 +328,12 @@ class PromotionEvidenceVerifierTest {
             repoRoot = tmp,
             oracleLedger = ledgerSaying(pass = true),
         )
-        val reason = (verdict as PromotionEvidenceVerifier.Verdict.Refused).reason
-        assertTrue(reason.startsWith("other commit:"), "expected commit-first ordering, got '$reason'")
+        val refused = verdict as PromotionEvidenceVerifier.Verdict.Refused.OtherCommit
+        assertEquals(
+            "fedcba9876543210fedcba9876543210fedcba98",
+            refused.observedCommit,
+            "commit-mismatch must be reported via OtherCommit, not FidelityMismatch",
+        )
     }
 
     @Test

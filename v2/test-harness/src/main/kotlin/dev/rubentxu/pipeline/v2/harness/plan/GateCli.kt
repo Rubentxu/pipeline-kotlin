@@ -250,6 +250,8 @@ object GateCli {
         }
         is SelectionRefusal.IncompleteEvidence ->
             "suite ${refusal.suite} evidence is incomplete: ${refusal.missingField}"
+        is SelectionRefusal.MalformedSidecar ->
+            "suite ${refusal.suite} sidecar is malformed: ${refusal.reason}"
         is SelectionRefusal.StaleBinary ->
             "suite ${refusal.suite} ran against commit ${refusal.observed}, not ${refusal.expected}"
         is SelectionRefusal.InsufficientFidelity ->

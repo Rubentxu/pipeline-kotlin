@@ -141,13 +141,14 @@ class EvidenceManifestTest {
         val suite = evidence[validClassName]
         assertNotNull(suite, "the XML should be visible to the reader")
         assertTrue(
-            suite!!.manifest == null,
-            "a missing sidecar MUST surface as null manifest so the gate refuses",
+            suite is EvidenceReader.SuiteEvidence.MissingSidecar,
+            "a missing sidecar MUST surface as MissingSidecar so the gate refuses " +
+                "with IncompleteEvidence; got $suite",
         )
     }
 
     @Test
-    fun `a malformed sidecar is not evidence (gate refuses on IncompleteEvidence)`(
+    fun `a malformed sidecar is not evidence (gate refuses on MalformedSidecar)`(
         @TempDir tmp: Path,
     ) {
         val dir = tmp.resolve("results")
@@ -160,8 +161,9 @@ class EvidenceManifestTest {
         val suite = EvidenceReader.suitesWithEvidence(dir)[validClassName]
         assertNotNull(suite)
         assertTrue(
-            suite!!.manifest == null,
-            "a malformed sidecar MUST surface as null manifest so the gate refuses",
+            suite is EvidenceReader.SuiteEvidence.MalformedSidecar,
+            "a malformed sidecar MUST surface as MalformedSidecar so the gate " +
+                "refuses with MalformedSidecar and the reason is preserved; got $suite",
         )
     }
 
@@ -187,10 +189,15 @@ class EvidenceManifestTest {
         val suite = EvidenceReader.suitesWithEvidence(dir)[validClassName]
         // The sidecar is malformed (missing source_commit)
         // and the loader MUST NOT silently default. The
-        // gate's IncompleteEvidence refusal handles the
-        // null manifest.
+        // gate's MalformedSidecar refusal handles this
+        // case; the parser's message is preserved on the
+        // typed carrier.
         assertNotNull(suite)
-        assertTrue(suite!!.manifest == null)
+        assertTrue(
+            suite is EvidenceReader.SuiteEvidence.MalformedSidecar,
+            "a sidecar with a missing required field MUST surface as " +
+                "MalformedSidecar with the parser's reason; got $suite",
+        )
     }
 
     @Test
@@ -222,6 +229,49 @@ class EvidenceManifestTest {
         assertTrue(
             !reasons.any { it is SelectionRefusal.SelectedButNotRun },
             "the XML IS there, so SelectedButNotRun is wrong; the sidecar is the issue, got $reasons",
+        )
+    }
+
+    @Test
+    fun `the gate refuses on a malformed sidecar with MalformedSidecar and the parser reason`(
+        @TempDir tmp: Path,
+    ) {
+        // End-to-end: a plan selects a suite; the suite's
+        // XML exists; the sidecar JSON is malformed. The
+        // gate refuses on MalformedSidecar (NOT
+        // IncompleteEvidence: the file IS there, the JSON
+        // IS the issue). The parser's reason is preserved
+        // on the refusal so the operator sees a precise
+        // remediation.
+        val dir = tmp.resolve("results")
+        Files.createDirectories(dir)
+        writeXml(dir, validClassName)
+        Files.writeString(dir.resolve("$validClassName.json"), "{ not valid json")
+
+        val plan = ValidationPlan.Selected(
+            capabilities = setOf("x"),
+            contracts = emptySet(),
+            suites = setOf(TestSuiteId(validClassName, validGradlePath)),
+            minimumFidelities = emptySet(),
+            reasons = emptyList(),
+        )
+        val refusal = EvidenceReader.verify(plan, dir, validSourceCommit, validSourceCommit)
+        assertNotNull(refusal)
+        val reasons = refusal!!.reasons
+        val malformed = reasons.filterIsInstance<SelectionRefusal.MalformedSidecar>()
+        assertTrue(
+            malformed.isNotEmpty(),
+            "the refusal must be MalformedSidecar (not IncompleteEvidence), got $reasons",
+        )
+        val m = malformed.first { it.suite == validClassName }
+        assertTrue(
+            m.reason.isNotBlank(),
+            "the parser's reason must be preserved on the refusal so the operator sees " +
+                "what is malformed; got blank reason",
+        )
+        assertTrue(
+            !reasons.any { it is SelectionRefusal.IncompleteEvidence },
+            "the sidecar file IS there, so IncompleteEvidence is the wrong refusal; got $reasons",
         )
     }
 

@@ -112,6 +112,22 @@ sealed interface SelectionRefusal {
     ) : SelectionRefusal
 
     /**
+     * H1 TODO 2: a suite in the plan has a sidecar file,
+     * but the file is malformed (the JSON does not parse
+     * as a valid [EvidenceManifest]). Distinct from
+     * [IncompleteEvidence] because the operator's
+     * remediation is different: a missing sidecar means
+     * "enable the sidecar writer"; a malformed sidecar
+     * means "fix the sidecar writer". The [reason] is the
+     * parser's message preserved verbatim so the
+     * developer can find the malformed field by name.
+     */
+    data class MalformedSidecar(
+        val suite: String,
+        val reason: String,
+    ) : SelectionRefusal
+
+    /**
      * H1 TODO 2: the suite's sidecar evidence declares
      * a different binary SHA than the expected commit.
      * The mandate says "SHA/artefacto y HF observado" —

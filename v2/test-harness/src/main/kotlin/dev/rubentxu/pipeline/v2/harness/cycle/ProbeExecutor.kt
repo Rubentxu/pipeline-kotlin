@@ -237,24 +237,41 @@ open class ProbeExecutor(
         // catalogue recognises the path AND the fidelity AND the
         // contract binding.
         val plan = ImpactResolver.resolve(listOf(path))
-        val capabilities = (plan as? ValidationPlan.Selected)?.capabilities
-            ?: return ProbeOutcome.Failed(
+        // BQ1 v2 (typed probe executor, 2026-10-17): the previous
+        // shape used two silent-null casts on the same plan, with
+        // `?:` fall-throughs that returned a Failed outcome on
+        // the null branches. That is the audit's "silent null on
+        // a sealed-type cast" defect class: a future
+        // `ValidationPlan.Pending` (or any third variant) would
+        // route through BOTH `?:` branches and fall out the
+        // bottom of the function as `Verified("<pending>")` —
+        // the false green the catalogue check exists to prevent.
+        // The new shape is an exhaustive `when` over the closed
+        // set; the `selected` binding is typed and the downstream
+        // checks read it without further casts. A future
+        // [ValidationPlan] case forces this `when` to grow at
+        // compile time, not at a CI log. See also
+        // `GateAsCastFitnessTest` in the plan package for the
+        // analogous gate entry-point fix.
+        val selected: ValidationPlan.Selected = when (plan) {
+            is ValidationPlan.Selected -> plan
+            is ValidationPlan.Refused -> return ProbeOutcome.Failed(
                 evidenceRef = target.toString(),
                 reason = "ImpactResolver refused the HF0 probe path '$path': " +
-                    (plan as? ValidationPlan.Refused)?.reasons?.joinToString() ?: "<no reasons>",
+                    plan.reasons.joinToString(),
             )
-        if (probe.contractId !in capabilities) {
+        }
+        if (probe.contractId !in selected.capabilities) {
             return ProbeOutcome.Failed(
                 evidenceRef = target.toString(),
                 reason = "HF0 contract mismatch: probe expects capability " +
-                    "'${probe.contractId}' but the plan selected $capabilities",
+                    "'${probe.contractId}' but the plan selected ${selected.capabilities}",
             )
         }
-        val fidelities = (plan as ValidationPlan.Selected).minimumFidelities
-        if (ContractCatalogue.Fidelity.HF0 !in fidelities) {
+        if (ContractCatalogue.Fidelity.HF0 !in selected.minimumFidelities) {
             return ProbeOutcome.Failed(
                 evidenceRef = target.toString(),
-                reason = "HF0 fidelity not in the plan's minimumFidelities: $fidelities",
+                reason = "HF0 fidelity not in the plan's minimumFidelities: ${selected.minimumFidelities}",
             )
         }
         // The contract is satisfied; the evidence IS the plan itself.

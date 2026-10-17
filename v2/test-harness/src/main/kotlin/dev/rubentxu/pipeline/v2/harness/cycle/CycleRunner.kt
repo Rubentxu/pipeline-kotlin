@@ -224,20 +224,25 @@ class CycleRunner(
             ?: error("runProbes requires a parsed manifest; call prepare() first")
         val outcomes = mutableListOf<ProbeOutcome>()
         for (probe in parsed.probes) {
-            val rawOutcome = executor.execute(probe, parsed)
-            // Persist the raw outcome only when the executor
-            // signals "I have not written evidence yet" via the
-            // `[ProbeExecutor.PENDING_EVIDENCE_REF]` sentinel. Executors that already wrote
-            // their own JSON (HF1 in-process, future product
-            // adapters) return a real `evidenceRef` and the
-            // runner trusts that path. The `finalise` digest
-            // check then confirms the file is intact; if the
-            // executor returned a fake `evidenceRef`, the check
-            // fails loudly.
-            val outcome = if (rawOutcome.evidenceRef == ProbeExecutor.PENDING_EVIDENCE_REF) {
-                executor.persist(probe, rawOutcome)
-            } else {
-                rawOutcome
+            // BQ4 v3 (typed probe executor, 2026-10-17): the
+            // previous shape compared the executor's `evidenceRef`
+            // against a string sentinel
+            // ([ProbeExecutor.PENDING_EVIDENCE_REF]) to decide
+            // whether to call `persist`. That is the dual
+            // emitter/parser defect class: a typo at either side
+            // silently misroutes the outcome. The new shape is a
+            // sealed [ProbeExecutor.Companion.ProbeExecutionResult]
+            // that the executor returns; the runner matches on the
+            // closed ADT and the compiler forces both cases to be
+            // handled. `NeedsPersist` says "the executor decided
+            // but did not write the JSON; the runner must call
+            // persist"; `AlreadyPersisted` says "the JSON is
+            // already on disk (or no JSON is required)".
+            val outcome: ProbeOutcome = when (val result = executor.execute(probe, parsed)) {
+                is ProbeExecutor.Companion.ProbeExecutionResult.NeedsPersist ->
+                    executor.persist(probe, result.outcome)
+                is ProbeExecutor.Companion.ProbeExecutionResult.AlreadyPersisted ->
+                    result.outcome
             }
             outcomes += outcome
             // The runner now passes the typed ADT to the decider

@@ -151,22 +151,51 @@ open class ProbeExecutor(
 
     companion object {
         /**
-         * Sentinel [ProbeOutcome.Verified.evidenceRef] meaning "the executor
-         * has decided Verified but has not yet written the evidence file;
-         * the runner must call [persist]". The runner at
-         * [CycleRunner.runProbes] uses this exact string to decide
-         * whether to call `persist`; an executor that has already
-         * written its own JSON uses the real file path as the ref and
-         * the runner trusts that. The string is private to this package
-         * to keep the protocol from leaking: a typo at the consumer site
-         * would silently miss the persist step.
+         * The result of [execute] is a typed carrier that says
+         * whether the runner still needs to call [persist]. The
+         * carrier is the single source of truth for the
+         * "already persisted vs needs persist" protocol between
+         * the executor and the runner; the previous shape used a
+         * `ProbeOutcome.Verified("<pending>")` sentinel that the
+         * runner matched with a string `==`, which is the dual
+         * emitter/parser defect class: a typo at either side
+         * silently misroutes the outcome. The sealed carrier
+         * makes the protocol unmissable: the runner matches on a
+         * closed ADT and the compiler forces the consumer to
+         * handle both cases.
+         *
+         * `outcome` is the typed [ProbeOutcome] the executor
+         * decided; `NeedsPersist` says "the executor decided but
+         * did not write the JSON; the runner must call persist";
+         * `AlreadyPersisted` says "the JSON is already on disk
+         * (either the executor wrote it or the outcome is
+         * terminal and no JSON is required)".
+         */
+        sealed interface ProbeExecutionResult {
+            val outcome: ProbeOutcome
+
+            data class AlreadyPersisted(override val outcome: ProbeOutcome) : ProbeExecutionResult
+            data class NeedsPersist(override val outcome: ProbeOutcome) : ProbeExecutionResult
+        }
+
+        /**
+         * Internal bookkeeping marker used by [runHF0] to signal
+         * "the executor decided Verified but has not yet written
+         * the evidence file". The string is private to this
+         * class: [execute] matches on it to wrap the outcome in
+         * [ProbeExecutionResult.NeedsPersist] or
+         * [ProbeExecutionResult.AlreadyPersisted], and the
+         * runner never sees the literal. The marker is internal
+         * because the test class in the same package builds
+         * [ProbeOutcome.Verified] fixtures that exercise the
+         * `NeedsPersist` branch without a real persist step.
          */
         internal const val PENDING_EVIDENCE_REF = "<pending>"
     }
 
-    open fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome {
-        // The executor's `execute` returns the *raw* outcome
-        // (success/failure of the verification step). The runner
+    open fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeExecutionResult {
+        // The executor's `execute` returns the raw outcome wrapped
+        // in a [ProbeExecutionResult] carrier. The runner
         // separately invokes `persist(probe, outcome)` so the
         // evidence file and its `evidenceDigest` are written by
         // the same code path whether the executor is the harness
@@ -176,7 +205,7 @@ open class ProbeExecutor(
         // forced to declare its `persist` override, and the
         // `finalise` digest check will fail loudly if the JSON
         // was never written.
-        return when (manifest.expectedHF) {
+        val raw = when (manifest.expectedHF) {
             "HF0" -> runHF0(probe, manifest)
             "HF1" -> ProbeOutcome.BlockedExternal(
                 evidenceRef = "",
@@ -185,6 +214,17 @@ open class ProbeExecutor(
                     "CanonicalDurableRunCoordinator for HF1 probes",
             )
             else -> ProbeOutcome.UnsupportedFidelity(manifest.expectedHF)
+        }
+        // The only outcome that needs persist is the HF0 happy
+        // path, where `runHF0` returns `Verified(PENDING_EVIDENCE_REF)`.
+        // Every other branch is terminal or already-persisted and
+        // does not need the runner to write JSON. The match is on
+        // the outcome type and the pending sentinel, not on a
+        // free-form string.
+        return if (raw is ProbeOutcome.Verified && raw.evidenceRef == PENDING_EVIDENCE_REF) {
+            ProbeExecutionResult.NeedsPersist(raw)
+        } else {
+            ProbeExecutionResult.AlreadyPersisted(raw)
         }
     }
 

@@ -211,8 +211,10 @@ class ProbeExecutorTest {
         val (runner, evidence) = setupPromotableRunner(tmp, cycleDir, manifest)
         runner.prepare()
         val executor = object : ProbeExecutor(cycleDir) {
-            override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome =
-                ProbeOutcome.Verified(evidenceRef = ProbeExecutor.PENDING_EVIDENCE_REF)
+            override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeExecutor.Companion.ProbeExecutionResult =
+                ProbeExecutor.Companion.ProbeExecutionResult.NeedsPersist(
+                    ProbeOutcome.Verified(evidenceRef = ProbeExecutor.PENDING_EVIDENCE_REF)
+                )
         }
         runner.runProbes(executor)
         runner.observeAll(observedCommit = "0123456789abcdef0123456789abcdef01234567")
@@ -253,8 +255,10 @@ class ProbeExecutorTest {
         val (runner, evidence) = setupPromotableRunner(tmp, cycleDir, manifest)
         runner.prepare()
         val executor = object : ProbeExecutor(cycleDir) {
-            override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome =
-                ProbeOutcome.Verified(evidenceRef = ProbeExecutor.PENDING_EVIDENCE_REF)
+            override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeExecutor.Companion.ProbeExecutionResult =
+                ProbeExecutor.Companion.ProbeExecutionResult.NeedsPersist(
+                    ProbeOutcome.Verified(evidenceRef = ProbeExecutor.PENDING_EVIDENCE_REF)
+                )
         }
         runner.runProbes(executor)
         runner.observeAll(observedCommit = "0123456789abcdef0123456789abcdef01234567")
@@ -338,8 +342,10 @@ class ProbeExecutorTest {
         val runner = CycleRunner("cyc-1", manifest, cycleDir)
         runner.prepare()
         val executor = object : ProbeExecutor(cycleDir) {
-            override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome =
-                ProbeOutcome.Verified(evidenceRef = ProbeExecutor.PENDING_EVIDENCE_REF)
+            override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeExecutor.Companion.ProbeExecutionResult =
+                ProbeExecutor.Companion.ProbeExecutionResult.NeedsPersist(
+                    ProbeOutcome.Verified(evidenceRef = ProbeExecutor.PENDING_EVIDENCE_REF)
+                )
         }
         runner.runProbes(executor)
 

@@ -136,16 +136,33 @@ object PluginArtifactFixture {
      * The class stays inside the copy, so the mutant is a REAL artifact with a REAL
      * contributor — the refusal it produces comes from the cross-check, not from `strict`
      * refusing a substitution the harness created.
+     *
+     * [scratchDir] is REQUIRED and has no default, because a mutant is a scratch artifact whose
+     * lifetime belongs to the test that made it. This signature used to write the mutant beside
+     * the artifact it derived from — inside `examples/example-uppercase-plugin/build/libs/` — and
+     * nothing deleted it: 72 JARs and 4.3 MB had accumulated there, growing on every run. That
+     * directory is not neutral either. `builtExternalPluginJar()` scans exactly it, and the only
+     * thing keeping one row's fixture out of another row's subject was a `!startsWith("mutant-")`
+     * filter — compensation for a leak, where no leak would have made the filter defence-in-depth.
+     *
+     * Making the destination a required argument means a caller cannot reintroduce the leak: it
+     * is a property of the signature, not of a reviewer's attention. Pass a `@TempDir` and the
+     * lifetime is declared by the test that owns it.
      */
-    fun jarWithRewrittenManifest(module: String, transform: (String) -> String): Path =
-        jarWithRewrittenManifestOf(builtJar(module), transform)
+    fun jarWithRewrittenManifest(module: String, scratchDir: Path, transform: (String) -> String): Path =
+        jarWithRewrittenManifestOf(builtJar(module), scratchDir, transform)
 
     /** Same, for an artifact that is not one of the four official modules. */
-    fun externalJarWithRewrittenManifest(transform: (String) -> String): Path =
-        jarWithRewrittenManifestOf(builtExternalPluginJar(), transform)
+    fun externalJarWithRewrittenManifest(scratchDir: Path, transform: (String) -> String): Path =
+        jarWithRewrittenManifestOf(builtExternalPluginJar(), scratchDir, transform)
 
-    private fun jarWithRewrittenManifestOf(source: Path, transform: (String) -> String): Path {
-        val target = source.resolveSibling("mutant-${source.fileName}-${System.nanoTime()}.jar")
+    private fun jarWithRewrittenManifestOf(
+        source: Path,
+        scratchDir: Path,
+        transform: (String) -> String,
+    ): Path {
+        Files.createDirectories(scratchDir)
+        val target = scratchDir.resolve("mutant-${source.fileName}")
 
         ZipInputStream(Files.newInputStream(source)).use { input ->
             JarOutputStream(Files.newOutputStream(target)).use { out ->

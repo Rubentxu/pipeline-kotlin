@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection
 import dev.rubentxu.pipeline.v2.domain.step.SemVer
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
@@ -42,6 +43,14 @@ import java.util.stream.Stream
 @DisplayName("S6/E the cross-check refuses a plugin that does not match its declaration")
 class PluginContributionCrossCheckTest {
 
+    /**
+     * The mutant is scratch: its lifetime is this test's, not the build's. See
+     * `PluginArtifactFixture.jarWithRewrittenManifest` for why the destination is
+     * an argument instead of a default.
+     */
+    @TempDir
+    lateinit var scratch: Path
+
     private fun admit(jar: Path, contributorClass: String): PluginAdmissionResult =
         PluginArtifactFixture.withScopedLoader(jar) { loader ->
             PluginAdmissionGate.admitThenLoad(
@@ -68,7 +77,7 @@ class PluginContributionCrossCheckTest {
     fun declaredButAbsentStepIsRefused() {
         // junit declares exactly one Step. Naming a second one is what an author produces by
         // adding a Step to the code and forgetting the document.
-        val jar = PluginArtifactFixture.jarWithRewrittenManifest("junit") { text ->
+        val jar = PluginArtifactFixture.jarWithRewrittenManifest("junit", scratch) { text ->
             text.replace(
                 "\"declaredCapabilities\": [\"runtime.execution-location\"]}],",
                 "\"declaredCapabilities\": [\"runtime.execution-location\"]}, " +
@@ -93,7 +102,7 @@ class PluginContributionCrossCheckTest {
     @DisplayName("a plugin contributing a Step the manifest does NOT declare is refused")
     fun implementedButUndeclaredStepIsRefused() {
         // utilities declares eight Steps. Dropping one is the mirror mutant.
-        val jar = PluginArtifactFixture.jarWithRewrittenManifest("utilities") { text ->
+        val jar = PluginArtifactFixture.jarWithRewrittenManifest("utilities", scratch) { text ->
             val rewritten = text.replace(
                 "{\"stepKey\": \"core-utils.readJson\", \"declaredCapabilities\": [\"runtime.execution-location\"]}, ",
                 "",

@@ -77,10 +77,23 @@ class InstalledContractTagMembershipFitnessTest {
 
     private val tag = "installed-contract"
 
-    private val testSourcesRoot: Path by lazy {
+    /**
+     * EVERY source root this module compiles tests from, not just the one named `test`.
+     *
+     * The module has two test source sets, and the four harnesses that require a built plugin
+     * artifact moved into the second one (`pluginContractTest`) precisely because that is the
+     * lane that declares the plugin builds. A scan that walked only `test/kotlin` would then
+     * have been GREEN over a population it could no longer see — the same blindness as a
+     * file-level check being blind to a second class in one file, and the reason a guard must
+     * be fitted to the population rather than to the directory that happens to hold it today.
+     *
+     * A missing root is an error, not an empty result: a root that silently contributes nothing
+     * turns the `population > 0` assertion into a partial green rather than a failure.
+     */
+    private val testSourceRoots: List<Path> by lazy {
         val appDir = Path.of("").toAbsolutePath()
             .let { if (it.fileName?.toString() == "pipeline-application") it else it.resolve("v2").resolve("pipeline-application") }
-        appDir.resolve("src").resolve("test").resolve("kotlin")
+        listOf("test", "pluginContractTest").map { appDir.resolve("src").resolve(it).resolve("kotlin") }
     }
 
     /** Comments removed, so prose about the installed distribution is not a conviction. */
@@ -88,18 +101,23 @@ class InstalledContractTagMembershipFitnessTest {
         Regex("""/\*[\s\S]*?\*/""").replace(text, " ").let { Regex("""//[^\n]*""").replace(it, " ") }
 
     private fun testClasses(): List<Path> {
-        if (!Files.isDirectory(testSourcesRoot)) {
-            error("pipeline-application test sources not found at $testSourcesRoot")
+        val missing = testSourceRoots.filterNot { Files.isDirectory(it) }
+        require(missing.isEmpty()) {
+            "pipeline-application test source roots not found: $missing. A root that " +
+                "contributes nothing would leave this fitness GREEN over a population it " +
+                "cannot see."
         }
-        return Files.walk(testSourcesRoot).use { stream ->
-            stream.filter { Files.isRegularFile(it) && it.toString().endsWith("Test.kt") }
-                // SELF-EXCLUSION. This file names `AppBinSupport.discover(` and both install
-                // paths in its own patterns, so a scan that includes it convicts the fitness
-                // of the defect it hunts. The exclusion is by class name and stated here
-                // rather than hidden in the predicate, because an invisible self-exclusion is
-                // how a fitness ends up quietly measuring nothing.
-                .filter { it.fileName.toString() != javaClass.simpleName + ".kt" }
-                .toList()
+        return testSourceRoots.flatMap { root ->
+            Files.walk(root).use { stream ->
+                stream.filter { Files.isRegularFile(it) && it.toString().endsWith("Test.kt") }
+                    // SELF-EXCLUSION. This file names `AppBinSupport.discover(` and both install
+                    // paths in its own patterns, so a scan that includes it convicts the fitness
+                    // of the defect it hunts. The exclusion is by class name and stated here
+                    // rather than hidden in the predicate, because an invisible self-exclusion is
+                    // how a fitness ends up quietly measuring nothing.
+                    .filter { it.fileName.toString() != javaClass.simpleName + ".kt" }
+                    .toList()
+            }
         }
     }
 

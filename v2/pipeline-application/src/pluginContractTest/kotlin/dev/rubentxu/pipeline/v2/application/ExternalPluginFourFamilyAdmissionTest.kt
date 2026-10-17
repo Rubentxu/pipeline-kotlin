@@ -8,6 +8,7 @@ import java.util.jar.JarFile
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Test
 
 /**
@@ -35,6 +36,10 @@ import org.junit.jupiter.api.Test
  */
 @DisplayName("S6/I one external JAR contributes Step + Directive + Event + Capability, and admission cross-checks all four")
 class ExternalPluginFourFamilyAdmissionTest {
+
+    /** The mutant is scratch: its lifetime is this test's, not the build's. */
+    @TempDir
+    lateinit var scratch: Path
 
     private val contributorClass = "example.uppercase.UppercaseContributor"
 
@@ -112,7 +117,7 @@ class ExternalPluginFourFamilyAdmissionTest {
     @Test
     @DisplayName("a Directive the manifest declares and the plugin does NOT contribute is refused")
     fun declaredButAbsentDirectiveIsRefused() {
-        val jar = PluginArtifactFixture.externalJarWithRewrittenManifest { text ->
+        val jar = PluginArtifactFixture.externalJarWithRewrittenManifest(scratch) { text ->
             text.replace(
                 """"directives": ["example.uppercase.casedOn"]""",
                 """"directives": ["example.uppercase.casedOn", "example.uppercase.ghost"]""",
@@ -133,7 +138,7 @@ class ExternalPluginFourFamilyAdmissionTest {
     @Test
     @DisplayName("a Directive the plugin contributes and the manifest does NOT declare is refused")
     fun contributedButUndeclaredDirectiveIsRefused() {
-        val jar = PluginArtifactFixture.externalJarWithRewrittenManifest { text ->
+        val jar = PluginArtifactFixture.externalJarWithRewrittenManifest(scratch) { text ->
             val rewritten = text.replace(
                 """"directives": ["example.uppercase.casedOn"],""",
                 """"directives": [],""",
@@ -156,7 +161,7 @@ class ExternalPluginFourFamilyAdmissionTest {
     @Test
     @DisplayName("an Event the manifest declares and the plugin does NOT contribute is refused")
     fun declaredButAbsentEventIsRefused() {
-        val jar = PluginArtifactFixture.externalJarWithRewrittenManifest { text ->
+        val jar = PluginArtifactFixture.externalJarWithRewrittenManifest(scratch) { text ->
             text.replace(
                 """"events": ["example.uppercase.applied"]""",
                 """"events": ["example.uppercase.applied", "example.uppercase.never-emitted"]""",
@@ -177,7 +182,7 @@ class ExternalPluginFourFamilyAdmissionTest {
     @Test
     @DisplayName("a contributed Event the manifest does NOT declare is refused")
     fun contributedButUndeclaredEventIsRefused() {
-        val jar = PluginArtifactFixture.externalJarWithRewrittenManifest { text ->
+        val jar = PluginArtifactFixture.externalJarWithRewrittenManifest(scratch) { text ->
             val rewritten = text.replace(
                 """"events": ["example.uppercase.applied"],""",
                 """"events": [],""",
@@ -209,7 +214,7 @@ class ExternalPluginFourFamilyAdmissionTest {
     @Test
     @DisplayName("the announcedCased Step added in 1-J is cross-checked like every other")
     fun theNewlyAddedStepIsCrossChecked() {
-        val jar = PluginArtifactFixture.externalJarWithRewrittenManifest { text ->
+        val jar = PluginArtifactFixture.externalJarWithRewrittenManifest(scratch) { text ->
             val rewritten = text.replace(
                 """{"stepKey": "example.uppercase.announcedCased", "declaredCapabilities": ["example.uppercase.case-table", "plugin.event-emission"]},""",
                 "",
@@ -288,7 +293,7 @@ class ExternalPluginFourFamilyAdmissionTest {
     @Test
     @DisplayName("KNOWN GAP: an unbacked top-level capability is currently ADMITTED, and this records that")
     fun unbackedTopLevelCapabilityIsCurrentlyAdmitted() {
-        val jar = PluginArtifactFixture.externalJarWithRewrittenManifest { text ->
+        val jar = PluginArtifactFixture.externalJarWithRewrittenManifest(scratch) { text ->
             val rewritten = text.replace(
                 """"capabilities": ["example.uppercase.case-table", "plugin.event-emission"]""",
                 """"capabilities": ["example.uppercase.case-table", "plugin.event-emission", "example.uppercase.unused"]""",

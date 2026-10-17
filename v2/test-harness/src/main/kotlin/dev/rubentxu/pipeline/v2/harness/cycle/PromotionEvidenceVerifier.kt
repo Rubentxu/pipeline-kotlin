@@ -2,7 +2,6 @@ package dev.rubentxu.pipeline.v2.harness.cycle
 
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
 
 /**
  * The runner's authority on whether a [PromotionEvidence] is a
@@ -214,26 +213,5 @@ object PromotionEvidenceVerifier {
             )
         }
         return Verdict.Verified
-    }
-
-    /**
-     * Streaming SHA-256 of a file. Same algorithm as the
-     * runner's existing `sha256HexOfFile` (declared in
-     * [CycleRunner] but kept private there); duplicated here
-     * so the verifier has no inbound dependency on the runner.
-     * If a third caller appears, the helper moves to a shared
-     * file with a proper KDoc.
-     */
-    private fun sha256HexOfFile(path: Path): String {
-        val md = MessageDigest.getInstance("SHA-256")
-        Files.newInputStream(path).use { input ->
-            val buf = ByteArray(8192)
-            while (true) {
-                val n = input.read(buf)
-                if (n <= 0) break
-                md.update(buf, 0, n)
-            }
-        }
-        return md.digest().joinToString("") { "%02x".format(it) }
     }
 }

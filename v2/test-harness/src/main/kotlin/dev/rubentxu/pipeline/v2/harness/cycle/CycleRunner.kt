@@ -4,13 +4,6 @@ import kotlinx.serialization.json.Json
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
-import java.security.MessageDigest
-
-private fun sha256HexOfString(text: String): String {
-    val md = MessageDigest.getInstance("SHA-256")
-    val bytes = md.digest(text.toByteArray(Charsets.UTF_8))
-    return bytes.joinToString("") { "%02x".format(it) }
-}
 
 /**
  * Runner for an ephemeral acceptance test cycle.
@@ -380,39 +373,29 @@ class CycleRunner(
                 deleteRecursively(target, realCycle)
             }
             // After the runner-owned children are gone, the
-            // cycle dir either contains only operator-owned
-            // content (in which case the audit says we leave
-            // it alone — the operator may still want to
-            // inspect) or is empty. We only delete the cycle
-            // dir if it is empty AND was originally empty
-            // before the cycle started (i.e. the operator
-            // did not put any sidecar files in it).
+            // cycle dir contains exactly the operator-owned
+            // entries (we never touch those, by construction of
+            // [operatorOwnedSnapshot]). Therefore:
+            //   - if operator-owned entries exist, leave the
+            //     dir in place — the audit's "do not over-delete"
+            //     rule wins, the operator may still want to
+            //     inspect their files.
+            //   - if operator-owned entries are empty, the dir
+            //     is empty and we delete it.
+            // The previous shape had a third "fall-through"
+            // branch that was logically unreachable (the
+            // post-deletion empty check already covers the
+            // operator-empty case); removing it makes the
+            // invariant explicit.
             val postDeletion = if (Files.exists(realCycle)) {
                 Files.list(realCycle).use { stream ->
                     stream.map { it.toRealPath() }.collect(java.util.stream.Collectors.toSet())
                 }
             } else emptySet()
-            if (postDeletion.isEmpty() && operatorOwnedSnapshot.isEmpty()) {
-                Files.deleteIfExists(realCycle)
-            } else if (postDeletion.isNotEmpty()) {
-                // The cycle dir still has operator-owned content.
-                // Leaving the dir in place is the audit-aligned
-                // answer: the operator kept those files, the
-                // runner does not own them, the audit's "do
-                // not over-delete" rule wins.
-                return state
-            }
-            // postDeletion is empty AND operatorOwnedSnapshot is
-            // non-empty: the dir is empty now but the operator
-            // stashed something that we already deleted because
-            // it was in our runner-owned set... actually we
-            // would NOT have deleted an operator-owned file
-            // because runnerOwned excludes the snapshot, so
-            // postDeletion being empty implies the dir is empty
-            // for good. Remove the empty dir.
-            if (Files.exists(realCycle)) {
+            if (postDeletion.isEmpty()) {
                 Files.deleteIfExists(realCycle)
             }
+            // else: dir has operator-owned content; leave it alone.
         }
         return state
     }
@@ -448,9 +431,6 @@ class CycleRunner(
         Files.deleteIfExists(target)
     }
 
-    private fun isEmptyDirectory(path: Path): Boolean =
-        Files.isDirectory(path) && Files.list(path).use { stream -> !stream.findAny().isPresent }
-
     /**
      * Recompute the `evidenceDigest` recorded in a persisted
      * evidence JSON and refuse if the file's bytes no longer
@@ -464,7 +444,7 @@ class CycleRunner(
             ?: error("evidence file $jsonFile has no evidenceDigest field; refusing to delete")
         val recordedDigest = match.groupValues[1]
         val bodyWithoutDigest = text.removeRange(match.range.first, match.range.last + 1)
-        val computed = sha256HexOfString(bodyWithoutDigest)
+        val computed = sha256Hex(bodyWithoutDigest)
         if (!computed.equals(recordedDigest, ignoreCase = true)) {
             error(
                 "evidence file $jsonFile was modified after persistence: " +

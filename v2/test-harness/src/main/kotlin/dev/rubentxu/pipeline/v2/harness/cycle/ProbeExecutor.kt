@@ -364,28 +364,3 @@ private fun String.escapeJson(): String =
  * implementation uses [MessageDigest] directly so a JDK upgrade
  * is the only thing that can change the digest output.
  */
-internal fun sha256HexOfFile(path: Path): String {
-    val md = MessageDigest.getInstance("SHA-256")
-    Files.newInputStream(path).use { stream ->
-        val buffer = ByteArray(8 * 1024)
-        while (true) {
-            val read = stream.read(buffer)
-            if (read <= 0) break
-            md.update(buffer, 0, read)
-        }
-    }
-    return md.digest().joinToString("") { "%02x".format(it) }
-}
-
-/**
- * SHA-256 of a string, returned as lowercase 64-char hex. The wire
- * format the manifest requires (`content_sha256`) is the same
- * shape. The implementation uses [MessageDigest] directly because
- * the harness is product-agnostic and cannot depend on the
- * product-side `Sha256` utility without breaking the H0 isolation.
- */
-internal fun sha256Hex(text: String): String {
-    val md = MessageDigest.getInstance("SHA-256")
-    val bytes = md.digest(text.toByteArray(Charsets.UTF_8))
-    return bytes.joinToString("") { "%02x".format(it) }
-}

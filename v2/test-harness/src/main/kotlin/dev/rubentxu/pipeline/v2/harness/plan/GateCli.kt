@@ -276,6 +276,17 @@ fun main(args: Array<String>) {
     // sides of the provenance comparison, which made the comparison agree with itself; the observed
     // side is now read from the installed distribution below.
     check(args.size == 2) { "usage: main <base-ref> <expected-commit>" }
+    // BQ4 v7 (gate CLI strict-validate, 2026-10-17): the
+    // previous shape accepted any String for
+    // <expected-commit> and let the gate's `StaleBinary`
+    // check produce a refusal with the wrong reason
+    // for a format error. The CLI now strict-validates
+    // 40-char lowercase hex at the argument boundary,
+    // mirroring the carrier-level checks the rest of
+    // the plan package already enforces on
+    // `EvidenceManifest.sourceCommit` and
+    // `ValidationPlan`'s `expectedCommit` carriers.
+    requireSha1("expected-commit", expectedCommit)
 
     val root = GateCli.repoRoot(Paths.get("").toAbsolutePath().normalize())
     val buildRoot = GateCli.v2Root(root)
@@ -300,4 +311,25 @@ fun main(args: Array<String>) {
     println(GateCli.render(outcome))
     System.out.flush()
     if (outcome !is GateCli.Outcome.Discharged) Runtime.getRuntime().halt(2)
+}
+
+/**
+ * BQ4 v7 (gate CLI strict-validate, 2026-10-17): the
+ * `<expected-commit>` argument is bound by the CLI's
+ * usage to a 40-hex SHA-1 and compared by string
+ * equality against the binaries' reported
+ * `sourceCommit`. The previous shape accepted any
+ * String and let the gate's `StaleBinary` check
+ * produce a refusal with the wrong reason for a
+ * format error. The CLI now strict-validates the
+ * format at the argument boundary, mirroring the
+ * carrier-level checks on `EvidenceManifest.sourceCommit`.
+ */
+private fun requireSha1(fieldName: String, value: String) {
+    require(value.length == 40) {
+        "$fieldName must be a 40-char hex SHA-1; got ${value.length} chars"
+    }
+    require(value.all { it in '0'..'9' || it in 'a'..'f' }) {
+        "$fieldName must be lowercase hex; got '$value'"
+    }
 }

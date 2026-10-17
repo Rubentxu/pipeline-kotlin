@@ -227,14 +227,14 @@ class CycleRunner(
             val rawOutcome = executor.execute(probe, parsed)
             // Persist the raw outcome only when the executor
             // signals "I have not written evidence yet" via the
-            // `<pending>` sentinel. Executors that already wrote
+            // `[ProbeExecutor.PENDING_EVIDENCE_REF]` sentinel. Executors that already wrote
             // their own JSON (HF1 in-process, future product
             // adapters) return a real `evidenceRef` and the
             // runner trusts that path. The `finalise` digest
             // check then confirms the file is intact; if the
             // executor returned a fake `evidenceRef`, the check
             // fails loudly.
-            val outcome = if (rawOutcome.evidenceRef == "<pending>") {
+            val outcome = if (rawOutcome.evidenceRef == ProbeExecutor.PENDING_EVIDENCE_REF) {
                 executor.persist(probe, rawOutcome)
             } else {
                 rawOutcome

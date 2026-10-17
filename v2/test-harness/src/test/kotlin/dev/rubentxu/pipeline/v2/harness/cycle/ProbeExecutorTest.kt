@@ -212,7 +212,7 @@ class ProbeExecutorTest {
         runner.prepare()
         val executor = object : ProbeExecutor(cycleDir) {
             override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome =
-                ProbeOutcome.Verified(evidenceRef = "<pending>")
+                ProbeOutcome.Verified(evidenceRef = ProbeExecutor.PENDING_EVIDENCE_REF)
         }
         runner.runProbes(executor)
         runner.observeAll(observedCommit = "0123456789abcdef0123456789abcdef01234567")
@@ -254,7 +254,7 @@ class ProbeExecutorTest {
         runner.prepare()
         val executor = object : ProbeExecutor(cycleDir) {
             override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome =
-                ProbeOutcome.Verified(evidenceRef = "<pending>")
+                ProbeOutcome.Verified(evidenceRef = ProbeExecutor.PENDING_EVIDENCE_REF)
         }
         runner.runProbes(executor)
         runner.observeAll(observedCommit = "0123456789abcdef0123456789abcdef01234567")
@@ -339,7 +339,7 @@ class ProbeExecutorTest {
         runner.prepare()
         val executor = object : ProbeExecutor(cycleDir) {
             override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome =
-                ProbeOutcome.Verified(evidenceRef = "<pending>")
+                ProbeOutcome.Verified(evidenceRef = ProbeExecutor.PENDING_EVIDENCE_REF)
         }
         runner.runProbes(executor)
 

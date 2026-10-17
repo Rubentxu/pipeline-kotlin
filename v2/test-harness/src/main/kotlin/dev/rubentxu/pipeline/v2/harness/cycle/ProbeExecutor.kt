@@ -149,6 +149,21 @@ open class ProbeExecutor(
         require(cycleDir.toString().isNotBlank()) { "cycleDir must not be blank" }
     }
 
+    companion object {
+        /**
+         * Sentinel [ProbeOutcome.Verified.evidenceRef] meaning "the executor
+         * has decided Verified but has not yet written the evidence file;
+         * the runner must call [persist]". The runner at
+         * [CycleRunner.runProbes] uses this exact string to decide
+         * whether to call `persist`; an executor that has already
+         * written its own JSON uses the real file path as the ref and
+         * the runner trusts that. The string is private to this package
+         * to keep the protocol from leaking: a typo at the consumer site
+         * would silently miss the persist step.
+         */
+        internal const val PENDING_EVIDENCE_REF = "<pending>"
+    }
+
     open fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome {
         // The executor's `execute` returns the *raw* outcome
         // (success/failure of the verification step). The runner
@@ -275,7 +290,7 @@ open class ProbeExecutor(
             )
         }
         // The contract is satisfied; the evidence IS the plan itself.
-        return ProbeOutcome.Verified(evidenceRef = "<pending>")
+        return ProbeOutcome.Verified(evidenceRef = PENDING_EVIDENCE_REF)
     }
 
     internal open fun persist(probe: ProbeEntry, outcome: ProbeOutcome): ProbeOutcome {

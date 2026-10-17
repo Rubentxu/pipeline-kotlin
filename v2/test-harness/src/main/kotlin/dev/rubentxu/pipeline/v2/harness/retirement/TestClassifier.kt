@@ -40,7 +40,7 @@ object TestClassifier {
         if (input.releaseScaleTag) {
             return DeletionDecision.MigrateExternalPending
         }
-        if (input.observedProcessApi.isNotEmpty()) {
+        if (input.observedProcessApis.isNotEmpty()) {
             return DeletionDecision.MigrateExternalPending
         }
         if (input.kindHint == KindHint.EXPLICIT_UAT_E2E) {
@@ -69,7 +69,7 @@ data class TestRecord(
     val path: String,
     val kindHint: KindHint,
     val runnerHint: RunnerHint,
-    val observedProcessApi: String,
+    val observedProcessApis: List<ObservedProcessApi>,
     val testAnnotated: Int,
     val disabledAnnotations: Int,
     val releaseScaleTag: Boolean,
@@ -79,6 +79,48 @@ data class TestRecord(
     init {
         require(path.isNotBlank()) { "path must not be blank" }
         require(contentSha256.length == 64) { "contentSha256 must be a SHA-256 hex digest" }
+    }
+}
+
+/**
+ * The process API the test exercises.
+ *
+ * The previous shape was a `String` field on [TestRecord] that the
+ * Wave classifier matched with a list of substrings. The list was
+ * the dual-emitter defect class: a typo at either site silently
+ * misrouted the outcome. The new shape is a sealed ADT with one
+ * case per known API. The CSV column at the source is still a
+ * free-form string (the AST scanner concatenates detected APIs
+ * with no delimiter); the [parser] on the companion converts the
+ * raw string to the typed list at the Kotlin boundary, where the
+ * compiler can enforce the rest of the protocol.
+ */
+sealed interface ObservedProcessApi {
+    /** The test calls `ProcessBuilder(...)`. The trailing `(` excludes reference sites like
+     *  `ProcessBuilder::class`. */
+    data object ProcessBuilder : ObservedProcessApi
+
+    /** The test uses `AppBinSupport` (the harness's installed-binary discovery helper). */
+    data object AppBinSupport : ObservedProcessApi
+
+    /** The test owns a long-lived subprocess via the harness's `OwnedSubprocess`. */
+    data object OwnedSubprocess : ObservedProcessApi
+
+    companion object {
+        /**
+         * Parse the raw CSV column into a typed list.
+         *
+         * The raw string is the AST scanner's concatenation of detected
+         * call sites; the parser looks for each known signature and
+         * returns the matching typed cases in stable order (the
+         * declaration order in this companion). A future API is
+         * one new case in the sealed type plus one new `if` here.
+         */
+        fun parser(raw: String): List<ObservedProcessApi> = buildList {
+            if ("ProcessBuilder(" in raw) add(ProcessBuilder)
+            if ("AppBinSupport" in raw) add(AppBinSupport)
+            if ("OwnedSubprocess" in raw) add(OwnedSubprocess)
+        }
     }
 }
 

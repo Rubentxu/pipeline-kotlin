@@ -10,13 +10,13 @@ class WaveTest {
     private fun rec(
         runnerHint: RunnerHint = RunnerHint.V2_GRADLE,
         kindHint: KindHint = KindHint.OTHER_TEST_SOURCE,
-        observedProcessApi: String = "",
+        observedProcessApis: List<ObservedProcessApi> = emptyList(),
         releaseScaleTag: Boolean = false,
     ) = TestRecord(
         path = "v2/x/src/test/kotlin/SampleTest.kt",
         kindHint = kindHint,
         runnerHint = runnerHint,
-        observedProcessApi = observedProcessApi,
+        observedProcessApis = observedProcessApis,
         testAnnotated = 1,
         disabledAnnotations = 0,
         releaseScaleTag = releaseScaleTag,
@@ -30,17 +30,17 @@ class WaveTest {
 
     @Test
     fun `ProcessBuilder observed is Wave C`() {
-        assertEquals(Wave.C, Wave.forRecord(rec(observedProcessApi = Wave.WAVE_C_PROCESS_APIS[0])))
+        assertEquals(Wave.C, Wave.forRecord(rec(observedProcessApis = listOf(ObservedProcessApi.ProcessBuilder))))
     }
 
     @Test
     fun `AppBinSupport observed is Wave C`() {
-        assertEquals(Wave.C, Wave.forRecord(rec(observedProcessApi = Wave.WAVE_C_PROCESS_APIS[1])))
+        assertEquals(Wave.C, Wave.forRecord(rec(observedProcessApis = listOf(ObservedProcessApi.AppBinSupport))))
     }
 
     @Test
     fun `OwnedSubprocess observed is Wave C`() {
-        assertEquals(Wave.C, Wave.forRecord(rec(observedProcessApi = Wave.WAVE_C_PROCESS_APIS[2])))
+        assertEquals(Wave.C, Wave.forRecord(rec(observedProcessApis = listOf(ObservedProcessApi.OwnedSubprocess))))
     }
 
     @Test
@@ -65,7 +65,10 @@ class WaveTest {
         assertEquals(
             Wave.D,
             Wave.forRecord(
-                rec(runnerHint = RunnerHint.LEGACY_NOT_DEFAULT_V2, observedProcessApi = "ProcessBuilder("),
+                rec(
+                    runnerHint = RunnerHint.LEGACY_NOT_DEFAULT_V2,
+                    observedProcessApis = listOf(ObservedProcessApi.ProcessBuilder),
+                ),
             ),
         )
     }
@@ -74,7 +77,12 @@ class WaveTest {
     fun `process API takes precedence over release-scale tag`() {
         assertEquals(
             Wave.C,
-            Wave.forRecord(rec(observedProcessApi = "ProcessBuilder(", releaseScaleTag = true)),
+            Wave.forRecord(
+                rec(
+                    observedProcessApis = listOf(ObservedProcessApi.ProcessBuilder),
+                    releaseScaleTag = true,
+                ),
+            ),
         )
     }
 }
@@ -85,13 +93,13 @@ class DeletionGuardWaveTest {
     private fun rec(
         runnerHint: RunnerHint = RunnerHint.V2_GRADLE,
         kindHint: KindHint = KindHint.OTHER_TEST_SOURCE,
-        observedProcessApi: String = "",
+        observedProcessApis: List<ObservedProcessApi> = emptyList(),
         releaseScaleTag: Boolean = false,
     ) = TestRecord(
         path = "v2/x/src/test/kotlin/SampleTest.kt",
         kindHint = kindHint,
         runnerHint = runnerHint,
-        observedProcessApi = observedProcessApi,
+        observedProcessApis = observedProcessApis,
         testAnnotated = 1,
         disabledAnnotations = 0,
         releaseScaleTag = releaseScaleTag,
@@ -116,7 +124,7 @@ class DeletionGuardWaveTest {
 
     @Test
     fun `Wave C demands a sandbox-grade authority`() {
-        val record = rec(observedProcessApi = "ProcessBuilder(")
+        val record = rec(observedProcessApis = listOf(ObservedProcessApi.ProcessBuilder))
         val bad = DeletionDecision.RedundantWithProof(originalFileSha256 = sha, proofDigest = "b".repeat(64), authority = "ci-runner")
         val outcome = DeletionGuard.check(bad, record, retirementAuthorised = true)
         assertTrue(outcome is GuardOutcome.Refused) { "got $outcome" }
@@ -124,7 +132,7 @@ class DeletionGuardWaveTest {
 
     @Test
     fun `Wave C accepts sandbox authority`() {
-        val record = rec(observedProcessApi = "ProcessBuilder(")
+        val record = rec(observedProcessApis = listOf(ObservedProcessApi.ProcessBuilder))
         val d = DeletionDecision.RedundantWithProof(originalFileSha256 = sha, proofDigest = "b".repeat(64), authority = "sandbox")
         val outcome = DeletionGuard.check(d, record, retirementAuthorised = true)
         assertEquals(GuardOutcome.Authorised, outcome)
@@ -132,7 +140,7 @@ class DeletionGuardWaveTest {
 
     @Test
     fun `Wave C accepts release-harness authority`() {
-        val record = rec(observedProcessApi = "AppBinSupport")
+        val record = rec(observedProcessApis = listOf(ObservedProcessApi.AppBinSupport))
         val d = DeletionDecision.RedundantWithProof(originalFileSha256 = sha, proofDigest = "b".repeat(64), authority = "release-harness")
         val outcome = DeletionGuard.check(d, record, retirementAuthorised = true)
         assertEquals(GuardOutcome.Authorised, outcome)
@@ -140,7 +148,7 @@ class DeletionGuardWaveTest {
 
     @Test
     fun `Wave C accepts harness authority`() {
-        val record = rec(observedProcessApi = "OwnedSubprocess")
+        val record = rec(observedProcessApis = listOf(ObservedProcessApi.OwnedSubprocess))
         val d = DeletionDecision.RedundantWithProof(originalFileSha256 = sha, proofDigest = "b".repeat(64), authority = "harness")
         val outcome = DeletionGuard.check(d, record, retirementAuthorised = true)
         assertEquals(GuardOutcome.Authorised, outcome)
@@ -164,7 +172,7 @@ class DeletionGuardWaveTest {
 
     @Test
     fun `Wave C refuses when retirementAuthorised is false (regardless of D)`() {
-        val record = rec(observedProcessApi = "ProcessBuilder(")
+        val record = rec(observedProcessApis = listOf(ObservedProcessApi.ProcessBuilder))
         val d = DeletionDecision.RedundantWithProof(originalFileSha256 = sha, proofDigest = "b".repeat(64), authority = "sandbox")
         val outcome = DeletionGuard.check(d, record, retirementAuthorised = false, retirementAuthorisedD = true)
         assertTrue(outcome is GuardOutcome.Refused) { "got $outcome" }

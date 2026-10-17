@@ -56,11 +56,13 @@ import kotlin.io.path.readText
  * `AppBinProvenanceTest` resolves it and asserts it — and it does not depend on which
  * helper a given harness happens to use.
  *
- * **Known limitation.** Two spellings of the property are covered: calling
- * `AppBinSupport.discover(`, and naming an installed-launcher path. A harness that
- * obtains the distribution some third way would not be seen. The mitigation is that the
- * population is re-measured whenever a new distribution helper is introduced, not that
- * the rule is complete by construction.
+ * **Known limitation.** The predicate covers the spellings listed on
+ * [requiresInstalledDistribution] — three of them, the third added because the first two
+ * were measured insufficient, not because three is a satisfying number. A harness that
+ * obtains the distribution a fourth way is invisible here. That is not fixable by
+ * enumerating harder: the mitigation is that the population is re-measured whenever a new
+ * distribution helper is introduced, and that the predicate's own KDoc records which
+ * escapes have already been paid for, so the next one is at least a known shape.
  *
  * ## Why a source scan
  *
@@ -125,11 +127,11 @@ class InstalledContractTagMembershipFitnessTest {
      * True when an installed distribution is a precondition of the class.
      *
      * Three spellings, and the third one is there because the first two were measured to be
-     * insufficient. `ObsFConsumerContinuityUatTest` builds the same install root as
-     * `ObsFConsumerContinuityUatTest` does by splicing it — `.resolve("build").resolve("install")`
-     * — so the literal `build/install` never appears and the file was invisible to a check that
-     * looked for it. It then ran a full forked distribution pipeline inside the fast lane while
-     * this fitness reported GREEN.
+     * insufficient. `ObsFConsumerContinuityUatTest` builds the same install root as the
+     * installed lane does, but by splicing it — `.resolve("build").resolve("install")` — so the
+     * literal `build/install` never appears and the file was invisible to a check that looked
+     * for it. It then ran a full forked distribution pipeline inside the fast lane while this
+     * fitness reported GREEN.
      *
      * The third spelling is the distribution's own `applicationName` as a code literal. It is
      * the one token that cannot be hidden by concatenation, because naming the executable file

@@ -256,18 +256,37 @@ object ChangedInputClassifier {
      * the catalogue "which contract claims this?".
      */
     fun classify(path: String): ChangedInput {
-        // 1. Self-owned prefix: the test-harness's own
-        //    sources are NonProduction by audit. A
-        //    defect here makes the harness over-report,
-        //    which is noisy but safe; a defect that
-        //    made it under-report is the silent green
-        //    this whole line of work exists to prevent.
-        //    Scoped to the prefix, not a wildcard.
-        if (path.startsWith("v2/test-harness/")) {
-            return ChangedInput.TestHarnessInternal(path)
-        }
+        // BQ4 P0 (HITO 1 "selección y evidencia vinculadas",
+        // 2026-10-17): the previous shape classified any path
+        // under `v2/test-harness/` as `TestHarnessInternal`
+        // (NonProduction) and the resolver ignored it. A
+        // defect in the harness's production code (anything
+        // under `src/main/`) was therefore a SILENT GREEN: the
+        // gate saw no production change and discharged on
+        // the plan. The audit's RC4 follow-up named this the
+        // most expensive defect class in this repository: the
+        // harness IS the test-harness product, and changes to
+        // its `.kt` production sources are product changes
+        // the gate MUST verify. The exemption is removed.
+        //
+        // The test-harness's `src/main/**/*.kt` now falls
+        // through to the standard `SourceCode` rule (step 5
+        // below) and is classified as Production. A harness
+        // `src/test/**/*.kt` falls through to the
+        // `TestSource` rule (step 7) and is NonProduction, as
+        // for any other module. The catalogue's contract
+        // lookup is the only authority for "is this path
+        // covered by a known contract"; the prefix exclusion
+        // was bypassing it.
+        //
+        // The `TestHarnessInternal` data class is preserved
+        // as a reserved variant — it is no longer constructed
+        // by the classifier but may be reintroduced in the
+        // future for a narrower self-owned exemption (e.g.
+        // tooling/metadata, not source code) if the
+        // catalogue cannot absorb one.
 
-        // 2. Build composition: extension-based rules.
+        // 1. Build composition: extension-based rules.
         //    The wrapper and version-catalog rules cover
         //    well-known filenames anywhere in the tree;
         //    the `v2/gradle/` rule covers everything else
@@ -284,7 +303,7 @@ object ChangedInputClassifier {
             return ChangedInput.BuildComposition(path)
         }
 
-        // 3. Build composition: location-based rules.
+        // 2. Build composition: location-based rules.
         if (path.startsWith("v2/gradle/wrapper/") &&
             (path.endsWith(".properties") || path.endsWith(".jar"))
         ) {
@@ -294,7 +313,7 @@ object ChangedInputClassifier {
             return ChangedInput.BuildComposition(path)
         }
 
-        // 4. ServiceLoader bindings. The path is
+        // 3. ServiceLoader bindings. The path is
         //    under `META-INF/services/`. The catalogue
         //    has rows that match by `pathPatterns`;
         //    the resolver joins the two.
@@ -302,7 +321,7 @@ object ChangedInputClassifier {
             return ChangedInput.ServiceLoader(path)
         }
 
-        // 5. Source code. `.kt` and `.java` under
+        // 4. Source code. `.kt` and `.java` under
         //    `*/src/main/` are the executable surface.
         //    `.proto` files are wire contracts and are
         //    production regardless of location (a
@@ -317,7 +336,7 @@ object ChangedInputClassifier {
             return ChangedInput.SourceCode(path)
         }
 
-        // 6. Distribution / install scripts. The
+        // 5. Distribution / install scripts. The
         //    consumer runs these, so a change is a
         //    product change. The script name is the
         //    basename; the resolver uses it for the
@@ -327,7 +346,7 @@ object ChangedInputClassifier {
             return ChangedInput.DistributionScript(path, name)
         }
 
-        // 7. Test sources (NonProduction). The
+        // 6. Test sources (NonProduction). The
         //    `v2/test-harness/` prefix check above
         //    already classified those; this branch
         //    catches the rest.
@@ -337,7 +356,7 @@ object ChangedInputClassifier {
             return ChangedInput.TestSource(path)
         }
 
-        // 8. Documentation. `.md` and `docs/` paths are
+        // 7. Documentation. `.md` and `docs/` paths are
         //    not product guarantees. The classifier does
         //    NOT claim `.txt` (LICENSE.txt, README.txt,
         //    NOTES.txt) or other broad extensions because
@@ -353,7 +372,7 @@ object ChangedInputClassifier {
             return ChangedInput.Documentation(path)
         }
 
-        // 9. UnknownProduction. The path is not under
+        // 8. UnknownProduction. The path is not under
         //    the self-owned prefix, is not a test
         //    source, is not a doc, but the rules above
         //    did not match. The resolver refuses with

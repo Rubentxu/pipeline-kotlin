@@ -180,75 +180,70 @@ open class ProbeExecutor(
          * whether the runner still needs to call [persist]. The
          * carrier is the single source of truth for the
          * "already persisted vs needs persist" protocol between
-         * the executor and the runner; the previous shape used a
-         * `ProbeOutcome.Verified("<pending>")` sentinel that the
-         * runner matched with a string `==`, which is the dual
-         * emitter/parser defect class: a typo at either side
-         * silently misroutes the outcome. The sealed carrier
-         * makes the protocol unmissable: the runner matches on a
-         * closed ADT and the compiler forces the consumer to
-         * handle both cases.
+         * the executor and the runner.
          *
-         * `outcome` is the typed [ProbeOutcome] the executor
-         * decided; `NeedsPersist` says "the executor decided but
-         * did not write the JSON; the runner must call persist";
-         * `AlreadyPersisted` says "the JSON is already on disk
-         * (either the executor wrote it or the outcome is
-         * terminal and no JSON is required)".
+         * BQ4 v21 (typed marker, 2026-10-17): the previous
+         * shape was a `ProbeExecutionResult.NeedsPersist`
+         * carrying a `ProbeOutcome.Verified("<pending>")`
+         * placeholder, which the executor's `execute` matched
+         * with a string `==` (`isPendingOutcome`) to decide
+         * whether to wrap in `NeedsPersist` or
+         * `AlreadyPersisted`. The string sentinel is the dual
+         * emitter/parser defect class: a typo at either side
+         * (e.g. `"<Pending>"` capitalised, or a future
+         * refactor that forgets to thread the sentinel)
+         * silently misroutes the outcome. The runner never
+         * sees the literal either way, but the executor's
+         * own protocol still relies on a free-form string.
+         *
+         * The new shape makes `NeedsPersist` a `data object`
+         * — a singleton with no fields. The executor's
+         * `execute` returns `NeedsPersist` to signal "I
+         * decided Verified; call `persist` to get the final
+         * outcome with the real evidence path". The
+         * `persist` signature no longer takes an `outcome`
+         * argument: the executor already decided, and the
+         * runner calls `persist(probe)` to write the JSON
+         * and receive the `Verified(realPath)` carrier. The
+         * placeholder string is gone; a typo on either side
+         * is now a compile error.
          */
         sealed interface ProbeExecutionResult {
-            val outcome: ProbeOutcome
+            /**
+             * The executor's verdict is final. The runner
+             * records the outcome and moves on. The outcome
+             * has a real evidence path (or a real
+             * `evidenceRef` for terminal cases) and the JSON
+             * is either already on disk or not required.
+             */
+            data class AlreadyPersisted(val outcome: ProbeOutcome) : ProbeExecutionResult
 
-            data class AlreadyPersisted(override val outcome: ProbeOutcome) : ProbeExecutionResult
-            data class NeedsPersist(override val outcome: ProbeOutcome) : ProbeExecutionResult
+            /**
+             * The executor decided `Verified` and the JSON
+             * has not yet been written. The runner MUST call
+             * [ProbeExecutor.persist] to obtain the final
+             * outcome with the real evidence path. The
+             * marker carries no payload: a `Verified` is
+             * implicit in the variant itself.
+             */
+            data object NeedsPersist : ProbeExecutionResult
         }
-
-        /**
-         * Public predicate for subclasses (in other modules) that
-         * need to wrap their own [ProbeOutcome] in
-         * [ProbeExecutionResult] the same way [execute] does.
-         * The literal [PENDING_EVIDENCE_REF] stays `internal` so
-         * the runner never sees a free-form string; the predicate
-         * is the only public surface. Returning `true` means
-         * "the runner still needs to call `persist`".
-         *
-         * BQ4 P0-D follow-up (2026-10-17): the previous shape
-         * required product-side executors to read the internal
-         * constant directly, which Kotlin's module boundary
-         * correctly refused. The predicate is the public seam
-         * the protocol now exposes.
-         */
-        fun isPendingOutcome(outcome: ProbeOutcome): Boolean =
-            outcome is ProbeOutcome.Verified && outcome.evidenceRef == PENDING_EVIDENCE_REF
-
-        /**
-         * Internal bookkeeping marker used by [runHF0] to signal
-         * "the executor decided Verified but has not yet written
-         * the evidence file". The string is private to this
-         * class: [execute] matches on it to wrap the outcome in
-         * [ProbeExecutionResult.NeedsPersist] or
-         * [ProbeExecutionResult.AlreadyPersisted], and the
-         * runner never sees the literal. The marker is internal
-         * because the test class in the same package builds
-         * [ProbeOutcome.Verified] fixtures that exercise the
-         * `NeedsPersist` branch without a real persist step.
-         */
-        internal const val PENDING_EVIDENCE_REF = "<pending>"
     }
 
     open fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeExecutionResult {
-        // The executor's `execute` returns the raw outcome wrapped
-        // in a [ProbeExecutionResult] carrier. The runner
-        // separately invokes `persist(probe, outcome)` so the
-        // evidence file and its `evidenceDigest` are written by
-        // the same code path whether the executor is the harness
-        // default or a product-side subclass. Splitting the two
-        // also means a subclass that wants to bypass the
-        // persistence step (e.g. an in-memory verifier) is still
-        // forced to declare its `persist` override, and the
-        // `finalise` digest check will fail loudly if the JSON
-        // was never written.
-        val raw = when (manifest.expectedFidelity) {
+        // The executor's `execute` returns a
+        // [ProbeExecutionResult] carrier. The runner
+        // separately invokes `persist(probe)` for
+        // [ProbeExecutionResult.NeedsPersist] so the evidence
+        // file and its `evidenceDigest` are written by the
+        // same code path whether the executor is the harness
+        // default or a product-side subclass. Splitting the
+        // two also means a subclass that wants to bypass the
+        // persistence step (e.g. an in-memory verifier) is
+        // still forced to declare its `persist` override, and
+        // the `finalise` digest check will fail loudly if the
+        // JSON was never written.
+        return when (manifest.expectedFidelity) {
             // BQ4 fidelity (2026-10-17): the previous shape
             // matched the wire string `"HF0"` / `"HF1"` and
             // had a bare `else` for the rest. A typo at the
@@ -262,30 +257,32 @@ open class ProbeExecutor(
             // exhaustive and the compiler forces a branch
             // for every case (HF2..HF6 land in the
             // `UnsupportedFidelity` arm).
+            //
+            // BQ4 v21 (typed marker, 2026-10-17): each branch
+            // now returns the typed [ProbeExecutionResult]
+            // directly. The HF0 happy path returns
+            // [ProbeExecutionResult.NeedsPersist]; the
+            // terminal branches return
+            // [ProbeExecutionResult.AlreadyPersisted]. The
+            // previous `Verified("<pending>")` placeholder
+            // is gone.
             Fidelity.HF0 -> runHF0(probe, manifest)
-            Fidelity.HF1 -> ProbeOutcome.BlockedExternal(
-                evidenceRef = "",
-                blocker = "HF1 product-side executor not wired in this vertical; " +
-                    "the CLI must supply a custom ProbeExecutor that invokes " +
-                    "CanonicalDurableRunCoordinator for HF1 probes",
+            Fidelity.HF1 -> ProbeExecutionResult.AlreadyPersisted(
+                ProbeOutcome.BlockedExternal(
+                    evidenceRef = "",
+                    blocker = "HF1 product-side executor not wired in this vertical; " +
+                        "the CLI must supply a custom ProbeExecutor that invokes " +
+                        "CanonicalDurableRunCoordinator for HF1 probes",
+                ),
             )
             Fidelity.HF2, Fidelity.HF3, Fidelity.HF4, Fidelity.HF5, Fidelity.HF6 ->
-                ProbeOutcome.UnsupportedFidelity(manifest.expectedHF)
-        }
-        // The only outcome that needs persist is the HF0 happy
-        // path, where `runHF0` returns `Verified(PENDING_EVIDENCE_REF)`.
-        // Every other branch is terminal or already-persisted and
-        // does not need the runner to write JSON. The match is on
-        // the outcome type and the pending sentinel, not on a
-        // free-form string.
-        return if (isPendingOutcome(raw)) {
-            ProbeExecutionResult.NeedsPersist(raw)
-        } else {
-            ProbeExecutionResult.AlreadyPersisted(raw)
+                ProbeExecutionResult.AlreadyPersisted(
+                    ProbeOutcome.UnsupportedFidelity(manifest.expectedHF),
+                )
         }
     }
 
-    private fun runHF0(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome {
+    private fun runHF0(probe: ProbeEntry, manifest: CycleManifest): ProbeExecutionResult {
         // The HF0 contract: changing `relativePath` selects the
         // contract at HF0. The probe is real — it invokes
         // ImpactResolver.resolve and checks the typed result. There
@@ -312,30 +309,38 @@ open class ProbeExecutor(
         val target = try {
             realCycleDir().resolve(path).normalize()
         } catch (ex: java.io.IOException) {
-            return ProbeOutcome.Failed(
-                evidenceRef = realCycleDir().resolve(path).toString(),
-                reason = "could not resolve '${path}' under cycleDir",
+            return ProbeExecutionResult.AlreadyPersisted(
+                ProbeOutcome.Failed(
+                    evidenceRef = realCycleDir().resolve(path).toString(),
+                    reason = "could not resolve '${path}' under cycleDir",
+                ),
             )
         }
         if (!target.startsWith(realCycleDir())) {
-            return ProbeOutcome.Failed(
-                evidenceRef = target.toString(),
-                reason = "HF0 probe '${probe.id}' escapes the cycle directory: '$target'",
+            return ProbeExecutionResult.AlreadyPersisted(
+                ProbeOutcome.Failed(
+                    evidenceRef = target.toString(),
+                    reason = "HF0 probe '${probe.id}' escapes the cycle directory: '$target'",
+                ),
             )
         }
         if (!Files.exists(target)) {
-            return ProbeOutcome.Failed(
-                evidenceRef = target.toString(),
-                reason = "HF0 probe '${probe.id}' file is absent at $target; " +
-                    "the operator must stage the source under cycleDir before prepare()",
+            return ProbeExecutionResult.AlreadyPersisted(
+                ProbeOutcome.Failed(
+                    evidenceRef = target.toString(),
+                    reason = "HF0 probe '${probe.id}' file is absent at $target; " +
+                        "the operator must stage the source under cycleDir before prepare()",
+                ),
             )
         }
         val actualSha = try {
             sha256HexOfFile(target)
         } catch (ex: java.io.IOException) {
-            return ProbeOutcome.Failed(
-                evidenceRef = target.toString(),
-                reason = "could not read file at $target: ${ex.message}",
+            return ProbeExecutionResult.AlreadyPersisted(
+                ProbeOutcome.Failed(
+                    evidenceRef = target.toString(),
+                    reason = "could not read file at $target: ${ex.message}",
+                ),
             )
         }
         // BQ4 v20 (case-sensitive digest comparison, 2026-10-17):
@@ -349,10 +354,12 @@ open class ProbeExecutor(
         // a plain `!=` so a tampered or upper-cased record is
         // refused loudly rather than silently miscompared.
         if (actualSha != probe.contentSha256) {
-            return ProbeOutcome.Failed(
-                evidenceRef = target.toString(),
-                reason = "contentSha256 mismatch: manifest=${probe.contentSha256}, " +
-                    "file=$actualSha",
+            return ProbeExecutionResult.AlreadyPersisted(
+                ProbeOutcome.Failed(
+                    evidenceRef = target.toString(),
+                    reason = "contentSha256 mismatch: manifest=${probe.contentSha256}, " +
+                        "file=$actualSha",
+                ),
             )
         }
         // The bytes are what the manifest claims. Now verify the
@@ -377,30 +384,45 @@ open class ProbeExecutor(
         // analogous gate entry-point fix.
         val selected: ValidationPlan.Selected = when (plan) {
             is ValidationPlan.Selected -> plan
-            is ValidationPlan.Refused -> return ProbeOutcome.Failed(
-                evidenceRef = target.toString(),
-                reason = "ImpactResolver refused the HF0 probe path '$path': " +
-                    plan.reasons.joinToString(),
+            is ValidationPlan.Refused -> return ProbeExecutionResult.AlreadyPersisted(
+                ProbeOutcome.Failed(
+                    evidenceRef = target.toString(),
+                    reason = "ImpactResolver refused the HF0 probe path '$path': " +
+                        plan.reasons.joinToString(),
+                ),
             )
         }
         if (probe.contractId !in selected.capabilities) {
-            return ProbeOutcome.Failed(
-                evidenceRef = target.toString(),
-                reason = "HF0 contract mismatch: probe expects capability " +
-                    "'${probe.contractId}' but the plan selected ${selected.capabilities}",
+            return ProbeExecutionResult.AlreadyPersisted(
+                ProbeOutcome.Failed(
+                    evidenceRef = target.toString(),
+                    reason = "HF0 contract mismatch: probe expects capability " +
+                        "'${probe.contractId}' but the plan selected ${selected.capabilities}",
+                ),
             )
         }
         if (ContractCatalogue.Fidelity.HF0 !in selected.minimumFidelities) {
-            return ProbeOutcome.Failed(
-                evidenceRef = target.toString(),
-                reason = "HF0 fidelity not in the plan's minimumFidelities: ${selected.minimumFidelities}",
+            return ProbeExecutionResult.AlreadyPersisted(
+                ProbeOutcome.Failed(
+                    evidenceRef = target.toString(),
+                    reason = "HF0 fidelity not in the plan's minimumFidelities: ${selected.minimumFidelities}",
+                ),
             )
         }
-        // The contract is satisfied; the evidence IS the plan itself.
-        return ProbeOutcome.Verified(evidenceRef = PENDING_EVIDENCE_REF)
+        // The contract is satisfied; the evidence IS the plan
+        // itself. The runner will call `persist(probe)` to write
+        // the JSON and receive a `Verified(realPath)` carrier.
+        // BQ4 v21 (typed marker, 2026-10-17): the previous
+        // shape returned `Verified(PENDING_EVIDENCE_REF)` here,
+        // leaving a string sentinel in the protocol between
+        // `runHF0` and `execute`. The new shape returns the
+        // typed [ProbeExecutionResult.NeedsPersist] marker; the
+        // `Verified` carrier is built by [persist] with the
+        // real evidence path. No placeholder is constructed.
+        return ProbeExecutionResult.NeedsPersist
     }
 
-    internal open fun persist(probe: ProbeEntry, outcome: ProbeOutcome): ProbeOutcome {
+    internal open fun persist(probe: ProbeEntry): ProbeOutcome.Verified {
         val outDir = realCycleDir().resolve("probes").also {
             Files.createDirectories(
                 it,
@@ -408,30 +430,42 @@ open class ProbeExecutor(
             )
         }
         val outFile = outDir.resolve("${probe.id}.json")
+        // BQ4 v21 (typed marker, 2026-10-17): the previous
+        // signature was `persist(probe, outcome: ProbeOutcome)`
+        // and used `outcome.outcome`, `outcome.exitCode`,
+        // `outcome.evidenceRef` to populate the JSON body.
+        // The shape was correct for the HF0 default
+        // (Verified + exitCode 0) but coupled the protocol to
+        // a free-form `outcome.evidenceRef` value that the
+        // runner's [runHF0] previously held as a `"<pending>"`
+        // sentinel. The new shape drops the outcome argument:
+        // the executor's [execute] already decided `Verified`
+        // (that is what `NeedsPersist` means), and the
+        // runner's `runProbes` does not need to thread the
+        // outcome through. The persisted JSON's `evidenceRef`
+        // is a stable marker (not a sentinel — no parser
+        // reads it) and the runner's outcome is the
+        // `Verified(realPath)` this function returns.
+        //
         // The recorded `evidenceDigest` is the SHA-256 of the
         // body MINUS the evidenceDigest line. To make the strip
         // on `finalise` byte-for-byte reversible, the body has
         // its last data line ending in `,\n` (the comma that
         // will precede the evidenceDigest line) and then a
         // closing `\n}\n` that is NOT part of the recorded
-        // digest. The runner's regex strips exactly the
-        // `,\n  "evidenceDigest": "DIGEST"\n` substring (or its
-        // single-line equivalent); the leading newline of the
-        // substring is the same one the executor emits.
+        // digest. [CycleRunner.validateEvidenceDigest] strips
+        // exactly the `,\n  "evidenceDigest": "DIGEST"\n`
+        // substring and recomputes the digest.
         val body = buildString {
             append("{\n")
             append("  \"probeId\": \"${probe.id}\",\n")
             append("  \"contractId\": \"${probe.contractId}\",\n")
             append("  \"kind\": \"${probe.kind}\",\n")
             append("  \"capturedAt\": \"${clock()}\",\n")
-            append("  \"outcome\": \"${outcome.outcome}\",\n")
-            append("  \"exitCode\": ${outcome.exitCode},\n")
-            append("  \"evidenceRef\": \"${outcome.evidenceRef}\",\n")
-            if (outcome is ProbeOutcome.Failed) {
-                append("  \"reason\": \"${outcome.reason.escapeJson()}\"\n")
-            } else {
-                append("  \"reason\": null\n")
-            }
+            append("  \"outcome\": \"Verified\",\n")
+            append("  \"exitCode\": 0,\n")
+            append("  \"evidenceRef\": \"<persisted>\",\n")
+            append("  \"reason\": null\n")
         }
         val initialDigest = sha256Hex(body)
         // Concatenate the evidenceDigest line as a standalone
@@ -442,16 +476,7 @@ open class ProbeExecutor(
         val finalBody = body + ",\n  \"evidenceDigest\": \"$initialDigest\"\n}\n"
         Files.writeString(outFile, finalBody)
         val evidenceRef = outFile.toRealPath().toString()
-        val persisted: ProbeOutcome = when (outcome) {
-            is ProbeOutcome.Verified -> ProbeOutcome.Verified(evidenceRef)
-            is ProbeOutcome.Failed -> ProbeOutcome.Failed(evidenceRef, outcome.reason)
-            is ProbeOutcome.Skipped -> ProbeOutcome.Skipped(evidenceRef)
-            is ProbeOutcome.NotRun -> ProbeOutcome.NotRun(evidenceRef, outcome.reason)
-            is ProbeOutcome.NoEvidence -> ProbeOutcome.NoEvidence(evidenceRef)
-            is ProbeOutcome.OtherCommit -> ProbeOutcome.OtherCommit(evidenceRef, outcome.observed)
-            is ProbeOutcome.UnsupportedFidelity, is ProbeOutcome.BlockedExternal -> outcome
-        }
-        return persisted
+        return ProbeOutcome.Verified(evidenceRef)
     }
 
     /**

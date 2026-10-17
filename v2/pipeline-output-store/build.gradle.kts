@@ -27,7 +27,7 @@ dependencies {
     // would fail to compile against a type it is legally allowed to see.
     api(project(":pipeline-output"))
     testImplementation(libs.junit.jupiter)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")
 }
 
 tasks.test {

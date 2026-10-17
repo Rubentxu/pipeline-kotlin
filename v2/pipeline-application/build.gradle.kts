@@ -256,7 +256,7 @@ dependencies {
     // inner loop to build them. example.uppercase / example.lock /
     // example.repeat are unchanged in substance and are still certified, by `check`.[[
     // Override BOM-enforced wrong version (junit-platform-launcher uses 1.x not 5.x)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")
 }
 
 // Lane R: test *compilation* needs the plugin JAR on the test classpath. The

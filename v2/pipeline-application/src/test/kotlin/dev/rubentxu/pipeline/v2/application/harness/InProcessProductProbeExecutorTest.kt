@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.harness
 
 import dev.rubentxu.pipeline.v2.dsl.pipeline
+import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Fidelity
 import dev.rubentxu.pipeline.v2.harness.cycle.CycleRunner
 import dev.rubentxu.pipeline.v2.harness.cycle.OracleRef
 import dev.rubentxu.pipeline.v2.harness.cycle.ProbeOutcome
@@ -319,7 +320,7 @@ class InProcessProductProbeExecutorTest {
             // this test runs at HF1, so the evidence fidelity
             // MUST be HF1. The previous HF0 literal here was
             // the B10 fidelity-mismatch defect class.
-            fidelity = "HF1",
+            fidelity = Fidelity.HF1,
             oracle = oracle,
         )
         writeManifest(manifestPath, cycleDir, relativePath, expectedHf = "HF1")

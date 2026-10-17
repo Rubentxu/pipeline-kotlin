@@ -76,8 +76,27 @@ class PendingEvidenceSentinelFitnessTest {
         // reintroduces a case-variant is also caught (the
         // previous dual-emitter/parser class included
         // uppercase variants).
+        //
+        // The pattern was WRONG until 2026-10-17 and did not
+        // guard the shape its own KDoc names. It read
+        // `["<]([Pp]ending|PENDING)["<]`, which requires a
+        // delimiter on BOTH sides of the word; in the canonical
+        // literal `"<pending>"` the delimiters are `"` and `<`,
+        // which are adjacent, so the pattern demanded
+        // `<pending<` and matched nothing. Measured: `"<pending>"`
+        // -> no match, `"<Pending>"` -> no match, while
+        // `<pending"` and `"pending"` did match. An inline
+        // reintroduction — `Verified("<pending>")` with no
+        // constant — would have sailed past this guard while
+        // only the constant-name alternative caught the
+        // declaration. Anchoring on the token itself is what the
+        // intent was; do not restore the delimiter-pair form.
+        //
+        // Over-match check on the current package: 13 files,
+        // 0 matches under the corrected pattern (identical to
+        // the old one), so the strengthening costs nothing.
         val forbidden = Regex(
-            """["<]([Pp]ending|PENDING)["<]|PENDING_EVIDENCE_REF|isPendingOutcome""",
+            """(?i)<pending>|["']pending["']|PENDING_EVIDENCE_REF|isPendingOutcome""",
         )
         val blockComment = Regex("""/\*[\s\S]*?\*/""")
         val lineComment = Regex("""//[^\n]*""")

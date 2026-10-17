@@ -16,6 +16,7 @@ import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
+import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Fidelity
 import dev.rubentxu.pipeline.v2.harness.cycle.CycleManifest
 import dev.rubentxu.pipeline.v2.harness.cycle.ProbeEntry
 import dev.rubentxu.pipeline.v2.harness.cycle.ProbeExecutor
@@ -66,21 +67,22 @@ import kotlinx.coroutines.runBlocking
  * implementation so a manifest that mixes HF0 and HF1 probes still
  * gets the right answer for the HF0 rows.
  *
- * ## Mapping RunOutcome -> ProbeOutcome
+ * ## Mapping RunOutcome -> ProbeExecutionResult
  *
- * - [RunOutcome.Success] -> [ProbeOutcome.Verified] with
- *   `<pending>` (the harness's `persist` writes the evidence JSON
- *   the runner verifies on `finalise`).
- * - [RunOutcome.Failure] -> [ProbeOutcome.Failed] with
- *   `"<kind>: <message>"` so the reason is recoverable from the
- *   cycle's evidence.
- * - [RunOutcome.Unstable] -> [ProbeOutcome.Failed] with
- *   `"UNSTABLE: ..."`. A cycle that wanted to distinguish
- *   `unstable` would need a [ProbeOutcome] case for it; the
- *   closed set is what it is.
- * - [RunOutcome.Aborted] -> [ProbeOutcome.BlockedExternal] with
- *   `"aborted"`. The cycle was interrupted, not failed; a new
- *   run may succeed.
+ * - [RunOutcome.Success] -> `NeedsPersist`. The runner then
+ *   calls `persist`, which writes the evidence JSON and returns
+ *   the real `Verified(realPath)` the cycle records. The
+ *   executor never fabricates an evidence path of its own.
+ * - [RunOutcome.Failure] -> `AlreadyPersisted` with
+ *   [ProbeOutcome.Failed] carrying `"<kind>: <message>"` so the
+ *   reason is recoverable from the cycle's evidence.
+ * - [RunOutcome.Unstable] -> `AlreadyPersisted` with
+ *   [ProbeOutcome.Failed] carrying `"UNSTABLE: ..."`. A cycle
+ *   that wanted to distinguish `unstable` would need a
+ *   [ProbeOutcome] case for it; the closed set is what it is.
+ * - [RunOutcome.Aborted] -> `AlreadyPersisted` with
+ *   [ProbeOutcome.BlockedExternal] carrying `"aborted"`. The
+ *   cycle was interrupted, not failed; a new run may succeed.
  */
 class InProcessProductProbeExecutor(
     cycleDir: Path,
@@ -109,41 +111,75 @@ class InProcessProductProbeExecutor(
         // owns HF1, and the audit's complaint was that HF1 was
         // `BlockedExternal` even though the same code path is
         // already certified in the in-process template.
-        if (manifest.expectedHF != "HF1") {
+        if (manifest.expectedFidelity != Fidelity.HF1) {
             return super.execute(probe, manifest)
         }
-        // The wrapping mirrors the harness default: a Verified
-        // with the pending sentinel is `NeedsPersist` (the runner
-        // will call `persist` after this returns); every other
-        // outcome is terminal and goes through as `AlreadyPersisted`.
-        // The predicate [ProbeExecutor.isPendingOutcome] is the
-        // public seam that lets product-side executors wrap their
-        // own outcomes the same way the harness default does; the
-        // internal sentinel string is never exposed across modules.
-        val raw = runHF1(probe, manifest)
-        return if (ProbeExecutor.isPendingOutcome(raw)) {
-            ProbeExecutor.Companion.ProbeExecutionResult.NeedsPersist(raw)
-        } else {
-            ProbeExecutor.Companion.ProbeExecutionResult.AlreadyPersisted(raw)
+        // Mirrors the harness default: a SUCCESSFUL HF1 run is
+        // `NeedsPersist` (the runner calls `persist` to write the
+        // evidence JSON and receive the final
+        // `Verified(realPath)`); every other outcome is terminal
+        // and goes through as `AlreadyPersisted`.
+        //
+        // BQ4 v21 migration (2026-10-17): this executor still
+        // spoke the OLD protocol — it built
+        // `ProbeOutcome.Verified("<pending>")` as a placeholder
+        // and asked `ProbeExecutor.isPendingOutcome` whether the
+        // value was that placeholder. The refactor made
+        // `NeedsPersist` a `data object` and deleted the
+        // predicate, so `:pipeline-application` no longer
+        // compiled and the break went unnoticed: the
+        // `PendingEvidenceSentinelFitnessTest` that guards this
+        // defect class scans ONLY
+        // `test-harness/.../harness/cycle`, so the product-side
+        // consumer was outside its reach. The typed decision
+        // below removes the placeholder rather than translating
+        // it.
+        return when (val decision = runHF1(probe, manifest)) {
+            Hf1Decision.Succeeded -> ProbeExecutor.Companion.ProbeExecutionResult.NeedsPersist
+            is Hf1Decision.Terminal ->
+                ProbeExecutor.Companion.ProbeExecutionResult.AlreadyPersisted(decision.outcome)
         }
     }
 
-    private fun runHF1(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome {
+    /**
+     * The typed result of one HF1 run.
+     *
+     * [Succeeded] carries no payload and no fabricated
+     * `evidenceRef`: the real evidence path is produced by
+     * [ProbeExecutor.persist] when the runner acts on
+     * `NeedsPersist`. [Terminal] carries the actual
+     * [ProbeOutcome] to record as-is.
+     *
+     * The previous shape returned `ProbeOutcome.Verified` with a
+     * `<pending>` string that no reader ever consumed — a dead
+     * semantic parameter that a reader could only misinterpret as
+     * a real evidence location.
+     */
+    private sealed interface Hf1Decision {
+        data object Succeeded : Hf1Decision
+        data class Terminal(val outcome: ProbeOutcome) : Hf1Decision
+    }
+
+    private fun runHF1(probe: ProbeEntry, manifest: CycleManifest): Hf1Decision {
         val workDir = realCycleDir().resolve("work-${probe.id}")
         try {
             Files.createDirectories(workDir)
         } catch (ex: java.io.IOException) {
-            return ProbeOutcome.Failed(
-                evidenceRef = workDir.toString(),
-                reason = "could not create HF1 work dir at $workDir: ${ex.message}",
+            return Hf1Decision.Terminal(
+                ProbeOutcome.Failed(
+                    evidenceRef = workDir.toString(),
+                    reason = "could not create HF1 work dir at $workDir: ${ex.message}",
+                ),
             )
         }
         val spec = try {
             specProvider(probe, manifest)
         } catch (ex: Throwable) {
-            return ProbeOutcome.Failed(
-                evidenceRef = workDir.toString(),
-                reason = "HF1 spec provider threw: ${ex::class.simpleName}: ${ex.message}",
+            return Hf1Decision.Terminal(
+                ProbeOutcome.Failed(
+                    evidenceRef = workDir.toString(),
+                    reason = "HF1 spec provider threw: ${ex::class.simpleName}: ${ex.message}",
+                ),
             )
         }
         val sourcePath = sourcePathFor(probe, manifest)
@@ -156,9 +192,11 @@ class InProcessProductProbeExecutor(
                 pluginLockDigest = Digest("builtin"),
             )
         } catch (ex: Throwable) {
-            return ProbeOutcome.Failed(
-                evidenceRef = workDir.toString(),
-                reason = "DslCompiledPipelineCompiler refused: ${ex::class.simpleName}: ${ex.message}",
+            return Hf1Decision.Terminal(
+                ProbeOutcome.Failed(
+                    evidenceRef = workDir.toString(),
+                    reason = "DslCompiledPipelineCompiler refused: ${ex::class.simpleName}: ${ex.message}",
+                ),
             )
         }
         val clock = SystemClock()
@@ -187,24 +225,36 @@ class InProcessProductProbeExecutor(
         val outcome: RunOutcome = try {
             runBlocking { coord.run(compiled, runId) }
         } catch (ex: Throwable) {
-            return ProbeOutcome.Failed(
-                evidenceRef = workDir.toString(),
-                reason = "CanonicalDurableRunCoordinator threw: ${ex::class.simpleName}: ${ex.message}",
+            return Hf1Decision.Terminal(
+                ProbeOutcome.Failed(
+                    evidenceRef = workDir.toString(),
+                    reason = "CanonicalDurableRunCoordinator threw: ${ex::class.simpleName}: ${ex.message}",
+                ),
             )
         }
         return when (outcome) {
-            is RunOutcome.Success -> ProbeOutcome.Verified(evidenceRef = "<pending>")
-            is RunOutcome.Failure -> ProbeOutcome.Failed(
-                evidenceRef = workDir.toString(),
-                reason = "${outcome.failure.kind.name}: ${outcome.failure.message}",
+            // No placeholder `Verified`: a success carries no
+            // evidence path of its own. `NeedsPersist` tells the
+            // runner to call `persist`, and the real path comes
+            // back from there.
+            is RunOutcome.Success -> Hf1Decision.Succeeded
+            is RunOutcome.Failure -> Hf1Decision.Terminal(
+                ProbeOutcome.Failed(
+                    evidenceRef = workDir.toString(),
+                    reason = "${outcome.failure.kind.name}: ${outcome.failure.message}",
+                ),
             )
-            is RunOutcome.Unstable -> ProbeOutcome.Failed(
-                evidenceRef = workDir.toString(),
-                reason = "UNSTABLE: ${probe.id}",
+            is RunOutcome.Unstable -> Hf1Decision.Terminal(
+                ProbeOutcome.Failed(
+                    evidenceRef = workDir.toString(),
+                    reason = "UNSTABLE: ${probe.id}",
+                ),
             )
-            is RunOutcome.Aborted -> ProbeOutcome.BlockedExternal(
-                evidenceRef = workDir.toString(),
-                blocker = "aborted: ${probe.id}",
+            is RunOutcome.Aborted -> Hf1Decision.Terminal(
+                ProbeOutcome.BlockedExternal(
+                    evidenceRef = workDir.toString(),
+                    blocker = "aborted: ${probe.id}",
+                ),
             )
         }
     }

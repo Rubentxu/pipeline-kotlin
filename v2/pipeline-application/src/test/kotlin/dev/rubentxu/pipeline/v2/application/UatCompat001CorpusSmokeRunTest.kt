@@ -41,6 +41,7 @@ import java.time.Duration
  * 600 matches the per-method budget 7719b273 already established for these
  * sweeps, so the class default now agrees with the methods it governs.
  */
+@Tag("installed-contract")
 @Timeout(value = 600, unit = TimeUnit.SECONDS)
 @Tag("release-scale")
 class UatCompat001CorpusSmokeRunTest {

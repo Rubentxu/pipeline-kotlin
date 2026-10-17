@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
@@ -65,6 +66,7 @@ import java.util.concurrent.TimeUnit
  * receipts. Stating it here so a reviewer can see what is and is not on this side of the
  * adapter seam.
  */
+@Tag("installed-contract")
 @Timeout(value = 5, unit = TimeUnit.MINUTES)
 @DisplayName("R4 / WU-C — installDist end-to-end across run + console + follow")
 class ConsoleMultiOpInstallCanaryTest {

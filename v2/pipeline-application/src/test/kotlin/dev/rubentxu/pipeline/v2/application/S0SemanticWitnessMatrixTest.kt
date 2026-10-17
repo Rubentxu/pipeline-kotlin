@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
@@ -57,6 +58,7 @@ import java.nio.file.Path
  * CliNonCanonicalInMemoryExitsTwoTest, publishHTML keepAll adapter suite) and are NOT
  * duplicated here.
  */
+@Tag("installed-contract")
 @Timeout(300)
 class S0SemanticWitnessMatrixTest {
 

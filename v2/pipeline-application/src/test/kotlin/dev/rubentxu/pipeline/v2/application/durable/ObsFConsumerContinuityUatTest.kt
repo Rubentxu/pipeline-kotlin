@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
@@ -78,6 +79,7 @@ import org.junit.jupiter.api.io.TempDir
  * learns its position from nothing but the token the first one printed, which is what makes it a
  * resume rather than a re-read.
  */
+@Tag("installed-contract")
 @Timeout(600)
 class ObsFConsumerContinuityUatTest {
 

@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
@@ -57,6 +58,7 @@ import org.junit.jupiter.api.io.TempDir
  *    order. Marked `@EnabledIf` so a checkout without `v2/build/install/pipelinek` is
  *    a quiet skip rather than a RED.
  */
+@Tag("installed-contract")
 @Timeout(value = 5, unit = TimeUnit.MINUTES)
 @DisplayName("R4 / WU-CON-2.3 — pipelinek console --follow (per-frame tail-f)")
 class ConsoleFollowTest {

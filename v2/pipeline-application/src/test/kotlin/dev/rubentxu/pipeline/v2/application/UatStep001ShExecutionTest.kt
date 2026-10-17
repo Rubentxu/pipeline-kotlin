@@ -14,6 +14,7 @@ import dev.rubentxu.pipeline.v2.events.StepStarted
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.Disabled
@@ -26,6 +27,7 @@ import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
  * UAT-STEP-001: sh execution
  * Tests that sh step runs successfully, respects argv list, and captures stdout.
  */
+@Tag("installed-contract")
 @Disabled("migrated-pending")
 @Timeout(120)
 class UatStep001ShExecutionTest {

@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application.cli
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
@@ -65,6 +66,7 @@ import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
  *    passes; row B fails, because the follower exits immediately on a run that is still going. This is
  *    the pair that makes the two rows non-redundant.
  */
+@Tag("installed-contract")
 @Timeout(15, unit = TimeUnit.MINUTES)
 class ObsR1SilentFollowInstalledUatTest {
 

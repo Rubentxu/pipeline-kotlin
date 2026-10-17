@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
@@ -50,6 +51,7 @@ import java.util.concurrent.TimeUnit
  * user. It predates those guards — any `require(false)` in a stage body
  * triggers it — which makes it a defect of the CLI harness itself.
  */
+@Tag("installed-contract")
 @Timeout(value = 180, unit = TimeUnit.SECONDS)
 class CliDslConstructionFailureSurfacesTest {
 

@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.application.support.ConsolePlaneProbe
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.util.concurrent.TimeUnit
@@ -31,6 +32,7 @@ import java.util.concurrent.TimeUnit
  * the doc comment on `v2/compatibility/14-credentials-bindings.pipeline.kts:7`
  * needs review.
  */
+@Tag("installed-contract")
 @Timeout(value = 120, unit = TimeUnit.SECONDS)
 class TrapFormNegativeFixtureTest {
 

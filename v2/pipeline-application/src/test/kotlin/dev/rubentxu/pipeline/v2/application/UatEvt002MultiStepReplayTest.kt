@@ -21,6 +21,7 @@ import dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.Disabled
@@ -54,6 +55,7 @@ import dev.rubentxu.pipeline.v2.application.support.OwnedSubprocess
  * record-only walker the `make` steps were simulated as StepFailed (INC-R8-ARC-001), and that
  * simulation is exactly what real execution replaced.
  */
+@Tag("installed-contract")
 @Timeout(120)
 class UatEvt002MultiStepReplayTest {
 

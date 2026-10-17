@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application.cli
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
@@ -35,6 +36,7 @@ import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
  * The `mvn` binary is taken from an absolute asdf path (NOT the shim,
  * because pipelinek-spawned subshells do not inherit asdf's resolver).
  */
+@Tag("installed-contract")
 @Timeout(5, unit = TimeUnit.MINUTES)
 class WURp020MavenRealUatTest {
 

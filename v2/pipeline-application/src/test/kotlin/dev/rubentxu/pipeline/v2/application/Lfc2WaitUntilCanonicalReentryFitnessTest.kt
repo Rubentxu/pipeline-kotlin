@@ -36,6 +36,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 
@@ -60,6 +61,7 @@ import org.junit.jupiter.api.Timeout
  * polled/completed pair; this fitness test asserts that the structural wiring (registration,
  * descriptor shape, dispatch through the registry, event emission) is in place.
  */
+@Tag("installed-contract")
 @DisplayName("WU-LPR-301 — core.waitUntil canonical registry fitness")
 @Timeout(30)
 class Lfc2WaitUntilCanonicalReentryFitnessTest {

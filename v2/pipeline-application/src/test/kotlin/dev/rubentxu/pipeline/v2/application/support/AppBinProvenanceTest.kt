@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
@@ -32,6 +33,7 @@ import org.junit.jupiter.api.io.TempDir
  * expectation of Y, discovery must return [AppBinSupport.Discovery.Stale]. A real second commit is
  * the same input with a different number.
  */
+@Tag("installed-contract")
 class AppBinProvenanceTest {
 
     private fun repoRoot(): Path {

@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
@@ -32,6 +33,7 @@ import java.util.concurrent.TimeUnit
  * A "compiles" test is not enough here: these are claims about what the script
  * MEANS, so each test asserts the discriminating property, not mere success.
  */
+@Tag("installed-contract")
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
 class SelfHostedPipelineScriptHonestyTest {
 

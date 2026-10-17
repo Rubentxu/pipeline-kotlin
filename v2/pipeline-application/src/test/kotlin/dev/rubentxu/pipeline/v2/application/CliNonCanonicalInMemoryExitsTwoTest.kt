@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
@@ -18,6 +19,7 @@ import java.util.concurrent.TimeUnit
  * eligibility gate as the durable path: a non-canonical pipeline is rejected up
  * front with exit 2 instead of dying mid-run with a partial event stream.
  */
+@Tag("installed-contract")
 @Timeout(value = 120, unit = TimeUnit.SECONDS)
 class CliNonCanonicalInMemoryExitsTwoTest {
 

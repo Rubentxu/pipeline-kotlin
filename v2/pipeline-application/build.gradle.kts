@@ -491,6 +491,31 @@ tasks.test {
             excludeTags("release-scale")
         }
     }
+
+    // LANE MEMBERSHIP, NOT A FILTER (2026-10-17). The comment block above this
+    // block has always said "the fast lane does NOT need the plugin JAR; the
+    // test that needs it is in the installed lane" and the lane-selection wiring
+    // below has always said "the fast-lane :test excludes the tag so it never
+    // sees an installed-CLI test". Neither was true: the ONLY excludeTags in
+    // this module was `release-scale`, and it is behind an `excludeSlowTests`
+    // property that CI does not set. So every `@Tag("installed-contract")` class
+    // ran in BOTH lanes, and the 30 binary-spawning classes that carried no tag
+    // at all ran in the fast lane only -- which is what made `:test` exceed a
+    // 1500 s budget, and what turned one stale installed binary into 86 REDs.
+    //
+    // Membership is declared, not negotiated: a class is in exactly one lane by
+    // carrying exactly one tag, and the two tasks partition on it. `installedContractTest`
+    // is the lane that DECLARES its `installDist` dependency, which is the whole point --
+    // a clean checkout gets a matching binary instead of inheriting whichever one was
+    // last installed on the machine.
+    //
+    // `InstalledContractTagMembershipFitnessTest` is the guard. Without it, adding a
+    // harness that calls `AppBinSupport.discover(` and forgetting the tag would put a
+    // binary-spawning test back into the fast lane silently -- the failure is invisible
+    // because the test still PASSES, just slowly.
+    useJUnitPlatform {
+        excludeTags("installed-contract")
+    }
 }
 
 // The plugin-certification lane. It owns the three external example plugin JARs: they

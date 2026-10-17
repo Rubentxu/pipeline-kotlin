@@ -227,23 +227,22 @@ class CycleRunner(
             ?: error("runProbes requires a parsed manifest; call prepare() first")
         val outcomes = mutableListOf<ProbeOutcome>()
         for (probe in parsed.probes) {
-            // BQ4 v3 (typed probe executor, 2026-10-17): the
-            // previous shape compared the executor's `evidenceRef`
-            // against a string sentinel
-            // ([ProbeExecutor.PENDING_EVIDENCE_REF]) to decide
-            // whether to call `persist`. That is the dual
-            // emitter/parser defect class: a typo at either side
-            // silently misroutes the outcome. The new shape is a
-            // sealed [ProbeExecutor.Companion.ProbeExecutionResult]
-            // that the executor returns; the runner matches on the
-            // closed ADT and the compiler forces both cases to be
-            // handled. `NeedsPersist` says "the executor decided
-            // but did not write the JSON; the runner must call
-            // persist"; `AlreadyPersisted` says "the JSON is
-            // already on disk (or no JSON is required)".
+            // BQ4 v21 (typed marker, 2026-10-17): the previous
+            // shape called `executor.persist(probe, result.outcome)`
+            // where `result.outcome` was a `Verified("<pending>")`
+            // placeholder. The placeholder is the dual
+            // emitter/parser defect class: the executor's
+            // `runHF0` emitted `"<pending>"` and the
+            // `execute` parser matched it with a string `==`.
+            // The new shape is a `data object NeedsPersist`
+            // (no fields) and a `persist(probe)` signature
+            // that takes only the probe. The runner matches
+            // on the closed ADT and the compiler forces both
+            // cases to be handled; no string sentinel crosses
+            // the boundary.
             val outcome: ProbeOutcome = when (val result = executor.execute(probe, parsed)) {
                 is ProbeExecutor.Companion.ProbeExecutionResult.NeedsPersist ->
-                    executor.persist(probe, result.outcome)
+                    executor.persist(probe)
                 is ProbeExecutor.Companion.ProbeExecutionResult.AlreadyPersisted ->
                     result.outcome
             }

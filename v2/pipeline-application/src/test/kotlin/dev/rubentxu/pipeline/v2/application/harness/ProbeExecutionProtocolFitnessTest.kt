@@ -56,21 +56,66 @@ import kotlin.io.path.readText
  */
 class ProbeExecutionProtocolFitnessTest {
 
-    private val adapterRoot: Path by lazy {
+    private val adapterRoots: List<Path> by lazy {
         val cwd = Path.of("").toAbsolutePath()
         // SCOPED to the product-side harness adapter package. The
         // harness's own guard covers its side of the protocol; this
         // one covers the implementor that guard could not reach.
-        cwd.resolve("src/main/kotlin/dev/rubentxu/pipeline/v2/application/harness")
+        //
+        // Both source sets are searched because the guarantee is a
+        // property of the ADAPTER, not of where it is compiled. When
+        // the adapter shipped in `src/main` (ADR-PK-DF-002 H0/R1,
+        // 2026-10-17) this guard named only `src/main`; moving the
+        // file to `src/test` — where its only callers always were —
+        // turned a real guarantee into a hard `error()` with no
+        // adapter left to inspect.
+        listOf("src/main", "src/test").map {
+            cwd.resolve(it).resolve("kotlin/dev/rubentxu/pipeline/v2/application/harness")
+        }
     }
 
     private fun adapterSources(): List<Path> {
-        if (!Files.isDirectory(adapterRoot)) {
-            error("pipeline-application adapter source not found at $adapterRoot")
+        val present = adapterRoots.filter { Files.isDirectory(it) }
+        // Fail-closed on DISAPPEARANCE, which is what this guard is
+        // for: an adapter package that exists in no source set means
+        // the implementor was deleted, and a guard that then scans
+        // zero files would pass vacuously.
+        if (present.isEmpty()) {
+            error(
+                "pipeline-application adapter source not found in any of " +
+                    "${adapterRoots.joinToString { it.toString() }}",
+            )
         }
-        return Files.walk(adapterRoot).use { stream ->
-            stream.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }.toList()
+        return present.flatMap { root ->
+            Files.walk(root).use { stream ->
+                stream.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }.toList()
+            }
         }
+            // Exclude THIS file. It declares the forbidden patterns as
+            // string literals, so it necessarily contains every token
+            // it forbids; comment-stripping does not touch string
+            // literals. Before the adapter moved into `src/test` the
+            // fitness sat outside the scanned package and the
+            // self-trip was impossible — widening the scan to cover the
+            // adapter's new home created it.
+            .filterNot { it.fileName.toString() == "ProbeExecutionProtocolFitnessTest.kt" }
+            .also { found ->
+                // Fail-closed on a VACUOUS scan. This guard's own
+                // directory survives even when the adapter does not:
+                // the guard itself lives in it. So "a directory
+                // existed" is not evidence that there was anything to
+                // inspect, and asserting over zero files passes
+                // vacuously -- a green that proves nothing. The
+                // adapter having been deleted is exactly the event
+                // that must be refused.
+                if (found.isEmpty()) {
+                    error(
+                        "pipeline-application adapter sources are absent: " +
+                            "${present.joinToString { it.toString() }} contains no adapter " +
+                            "file other than this guard",
+                    )
+                }
+            }
     }
 
     /** Comments removed, so the file's own historical KDoc cannot self-trigger. */

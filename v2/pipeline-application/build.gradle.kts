@@ -201,7 +201,15 @@ dependencies {
     implementation(project(":pipeline-output"))
     implementation(project(":pipeline-output-store"))
     implementation(project(":pipeline-event-harness"))
-    implementation(project(":test-harness"))
+    // ADR-PK-DF-002 H0/R1 (2026-10-17): `:test-harness` was an `implementation`
+    // dependency of the SHIPPED module, so QA scaffolding was compiled into
+    // pipeline-application.jar. Measured: nothing in `src/main` referenced it
+    // except InProcessProductProbeExecutor, which no runtime path loads -- it has
+    // no ServiceLoader registration and no ProbeExecutorContributor implementation
+    // exists. That class moved to `src/test`, so the dependency is test-only and is
+    // declared as such. `:pipeline-event-harness` above stays `implementation`:
+    // `pipeline events verify` is a public feature that needs it at runtime.
+    testImplementation(project(":test-harness"))
     implementation(project(":pipeline-scripting-kotlin24"))
     implementation(project(":pipeline-scripting-api"))
     implementation(project(":pipeline-step-sdk:api"))

@@ -49,15 +49,40 @@ import kotlinx.coroutines.runBlocking
  * changes with it, and `PipelineRule` is the single place that
  * documents the contract.
  *
- * ## Discovery
+ * ## Discovery — this executor is NOT discovered
  *
- * The harness's [ProbeExecutorDiscovery] uses
- * `ServiceLoader.load(ProbeExecutorContributor::class.java)` to
- * locate the [contributor] registered in
- * `META-INF/services/dev.rubentxu.pipeline.v2.harness.cycle.ProbeExecutorContributor`.
- * When the cycle runs with `:pipeline-application` on the
- * classpath, this executor is used; without it, the harness falls
- * back to the default and HF1 probes reach `BlockedExternal`.
+ * **Measured 2026-10-17, and this section previously said the
+ * opposite.** The harness's [ProbeExecutorDiscovery] resolves via
+ * `ServiceLoader.load(ProbeExecutorContributor::class.java)`. As of
+ * that measurement there is **no `ProbeExecutorContributor`
+ * implementation anywhere in the repository** and **no
+ * `META-INF/services/dev.rubentxu.pipeline.v2.harness.cycle.ProbeExecutorContributor`
+ * file** — `resolve()` therefore takes its `0 ->` branch and
+ * returns the harness default, whose HF1 outcome is
+ * `BlockedExternal`.
+ *
+ * So the previous claim ("when the cycle runs with
+ * `:pipeline-application` on the classpath, this executor is used")
+ * described an intended seam that was never wired. Nothing ran this
+ * class in production; it shipped inside the distribution JAR and was
+ * constructed only by its own tests.
+ *
+ * Consequences, stated so no reader infers a guarantee from this file:
+ *
+ * - HF1 does **not** execute for real through `CycleCli` today. Any
+ *   future claim that it does requires a contributor registration,
+ *   not this class.
+ * - The `RunOutcome -> ProbeOutcome` mapping below is covered
+ *   adversarially by `InProcessProductProbeExecutorTest` and is
+ *   retained on that basis alone.
+ * - It now lives in `src/test` (moved out of `src/main` under
+ *   ADR-PK-DF-002 H0/R1). Shipping QA scaffolding in the consumer
+ *   binary was the defect; the class was dead in that JAR.
+ *
+ * Wiring the contributor was deliberately **not** done as part of
+ * that move: it would re-create the runtime coupling that the same
+ * ADR removes, and HF1-as-real-run is not a guarantee any current
+ * receipt claims.
  *
  * ## HF0 delegation
  *

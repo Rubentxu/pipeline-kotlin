@@ -68,41 +68,79 @@ class ExitVerdictTest {
     inner class ClassifyingRefusals {
 
         @Test
-        fun `a no-evidence refusal routes to NoEvidence with exit 1`() {
+        fun `a NoProbesSucceeded refusal routes to NoEvidence with exit 1`() {
+            // BQ4 v2 (typed refactor): the cycle-level "no probe
+            // succeeded" refusal is now its own [CycleState.Refused.NoProbesSucceeded]
+            // case. The [ExitVerdict] projection matches on the
+            // typed carrier, NOT on a `reason.startsWith("no probe
+            // succeeded")` string match. A future Refused case
+            // forces both ends to grow at compile time.
             val verdict = ExitVerdict.from(
-                CycleState.Refused("no probe succeeded: cycle observed zero verified outcomes"),
+                CycleState.Refused.NoProbesSucceeded(observedCount = 0),
+            )
+            assertTrue(verdict is ExitVerdict.Refusal.NoEvidence)
+            assertEquals(1, verdict.exitCode)
+            assertTrue((verdict as ExitVerdict.Refusal.NoEvidence).reason.contains("no probe succeeded"))
+        }
+
+        @Test
+        fun `a ProbeNoEvidence refusal also routes to NoEvidence with exit 1`() {
+            // The per-probe no-evidence signal: a single probe
+            // returned [ProbeOutcome.NoEvidence]. The cycle
+            // refused at the probe boundary, not at
+            // AllProbesObserved. The projection distinguishes the
+            // two via the typed carrier.
+            val verdict = ExitVerdict.from(
+                CycleState.Refused.ProbeNoEvidence(evidenceRef = "p-1"),
             )
             assertTrue(verdict is ExitVerdict.Refusal.NoEvidence)
             assertEquals(1, verdict.exitCode)
         }
 
         @Test
-        fun `an other-commit refusal routes to OtherCommit with exit 1`() {
+        fun `a ProbeOtherCommit refusal routes to OtherCommit with exit 1`() {
             val verdict = ExitVerdict.from(
-                CycleState.Refused("other commit: cycle expected 0123456789abcdef, runner saw fedcba9876543210"),
+                CycleState.Refused.ProbeOtherCommit(
+                    evidenceRef = "p-1",
+                    observed = "fedcba9876543210fedcba9876543210fedcba98",
+                ),
             )
             assertTrue(verdict is ExitVerdict.Refusal.OtherCommit)
             assertEquals(1, verdict.exitCode)
         }
 
         @Test
-        fun `an UnsupportedFidelity refusal routes to UnsupportedFidelity with exit 64`() {
+        fun `a ProbeUnsupportedFidelity refusal routes to UnsupportedFidelity with exit 64`() {
             // Distinct exit code: 64 vs 1. The previous shape mapped
             // every Refused to 1 unless the reason started with the
             // literal "UnsupportedFidelity". A future "other commit"
             // refusal that happens to begin with that prefix would
             // silently misroute. The typed carrier makes that impossible.
             val verdict = ExitVerdict.from(
-                CycleState.Refused("UnsupportedFidelity: HF2 not supported in this build"),
+                CycleState.Refused.ProbeUnsupportedFidelity(evidenceRef = "p-1", fidelity = "HF2"),
             )
             assertTrue(verdict is ExitVerdict.Refusal.UnsupportedFidelity)
             assertEquals(64, verdict.exitCode)
         }
 
         @Test
+        fun `a ProbeFailed refusal routes to Generic with exit 1, reason preserved`() {
+            val verdict = ExitVerdict.from(
+                CycleState.Refused.ProbeFailed(evidenceRef = "p-1", failureReason = "exit code 1"),
+            )
+            assertTrue(verdict is ExitVerdict.Refusal.Generic)
+            assertEquals(1, verdict.exitCode)
+            val generic = verdict as ExitVerdict.Refusal.Generic
+            assertTrue(
+                generic.reason.contains("p-1") && generic.reason.contains("Failed") && generic.reason.contains("exit code 1"),
+                "ProbeFailed.reason must compose the typed fields into the receipt text; got '${generic.reason}'",
+            )
+        }
+
+        @Test
         fun `a generic refusal keeps the reason verbatim and routes to Generic with exit 1`() {
             val reason = "manifest cycleId does not match --cycle-id: declared 'foo' got 'bar'"
-            val verdict = ExitVerdict.from(CycleState.Refused(reason))
+            val verdict = ExitVerdict.from(CycleState.Refused.Generic(reason))
             assertTrue(verdict is ExitVerdict.Refusal.Generic)
             assertEquals(1, verdict.exitCode)
             assertEquals(reason, (verdict as ExitVerdict.Refusal.Generic).reason)

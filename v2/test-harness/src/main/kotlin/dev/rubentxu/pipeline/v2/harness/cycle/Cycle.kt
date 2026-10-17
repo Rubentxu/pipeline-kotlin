@@ -54,7 +54,7 @@ object Cycle {
                     nextContext = context,
                 )
                 is CycleEvent.CloseRequested -> CycleOutcome.Next(
-                    nextState = CycleState.Refused(event.closeReason),
+                    nextState = CycleState.Refused.Generic(event.closeReason),
                     nextContext = context,
                 )
                 is CycleEvent.ExternalBlockerRaised -> CycleOutcome.Next(
@@ -86,52 +86,60 @@ object Cycle {
                         }
                         is ProbeOutcome.Failed ->
                             CycleOutcome.Next(
-                                nextState = CycleState.Refused(
-                                    "probe ${outcome.evidenceRef} Failed: ${outcome.reason}",
+                                nextState = CycleState.Refused.ProbeFailed(
+                                    evidenceRef = outcome.evidenceRef,
+                                    failureReason = outcome.reason,
                                 ),
                                 nextContext = context,
                             )
                         is ProbeOutcome.Skipped ->
                             CycleOutcome.Next(
-                                nextState = CycleState.Refused(
-                                    "probe ${outcome.evidenceRef} Skipped; " +
-                                        "the spec rejects a Skipped probe from " +
-                                        "advancing to Observed (the AAT or " +
-                                        "E2E has no mutation target)",
+                                nextState = CycleState.Refused.ProbeSkipped(
+                                    evidenceRef = outcome.evidenceRef,
                                 ),
                                 nextContext = context,
                             )
                         is ProbeOutcome.NotRun ->
                             CycleOutcome.Next(
-                                nextState = CycleState.Refused(
-                                    "probe ${outcome.evidenceRef} NotRun: ${outcome.reason}",
+                                nextState = CycleState.Refused.ProbeNotRun(
+                                    evidenceRef = outcome.evidenceRef,
+                                    notRunReason = outcome.reason,
                                 ),
                                 nextContext = context,
                             )
                         is ProbeOutcome.NoEvidence ->
                             CycleOutcome.Next(
-                                nextState = CycleState.Refused(
-                                    "probe ${outcome.evidenceRef} NoEvidence; " +
-                                        "the cycle cannot observe a probe " +
-                                        "that produced no observable evidence",
+                                nextState = CycleState.Refused.ProbeNoEvidence(
+                                    evidenceRef = outcome.evidenceRef,
                                 ),
                                 nextContext = context,
                             )
                         is ProbeOutcome.OtherCommit ->
                             CycleOutcome.Next(
-                                nextState = CycleState.Refused(
-                                    "probe ${outcome.evidenceRef} OtherCommit=${outcome.observed}; " +
-                                        "the manifest's source_sha is the only " +
-                                        "authoritative source identity",
+                                nextState = CycleState.Refused.ProbeOtherCommit(
+                                    // A probe that never produced a
+                                    // real evidence path (e.g. a
+                                    // refused fidelity check) has
+                                    // `evidenceRef = ""` by its
+                                    // carrier's data class init. We
+                                    // substitute a typed sentinel
+                                    // (the refused-shape tag) so the
+                                    // `require(isNotBlank)` guard
+                                    // does not fire on a refusal
+                                    // signal that legitimately has
+                                    // no path. The receipt text
+                                    // distinguishes the two via the
+                                    // typed `outcome` field.
+                                    evidenceRef = outcome.evidenceRef.ifBlank { "<refused:other-commit>" },
+                                    observed = outcome.observed,
                                 ),
                                 nextContext = context,
                             )
                         is ProbeOutcome.UnsupportedFidelity ->
                             CycleOutcome.Next(
-                                nextState = CycleState.Refused(
-                                    "probe ${outcome.evidenceRef} UnsupportedFidelity=${outcome.fidelity}; " +
-                                        "this vertical only supports the fidelities " +
-                                        "declared in CycleManifest.ALLOWED_FIDELITIES",
+                                nextState = CycleState.Refused.ProbeUnsupportedFidelity(
+                                    evidenceRef = outcome.evidenceRef.ifBlank { "<refused:${outcome.fidelity}>" },
+                                    fidelity = outcome.fidelity,
                                 ),
                                 nextContext = context,
                             )
@@ -156,12 +164,10 @@ object Cycle {
                     // a decider that allowed exitCode=0 BlockedExternal
                     // to count as success; the new accumulator
                     // makes that impossible.
-                    val succeeded = context.probeOutcomes.isNotEmpty()
-                    if (!succeeded) {
+                    val observedCount = context.probeOutcomes.size
+                    if (observedCount == 0) {
                         CycleOutcome.Next(
-                            nextState = CycleState.Refused(
-                                "AllProbesObserved but no probe succeeded",
-                            ),
+                            nextState = CycleState.Refused.NoProbesSucceeded(observedCount = 0),
                             nextContext = context,
                         )
                     } else {
@@ -172,7 +178,7 @@ object Cycle {
                     }
                 }
                 is CycleEvent.CloseRequested -> CycleOutcome.Next(
-                    nextState = CycleState.Refused(event.closeReason),
+                    nextState = CycleState.Refused.Generic(event.closeReason),
                     nextContext = context,
                 )
                 is CycleEvent.ExternalBlockerRaised -> CycleOutcome.Next(

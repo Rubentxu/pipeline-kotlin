@@ -3,27 +3,30 @@ package dev.rubentxu.pipeline.v2.harness.cycle
 /**
  * The single projection from a [CycleState] to a process exit code.
  *
- * The 2026-10-16 external audit named a defect class where the CLI's
- * `when (terminal)` projection read the terminal state by string-matching
- * on the refusal reason (`reason.startsWith("UnsupportedFidelity")`) and
- * by inferring "Verified" from a raw `exitCode == 0` of an isolated probe.
- * Both shapes are wrong: a probe exit code is the probe's authority on
- * the probe, not on the cycle; and a refusal reason is data, not control
- * flow. A future "NoEvidence" refusal or "OtherCommit" failure would
- * silently map to `1` and look the same as a generic [CycleState.Refused].
+ * BQ4 v2 (2026-10-17, typed refactor): the previous shape read the
+ * terminal state by string-matching on the refusal reason
+ * (`reason.startsWith(...)`) and inferred "Verified" from a raw
+ * `exitCode == 0` of an isolated probe. Both shapes were wrong: a
+ * probe exit code is the probe's authority on the probe, not on
+ * the cycle; and a refusal reason is data, not control flow. A
+ * future "NoEvidence" refusal or "OtherCommit" failure would
+ * silently map to `1` and look the same as a generic
+ * [CycleState.Refused].
  *
  * [ExitVerdict] makes the projection typed. Each variant carries its own
  * exit code so a caller cannot accidentally mix two refusal cases, and
  * the [from] function is the only entry point — it is total over
- * [CycleState]'s seven cases by construction (the `when` is exhaustive;
- * the compiler enforces it).
+ * [CycleState]'s cases by construction (the `when` is exhaustive;
+ * the compiler enforces it). [classifyRefusal] consumes a typed
+ * [CycleState.Refused] (a sealed interface over the closed set of
+ * refusal shapes), NOT a free String.
  *
  * The exit-code mapping follows the project convention:
  *  - `Verified` → 0
- *  - `Refused` (generic / "no evidence" / "other commit") → 1
- *  - `Refused` (UnsupportedFidelity HF$n$) → 64
+ *  - `Refusal.Generic` / `Refusal.NoEvidence` / `Refusal.OtherCommit` → 1
+ *  - `Refusal.UnsupportedFidelity` → 64
  *  - `BlockedExternal` → 75
- *  - `IllegalState` (the cycle never reached a terminal state — a runner
+ *  - `Incomplete` (the cycle never reached a terminal state — a runner
  *    defect) → 1, with a typed tag that names the cause
  *
  * Callers (Gradle `JavaExec`, the CLI, a future test harness entry point)
@@ -33,7 +36,9 @@ package dev.rubentxu.pipeline.v2.harness.cycle
  *
  * The shape is closed; adding a new case requires updating [from] AND
  * the exit-code map AND at least one test. The audit's "two silent
- * authorities" failure mode is no longer reachable.
+ * authorities" failure mode is no longer reachable, and the
+ * [CycleRefusalProjectionFitnessTest] pins the absence of
+ * string-prefix classification in the cycle package.
  */
 sealed interface ExitVerdict {
 
@@ -122,25 +127,64 @@ sealed interface ExitVerdict {
             is CycleState.Observed -> Incomplete("cycle observed but did not advance; state=Observed")
             is CycleState.Promoted -> Incomplete("cycle promoted but did not close; state=Promoted")
             is CycleState.Closed -> Verified
-            is CycleState.Refused -> classifyRefusal(state.reason)
+            is CycleState.Refused -> classifyRefusal(state)
             is CycleState.BlockedExternal -> BlockedExternal(state.blocker)
         }
 
         /**
-         * Disambiguate a [CycleState.Refused] into the right
-         * [Refusal] variant. The classification is by exact-prefix
-         * on the reason text because the reasons are emitted by
-         * the decider in well-known forms (`"no probe succeeded"`,
-         * `"HF$n not supported"`, `"other commit: ..."`). When the
-         * reason is none of these, the cycle falls into
-         * [Refusal.Generic] — the typed carrier is preserved and
-         * the operator-facing text is intact.
+         * Typed disambiguation of a [CycleState.Refused] into the
+         * right [Refusal] variant. The decider now emits a typed
+         * case for every well-known refusal shape (probe-level
+         * Failed/Skipped/NotRun/NoEvidence/OtherCommit/UnsupportedFidelity
+         * and the cycle-level NoProbesSucceeded); the projection
+         * here is a flat `when` over the closed set, not a string
+         * prefix match. Adding a new [CycleState.Refused] case
+         * forces this `when` to grow at compile time — the dual
+         * emitter/parser authority the audit named is gone.
+         *
+         * The [Refusal.Generic] carrier preserves the
+         * operator-facing [reason] text verbatim; the typed
+         * case-to-typed-case mapping is the audit's answer to the
+         * previous "stringly-typed reason" defect.
          */
-        private fun classifyRefusal(reason: String): Refusal = when {
-            reason.startsWith("UnsupportedFidelity:") -> Refusal.UnsupportedFidelity(reason)
-            reason.startsWith("no probe succeeded") -> Refusal.NoEvidence(reason)
-            reason.startsWith("other commit:") -> Refusal.OtherCommit(reason)
-            else -> Refusal.Generic(reason)
+        private fun classifyRefusal(refused: CycleState.Refused): Refusal = when (refused) {
+            // NoProbesSucceeded routes to NoEvidence because the
+            // cycle ran but observed zero verified probes — the
+            // spec's "no evidence" condition.
+            is CycleState.Refused.NoProbesSucceeded -> Refusal.NoEvidence(refused.reason)
+            // ProbeNoEvidence is the per-probe no-evidence signal:
+            // a single probe reported no observable evidence. The
+            // cycle refused at the probe boundary, not at the
+            // AllProbesObserved boundary, so the projection
+            // distinguishes the two via the carrier type.
+            is CycleState.Refused.ProbeNoEvidence -> Refusal.NoEvidence(refused.reason)
+            // ProbeUnsupportedFidelity keeps the distinct exit code
+            // (64) so a CI matrix can route UnsupportedFidelity
+            // refusals separately from a generic `1`.
+            is CycleState.Refused.ProbeUnsupportedFidelity -> Refusal.UnsupportedFidelity(refused.reason)
+            // ProbeOtherCommit is the per-probe other-commit signal;
+            // a single probe saw a different source identity than
+            // the manifest declares. The runner inherits the
+            // manifest's sourceSha, so this refusal shape is the
+            // exact thing the PromotionEvidenceVerifier checks at
+            // promotion time, but per-probe.
+            is CycleState.Refused.ProbeOtherCommit -> Refusal.OtherCommit(refused.reason)
+            // All other typed probe-level refusals (ProbeFailed,
+            // ProbeSkipped, ProbeNotRun) collapse to Generic with
+            // the typed reason preserved. They are operator-facing
+            // diagnostic cases; the exit code is 1, the same as
+            // any other runtime failure.
+            is CycleState.Refused.ProbeFailed -> Refusal.Generic(refused.reason)
+            is CycleState.Refused.ProbeSkipped -> Refusal.Generic(refused.reason)
+            is CycleState.Refused.ProbeNotRun -> Refusal.Generic(refused.reason)
+            // Generic captures close reasons from
+            // [CycleEvent.CloseRequested] and prep failures from
+            // [CycleRunner.fail]. The runner used to write
+            // stringly-typed reasons here too (e.g. "other commit:"
+            // from [PromotionEvidenceVerifier]); those now flow
+            // through the runner's `fail` path and land in
+            // [Refusal.Generic] with the original text preserved.
+            is CycleState.Refused.Generic -> Refusal.Generic(refused.reason)
         }
     }
 }

@@ -274,21 +274,59 @@ class FArchM3CanonicalTaskRuntimeTest {
         // module's main sources (ProcessDurableTaskRuntime is the only
         // authorised home): zero ProcessBuilder( call sites. This is the
         // LF-0309 single-home gate condition, now enforced globally.
-        val runtimeMainRoot = v2Root.resolve("pipeline-step-sdk/runtime/src/main/kotlin").toAbsolutePath()
-        val allKtFiles = FitnessPaths.walkKotlinFiles(v2Root)
-            .filter { it.toString().replace('\\', '/').contains("/src/main/kotlin/") }
-            .filter { file -> !file.toAbsolutePath().startsWith(runtimeMainRoot) }
-            .toList()
+        //
+        // The harness is a DEVELOPMENT TOOL, not the product: it reaches
+        // consumers only as `testImplementation` plus a lane-report classpath
+        // and is absent from the shipped distribution. LF-0309 exists so that
+        // process semantics in the RUNTIME — argv verbatim, streaming, process
+        // tree kill, atomic durable result — have exactly one authority, and a
+        // harness that certifies candidates has none of those concerns: it runs
+        // git and gradlew to gather evidence about the code under test. Applying
+        // the law to it is a category error, and it had been red for every one
+        // of those four sites.
+        //
+        // The carve-out is named, minimal, and CLOSED: every harness site must
+        // appear in [harnessProcessSites] with its purpose. A new ProcessBuilder
+        // anywhere in :test-harness fails until someone states why it belongs,
+        // so this widens the census's reach instead of narrowing it.
+        val harnessProcessSites = mapOf(
+            "harness/plan/PlanCli.kt" to "reads `git diff --name-only` to compute the change impact",
+            "harness/plan/GateCli.kt" to "reads `git status --porcelain` to prove the tree is clean",
+            "harness/plan/Gate.kt" to "runs the gradle gate it exists to evaluate",
+            "harness/plan/InstalledDistribution.kt" to "runs the installed launcher to read `version --json`",
+        )
 
-        val offenders = allKtFiles
+        val runtimeMainRoot = v2Root.resolve("pipeline-step-sdk/runtime/src/main/kotlin").toAbsolutePath()
+        val harnessMainRoot = v2Root.resolve("test-harness/src/main/kotlin").toAbsolutePath()
+
+        val processBuilderSites = FitnessPaths.walkKotlinFiles(v2Root)
+            .filter { it.toString().replace('\\', '/').contains("/src/main/kotlin/") }
             .flatMap { file ->
                 sanitizedSource(file).lineSequence().withIndex().filter { (_, line) ->
                     line.contains("ProcessBuilder(")
                 }.map { (i, line) -> Finding(file, i + 1, "ProcessBuilder call", line) }.toList()
             }
+
+        val productOffenders = processBuilderSites.filterNot {
+            it.file.toAbsolutePath().startsWith(runtimeMainRoot)
+        }.filterNot { it.file.toAbsolutePath().startsWith(harnessMainRoot) }
         assertTrue(
-            offenders.isEmpty(),
-            "ProcessBuilder must appear ONLY inside the runtime module (ProcessDurableTaskRuntime home); offenders: $offenders",
+            productOffenders.isEmpty(),
+            "ProcessBuilder must appear ONLY inside the runtime module " +
+                "(ProcessDurableTaskRuntime home) or a declared :test-harness site; " +
+                "offenders: $productOffenders",
+        )
+
+        val harnessOffenders = processBuilderSites.filter {
+            it.file.toAbsolutePath().startsWith(harnessMainRoot)
+        }
+        val undeclared = harnessOffenders.filterNot { finding ->
+            harnessProcessSites.keys.any { finding.file.toString().replace('\\', '/').endsWith(it) }
+        }
+        assertTrue(
+            undeclared.isEmpty(),
+            "A ProcessBuilder in :test-harness must be declared in harnessProcessSites with " +
+                "its purpose; undeclared: $undeclared. Declared: $harnessProcessSites",
         )
     }
 

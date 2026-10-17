@@ -35,10 +35,10 @@ class FArchRP040DisabledTestClassificationTest {
      * a silent blind spot — the bare `@Disabled` this policy exists to catch is
      * precisely the one with no argument.
      */
-    private val ANNOTATION = Regex("""(?m)^[ \t]*@Disabled(?![\w])""")
+    private val disabledAnnotation = Regex("""(?m)^[ \t]*@Disabled(?![\w])""")
 
     /** A string literal, possibly the first of several concatenated to build a reason. */
-    private val STRING_LITERAL = Regex("""\s*"((?:[^"\\]|\\.)*)"""")
+    private val reasonLiteral = Regex("""\s*"((?:[^"\\]|\\.)*)"""")
 
     @Test
     fun `every @Disabled annotation in the test tree carries a textual reason`() {
@@ -82,7 +82,7 @@ class FArchRP040DisabledTestClassificationTest {
         // blind to reasonless @Disabled in every file whose glob literals precede
         // one. It also had no way to see an annotation that is only a string
         // fixture, which is the same confusion in the opposite direction.
-        val annotationRegex = ANNOTATION
+        val annotationRegex = disabledAnnotation
 
         val disabledWithoutReason = mutableListOf<String>()
 
@@ -104,7 +104,7 @@ class FArchRP040DisabledTestClassificationTest {
                         // Offsets are preserved by the lexer, so this indexes the
                         // real reason, not whatever happened to sit at a
                         // position the lexer had shifted.
-                        val raw = STRING_LITERAL.find(text, match.range.last + 1)
+                        val raw = reasonLiteral.find(text, match.range.last + 1)
                         if (raw == null) {
                             val line = sanitized.take(match.range.last).count { it == '\n' } + 1
                             disabledWithoutReason +=
@@ -225,8 +225,8 @@ class FArchRP040DisabledTestClassificationTest {
     private fun reasonlessAnnotations(file: Path): List<String> {
         val text = Files.readString(file)
         val sanitized = KotlinSourceSanitizer.sanitizedSource(text)
-        return ANNOTATION.findAll(sanitized)
-            .filterNot { STRING_LITERAL.find(text, it.range.last + 1) != null }
+        return disabledAnnotation.findAll(sanitized)
+            .filterNot { reasonLiteral.find(text, it.range.last + 1) != null }
             .map { annotationLine(sanitized, it.range.last) }
             .toList()
     }

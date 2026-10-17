@@ -57,8 +57,8 @@ import kotlin.io.path.readText
  * helper a given harness happens to use.
  *
  * **Known limitation.** The predicate covers the spellings listed on
- * [requiresInstalledDistribution] — three of them, the third added because the first two
- * were measured insufficient, not because three is a satisfying number. A harness that
+ * [requiresInstalledDistribution] — four of them, each added because the previous set was
+ * measured insufficient, not because four is a satisfying number. A harness that
  * obtains the distribution a fourth way is invisible here. That is not fixable by
  * enumerating harder: the mitigation is that the population is re-measured whenever a new
  * distribution helper is introduced, and that the predicate's own KDoc records which
@@ -85,7 +85,7 @@ import kotlin.io.path.readText
  * baseline   GREEN   1 selected, 1 ran, 0 skipped          (executed)
  * mutation   RED     delete @Tag("installed-contract") from RunExecutesStepsInstalledUatTest,
  *                    a tagged + enabled class that requires the distribution
- *            -> AssertionFailedError at line 202, the `untagged.isEmpty()` assertion
+ *            -> AssertionFailedError at the `untagged.isEmpty()` assertion
  *            -> the test task reported `2 executed`, so this is a real run, not cache
  * restore    GREEN   `git checkout` of the mutated file; sha256 byte-identical
  *                     (a7fb7796…d8), then the test re-executed (`1 executed`, fresh XML)
@@ -161,22 +161,35 @@ class InstalledContractTagMembershipFitnessTest {
     /**
      * True when an installed distribution is a precondition of the class.
      *
-     * Three spellings, and the third one is there because the first two were measured to be
-     * insufficient. `ObsFConsumerContinuityUatTest` builds the same install root as the
-     * installed lane does, but by splicing it — `.resolve("build").resolve("install")` — so the
-     * literal `build/install` never appears and the file was invisible to a check that looked
-     * for it. It then ran a full forked distribution pipeline inside the fast lane while this
-     * fitness reported GREEN.
+     * Four spellings, and every one after the first exists because the previous set was measured
+     * insufficient. That sequence is the argument for reading this list as unfinished.
      *
-     * The third spelling is the distribution's own `applicationName` as a code literal. It is
-     * the one token that cannot be hidden by concatenation, because naming the executable file
-     * is what "requires an installed distribution" actually means at the call site. Comments are
-     * already stripped, so a file that only *discusses* `pipelinek` in prose is not convicted —
-     * two of the three files naming it do exactly that, and the population count below stays
-     * honest.
+     * `ObsFConsumerContinuityUatTest` builds the same install root as the installed lane does,
+     * but by splicing it — `.resolve("build").resolve("install")` — so the literal `build/install`
+     * never appears and the file was invisible to a check that looked for it. It then ran a full
+     * forked distribution pipeline inside the fast lane while this fitness reported GREEN. Hence
+     * the distribution's own `applicationName` as a code literal: naming the executable file is
+     * what "requires an installed distribution" means at the call site, and it cannot be hidden
+     * by concatenation.
+     *
+     * **The fourth spelling was paid for on 2026-10-17, by this fitness catching its own author.**
+     * `ConsoleMultiOpInstallCanaryTest` was migrated off `discover()` — which throws before its
+     * own `assumeTrue` can run — onto `discoverProvenance()` + `pathOrRefuse()`, the total-then-
+     * throwing order that makes the guard reachable. That is a strictly better call shape and it
+     * still requires an installed distribution, but it stopped matching `AppBinSupport.discover(`:
+     * the predicate carried the open paren, so the new call did not fit. Comments are stripped
+     * before the scan, so the KDoc quoting the old line could not even keep it alive. The class
+     * was still tagged, and this fitness reported it as over-tagged — correctly, on the evidence
+     * it had.
+     *
+     * So the predicate keys on `AppBinSupport.discover` with no paren. All three members of that
+     * object — `discover`, `discoverProvenance`, `discoveryFor` — resolve or refuse an install root
+     * and every one of them is a precondition, so the broad token is the accurate rule rather
+     * than a loosened one. Enumerating them individually would restore exactly the brittleness
+     * that produced this incident.
      */
     private fun requiresInstalledDistribution(code: String): Boolean =
-        code.contains("AppBinSupport.discover(") ||
+        code.contains("AppBinSupport.discover") ||
             code.contains("\"$DISTRIBUTION_APPLICATION_NAME\"") ||
             INSTALL_LAUNCHER_PATTERNS.any { it.containsMatchIn(code) }
 

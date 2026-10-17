@@ -75,8 +75,7 @@ class ConsoleMultiOpInstallCanaryTest {
     fun `MULTI-1 console --frames on one opId returns that op's bytes only, not its neighbour's`(
         @TempDir root: Path,
     ) {
-        val binary = AppBinSupport.discover().toFile()
-        assumeTrue(binary.exists(), "installDist not built; run ./gradlew :pipeline-application:installDist")
+        val binary = installedLauncher().toFile()
 
         val script = root.resolve("two-op.pipeline.kts")
         Files.writeString(
@@ -135,8 +134,7 @@ class ConsoleMultiOpInstallCanaryTest {
     fun `MULTI-2 a silent step produces no frame and does not derail its follow`(
         @TempDir root: Path,
     ) {
-        val binary = AppBinSupport.discover().toFile()
-        assumeTrue(binary.exists(), "installDist not built; run ./gradlew :pipeline-application:installDist")
+        val binary = installedLauncher().toFile()
 
         // Two consecutive sh steps; the second prints something, the first prints nothing.
         // The fact that the silent step has NO frame is a contract the canary asserts.
@@ -193,8 +191,7 @@ class ConsoleMultiOpInstallCanaryTest {
     fun `MULTI-3 --follow on a sealed run exits Completed and reads back dense ordinals`(
         @TempDir root: Path,
     ) {
-        val binary = AppBinSupport.discover().toFile()
-        assumeTrue(binary.exists(), "installDist not built; run ./gradlew :pipeline-application:installDist")
+        val binary = installedLauncher().toFile()
 
         val script = root.resolve("dense-follow.pipeline.kts")
         Files.writeString(
@@ -276,6 +273,46 @@ class ConsoleMultiOpInstallCanaryTest {
     }
 
     // ------------------------------------------------------------------ helpers
+
+    /**
+     * Locate the installed launcher, SKIPPING only for the one condition a skip is honest about.
+     *
+     * Each of the three rows used to open with
+     *
+     * ```kotlin
+     * val binary = AppBinSupport.discover().toFile()
+     * assumeTrue(binary.exists(), "installDist not built; …")
+     * ```
+     *
+     * and the guard in the second line was **unreachable**. [AppBinSupport.discover] is
+     * `pathOrRefuse(discoverProvenance())`, so it throws [IllegalStateException] on `Absent`
+     * before `assumeTrue` is ever evaluated: the test reported RED exactly where it was written
+     * to report SKIP, and the message the author intended never appeared.
+     *
+     * So the order is inverted — the total function first, the throwing conversion second —
+     * and the skip narrows to `Absent` alone:
+     *
+     * ```text
+     * Absent            -> SKIP   the lane's own precondition was not met; nothing is claimed
+     * Stale             -> RED    a distribution from another commit must not pass silently
+     * Unattributed      -> RED    ditto — that is the whole point of the sealed ADT
+     * Current           -> run    the binary is the one this checkout built
+     * ```
+     *
+     * The asymmetry is the point. A missing distribution is an unmet precondition and belongs
+     * in SKIP. A *stale* or *unattributed* one is a real defect — it is precisely the
+     * wrong-build hazard `Discovery` was introduced to expose — so it still refuses loudly
+     * through [AppBinSupport.pathOrRefuse] instead of being absorbed by the assumption. A bare
+     * `binary.exists()` could not tell those two apart; it did not even get to run.
+     */
+    private fun installedLauncher(): Path {
+        val discovery = AppBinSupport.discoverProvenance()
+        assumeTrue(
+            discovery !is AppBinSupport.Discovery.Absent,
+            "installDist not built; run ./gradlew :pipeline-application:installDist",
+        )
+        return AppBinSupport.pathOrRefuse(discovery)
+    }
 
     private data class Outcome(val exit: Int, val stdout: String, val stderr: String)
 

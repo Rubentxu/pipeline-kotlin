@@ -51,6 +51,14 @@ fun interface ExecutionOutputSink {
  * [timedOut] (watchdog killed the process tree after [TaskExecutionRequest.timeoutMs]),
  * [cancelled] (external cancellation), or neither (the process exited on
  * its own with [exitCode]).
+ *
+ * The booleans are public because the runtime writes them; consumers MUST NOT
+ * read them directly. The single source of truth for "did this task succeed"
+ * is [decideTaskTerminal] + [isSuccessFromDecision] in `TaskTerminalDecision.kt`,
+ * which keeps the sealed ADT (`TaskTerminalDecision.Exited`/`TimedOut`/`Cancelled`)
+ * as the only classification shape. `TaskTerminalDecisionFitnessTest` enforces
+ * that no `.kt` source under `pipeline-application/src/main` reads
+ * `.timedOut` / `.cancelled` outside the decider.
  */
 data class TaskExecutionResult(
     val exitCode: Int,
@@ -65,8 +73,6 @@ data class TaskExecutionResult(
         }
         require(!(timedOut && cancelled)) { "A result cannot be both timedOut and cancelled" }
     }
-
-    val succeeded: Boolean get() = !timedOut && !cancelled && exitCode == 0
 }
 
 /**

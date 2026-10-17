@@ -27,7 +27,7 @@ class RecordingDurableTaskRuntimeTest {
         val result = runtime.executeBlocking(request())
 
         assertEquals(0, result.exitCode)
-        assertTrue(result.succeeded)
+        assertTrue(isSuccessFromDecision(decideTaskTerminal(result)))
         assertEquals(1, runtime.dispatchCount())
     }
 
@@ -76,13 +76,25 @@ class RecordingDurableTaskRuntimeTest {
     }
 
     @Test
-    fun `succeeded is false for timeout cancel and nonzero exits`() {
-        assertTrue(!TaskExecutionResult(exitCode = 1, startedAtEpochMs = 0, endedAtEpochMs = 1).succeeded)
+    fun `isSuccessFromDecision returns false for timeout cancel and nonzero exits`() {
         assertTrue(
-            !TaskExecutionResult(exitCode = 0, timedOut = true, startedAtEpochMs = 0, endedAtEpochMs = 1).succeeded
+            !isSuccessFromDecision(
+                decideTaskTerminal(TaskExecutionResult(exitCode = 1, startedAtEpochMs = 0, endedAtEpochMs = 1)),
+            ),
         )
         assertTrue(
-            !TaskExecutionResult(exitCode = 0, cancelled = true, startedAtEpochMs = 0, endedAtEpochMs = 1).succeeded
+            !isSuccessFromDecision(
+                decideTaskTerminal(
+                    TaskExecutionResult(exitCode = 0, timedOut = true, startedAtEpochMs = 0, endedAtEpochMs = 1),
+                ),
+            ),
+        )
+        assertTrue(
+            !isSuccessFromDecision(
+                decideTaskTerminal(
+                    TaskExecutionResult(exitCode = 0, cancelled = true, startedAtEpochMs = 0, endedAtEpochMs = 1),
+                ),
+            ),
         )
     }
 

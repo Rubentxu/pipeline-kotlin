@@ -38,9 +38,9 @@ class CycleRunnerTest {
     private class ScriptedExecutor(private val outcomes: List<ProbeOutcome>) : ProbeExecutor(
         cycleDir = Path.of("/nonexistent"),
     ) {
-        override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome {
+        override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeExecutor.Companion.ProbeExecutionResult {
             val idx = probeIndex.getAndIncrement()
-            return outcomes[idx]
+            return ProbeExecutor.Companion.ProbeExecutionResult.AlreadyPersisted(outcomes[idx])
         }
         private val probeIndex = java.util.concurrent.atomic.AtomicInteger(0)
     }
@@ -54,8 +54,10 @@ class CycleRunnerTest {
     private class TrivialVerifiedExecutor(private val ref: String) : ProbeExecutor(
         cycleDir = Path.of("/nonexistent"),
     ) {
-        override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome =
-            ProbeOutcome.Verified(evidenceRef = ref)
+        override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeExecutor.Companion.ProbeExecutionResult =
+            ProbeExecutor.Companion.ProbeExecutionResult.AlreadyPersisted(
+                ProbeOutcome.Verified(evidenceRef = ref)
+            )
     }
 
     private fun CycleRunner.runProbesWithVerified() {
@@ -569,8 +571,10 @@ class CycleRunnerTest {
         val runner = CycleRunner(cycleId = "cyc-1", manifestPath = manifest, cycleDir = tmp.resolve("cycles/cyc-1"))
         runner.prepare()
         val outcomes = runner.runProbes(object : ProbeExecutor(Path.of("/n")) {
-            override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome =
-                ProbeOutcome.UnsupportedFidelity("HF2")
+            override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeExecutor.Companion.ProbeExecutionResult =
+                ProbeExecutor.Companion.ProbeExecutionResult.AlreadyPersisted(
+                    ProbeOutcome.UnsupportedFidelity("HF2")
+                )
         })
         assertEquals(1, outcomes.size)
         assertTrue(outcomes[0] is ProbeOutcome.UnsupportedFidelity)
@@ -603,8 +607,10 @@ class CycleRunnerTest {
         val runner = CycleRunner(cycleId = "cyc-1", manifestPath = manifest, cycleDir = tmp.resolve("cycles/cyc-1"))
         runner.prepare()
         runner.runProbes(object : ProbeExecutor(Path.of("/n")) {
-            override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome =
-                ProbeOutcome.BlockedExternal("", "harness verdict missing")
+            override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeExecutor.Companion.ProbeExecutionResult =
+                ProbeExecutor.Companion.ProbeExecutionResult.AlreadyPersisted(
+                    ProbeOutcome.BlockedExternal("", "harness verdict missing")
+                )
         })
         val state = runner.state
         assertTrue(state is CycleState.BlockedExternal) {

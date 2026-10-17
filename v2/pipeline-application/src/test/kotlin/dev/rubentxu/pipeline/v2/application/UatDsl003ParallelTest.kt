@@ -18,6 +18,7 @@ import dev.rubentxu.pipeline.v2.events.StepFinished
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.Disabled
@@ -57,6 +58,7 @@ import dev.rubentxu.pipeline.v2.application.support.OwnedSubprocess
  * P6 (parallel replay/reuse semantics) is a durable-policy question and is explicitly
  * NOT PART OF E-EM-11 EVENT CLOSURE; no reuse guarantee is asserted here.
  */
+@Tag("installed-contract")
 @Timeout(180)
 class UatDsl003ParallelTest {
 

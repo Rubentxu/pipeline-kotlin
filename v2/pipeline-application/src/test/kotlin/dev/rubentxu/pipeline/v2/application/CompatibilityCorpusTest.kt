@@ -56,6 +56,7 @@ import java.util.concurrent.TimeUnit
  * Fixtures use the public `StageScope.sh` options to preserve their declared
  * script-block semantics through compilation and execution.
  */
+@Tag("installed-contract")
 @Timeout(value = 600, unit = TimeUnit.SECONDS)
 @Tag("release-scale")
 class CompatibilityCorpusTest {

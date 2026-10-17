@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
@@ -56,6 +57,7 @@ import java.nio.file.Path
  * plaintext by design, and secret-bearing environment belongs to
  * `withCredentials` / `CredentialScope`, which is RP7-ASX territory, not S3.2.
  */
+@Tag("installed-contract")
 @Timeout(300)
 class S3EnvironmentSemanticWitnessTest {
 

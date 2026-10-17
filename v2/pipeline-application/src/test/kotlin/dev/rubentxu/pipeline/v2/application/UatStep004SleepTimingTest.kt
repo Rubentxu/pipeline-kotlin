@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.Disabled
@@ -21,6 +22,7 @@ import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
  * UAT-STEP-004: sleep timing
  * Tests that sleep blocks for at least N seconds and emits timing.
  */
+@Tag("installed-contract")
 @Disabled("migrated-pending")
 @Timeout(120)
 class UatStep004SleepTimingTest {

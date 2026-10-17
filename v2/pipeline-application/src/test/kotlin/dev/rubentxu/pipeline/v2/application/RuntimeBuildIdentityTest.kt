@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 
 /**
@@ -34,6 +35,7 @@ import org.junit.jupiter.api.Test
  * executable; a unit test that only reads the same object the runtime reads cannot prove the
  * shipped bytes answer the question.
  */
+@Tag("installed-contract")
 class RuntimeBuildIdentityTest {
 
     @Test
@@ -88,6 +90,7 @@ class RuntimeBuildIdentityTest {
  * checkout's own HEAD. If the build stopped writing the commit, or the resource stopped
  * being packaged, this fails where the unit test above would still pass.
  */
+@Tag("installed-contract")
 class BuildProvenanceIsReportedByTheInstalledBinaryTest {
 
     private fun installedBinary(repoRoot: Path): Path {

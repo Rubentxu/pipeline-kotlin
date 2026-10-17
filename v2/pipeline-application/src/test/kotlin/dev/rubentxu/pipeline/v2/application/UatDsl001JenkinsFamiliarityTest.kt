@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
@@ -43,6 +44,7 @@ import java.time.Duration
  * This test validates that the full DSL grammar produces a parseable
  * event stream with all M2-R1 event kinds.
  */
+@Tag("installed-contract")
 @Timeout(120)
 class UatDsl001JenkinsFamiliarityTest {
 

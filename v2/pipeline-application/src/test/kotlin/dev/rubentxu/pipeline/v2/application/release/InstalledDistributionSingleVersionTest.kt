@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.util.jar.JarFile
@@ -66,6 +67,7 @@ import java.util.jar.JarFile
  * is not part of `check`. A skipped row is reported, never silently green, and the
  * release gate runs it with the distribution present.
  */
+@Tag("installed-contract")
 class InstalledDistributionSingleVersionTest {
 
     /**

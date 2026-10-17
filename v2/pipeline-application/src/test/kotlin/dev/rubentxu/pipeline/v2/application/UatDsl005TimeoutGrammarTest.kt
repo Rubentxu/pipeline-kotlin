@@ -16,6 +16,7 @@ import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.TimeoutScheduled
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.Disabled
@@ -36,6 +37,7 @@ import dev.rubentxu.pipeline.v2.application.support.OwnedSubprocess
  * and validates that RetryAttemptStarted/RetryAttemptFinished and
  * TimeoutScheduled events are emitted.
  */
+@Tag("installed-contract")
 @Timeout(120)
 class UatDsl005TimeoutGrammarTest {
 

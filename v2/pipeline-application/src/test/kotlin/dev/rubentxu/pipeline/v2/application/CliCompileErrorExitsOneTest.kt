@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Path
@@ -28,6 +29,7 @@ import java.util.concurrent.TimeUnit
  *
  * Uses the existing `99-broken-compilation.pipeline.kts` fixture.
  */
+@Tag("installed-contract")
 @Timeout(value = 120, unit = TimeUnit.SECONDS)
 class CliCompileErrorExitsOneTest {
 

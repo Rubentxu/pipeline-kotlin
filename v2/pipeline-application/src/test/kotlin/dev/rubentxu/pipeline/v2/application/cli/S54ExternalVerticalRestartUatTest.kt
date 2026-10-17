@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
@@ -52,6 +53,7 @@ import java.time.Duration
  * `UndecodableEventRecordException` instead of emitting a continuation, and part 1's resume cannot
  * start because there is no token to resume from.
  */
+@Tag("installed-contract")
 @DisplayName("S5.4 — dos procesos externos, un cursor durable, y el rechazo cruza el frontera")
 @Timeout(10, unit = TimeUnit.MINUTES)
 class S54ExternalVerticalRestartUatTest {

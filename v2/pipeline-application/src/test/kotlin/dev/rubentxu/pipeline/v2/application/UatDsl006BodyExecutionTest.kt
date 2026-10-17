@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.Disabled
@@ -40,6 +41,7 @@ import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
  *
  * @Timeout 120s per test (UAT with real process spawn)
  */
+@Tag("installed-contract")
 @Disabled("migrated-pending")
 @Timeout(120)
 class UatDsl006BodyExecutionTest {

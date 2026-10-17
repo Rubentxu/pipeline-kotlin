@@ -49,7 +49,7 @@ internal fun adjudicateEvidence(
     return selected.suites
         .filter { it.filter in executed }
         .associate { suite ->
-            suite.filter to EvidenceReader.SuiteEvidence(
+            suite.filter to EvidenceReader.SuiteEvidence.WithManifest(
                 xml = Path.of("/nonexistent/${suite.filter}.xml"),
                 manifest = EvidenceManifest(
                     className = suite.filter,

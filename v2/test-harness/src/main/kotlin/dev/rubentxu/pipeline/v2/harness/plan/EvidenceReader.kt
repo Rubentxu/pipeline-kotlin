@@ -55,15 +55,38 @@ object EvidenceReader {
 
     /**
      * The XML + sidecar evidence for a single suite.
-     * [xml] is the JUnit XML path; [manifest] is the
-     * [EvidenceManifest] (null when the sidecar is
-     * missing or malformed). The gate refuses when
-     * [manifest] is null.
+     *
+     * The previous shape was a `data class SuiteEvidence(val xml, val manifest: EvidenceManifest?)`
+     * where the nullable [manifest] meant "no sidecar OR malformed sidecar". That conflated two
+     * distinct failure modes and a single operator-facing refusal message ("sidecar (EvidenceManifest
+     * JSON)"). A missing sidecar is fixed by enabling the sidecar writer; a malformed sidecar is
+     * fixed by fixing the writer. The sealed ADT names each case so [ImpactResolver.adjudicate]
+     * can emit the right [SelectionRefusal] and the operator gets a precise remediation.
      */
-    data class SuiteEvidence(
-        val xml: Path,
-        val manifest: EvidenceManifest?,
-    )
+    sealed interface SuiteEvidence {
+        /** The JUnit XML for this suite, regardless of sidecar state. */
+        val xml: Path
+
+        /** The XML passed the gates and the sidecar loaded as a valid [EvidenceManifest]. */
+        data class WithManifest(
+            override val xml: Path,
+            val manifest: EvidenceManifest,
+        ) : SuiteEvidence
+
+        /** The XML passed the gates but no sidecar JSON file exists at the expected path. */
+        data class MissingSidecar(
+            override val xml: Path,
+        ) : SuiteEvidence
+
+        /**
+         * The XML passed the gates but the sidecar JSON exists and failed to parse as a valid
+         * [EvidenceManifest]. The malformed carrier's [reason] is preserved for the operator.
+         */
+        data class MalformedSidecar(
+            override val xml: Path,
+            val reason: String,
+        ) : SuiteEvidence
+    }
 
     /**
      * Read every `TEST-*.xml` in [resultsDir] and
@@ -82,20 +105,27 @@ object EvidenceReader {
                 if (name.startsWith("TEST-") && name.endsWith(".xml")) {
                     val className = suiteClassNameFrom(entry) ?: continue
                     val sidecar = EvidenceManifest.sidecarFor(entry)
-                    val manifest = if (Files.isRegularFile(sidecar)) {
-                        try {
-                            EvidenceManifest.load(sidecar)
+                    out[className] = when {
+                        !Files.isRegularFile(sidecar) -> SuiteEvidence.MissingSidecar(xml = entry)
+                        else -> try {
+                            SuiteEvidence.WithManifest(
+                                xml = entry,
+                                manifest = EvidenceManifest.load(sidecar),
+                            )
                         } catch (ex: Exception) {
-                            // Malformed sidecar: refuse on
-                            // IncompleteEvidence. The
-                            // reader does not invent a
-                            // default.
-                            null
+                            // Malformed sidecar: the typed
+                            // [MalformedSidecar] case
+                            // carries the exception's
+                            // message so the operator
+                            // sees a precise remediation
+                            // rather than a generic
+                            // "sidecar is wrong".
+                            SuiteEvidence.MalformedSidecar(
+                                xml = entry,
+                                reason = ex.message ?: ex::class.simpleName ?: "parse error",
+                            )
                         }
-                    } else {
-                        null
                     }
-                    out[className] = SuiteEvidence(xml = entry, manifest = manifest)
                 }
             }
         }

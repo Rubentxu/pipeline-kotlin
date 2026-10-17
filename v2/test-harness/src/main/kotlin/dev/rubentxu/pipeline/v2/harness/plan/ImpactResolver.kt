@@ -256,22 +256,23 @@ object ImpactResolver {
             }
             for (suite in selected.suites) {
                 val evidence = executedSuites[suite.filter]
-                when {
-                    evidence == null -> {
+                when (evidence) {
+                    null -> {
                         add(SelectionRefusal.SelectedButNotRun(suite.filter))
                     }
-                    evidence.manifest == null -> {
-                        // The XML exists and passes the
-                        // gates, but the sidecar is
-                        // missing or malformed. H1
-                        // mandate: "Datos incompletos →
-                        // Refused, no passed".
+                    is EvidenceReader.SuiteEvidence.MissingSidecar -> {
                         add(SelectionRefusal.IncompleteEvidence(
                             suite = suite.filter,
                             missingField = "sidecar (EvidenceManifest JSON)",
                         ))
                     }
-                    else -> {
+                    is EvidenceReader.SuiteEvidence.MalformedSidecar -> {
+                        add(SelectionRefusal.MalformedSidecar(
+                            suite = suite.filter,
+                            reason = evidence.reason,
+                        ))
+                    }
+                    is EvidenceReader.SuiteEvidence.WithManifest -> {
                         val m = evidence.manifest
                         if (m.sourceCommit != expectedCommit) {
                             add(SelectionRefusal.StaleBinary(

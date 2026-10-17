@@ -140,8 +140,27 @@ sealed interface SelectionRefusal {
         val required: Set<String>,
     ) : SelectionRefusal
 
-    /** A required suite has no runnable target in the policy. Action: restore the suite binding. */
-    data class MissingSuite(val capability: String, val suite: String) : SelectionRefusal
+    /**
+     * A required suite has no runnable target in the policy. Action: restore the suite binding.
+     *
+     * The previous shape was a single `data class MissingSuite(val capability, val suite)` with
+     * the `suite` field receiving the placeholder string `<no suite bound>` when the capability
+     * was unbound. The placeholder was a stringly-typed-state defect: the consumer at
+     * `GateCli.describe` printed the literal verbatim, and a typo at the resolver site silently
+     * misrouted the absence. The new shape is a sealed interface with two typed cases:
+     * `Unbound` carries no `suite` field because there is no value to carry; `Bound` carries
+     * the suite the binding named (future use).
+     */
+    sealed interface MissingSuite : SelectionRefusal {
+        val capability: String
+
+        /** The capability has no suite bound at all. Distinct from `Bound` because the operator
+         *  action is different: add a binding, not fix a named one. */
+        data class Unbound(override val capability: String) : MissingSuite
+
+        /** A suite was named by the binding but is not runnable (future case). */
+        data class Bound(override val capability: String, val suite: String) : MissingSuite
+    }
 
     /** The evidence names a suite that the plan selected but that was not executed. */
     data class SelectedButNotRun(val suite: String) : SelectionRefusal

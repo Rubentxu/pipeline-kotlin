@@ -232,8 +232,12 @@ object GateCli {
     private fun describe(refusal: SelectionRefusal): String = when (refusal) {
         is SelectionRefusal.UnclassifiedPath ->
             "unclassified production path ${refusal.path}: add a catalogue row or remove the file"
-        is SelectionRefusal.MissingSuite ->
-            "capability ${refusal.capability} has no suite bound (${refusal.suite})"
+        is SelectionRefusal.MissingSuite -> when (refusal) {
+            is SelectionRefusal.MissingSuite.Unbound ->
+                "capability ${refusal.capability} has no suite bound"
+            is SelectionRefusal.MissingSuite.Bound ->
+                "capability ${refusal.capability} has an unrunnable suite bound: ${refusal.suite}"
+        }
         is SelectionRefusal.SelectedButNotRun ->
             "suite ${refusal.suite} was selected but produced no clean evidence"
         is SelectionRefusal.SuiteDidNotRun ->

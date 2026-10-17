@@ -149,11 +149,22 @@ sealed interface SelectionRefusal {
      * is the union of every contract's `minFidelity`
      * required by the change; a suite that ran at a
      * lower fidelity discharged nothing.
+     *
+     * BQ4 v4 (typed fidelity refusal, 2026-10-17): the
+     * previous shape was `observed: String` + `required: Set<String>`,
+     * derived from the sidecar's `hf` String and the plan's
+     * `Set<Fidelity>` mapped through `it.name`. The dual
+     * shape (typed source mapped to String, then compared
+     * with `String in Set<String>`) let a typo or a future
+     * HF name silently misroute. The carrier is now the
+     * [Fidelity] enum on both sides; the [EvidenceManifest]
+     * init validates the wire format and exposes a typed
+     * `fidelity` view the resolver consumes directly.
      */
     data class InsufficientFidelity(
         val suite: String,
-        val observed: String,
-        val required: Set<String>,
+        val observed: Fidelity,
+        val required: Set<Fidelity>,
     ) : SelectionRefusal
 
     /**

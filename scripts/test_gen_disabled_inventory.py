@@ -168,5 +168,95 @@ class ExtractionStillWorks(unittest.TestCase):
         self.assertIn("brand new contract", entries[0][0])
 
 
+
+class BurnDownSnapshotsAreHistoricalOnlyWhileTheBurnDownIsClosed(unittest.TestCase):
+    """The derived rule for ~100 legacy counter snapshots.
+
+    These rows assert how many legacy keys REMAINED at a named gate of the S2
+    burn-down. That is a statement about a migration in progress, so it can
+    only be archived history while the migration is finished. The rule is
+    anchored to `LEGACY_PLUGIN_IDS` being empty, read from source, precisely
+    so that "finished" is checked rather than assumed from a method name.
+    """
+
+    SNAPSHOT = "`counters are 7-7-7 and legacy dispatcher source is physically removed`"
+
+    def test_snapshot_is_historical_while_the_burn_down_is_closed(self) -> None:
+        """Claim: a burn-down counter snapshot classifies as HISTORICAL.
+
+        This is the row that would otherwise silently stop firing if someone
+        deleted the rule.
+
+        Mutation: delete the BURN_DOWN_SNAPSHOT_RE branch from classify().
+        """
+        self.assertTrue(gdi.legacy_burn_down_converged(), "precondition: LEGACY_PLUGIN_IDS is empty")
+        cat, _reason, blocks = gdi.classify(UNDECLARED, self.SNAPSHOT)
+        self.assertEqual(cat, "HISTORICAL")
+        self.assertEqual(blocks, "no")
+
+    def test_rule_does_not_fire_once_the_burn_down_reopens(self) -> None:
+        """Claim: the rule is gated on the fact, not on the name.
+
+        This is the fail-closed half and it is the reason the rule exists at
+        all. If the burn-down reopens, a snapshot asserting "N residual keys"
+        describes a LIVE invariant again, and filing it as closed history
+        would hide a regression behind a green gate.
+
+        Mutation: drop the `legacy_burn_down_converged()` conjunct.
+        """
+        original = gdi.LEGACY_IDS_PATH
+        try:
+            gdi.LEGACY_IDS_PATH = "v2/does-not-exist/CanonicalCoreStepDecoder.kt"
+            cat, _reason, blocks = gdi.classify(UNDECLARED, self.SNAPSHOT)
+        finally:
+            gdi.LEGACY_IDS_PATH = original
+        self.assertEqual(cat, "UNKNOWN")
+        self.assertEqual(blocks, "yes")
+
+    def test_non_burn_down_entries_stay_untriaged(self) -> None:
+        """Claim: the rule is narrow; it does not sweep in unrelated entries.
+
+        A whole-class disable is the case most likely to be over-matched: the
+        class name says nothing about a burn-down.
+
+        Mutation: widen BURN_DOWN_SNAPSHOT_RE to match any Core* method.
+        """
+        cat, _r, _b = gdi.classify(
+            UNDECLARED, "class CoreSleepCoordinatorCharacterizationTest (whole class)"
+        )
+        self.assertEqual(cat, "UNKNOWN")
+
+    def test_live_invariant_written_during_the_burn_down_is_not_archived(self) -> None:
+        """Claim: a guard that is STILL TRUE is not filed as closed history.
+
+        "core.pwd stays absent from LEGACY_PLUGIN_IDS" and "no legacy
+        resurrection" were written at a gate and still hold today. Filing them
+        HISTORICAL would hide a regression behind a non-gating category, which
+        is worse than leaving them UNKNOWN.
+
+        Mutation: delete the LIVE_INVARIANT_RE guard from classify().
+        """
+        for live in (
+            "`G5 milestone - core dot pwd stays absent from LEGACY_PLUGIN_IDS post-S2-A9-G5`",
+            "`no legacy resurrection - irreversible G5 state holds post-S2-A6-G4`",
+        ):
+            with self.subTest(live=live):
+                cat, reason, blocks = gdi.classify(UNDECLARED, live)
+                self.assertEqual(cat, "UNKNOWN")
+                self.assertEqual(blocks, "yes")
+                self.assertIn("still live", reason)
+
+    def test_convergence_ignores_the_narrative_comments(self) -> None:
+        """Claim: keys named in COMMENTS do not count as present.
+
+        The authority file documents every removed key by name in prose. A
+        naive `in` over the raw text would report a reopened migration and
+        silently drop all ~100 entries back to UNKNOWN.
+
+        Mutation: remove the comment-stripping line in legacy_burn_down_converged().
+        """
+        self.assertTrue(gdi.legacy_burn_down_converged())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

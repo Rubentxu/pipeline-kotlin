@@ -572,6 +572,127 @@ class CycleRunnerTest {
     }
 
     @Test
+    fun `BQ4 P0 HITO 1 AAT - finalise refuses to delete a probe JSON whose body was tampered after persistence`(
+        @TempDir tmp: Path,
+    ) {
+        // The HITO 1 "AAT de evidencia falsificada que
+        // debe rechazarse" bullet in
+        // QUALITY_VALUE_ADDENDUM.md (2026-10-17) names
+        // this as a required AAT: a probe evidence
+        // file whose body has been modified after
+        // persistence (e.g. an attacker swapped the
+        // captured bytes, or a writer defect
+        // serialised a different body) MUST be
+        // refused at `finalise()` time. The runner's
+        // typed [validateEvidenceDigest] recomputes
+        // the SHA-256 of the body (minus the recorded
+        // `evidenceDigest` field) and refuses the
+        // cycle on mismatch. The cycle's deletion
+        // scope is therefore anchored to the byte
+        // content, not the file's mere presence.
+        //
+        // The test stages a real probe JSON via the
+        // TrivialVerifiedExecutor-shaped path: we
+        // take the real ProbeExecutor's
+        // `body + evidenceDigest` format, write a
+        // valid file, then mutate a single byte in
+        // the body. The runner's `finalise()` must
+        // refuse with the typed
+        // "(JSON parse failed)" or "evidenceDigest
+        // mismatch" error; the cycle dir is left
+        // intact so the operator can inspect what
+        // was tampered.
+        val dir = tmp.resolve("cycles/cyc-1")
+        val (runner, _, _) = setupPromotableRunner(tmp)
+        val aligned = CycleRunner(
+            cycleId = "cyc-1",
+            manifestPath = runner.manifestPath,
+            cycleDir = dir,
+            oracleLedger = MapOracleLedger(
+                mapOf(
+                    OracleRef.Fitness("TestRunner.fixture", ":test-harness") to
+                        setOf("0123456789abcdef0123456789abcdef01234567"),
+                ),
+            ),
+            repoRoot = tmp,
+        )
+        aligned.prepare()
+        aligned.runProbesWithVerified()
+        aligned.observeAll("abc123")
+        aligned.requestPromote(evidence = requireNotNull(aligned.manifest).replacement.evidence)
+        assertTrue(aligned.state is CycleState.Promoted) { "got ${aligned.state}" }
+        aligned.requestClose("test close")
+        assertTrue(aligned.state is CycleState.Closed) { "got ${aligned.state}" }
+
+        // Stage a fake probe JSON in the cycle's
+        // `probes/` subdir with a valid
+        // evidenceDigest field. The runner
+        // `finalise()` will iterate the subdir and
+        // call `validateEvidenceDigest` on every
+        // `.json` file.
+        val probesDir = dir.resolve("probes")
+        Files.createDirectories(probesDir)
+        val probeFile = probesDir.resolve("probe-1.json")
+        val body = """{
+  "probeId": "probe-1",
+  "contractId": "TestRunner.fixture",
+  "kind": "Verified",
+  "outcome": "Verified",
+  "exitCode": 0,
+  "evidenceRef": "<persisted>",
+  "reason": null
+}"""
+        // Compute the recorded digest the way
+        // ProbeExecutor.persist does: SHA-256 of
+        // the body bytes ending in `\n` (after the
+        // last data line) BEFORE the
+        // `,\n  "evidenceDigest":` substring.
+        val bodyBytes = (body + "\n").toByteArray()
+        val recordedDigest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(bodyBytes)
+            .joinToString("") { "%02x".format(it) }
+        Files.writeString(
+            probeFile,
+            body + ",\n  \"evidenceDigest\": \"$recordedDigest\"\n}\n",
+        )
+
+        // Sanity: the un-tampered file would
+        // validate. We then mutate a single byte
+        // in the body (the digit `0` becomes `1` in
+        // `exitCode`); the recomputed digest will
+        // mismatch the recorded one.
+        val originalText = Files.readString(probeFile)
+        val tamperedText = originalText.replace("\"exitCode\": 0", "\"exitCode\": 1")
+        assertTrue(tamperedText != originalText, "mutation must change the file")
+        Files.writeString(probeFile, tamperedText)
+
+        // BQ4 P0: finalise() MUST refuse on a
+        // tampered probe file. The error is the
+        // typed validateEvidenceDigest refusal
+        // (the body is still valid JSON, so the
+        // parser succeeds; the digest mismatch is
+        // the typed failure mode).
+        val ex = kotlin.runCatching { aligned.finalise() }.exceptionOrNull()
+        assertTrue(
+            ex is IllegalStateException &&
+                (ex.message?.contains("evidenceDigest") == true ||
+                    ex.message?.contains("modified after persistence") == true),
+            "BQ4 P0 HITO 1 AAT: finalise() MUST refuse a tampered probe evidence " +
+                "file. A regression that accepts the file (silent green) is the " +
+                "exact defect the HITO 1 audit named. Got: ${ex?.message}",
+        )
+        // The cycle dir is left intact so the
+        // operator can inspect the tampered file.
+        assertTrue(
+            Files.exists(probeFile),
+            "BQ4 P0 HITO 1 AAT: finalise() must NOT delete a tampered file " +
+                "either — the operator needs to inspect the file. The cycle " +
+                "dir (or at least the probe file) is left in place when the " +
+                "runner refuses.",
+        )
+    }
+
+    @Test
     fun `finalise deletes the cycle directory only when state is Closed`(@TempDir tmp: Path) {
         val dir = tmp.resolve("cycles/cyc-1")
         val (runner, _, _) = setupPromotableRunner(tmp)

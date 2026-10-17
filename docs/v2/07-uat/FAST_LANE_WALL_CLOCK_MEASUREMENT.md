@@ -79,7 +79,21 @@ comment recording why, so a later reader can tell a repaid debt from an oversigh
 Re-verified on the committed bytes: `tests=1 failures=0 errors=0 skipped=0`, fresh
 XML, 2 executed, exit 0.
 
-### 2. Output Plane live ingress — NOT CLASSIFIED, 4 failures, untouched
+### 2. Output Plane live ingress — 4 failures, FIXED in `1ab6cd0d`
+
+**Resolution (supersedes the classification below).** These were a live defect, not pre-existing.
+`RedactingInputStream.read`'s early-return guard sat *after* the step that refills its input buffer
+by blocking on `source.read`, so it could never fire: the pump asked for a whole 64 KiB window and
+the wrapper filled it or blocked. Moving the guard before the refill fixes all four rows. See
+[[not a memory file — see the commit]] `1ab6cd0d` for the full evidence, including the mutation
+that kills the new regression test and the assertion that had encoded the old behaviour.
+
+The original text is kept below because the *numbers* are what made the defect legible: `65536 of
+131072` is exactly one window, and a 15-byte payload committing nothing is the same fact at the other
+end of the scale.
+
+<details>
+<summary>Original triage text (superseded)</summary>
 
 | test | assertion |
 | --- | --- |
@@ -100,10 +114,13 @@ observe **nothing committed at all** or **exactly half committed**. That is a
 window/drain symptom, adjacent to the recorded Output-Plane ring and first-write
 history — stated as a lead, not as a diagnosis.
 
+</details>
+
 ## What this receipt does NOT establish
 
 - That the lane split improved the wall clock. No base-vs-head measurement exists.
-- That the 4 ingress failures are new, old, or environment-dependent.
+- That the lane is green. The 5 failures here were fixed in `e22c814f` and `1ab6cd0d`, but no
+  full-module run has been executed on the fixed bytes; the per-class evidence is scoped, not global.
 - A fix for the 29-class tail. Only where the cost is.
 - Any statement about `:installedContractTest`; this run is `-Plane=fast` only.
 - Anything about a release candidate. No RC was published; all of this is internal

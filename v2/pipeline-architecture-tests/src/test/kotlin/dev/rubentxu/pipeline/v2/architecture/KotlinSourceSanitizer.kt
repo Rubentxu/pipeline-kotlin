@@ -27,8 +27,15 @@ internal object KotlinSourceSanitizer {
      * replaced by spaces, preserving every newline and therefore every line
      * number.
      */
-    fun sanitizedSource(file: Path): String {
-        val source = Files.readString(file)
+    fun sanitizedSource(file: Path): String = sanitizedSource(Files.readString(file))
+
+    /**
+     * The [String] overload, so a caller that already holds the source does not
+     * have to materialise it on disk to lex it. Offset preservation is the
+     * load-bearing property: it is what lets a caller locate something in the
+     * sanitized form and then read the ORIGINAL bytes at the same offset.
+     */
+    fun sanitizedSource(source: String): String {
         val result = StringBuilder(source.length)
         var index = 0
         var blockCommentDepth = 0

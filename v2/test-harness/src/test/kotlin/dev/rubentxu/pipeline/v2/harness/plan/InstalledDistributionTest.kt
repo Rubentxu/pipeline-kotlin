@@ -192,7 +192,7 @@ class InstalledDistributionTest {
                 "a stale distribution must refuse"
             }
             assertEquals(
-                SelectionRefusal.StaleEvidence(expected = commit40, observed = otherCommit),
+                SelectionRefusal.StaleEvidence.Mismatched(expected = commit40, observed = otherCommit),
                 refusal!!.reasons.single { it is SelectionRefusal.StaleEvidence },
             )
         }

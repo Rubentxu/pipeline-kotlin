@@ -48,17 +48,6 @@ object ImpactResolver {
      */
     internal const val NO_SUITE_BOUND_PLACEHOLDER = "<no suite bound>"
 
-    /**
-     * Placeholder [SelectionRefusal.StaleEvidence.observed] when the
-     * installed binary reported no commit (e.g. `version --json`
-     * failed at adjudication time). The bracketed convention matches
-     * `NO_SUITE_BOUND_PLACEHOLDER`; consumer at `GateCli.describe`
-     * prints it verbatim. A future refactor would split
-     * `StaleEvidence` into `Matched` and `BinaryReportedNoCommit`
-     * cases; the constant is the intermediate state.
-     */
-    internal const val NO_OBSERVED_COMMIT_PLACEHOLDER = "<binary reported no commit>"
-
 
     /**
      * Path prefixes whose changes cannot invalidate a product guarantee.
@@ -254,11 +243,21 @@ object ImpactResolver {
         val requiredFidelities = selected.minimumFidelities.map { it.name }.toSet()
         val refusals = buildList {
             if (observedCommit != expectedCommit) {
+                // The previous shape stuffed `<binary reported no commit>` into the
+                // `observed` field of a `StaleEvidence` data class. The placeholder
+                // is now gone: a null `observedCommit` is its own typed case
+                // (`NoCommitObserved`) and a mismatched commit is `Mismatched`.
                 add(
-                    SelectionRefusal.StaleEvidence(
-                        expected = expectedCommit,
-                        observed = observedCommit ?: NO_OBSERVED_COMMIT_PLACEHOLDER,
-                    ),
+                    if (observedCommit != null) {
+                        SelectionRefusal.StaleEvidence.Mismatched(
+                            expected = expectedCommit,
+                            observed = observedCommit,
+                        )
+                    } else {
+                        SelectionRefusal.StaleEvidence.NoCommitObserved(
+                            expected = expectedCommit,
+                        )
+                    },
                 )
             }
             for (suite in selected.suites) {

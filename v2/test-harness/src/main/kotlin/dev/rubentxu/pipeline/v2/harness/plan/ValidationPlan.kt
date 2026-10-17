@@ -156,8 +156,27 @@ sealed interface SelectionRefusal {
      */
     data class SuiteDidNotRun(val suite: String, val gradleProject: String) : SelectionRefusal
 
-    /** The evidence was produced by a binary built from a different commit. */
-    data class StaleEvidence(val expected: String, val observed: String) : SelectionRefusal
+    /**
+     * The evidence was produced by a binary built from a different commit, or the binary
+     * reported no commit at all (e.g. `version --json` failed at adjudication time).
+     *
+     * The previous shape was a single `data class StaleEvidence(val expected, val observed)` with
+     * the `observed` field receiving the placeholder string `<binary reported no commit>` when the
+     * binary returned null. The placeholder was a stringly-typed-state defect: the consumer at
+     * `GateCli.describe` printed the literal verbatim, and a typo at the resolver site silently
+     * misrouted the absence. The new shape is a sealed interface with two typed cases;
+     * `NoCommitObserved` carries no `observed` field because there is no value to carry.
+     */
+    sealed interface StaleEvidence : SelectionRefusal {
+        val expected: String
+
+        /** Evidence names a different commit. */
+        data class Mismatched(override val expected: String, val observed: String) : StaleEvidence
+
+        /** The binary reported no commit at all. Distinct from `Mismatched` because the operator
+         *  action is different: the installed distribution is the problem, not the commit. */
+        data class NoCommitObserved(override val expected: String) : StaleEvidence
+    }
 }
 
 /**

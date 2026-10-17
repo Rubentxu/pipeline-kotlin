@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.harness.lanes
 
+import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Fidelity
+
 /**
  * Pure decider: a list of [LaneSpec] becomes a [Map] of [TestLane] →
  * contract ids. The mapping comes from the spec, not from heuristics.
@@ -13,10 +15,19 @@ object LanePlanner {
         // would otherwise shadow it on the minimumFidelity branch.
         LaneAccess.InstalledWithCertifier -> TestLane.ONLINE_SMOKE
         LaneAccess.Installed -> TestLane.CANDIDATE
-        LaneAccess.InProcess -> when {
-            spec.minimumFidelity >= 3 -> TestLane.RESTART
-            spec.minimumFidelity == 2 -> TestLane.INTEGRATION
-            else -> TestLane.FAST
+        LaneAccess.InProcess -> when (spec.minimumFidelity) {
+            // BQ4 v5 (typed fidelity discriminator, 2026-10-17):
+            // the previous shape was `Int` with `>= 3` and
+            // `== 2` numeric ranges. The new shape is a
+            // closed [Fidelity] enum: the `when` is
+            // exhaustive over HF0..HF6 and a future HF7
+            // forces a compile-time update here. The
+            // mapping is the same as before:
+            // HF0/HF1 -> FAST, HF2 -> INTEGRATION,
+            // HF3..HF6 -> RESTART.
+            Fidelity.HF0, Fidelity.HF1 -> TestLane.FAST
+            Fidelity.HF2 -> TestLane.INTEGRATION
+            Fidelity.HF3, Fidelity.HF4, Fidelity.HF5, Fidelity.HF6 -> TestLane.RESTART
         }
     }
 
@@ -39,10 +50,10 @@ object LanePlanner {
 
     /** Convenience: a hand-built example for tests, isolated from any real catalogue. */
     fun exampleSpecs(): List<LaneSpec> = listOf(
-        LaneSpec("unit.echo", "step.echo", 0, LaneAccess.InProcess),
-        LaneSpec("integration.sh", "step.sh", 2, LaneAccess.InProcess),
-        LaneSpec("candidate.installed", "cli.installed", 2, LaneAccess.Installed),
-        LaneSpec("restart.resume", "durable.resume", 3, LaneAccess.InProcess),
-        LaneSpec("online.smoke", "release.smoke", 2, LaneAccess.InstalledWithCertifier),
+        LaneSpec("unit.echo", "step.echo", Fidelity.HF0, LaneAccess.InProcess),
+        LaneSpec("integration.sh", "step.sh", Fidelity.HF2, LaneAccess.InProcess),
+        LaneSpec("candidate.installed", "cli.installed", Fidelity.HF2, LaneAccess.Installed),
+        LaneSpec("restart.resume", "durable.resume", Fidelity.HF3, LaneAccess.InProcess),
+        LaneSpec("online.smoke", "release.smoke", Fidelity.HF2, LaneAccess.InstalledWithCertifier),
     )
 }

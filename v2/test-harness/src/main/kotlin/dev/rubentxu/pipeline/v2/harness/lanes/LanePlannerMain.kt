@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.harness.lanes
 
+import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Fidelity
 import java.nio.file.Files
 import java.nio.file.Paths
 
@@ -102,7 +103,13 @@ internal fun realSpecsFromCatalogueForTests(): List<LaneSpec> = realSpecsFromCat
 private fun realSpecsFromCatalogue(): List<LaneSpec> {
     val catalogue = dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue
     return catalogue.CONTRACTS.map { contract ->
-        val fidelity = contract.minFidelity.ordinal
+        // BQ4 v5 (typed fidelity discriminator, 2026-10-17):
+        // the previous shape was `Int = contract.minFidelity.ordinal`
+        // and a numeric-range dispatch on the result. The new
+        // shape is a closed [Fidelity] enum; the `when` is
+        // exhaustive over HF0..HF6 and a future HF7 forces a
+        // compile-time update here and in [LanePlanner.laneFor].
+        val fidelity = contract.minFidelity
         LaneSpec(
             contractId = contract.capability,
             capability = contract.capability,
@@ -114,10 +121,10 @@ private fun realSpecsFromCatalogue(): List<LaneSpec> {
             // the harness, not the producer. The [LaneAccess] ADT
             // makes the impossible "certifier without install"
             // combination unrepresentable.
-            access = when {
-                fidelity >= 5 -> LaneAccess.InstalledWithCertifier
-                fidelity >= 2 -> LaneAccess.Installed
-                else -> LaneAccess.InProcess
+            access = when (fidelity) {
+                Fidelity.HF0, Fidelity.HF1 -> LaneAccess.InProcess
+                Fidelity.HF2, Fidelity.HF3, Fidelity.HF4 -> LaneAccess.Installed
+                Fidelity.HF5, Fidelity.HF6 -> LaneAccess.InstalledWithCertifier
             },
         )
     }

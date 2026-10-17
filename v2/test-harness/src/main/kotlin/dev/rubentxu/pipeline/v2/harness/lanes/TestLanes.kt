@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.harness.lanes
 
+import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Fidelity
+
 /**
  * Test lanes. The mapping from a contract's metadata to a [TestLane] is
  * the single source of truth for "which test runs in which lane".
@@ -82,17 +84,33 @@ sealed interface LaneAccess {
  * `ContractCatalogue` for the canonical product, an ad-hoc descriptor
  * during migration, etc.). The lane decider here is intentionally
  * ignorant of the catalogue so it can be reused and tested in isolation.
+ *
+ * BQ4 v5 (typed fidelity discriminator, 2026-10-17): the
+ * previous shape was `minimumFidelity: Int` and the planner
+ * dispatched on numeric ranges (`>= 3`, `== 2`, `>= 5`,
+ * `>= 2`). That dual shape (typed source mapped to Int,
+ * then `Int` compared) let a future HF7 silently land in
+ * `RESTART` (`>= 3`) and a stray `Int = 99` (out of band)
+ * land in `InstalledWithCertifier` (`>= 5`). The new
+ * shape is a closed [Fidelity] enum: the compiler forces
+ * the planner's `when` to be exhaustive and a future HF
+ * cannot be added without a deliberate enum extension
+ * that the fitness can pin.
  */
 data class LaneSpec(
     val contractId: String,
     val capability: String,
-    val minimumFidelity: Int,
+    val minimumFidelity: Fidelity,
     val access: LaneAccess,
 ) {
     init {
         require(contractId.isNotBlank()) { "contractId must not be blank" }
         require(capability.isNotBlank()) { "capability must not be blank" }
-        require(minimumFidelity in 0..6) { "minimumFidelity must be 0..6" }
+        // The Fidelity enum is closed (HF0..HF6); the type
+        // system already rules out every other value. The
+        // previous 0..6 range check is gone because the
+        // closed enum makes it uncompilable to construct
+        // a `LaneSpec` with a fidelity outside the set.
     }
 }
 

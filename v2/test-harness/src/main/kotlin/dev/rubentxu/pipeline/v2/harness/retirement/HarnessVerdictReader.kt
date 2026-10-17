@@ -79,8 +79,9 @@ object HarnessVerdictReader {
         val authority = requireString(source, fields, "authority")
         val candidate = requireSha256(source, fields, "candidate_sha256")
         val fp = parseFingerprint(source, fields)
-        val firstErr = listOf(path, content, proof, authority, candidate)
-            .firstOrNull { it is FieldResult.Invalid } as? FieldResult.Invalid
+        val firstErr: FieldResult.Invalid? = listOf(path, content, proof, authority, candidate)
+            .filterIsInstance<FieldResult.Invalid>()
+            .firstOrNull()
         if (firstErr != null) {
             return ParseOutcome.Malformed(source, firstErr.reason)
         }
@@ -102,8 +103,9 @@ object HarnessVerdictReader {
     private fun parseBlocked(source: String, fields: Map<String, String>): ParseOutcome {
         val path = requireString(source, fields, "path")
         val reason = requireString(source, fields, "reason")
-        val firstErr = listOf(path, reason)
-            .firstOrNull { it is FieldResult.Invalid } as? FieldResult.Invalid
+        val firstErr: FieldResult.Invalid? = listOf(path, reason)
+            .filterIsInstance<FieldResult.Invalid>()
+            .firstOrNull()
         if (firstErr != null) {
             return ParseOutcome.Malformed(source, firstErr.reason)
         }
@@ -131,8 +133,9 @@ object HarnessVerdictReader {
         val symptom = requireString(source, fpFields, "symptom")
         val type = requireString(source, fpFields, "type")
         val cause = requireString(source, fpFields, "cause")
-        val firstErr = listOf(inputDigest, symptom, type, cause)
-            .firstOrNull { it is FieldResult.Invalid } as? FieldResult.Invalid
+        val firstErr: FieldResult.Invalid? = listOf(inputDigest, symptom, type, cause)
+            .filterIsInstance<FieldResult.Invalid>()
+            .firstOrNull()
         if (firstErr != null) {
             return FingerprintResult.Invalid(firstErr.reason)
         }

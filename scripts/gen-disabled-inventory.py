@@ -77,6 +77,88 @@ CLASSIFICATION = {
     ],
 }
 
+# --------------------------------------------------------------------------
+# Derived rule: legacy burn-down counter snapshots
+# --------------------------------------------------------------------------
+#
+# ~100 of the untriaged entries assert how many legacy keys REMAINED at a
+# named gate of the S2 burn-down ("post-S2-A6-G4", "counters are 7-7-7",
+# "3 residual legacy keys remain"). Listing each one in CLASSIFICATION would
+# be a hundred exact-string rows hand-maintained by hand — the same fragile
+# shape this repository has been removing all week, and it would drift the
+# moment a method is renamed.
+#
+# They are nonetheless a single fact, and one this script can CHECK rather
+# than assume: LEGACY_PLUGIN_IDS is empty, so a counter snapshot describing
+# "N residual keys" describes a closed cycle. That is what the rule asserts,
+# and it reads the set from the source at generation time instead of trusting
+# a name.
+#
+# The rule is fail-closed by construction. If the burn-down ever reopens and
+# the set is non-empty, the rule stops firing and every snapshot it covered
+# falls back to UNKNOWN, blocking Gate-1 again — the correct outcome, because
+# a reopened migration has live invariants rather than closed history.
+
+LEGACY_IDS_PATH = (
+    "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/"
+    "CanonicalCoreStepDecoder.kt"
+)
+
+# Phrasings that only make sense as a snapshot OF a migration in progress.
+# Deliberately narrow: an entry that does not read like a burn-down counter
+# keeps its UNKNOWN status and stays a question for a human.
+BURN_DOWN_SNAPSHOT_RE = re.compile(
+    r"post-S2-[A-Z0-9]+-G\d+"            # a named (work-unit, gate) point
+    r"|residual legacy keys remain"
+    r"|counters?\s+(are|drop to)\b",
+    re.IGNORECASE,
+)
+
+BURN_DOWN_REASON = (
+    "Legacy burn-down counter snapshot. LEGACY_PLUGIN_IDS was read as EMPTY "
+    "at generation time, so the residual-key count this entry asserts "
+    "describes a closed cycle rather than a live invariant."
+)
+
+# Counter snapshots are not the only thing the burn-down left behind. Some
+# entries assert a property that is STILL TRUE today -- "core.pwd stays
+# absent from LEGACY_PLUGIN_IDS", "no legacy resurrection" -- and are pinned
+# to a gate name only because that is where they were written. Those are live
+# guards wearing a snapshot's clothes, and filing them HISTORICAL would hide a
+# regression behind a non-gating category. They stay UNKNOWN for a human.
+LIVE_INVARIANT_RE = re.compile(
+    r"stays?\s+absent"
+    r"|is\s+absent"
+    r"|no\s+legacy\s+resurrection"
+    r"|irreversible",
+    re.IGNORECASE,
+)
+
+
+def legacy_burn_down_converged() -> bool:
+    """True only while `LEGACY_PLUGIN_IDS` is empty.
+
+    The declaration is anchored to this fact, so the fact is read rather than
+    assumed. A missing or unreadable source is NOT convergence: it must fall
+    back to UNKNOWN, because silence about the set is not evidence about it.
+    """
+    path = os.path.join(ROOT, LEGACY_IDS_PATH)
+    if not os.path.isfile(path):
+        return False
+    with open(path, encoding="utf-8") as fh:
+        src = fh.read()
+    start = src.find("val LEGACY_PLUGIN_IDS")
+    if start < 0:
+        return False
+    end = src.find(")", start)
+    if end < 0:
+        return False
+    # Comments narrate the removed keys by name; only code counts.
+    body = "\n".join(
+        line for line in src[start:end].splitlines() if not line.strip().startswith("//")
+    )
+    return '"core.' not in body
+
 
 def module_of(rel: str) -> str:
     m = re.match(r"v2/([^/]+(?:/[^/]+)?)/src/test", rel)
@@ -94,6 +176,20 @@ def classify(rel: str, method: str) -> tuple:
             for meth, cat, reason, blocking in entries:
                 if meth in method:
                     return cat, reason, blocking
+    # Derived rule, evaluated AFTER the explicit table so a human declaration
+    # always wins over an inference. See the rule's comment for why it is
+    # anchored to a fact read from source rather than to the method name.
+    if BURN_DOWN_SNAPSHOT_RE.search(method) and legacy_burn_down_converged():
+        # A live guard written during the burn-down is not a snapshot of it.
+        if LIVE_INVARIANT_RE.search(method):
+            return (
+                UNTRIAGED,
+                "Asserts a property that is still live (legacy must not resurrect), not a "
+                "closed-cycle counter. It is NOT historical; it needs a human to decide "
+                "whether to keep it as MANDATORY_SUPPORTED with an updated assertion.",
+                "yes",
+            )
+        return "HISTORICAL", BURN_DOWN_REASON, "no"
     # Untriaged: fail closed. This entry blocks Gate-1 until a human declares
     # what it is, and the run below refuses to publish an inventory that hides
     # it.

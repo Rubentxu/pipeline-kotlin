@@ -179,6 +179,24 @@ open class ProbeExecutor(
         }
 
         /**
+         * Public predicate for subclasses (in other modules) that
+         * need to wrap their own [ProbeOutcome] in
+         * [ProbeExecutionResult] the same way [execute] does.
+         * The literal [PENDING_EVIDENCE_REF] stays `internal` so
+         * the runner never sees a free-form string; the predicate
+         * is the only public surface. Returning `true` means
+         * "the runner still needs to call `persist`".
+         *
+         * BQ4 P0-D follow-up (2026-10-17): the previous shape
+         * required product-side executors to read the internal
+         * constant directly, which Kotlin's module boundary
+         * correctly refused. The predicate is the public seam
+         * the protocol now exposes.
+         */
+        fun isPendingOutcome(outcome: ProbeOutcome): Boolean =
+            outcome is ProbeOutcome.Verified && outcome.evidenceRef == PENDING_EVIDENCE_REF
+
+        /**
          * Internal bookkeeping marker used by [runHF0] to signal
          * "the executor decided Verified but has not yet written
          * the evidence file". The string is private to this
@@ -221,7 +239,7 @@ open class ProbeExecutor(
         // does not need the runner to write JSON. The match is on
         // the outcome type and the pending sentinel, not on a
         // free-form string.
-        return if (raw is ProbeOutcome.Verified && raw.evidenceRef == PENDING_EVIDENCE_REF) {
+        return if (isPendingOutcome(raw)) {
             ProbeExecutionResult.NeedsPersist(raw)
         } else {
             ProbeExecutionResult.AlreadyPersisted(raw)

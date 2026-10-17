@@ -47,6 +47,19 @@ class InProcessProductProbeExecutorTest {
         expectedHf: String = "HF1",
         contentSha256: String = "0".repeat(64),
     ) {
+        // The `replacement.evidence` shape is the typed
+        // [PromotionEvidence.PermanentContract] carrier that
+        // BQ4 P0-D closed (2026-10-16). The previous flat
+        // (kind, id, evidence) triple was the BQ4 P0-D defect
+        // class — a free-form string validated by prefix —
+        // and the manifest is no longer accepted in that
+        // shape. The oracle below is a stub the runner parses
+        // but these tests never exercise (the only test that
+        // reaches a real verifier is the cycle-level
+        // [CycleRunnerTest]). The `fidelity` field MUST match
+        // the cycle's `expected_hf` — the verifier refuses any
+        // evidence whose declared fidelity disagrees with the
+        // cycle (B10 fidelity-mismatch close-out).
         val manifest = """
             {
               "cycle_id": "cyc-hf1",
@@ -54,9 +67,19 @@ class InProcessProductProbeExecutorTest {
               "expected_hf": "$expectedHf",
               "isolation_policy": "cycleDirOnly",
               "replacement": {
-                "kind": "PERMANENT_CONTRACT",
-                "id": "x",
-                "evidence": "y"
+                "evidence": {
+                  "type": "permanent_contract",
+                  "contract_id": "x",
+                  "bound_commit": "0123456789abcdef0123456789abcdef01234567",
+                  "source_path": "x",
+                  "content_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+                  "fidelity": "$expectedHf",
+                  "oracle": {
+                    "type": "fitness",
+                    "name": "x",
+                    "module": ":x"
+                  }
+                }
               },
               "contracts": [
                 {
@@ -75,9 +98,6 @@ class InProcessProductProbeExecutorTest {
                   "skipped": 0,
                   "verdict": "PASS",
                   "mutation_or_negative": "x",
-                  "replacement_kind": "PERMANENT_CONTRACT",
-                  "replacement_id": "x",
-                  "replacement_evidence": "x",
                   "content_sha256": "$contentSha256"
                 }
               ]
@@ -269,9 +289,51 @@ class InProcessProductProbeExecutorTest {
         cycleDir.resolve(relativePath).writeText("// placeholder")
 
         val manifestPath = tmp.resolve("manifest.json")
+        // The verifier (BQ4 P0-D) reads the file the evidence
+        // points to, hashes it, and compares against the
+        // recorded digest. A test must stage a real file at
+        // `sourcePath` (resolved against `repoRoot`) and use
+        // that file's actual digest, otherwise the verifier
+        // refuses the cycle at `requestPromote`. The previous
+        // literal "test/Contract.kt" + "0".repeat(64) was a
+        // placeholder the verifier now correctly catches.
+        val sourceSha = "0123456789abcdef0123456789abcdef01234567"
+        val contractFile = tmp.resolve("MyContract.kt")
+        Files.writeString(contractFile, "// permanent contract body\nclass MyContract\n")
+        // The verifier's digest check is a 64-char lowercase
+        // hex SHA-256 of the file body; computing it here with
+        // the JDK rather than the harness's internal helper
+        // keeps this test's dependency on test-harness private
+        // surface to zero.
+        val contractDigest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(Files.readAllBytes(contractFile))
+            .joinToString("") { "%02x".format(it) }
+        val oracle = OracleRef.Fitness("TestRunner.fixture", ":test-harness")
+        val evidence = PromotionEvidence.PermanentContract(
+            contractId = "test.rec",
+            boundCommit = sourceSha,
+            sourcePath = "MyContract.kt",
+            contentDigest = contractDigest,
+            // The verifier refuses an evidence whose declared
+            // fidelity disagrees with the cycle's expected_hf;
+            // this test runs at HF1, so the evidence fidelity
+            // MUST be HF1. The previous HF0 literal here was
+            // the B10 fidelity-mismatch defect class.
+            fidelity = "HF1",
+            oracle = oracle,
+        )
         writeManifest(manifestPath, cycleDir, relativePath, expectedHf = "HF1")
 
-        val runner = CycleRunner("cyc-hf1", manifestPath, cycleDir)
+        val ledger = dev.rubentxu.pipeline.v2.harness.cycle.MapOracleLedger(
+            mapOf(oracle to setOf(sourceSha)),
+        )
+        val runner = CycleRunner(
+            cycleId = "cyc-hf1",
+            manifestPath = manifestPath,
+            cycleDir = cycleDir,
+            oracleLedger = ledger,
+            repoRoot = tmp,
+        )
         runner.prepare()
 
         val executor = InProcessProductProbeExecutor(
@@ -287,17 +349,8 @@ class InProcessProductProbeExecutorTest {
             },
         )
         runner.runProbes(executor)
-        runner.observeAll(observedCommit = "0123456789abcdef0123456789abcdef01234567")
-        runner.requestPromote(
-            evidence = PromotionEvidence.PermanentContract(
-                contractId = "test.rec",
-                boundCommit = "0123456789abcdef0123456789abcdef01234567",
-                sourcePath = "test/Contract.kt",
-                contentDigest = "0".repeat(64),
-                fidelity = "HF0",
-                oracle = OracleRef.Fitness("test.rec", ":test-harness"),
-            ),
-        )
+        runner.observeAll(observedCommit = sourceSha)
+        runner.requestPromote(evidence = evidence)
         runner.requestClose("done")
         runner.finalise()
         // Runner-owned paths are gone: the probes/ evidence

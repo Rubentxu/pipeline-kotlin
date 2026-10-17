@@ -69,9 +69,6 @@ class ProbeExecutorTest {
                   "skipped": 0,
                   "verdict": "PASS",
                   "mutation_or_negative": "x",
-                  "replacement_kind": "PERMANENT_CONTRACT",
-                  "replacement_id": "x",
-                  "replacement_evidence": "x",
                   "content_sha256": "$contentSha256"
                 }
               ]

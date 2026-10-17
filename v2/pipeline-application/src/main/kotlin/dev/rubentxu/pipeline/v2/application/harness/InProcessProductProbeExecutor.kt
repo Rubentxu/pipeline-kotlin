@@ -104,7 +104,7 @@ class InProcessProductProbeExecutor(
     },
 ) : ProbeExecutor(cycleDir = cycleDir) {
 
-    override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome {
+    override fun execute(probe: ProbeEntry, manifest: CycleManifest): ProbeExecutor.Companion.ProbeExecutionResult {
         // HF0 stays in the harness default. The product only
         // owns HF1, and the audit's complaint was that HF1 was
         // `BlockedExternal` even though the same code path is
@@ -112,7 +112,20 @@ class InProcessProductProbeExecutor(
         if (manifest.expectedHF != "HF1") {
             return super.execute(probe, manifest)
         }
-        return runHF1(probe, manifest)
+        // The wrapping mirrors the harness default: a Verified
+        // with the pending sentinel is `NeedsPersist` (the runner
+        // will call `persist` after this returns); every other
+        // outcome is terminal and goes through as `AlreadyPersisted`.
+        // The predicate [ProbeExecutor.isPendingOutcome] is the
+        // public seam that lets product-side executors wrap their
+        // own outcomes the same way the harness default does; the
+        // internal sentinel string is never exposed across modules.
+        val raw = runHF1(probe, manifest)
+        return if (ProbeExecutor.isPendingOutcome(raw)) {
+            ProbeExecutor.Companion.ProbeExecutionResult.NeedsPersist(raw)
+        } else {
+            ProbeExecutor.Companion.ProbeExecutionResult.AlreadyPersisted(raw)
+        }
     }
 
     private fun runHF1(probe: ProbeEntry, manifest: CycleManifest): ProbeOutcome {

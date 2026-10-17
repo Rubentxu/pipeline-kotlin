@@ -121,10 +121,6 @@ def adjudicate(manifest: dict, observations: tuple[ProbeObservation, ...]) -> Re
             issues.append(f'{loc}: unexecuted or non-PASS probe')
         if skipped >= executed:
             issues.append(f'{loc}: all tests skipped')
-        if p.get('replacement_kind') not in {'PERMANENT_CONTRACT', 'EXTERNAL_CERTIFIER'}:
-            issues.append(f'{loc}: no valid replacement kind')
-        if not p.get('replacement_id') or not p.get('replacement_evidence') or p.get('replacement_evidence') == 'NOT_RUN':
-            issues.append(f'{loc}: missing replacement evidence')
         if p.get('mutation_or_negative') in (None, '', 'UNKNOWN'):
             issues.append(f'{loc}: missing mutation/negative check')
         if p.get('content_sha256') != o.sha256:

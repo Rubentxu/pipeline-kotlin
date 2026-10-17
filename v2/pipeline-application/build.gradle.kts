@@ -473,21 +473,40 @@ tasks.test {
     // forks the `pipelinek` binary and is the load wedge.
     useJUnitPlatform()
 
-    // WU-RP-005 round 3: `--tests '!pkg.Class*'` negation on the command line
-    // is silently IGNORED by Gradle in this configuration (verified locally:
-    // the exact CI command still executed all 203 classes). CI now passes
-    // -PexcludeSlowTests=true; the full suite (gate-app / release) runs
-    // without the property and keeps every test.
-    // WU-RP-005 r6: shard exclusions from CI. `--tests '!X'` on the command
-    // WU-RP-005 round 3: `--tests '!pkg.Class*'` negation on the command line
-    // is silently IGNORED by Gradle in this configuration (verified locally:
-    // the exact CI command still executed all 203 classes). CI now passes
-    // -PexcludeSlowTests=true; the full suite (gate-app / release) runs
-    // without the property and keeps every test.
-    // WU-RP-005 r6: shard exclusions from CI. `--tests '!X'` on the command
-    // line is silently ignored by Gradle (verified in run 35646215918: the
-    // engine shard re-ran every UatLocal class), so the workflow passes the
-    // shard's exclusion patterns here instead.
+    // NEGATION AND SHARDING: two Gradle-side doors, BOTH currently unopened.
+    //
+    // WU-RP-005 measured that `--tests '!pkg.Class*'` on the command line is
+    // silently IGNORED here (the exact command still ran all 203 classes), and
+    // r6 measured that a shard's `--tests '!X'` is silently ignored too (run
+    // 35646215918: the engine shard re-ran every UatLocal class). That is why
+    // both exclusions are Gradle-side rather than command-line.
+    //
+    // The text this replaces said "CI now passes -PexcludeSlowTests=true" and
+    // "the workflow passes the shard's exclusion patterns here". True when
+    // written; NOT true now. `.github/workflows/` has been empty since
+    // 754ddda0 removed the CI, and a repo-wide grep finds no live invocation of
+    // either property -- the only occurrences are in this file. Both branches
+    // below are therefore inert TODAY. They are KEPT, not deleted: an external
+    // caller (the release harness) may pass either property, and deleting the
+    // reader would turn a silent no-op into a hard failure inside a gate this
+    // repository cannot observe.
+    //
+    // `release-scale` IS NOT A LANE AXIS -- it is load-bearing in another module.
+    // `TestClassifier.classify` answers `MigrateExternalPending` for it, and
+    // `Wave.forRecord` raises it to wave B, which is what keeps those classes
+    // from being retired here. Deleting the tag as "dead" would silently
+    // downgrade `CompatibilityCorpusTest` from wave B to wave A and change
+    // retirement decisions across the whole BQ5 programme. Inert for lanes,
+    // decisive for retirement; that duality is why this note exists.
+    //
+    // Measured lane consequence of the unopened door: of the three classes
+    // carrying the tag, two also carry `installed-contract` and are already out
+    // of the fast lane, so only `UatLocal008CredentialsTest` (tag, no
+    // `installed-contract`) still runs in `:test`. Dropping `release-scale` from
+    // the fast lane would move it into NO lane at all -- `:test` would drop it
+    // and `:installedContractTest` selects on `includeTags("installed-contract")`.
+    // That is silent coverage loss, so closing this door needs a lane-model
+    // decision reconciled with `TEST_EXECUTION_LANES_SPEC.md`, not a build edit.
     val shardExcludes = providers.gradleProperty("shard.excludes").orElse("")
     if (shardExcludes.get().isNotBlank()) {
         val patterns = shardExcludes.get().split(',').map { it.trim().removeSurrounding("'") }.filter { it.isNotBlank() }

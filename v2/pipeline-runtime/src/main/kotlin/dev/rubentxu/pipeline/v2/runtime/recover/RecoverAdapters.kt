@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.runtime.recover
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
@@ -315,7 +316,7 @@ class RuntimeRecoverPortStoreAdapter(
                     runId = runId,
                     attempt = 1,
                 )
-                val fingerprintHex = sha256Hex("$opId|${json.encodeToString(input)}")
+                val fingerprintHex = Sha256.ofText("$opId|${json.encodeToString(input)}")
                 val recoveredStatus = recoveredStatusOf(receipt.terminal)
                 val recoveredOp = RerunOperation(
                     id = opId,
@@ -424,12 +425,6 @@ class RuntimeRecoverPortStoreAdapter(
             is TerminalObservation.Cancelled -> OperationStatus.ABORTED
             is TerminalObservation.Other -> OperationStatus.FAILED
         }
-
-    private fun sha256Hex(text: String): String {
-        val md = java.security.MessageDigest.getInstance("SHA-256")
-        val bytes = md.digest(text.toByteArray(Charsets.UTF_8))
-        return bytes.joinToString("") { "%02x".format(it) }
-    }
 
     private fun Throwable.shortDiagnostic(): String {
         val cls = this::class.simpleName ?: this.javaClass.name

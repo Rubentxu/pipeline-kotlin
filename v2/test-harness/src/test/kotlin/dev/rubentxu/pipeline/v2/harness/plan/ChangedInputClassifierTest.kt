@@ -170,8 +170,12 @@ class ChangedInputClassifierTest {
             )
             assertTrue(classified is ChangedInput.UnknownProduction) { "got $classified" }
             val unk = classified as ChangedInput.UnknownProduction
-            assertEquals(":pipeline-mystery-module", unk.proposedOwner)
-            assertEquals("Unknown.pipeline-mystery-module", unk.proposedCapability)
+            // BQ4 v24 (typed proposal pair, 2026-10-17):
+            // the proposal is now a single [Proposal]
+            // carrier; the test reads the pair atomically
+            // via `proposal.capability` / `proposal.owner`.
+            assertEquals(":pipeline-mystery-module", unk.proposal.owner)
+            assertEquals("Unknown.pipeline-mystery-module", unk.proposal.capability)
         }
 
         @Test
@@ -179,8 +183,11 @@ class ChangedInputClassifierTest {
             val classified = ChangedInputClassifier.classify("weird-file.txt")
             assertTrue(classified is ChangedInput.UnknownProduction) { "got $classified" }
             val unk = classified as ChangedInput.UnknownProduction
-            assertNotNull(unk.proposedOwner)
-            assertNotNull(unk.proposedCapability)
+            // BQ4 v24: the proposal is always non-null
+            // (the [Proposal] carrier self-protects).
+            assertNotNull(unk.proposal)
+            assertNotNull(unk.proposal.owner)
+            assertNotNull(unk.proposal.capability)
         }
     }
 
@@ -267,8 +274,14 @@ class ChangedInputClassifierTest {
             assertTrue(unclassified.isNotEmpty()) { "got ${refused.reasons}" }
             val target = unclassified.first()
             assertEquals("v2/mystery-module/some/file.txt", target.path)
-            assertEquals("Unknown.mystery-module", target.proposedCapability)
-            assertEquals(":mystery-module", target.proposedOwner)
+            // BQ4 v24 (typed proposal pair, 2026-10-17):
+            // the proposal is now a single [Proposal]
+            // carrier; the test reads the pair atomically
+            // rather than via two parallel `proposed*`
+            // fields.
+            assertNotNull(target.proposal)
+            assertEquals("Unknown.mystery-module", target.proposal?.capability)
+            assertEquals(":mystery-module", target.proposal?.owner)
         }
 
         @Test

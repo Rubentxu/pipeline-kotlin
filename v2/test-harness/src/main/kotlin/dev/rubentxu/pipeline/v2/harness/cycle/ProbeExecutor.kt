@@ -37,36 +37,60 @@ sealed interface ProbeOutcome {
 
     /** The probe ran at the requested fidelity and discharged its contract. */
     data class Verified(override val evidenceRef: String) : ProbeOutcome {
+        // BQ4 v12 (cycle carrier self-protect, 2026-10-17):
+        // a `Verified("")` is a Verified without evidence —
+        // a fabrication. The carrier refuses blanks at
+        // construction. The 3 "no evidence" variants
+        // (NoEvidence, UnsupportedFidelity, BlockedExternal)
+        // intentionally accept blank evidenceRef; their
+        // meaning is "no evidence was produced" and the
+        // blank is the absent-case signal.
+        init { require(evidenceRef.isNotBlank()) { "Verified.evidenceRef must not be blank" } }
         override val exitCode: Int = 0
         override val outcome = Outcome.Verified
     }
 
     /** The probe ran but the contract was not satisfied. */
     data class Failed(override val evidenceRef: String, val reason: String) : ProbeOutcome {
+        init {
+            require(evidenceRef.isNotBlank()) { "Failed.evidenceRef must not be blank" }
+            require(reason.isNotBlank()) { "Failed.reason must not be blank" }
+        }
         override val exitCode: Int = 1
         override val outcome = Outcome.Failed
     }
 
     /** The probe's contract was vacuous (e.g. an AAT with no mutation target). */
     data class Skipped(override val evidenceRef: String) : ProbeOutcome {
+        init { require(evidenceRef.isNotBlank()) { "Skipped.evidenceRef must not be blank" } }
         override val exitCode: Int = 0
         override val outcome = Outcome.Skipped
     }
 
     /** The probe could not be executed (e.g. its source file is missing). */
     data class NotRun(override val evidenceRef: String, val reason: String) : ProbeOutcome {
+        init {
+            require(evidenceRef.isNotBlank()) { "NotRun.evidenceRef must not be blank" }
+            require(reason.isNotBlank()) { "NotRun.reason must not be blank" }
+        }
         override val exitCode: Int = 2
         override val outcome = Outcome.NotRun
     }
 
     /** The probe ran but produced no observable evidence at all. */
     data class NoEvidence(override val evidenceRef: String) : ProbeOutcome {
+        // NoEvidence intentionally accepts blank evidenceRef;
+        // see Verified.init for the rationale.
         override val exitCode: Int = 3
         override val outcome = Outcome.NoEvidence
     }
 
     /** The probe produced evidence for a different commit than the manifest declares. */
     data class OtherCommit(override val evidenceRef: String, val observed: String) : ProbeOutcome {
+        init {
+            require(evidenceRef.isNotBlank()) { "OtherCommit.evidenceRef must not be blank" }
+            require(observed.isNotBlank()) { "OtherCommit.observed must not be blank" }
+        }
         override val exitCode: Int = 4
         override val outcome = Outcome.OtherCommit
     }

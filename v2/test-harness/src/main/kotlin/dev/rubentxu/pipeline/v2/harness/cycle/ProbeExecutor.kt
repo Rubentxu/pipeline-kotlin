@@ -166,7 +166,21 @@ sealed interface ProbeOutcome {
  * No I/O, no file is created under `<cycleDir>` for that probe.
  */
 open class ProbeExecutor(
-    private val cycleDir: Path,
+    // BQ4 P0 (HITO 1 "Propiedad explícita de ficheros",
+    // 2026-10-17): the runner wraps the executor in a
+    // [RegisteringExecutorAdapter] (in `CycleRunner.kt`) that
+    // needs to forward the cycleDir to the parent
+    // constructor. The visibility is bumped from `private`
+    // to `public` for that one purpose; Kotlin's `protected`
+    // is too restrictive (it does not let an outside-class
+    // subclass read a `protected` field of an instance of
+    // the parent). The path is still immutable (a `val`)
+    // and the existence check happens lazily in
+    // [realCycleDir] when `persist()` is called, so test-only
+    // executors with a non-existent cycleDir (e.g.
+    // `TrivialVerifiedExecutor` returning `AlreadyPersisted`
+    // without persisting) continue to work.
+    val cycleDir: Path,
     private val clock: () -> Instant = Instant::now,
 ) {
 

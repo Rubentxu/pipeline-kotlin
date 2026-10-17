@@ -74,11 +74,23 @@ object ExecutionBoundaryFactory {
         if (stepRegistry != null) {
             // WU-LPR-301 / G5 (2026-09-18): the legacy canonical command family is LEGACY_REMOVED,
             // so the dispatcher fallback cannot route a real Step. The LegacyOnly boundary is
-            // preserved only for binary compatibility: it accepts the payload, returns Success,
-            // and lets the registry boundary (which is the production authority) decide reachability
-            // per prepared execution. The legacy dispatcher itself is unreachable in production.
+            // preserved only for binary compatibility: when the legacy fallback is reached WITHOUT
+            // an invocationExecutor, it MUST fail closed (FailureKind.ENGINE) instead of returning a
+            // silent Success — a silent Success for a step that never ran is a false green. Reaching
+            // this path is unreachable in production by design (the canonical coordinator always
+            // supplies an executor or a registry-owned key); the typed failure is the audit-trail
+            // witness that the invariant holds and the diagnostic for any future regression.
             val legacy = LegacyExecutionAdapter.adapt(
-                invocationExecutor ?: CanonicalInvocationExecutor { _, _ -> StepOutcome.Success },
+                invocationExecutor ?: CanonicalInvocationExecutor { _, _ ->
+                    StepOutcome.Failure(
+                        dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                            kind = dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
+                            message = "LegacyOnly fallback reached without invocationExecutor; " +
+                                "this path is unreachable in production by design — reaching it " +
+                                "indicates a programming error in the canonical coordinator",
+                        ),
+                    )
+                },
             )
             // E1.1 / T1: thread the artifact index through the registry boundary's capability
             // bridge so core.archiveArtifacts and core.artifact.query share one instance per run.
@@ -101,11 +113,22 @@ object ExecutionBoundaryFactory {
             stepRegistry = stepRegistry,
             stepKey = stepKey,
         )) {
-            // WU-LPR-301 / G5 (2026-09-18): see the matching comment above. The LegacyOnly
-            // fallback returns Success so the LegacyExecutionAdapter does not invoke a retired
-            // dispatcher; the registry boundary decides reachability per prepared execution.
+            // WU-LPR-301 / G5 (2026-09-18): see the matching comment above. The LegacyOnly fallback
+            // returns Failure(ENGINE) when no invocationExecutor is supplied so a step that never
+            // ran cannot produce a silent Success; the typed failure names the cause and the
+            // expected resolution path. The registry boundary decides reachability per prepared
+            // execution.
             is FamilyRoutingDecision.LegacyOnly -> LegacyExecutionAdapter.adapt(
-                invocationExecutor ?: CanonicalInvocationExecutor { _, _ -> StepOutcome.Success },
+                invocationExecutor ?: CanonicalInvocationExecutor { _, _ ->
+                    StepOutcome.Failure(
+                        dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                            kind = dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
+                            message = "LegacyOnly fallback reached without invocationExecutor; " +
+                                "this path is unreachable in production by design — reaching it " +
+                                "indicates a programming error in the canonical coordinator",
+                        ),
+                    )
+                },
             )
             is FamilyRoutingDecision.SeamedRouting -> SeamedExecutionRouter.route(
                 decision.legacy,

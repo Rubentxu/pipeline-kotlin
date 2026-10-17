@@ -264,8 +264,7 @@ class TestSandboxFitnessTest {
             "pipeline-application/dev/rubentxu/pipeline/v2/application/TrapFormNegativeFixtureTest.kt",
             "pipeline-application/dev/rubentxu/pipeline/v2/application/UatCompat001CorpusSmokeRunTest.kt",
             "pipeline-application/dev/rubentxu/pipeline/v2/application/UatDsl001JenkinsFamiliarityTest.kt",
-            "pipeline-application/dev/rubentxu/pipeline/v2/application/UatDsl006BodyExecutionTest.kt",
-            "pipeline-application/dev/rubentxu/pipeline/v2/application/UatLocal005CheckoutGitTest.kt",
+                        "pipeline-application/dev/rubentxu/pipeline/v2/application/UatLocal005CheckoutGitTest.kt",
             "pipeline-application/dev/rubentxu/pipeline/v2/application/UatLocal007SandboxProfileTest.kt",
             "pipeline-application/dev/rubentxu/pipeline/v2/application/UatStep001ShFailureStepFinishedCountTest.kt",
             "pipeline-application/dev/rubentxu/pipeline/v2/application/cli/HttpInstalledUatTest.kt",
@@ -282,5 +281,22 @@ class TestSandboxFitnessTest {
             "pipeline-step-sdk/runtime/dev/rubentxu/pipeline/v2/sdk/runtime/durable/EnvModelTest.kt",
             "pipeline-step-sdk/scm-git/dev/rubentxu/pipeline/v2/sdk/scm/git/GitCheckoutCredentialsRefFailClosedTest.kt",
         )
+
+        /*
+         * Removed 2026-10-17: `UatDsl006BodyExecutionTest.kt`.
+         *
+         * A ledger entry claims a file forks a child AND writes outside a directory it owns. The
+         * second half is still true — the file's `dir("/tmp")` steps name an absolute path — and the
+         * first half is no longer true at all: the file contains no `ProcessBuilder` and no
+         * `Runtime.getRuntime().exec`, so it cannot fork anything, and the offender predicate
+         * (`forks && leaks.isNotEmpty()`) correctly stops counting it.
+         *
+         * That is what the stale assertion exists to catch, and it caught it: a migration repaid the
+         * debt and the ledger still claimed it. The distinguishing detail is that `dir("/tmp")` is a
+         * PipelineK DSL step SCOPING the run to that directory, which is the harness doing its job,
+         * not a write escaping a sandbox — so this was never a candidate for re-adding under a
+         * narrower predicate. If the leak ever comes back, the `unexpected` assertion names it on
+         * its own; no allowlist entry is needed to keep the law honest.
+         */
     }
 }

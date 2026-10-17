@@ -1,6 +1,6 @@
 # WU-LPR-061 — @Disabled Inventory (GENERATED, do not hand-edit counts)
 
-Generated: 2026-10-17T22:40:30+00:00 · HEAD `a73100fc`
+Generated: 2026-10-17T22:42:02+00:00 · HEAD `6ce2cbc9`
 
 | module | class | method/target | category | reason | owner | blocks Gate-1 |
 |---|---|---|---|---|---|---|
@@ -70,8 +70,8 @@ Generated: 2026-10-17T22:40:30+00:00 · HEAD `a73100fc`
 | pipeline-application | CoreWriteFileRegistryPrimaryFitnessTest.kt | `G5 LEGACY_REMOVED - core dot writeFile stays absent post-S2-A10-G5` | OBSOLETE | Asserts a live invariant that IS owned, by an enabled guard: LegacyResidualConvergenceFitnessTest.kt pins LEGACY_PLUGIN_IDS to empty via LegacyResidualSnapshot.physicalResidual = emptySet(), so re-admitting any retired key makes live != expected and that guard goes red without this row. This @Disabled row is a disabled duplicate of that guard, so it adds no coverage and cannot fail. Retiring it is authorised by equivalence, not by age. | pipeline-kotlin maintainers | no |
 | pipeline-application | CoreWriteFileRegistryPrimaryFitnessTest.kt | `G5 milestone - core dot writeFile stays absent from LEGACY_PLUGIN_IDS post-S2-A9-G5` | OBSOLETE | Asserts a live invariant that IS owned, by an enabled guard: LegacyResidualConvergenceFitnessTest.kt pins LEGACY_PLUGIN_IDS to empty via LegacyResidualSnapshot.physicalResidual = emptySet(), so re-admitting any retired key makes live != expected and that guard goes red without this row. This @Disabled row is a disabled duplicate of that guard, so it adds no coverage and cannot fail. Retiring it is authorised by equivalence, not by age. | pipeline-kotlin maintainers | no |
 | pipeline-application | EmitEventCatchErrorRegistryUatTest.kt | class EmitEventCatchErrorRegistryUatTest (whole class) | PENDING_EXTERNAL | Author-declared migrated-pending: the authority to verify and retire this test moved to pipelinek-release-harness (AGENTS.md responsibility boundary). It is NOT historical; it blocks Gate-1 until the harness rules on it. | pipelinek-release-harness | yes |
-| pipeline-application | EmitEventStepContractSuiteTest.kt | `no legacy resurrection — irreversible G5 state holds from inside the contract suite` | UNKNOWN | Asserts a property that is still live (legacy must not resurrect), not a closed-cycle record. It is NOT historical under any label; it needs a human to decide whether to keep it as MANDATORY_SUPPORTED with an updated assertion. | pipeline-kotlin maintainers | yes |
-| pipeline-application | EmitEventStepContractSuiteTest.kt | `no legacy resurrection — irreversible G5 state holds post-S2-A6-G4` | UNKNOWN | Asserts a property that is still live (legacy must not resurrect), not a closed-cycle record. It is NOT historical under any label; it needs a human to decide whether to keep it as MANDATORY_SUPPORTED with an updated assertion. | pipeline-kotlin maintainers | yes |
+| pipeline-application | EmitEventStepContractSuiteTest.kt | `no legacy resurrection — irreversible G5 state holds from inside the contract suite` | HISTORICAL | Superseded S2-A5/G4 counter snapshot (asserts 7 residual keys). Every property it asserts is held by the enabled `post-S2-B10-G5` sibling in this same class: the retired decoder forms, the retired dispatcher file, and the catalogue size, which the sibling pins to 0 — strictly stronger than the 7 recorded here. | pipeline-kotlin maintainers | no |
+| pipeline-application | EmitEventStepContractSuiteTest.kt | `no legacy resurrection — irreversible G5 state holds post-S2-A6-G4` | HISTORICAL | Superseded S2-A6/G4 counter snapshot (asserts 6 residual keys), same successor as the row above. Held by the enabled `post-S2-B10-G5` sibling, which pins the catalogue to 0. | pipeline-kotlin maintainers | no |
 | pipeline-application | Lpr011SecretRedactionTranscriptUatTest.kt | class Lpr011SecretRedactionTranscriptUatTest (whole class) | MANDATORY_SUPPORTED | Author-declared producer-internal: an external harness cannot reproduce this fixture or replay, so the test stays with the producer permanently and remains mandatory here. | pipeline-kotlin maintainers | yes |
 | pipeline-application | Lpr011r2SecretRedactionAtRestUatTest.kt | class Lpr011r2SecretRedactionAtRestUatTest (whole class) | MANDATORY_SUPPORTED | Author-declared producer-internal: an external harness cannot reproduce this fixture or replay, so the test stays with the producer permanently and remains mandatory here. | pipeline-kotlin maintainers | yes |
 | pipeline-application | ObsAOutputStreamingCharacterisationTest.kt | `jsonl carries process output and every line stays parseable` | PENDING_EXTERNAL | Author-declared migrated-pending: the authority to verify and retire this test moved to pipelinek-release-harness (AGENTS.md responsibility boundary). It is NOT historical; it blocks Gate-1 until the harness rules on it. | pipelinek-release-harness | yes |
@@ -145,13 +145,13 @@ Generated: 2026-10-17T22:40:30+00:00 · HEAD `a73100fc`
 @Disabled total                 = 134
 MANDATORY_SUPPORTED      = 9
 COMPATIBILITY            = 2
-HISTORICAL               = 50
+HISTORICAL               = 52
 EXPERIMENTAL             = 0
 OBSOLETE                 = 12
 PENDING_EXTERNAL         = 51
 KNOWN_DEFECT             = 2
-UNKNOWN                  = 8
-mandatory-disabled (Gate-1)    = 17
+UNKNOWN                  = 6
+mandatory-disabled (Gate-1)    = 15
 Gate-1 @Disabled state         = OPEN (mandatory or untriaged disabled > 0)
 ```
 

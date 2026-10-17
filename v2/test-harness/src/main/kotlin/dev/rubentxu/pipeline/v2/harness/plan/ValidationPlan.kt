@@ -53,6 +53,28 @@ value class ContractId(val capability: String)
 /**
  * Identifies one runnable suite.
  *
+ * BQ4 P0 (HITO 1 "Selección y evidencia vinculadas",
+ * 2026-10-17): the carrier now carries the FQCN
+ * (fully-qualified class name) alongside the JUnit
+ * `--tests` filter pattern. The two are different
+ * identities that the audit's "módulo + FQCN +
+ * invocación real" bullet requires:
+ *
+ * - [filter] is the JUnit filter pattern passed to
+ *   `--tests`; JUnit accepts either a simple class
+ *   name (`FooTest`) or a FQCN
+ *   (`com.example.FooTest`).
+ * - [fqcn] is the identity used by the gate to
+ *   look up evidence in the runtime's suite set.
+ *   Two suites with the same simple name in
+ *   different modules have different FQCNs, so
+ *   the FQCN is the closed-world identity. The
+ *   default `fqcn = filter` preserves the previous
+ *   shape for call sites that did not yet pass an
+ *   explicit FQCN; production call sites SHOULD
+ *   pass the real FQCN so two same-named suites
+ *   in different modules cannot collide.
+ *
  * [gradleProject] is the module whose `test` task runs it. It is part of the value rather than
  * derived at dispatch time because a suite attributed to the wrong module is a suite that
  * silently does not run, and deriving it by guessing from the class name is exactly how that would
@@ -63,7 +85,22 @@ value class ContractId(val capability: String)
  * parameters, and boxing a two-field identity to save an allocation would be a poor trade for a
  * type that appears once per selected suite.
  */
-data class TestSuiteId(val filter: String, val gradleProject: String) {
+data class TestSuiteId(
+    val filter: String,
+    val gradleProject: String,
+    // BQ4 P0 (HITO 1 "Selección y evidencia vinculadas",
+    // 2026-10-17): the FQCN is the closed-world identity
+    // for evidence lookup. The default `fqcn = filter`
+    // preserves the previous shape for call sites that
+    // pass a simple class name as the JUnit filter;
+    // production call sites SHOULD pass the real FQCN
+    // (the XML's `<testsuite name="...">` attribute) so
+    // two same-named suites in different modules
+    // cannot collide on the evidence-map key. The
+    // carrier self-protects: a blank `fqcn` is
+    // refused at construction.
+    val fqcn: String = filter,
+) {
     // BQ4 v9 (plan carrier self-protect, 2026-10-17):
     // the previous shape had no init validation. A blank
     // `filter` or `gradleProject` would silently never
@@ -76,6 +113,7 @@ data class TestSuiteId(val filter: String, val gradleProject: String) {
     init {
         require(filter.isNotBlank()) { "TestSuiteId.filter must not be blank" }
         require(gradleProject.isNotBlank()) { "TestSuiteId.gradleProject must not be blank" }
+        require(fqcn.isNotBlank()) { "TestSuiteId.fqcn must not be blank" }
     }
 }
 

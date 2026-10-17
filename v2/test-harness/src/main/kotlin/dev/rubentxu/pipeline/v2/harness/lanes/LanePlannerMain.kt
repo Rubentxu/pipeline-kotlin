@@ -16,12 +16,19 @@ import java.nio.file.Paths
  *
  * Usage: `java -cp ... dev.rubentxu.pipeline.v2.harness.lanes.LanePlannerMainKt --output <path>`
  *
- * The set of `LaneSpec` is the same one the unit tests use
- * ([LanePlanner.exampleSpecs]): a hand-built sample, not a
- * reading of the catalogue. Wiring the catalogue here would
- * couple the lane CLI to a specific catalogue authority; the
- * unit tests already cover the partition logic; this entry
- * point proves the planner is reachable from the build.
+ * The set of `LaneSpec` is read from
+ * [dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue]
+ * via [realSpecsFromCatalogue], the same authority the unit
+ * tests' H1 TODO 4 governance test pins as the production
+ * path. The earlier KDoc said this used a hand-built
+ * [LanePlanner.exampleSpecs] sample; that was true at RC2
+ * and stale at BQ2 close-out, when the CLI was rewired to
+ * the catalogue so a developer reading the lane plan would
+ * see what the lane runner would actually do. The
+ * governance test [LanePlannerTest]'s `partition over the
+ * real catalogue is exhaustive and non-empty` pins this
+ * contract: the CLI and the test classpath agree on the
+ * catalogue.
  */
 fun main(args: Array<String>) {
     var outputPath: String? = null

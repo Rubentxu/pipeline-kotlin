@@ -309,3 +309,100 @@ test-harness/src/main/.../plan/InstalledDistribution.kt:175
 The fitness is **correct** and the RED is honest. The fix is deleting the module — H0.4, which
 needs `ADR-PK-DF-002` ratified with its amendments. Not silenced, not weakened, not
 reclassified. Its own comment already carries the instruction to cut rather than to fix.
+
+## Part 4 — H0.2 measured instead of executed: the classifier was authorising the wrong deletion
+
+**Nothing was pruned.** ADR-PK-DF-002 H0.2 proposes "eliminar métodos históricos `@Disabled`,
+conservar vivos" over the population `test_portfolio.py` labels `R0_PRUNE_DISABLED_METHODS`
+(17 files). Before deleting anything, the assumption behind that label was measured.
+
+New read-only tool: `tools/disabled_equivalence_audit.py` (ships with the roadmap package).
+For every `@Disabled` that says *"superseded by X"*, it resolves X against every declaration
+in the tree and reports whether X is **live**, **itself disabled** (a chain inside the same
+archive), or **absent**.
+
+```text
+@Disabled audited in the R0 population: 60
+  declaring an explicit preservation-for-traceability intent: 54
+
+successor status       declares traceability   count
+  disabled-successor   True                    22
+  live                 True                     4
+  missing-successor    True                    25
+  no-successor         False                    6
+  no-successor         True                     3
+```
+
+### The label was wrong, and wrong in the dangerous direction
+
+The classifier keys `R0_PRUNE_DISABLED_METHODS` on the words `historical|superseded|snapshot`
+inside the reason. Those words are **exactly the vocabulary of a deliberate archive** — 54 of
+these 60 reasons end *"Preserved verbatim for traceability."* So the tool was proposing, with
+the authority of a measurement, to delete 54 records their authors deliberately kept, on the
+strength of the same sentence that says why they are kept.
+
+And the equivalence the prune would have relied on is not there either: of 51 reasons that
+name a successor, **4 name a live one**. 22 name a member of the same archive (also disabled),
+25 name nothing that exists. So "equivalence consent per test" cannot be granted for 47 of
+them — the claim is unverifiable, not merely unconsented.
+
+### What changed, and what deliberately did not
+
+`test_portfolio.py` now separates *archive* from *prunable*, and — the part that matters —
+`R0_PRUNE_DISABLED_METHODS` moved to the **end** of the chain as a fallback:
+
+| movement | count | direction |
+| --- | --- | --- |
+| `R0_PRUNE` → `R0_ARCHIVED_TRACEABILITY` | 16 | stronger: explicitly "NO podar" |
+| `R2_DISABLED_CLASS_REVIEW` / `R2_UAT_E2E_REVIEW` → `R2_CRITICAL_OR_PENDING` | 7 | stronger |
+| `R3_FITNESS_REVIEW` → itself (a fitness, back under its own branch) | 1 | restored |
+| **newly authorised for deletion** | **0** | — |
+
+`R0_PRUNE_DISABLED_METHODS` population: **17 → 1**.
+
+The single survivor is `CoreErrorStepG2RegistryAdmissionTest`, a whole class whose reason says
+*"Archived G2 evidence: superseded by …"* — it declares no traceability intent, so it is a
+genuine prune candidate, and it is left for a per-test decision rather than taken now.
+
+### Two ordering defects found while doing it
+
+**1. `[^)]*` cannot cross a `)`.** Widening the search window was required because these
+reasons contain `(post-S2-A6-G4)` **before** the phrase being matched, so the window closed
+first. This is the *same defect* fixed in `FArchRP040` earlier this session, in a different
+language: a parser that stops at the first closer throws away the signal it needs. Both the
+Kotlin fix and this one accumulate to a bounded window rather than trusting a delimiter.
+
+**2. A broader predicate silently removed a protection.** Widening `historical` made
+`RetryAcceptanceMatrixTest` match, and because `historical` sat *above* the critical branch,
+a class carrying `@Disabled("migrated-pending")` was reclassified from *"NO borrar sin prueba
+equivalente"* to *"eliminar métodos históricos"*. Same for two secret-redaction UATs, in the
+opposite direction. Signal strength now decides the order — `migrated-pending` >
+traceability > historical — and `historical` can no longer shadow a fitness or a UAT
+classification.
+
+Both were caught by an explicit invariant rather than by reading the diff:
+
+```text
+comm -13 <baseline R0_PRUNE> <final R0_PRUNE>   # must be empty
+```
+
+It was **not** empty on the first two attempts. A change that widens a predicate needs a
+measured safety bound, not a re-read.
+
+### Classification
+
+```text
+H0.2  NOT_RUN — bloqueado por equivalencia, no por permiso
+```
+
+The blocker is not consent, it is evidence: 47 of 51 equivalence claims do not resolve to a
+live test. Deleting under those conditions would destroy the burn-down traceability record
+that `ROADMAP.md` §G0..G8 depends on, in exchange for nothing that runs either way. If the
+archive is meant to live in the ledger rather than in code, that is a **decision to record**,
+not a deletion to perform.
+
+### What this slice did NOT do
+
+- No `@Disabled` removed, no test deleted, no assertion weakened.
+- `test_portfolio.py` and `disabled_equivalence_audit.py` change the *classification* and make
+  the equivalence *measurable*; neither authorises a deletion and neither deletes.

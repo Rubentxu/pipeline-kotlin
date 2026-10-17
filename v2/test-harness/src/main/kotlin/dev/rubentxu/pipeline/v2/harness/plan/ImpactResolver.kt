@@ -266,7 +266,16 @@ object ImpactResolver {
                 )
             }
             for (suite in selected.suites) {
-                val evidence = executedSuites[suite.filter]
+                // BQ4 P0 (HITO 1 "Selección y evidencia
+                // vinculadas", 2026-10-17): the lookup
+                // key is the FQCN. The previous shape
+                // used `suite.filter` (the JUnit
+                // filter pattern, often a simple
+                // class name) which silently collapsed
+                // two modules that have a same-named
+                // suite into a single evidence row.
+                // The FQCN is unique per JVM.
+                val evidence = executedSuites[suite.fqcn]
                 when (evidence) {
                     null -> {
                         add(SelectionRefusal.SelectedButNotRun(suite.filter))

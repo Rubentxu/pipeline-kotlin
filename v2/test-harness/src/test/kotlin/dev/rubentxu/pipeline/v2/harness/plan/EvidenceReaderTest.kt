@@ -103,6 +103,76 @@ class EvidenceReaderTest {
         assertTrue(EvidenceReader.suitesWithEvidence(missing).isEmpty())
     }
 
+    @Test
+    fun `BQ4 P0 HITO 1 weakness 4 - two same-named suites in different packages do NOT collide`(
+        @TempDir dir: Path,
+    ) {
+        // The HITO 1 "Selección y evidencia vinculadas"
+        // bullet in QUALITY_VALUE_ADDENDUM.md (2026-10-17)
+        // named the FQCN identity as a required property:
+        // "Identificar suites mediante módulo + FQCN +
+        // invocación real". The previous shape used the
+        // simple class name (`name.substringAfterLast('.')`)
+        // as the evidence map key, so two modules with
+        // `FooTest` would silently collapse into a single
+        // row. The new shape uses the FULL `name` attribute
+        // (the FQCN) as the key.
+        //
+        // The test stages two XML files with the SAME
+        // simple class name (`FooTest`) in DIFFERENT
+        // packages. The previous shape's map would have
+        // one row (the second overwrites the first). The
+        // new shape has two rows keyed by FQCN. The
+        // property the test pins: every FQCN is its own
+        // evidence row; the gate can identify each
+        // independently.
+        val pkgA = "com.example.modone"
+        val pkgB = "com.example.modtwo"
+        val simpleName = "FooTest"
+        val fqcnA = "$pkgA.$simpleName"
+        val fqcnB = "$pkgB.$simpleName"
+        // Two XMLs with the SAME simple name but
+        // DIFFERENT FQCNs. Each passes the count/failure
+        // gates; both are addressable evidence.
+        writeRawXml(
+            dir.resolve("TEST-$simpleName-A.xml"),
+            fqcn = fqcnA,
+        )
+        writeRawXml(
+            dir.resolve("TEST-$simpleName-B.xml"),
+            fqcn = fqcnB,
+        )
+
+        val evidence = EvidenceReader.suitesWithEvidence(dir)
+
+        assertEquals(
+            setOf(fqcnA, fqcnB),
+            evidence.keys,
+            "BQ4 P0 HITO 1 weakness 4: the evidence map MUST be keyed by " +
+                "FQCN, so two same-named suites in different packages produce " +
+                "two distinct rows. The previous shape used the simple class " +
+                "name and collapsed them; the new shape is the closed-world " +
+                "identity the audit required.",
+        )
+    }
+
+    /**
+     * Write a minimal JUnit report with a custom FQCN in
+     * the `<testsuite name="...">` attribute. Used by
+     * the FQCN identity test to stage two same-named
+     * suites in different packages.
+     */
+    private fun writeRawXml(file: Path, fqcn: String) {
+        Files.createDirectories(file.parent)
+        Files.writeString(
+            file,
+            """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <testsuite name="$fqcn" tests="1" failures="0" errors="0"/>
+            """.trimIndent(),
+        )
+    }
+
     // ---- silent-green regression: a report that has no executed test is
     // not evidence, regardless of failures/errors being zero. ADR-0072
     // and the EVIDENCE_GATE rule in AGENTS.md require tests > 0 and

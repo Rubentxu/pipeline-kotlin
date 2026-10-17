@@ -310,7 +310,7 @@ private fun writeXml(dir: Path, className: String, failures: Int, errors: Int) {
         dir.resolve("TEST-$className.xml"),
         """
         <?xml version="1.0" encoding="UTF-8"?>
-        <testsuite name="dev.rubentxu.$className" tests="1" failures="$failures" errors="$errors"/>
+        <testsuite name="$className" tests="1" failures="$failures" errors="$errors"/>
         """.trimIndent(),
     )
 }

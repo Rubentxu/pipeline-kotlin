@@ -91,10 +91,18 @@ object EvidenceReader {
     /**
      * Read every `TEST-*.xml` in [resultsDir] and
      * attempt to load the sidecar of the same basename.
-     * The returned map is keyed by the simple class
-     * name the XML declares (the gate identifies
-     * suites by their simple class name, matching
-     * [TestSuiteId.filter]).
+     *
+     * BQ4 P0 (HITO 1 "Selección y evidencia vinculadas",
+     * 2026-10-17): the returned map is keyed by the
+     * FQCN the XML declares (the `<testsuite name="...">`
+     * attribute, e.g. `com.example.FooTest`). The
+     * previous shape used the simple class name
+     * (`FooTest`) as the key, which silently collapsed
+     * two modules that have a same-named suite. The
+     * FQCN is unique per JVM, so the map is a closed
+     * world. The [ImpactResolver.adjudicate] lookup
+     * matches the plan's [TestSuiteId.fqcn] which is
+     * the FQCN the producer wrote.
      */
     fun suitesWithEvidence(resultsDir: Path): Map<String, SuiteEvidence> {
         if (!Files.isDirectory(resultsDir)) return emptyMap()
@@ -103,9 +111,9 @@ object EvidenceReader {
             for (entry in entries) {
                 val name = entry.fileName.toString()
                 if (name.startsWith("TEST-") && name.endsWith(".xml")) {
-                    val className = suiteClassNameFrom(entry) ?: continue
+                    val fqcn = suiteFqcnFrom(entry) ?: continue
                     val sidecar = EvidenceManifest.sidecarFor(entry)
-                    out[className] = when {
+                    out[fqcn] = when {
                         !Files.isRegularFile(sidecar) -> SuiteEvidence.MissingSidecar(xml = entry)
                         else -> try {
                             SuiteEvidence.WithManifest(
@@ -133,17 +141,31 @@ object EvidenceReader {
     }
 
     /**
-     * The simple class name of a JUnit report, e.g. `TEST-FooTest.xml` -> `FooTest`.
+     * The FQCN of a JUnit report's `<testsuite name="...">` attribute.
      *
-     * The XML is parsed; the suite's class name comes
-     * from the `<testsuite name="...">` attribute. The
-     * count, failure, error, skip gates (H1 mandate:
-     * `tests>0`, `tests-skipped>0`, `failures=0`,
-     * `errors=0`) are applied: an XML that fails any of
-     * these gates is NOT a suite with evidence. A
-     * corrupt XML returns null for the same reason.
+     * BQ4 P0 (HITO 1 "Selección y evidencia vinculadas",
+     * 2026-10-17): the previous shape returned the
+     * simple class name (`name.substringAfterLast('.')`),
+     * which silently collapsed two modules that have
+     * a same-named suite into a single evidence row.
+     * The new shape returns the FULL attribute value
+     * (e.g. `com.example.FooTest`) — the FQCN, the
+     * unique identity per JVM. The map key is the
+     * FQCN; the [ImpactResolver.adjudicate] lookup
+     * matches the plan's [TestSuiteId.fqcn] which is
+     * the FQCN the producer wrote.
+     *
+     * The XML's count, failure, error, skip gates
+     * (H1 mandate: `tests>0`, `tests-skipped>0`,
+     * `failures=0`, `errors=0`) are applied: an XML
+     * that fails any of these gates is NOT a suite
+     * with evidence. A corrupt XML returns null for
+     * the same reason. A blank or missing `name`
+     * attribute is also null — the FQCN is the
+     * identity, and a report without an identity is
+     * not addressable.
      */
-    private fun suiteClassNameFrom(xml: Path): String? = try {
+    private fun suiteFqcnFrom(xml: Path): String? = try {
         val factory = DocumentBuilderFactory.newInstance().apply {
             // The XML comes from our own build, but a parser that will fetch a DTD over the
             // network turns a malformed report into an outbound request. Disable it explicitly.
@@ -164,7 +186,14 @@ object EvidenceReader {
         } else if (tests - skipped <= 0) {
             null
         } else {
-            name.substringAfterLast('.').ifEmpty { null }
+            // BQ4 P0 (HITO 1, follow-up): the FQCN is the
+            // identity. A blank `name` attribute is a
+            // report without an addressable suite — not
+            // a passing report, and not a candidate for
+            // any fallback. The FQCN carrier self-protects
+            // (it would refuse a blank string) and the
+            // map key is closed.
+            name.ifBlank { null }
         }
     } catch (e: Exception) {
         // A corrupt report is not a passing report. Treating it as "some evidence exists" is the

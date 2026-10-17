@@ -59,10 +59,22 @@ object FamilyRouter {
     ): FamilyRoutingDecision {
         // WU-LPR-301 / G5 (2026-09-18): the legacy canonical command family is LEGACY_REMOVED,
         // so the dispatcher fallback cannot route a real Step. The LegacyOnly boundary is
-        // preserved only for binary compatibility: it returns Success, and the registry boundary
-        // (which is the production authority) decides reachability per prepared execution.
+        // preserved only for binary compatibility: when the legacy fallback is reached WITHOUT
+        // an invocationExecutor, it MUST fail closed (FailureKind.ENGINE) instead of returning a
+        // silent Success — a silent Success for a step that never ran is a false green. Reaching
+        // this path is unreachable in production by design; the typed failure is the audit-trail
+        // witness that the invariant holds.
         val legacyBoundary = LegacyExecutionAdapter.adapt(
-            invocationExecutor ?: CanonicalInvocationExecutor { _, _ -> StepOutcome.Success },
+            invocationExecutor ?: CanonicalInvocationExecutor { _, _ ->
+                StepOutcome.Failure(
+                    dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                        kind = dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
+                        message = "LegacyOnly fallback reached without invocationExecutor; " +
+                            "this path is unreachable in production by design — reaching it " +
+                            "indicates a programming error in the canonical coordinator",
+                    ),
+                )
+            },
         )
 
         val registry = stepRegistry ?: return FamilyRoutingDecision.LegacyOnly

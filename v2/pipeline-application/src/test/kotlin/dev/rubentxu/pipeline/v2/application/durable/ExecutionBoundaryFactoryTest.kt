@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -71,6 +72,15 @@ class ExecutionBoundaryFactoryTest {
 
     private fun dispatcher(): CanonicalNodeDispatcher = CanonicalNodeDispatcher()
 
+    /**
+     * A no-op [CanonicalInvocationExecutor] that returns [StepOutcome.Success]. Tests that
+     * want to exercise the production path (not the unreachable-by-design LegacyOnly
+     * fallback) supply this explicitly. Leaving [invocationExecutor] null exercises the
+     * fallback, which now returns Failure(ENGINE) — that's a separate test concern.
+     */
+    private val successExecutor: CanonicalInvocationExecutor =
+        CanonicalInvocationExecutor { _, _ -> StepOutcome.Success }
+
     private fun legacyPrepared(controlDirRoot: java.nio.file.Path? = null): PreparedLegacyExecution {
         // LFC-2 / fixture-debt: the Load dispatcher resolves the path against the stage workspace
         // `<controlDirRoot>/workspace/<stageName>-<stageIndex>/` (WorkspaceResolver.resolve) and
@@ -110,14 +120,30 @@ class ExecutionBoundaryFactoryTest {
                 stepRegistry = null,
             )
 
-            // No recorder was supplied, so the produced boundary is the legacy adapter directly. Routing a
-            // legacy-prepared execution through it succeeds and the boundary is the same object FamilyRouter
-            // produced (no wrapping object introduced). LFC-2 / fixture-debt: the legacy adapter routes the
-            // core.load payload to the Load dispatcher which requires controlDirRoot != null; bind it.
+            // No recorder was supplied, so the produced boundary is the legacy adapter directly. The
+            // LegacyOnly fallback (no executor supplied) MUST fail closed — a silent Success for a step
+            // that never ran is a false green. The typed failure names the cause and the expected
+            // resolution path; reaching it indicates a programming error in the canonical coordinator.
+            // LFC-2 / fixture-debt: the legacy adapter routes the core.load payload to the Load
+            // dispatcher which requires controlDirRoot != null; bind it.
+            val result = produced.execute(
+                legacyPrepared(tempDir.resolve("control")),
+                runtime(tempDir.resolve("control")),
+            ).outcome
+            assertTrue(
+                result is StepOutcome.Failure,
+                "LegacyOnly fallback must return Failure(ENGINE), not silent Success; got $result",
+            )
+            result as StepOutcome.Failure
             assertEquals(
-                StepOutcome.Success,
-                produced.execute(legacyPrepared(tempDir.resolve("control")), runtime(tempDir.resolve("control"))).outcome,
-                "LegacyOnly boundary must succeed for a legacy PreparedExecution",
+                dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
+                result.failure.kind,
+                "LegacyOnly fallback failure must be classified as ENGINE — it's an invariant violation",
+            )
+            assertTrue(
+                result.failure.message.contains("LegacyOnly") && result.failure.message.contains("invocationExecutor"),
+                "Failure message must name both LegacyOnly and the missing invocationExecutor so a " +
+                    "future maintainer can locate the unreachable-by-design invariant: ${result.failure.message}",
             )
             // Sanity: a registry-prepared payload routed through the legacy-only boundary must throw the
             // engine invariant from LegacyExecutionAdapter — proves this is the legacy boundary alone,
@@ -134,7 +160,7 @@ class ExecutionBoundaryFactoryTest {
     fun `build returns SeamedExecutionRouter when registry is present and stepKey is owned`(@TempDir tempDir: java.nio.file.Path) = runBlocking {
         val produced = ExecutionBoundaryFactory.build(
             dispatcher = dispatcher(),
-            invocationExecutor = null,
+            invocationExecutor = successExecutor,
             stepRegistry = registryWithEcho(),
             stepKey = CoreEchoStep.KEY,
         )
@@ -167,7 +193,7 @@ class ExecutionBoundaryFactoryTest {
         val recorder = RecordingBoundary()
         val produced = ExecutionBoundaryFactory.build(
             dispatcher = dispatcher(),
-            invocationExecutor = null,
+            invocationExecutor = successExecutor,
             stepRegistry = null,
             recorder = recorder,
         )
@@ -191,13 +217,13 @@ class ExecutionBoundaryFactoryTest {
     fun `build with null recorder returns the produced boundary without wrapping`(@TempDir tempDir: java.nio.file.Path) = runBlocking {
         val producedWithNullRecorder = ExecutionBoundaryFactory.build(
             dispatcher = dispatcher(),
-            invocationExecutor = null,
+            invocationExecutor = successExecutor,
             stepRegistry = null,
             recorder = null,
         )
         val producedExplicitlyNoRecorder = ExecutionBoundaryFactory.build(
             dispatcher = dispatcher(),
-            invocationExecutor = null,
+            invocationExecutor = successExecutor,
             stepRegistry = null,
         )
 

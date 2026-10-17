@@ -124,14 +124,27 @@ class ChangedInputClassifierTest {
     inner class NonProductionClassifications {
 
         @Test
-        fun `a path under v2 test-harness is NonProduction TestHarnessInternal`() {
-            // The self-owned prefix is the audit's exemption:
-            // a defect in the harness makes the harness
-            // over-report, which is noisy but safe.
+        fun `a kt source under v2 test-harness src main is Production SourceCode`() {
+            // BQ4 P0 (HITO 1 "selección y evidencia vinculadas",
+            // 2026-10-17): the previous shape classified any
+            // path under `v2/test-harness/` as
+            // `TestHarnessInternal` (NonProduction) and the
+            // resolver ignored it. A defect in the harness's
+            // production code was therefore a SILENT GREEN:
+            // the gate saw no production change and discharged
+            // on the plan. The audit's RC4 follow-up named
+            // this the most expensive defect class in this
+            // repository: the harness IS the test-harness
+            // product, and changes to its `.kt` production
+            // sources are product changes the gate MUST
+            // verify. The exemption is removed; harness
+            // `src/main/**/*.kt` falls through to the
+            // standard `SourceCode` rule and is classified as
+            // Production.
             val classified = ChangedInputClassifier.classify(
                 "v2/test-harness/src/main/kotlin/dev/rubentxu/pipeline/v2/harness/plan/ImpactResolver.kt",
             )
-            assertTrue(classified is ChangedInput.TestHarnessInternal) { "got $classified" }
+            assertTrue(classified is ChangedInput.SourceCode) { "got $classified" }
         }
 
         @Test
@@ -233,8 +246,16 @@ class ChangedInputClassifierTest {
         }
 
         @Test
-        fun `isProductionPath returns false for NonProduction TestHarnessInternal`() {
-            assertFalse(
+        fun `isProductionPath returns true for Production SourceCode under v2 test-harness src main`() {
+            // BQ4 P0 (HITO 1, 2026-10-17): the previous
+            // shape had `isProductionPath returns false for
+            // NonProduction TestHarnessInternal` pinning the
+            // self-owned prefix exemption. The audit's
+            // "selección y evidencia vinculadas" bullet
+            // removed the exemption; harness `src/main/**/*.kt`
+            // is now SourceCode (Production). The test name
+            // is updated to match.
+            assertTrue(
                 ChangedInputClassifier.isProductionPath(
                     "v2/test-harness/src/main/kotlin/Foo.kt",
                 ),

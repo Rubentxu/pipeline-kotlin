@@ -78,7 +78,7 @@ class UatRunConcurrencyCharacterisationTest {
         running.clear()
     }
 
-    @Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
+    @Disabled("producer-internal: parallel body execution semantics are the producer’s authoritative implementation; the harness can run the binary with concurrency flags and observe, but cannot author a correctness test. Reviewed 2026-10-17 (Block D TODO #2): see docs/v2/07-uat/disabled_uat_review_2026-10-17.md.")
 @Test
     fun `two concurrent resume owners of one durable run -- current implementation permits both to re-execute`(@TempDir tempDir: Path) {
         val marker = tempDir.resolve("effect-marker.txt")

@@ -50,7 +50,7 @@ import org.junit.jupiter.api.io.TempDir
  * @see <a href="ADR-0048">ADR-0048 — SandboxProfile.LOCAL</a>
  * @see <a href="ADR-0016">ADR-0016 — M5/M9 scope firewall</a>
  */
-@Disabled("migrated-pending")
+@Disabled("producer-internal: sandbox profile selection is not replayable by an external harness. Reviewed 2026-10-17 (Block D TODO #2): see docs/v2/07-uat/disabled_uat_review_2026-10-17.md.")
 @Timeout(120)
 class UatLocal007SandboxProfileTest {
 

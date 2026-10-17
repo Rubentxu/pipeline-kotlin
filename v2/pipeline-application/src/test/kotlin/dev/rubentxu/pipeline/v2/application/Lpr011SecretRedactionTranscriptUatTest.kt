@@ -33,7 +33,7 @@ import org.junit.jupiter.api.Test
  * secret split across arbitrary process-output chunk boundaries is still
  * scrubbed before the [EchoOutputCaptured] event leaves the substrate.
  */
-@Disabled("migrated-pending")
+@Disabled("producer-internal: secrets cannot be reconstructed by an external harness without a fixture the producer must maintain. Reviewed 2026-10-17 (Block D TODO #2): see docs/v2/07-uat/disabled_uat_review_2026-10-17.md.")
 // Migrated-pending per docs/v2/05-roadmap/QUALITY_VALUE_ADDENDUM.md BQ5.
 // The harness is the owner of the equivalence proof; the source stays in place
 // until that proof arrives and the deletion guard (retirement_guard.py) authorises it.

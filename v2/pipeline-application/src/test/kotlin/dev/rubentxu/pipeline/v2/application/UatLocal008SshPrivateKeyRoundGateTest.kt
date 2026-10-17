@@ -96,7 +96,7 @@ class UatLocal008SshPrivateKeyRoundGateTest {
      * When absent, the test is skipped — the SSH channel materialization path
      * is exercised via file:// + GIT_SSH_COMMAND in the existing tests.
      */
-    @Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
+    @Disabled("producer-internal: SSH private key material cannot be reconstructed by an external harness without a fixture the producer must maintain. Reviewed 2026-10-17 (Block D TODO #2): see docs/v2/07-uat/disabled_uat_review_2026-10-17.md.")
 @Test
     fun `CR-RD-021 SSH canary zero occurrences in event surfaces after SSH channel path`(@TempDir tempDir: Path) {
         assumeTrue(

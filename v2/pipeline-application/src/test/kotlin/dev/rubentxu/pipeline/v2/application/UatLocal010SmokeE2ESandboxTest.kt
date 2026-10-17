@@ -40,7 +40,7 @@ import java.util.concurrent.TimeUnit
  *
  * @see <a href="ADR-0053">ADR-0053 — ML-R8 L7 smoke E2E sandbox</a>
  */
-@Disabled("migrated-pending")
+@Disabled("producer-internal: sandbox profile selection is not replayable by an external harness. Reviewed 2026-10-17 (Block D TODO #2): see docs/v2/07-uat/disabled_uat_review_2026-10-17.md.")
 @Timeout(600)
 class UatLocal010SmokeE2ESandboxTest {
 

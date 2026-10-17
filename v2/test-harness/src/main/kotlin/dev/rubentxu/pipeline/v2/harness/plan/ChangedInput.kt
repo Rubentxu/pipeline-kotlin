@@ -71,7 +71,15 @@ sealed interface ChangedInput {
      * change is a code change, a `.proto` change is a
      * wire-contract change.
      */
-    data class SourceCode(override val path: String) : Production
+    data class SourceCode(override val path: String) : Production {
+        // BQ4 v10 (plan carrier self-protect, 2026-10-17):
+        // a blank path would silently never match any
+        // catalogue row, and the classifier would return
+        // the typed refusal for a real change as
+        // UnknownProduction (or worse, a no-op). The
+        // carrier now refuses blanks at construction.
+        init { require(path.isNotBlank()) { "SourceCode.path must not be blank" } }
+    }
 
     /**
      * A `META-INF/services/...` resource. The
@@ -85,7 +93,9 @@ sealed interface ChangedInput {
      * `pathPatterns` (e.g. the Step SDK's
      * `StepDefinitionContributor` SPI).
      */
-    data class ServiceLoader(override val path: String) : Production
+    data class ServiceLoader(override val path: String) : Production {
+        init { require(path.isNotBlank()) { "ServiceLoader.path must not be blank" } }
+    }
 
     /**
      * A build-composition resource. The whole build is
@@ -99,7 +109,9 @@ sealed interface ChangedInput {
      * a "silent green" — the path was filtered out
      * before the catalogue was consulted.
      */
-    data class BuildComposition(override val path: String) : Production
+    data class BuildComposition(override val path: String) : Production {
+        init { require(path.isNotBlank()) { "BuildComposition.path must not be blank" } }
+    }
 
     /**
      * A distribution or install script. `scripts/release*`
@@ -114,7 +126,12 @@ sealed interface ChangedInput {
     data class DistributionScript(
         override val path: String,
         val scriptName: String,
-    ) : Production
+    ) : Production {
+        init {
+            require(path.isNotBlank()) { "DistributionScript.path must not be blank" }
+            require(scriptName.isNotBlank()) { "DistributionScript.scriptName must not be blank" }
+        }
+    }
 
     /**
      * The classifier could not place the path into any
@@ -143,7 +160,24 @@ sealed interface ChangedInput {
         override val path: String,
         val proposedCapability: String,
         val proposedOwner: String,
-    ) : ChangedInput
+    ) : ChangedInput {
+        // BQ4 v10 (plan carrier self-protect, 2026-10-17):
+        // `proposeOwnerAndCapability` is the only producer
+        // and always returns a non-blank pair, so the
+        // strict-validate is for the structural
+        // invariant: a future direct construction that
+        // passes blanks would fabricate the operator's
+        // proposed owner / capability.
+        init {
+            require(path.isNotBlank()) { "UnknownProduction.path must not be blank" }
+            require(proposedCapability.isNotBlank()) {
+                "UnknownProduction.proposedCapability must not be blank"
+            }
+            require(proposedOwner.isNotBlank()) {
+                "UnknownProduction.proposedOwner must not be blank"
+            }
+        }
+    }
 
     /**
      * The change does not invalidate a product
@@ -163,7 +197,9 @@ sealed interface ChangedInput {
      * a real product change that landed in the wrong
      * module is still refused.
      */
-    data class TestHarnessInternal(override val path: String) : NonProduction
+    data class TestHarnessInternal(override val path: String) : NonProduction {
+        init { require(path.isNotBlank()) { "TestHarnessInternal.path must not be blank" } }
+    }
 
     /**
      * A test source under `src/test/` (with `.kt` or
@@ -174,7 +210,9 @@ sealed interface ChangedInput {
      * [TestHarnessInternal] (the prefix check fires
      * first).
      */
-    data class TestSource(override val path: String) : NonProduction
+    data class TestSource(override val path: String) : NonProduction {
+        init { require(path.isNotBlank()) { "TestSource.path must not be blank" } }
+    }
 
     /**
      * A documentation or tooling change (a `.md`, a
@@ -182,7 +220,9 @@ sealed interface ChangedInput {
      * cannot invalidate a product guarantee; the plan
      * ignores it.
      */
-    data class Documentation(override val path: String) : NonProduction
+    data class Documentation(override val path: String) : NonProduction {
+        init { require(path.isNotBlank()) { "Documentation.path must not be blank" } }
+    }
 }
 
 /**

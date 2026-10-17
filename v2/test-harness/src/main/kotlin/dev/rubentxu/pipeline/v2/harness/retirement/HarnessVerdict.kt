@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.harness.retirement
 
+import dev.rubentxu.pipeline.v2.harness.util.DigestFormat
+
 /**
  * Typed receipt of a `pipelinek-release-harness` verdict for a single
  * test file. The harness emits one of these per UAT it has exercised
@@ -64,9 +66,9 @@ sealed interface HarnessVerdict {
             // a blank or short digest is refused at
             // construction with a precise message that
             // names the field and the format.
-            requireSha256("contentSha256", contentSha256)
-            requireSha256("proofDigest", proofDigest)
-            requireSha256("candidateSha256", candidateSha256)
+            DigestFormat.requireSha256("contentSha256", contentSha256)
+            DigestFormat.requireSha256("proofDigest", proofDigest)
+            DigestFormat.requireSha256("candidateSha256", candidateSha256)
             require(authority.isNotBlank()) {
                 "Verified.authority must not be blank"
             }
@@ -131,7 +133,7 @@ data class FailureFingerprint(
         // mirrors the reader's format requirement
         // (lowercase hex), so a direct construction is
         // self-protecting.
-        requireSha256("inputDigest", inputDigest)
+        DigestFormat.requireSha256("inputDigest", inputDigest)
         require(symptom.isNotBlank()) { "symptom must not be blank" }
         require(type.isNotBlank()) { "type must not be blank" }
         require(cause.isNotBlank()) { "cause must not be blank" }
@@ -145,15 +147,13 @@ data class FailureFingerprint(
  * retirement carrier. One helper, one source of truth,
  * so the reader's [HarnessVerdictReader.requireSha256]
  * and the carrier's init cannot drift.
+ *
+ * BQ4 v19 (DRY consolidation, 2026-10-17): the helper
+ * is now shared at `dev.rubentxu.pipeline.v2.harness.util.DigestFormat`;
+ * this file uses the shared helper. The reader's
+ * `requireSha256` is a different shape (returns a
+ * `FieldResult`, not a throw) and is NOT consolidated.
  */
-private fun requireSha256(fieldName: String, value: String) {
-    require(value.length == 64) {
-        "$fieldName must be a 64-char hex SHA-256; got ${value.length} chars"
-    }
-    require(value.all { it in '0'..'9' || it in 'a'..'f' }) {
-        "$fieldName must be lowercase hex"
-    }
-}
 
 /**
  * The reason the harness-receipt applier refused a promotion. Typed

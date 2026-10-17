@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.harness.cycle
 
+import dev.rubentxu.pipeline.v2.harness.util.DigestFormat
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -176,7 +177,7 @@ private fun parseArgs(args: Array<String>): CliArgs? {
                 // fails fast with a precise message
                 // before any runner state machine
                 // starts.
-                requireSha1("--source-sha", args[i + 1])
+                DigestFormat.requireSha1("--source-sha", args[i + 1])
                 sourceSha = args[i + 1]
                 i += 2
             }
@@ -228,15 +229,12 @@ private fun parseArgs(args: Array<String>): CliArgs? {
  * format at the argument boundary, mirroring the
  * carrier-level checks the rest of the cycle
  * package already enforces.
+ *
+ * BQ4 v19 (DRY consolidation, 2026-10-17): the helper
+ * is now shared at `dev.rubentxu.pipeline.v2.harness.util.DigestFormat`;
+ * the CLI is one of three call sites (CycleCli, GateCli,
+ * HarnessVerdict) that previously had its own copy.
  */
-private fun requireSha1(fieldName: String, value: String) {
-    require(value.length == 40) {
-        "$fieldName must be a 40-char hex SHA-1; got ${value.length} chars"
-    }
-    require(value.all { it in '0'..'9' || it in 'a'..'f' }) {
-        "$fieldName must be lowercase hex; got '$value'"
-    }
-}
 
 private fun defaultCycleDir(cycleId: String): Path =
     Paths.get("workspace").resolve(".pipelinek-cycles").resolve(cycleId)

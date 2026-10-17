@@ -206,13 +206,23 @@ def convergence_fitness_is_live() -> bool:
 # different ways across sixteen rows.
 LEGACY_ABSENCE_RE = re.compile(r"absent|resurrection", re.IGNORECASE)
 
+# The MEMBERSHIP form: the key is tested against the catalogue
+# (`key.value !in ...LEGACY_PLUGIN_IDS`). Deliberately not `LEGACY_PLUGIN_IDS`
+# alone: reading `LEGACY_PLUGIN_IDS.size` also mentions the symbol but asserts a
+# stage counter, not the absence of a key, and conflating the two makes an
+# equivalence rule claim an owner that does not own the row's real property.
+CATALOGUE_MEMBERSHIP_RE = re.compile(
+    r"\b!?in\s+[A-Za-z_][\w.]*\s*\.\s*LEGACY_PLUGIN_IDS\b",
+)
+
 OBSOLETE_BY_EQUIVALENCE_REASON = (
     "Asserts a live invariant that IS owned, by an enabled guard: "
     + CONVERGENCE_FITNESS_PATH.split("/")[-1]
     + " pins LEGACY_PLUGIN_IDS to empty via LegacyResidualSnapshot."
-    + "physicalResidual = emptySet(). This @Disabled row is a disabled duplicate "
-    + "of that guard, so it adds no coverage and cannot fail. Retiring it is "
-    + "authorised by equivalence, not by age."
+    + "physicalResidual = emptySet(), so re-admitting any retired key makes live != "
+    + "expected and that guard goes red without this row. This @Disabled row is a "
+    + "disabled duplicate of that guard, so it adds no coverage and cannot fail. "
+    + "Retiring it is authorised by equivalence, not by age."
 )
 
 
@@ -274,7 +284,7 @@ def module_of(rel: str) -> str:
     return m.group(1) if m else rel
 
 
-def classify(rel: str, method: str, reason: str = "") -> tuple:
+def classify(rel: str, method: str, reason: str = "", body: str = "") -> tuple:
     """Return (category, reason, blocks_gate_1) for one @Disabled entry.
 
     The default is UNKNOWN, not HISTORICAL. A disabled test nobody triaged is
@@ -295,8 +305,29 @@ def classify(rel: str, method: str, reason: str = "") -> tuple:
     # retirement. Checked before the LIVE_INVARIANT guard below, which would
     # otherwise park it at UNKNOWN forever for a question that is already
     # answered by a running test.
+    #
+    # The BODY is consulted because that is where the assertion is written.
+    # Thirteen rows assert the MEMBERSHIP form -- `key.value !in
+    # ...LEGACY_PLUGIN_IDS` -- and six of them mention the catalogue in neither
+    # the method name nor the reason, so scoping this test to name+reason made
+    # the rule unable to fire on its own subject and parked 6 legitimate
+    # duplicates at UNKNOWN: 6 rows of Gate-1 noise that trained the reader to
+    # ignore the blocker.
+    #
+    # The predicate matches the membership FORM, not merely the symbol, and the
+    # distinction is measured rather than assumed. Two `no legacy resurrection`
+    # rows in EmitEventStepContractSuiteTest read the same catalogue but assert a
+    # STAGE COUNTER -- `LEGACY_PLUGIN_IDS.size == 7` and `== 6` -- which their own
+    # @Disabled reason calls superseded. A superseded counter is not the live
+    # invariant this rule is about: it is a snapshot of a value that has since
+    # changed, and its decoder/dispatcher assertions are not covered by the
+    # convergence fitness the equivalence reason names. Matching the symbol
+    # alone swept both in and the inventory claimed an owner that does not own
+    # them, which is the same defect as the one being fixed: a rule citing a
+    # guard that cannot fail on its subject. They stay at UNKNOWN, where a
+    # maintainer decides their real category.
     if (LIVE_INVARIANT_RE.search(method) or LIVE_INVARIANT_RE.search(reason)) \
-            and "LEGACY_PLUGIN_IDS" in (method + reason) \
+            and CATALOGUE_MEMBERSHIP_RE.search(method + reason + body) \
             and LEGACY_ABSENCE_RE.search(method + reason) \
             and legacy_burn_down_converged() \
             and convergence_fitness_is_live():
@@ -346,7 +377,7 @@ def extract_entries(rel_path: str, abs_path: str):
     # CONTENTS have been blanked. The reason is then read from the RAW text at the
     # matched offset, because the scanner that locates the annotation necessarily
     # blanks the very string that IS the reason.
-    for m in ANNOTATION.finditer(strip_comments_and_literals(src)):
+    for m in ANNOTATION.finditer(stripped := strip_comments_and_literals(src)):
         raw = re.match(r'\s*"((?:[^"\\]|\\.)*)"', src[m.end():])
         if raw is None:
             continue
@@ -356,13 +387,45 @@ def extract_entries(rel_path: str, abs_path: str):
         cm = re.search(r'class\s+(\w+)', tail)
         if fm:
             target = f"`{fm.group(1)}`"
+            decl_start = end + fm.start()
         elif cm:
             target = f"class {cm.group(1)} (whole class)"
+            decl_start = end + cm.start()
         else:
             target = "<unresolved>"
+            decl_start = end
         reason = raw.group(1).replace("\\\"", "\"")
-        entries.append((target, reason))
+        entries.append((target, reason, declaration_body(stripped, decl_start)))
     return entries
+
+
+def declaration_body(stripped: str, start: int) -> str:
+    """The brace-delimited body that follows a declaration, from the STRIPPED text.
+
+    Needed because a disabled test's GUARANTEE is often written only in its body:
+    six `@Disabled` rows assert `key.value !in CanonicalCoreStepCommand
+    .LEGACY_PLUGIN_IDS`, and that symbol appears in neither the method name nor
+    the reason, so the equivalence rule below could not see the very property it
+    exists to recognise.
+
+    Brace matching runs over the stripped text, where literal and comment
+    CONTENTS are blanked, so a brace inside a string cannot open or close a body.
+    Unbalanced input yields the remainder rather than an exception: the gate must
+    degrade to "no body seen", never to a crash that loses the whole inventory.
+    """
+    open_at = stripped.find("{", start)
+    if open_at < 0:
+        return ""
+    depth = 0
+    for index in range(open_at, len(stripped)):
+        char = stripped[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return stripped[open_at:index + 1]
+    return stripped[open_at:]
 
 
 def strip_comments_and_literals(src: str) -> str:
@@ -506,11 +569,92 @@ def scanner_selftest() -> list:
         recovered = extract_entries("selftest", reason_path)
     finally:
         os.unlink(reason_path)
-    if recovered != [("`named member`", "kept: the reason survives")]:
+    if recovered != [("`named member`", "kept: the reason survives", "")]:
         failures.append(
             "the reason is read at the wrong offset after a line comment: "
-            f"expected the member and its prose, got {recovered}"
+            f"expected the member, its prose and an empty body, got {recovered}"
         )
+
+    # The BODY is the third field, and it exists because a disabled test's
+    # GUARANTEE is often written only inside its body: six rows assert
+    # `key.value !in ...LEGACY_PLUGIN_IDS`, and that symbol appears in neither
+    # the method name nor the reason, so the equivalence rule below could not
+    # see the very property it exists to recognise.
+    #
+    # Two directions are pinned, because a body rule that fires on everything is
+    # not a narrower scan — it is the same defect with a new field. The positive
+    # fixture carries the membership assertion; the negative one uses the same
+    # LIVE_INVARIANT vocabulary ("absent") about a DIFFERENT subject. Asserting
+    # only the positive case would leave the widening invisible.
+    body_cases = [
+        (
+            "a body asserting catalogue MEMBERSHIP is captured",
+            '    @Disabled("stays absent after the burn-down")\n'
+            '    fun `retired key`(): Unit {\n'
+            '        assertTrue(key.value !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)\n'
+            '    }\n',
+            True,
+        ),
+        (
+            "a body asserting a DIFFERENT subject does not fabricate the symbol",
+            '    @Disabled("the decoder stays absent")\n'
+            '    fun `emit event`(): Unit {\n'
+            '        assertFalse(Files.exists(decoderPath))\n'
+            '    }\n',
+            False,
+        ),
+    ]
+    for label, source, expected_carries_symbol in body_cases:
+        with tempfile.NamedTemporaryFile('w', suffix='.kt', delete=False) as handle:
+            handle.write(source)
+            body_path = handle.name
+        try:
+            body_rows = extract_entries("selftest", body_path)
+        finally:
+            os.unlink(body_path)
+        if len(body_rows) != 1:
+            failures.append(f"{label}: expected exactly one row, got {body_rows}")
+            continue
+        body = body_rows[0][2]
+        if ("LEGACY_PLUGIN_IDS" in body) != expected_carries_symbol:
+            failures.append(
+                f"{label}: expected the body to "
+                f"{'carry' if expected_carries_symbol else 'not carry'} the catalogue symbol, "
+                f"got {body!r}"
+            )
+
+    # The predicate itself, against the two REAL shapes it has to tell apart. This
+    # is the row that keeps the equivalence rule honest: the first is the claim it
+    # exists to recognise, the second reads the same catalogue but asserts a stage
+    # counter that its own @Disabled reason calls superseded. Both are reduced to
+    # the two lines that matter, taken verbatim from the tree.
+    #
+    # If this fixture is deleted, the inventory silently starts claiming
+    # LegacyResidualSnapshot as the owner of the EmitEvent rows' decoder and
+    # dispatcher assertions, and no reader of the inventory could tell.
+    predicate_cases = [
+        (
+            "catalogue MEMBERSHIP is recognised",
+            "assertTrue(key.value !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)",
+            True,
+        ),
+        (
+            "a stage COUNTER over the same catalogue is not membership",
+            "assertEquals(7, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)",
+            False,
+        ),
+        (
+            "an unrelated absence of the catalogue symbol is not membership",
+            "assertFalse(Files.exists(CanonicalCoreStepDecoder.kt))",
+            False,
+        ),
+    ]
+    for label, assertion, expected_match in predicate_cases:
+        if bool(CATALOGUE_MEMBERSHIP_RE.search(assertion)) != expected_match:
+            failures.append(
+                f"{label}: expected the membership predicate to "
+                f"{'match' if expected_match else 'not match'} {assertion!r}"
+            )
     return failures
 
 
@@ -550,8 +694,8 @@ def main():
             if "@Disabled" not in open(abs_path, encoding="utf-8", errors="ignore").read():
                 continue
             cls = f
-            for target, reason in extract_entries(rel, abs_path):
-                cat, cat_reason, blocking = classify(rel, target, reason)
+            for target, reason, body in extract_entries(rel, abs_path):
+                cat, cat_reason, blocking = classify(rel, target, reason, body)
                 counts[cat] = counts.get(cat, 0) + 1
                 if cat == UNTRIAGED:
                     untriaged.append(f"{rel} :: {target}")

@@ -34,19 +34,13 @@ import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Contract
 object ImpactResolver {
 
     /**
-     * Placeholder [SelectionRefusal.MissingSuite.suite] when the
-     * capability is unbound (the suite field of the typed case is
-     * `String` because it normally names a real suite; the placeholder
-     * lets a missing binding flow through the same typed field).
-     * Consumer at `GateCli.describe` prints it verbatim, so the
-     * bracket convention distinguishes it from real suite names.
-     *
-     * Future: split `MissingSuite` into a sealed
-     * `MissingSuite.Unbound(capability)` and `MissingSuite.Unknown(capability, suite)` so
-     * the placeholder disappears. The constant is the intermediate
-     * state.
+     * Placeholder history: NO_SUITE_BOUND_PLACEHOLDER lived here
+     * until commit d16ffd44 (StaleEvidence sealed split) and
+     * the follow-up MissingSuite sealed split. The placeholder
+     * is gone; the `MissingSuite.Unbound` case carries no
+     * suite field, and the only remaining `MissingSuite.Bound`
+     * case carries the real suite name.
      */
-    internal const val NO_SUITE_BOUND_PLACEHOLDER = "<no suite bound>"
 
 
     /**
@@ -182,7 +176,7 @@ object ImpactResolver {
 
         val refusals = buildList {
             unclassified.forEach { add(SelectionRefusal.UnclassifiedPath(it)) }
-            unbound.forEach { add(SelectionRefusal.MissingSuite(it, NO_SUITE_BOUND_PLACEHOLDER)) }
+            unbound.forEach { add(SelectionRefusal.MissingSuite.Unbound(it)) }
         }
 
         if (refusals.isNotEmpty()) {

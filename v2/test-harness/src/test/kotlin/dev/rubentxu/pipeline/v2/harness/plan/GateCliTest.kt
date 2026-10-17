@@ -306,7 +306,7 @@ class GateCliTest {
                 ValidationPlan.Refused(
                     listOf(
                         SelectionRefusal.UnclassifiedPath("v2/x/Y.kt"),
-                        SelectionRefusal.MissingSuite("cap", "NoTest"),
+                        SelectionRefusal.MissingSuite.Bound("cap", "NoTest"),
                         SelectionRefusal.SelectedButNotRun("ZTest"),
                         SelectionRefusal.SuiteDidNotRun("WTest", ":mod"),
                         SelectionRefusal.StaleEvidence.Mismatched("abc", "def"),

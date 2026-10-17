@@ -164,6 +164,19 @@ private fun parseArgs(args: Array<String>): CliArgs? {
             }
             "--source-sha" -> {
                 require(i + 1 < args.size) { "--source-sha requires a value" }
+                // BQ4 v7 (cycle CLI strict-validate, 2026-10-17):
+                // the previous shape accepted any String and
+                // let the runner compare it against the
+                // manifest's 40-hex boundCommit. A
+                // short or non-hex value silently never
+                // matched and the cycle was refused on
+                // `OtherCommit` — the wrong reason. The
+                // CLI now mirrors the carrier's strict
+                // format (40-char lowercase hex) and
+                // fails fast with a precise message
+                // before any runner state machine
+                // starts.
+                requireSha1("--source-sha", args[i + 1])
                 sourceSha = args[i + 1]
                 i += 2
             }
@@ -201,6 +214,28 @@ private fun parseArgs(args: Array<String>): CliArgs? {
         oracleLedgerPath = oracleLedgerPath,
         dryRun = dryRun,
     )
+}
+
+/**
+ * BQ4 v7 (cycle CLI strict-validate, 2026-10-17): the
+ * `--source-sha` argument is bound by the CLI's USAGE to
+ * `<40-hex>` and compared by string equality against
+ * the manifest's 40-hex `boundCommit`. The previous
+ * shape accepted any String and let the runner's
+ * `OtherCommit` check produce a refusal with the
+ * wrong reason; the operator saw "other commit" for a
+ * format error. The CLI now strict-validates the
+ * format at the argument boundary, mirroring the
+ * carrier-level checks the rest of the cycle
+ * package already enforces.
+ */
+private fun requireSha1(fieldName: String, value: String) {
+    require(value.length == 40) {
+        "$fieldName must be a 40-char hex SHA-1; got ${value.length} chars"
+    }
+    require(value.all { it in '0'..'9' || it in 'a'..'f' }) {
+        "$fieldName must be lowercase hex; got '$value'"
+    }
 }
 
 private fun defaultCycleDir(cycleId: String): Path =

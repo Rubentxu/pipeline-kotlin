@@ -1,6 +1,6 @@
 # WU-LPR-061 — @Disabled Inventory (GENERATED, do not hand-edit counts)
 
-Generated: 2026-10-17T22:43:24+00:00 · HEAD `8cca05f8`
+Generated: 2026-10-17T23:12:43+00:00 · HEAD `1b1ce0b6`
 
 | module | class | method/target | category | reason | owner | blocks Gate-1 |
 |---|---|---|---|---|---|---|
@@ -130,7 +130,6 @@ Generated: 2026-10-17T22:43:24+00:00 · HEAD `8cca05f8`
 | pipeline-application | UatTimeoutBlockDurableTest.kt | `WL-T1 body finishing before deadline succeeds` | PENDING_EXTERNAL | Author-declared migrated-pending: the authority to verify and retire this test moved to pipelinek-release-harness (AGENTS.md responsibility boundary). It is NOT historical; it blocks Gate-1 until the harness rules on it. | pipelinek-release-harness | yes |
 | pipeline-application | WULpr010CliCharacterizationTest.kt | `WONTFIX (WU-LPR-011 F5) - resume of a terminal run reuses the recorded aggregate - zero child re-execution, journaled lifecycle reprinted` | KNOWN_DEFECT | WONTFIX: the run() helper hangs. The F5 finding it characterises is the designed contract (resume re-emits the lifecycle bookends and re-executes zero children), already pinned by CanonicalDurableRunCoordinatorTest and UatDsl003ParallelTest.P6. | pipeline-kotlin maintainers | no |
 | pipeline-architecture-tests | FArchRP040DisabledTestClassificationTest.kt | <unresolved> | PENDING_EXTERNAL | Author-declared migrated-pending: the authority to verify and retire this test moved to pipelinek-release-harness (AGENTS.md responsibility boundary). It is NOT historical; it blocks Gate-1 until the harness rules on it. | pipelinek-release-harness | yes |
-| pipeline-architecture-tests | Lfc2ConcreteBodyRoutingDebtFitnessTest.kt | class ViolationFixture (whole class) | UNKNOWN | No CLASSIFICATION row and no declared token in the @Disabled reason classify this entry; it must be triaged before it can be counted as anything else | pipeline-kotlin maintainers | yes |
 | pipeline-output-store | SegmentOutputStoreTest.kt | `OUT-01 prune of a short runId must not delete streams of a longer runId sharing the safe prefix` | KNOWN_DEFECT | Author-declared reproduced defect kept as a witness rather than a passing guard. Non-blocking by construction: the test documents a defect that is known and open, so gating on it would gate on a known-red. | pipeline-kotlin maintainers | no |
 | pipeline-output-store | SegmentOutputStoreTest.kt | `OUT-02 distinct runIds whose safe forms are equal collide on disk and serve each other's bytes` | KNOWN_DEFECT | Author-declared reproduced defect kept as a witness rather than a passing guard. Non-blocking by construction: the test documents a defect that is known and open, so gating on it would gate on a known-red. | pipeline-kotlin maintainers | no |
 | pipeline-release | CandidateIdentityEndToEndTest.kt | class CandidateIdentityEndToEndTest (whole class) | PENDING_EXTERNAL | Author-declared migrated-pending: the authority to verify and retire this test moved to pipelinek-release-harness (AGENTS.md responsibility boundary). It is NOT historical; it blocks Gate-1 until the harness rules on it. | pipelinek-release-harness | yes |
@@ -142,7 +141,7 @@ Generated: 2026-10-17T22:43:24+00:00 · HEAD `8cca05f8`
 ## Counts
 
 ```text
-@Disabled total                 = 134
+@Disabled total                 = 133
 MANDATORY_SUPPORTED      = 9
 COMPATIBILITY            = 2
 HISTORICAL               = 53
@@ -150,8 +149,8 @@ EXPERIMENTAL             = 0
 OBSOLETE                 = 13
 PENDING_EXTERNAL         = 51
 KNOWN_DEFECT             = 5
-UNKNOWN                  = 1
-mandatory-disabled (Gate-1)    = 10
+UNKNOWN                  = 0
+mandatory-disabled (Gate-1)    = 9
 Gate-1 @Disabled state         = OPEN (mandatory or untriaged disabled > 0)
 ```
 

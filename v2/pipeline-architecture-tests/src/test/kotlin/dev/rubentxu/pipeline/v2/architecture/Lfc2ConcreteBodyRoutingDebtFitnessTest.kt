@@ -1,9 +1,9 @@
 package dev.rubentxu.pipeline.v2.architecture
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Nested
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import java.nio.file.Files
 
@@ -152,14 +152,6 @@ class Lfc2ConcreteBodyRoutingDebtFitnessTest {
     }
 
     @Nested
-    // TRAIN H2 (PR-018): the coordinator is now CLEAN (zero routing debt — the body
-    // execution lives in BodyExecutionEngine). The ViolationFixture's guard tests
-    // inject violations into the coordinator source, but with zero baseline debt
-    // the verdict returns WithinPinnedDebt instead of detecting the injection.
-    // The fixture needs SYNTHETIC sources that exercise the guard's decision
-    // logic independently of the coordinator's cleanliness. Disabled until the
-    // fixture is refactored (H2 slice 3 follow-up).
-    @Disabled("Coordinator is clean post-H2; fixture needs synthetic sources")
     inner class ViolationFixture {
 
         private val baseline = ConcreteBodyRoutingScanner.scan(DurableRunPathSources.text())
@@ -183,6 +175,24 @@ class Lfc2ConcreteBodyRoutingDebtFitnessTest {
                 "Expected undeclared routing item $item; violations were $found",
             )
         }
+
+        /**
+         * The durable run path in full, which is the unit `BodyChildLoopInventory.EXPECTED`
+         * is measured against.
+         *
+         * These two rows used [coordinatorText] as their base, which stopped being the right
+         * subject the moment W1d moved the body path into `BodyExecutionEngine`: the coordinator
+         * alone holds NEITHER the child loop NOR the lease acquisition, so its inventory is
+         * (0, 0) against an EXPECTED of (1, 1). Injecting a violation there therefore produced a
+         * `BodyPathNotShared` from the pre-existing baseline drift before the injected site was
+         * ever compared — the assertion passed for a reason that had nothing to do with the claim.
+         * That is worse than a missing row, because it spends the cost of a build to certify
+         * nothing.
+         *
+         * Measured against the whole path, the baseline IS `EXPECTED` and each injected site is
+         * genuinely a SECOND one, which is the claim these rows exist to pin.
+         */
+        private fun durableText(): String = DurableRunPathSources.text()
 
         /** A new concrete Step name in the real production source is rejected. */
         @Test
@@ -238,15 +248,24 @@ class Lfc2ConcreteBodyRoutingDebtFitnessTest {
          */
         @Test
         fun `duplicating the body child loop is rejected even without any literal`() {
-            val mutated = coordinatorText() +
+            val mutated = durableText() +
                 "\nprivate suspend fun secondBodyPath(block: BlockStepNode) {\n" +
                 "    for ((index, child) in block.body.withIndex()) { dispatch(child, index) }\n" +
                 "}\n"
 
             val found = violationsFor(mutated)
-            assertTrue(
-                found.any { it is RoutingDebtViolation.BodyPathNotShared },
+            val notShared = found.firstOrNull { it is RoutingDebtViolation.BodyPathNotShared }
+            assertNotNull(
+                notShared,
                 "A second body-child loop must be reported as a non-shared body path; got $found",
+            )
+            // The LOOP dimension is the claim. "Some drift existed" would also be satisfied by
+            // the baseline drift the base source already carries, which is how this row used to
+            // pass without the injected loop mattering at all.
+            assertEquals(
+                BodyChildLoopInventory.EXPECTED.loopDefinitions + 1,
+                (notShared as RoutingDebtViolation.BodyPathNotShared).discovered.loopDefinitions,
+                "The injected loop must be the one that moved the count",
             )
             assertDeclares(
                 found,
@@ -257,17 +276,20 @@ class Lfc2ConcreteBodyRoutingDebtFitnessTest {
         /** A second credential acquisition site is the same regression, seen from the lease. */
         @Test
         fun `a second credential acquisition site is rejected`() {
-            val mutated = coordinatorText() +
+            val mutated = durableText() +
                 "\nprivate suspend fun acquireAgain(bindings: List<CredentialBindingSpec>) = " +
                 "credentialScopePort.acquire(bindings, runId)\n"
 
             val found = violationsFor(mutated)
-            assertTrue(
-                found.any {
-                    it is RoutingDebtViolation.BodyPathNotShared &&
-                        it.discovered.credentialAcquisitions == 2
-                },
-                "A second lease acquisition must be reported; got $found",
+            val notShared = found.firstOrNull { it is RoutingDebtViolation.BodyPathNotShared }
+            assertNotNull(
+                notShared,
+                "A second lease acquisition must be reported as a non-shared body path; got $found",
+            )
+            assertEquals(
+                BodyChildLoopInventory.EXPECTED.credentialAcquisitions + 1,
+                (notShared as RoutingDebtViolation.BodyPathNotShared).discovered.credentialAcquisitions,
+                "The injected lease must be the one that moved the count",
             )
         }
 

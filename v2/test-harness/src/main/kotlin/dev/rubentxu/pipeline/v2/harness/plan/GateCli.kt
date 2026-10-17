@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.harness.plan
 
+import dev.rubentxu.pipeline.v2.harness.util.DigestFormat
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -304,7 +305,7 @@ fun main(args: Array<String>) {
     // the plan package already enforces on
     // `EvidenceManifest.sourceCommit` and
     // `ValidationPlan`'s `expectedCommit` carriers.
-    requireSha1("expected-commit", expectedCommit)
+    DigestFormat.requireSha1("expected-commit", expectedCommit)
 
     val root = GateCli.repoRoot(Paths.get("").toAbsolutePath().normalize())
     val buildRoot = GateCli.v2Root(root)
@@ -342,12 +343,7 @@ fun main(args: Array<String>) {
  * format error. The CLI now strict-validates the
  * format at the argument boundary, mirroring the
  * carrier-level checks on `EvidenceManifest.sourceCommit`.
+ *
+ * BQ4 v19 (DRY consolidation, 2026-10-17): the helper
+ * is now shared at `dev.rubentxu.pipeline.v2.harness.util.DigestFormat`.
  */
-private fun requireSha1(fieldName: String, value: String) {
-    require(value.length == 40) {
-        "$fieldName must be a 40-char hex SHA-1; got ${value.length} chars"
-    }
-    require(value.all { it in '0'..'9' || it in 'a'..'f' }) {
-        "$fieldName must be lowercase hex; got '$value'"
-    }
-}

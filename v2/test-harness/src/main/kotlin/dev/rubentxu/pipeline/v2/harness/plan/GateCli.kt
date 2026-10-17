@@ -177,9 +177,20 @@ object GateCli {
         if (dirty.isNotEmpty()) return Outcome.DirtyTree(dirty)
 
         val plan = ImpactResolver.resolve(PlanCli.changedPaths(repoRoot, base))
-        if (plan is ValidationPlan.Refused) return Outcome.Refused(plan)
-
-        val selected = plan as ValidationPlan.Selected
+        // BQ1 v2 (typed CLI gate, 2026-10-17): the previous
+        // shape was `if (plan is Refused) return ...; val
+        // selected = plan as ValidationPlan.Selected`. The
+        // unchecked cast is replaced with an exhaustive
+        // `when` so the compiler narrows the type via the
+        // destructured binding. A future third
+        // [ValidationPlan] case would force the `when` to
+        // grow at compile time. Mirrors the change in
+        // `ImpactResolver.adjudicate` (commit 8f03eb3b
+        // sibling).
+        val selected: ValidationPlan.Selected = when (plan) {
+            is ValidationPlan.Refused -> return Outcome.Refused(plan)
+            is ValidationPlan.Selected -> plan
+        }
         val invocations = Dispatch.dispatch(selected)
         val refusal = Gate.run(
             plan = selected,

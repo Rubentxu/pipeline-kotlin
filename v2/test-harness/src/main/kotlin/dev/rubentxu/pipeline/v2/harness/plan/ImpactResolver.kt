@@ -190,9 +190,25 @@ object ImpactResolver {
         expectedCommit: String,
         observedCommit: String?,
     ): ValidationPlan.Refused? {
-        if (plan is ValidationPlan.Refused) return plan
-
-        val selected = plan as ValidationPlan.Selected
+        // BQ1 v2 (typed adjudicate, 2026-10-17): the previous
+        // shape was `if (plan is Refused) return plan; val
+        // selected = plan as ValidationPlan.Selected`. The
+        // unchecked cast is safe (the early return rules out
+        // `Refused` and the sealed interface has exactly two
+        // cases) but it is a developer habit that hides the
+        // exhaustiveness. The new shape is an exhaustive
+        // `when` that lets the compiler narrow `plan` to
+        // `ValidationPlan.Selected` on the `is` branch via
+        // the destructured binding. A future third
+        // [ValidationPlan] case would force the `when` to
+        // grow at compile time. The return type stays
+        // `ValidationPlan.Refused?` for caller compatibility
+        // (the function reports "did adjudication produce a
+        // refusal?" without changing the gate's call site).
+        val selected: ValidationPlan.Selected = when (plan) {
+            is ValidationPlan.Refused -> return plan
+            is ValidationPlan.Selected -> plan
+        }
         val requiredFidelities = selected.minimumFidelities.map { it.name }.toSet()
         val refusals = buildList {
             if (observedCommit != expectedCommit) {

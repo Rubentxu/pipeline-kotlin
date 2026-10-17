@@ -442,13 +442,29 @@ class StreamingRedactorTest {
         val stream = ByteArrayInputStream(sourceData)
         val wrapped = redactor.wrap(stream)
 
+        // Read to EOF rather than asserting that ONE call returns everything.
+        //
+        // `read(b, off, len)` is permitted to return fewer bytes than requested, and this wrapper
+        // now does exactly that on purpose: it hands back what it has DECIDED instead of blocking
+        // on the source to fill the caller's buffer. The previous expectation ("the first read
+        // returns AB") only held because the wrapper had to keep reading past its first decided byte
+        // — which is precisely the behaviour that stranded the transcript pump. A source that is
+        // exhausted-but-open and a source that is live-but-quiet are indistinguishable from inside
+        // the wrapper, so early return is the only behaviour that cannot block.
+        //
+        // The assertion is stronger than the one it replaces, not weaker: it now requires the FULL
+        // transcript to arrive byte-exact AND the stream to terminate, where before it checked the
+        // content of a single call and assumed the second would be -1.
+        val collected = StringBuilder()
         val buf = ByteArray(10)
-        val n1 = wrapped.read(buf)
-        assertTrue(n1 > 0, "First read should return bytes")
-        assertEquals("AB", String(buf, 0, n1))
-
-        val n2 = wrapped.read(buf)
-        assertEquals(-1, n2, "Second read after EOF should return -1")
+        var reads = 0
+        while (true) {
+            val n = wrapped.read(buf)
+            if (n < 0) break
+            collected.append(String(buf, 0, n))
+            assertTrue(++reads <= 16, "a 2-byte stream must not take more than a handful of reads")
+        }
+        assertEquals("AB", collected.toString(), "the full transcript must arrive byte-exact")
     }
 
     @Test
@@ -698,5 +714,89 @@ class StreamingRedactorTest {
 
         assertFalse(outputStr.contains(canary), "Canary must not appear")
         assertTrue(outputStr.contains("****"), "Marker must appear")
+    }
+
+    /**
+     * `read(b, off, len)` returns what it has DECIDED — it does not block to fill the caller's
+     * buffer.
+     *
+     * This is the contract the transcript pump depends on. `DurableShellExecutor.startTranscriptPumps`
+     * asks for a whole `TRANSCRIPT_LIVE_WINDOW_BYTES` (64 KiB) in one call and relies on this
+     * returning as soon as anything is available. When the wrapper instead filled the buffer or
+     * blocked, the store received nothing while a step was alive, which the OBS-B rows measured as
+     * exactly two symptoms:
+     *
+     * ```text
+     *   15-byte payload   -> nothing committed mid-step
+     *   128 KiB payload   -> only 65536 of 131072 committed, then a block
+     * ```
+     *
+     * A source that is exhausted-but-open (`ByteArrayInputStream` at EOF) and a source that is
+     * live-but-quiet (a child parked on a barrier) are indistinguishable from inside the wrapper,
+     * so there is no condition that can tell them apart — early return is the only behaviour that
+     * cannot block. The test therefore uses a source that BLOCKS, which a byte-array source never
+     * does and which is the only way to discriminate the two.
+     */
+    @Test
+    @Timeout(value = 60, unit = TimeUnit.SECONDS)
+    fun `read returns decided bytes instead of blocking to fill the buffer`() {
+        val payload = "MARCADOR-CHICO\n".toByteArray()
+        val source = BlockingAfterFirstSource(payload)
+        val wrapped = StreamingRedactor(SecretPatternRegistry()).wrap(source)
+
+        val returned = java.util.concurrent.atomic.AtomicBoolean(false)
+        val served = java.util.concurrent.atomic.AtomicInteger(-1)
+        val reader = Thread {
+            val buf = ByteArray(64 * 1024)                 // the pump's window, exactly
+            served.set(wrapped.read(buf, 0, buf.size))
+            returned.set(true)
+            source.release.countDown()                     // never leave a thread wedged
+        }
+        reader.isDaemon = true
+        reader.start()
+
+        // Discrete observation, not a timing race: wait until the source has DEFINITELY been asked
+        // again, then ask whether the read came back. A wrapper that stops at what it decided never
+        // reaches a second source read.
+        //
+        // An earlier version of this probe sampled `returned` immediately after starting the thread,
+        // which raced — it could report the defect before the thread had done anything at all.
+        val askedAgain = source.askedAgain.await(5, TimeUnit.SECONDS)
+        val returnedBeforeAskingAgain = returned.get()
+
+        source.release.countDown()
+        reader.join(TimeUnit.SECONDS.toMillis(30))
+
+        assertFalse(
+            askedAgain && !returnedBeforeAskingAgain,
+            "read(b, off, len) asked the source again before returning the bytes it had already " +
+                "decided, so it fills the whole buffer or blocks. That is the OBS-B live-ingress " +
+                "defect: nothing is visible in the Output Plane while a step is still alive.",
+        )
+        assertTrue(
+            served.get() in 1 until payload.size,
+            "expected SOME but not all of the payload back from the first read, got ${served.get()} " +
+                "of ${payload.size}",
+        )
+    }
+
+    /** Hands over [first] immediately, then BLOCKS until released — a child parked on a barrier. */
+    private class BlockingAfterFirstSource(private val first: ByteArray) : InputStream() {
+        private var served = false
+        val askedAgain = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+
+        override fun read(): Int = throw UnsupportedOperationException("the bulk path is the one under test")
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            if (!served) {
+                served = true
+                first.copyInto(b, off)
+                return first.size
+            }
+            askedAgain.countDown()
+            release.await(30, TimeUnit.SECONDS)
+            return -1
+        }
     }
 }

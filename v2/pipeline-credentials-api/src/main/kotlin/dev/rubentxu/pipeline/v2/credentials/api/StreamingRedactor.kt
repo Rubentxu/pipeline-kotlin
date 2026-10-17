@@ -437,6 +437,34 @@ class StreamingRedactor(
                     return if (written > 0) written else -1
                 }
 
+                // Step 2.5 — hand back what has been DECIDED, before touching the source again.
+                //
+                // This is the same guard that used to sit after Step 4, where it could not fire in
+                // the case that mattered. Step 3 refills `inputBuffer` by BLOCKING on
+                // `source.read`, and it runs first, so by the time the old guard was evaluated the
+                // buffer was full again and its `inputOffset >= inputLimit` condition no longer
+                // held. The guard could therefore only ever fire after a blocking read — which is
+                // the opposite of what it was written to prevent.
+                //
+                // The defect that produced: the transcript pump asks for a whole
+                // `TRANSCRIPT_LIVE_WINDOW_BYTES` (64 KiB) and relies on this returning as soon as
+                // anything is available. With the guard unreachable the wrapper instead filled the
+                // entire buffer or blocked, so:
+                //
+                //   15-byte payload     -> nothing committed mid-step (waits for EOF)
+                //   128 KiB payload     -> exactly one 64 KiB window committed, then a block
+                //
+                // Both were measured by the OBS-B rows. Placing the guard BEFORE the refill is the
+                // minimal change: it can only fire when `written > 0` and the input buffer is
+                // drained, so it never returns before any decision has been made.
+                //
+                // Short reads are legal for `InputStream.read(b, off, len)` and every consumer here
+                // already handles them: `DurableShellExecutor`'s pump loops on the returned count,
+                // and `ObsPc2IngestAgent` writes whatever `n` it gets. Nothing depends on a full fill.
+                if (written > 0 && !state.sourceExhausted && inputOffset >= inputLimit) {
+                    return written
+                }
+
                 // Step 3: Fill the lookahead from the source if we have room.
                 if (inputOffset >= inputLimit && !state.sourceExhausted) {
                     inputLimit = source.read(inputBuffer, 0, state.chunkSize)

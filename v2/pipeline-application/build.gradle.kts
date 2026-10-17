@@ -576,6 +576,26 @@ tasks.register<Test>("pluginContractTest") {
 // the guarantee instead of relocating it.
 tasks.named("check") {
     dependsOn(tasks.named("pluginContractTest"))
+    // THE INSTALLED LANE IS GATED BECAUSE SOMEONE DECIDED SO (2026-10-17).
+    //
+    // It was already reaching `check`, which is why this looks redundant. The path was:
+    //
+    //     check -> koverVerify -> koverGenerateArtifact -> koverXmlReport -> every Test task
+    //
+    // Kover aggregates every `Test` task in the project, so it happened to drag
+    // `installedContractTest` in. That is a guarantee held by ACCIDENT. Remove or
+    // reconfigure the coverage plugin -- or point its report at a filtered source set, which is
+    // the ordinary reason to touch it -- and 43 classes stop being gated. Nothing reports the
+    // loss; `check` stays green, because the thing that failed to run is exactly the thing
+    // nobody is asserting is there.
+    //
+    // These 43 classes are the only ones that verify the SHIPPED `pipelinek` binary against real
+    // fixtures. The fast lane verifies the library in process. Dropping this line would leave
+    // the product's own contract ungated, which is the failure this comment exists to prevent.
+    //
+    // Behaviour is unchanged today: the explicit edge replaces an incidental one of the same
+    // shape, so this costs nothing and removes the coincidence.
+    dependsOn(tasks.named("installedContractTest"))
 }
 
 // BQ2 (2026-10-16 audit): a separate task for the installed-CLI

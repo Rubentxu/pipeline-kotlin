@@ -124,21 +124,46 @@ sealed interface CycleState {
 
         /** A single probe reported [ProbeOutcome.NoEvidence]. */
         data class ProbeNoEvidence(val evidenceRef: String) : Refused {
-            init { require(evidenceRef.isNotBlank()) { "ProbeNoEvidence.evidenceRef must not be blank" } }
-            override val reason: String get() =
+            // BQ4 v22 (no-evidence carrier accepts blank,
+            // 2026-10-17): the previous shape required
+            // non-blank evidenceRef. A `NoEvidence` probe
+            // by definition produced no observable
+            // evidence, so the field is legitimately
+            // blank — the carrier self-protects on the
+            // typed `Refused` variant, not on a string
+            // placeholder. The decider no longer
+            // substitutes a `<refused:*>` sentinel to
+            // satisfy the init check.
+            override val reason: String get() = if (evidenceRef.isBlank()) {
+                "probe produced NoEvidence; the cycle cannot observe a probe " +
+                    "that produced no observable evidence"
+            } else {
                 "probe $evidenceRef NoEvidence; the cycle cannot observe a probe " +
                     "that produced no observable evidence"
+            }
         }
 
         /** A single probe reported [ProbeOutcome.OtherCommit] — runner and probe disagree on the source. */
         data class ProbeOtherCommit(val evidenceRef: String, val observed: String) : Refused {
             init {
-                require(evidenceRef.isNotBlank()) { "ProbeOtherCommit.evidenceRef must not be blank" }
+                // BQ4 v22 (no-evidence carrier accepts blank,
+                // 2026-10-17): `evidenceRef` is the
+                // refused-shape's evidence path; the
+                // `observed` field is the probe's view of
+                // the source. The carrier self-protects on
+                // `observed` (always required, the probe
+                // saw a real SHA) and accepts blank
+                // `evidenceRef` (a refused fidelity check
+                // may have produced no path).
                 require(observed.isNotBlank()) { "ProbeOtherCommit.observed must not be blank" }
             }
-            override val reason: String get() =
+            override val reason: String get() = if (evidenceRef.isBlank()) {
+                "probe OtherCommit=$observed; the manifest's source_sha is the only " +
+                    "authoritative source identity"
+            } else {
                 "probe $evidenceRef OtherCommit=$observed; the manifest's source_sha is the only " +
                     "authoritative source identity"
+            }
         }
 
         /**
@@ -149,12 +174,20 @@ sealed interface CycleState {
          */
         data class ProbeUnsupportedFidelity(val evidenceRef: String, val fidelity: String) : Refused {
             init {
-                require(evidenceRef.isNotBlank()) { "ProbeUnsupportedFidelity.evidenceRef must not be blank" }
+                // BQ4 v22 (no-evidence carrier accepts blank,
+                // 2026-10-17): a refused fidelity check
+                // produced no evidence path; the carrier
+                // self-protects on `fidelity` (always
+                // required) and accepts blank `evidenceRef`.
                 require(fidelity.isNotBlank()) { "ProbeUnsupportedFidelity.fidelity must not be blank" }
             }
-            override val reason: String get() =
+            override val reason: String get() = if (evidenceRef.isBlank()) {
+                "probe UnsupportedFidelity=$fidelity; this vertical only " +
+                    "supports the fidelities declared in CycleManifest.ALLOWED_FIDELITIES"
+            } else {
                 "probe $evidenceRef UnsupportedFidelity=$fidelity; this vertical only " +
                     "supports the fidelities declared in CycleManifest.ALLOWED_FIDELITIES"
+            }
         }
 
         /**

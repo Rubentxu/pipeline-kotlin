@@ -145,5 +145,55 @@ class ExitVerdictTest {
             assertEquals(1, verdict.exitCode)
             assertEquals(reason, (verdict as ExitVerdict.Refusal.Generic).reason)
         }
+
+        // BQ4 v22 (no-evidence carrier accepts blank,
+        // 2026-10-17): the three "no evidence" carriers
+        // (`ProbeNoEvidence`, `ProbeOtherCommit`,
+        // `ProbeUnsupportedFidelity`) now accept blank
+        // `evidenceRef`. A refused fidelity check or a
+        // commit mismatch check may produce no path; the
+        // typed `Refused` variant is the discriminant. The
+        // tests below pin the new blank-accepting shape and
+        // confirm the `reason` text omits the `probe XXX`
+        // prefix when the field is blank.
+        @Test
+        fun `a ProbeNoEvidence refusal with blank evidenceRef still routes to NoEvidence`() {
+            val verdict = ExitVerdict.from(
+                CycleState.Refused.ProbeNoEvidence(evidenceRef = ""),
+            )
+            assertTrue(verdict is ExitVerdict.Refusal.NoEvidence)
+            assertEquals(1, verdict.exitCode)
+        }
+
+        @Test
+        fun `a ProbeOtherCommit refusal with blank evidenceRef still routes to OtherCommit`() {
+            val verdict = ExitVerdict.from(
+                CycleState.Refused.ProbeOtherCommit(
+                    evidenceRef = "",
+                    observed = "fedcba9876543210fedcba9876543210fedcba98",
+                ),
+            )
+            assertTrue(verdict is ExitVerdict.Refusal.OtherCommit)
+            assertEquals(1, verdict.exitCode)
+            val refusal = verdict as ExitVerdict.Refusal.OtherCommit
+            assertTrue(
+                !refusal.reason.contains("probe  "),
+                "blank evidenceRef must omit the 'probe XXX' prefix; got '${refusal.reason}'",
+            )
+        }
+
+        @Test
+        fun `a ProbeUnsupportedFidelity refusal with blank evidenceRef still routes to UnsupportedFidelity`() {
+            val verdict = ExitVerdict.from(
+                CycleState.Refused.ProbeUnsupportedFidelity(evidenceRef = "", fidelity = "HF2"),
+            )
+            assertTrue(verdict is ExitVerdict.Refusal.UnsupportedFidelity)
+            assertEquals(64, verdict.exitCode)
+            val refusal = verdict as ExitVerdict.Refusal.UnsupportedFidelity
+            assertTrue(
+                !refusal.reason.contains("probe  "),
+                "blank evidenceRef must omit the 'probe XXX' prefix; got '${refusal.reason}'",
+            )
+        }
     }
 }

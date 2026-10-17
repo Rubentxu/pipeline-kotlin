@@ -117,20 +117,24 @@ object Cycle {
                         is ProbeOutcome.OtherCommit ->
                             CycleOutcome.Next(
                                 nextState = CycleState.Refused.ProbeOtherCommit(
-                                    // A probe that never produced a
-                                    // real evidence path (e.g. a
-                                    // refused fidelity check) has
-                                    // `evidenceRef = ""` by its
-                                    // carrier's data class init. We
-                                    // substitute a typed sentinel
-                                    // (the refused-shape tag) so the
-                                    // `require(isNotBlank)` guard
-                                    // does not fire on a refusal
-                                    // signal that legitimately has
-                                    // no path. The receipt text
+                                    // BQ4 v22 (no-evidence carrier accepts
+                                    // blank, 2026-10-17): the previous
+                                    // shape substituted a `<refused:*>`
+                                    // sentinel to satisfy the
+                                    // `require(isNotBlank)` guard on the
+                                    // carrier. The carrier is now
+                                    // self-protected on the typed
+                                    // `Refused` variant (the refused
+                                    // shape is the discriminant, not the
+                                    // evidence path) and accepts blank
+                                    // `evidenceRef`. A refused fidelity
+                                    // check may have produced no path;
+                                    // the placeholder was a fabrication
+                                    // that crossed the decider for no
+                                    // signal value. The receipt text
                                     // distinguishes the two via the
-                                    // typed `outcome` field.
-                                    evidenceRef = outcome.evidenceRef.ifBlank { "<refused:other-commit>" },
+                                    // typed `Refused` variant.
+                                    evidenceRef = outcome.evidenceRef,
                                     observed = outcome.observed,
                                 ),
                                 nextContext = context,
@@ -138,7 +142,16 @@ object Cycle {
                         is ProbeOutcome.UnsupportedFidelity ->
                             CycleOutcome.Next(
                                 nextState = CycleState.Refused.ProbeUnsupportedFidelity(
-                                    evidenceRef = outcome.evidenceRef.ifBlank { "<refused:${outcome.fidelity}>" },
+                                    // BQ4 v22 (no-evidence carrier
+                                    // accepts blank, 2026-10-17): see
+                                    // the `ProbeOtherCommit` branch.
+                                    // The previous shape substituted a
+                                    // `<refused:${fidelity}>` sentinel;
+                                    // the carrier now accepts blank
+                                    // `evidenceRef` and the
+                                    // `reason` getter handles the
+                                    // presentation.
+                                    evidenceRef = outcome.evidenceRef,
                                     fidelity = outcome.fidelity,
                                 ),
                                 nextContext = context,

@@ -67,3 +67,4 @@ append:
 - ADR-0104 — S5.5 Reactor deferred
 - ADR-0105 — admission check publication authority ([ADR-0105](ADR-0105-admission-check-publication-authority.md))
 - ADR-0106 — one frame-index writer per run ([ADR-0106](ADR-0106-frame-index-ownership.md))
+- ADR-0107 — task-terminal decider ADT ([ADR-0107](ADR-0107-task-terminal-decider-adt.md))

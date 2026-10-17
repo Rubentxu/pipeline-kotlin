@@ -336,6 +336,22 @@ object ContractCatalogue {
                 var i = 0
                 while (i < p.length) {
                     when {
+                        // `**` is recursive: it matches any number of
+                        // path segments INCLUDING ZERO. The previous
+                        // shape compiled `**` to `.*` and required
+                        // a literal `/` after it, which silently
+                        // excluded the "file directly under the
+                        // prefix" case (e.g. `v2/gradle.properties`
+                        // against `v2/**/gradle.properties`). The
+                        // compiled form is `(?:[^/]+/)*` when
+                        // `**` is followed by `/` (matching zero or
+                        // more "segment/" runs) and `.*` when it is
+                        // not (matching any run of characters
+                        // including the empty string).
+                        p.startsWith("**/", i) -> {
+                            append("(?:[^/]+/)*")
+                            i += 3
+                        }
                         p.startsWith("**", i) -> {
                             append(".*")
                             i += 2

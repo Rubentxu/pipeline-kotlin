@@ -203,4 +203,49 @@ class ContractCatalogueFitnessTest {
             ContractCatalogue.CONTRACTS.map { it.capability }.toSet().size,
         )
     }
+
+    @Test
+    @DisplayName("every pathPattern matches at least one file under the checkout")
+    fun everyPathPatternMatchesAtLeastOneFile() {
+        // The pathPatterns field (added in BQ1 RC2) lets a contract
+        // claim broader coverage without enumerating every file. A
+        // pattern that matches NOTHING is the dual-emitter defect
+        // class: the resolver returns false forever and nobody
+        // notices because the contract never fires. Pinning "at
+        // least one file matches" closes that gap. The catalogue
+        // owns the matcher's contract (ContractCatalogue.matchesPattern
+        // is the implementation); the test reuses it so a future
+        // glob-syntax change is reflected in the fitness without a
+        // second copy of the matcher.
+        val root = repoRoot()
+        val unusedPatterns = mutableListOf<Pair<String, String>>()
+        // Snapshot the file list ONCE per call: walking the whole
+        // checkout for every pattern would multiply the I/O by the
+        // number of patterns. The list is small enough to fit in
+        // memory (one entry per file in the tree, kept as a
+        // repository-relative string for the matcher).
+        val allFiles: List<String> = Files.walk(root).use { stream ->
+            stream.filter { Files.isRegularFile(it) }
+                .map { root.relativize(it).toString().replace('\\', '/') }
+                .toList()
+        }
+        for (contract in ContractCatalogue.CONTRACTS) {
+            for (pattern in contract.pathPatterns) {
+                val anyMatch = allFiles.any { path ->
+                    ContractCatalogue.matchesPattern(path, pattern)
+                }
+                if (!anyMatch) {
+                    unusedPatterns += contract.capability to pattern
+                }
+            }
+        }
+        assertTrue(
+            unusedPatterns.isEmpty(),
+            "these pathPatterns match no file under the checkout. The contract's " +
+                "broader-coverage claim is silently false: a change to a file the pattern " +
+                "was supposed to cover would select nothing. Add a literal sourcePath, " +
+                "fix the glob, or remove the pattern. Offending (capability, pattern): " +
+                "$unusedPatterns",
+        )
+    }
 }

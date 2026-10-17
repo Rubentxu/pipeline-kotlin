@@ -210,3 +210,102 @@ fail. Pre-existing at `HEAD`, not introduced here, and not claimed otherwise.
 `FArchRP040DisabledTestClassificationTest` is one of the 16 entries the `@Disabled`
 inventory generator deliberately refuses to classify (it is itself disabled and its reason
 is the bare string `"regression"`). It is therefore a live lead for H0.2, not noise.
+
+## Part 3 — closing 3 of the 4 pre-existing REDs, and the fourth that stays
+
+Base for this part: `main@380dd63b`. Round gate = `:pipeline-architecture-tests:test --rerun`
+(budget 600 s; observed 262 s).
+
+```text
+before   classes=111 tests=552 skipped=10 failures=4 errors=0
+after    classes=112 tests=556 skipped=10 failures=1 errors=0
+```
+
+All three were **test defects**: a guard whose predicate does not express the property it
+claims. None of them required a product change, and none was silenced.
+
+### FArchRP040 — a signal discarded before it was tested
+
+The regex `^\s*@Disabled(\([^)]*\))?` only participates when a closing paren is on the SAME
+line. A reason built by concatenation therefore collapsed the match to bare `@Disabled`,
+**throwing away the `(`** that is the only evidence the annotation continues — so
+`annotation.endsWith("@Disabled(")` was unreachable code and every concatenated reason was
+reported as reasonless.
+
+Fix: decide multi-line from the raw line, then accumulate. Paren *counting* is deliberately
+not used: a reason may itself contain parentheses (`"Falsifier (x)"`), which would unbalance
+the count.
+
+- mutation: read the argument from the truncated `match.groupValues[0]` → `failures="1"`
+- check B: inject a real bare `@Disabled` into `RuntimeBuildIdentityTest.kt` → `failures="1"`,
+  proving the fix did not make the fitness *permissive*
+
+### FArchS1 — the negative row was not negative
+
+`a production reference to the example plugin is detected` reimplemented the scan inline
+over a `@TempDir`, so it exercised **its own copy** of the predicates. It passed whether or
+not `isTestSourceSet` and `codeOnly` worked — which is how both were found defective in the
+first place.
+
+Fix: extract `pluginLeakOffenders(root: Path)`; the happy path and the fixture now share one
+implementation. Two rows added so the discriminator is pinned from both sides:
+
+- `a COMMENTED reference to the example plugin is not a leak`
+- `every TEST source set is sanctioned` (covers `src/test` **and** `src/pluginContractTest`)
+
+| mutation | expected | observed |
+| --- | --- | --- |
+| A: `endsWith("test", ignoreCase = true)` → `endsWith("Test")` | new row RED | `every TEST source set is sanctioned` RED + happy path RED naming the four real `src/test` files — 1:1 |
+| B: `codeOnly` → identity | new row RED | `a COMMENTED reference…` RED naming **`pipeline-release/build.gradle.kts`**, i.e. it reproduces the original incident exactly |
+| C: `filterNot(::sanctioned)` → `filterNot { false }` | new rows RED | **both** new rows RED — and the pre-existing detection row stayed **GREEN** |
+
+Mutation C is the finding worth keeping: **a green row that survives a mutation is
+vacuous.** The row that existed all along would have passed over a dead filter. It now has
+company.
+
+### FArchM2 — a name collision read as a second authority
+
+The allowlist failed on `Stage`. Measured across `v2/**/src/main/kotlin`, every canonical
+symbol has **exactly one top-level declaration, in exactly the allowlisted file**; the extra
+hit was `MainInspectCli.InspectField.Stage`, a nested projection field of the `--fields`
+column set, in `…application`, with no relation to `domain.Stage`.
+
+The pattern was `(?m)^\s*`, so it matched a declaration at **any nesting depth** and named it
+after its bare token. Two different types in two packages, one nested, is not a second source
+of truth.
+
+Fix: `(?m)^` — top level only. Column 0 is not a hope: `detekt`'s `Indentation` rule is
+active (absent from `config/detekt/detekt.yml`, so the default applies) and `detekt` is wired
+into `check`, so an indented top-level declaration cannot reach this scanner unflagged by
+another authority. Two rows added, `DeclarationScannerFixture`:
+
+| mutation | expected | observed |
+| --- | --- | --- |
+| D: restore `^\s*` | nested row RED | `a NESTED declaration…` RED + allowlist RED |
+| E: keyword group → `enumeration\|protocol` (scanner matches nothing) | second row RED | `a SECOND top-level declaration…` RED + allowlist RED |
+
+**One candidate mutation was invalid and said so.** The first attempt at E renamed only the
+`typealias` alternative, leaving `class|interface|object` intact — the run was GREEN, which
+read as "the row is unfalsifiable" and was actually "the mutation did nothing". The lesson is
+the one HARNESS FIDELITY §5 states: a mutation must be *verified to have applied* before its
+GREEN counts as information.
+
+All mutations restored byte-identical and hash-verified (`14d34ba3…`, `b8b8cf1e…`); the
+earlier session's `git checkout --` restore destroyed tracked-but-uncommitted work and a
+byte-copy backup with a sha256 check is now the mechanism.
+
+### The one that stays RED: FArchM3
+
+`ProcessBuilder` must appear only inside the runtime module. Offenders, all four, are in the
+module this roadmap cuts:
+
+```text
+test-harness/src/main/.../plan/PlanCli.kt:42
+test-harness/src/main/.../plan/Gate.kt:173
+test-harness/src/main/.../plan/GateCli.kt:134
+test-harness/src/main/.../plan/InstalledDistribution.kt:175
+```
+
+The fitness is **correct** and the RED is honest. The fix is deleting the module — H0.4, which
+needs `ADR-PK-DF-002` ratified with its amendments. Not silenced, not weakened, not
+reclassified. Its own comment already carries the instruction to cut rather than to fix.

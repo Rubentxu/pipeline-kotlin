@@ -83,42 +83,46 @@ class FArchRP040DisabledTestClassificationTest {
                     lines.forEachIndexed { i, line ->
                         val match = annotationRegex.find(line)
                         if (match != null) {
-                            val annotation = match.groupValues[0]
-                            // Multiline annotation: when @Disabled(
-                            // opens on this line, we must look ahead
-                            // for the closing paren and any string
-                            // argument inside it.
-                            val hasOpenParen = annotation.endsWith("@Disabled(")
-                            if (hasOpenParen) {
-                                // Gather lines until we find the closing
-                                // paren.
-                                val sb = StringBuilder(annotation)
-                                var j = i
-                                while (j + 1 < lines.size && !sb.toString().contains(')')) {
-                                    j++
+                            // Decide multi-line from the RAW line, not from the
+                            // regex match. `(\([^)]*\))?` only participates when a
+                            // closing paren is on the SAME line, so a reason built
+                            // by concatenation —
+                            //
+                            //     @Disabled("migrated-pending X; … " +
+                            //         "second case")
+                            //
+                            // collapsed the match to bare `@Disabled`, DISCARDING
+                            // the `(` that is the only signal that the annotation
+                            // continues. `endsWith("@Disabled(")` was therefore
+                            // unreachable and every concatenated reason was
+                            // reported as a reasonless @Disabled.
+                            val afterMarker = line.substringAfter("@Disabled", "")
+                            val sb = StringBuilder(line.trim())
+                            var j = i + 1
+                            // Accumulate only when the annotation actually
+                            // opened. A bare `@Disabled` must NOT swallow the
+                            // following lines.
+                            //
+                            // Paren counting is deliberately NOT used: a reason
+                            // string may itself contain parentheses
+                            // ("Falsifier (x)"), which would unbalance the count.
+                            if (afterMarker.contains('(') && !afterMarker.contains(')')) {
+                                while (j < lines.size &&
+                                    !sb.toString().substringAfter("@Disabled").contains(')')
+                                ) {
                                     sb.append(' ').append(lines[j].trim())
+                                    j++
                                 }
-                                val fullAnnotation = sb.toString()
-                                val firstQuote = fullAnnotation.indexOf('"')
-                                if (firstQuote < 0) {
-                                    disabledWithoutReason += "${root.relativize(file.toPath())}:${i + 1}: ${line.trim()}"
-                                }
-                                // else: a string argument exists
-                                // somewhere in the multiline
-                                // annotation — pass.
-                            } else if (!annotation.contains('(')) {
-                                // Bare @Disabled without parens — smell.
-                                disabledWithoutReason += "${root.relativize(file.toPath())}:${i + 1}: ${line.trim()}"
-                            } else {
-                                // Single-line @Disabled(reason) — check
-                                // the reason is present.
-                                val parenContent = annotation.substring(annotation.indexOf('(') + 1, annotation.lastIndexOf(')'))
-                                val trimmed = parenContent.trim()
-                                val hasStringArg = trimmed.startsWith("\"") ||
-                                    trimmed.startsWith("Reason(\"")
-                                if (!hasStringArg && trimmed.isEmpty()) {
-                                    disabledWithoutReason += "${root.relativize(file.toPath())}:${i + 1}: ${line.trim()}"
-                                }
+                            }
+                            val full = sb.toString().substringAfter("@Disabled").trim()
+                            // The argument is whatever sits inside the outer
+                            // parens; absent parens mean absent argument.
+                            val argument =
+                                if (full.startsWith('(')) full.substring(1).substringBeforeLast(')')
+                                else ""
+                            if (!argument.contains('"')) {
+                                disabledWithoutReason +=
+                                    "${root.relativize(file.toPath())}:${i + 1}: ${line.trim()}"
                             }
                         }
                     }

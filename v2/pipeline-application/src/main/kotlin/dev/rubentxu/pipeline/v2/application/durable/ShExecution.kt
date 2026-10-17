@@ -13,6 +13,8 @@ import dev.rubentxu.pipeline.v2.domain.classifyShellTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskOutput
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
+import dev.rubentxu.pipeline.v2.domain.durable.TaskTerminalDecision
+import dev.rubentxu.pipeline.v2.domain.durable.decideTaskTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.ExecutionOutputSink
 import dev.rubentxu.pipeline.v2.domain.durable.InterpreterPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind
@@ -728,23 +730,23 @@ object ShExecution {
                 ),
             )
 
-            val terminal = when {
-                result.timedOut -> DurableTaskTerminal.Cancelled(
+            val terminal = when (val decision = decideTaskTerminal(result)) {
+                is TaskTerminalDecision.TimedOut -> DurableTaskTerminal.Cancelled(
                     InterruptionRecord(
                         kind = InterruptionKind.TIMEOUT,
                         message = "core.sh timed out",
                         operationId = opId,
                     ),
                 )
-                result.cancelled -> DurableTaskTerminal.Cancelled(
+                is TaskTerminalDecision.Cancelled -> DurableTaskTerminal.Cancelled(
                     InterruptionRecord(
                         kind = InterruptionKind.PARENT_CANCELLED,
                         message = "core.sh was cancelled",
                         operationId = opId,
                     ),
                 )
-                else -> DurableTaskTerminal.Exited(
-                    exitCode = result.exitCode,
+                is TaskTerminalDecision.Exited -> DurableTaskTerminal.Exited(
+                    exitCode = decision.exitCode,
                     output = DurableTaskOutput(controlDir.toString(), output),
                 )
             }

@@ -34,6 +34,33 @@ import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Contract
 object ImpactResolver {
 
     /**
+     * Placeholder [SelectionRefusal.MissingSuite.suite] when the
+     * capability is unbound (the suite field of the typed case is
+     * `String` because it normally names a real suite; the placeholder
+     * lets a missing binding flow through the same typed field).
+     * Consumer at `GateCli.describe` prints it verbatim, so the
+     * bracket convention distinguishes it from real suite names.
+     *
+     * Future: split `MissingSuite` into a sealed
+     * `MissingSuite.Unbound(capability)` and `MissingSuite.Unknown(capability, suite)` so
+     * the placeholder disappears. The constant is the intermediate
+     * state.
+     */
+    internal const val NO_SUITE_BOUND_PLACEHOLDER = "<no suite bound>"
+
+    /**
+     * Placeholder [SelectionRefusal.StaleEvidence.observed] when the
+     * installed binary reported no commit (e.g. `version --json`
+     * failed at adjudication time). The bracketed convention matches
+     * `NO_SUITE_BOUND_PLACEHOLDER`; consumer at `GateCli.describe`
+     * prints it verbatim. A future refactor would split
+     * `StaleEvidence` into `Matched` and `BinaryReportedNoCommit`
+     * cases; the constant is the intermediate state.
+     */
+    internal const val NO_OBSERVED_COMMIT_PLACEHOLDER = "<binary reported no commit>"
+
+
+    /**
      * Path prefixes whose changes cannot invalidate a product guarantee.
      *
      * The harness's own sources and its build file are in here, and the reasoning is asymmetric on
@@ -166,7 +193,7 @@ object ImpactResolver {
 
         val refusals = buildList {
             unclassified.forEach { add(SelectionRefusal.UnclassifiedPath(it)) }
-            unbound.forEach { add(SelectionRefusal.MissingSuite(it, "<no suite bound>")) }
+            unbound.forEach { add(SelectionRefusal.MissingSuite(it, NO_SUITE_BOUND_PLACEHOLDER)) }
         }
 
         if (refusals.isNotEmpty()) {
@@ -230,7 +257,7 @@ object ImpactResolver {
                 add(
                     SelectionRefusal.StaleEvidence(
                         expected = expectedCommit,
-                        observed = observedCommit ?: "<binary reported no commit>",
+                        observed = observedCommit ?: NO_OBSERVED_COMMIT_PLACEHOLDER,
                     ),
                 )
             }

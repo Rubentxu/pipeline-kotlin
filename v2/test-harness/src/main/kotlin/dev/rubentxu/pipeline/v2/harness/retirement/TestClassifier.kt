@@ -78,7 +78,20 @@ data class TestRecord(
 ) {
     init {
         require(path.isNotBlank()) { "path must not be blank" }
-        require(contentSha256.length == 64) { "contentSha256 must be a SHA-256 hex digest" }
+        // BQ4 v6 (strict digest carrier, 2026-10-17):
+        // the previous shape checked length but NOT hex
+        // characters. An uppercase or non-hex string of
+        // length 64 was accepted as a "SHA-256" and
+        // compared by string equality against the
+        // harness's lowercase digest, silently never
+        // matching. The carrier now mirrors the format
+        // requirement (64-char lowercase hex) that the
+        // harness-emitted digests follow and that the
+        // rest of the retirement package already
+        // enforces.
+        require(contentSha256.length == 64 && contentSha256.all { it in '0'..'9' || it in 'a'..'f' }) {
+            "contentSha256 must be a 64-char lowercase hex SHA-256"
+        }
     }
 }
 

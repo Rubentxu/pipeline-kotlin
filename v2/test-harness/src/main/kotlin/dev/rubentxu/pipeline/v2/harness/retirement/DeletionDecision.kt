@@ -49,11 +49,23 @@ sealed interface DeletionDecision {
         val authority: String,
     ) : DeletionDecision {
         init {
-            require(originalFileSha256.length == 64) {
-                "originalFileSha256 must be a 64-char hex SHA-256"
+            // BQ4 v6 (strict digest carrier, 2026-10-17):
+            // the previous shape checked length but NOT
+            // hex characters. An uppercase digest or a
+            // non-hex string of length 64 was accepted as
+            // a "SHA-256" and compared by string equality
+            // against the harness's lowercase digest,
+            // silently never matching. The carrier now
+            // mirrors the format requirement (64-char
+            // lowercase hex) that the harness-emitted
+            // digests follow and that the rest of the
+            // retirement package already enforces
+            // (HarnessVerdict.Verified, FailureFingerprint).
+            require(originalFileSha256.length == 64 && originalFileSha256.all { it in '0'..'9' || it in 'a'..'f' }) {
+                "originalFileSha256 must be a 64-char lowercase hex SHA-256"
             }
-            require(proofDigest.length == 64) {
-                "proofDigest must be a 64-char hex SHA-256"
+            require(proofDigest.length == 64 && proofDigest.all { it in '0'..'9' || it in 'a'..'f' }) {
+                "proofDigest must be a 64-char lowercase hex SHA-256"
             }
             require(authority.isNotBlank()) {
                 "authority must be a non-blank harness / certifier name"

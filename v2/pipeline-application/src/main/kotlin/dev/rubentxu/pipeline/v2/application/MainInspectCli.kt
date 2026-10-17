@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
 import dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader
 import dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead
 import dev.rubentxu.pipeline.v2.output.StreamingUtf8Decoder
+import dev.rubentxu.pipeline.v2.output.OutputRefusal
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.StepFailed
@@ -96,7 +97,18 @@ object MainInspectCli {
         }
 
         object ConsoleTail : InspectField("CONSOLETAIL") {
-            override fun extract(record: InspectionRecord): String = record.consoleTail ?: ""
+            override fun extract(record: InspectionRecord): String = when (val tail = record.consoleTail) {
+                is InspectConsoleTail.Bytes -> tail.text
+                // Nothing was asked for, so there is nothing to say. Same empty projection the
+                // un-requested `stage` and `message` fields produce — and, unlike Unreadable, it
+                // is not a claim about the output.
+                InspectConsoleTail.NotRequested -> ""
+                // A refusal is "the bytes are NOT absent, they are unread". Rendering it as ""
+                // would tell the consumer the step printed nothing, which is a different fact and
+                // the one a reader acts on. The marker names the refusal so an unreadable tail is
+                // visible instead of silent.
+                is InspectConsoleTail.Unreadable -> "<unreadable: ${tail.reason}>"
+            }
         }
 
         companion object {
@@ -167,7 +179,7 @@ object MainInspectCli {
         }
 
         // Pre-fetch the Output Plane tail once for the whole run when --log-tail > 0.
-        val consoleTail: String? = if (compiled.logTail > 0) {
+        val consoleTail: InspectConsoleTail = if (compiled.logTail > 0) {
             try {
                 val plane = OutputPlaneProvider.storeForReading(java.nio.file.Paths.get(compiled.controlRoot))
                 val reader = FrameIndexedObservationOutputReader(plane.frameIndex(), plane, plane)
@@ -182,14 +194,18 @@ object MainInspectCli {
                 } else {
                     reader.readTail(runId, compiled.logTail.toLong())
                 }
+                // Every case of the read ADT is carried through. `ObservationOutputRead` already
+                // separates "the page" from "the store could not answer", and collapsing the second
+                // into an empty transcript made a dangling commit indistinguishable from a step
+                // that printed nothing.
                 when (r) {
-                    is ObservationOutputRead.Page -> decodePageBytesAsUtf8Impl(r.page.records)
-                    is ObservationOutputRead.Refused -> ""
+                    is ObservationOutputRead.Page -> InspectConsoleTail.Bytes(decodePageBytesAsUtf8Impl(r.page.records))
+                    is ObservationOutputRead.Refused -> InspectConsoleTail.Unreadable(r.reason)
                 }
             } catch (e: java.io.IOException) {
-                null
+                InspectConsoleTail.NotRequested
             }
-        } else null
+        } else InspectConsoleTail.NotRequested
 
         val records: List<InspectionRecord> = events.map { event ->
             toInspectionRecord(event, consoleTail)
@@ -211,7 +227,7 @@ object MainInspectCli {
      * The mapping is intentionally narrow: the five [InspectField] cases are the contract,
      * not the union of every DomainEvent subtype.
      */
-    private fun toInspectionRecord(event: DomainEvent, consoleTail: String?): InspectionRecord {
+    private fun toInspectionRecord(event: DomainEvent, consoleTail: InspectConsoleTail): InspectionRecord {
         val stepName: String? = (event as? StepStarted)?.stepName
             ?: (event as? StepFinished)?.stepName
             ?: (event as? StepFailed)?.stepName
@@ -382,16 +398,46 @@ sealed interface InspectParseResult {
 }
 
 /**
+ * What the console tail of an inspected record actually IS.
+ *
+ * Three states, because the Output Plane's own contract keeps them apart and a nullable `String`
+ * did not. [ObservationOutputRead] already distinguishes "the page" from "the store could not
+ * answer", and [dev.rubentxu.pipeline.v2.output.OutputRefusal] spells out what a refusal means:
+ * the bytes are NOT absent, they are unread. Rendering that as an empty transcript told a consumer
+ * that a step printed nothing, which is the one fact it would act on.
+ *
+ * The empty [Bytes] case is deliberately still a value rather than folded into [NotRequested]: "this
+ * step ran and printed nothing" and "nothing was asked for" are different answers to different
+ * questions, and only the first one is evidence about the step.
+ */
+sealed interface InspectConsoleTail {
+
+    /** `--log-tail` was not requested, so there is nothing to report either way. */
+    data object NotRequested : InspectConsoleTail
+
+    /** The bytes the Output Plane served, decoded. Empty is a FACT: the step printed nothing. */
+    data class Bytes(val text: String) : InspectConsoleTail
+
+    /** A tail was requested and the plane could not answer. Never render this as empty output. */
+    data class Unreadable(val reason: OutputRefusal) : InspectConsoleTail
+}
+
+/**
  * One inspected record — the row shape that the projection fields read from.
  *
  * Kept as a data class, not a sealed ADT: every record carries all five columns, with `null` for
  * the ones that do not apply, because the consumer chooses which fields to project and a row that
  * has `null` for un-requested fields is not a different SHAPE of record.
+ *
+ * [consoleTail] is the exception, and the exception is the point: its states are not "which columns
+ * this row fills in" but "what the Output Plane answered". A `null` there would have to mean both
+ * "un-requested" and "refused", which are different facts about a run, so it is a closed ADT
+ * instead. Every other field is still a nullable projection.
  */
 data class InspectionRecord(
     val stage: String? = null,
     val stepOrdinal: Long? = null,
     val outcome: String = "",
     val message: String? = null,
-    val consoleTail: String? = null,
+    val consoleTail: InspectConsoleTail = InspectConsoleTail.NotRequested,
 )

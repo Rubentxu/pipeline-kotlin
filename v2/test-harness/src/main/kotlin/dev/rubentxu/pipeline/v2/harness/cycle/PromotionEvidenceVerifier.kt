@@ -193,8 +193,22 @@ object PromotionEvidenceVerifier {
             )
         }
         // (4) digest — the file's SHA-256 must match the manifest.
+        // BQ4 v20 (case-sensitive digest comparison, 2026-10-17):
+        // the previous shape was
+        // `!actualDigest.equals(ev.contentDigest, ignoreCase = true)`,
+        // which silently accepted a mixed-case recorded
+        // digest (e.g. an upper-cased copy of the file's
+        // SHA-256). The carrier's init
+        // (`PermanentContract.init`) already strict-validates
+        // `ev.contentDigest` to lowercase via
+        // `DigestFormat.requireSha256`, and `sha256HexOfFile`
+        // always returns lowercase; the `ignoreCase = true`
+        // was a defensive default that became a silent
+        // acceptance. The comparison is now a plain `==` so a
+        // mixed-case recorded digest is refused loudly rather
+        // than silently miscompared.
         val actualDigest = sha256HexOfFile(file)
-        if (!actualDigest.equals(ev.contentDigest, ignoreCase = true)) {
+        if (actualDigest != ev.contentDigest) {
             return Verdict.Refused.ContentDigestMismatch(
                 manifestDigest = ev.contentDigest,
                 actualDigest = actualDigest,

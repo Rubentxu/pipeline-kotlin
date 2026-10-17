@@ -1,6 +1,9 @@
 package dev.rubentxu.pipeline.v2.harness.cycle
 
+import dev.rubentxu.pipeline.v2.harness.util.DigestFormat
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
@@ -442,35 +445,82 @@ class CycleRunner(
      * match. The persisted body has the `evidenceDigest` field
      * last; we strip the trailing field and digest the rest.
      * Mismatch raises an error; the cycle is not deleted.
+     *
+     * BQ4 v20 (typed digest extraction, 2026-10-17): the
+     * previous shape used a regex
+     * `,\n  "evidenceDigest":\s*"([0-9a-fA-F]{64})"\n}\n`
+     * for both extraction AND body-strip. The character
+     * class `[0-9a-fA-F]` silently accepted uppercase
+     * hex, and a `case-insensitive equals` later accepted
+     * a mixed-case recorded value — both shapes
+     * compatible with tampering.
+     *
+     * The new shape is a structural extraction: the file
+     * is parsed as JSON, the `evidenceDigest` field is
+     * located by NAME (not by position), and the value
+     * is strict-validated via
+     * [dev.rubentxu.pipeline.v2.harness.util.DigestFormat
+     * .requireSha256]. The body-strip is a position
+     * operation on the original text (the JSON parser
+     * does not need to re-serialise the body), so the
+     * digest computed on the stripped text matches the
+     * body that was hashed at persistence time.
      */
     private fun validateEvidenceDigest(jsonFile: java.nio.file.Path) {
         val text = Files.readString(jsonFile)
-        val match = EVIDENCE_DIGIT_RE.find(text)
-            ?: error("evidence file $jsonFile has no evidenceDigest field; refusing to delete")
-        val recordedDigest = match.groupValues[1]
-        val bodyWithoutDigest = text.removeRange(match.range.first, match.range.last + 1)
+        // (1) Structural extraction: parse the JSON and read
+        // the `evidenceDigest` field. The parser rejects
+        // malformed input (the executor's hand-built body
+        // is well-formed JSON by construction) and confirms
+        // the field exists. The recorded digest is then
+        // strict-validated to lowercase 64-char hex.
+        // A parse failure is treated as a tampering signal:
+        // the executor always writes well-formed JSON, so
+        // a file that does not parse was modified after
+        // persistence (or by a writer defect; both are
+        // refused the same way).
+        val recordedDigest = try {
+            val root = json.parseToJsonElement(text).jsonObject
+            root["evidenceDigest"]?.jsonPrimitive?.content
+                ?: error("evidence file $jsonFile has no evidenceDigest field; refusing to delete")
+        } catch (ex: Exception) {
+            error(
+                "evidence file $jsonFile was modified after persistence " +
+                    "(JSON parse failed): ${ex.message}",
+            )
+        }
+        DigestFormat.requireSha256("evidenceDigest", recordedDigest)
+        // (2) Body strip: the persisted body is the text
+        // BEFORE the `,\n  "evidenceDigest":` substring.
+        // The executor's `persist` writes the body ending
+        // in `\n` (after the last data line) and then
+        // appends the `,\n  "evidenceDigest":"DIGEST"\n}\n`
+        // suffix. The body is therefore
+        // `text.substring(0, stripStart)` where `stripStart`
+        // is the index of the `,` in the appended suffix.
+        // Computing `sha256Hex` of this substring yields
+        // exactly the recorded digest when the file is
+        // unchanged.
+        val stripStart = text.indexOf(",\n  \"evidenceDigest\":")
+        if (stripStart < 0) {
+            error(
+                "evidence file $jsonFile has no evidenceDigest line; " +
+                    "the executor's wire format was not followed; refusing to delete",
+            )
+        }
+        val bodyWithoutDigest = text.substring(0, stripStart)
         val computed = sha256Hex(bodyWithoutDigest)
-        if (!computed.equals(recordedDigest, ignoreCase = true)) {
+        // (3) Case-sensitive comparison. Both sides are
+        // guaranteed lowercase by (1) and by `sha256Hex`
+        // (always lowercase). The previous `equals(...,
+        // ignoreCase = true)` was a defensive default that
+        // became a silent acceptance.
+        if (computed != recordedDigest) {
             error(
                 "evidence file $jsonFile was modified after persistence: " +
                     "recorded=$recordedDigest, actual=$computed; refusing to delete",
             )
         }
-    }
-
-    companion object {
-        // Matches the LAST data line plus the closing brace and
-        // the trailing newline, i.e. `,\n  "evidenceDigest":
-        // "DIGEST"\n}\n`. The executor's `persist` writes the
-        // body ending in `,\n` and then appends the line plus
-        // `\n}\n`. Stripping the entire matched substring leaves
-        // exactly the body that was hashed on persistence (which
-        // did not include the closing brace). The regex is
-        // anchored on the comma so the leading newline of the
-        // body's last data line stays with the body.
-        private val EVIDENCE_DIGIT_RE = Regex(
-            ",\\n  \"evidenceDigest\":\\s*\"([0-9a-fA-F]{64})\"\\n\\}\\n",
-        )
     }
 
     private fun transition(event: CycleEvent): CycleOutcome {

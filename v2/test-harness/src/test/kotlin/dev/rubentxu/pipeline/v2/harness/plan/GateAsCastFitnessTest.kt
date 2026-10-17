@@ -32,26 +32,35 @@ import kotlin.io.path.readText
  */
 class GateAsCastFitnessTest {
 
-    private val planPackageRoot: Path by lazy {
+    private val packageRoots: List<Path> by lazy {
         val cwd = Path.of("").toAbsolutePath()
         // Scope to MAIN source only. Test files may legitimately
         // use `as?` for setup (e.g. an explicitly-unknown plan
         // fixture), and a permissive regex would fire on those.
-        cwd.resolve("src/main/kotlin/dev/rubentxu/pipeline/v2/harness/plan")
+        // The fitness scans the plan/ package AND the cycle/
+        // package, both of which share the same defect class
+        // (silent null on a sealed-type cast). A future
+        // retirement/ or catalog/ site with the same pattern
+        // can be added by extending this list.
+        val harnessMain = cwd.resolve("src/main/kotlin/dev/rubentxu/pipeline/v2/harness")
+        listOf(
+            harnessMain.resolve("plan"),
+            harnessMain.resolve("cycle"),
+        )
     }
 
-    private fun kotlinSources(): List<Path> {
-        if (!Files.isDirectory(planPackageRoot)) {
-            error("plan package source not found at $planPackageRoot")
+    private fun kotlinSources(): List<Path> = packageRoots.flatMap { root ->
+        if (!Files.isDirectory(root)) {
+            error("harness package source not found at $root")
         }
-        return Files.walk(planPackageRoot).use { stream ->
+        Files.walk(root).use { stream ->
             stream.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }.toList()
         }
     }
 
     @OptIn(ExperimentalPathApi::class)
     @Test
-    fun `plan package does not silently cast to ValidationPlan via as`() {
+    fun `plan and cycle packages do not silently cast to ValidationPlan via as`() {
         val sources = kotlinSources()
         val offenders = mutableListOf<String>()
         // The pattern the audit named: any `as? ValidationPlan.X`
@@ -73,11 +82,11 @@ class GateAsCastFitnessTest {
         }
         assertTrue(
             offenders.isEmpty(),
-            "BQ1 v2 fitness: the plan package MUST NOT silently cast to ValidationPlan via " +
-                "`as?` — that is the dual 'silent null on cast' defect the audit named. The " +
-                "previous Gate.run shape used `as? ValidationPlan.Refused` and silently returned " +
-                "null (= passed) if the cast ever failed. The new shape is an exhaustive `when` " +
-                "over the sealed interface. Offending sites: $offenders",
+            "BQ1 v2 fitness: the plan and cycle packages MUST NOT silently cast to " +
+                "ValidationPlan via `as?` — that is the dual 'silent null on cast' defect the " +
+                "audit named. The previous Gate.run shape used `as? ValidationPlan.Refused` and " +
+                "silently returned null (= passed) if the cast ever failed. The new shape is an " +
+                "exhaustive `when` over the sealed interface. Offending sites: $offenders",
         )
     }
 }

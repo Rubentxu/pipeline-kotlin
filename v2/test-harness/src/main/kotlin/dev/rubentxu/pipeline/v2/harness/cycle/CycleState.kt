@@ -213,16 +213,18 @@ data class CycleContext(
     val probeOutcomes: List<ProbeFinished> = emptyList(),
     val latestReplacementEvidence: PromotionEvidence? = null,
 ) {
-    init {
-        require(probeOutcomes.all { it.outcome is ProbeOutcome.Verified }) {
-            "probeOutcomes MUST only contain Verified probes; the decider refuses " +
-                "every other ProbeOutcome case (Failed, Skipped, NotRun, NoEvidence, " +
-                "OtherCommit, UnsupportedFidelity, BlockedExternal). Found: " +
-                probeOutcomes.filter { it.outcome !is ProbeOutcome.Verified }
-                    .map { it.outcome.outcome.name }
-        }
-    }
-
+    // BQ4 v2 (typed accumulator, 2026-10-17): the
+    // previous init check on the list is gone because
+    // [ProbeFinished] now wraps [ProbeOutcome.Verified]
+    // directly, which the type system enforces. The list
+    // can only contain Verified probes; the runtime
+    // check that every entry is `is ProbeOutcome.Verified`
+    // is therefore uncompilable (it cannot be false),
+    // and the `it.outcome.outcome.name` fallback the
+    // previous message used is also unreachable. The
+    // decider is still the only authority that decides
+    // a probe is verified; the data class is just the
+    // carrier of an already-decided outcome.
     fun withProbe(probe: ProbeFinished): CycleContext =
         copy(probeOutcomes = probeOutcomes + probe)
 
@@ -231,21 +233,29 @@ data class CycleContext(
 }
 
 /**
- * The reified shape of an accepted probe. Carries the typed [ProbeOutcome]
- * from the executor, NOT a free-floating `(Int, String)` pair. The
- * previous shape collapsed `UnsupportedFidelity` and `BlockedExternal` to
- * `exitCode=0` and let the decider read them as success: that is the P0
- * defect the 2026-10-16 external audit named. The ADT is the source of
- * truth here; the decider is the only place that decides whether a
- * probe is "verified".
+ * The reified shape of an accepted probe. Carries a [ProbeOutcome.Verified]
+ * directly, NOT a `ProbeOutcome` plus a runtime `is` check. The type
+ * system makes the verified-only invariant unrepresentable: a
+ * `ProbeFinished` cannot be constructed with `Failed`, `Skipped`,
+ * `NotRun`, `NoEvidence`, `OtherCommit`, `UnsupportedFidelity`, or
+ * `BlockedExternal`, so the previous init check on the type itself
+ * becomes uncompilable (the failure branch is no longer reachable).
+ *
+ * The previous shape collapsed `UnsupportedFidelity` and `BlockedExternal`
+ * to `exitCode=0` and let the decider read them as success: that is the
+ * P0 defect the 2026-10-16 external audit named. The ADT is the source
+ * of truth here; the decider is the only place that decides whether a
+ * probe is "verified", and a `ProbeFinished` is the carrier of an
+ * already-decided "verified" outcome.
  */
-data class ProbeFinished(val outcome: ProbeOutcome) {
+data class ProbeFinished(val outcome: ProbeOutcome.Verified) {
     init {
-        require(outcome is ProbeOutcome.Verified) {
-            "ProbeFinished MUST only wrap ProbeOutcome.Verified; the runner cannot " +
-                "promote a ${outcome::class.simpleName} into the accumulator. " +
-                "Got: ${outcome.outcome.name}"
-        }
+        // The Verified-only invariant is enforced by the
+        // type. The blank-evidenceRef invariant is still
+        // a runtime check, because a `Verified("")` is
+        // a Verified by type and the type cannot reject
+        // it; the data class is where the cycle rejects
+        // a Verified-without-evidence.
         require(outcome.evidenceRef.isNotBlank()) {
             "ProbeFinished.outcome.evidenceRef must not be blank; Verified without " +
                 "a real evidence path is a fabrication"

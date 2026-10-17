@@ -42,6 +42,23 @@ class ContractCataloguePatternTest {
     }
 
     @Test
+    fun `double-star matches zero segments too`() {
+        // BQ1 RC4 follow-up (2026-10-17): the previous
+        // matcher compiled `**` to `.*` and required a
+        // literal `/` after it, so a pattern like
+        // `v2/**/gradle.properties` failed to match
+        // `v2/gradle.properties` (the file directly under
+        // v2/, no intermediate directory). The catalogue
+        // had this exact pattern and the contract never
+        // fired for the root gradle.properties — the
+        // `ContractCatalogueFitnessTest.everyPathPatternMatchesAtLeastOneFile`
+        // fitness caught it. The fix compiles `**/` to
+        // `(?:[^/]+/)*` so zero segments match.
+        assertTrue(ContractCatalogue.matchesPattern("v2/gradle.properties", "v2/**/gradle.properties"))
+        assertTrue(ContractCatalogue.matchesPattern("v2/foo.kt", "v2/**/*.kt"))
+    }
+
+    @Test
     fun `literal path requires an exact match`() {
         // A literal entry on the contract source list matches
         // only the exact string. Cross-owner collision is

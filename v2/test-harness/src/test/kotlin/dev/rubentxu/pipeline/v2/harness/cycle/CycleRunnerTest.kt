@@ -8,8 +8,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
-
 /**
  * The runner is a thin interpreter over [Cycle.decide]. Its job is
  * to wire the state machine to the four lifecycle actions
@@ -188,18 +186,8 @@ class CycleRunnerTest {
      * build a contract file whose digest matches the manifest
      * claim exactly.
      */
-    private fun sha256HexOfFile(path: Path): String {
-        val md = MessageDigest.getInstance("SHA-256")
-        Files.newInputStream(path).use { input ->
-            val buf = ByteArray(8192)
-            while (true) {
-                val n = input.read(buf)
-                if (n <= 0) break
-                md.update(buf, 0, n)
-            }
-        }
-        return md.digest().joinToString("") { "%02x".format(it) }
-    }
+    private fun sha256HexOfFile(path: Path): String =
+        dev.rubentxu.pipeline.v2.harness.cycle.sha256HexOfFile(path)
 
     /**
      * Build a runner whose verifier will accept a

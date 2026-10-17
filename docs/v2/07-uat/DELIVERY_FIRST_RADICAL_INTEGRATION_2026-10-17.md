@@ -136,3 +136,77 @@ All mutations restored byte-identical (`6b6d138d…`).
 - `pipeline-application` `src/main` no longer contains any `harness/` package. Whether
   `:test-harness`'s remaining consumers (the 2 test files, `laneReport`) can be relocated or dropped
   under H0.4 is now the whole of the cut.
+---
+
+# Part 2 — the guarantee, not just the incident
+
+Closing the edge is worth nothing if the same edge reopens silently. H0/R1 was a
+one-line build change; what makes it durable is that nothing permitted it in the first place.
+
+## The blind spot that let it in
+
+`FArch020EventHarnessIsolationTest` extracts every `project("…")` from a build file and
+checks **which module** is named. It never asks **which configuration** named it — and the
+configuration is the entire question:
+
+```text
+testImplementation(project(":x"))    ships nothing
+implementation(project(":x"))        lands in the JAR, and in runtimeElements for consumers
+```
+
+The first is invisible to a dependency-set check; only one of them ships. That is the hole
+H0/R1 lived in.
+
+## FArch021 — a QA module must never sit on a runtime classpath
+
+New fitness in `pipeline-architecture-tests`, guarding the guarantee rather than the incident:
+
+- **runtime axis**: `api` / `implementation` / `runtimeOnly`
+- **QA axis**: an explicit `qaModules` set, currently `{":test-harness"}` — **never a name
+  pattern**, because `:pipeline-event-harness` is not a QA module and is what backs
+  `pipeline events verify`
+- **comments stripped**, so prose mentioning a QA module cannot trip it
+- **fail-closed on an empty scan**, because "found no build file" must not read as "therefore
+  nothing is on a runtime classpath"
+
+### The second test is the one that matters
+
+A regex that stops matching makes this fitness green over a reintroduced leak. The second
+test asserts the scan is **not vacuous**: the parser must still find runtime-configuration
+project dependencies *and* must still find a `:test-harness` dependency at all — otherwise
+the QA filter is dead code that would pass if a runtime declaration were added tomorrow.
+That is the defect class `FArchL5NoJgitTest` and `BannedImportsFitnessTest` were each
+fixed for, so it is pinned here deliberately.
+
+### Mutations
+
+| mutation | expected | observed |
+| --- | --- | --- |
+| `testImplementation` → `implementation` (the exact defect) | row 1 RED | `tests="2" failures="1" errors="0"` |
+| empty the `qaModules` set (filter becomes dead code) | row 2 RED | `tests="2" failures="1" errors="0"` |
+
+**A restore silently failed and the hash check caught it.** `FArch021` is a new, untracked
+file, so `git checkout -- <file>` had nothing to restore and left the M2 mutation in place
+while reporting success. Restoring by hash, not by VCS state, is the only reason the
+committed bytes are the intended ones.
+
+## Module gate is RED for pre-existing reasons — with base evidence
+
+`:pipeline-architecture-tests:test --rerun` over the whole module:
+
+```text
+tests=552 skipped=10 failures=4 errors=0   (111 result classes)
+
+FArchM2CanonicalPipelineCompilerTest      failures=1
+FArchM3CanonicalTaskRuntimeTest           failures=1
+FArchRP040DisabledTestClassificationTest  failures=1
+FArchS1DirectiveKernelFitnessTest         failures=1
+FArch021QaModulesStayOffRuntimeClasspathTest  tests=2 skipped=0 failures=0   <- not mine
+```
+
+Classified by **re-running the four with `FArch021` removed from the tree**: all four still
+fail. Pre-existing at `HEAD`, not introduced here, and not claimed otherwise.
+
+`FArchRP040DisabledTestClassificationTest` is one of the 16 entries the `@Disabled`
+inventory generator deliberately refuses to classify (it is itself disabled and its reason
+is the bare string `"regression"`). It is therefore a live lead for H0.2, not noise.

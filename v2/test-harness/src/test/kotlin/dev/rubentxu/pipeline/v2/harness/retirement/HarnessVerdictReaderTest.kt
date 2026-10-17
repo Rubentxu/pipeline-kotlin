@@ -75,7 +75,17 @@ class HarnessVerdictReaderTest {
             """{ "status": "MAYBE", "path": "v2/.../UatX.kt" }""",
         )
         assertTrue(out is ParseOutcome.UnknownStatus) { "got $out" }
-        assertEquals("maybe", (out as ParseOutcome.UnknownStatus).status)
+        // BQ4 v23 (typed JSON parse, 2026-10-17): the
+        // diagnostic value preserves the operator's
+        // original case so the failure log shows what
+        // they actually wrote. The previous shape
+        // lowercased the status before storage as a
+        // side effect of the dispatch, which lost
+        // information (an operator who wrote "Maybe" saw
+        // "maybe" in the failure log). The new shape
+        // dispatches case-insensitively and stores the
+        // original.
+        assertEquals("MAYBE", (out as ParseOutcome.UnknownStatus).status)
     }
 
     @Test

@@ -1,5 +1,9 @@
 package dev.rubentxu.pipeline.v2.harness.retirement
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonPrimitive
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -36,8 +40,30 @@ import java.nio.file.Path
  * The `status` field accepts `verified` | `blocked` | `pending`
  * (case-insensitive). Anything else is a
  * [ParseOutcome.UnknownStatus].
+ *
+ * BQ4 v23 (typed JSON parse, 2026-10-17): the previous
+ * shape hand-rolled a `parseFlatObject` parser
+ * (`{ "k": "v", ... }` with strings only) plus three
+ * helpers (`readString`, `unescape`, `findMatchingBrace`)
+ * — ~80 lines of character-by-character parsing that
+ * did not support numbers, arrays, or escapes beyond
+ * `\"`. The KDoc on the helper admitted the limitation:
+ * 'the harness shape is frozen and any deviation is a
+ * [ParseOutcome.Malformed]'. The new shape uses
+ * `kotlinx.serialization.json.Json` for the parse and
+ * the typed `JsonObject` API for field access; nested
+ * objects (the `fingerprint`) are no longer
+ * re-parsed through the hand-rolled parser (the
+ * `fingerprint` is already a `JsonObject` after the
+ * first parse). The three private helpers and
+ * `parseFlatObject` are gone.
  */
 object HarnessVerdictReader {
+
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = false
+    }
 
     fun read(path: Path): ParseOutcome {
         if (!Files.exists(path)) {
@@ -57,22 +83,30 @@ object HarnessVerdictReader {
      * filesystem.
      */
     fun readText(source: String, text: String): ParseOutcome {
-        val fields = parseFlatObject(text) ?: return ParseOutcome.Malformed(
-            source,
-            "verdict file is not a flat JSON object",
-        )
-        val status = (fields["status"]
-            ?: return ParseOutcome.Malformed(source, "missing 'status' field"))
-            .lowercase()
-        return when (status) {
-            "verified" -> parseVerified(source, fields)
-            "blocked" -> parseBlocked(source, fields)
-            "pending" -> parsePending(source, fields)
+        val root = try {
+            json.parseToJsonElement(text)
+        } catch (ex: Exception) {
+            return ParseOutcome.Malformed(
+                source,
+                "verdict file is not valid JSON: ${ex.message ?: ex::class.simpleName ?: "parse error"}",
+            )
+        }
+        val rootObj = root as? JsonObject
+            ?: return ParseOutcome.Malformed(
+                source,
+                "verdict file is not a flat JSON object",
+            )
+        val status = (rootObj["status"] as? JsonPrimitive)?.content
+            ?: return ParseOutcome.Malformed(source, "missing 'status' field")
+        return when (status.lowercase()) {
+            "verified" -> parseVerified(source, rootObj)
+            "blocked" -> parseBlocked(source, rootObj)
+            "pending" -> parsePending(source, rootObj)
             else -> ParseOutcome.UnknownStatus(source, status)
         }
     }
 
-    private fun parseVerified(source: String, fields: Map<String, String>): ParseOutcome {
+    private fun parseVerified(source: String, root: JsonObject): ParseOutcome {
         // The previous shape collected all field results, filtered to
         // the first invalid, and re-extracted the values via unchecked
         // `(x as FieldResult.Valid).value`. The cast was safe by
@@ -84,27 +118,35 @@ object HarnessVerdictReader {
         // extraction; the `return ParseOutcome.Malformed(...)` in the
         // Invalid branch is the short-circuit, the Valid branch is
         // the typed value.
-        val path = when (val r = requireString(source, fields, "path")) {
+        //
+        // BQ4 v23 (typed JSON parse, 2026-10-17): the `fields` argument
+        // is now a `JsonObject` (the typed `kotlinx.serialization`
+        // shape), not a `Map<String, String>` from the hand-rolled
+        // parser. The `requireString` / `requireSha256` helpers
+        // access fields via `JsonObject["key"]` and cast to
+        // `JsonPrimitive` for the string value; the same per-field
+        // `when` extraction is the typed shape.
+        val path = when (val r = requireString(source, root, "path")) {
             is FieldResult.Invalid -> return ParseOutcome.Malformed(source, r.reason)
             is FieldResult.Valid -> r.value
         }
-        val content = when (val r = requireSha256(source, fields, "content_sha256")) {
+        val content = when (val r = requireSha256(source, root, "content_sha256")) {
             is FieldResult.Invalid -> return ParseOutcome.Malformed(source, r.reason)
             is FieldResult.Valid -> r.value
         }
-        val proof = when (val r = requireSha256(source, fields, "proof_digest")) {
+        val proof = when (val r = requireSha256(source, root, "proof_digest")) {
             is FieldResult.Invalid -> return ParseOutcome.Malformed(source, r.reason)
             is FieldResult.Valid -> r.value
         }
-        val authority = when (val r = requireString(source, fields, "authority")) {
+        val authority = when (val r = requireString(source, root, "authority")) {
             is FieldResult.Invalid -> return ParseOutcome.Malformed(source, r.reason)
             is FieldResult.Valid -> r.value
         }
-        val candidate = when (val r = requireSha256(source, fields, "candidate_sha256")) {
+        val candidate = when (val r = requireSha256(source, root, "candidate_sha256")) {
             is FieldResult.Invalid -> return ParseOutcome.Malformed(source, r.reason)
             is FieldResult.Valid -> r.value
         }
-        val fp = when (val r = parseFingerprint(source, fields)) {
+        val fp = when (val r = parseFingerprint(source, root)) {
             is FingerprintResult.Invalid -> return ParseOutcome.Malformed(source, r.reason)
             is FingerprintResult.Valid -> r.value
         }
@@ -120,12 +162,12 @@ object HarnessVerdictReader {
         )
     }
 
-    private fun parseBlocked(source: String, fields: Map<String, String>): ParseOutcome {
-        val path = when (val r = requireString(source, fields, "path")) {
+    private fun parseBlocked(source: String, root: JsonObject): ParseOutcome {
+        val path = when (val r = requireString(source, root, "path")) {
             is FieldResult.Invalid -> return ParseOutcome.Malformed(source, r.reason)
             is FieldResult.Valid -> r.value
         }
-        val reason = when (val r = requireString(source, fields, "reason")) {
+        val reason = when (val r = requireString(source, root, "reason")) {
             is FieldResult.Invalid -> return ParseOutcome.Malformed(source, r.reason)
             is FieldResult.Valid -> r.value
         }
@@ -137,35 +179,44 @@ object HarnessVerdictReader {
         )
     }
 
-    private fun parsePending(source: String, fields: Map<String, String>): ParseOutcome {
-        val path = when (val r = requireString(source, fields, "path")) {
+    private fun parsePending(source: String, root: JsonObject): ParseOutcome {
+        val path = when (val r = requireString(source, root, "path")) {
             is FieldResult.Invalid -> return ParseOutcome.Malformed(source, r.reason)
             is FieldResult.Valid -> r.value
         }
         return ParseOutcome.Parsed(HarnessVerdict.Pending(path = path))
     }
 
-    private fun parseFingerprint(source: String, fields: Map<String, String>): FingerprintResult {
-        val raw = fields["fingerprint"] ?: return FingerprintResult.Invalid("missing 'fingerprint' object")
-        val fpFields = parseFlatObject(raw)
-            ?: return FingerprintResult.Invalid("'fingerprint' is not a flat JSON object")
+    private fun parseFingerprint(source: String, root: JsonObject): FingerprintResult {
+        // BQ4 v23 (typed JSON parse, 2026-10-17): the previous
+        // shape re-parsed the `fingerprint` value through
+        // `parseFlatObject` (it was stored as a JSON string in
+        // the top-level `Map<String, String>`). The new shape
+        // accesses the `fingerprint` value as a `JsonObject`
+        // directly — the first parse already produced it, and
+        // re-parsing through a hand-rolled parser is wasted
+        // work plus a fragile double-authority (the top-level
+        // parser and the nested parser could disagree on what
+        // counts as valid JSON).
+        val fp = root["fingerprint"] as? JsonObject
+            ?: return FingerprintResult.Invalid("missing 'fingerprint' object")
         // Same per-field `when` extraction as parseVerified: the
         // unchecked `(x as FieldResult.Valid).value` was safe by
         // construction (the firstErr check) but the smart-cast
         // `when` is the typed shape and the compiler enforces it.
-        val inputDigest = when (val r = requireSha256(source, fpFields, "input_digest")) {
+        val inputDigest = when (val r = requireSha256(source, fp, "input_digest")) {
             is FieldResult.Invalid -> return FingerprintResult.Invalid(r.reason)
             is FieldResult.Valid -> r.value
         }
-        val symptom = when (val r = requireString(source, fpFields, "symptom")) {
+        val symptom = when (val r = requireString(source, fp, "symptom")) {
             is FieldResult.Invalid -> return FingerprintResult.Invalid(r.reason)
             is FieldResult.Valid -> r.value
         }
-        val type = when (val r = requireString(source, fpFields, "type")) {
+        val type = when (val r = requireString(source, fp, "type")) {
             is FieldResult.Invalid -> return FingerprintResult.Invalid(r.reason)
             is FieldResult.Valid -> r.value
         }
-        val cause = when (val r = requireString(source, fpFields, "cause")) {
+        val cause = when (val r = requireString(source, fp, "cause")) {
             is FieldResult.Invalid -> return FingerprintResult.Invalid(r.reason)
             is FieldResult.Valid -> r.value
         }
@@ -181,20 +232,22 @@ object HarnessVerdictReader {
 
     private fun requireString(
         source: String,
-        fields: Map<String, String>,
+        root: JsonObject,
         key: String,
     ): FieldResult {
-        val raw = fields[key] ?: return FieldResult.Invalid("missing '$key'")
+        val raw = (root[key] as? JsonPrimitive)?.content
+            ?: return FieldResult.Invalid("missing '$key'")
         if (raw.isBlank()) return FieldResult.Invalid("'$key' is blank")
         return FieldResult.Valid(raw)
     }
 
     private fun requireSha256(
         source: String,
-        fields: Map<String, String>,
+        root: JsonObject,
         key: String,
     ): FieldResult {
-        val raw = fields[key] ?: return FieldResult.Invalid("missing '$key'")
+        val raw = (root[key] as? JsonPrimitive)?.content
+            ?: return FieldResult.Invalid("missing '$key'")
         if (raw.length != 64 || !raw.all { it in '0'..'9' || it in 'a'..'f' }) {
             return FieldResult.Invalid("'$key' is not a 64-char lowercase hex SHA-256")
         }
@@ -213,85 +266,6 @@ object HarnessVerdictReader {
         data class Invalid(val reason: String) : FingerprintResult {
             init { require(reason.isNotBlank()) }
         }
-    }
-
-    /**
-     * Very small JSON-flat-object parser. Accepts
-     * `{ "k": "v", "k2": "v2" }` with strings only. Nested objects
-     * are allowed for `fingerprint` (the only nested object we
-     * know). Numbers, arrays and escapes beyond `\"` are not
-     * supported; the harness shape is frozen and any deviation is
-     * a [ParseOutcome.Malformed].
-     */
-    private fun parseFlatObject(text: String): Map<String, String>? {
-        val trimmed = text.trim()
-        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null
-        val body = trimmed.substring(1, trimmed.length - 1)
-        val out = LinkedHashMap<String, String>()
-        var i = 0
-        while (i < body.length) {
-            while (i < body.length && (body[i].isWhitespace() || body[i] == ',')) i++
-            if (i >= body.length) break
-            if (body[i] != '"') return null
-            val keyEnd = readString(body, i) ?: return null
-            val key = unescape(body.substring(i + 1, keyEnd))
-            i = keyEnd + 1
-            while (i < body.length && body[i].isWhitespace()) i++
-            if (i >= body.length || body[i] != ':') return null
-            i++
-            while (i < body.length && body[i].isWhitespace()) i++
-            if (i >= body.length) return null
-            if (body[i] == '{') {
-                val nestedEnd = findMatchingBrace(body, i) ?: return null
-                out[key] = body.substring(i, nestedEnd + 1)
-                i = nestedEnd + 1
-            } else if (body[i] == '"') {
-                val valEnd = readString(body, i) ?: return null
-                out[key] = unescape(body.substring(i + 1, valEnd))
-                i = valEnd + 1
-            } else {
-                return null
-            }
-        }
-        return out
-    }
-
-    private fun readString(s: String, start: Int): Int? {
-        var i = start + 1
-        while (i < s.length) {
-            when (s[i]) {
-                '\\' -> {
-                    if (i + 1 >= s.length) return null
-                    i += 2
-                }
-                '"' -> return i
-                else -> i++
-            }
-        }
-        return null
-    }
-
-    private fun unescape(s: String): String =
-        s.replace("\\\"", "\"").replace("\\\\", "\\")
-
-    private fun findMatchingBrace(s: String, start: Int): Int? {
-        var depth = 0
-        var i = start
-        while (i < s.length) {
-            when (s[i]) {
-                '"' -> {
-                    val end = readString(s, i) ?: return null
-                    i = end + 1
-                }
-                '{' -> depth++
-                '}' -> {
-                    depth--
-                    if (depth == 0) return i
-                }
-            }
-            i++
-        }
-        return null
     }
 }
 

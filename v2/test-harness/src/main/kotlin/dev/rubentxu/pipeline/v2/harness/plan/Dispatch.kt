@@ -25,6 +25,26 @@ object Dispatch {
         val task: String,
         val filters: List<String>,
     ) {
+        // BQ4 v13 (plan carrier self-protect, 2026-10-17):
+        // a blank `gradleProject` or `task` would produce
+        // a malformed argv (`:test` for an empty
+        // project, or `project:` for an empty task) that
+        // Gradle silently mis-resolves. A blank filter
+        // would produce an empty `--tests` argument that
+        // Gradle accepts and runs every test. The
+        // carrier refuses all three at construction.
+        init {
+            require(gradleProject.isNotBlank()) {
+                "GradleInvocation.gradleProject must not be blank"
+            }
+            require(task.isNotBlank()) {
+                "GradleInvocation.task must not be blank"
+            }
+            require(filters.all { it.isNotBlank() }) {
+                "GradleInvocation.filters must not contain blank entries; got $filters"
+            }
+        }
+
         /**
          * The argv, as a build would receive it. Asserted directly by the tests.
          *

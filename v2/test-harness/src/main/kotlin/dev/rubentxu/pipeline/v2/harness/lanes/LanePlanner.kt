@@ -7,12 +7,17 @@ package dev.rubentxu.pipeline.v2.harness.lanes
  * The decider is total. New lanes require an ADR.
  */
 object LanePlanner {
-    fun laneFor(spec: LaneSpec): TestLane = when {
-        spec.requiresExternalCertifier -> TestLane.ONLINE_SMOKE
-        spec.requiresInstalledBinary -> TestLane.CANDIDATE
-        spec.minimumFidelity >= 3 -> TestLane.RESTART
-        spec.minimumFidelity == 2 -> TestLane.INTEGRATION
-        else -> TestLane.FAST
+    fun laneFor(spec: LaneSpec): TestLane = when (spec.access) {
+        // Certifier-grade first: an installed + certifier test is
+        // the highest-fidelity authority; an unannotated spec
+        // would otherwise shadow it on the minimumFidelity branch.
+        LaneAccess.InstalledWithCertifier -> TestLane.ONLINE_SMOKE
+        LaneAccess.Installed -> TestLane.CANDIDATE
+        LaneAccess.InProcess -> when {
+            spec.minimumFidelity >= 3 -> TestLane.RESTART
+            spec.minimumFidelity == 2 -> TestLane.INTEGRATION
+            else -> TestLane.FAST
+        }
     }
 
     fun partition(specs: List<LaneSpec>): Map<TestLane, List<String>> {
@@ -28,16 +33,16 @@ object LanePlanner {
         LaneAssignment(
             contractId = spec.contractId,
             lane = laneFor(spec),
-            reason = "fidelity=${spec.minimumFidelity} installed=${spec.requiresInstalledBinary} certifier=${spec.requiresExternalCertifier}",
+            reason = "fidelity=${spec.minimumFidelity} access=${spec.access::class.simpleName}",
         )
     }
 
     /** Convenience: a hand-built example for tests, isolated from any real catalogue. */
     fun exampleSpecs(): List<LaneSpec> = listOf(
-        LaneSpec("unit.echo", "step.echo", 0, false, false),
-        LaneSpec("integration.sh", "step.sh", 2, false, false),
-        LaneSpec("candidate.installed", "cli.installed", 2, true, false),
-        LaneSpec("restart.resume", "durable.resume", 3, false, false),
-        LaneSpec("online.smoke", "release.smoke", 2, true, true),
+        LaneSpec("unit.echo", "step.echo", 0, LaneAccess.InProcess),
+        LaneSpec("integration.sh", "step.sh", 2, LaneAccess.InProcess),
+        LaneSpec("candidate.installed", "cli.installed", 2, LaneAccess.Installed),
+        LaneSpec("restart.resume", "durable.resume", 3, LaneAccess.InProcess),
+        LaneSpec("online.smoke", "release.smoke", 2, LaneAccess.InstalledWithCertifier),
     )
 }

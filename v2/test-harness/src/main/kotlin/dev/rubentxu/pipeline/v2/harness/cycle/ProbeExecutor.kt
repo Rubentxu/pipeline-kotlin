@@ -338,7 +338,17 @@ open class ProbeExecutor(
                 reason = "could not read file at $target: ${ex.message}",
             )
         }
-        if (!actualSha.equals(probe.contentSha256, ignoreCase = true)) {
+        // BQ4 v20 (case-sensitive digest comparison, 2026-10-17):
+        // the previous shape was
+        // `!actualSha.equals(probe.contentSha256, ignoreCase = true)`.
+        // `probe.contentSha256` is strict-validated to lowercase
+        // hex in [ProbeEntry.init] and `sha256HexOfFile` always
+        // returns lowercase, so the case-insensitive comparison
+        // was a defensive default that became a silent acceptance
+        // of a mixed-case recorded digest. The comparison is now
+        // a plain `!=` so a tampered or upper-cased record is
+        // refused loudly rather than silently miscompared.
+        if (actualSha != probe.contentSha256) {
             return ProbeOutcome.Failed(
                 evidenceRef = target.toString(),
                 reason = "contentSha256 mismatch: manifest=${probe.contentSha256}, " +
@@ -463,16 +473,3 @@ open class ProbeExecutor(
 private fun String.escapeJson(): String =
     this.replace("\\", "\\\\").replace("\"", "\\\"")
         .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
-
-/**
- * SHA-256 of a file, returned as lowercase 64-char hex. Streams
- * the file in 8 KB chunks so the digest is bounded by constant
- * memory regardless of file size. The shape matches the
- * product-side `Sha256.ofFile` so the cycle's `contentSha256`
- * field round-trips with the same wire format.
- *
- * The harness re-implements this here because it is
- * product-agnostic and cannot import `:pipeline-domain`. The
- * implementation uses [MessageDigest] directly so a JDK upgrade
- * is the only thing that can change the digest output.
- */

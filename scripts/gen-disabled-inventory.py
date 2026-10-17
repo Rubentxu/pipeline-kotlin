@@ -11,6 +11,8 @@ Categories (classification law, WU-LPR-061):
   HISTORICAL           archived closed-cycle evidence; never gates
   EXPERIMENTAL         non-gating research surface
   OBSOLETE             to be deleted (must name its live replacement)
+  PENDING_EXTERNAL     owner is another repository; awaits its verdict
+  KNOWN_DEFECT         reproduced open defect kept as a witness, not a guard
 
 The classification is fail-closed
 ----------------------------------
@@ -55,8 +57,18 @@ CATEGORIES = (
     "HISTORICAL",
     "EXPERIMENTAL",
     "OBSOLETE",
+    "PENDING_EXTERNAL",
+    "KNOWN_DEFECT",
 )
 UNTRIAGED = "UNKNOWN"
+
+# Owner implied by the category. `migrated-pending` means another
+# repository holds the authority to retire the entry; filing it under the
+# producer's name would name an owner who cannot act.
+OWNER_BY_CATEGORY = {
+    "PENDING_EXTERNAL": "pipelinek-release-harness",
+}
+DEFAULT_OWNER = "pipeline-kotlin maintainers"
 
 # file -> (category, reason-summary, decision) classification table.
 # A @Disabled entry NOT listed here is UNKNOWN and blocks Gate-1. Declaring an
@@ -160,43 +172,168 @@ def legacy_burn_down_converged() -> bool:
     return '"core.' not in body
 
 
+# The ENABLED fitness that pins LEGACY_PLUGIN_IDS to empty.
+#
+# Sixteen disabled rows assert "core.X stays absent from LEGACY_PLUGIN_IDS".
+# A @Disabled row guards nothing, so on its own that guarantee would be
+# unowned -- until you notice that LegacyResidualSnapshot.physicalResidual is
+# `emptySet()` and LegacyResidualConvergenceFitnessTest is NOT disabled, and
+# therefore already asserts exactly that. The sixteen are disabled duplicates
+# of a live guard, not unowned guarantees.
+#
+# The claim is only worth anything if it is checked, so it is: the retirement
+# below is conditional on this file existing AND carrying no @Disabled. Delete
+# or disable the successor and the sixteen fall back to blocking, which is the
+# correct direction to fail.
+CONVERGENCE_FITNESS_PATH = (
+    "v2/pipeline-architecture-tests/src/test/kotlin/dev/rubentxu/pipeline/v2/"
+    "architecture/LegacyResidualConvergenceFitnessTest.kt"
+)
+
+
+def convergence_fitness_is_live() -> bool:
+    """True only while the successor guard exists and is actually enabled."""
+    path = os.path.join(ROOT, CONVERGENCE_FITNESS_PATH)
+    if not os.path.isfile(path):
+        return False
+    with open(path, encoding="utf-8") as fh:
+        return "@Disabled" not in fh.read()
+
+
+# "core dot pwd stays absent from LEGACY_PLUGIN_IDS", "no legacy resurrection",
+# "core.X is absent from LEGACY_PLUGIN_IDS": the whole cluster, phrased three
+# different ways across sixteen rows.
+LEGACY_ABSENCE_RE = re.compile(r"absent|resurrection", re.IGNORECASE)
+
+OBSOLETE_BY_EQUIVALENCE_REASON = (
+    "Asserts a live invariant that IS owned, by an enabled guard: "
+    + CONVERGENCE_FITNESS_PATH.split("/")[-1]
+    + " pins LEGACY_PLUGIN_IDS to empty via LegacyResidualSnapshot."
+    + "physicalResidual = emptySet(). This @Disabled row is a disabled duplicate "
+    + "of that guard, so it adds no coverage and cannot fail. Retiring it is "
+    + "authorised by equivalence, not by age."
+)
+
+
+# --------------------------------------------------------------------------
+# Declared tokens: the author's own disposition
+# --------------------------------------------------------------------------
+#
+# An author who writes WHY a test is disabled has triaged it. Until this
+# generator learned to read that, 96 entries sat at UNKNOWN while carrying a
+# deliberate, policy-cited disposition in the only field a reader will look
+# at. Silence is not evidence of archiving -- but neither is prose the
+# generator cannot see.
+#
+# The tokens are matched at the START of the reason, so they are a declared
+# vocabulary rather than a guess about wording anywhere in a sentence.
+#
+# This is NOT a bypass, and the reason matters: a token is a claim, and a
+# claim that a human wrote is a human decision -- the same status a row in
+# CLASSIFICATION has. What keeps it honest is that the tokens are a CLOSED
+# vocabulary, and every one of them is still subject to the LIVE_INVARIANT
+# guard below. An author who writes "Historical ..." on top of a method named
+# `no legacy resurrection` does not get a non-gating category; that is
+# observed in the tree today, in EmitEventStepContractSuiteTest.
+
+DECLARED_TOKENS = (
+    # (regex anchored at reason start, category, blocking, reason-summary)
+    (r"migrated-pending\b", "PENDING_EXTERNAL", "yes",
+     "Author-declared migrated-pending: the authority to verify and retire this "
+     "test moved to pipelinek-release-harness (AGENTS.md responsibility boundary). "
+     "It is NOT historical; it blocks Gate-1 until the harness rules on it."),
+    (r"producer-internal:", "MANDATORY_SUPPORTED", "yes",
+     "Author-declared producer-internal: an external harness cannot reproduce this "
+     "fixture or replay, so the test stays with the producer permanently and "
+     "remains mandatory here."),
+    (r"(Historical|Archived)\b", "HISTORICAL", "no",
+     "Author-declared closed-cycle snapshot; names the cycle in the reason."),
+    (r"reproduced;", "KNOWN_DEFECT", "no",
+     "Author-declared reproduced defect kept as a witness rather than a passing "
+     "guard. Non-blocking by construction: the test documents a defect that is "
+     "known and open, so gating on it would gate on a known-red."),
+)
+DECLARED_TOKEN_RES = tuple(
+    (re.compile(pattern, re.IGNORECASE), category, blocking, summary)
+    for pattern, category, blocking, summary in DECLARED_TOKENS
+)
+
+
+def declared_disposition(reason: str):
+    """Return (category, blocking, summary) from the reason's leading token."""
+    text = reason.strip()
+    for rx, cat, blk, why in DECLARED_TOKEN_RES:
+        if rx.match(text):
+            return cat, blk, why
+    return None
+
+
 def module_of(rel: str) -> str:
     m = re.match(r"v2/([^/]+(?:/[^/]+)?)/src/test", rel)
     return m.group(1) if m else rel
 
 
-def classify(rel: str, method: str) -> tuple:
+def classify(rel: str, method: str, reason: str = "") -> tuple:
     """Return (category, reason, blocks_gate_1) for one @Disabled entry.
 
     The default is UNKNOWN, not HISTORICAL. A disabled test nobody triaged is
     an open question, and an open question must not pass for a closed cycle.
+
+    `reason` is the author's @Disabled text. It is consulted -- but never
+    before CLASSIFICATION, which is this repository's canonical place for a
+    declaration a reviewer can see without opening 89 test files.
     """
     for f, entries in CLASSIFICATION.items():
         if rel == f:
-            for meth, cat, reason, blocking in entries:
+            for meth, cat, cat_reason, blocking in entries:
                 if meth in method:
-                    return cat, reason, blocking
+                    return cat, cat_reason, blocking
+
+    # A live guard whose guarantee is ALREADY owned by an enabled fitness is a
+    # disabled duplicate, and equivalence -- not age -- is what authorises its
+    # retirement. Checked before the LIVE_INVARIANT guard below, which would
+    # otherwise park it at UNKNOWN forever for a question that is already
+    # answered by a running test.
+    if (LIVE_INVARIANT_RE.search(method) or LIVE_INVARIANT_RE.search(reason)) \
+            and "LEGACY_PLUGIN_IDS" in (method + reason) \
+            and LEGACY_ABSENCE_RE.search(method + reason) \
+            and legacy_burn_down_converged() \
+            and convergence_fitness_is_live():
+        return "OBSOLETE", OBSOLETE_BY_EQUIVALENCE_REASON, "no"
+
+    # A live guard is a live guard however it was labelled. Checked against the
+    # METHOD because that is what the guard asserts, and against the REASON
+    # because an author can put the claim in either -- EmitEventStepContractSuite
+    # declares itself historical while its method is named
+    # `no legacy resurrection - irreversible G5 state holds`.
+    if LIVE_INVARIANT_RE.search(method) or LIVE_INVARIANT_RE.search(reason):
+        return (
+            UNTRIAGED,
+            "Asserts a property that is still live (legacy must not resurrect), not a "
+            "closed-cycle record. It is NOT historical under any label; it needs a human "
+            "to decide whether to keep it as MANDATORY_SUPPORTED with an updated assertion.",
+            "yes",
+        )
+
     # Derived rule, evaluated AFTER the explicit table so a human declaration
     # always wins over an inference. See the rule's comment for why it is
     # anchored to a fact read from source rather than to the method name.
     if BURN_DOWN_SNAPSHOT_RE.search(method) and legacy_burn_down_converged():
-        # A live guard written during the burn-down is not a snapshot of it.
-        if LIVE_INVARIANT_RE.search(method):
-            return (
-                UNTRIAGED,
-                "Asserts a property that is still live (legacy must not resurrect), not a "
-                "closed-cycle counter. It is NOT historical; it needs a human to decide "
-                "whether to keep it as MANDATORY_SUPPORTED with an updated assertion.",
-                "yes",
-            )
         return "HISTORICAL", BURN_DOWN_REASON, "no"
+
+    declared = declared_disposition(reason)
+    if declared:
+        cat, blocking, why = declared
+        return cat, why, blocking
+
     # Untriaged: fail closed. This entry blocks Gate-1 until a human declares
     # what it is, and the run below refuses to publish an inventory that hides
     # it.
     return (
         UNTRIAGED,
-        "No CLASSIFICATION entry declares this @Disabled; it must be triaged "
-        "before it can be counted as anything else",
+        "No CLASSIFICATION row and no declared token in the @Disabled reason "
+        "classify this entry; it must be triaged before it can be counted as "
+        "anything else",
         "yes",
     )
 
@@ -216,9 +353,16 @@ def extract_entries(rel_path: str, abs_path: str):
             target = f"class {cm.group(1)} (whole class)"
         else:
             target = "<unresolved>"
-        reason = m.group(1).replace("\\\"", "\"")[:160]
+        reason = m.group(1).replace("\\\"", "\"")
         entries.append((target, reason))
     return entries
+
+
+# Only the TABLE is truncated. classify() always sees the whole reason: a
+# disposition stated in the tail of a long @Disabled string is still a
+# disposition, and truncating first is how the generator learned to disagree
+# with the author.
+DISPLAY_REASON_CHARS = 160
 
 
 def main():
@@ -237,11 +381,13 @@ def main():
                 continue
             cls = f
             for target, reason in extract_entries(rel, abs_path):
-                cat, cat_reason, blocking = classify(rel, target)
+                cat, cat_reason, blocking = classify(rel, target, reason)
                 counts[cat] = counts.get(cat, 0) + 1
                 if cat == UNTRIAGED:
                     untriaged.append(f"{rel} :: {target}")
-                rows.append((module_of(rel), cls, target, cat, cat_reason or reason, "pipeline-kotlin maintainers", blocking))
+                rows.append((module_of(rel), cls, target, cat,
+                            cat_reason or reason[:DISPLAY_REASON_CHARS],
+                            OWNER_BY_CATEGORY.get(cat, DEFAULT_OWNER), blocking))
 
     sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=ROOT).stdout.strip()
     # UNKNOWN blocks Gate-1 exactly like MANDATORY_SUPPORTED does: an untriaged
@@ -275,11 +421,14 @@ def main():
         "",
         "Law: Gate-1 cannot be GREEN while mandatory-disabled > 0.",
         f"`{UNTRIAGED}` counts toward that total and is the fail-closed",
-        "default: a @Disabled entry no CLASSIFICATION row declares is",
-        "UNTRIAGED, never HISTORICAL. Declaring HISTORICAL is a positive",
-        "claim about a closed cycle and must appear in CLASSIFICATION, where",
-        "it is reviewable. An unclassified entry also makes this generator",
-        "exit non-zero, so the inventory cannot be regenerated while hiding one.",
+        "default: an entry is UNKNOWN unless a CLASSIFICATION row declares it",
+        "or its @Disabled reason opens with one of the declared tokens",
+        "(`migrated-pending`, `producer-internal:`, `Historical`/`Archived`,",
+        "`reproduced;`). A token is the author's decision and is honoured -- but",
+        "it is still subject to the live-invariant guard, so labelling a live",
+        "guard `Historical` does not make it non-gating. An unclassified entry",
+        "also makes this generator exit non-zero, so the inventory cannot be",
+        "regenerated while hiding one.",
     ]
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     open(OUT, "w", encoding="utf-8").write("\n".join(lines) + "\n")

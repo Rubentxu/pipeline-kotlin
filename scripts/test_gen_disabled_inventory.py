@@ -227,24 +227,50 @@ class BurnDownSnapshotsAreHistoricalOnlyWhileTheBurnDownIsClosed(unittest.TestCa
         self.assertEqual(cat, "UNKNOWN")
 
     def test_live_invariant_written_during_the_burn_down_is_not_archived(self) -> None:
-        """Claim: a guard that is STILL TRUE is not filed as closed history.
+        """Claim: a guard that is STILL TRUE is never filed as closed history.
 
         "core.pwd stays absent from LEGACY_PLUGIN_IDS" and "no legacy
         resurrection" were written at a gate and still hold today. Filing them
         HISTORICAL would hide a regression behind a non-gating category, which
         is worse than leaving them UNKNOWN.
 
-        Mutation: delete the LIVE_INVARIANT_RE guard from classify().
+        The category is no longer pinned to UNKNOWN. It is pinned to the claim:
+        NEVER HISTORICAL, and non-gating only while an enabled guard actually
+        owns the property. `convergence_fitness_is_live()` returning False must
+        drop them straight back to blocking -- that is the mutation.
         """
         for live in (
             "`G5 milestone - core dot pwd stays absent from LEGACY_PLUGIN_IDS post-S2-A9-G5`",
-            "`no legacy resurrection - irreversible G5 state holds post-S2-A6-G4`",
+            "`G4 flip - core dot isUnix is absent from LEGACY_PLUGIN_IDS`",
         ):
             with self.subTest(live=live):
                 cat, reason, blocks = gdi.classify(UNDECLARED, live)
-                self.assertEqual(cat, "UNKNOWN")
-                self.assertEqual(blocks, "yes")
-                self.assertIn("still live", reason)
+                self.assertNotEqual(cat, "HISTORICAL")
+                self.assertEqual(cat, "OBSOLETE", "equivalence is proven, so this retires")
+                self.assertEqual(blocks, "no")
+                self.assertIn("LegacyResidualConvergenceFitnessTest", reason)
+
+                # The safety property: without a live successor, nothing is
+                # non-gating. Verified, not assumed.
+                original = gdi.convergence_fitness_is_live
+                gdi.convergence_fitness_is_live = lambda: False
+                try:
+                    cat2, reason2, blocks2 = gdi.classify(UNDECLARED, live)
+                finally:
+                    gdi.convergence_fitness_is_live = original
+                self.assertEqual(cat2, "UNKNOWN")
+                self.assertEqual(blocks2, "yes")
+                self.assertIn("still live", reason2)
+
+        # Eight sibling rows say "stays absent" WITHOUT naming the set, so
+        # their referent is implied by their neighbours rather than stated.
+        # The rule must refuse to inherit it: inferring the referent from a
+        # sibling row is exactly the silent inference this generator exists to
+        # prevent, and eight rows are still cheaper to answer by hand.
+        unnamed = "`no legacy resurrection - irreversible G5 state holds post-S2-A6-G4`"
+        cat, _, blocks = gdi.classify(UNDECLARED, unnamed)
+        self.assertEqual(cat, "UNKNOWN")
+        self.assertEqual(blocks, "yes")
 
     def test_convergence_ignores_the_narrative_comments(self) -> None:
         """Claim: keys named in COMMENTS do not count as present.
@@ -256,6 +282,65 @@ class BurnDownSnapshotsAreHistoricalOnlyWhileTheBurnDownIsClosed(unittest.TestCa
         Mutation: remove the comment-stripping line in legacy_burn_down_converged().
         """
         self.assertTrue(gdi.legacy_burn_down_converged())
+
+
+class DeclaredTokensAreHonouredButCannotBypassTheLiveGuard(unittest.TestCase):
+    """The author's own disposition is a human decision, and is honoured.
+
+    But it is a CLOSED vocabulary, it is matched only at the start of the
+    reason, and it never outranks the live-invariant guard. These are the
+    tests that keep an @Disabled string from becoming a gate bypass.
+    """
+
+    def test_each_token_maps_to_its_category(self) -> None:
+        for reason, cat, blocks in (
+            ("migrated-pending", "PENDING_EXTERNAL", "yes"),
+            ("migrated-pending OBS-PC-208; characterization Falsifier", "PENDING_EXTERNAL", "yes"),
+            ("producer-internal: sandbox profile selection is not replayable", "MANDATORY_SUPPORTED", "yes"),
+            ("Historical S2-A5/G4 snapshot: the 7-key count is superseded", "HISTORICAL", "no"),
+            ("Archived G3 evidence; superseded by CoreSleepRegistryPrimaryFitnessTest", "HISTORICAL", "no"),
+            ("reproduced; root cause: safeStreamName is not injective", "KNOWN_DEFECT", "no"),
+        ):
+            with self.subTest(reason=reason[:40]):
+                got_cat, _, got_blocks = gdi.classify(UNDECLARED, "`some method`", reason)
+                self.assertEqual(got_cat, cat)
+                self.assertEqual(got_blocks, blocks)
+
+    def test_migrated_pending_is_owned_by_the_harness_not_the_producer(self) -> None:
+        """A test nobody here can retire must not name a producer owner."""
+        cat, _, _ = gdi.classify(UNDECLARED, "`some method`", "migrated-pending")
+        self.assertEqual(gdi.OWNER_BY_CATEGORY[cat], "pipelinek-release-harness")
+        self.assertNotEqual(gdi.OWNER_BY_CATEGORY[cat], gdi.DEFAULT_OWNER)
+
+    def test_a_token_must_open_the_reason_not_appear_inside_it(self) -> None:
+        """Mid-sentence prose is not a declaration.
+
+        Without this, any author could bury `migrated-pending` in a sentence
+        and be filed as a harness-pending row.
+        """
+        for reason in (
+            "this is not migrated-pending after all, it is broken",
+            "see the migrated-pending list elsewhere",
+        ):
+            with self.subTest(reason=reason):
+                cat, _, _ = gdi.classify(UNDECLARED, "`some method`", reason)
+                self.assertEqual(cat, "UNKNOWN")
+
+    def test_the_classification_table_outranks_a_declared_token(self) -> None:
+        """An explicit CLASSIFICATION row is the canonical declaration."""
+        cat, _, _ = gdi.classify(
+            "v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/"
+            "application/UatLocal008CredentialsTest.kt",
+            "`CR-BD-034 mismatched credential kind throws`",
+            "Historical something",
+        )
+        self.assertEqual(cat, "COMPATIBILITY")
+
+    def test_no_declared_token_stays_unknown(self) -> None:
+        cat, reason, blocks = gdi.classify(UNDECLARED, "`some method`", "...")
+        self.assertEqual(cat, "UNKNOWN")
+        self.assertEqual(blocks, "yes")
+        self.assertIn("no declared token", reason)
 
 
 if __name__ == "__main__":

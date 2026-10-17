@@ -205,6 +205,85 @@ Aplicar el **protocolo común ya existente** arriba en esta adenda y `ROADMAP.md
 
 Cada bloque terminado exige branch integrada en `origin/main` sin squash de historia publicada, tag RC nuevo sobre SHA de producto, binario instalable de esos bytes, checksum/SBOM normativos, enlace y digest observados en GitHub. `CANDIDATE_PUBLISHED` ≠ `SDK_PUBLISHED` ≠ `CERTIFIED` ≠ `STABLE_PROMOTED`; no falsear estados. Los bloqueos externos no paralizan work units independientes.
 
+### Continuación operativa auditada — 2026-10-17 (hitos BQ1..BQ5, paquete de 4 hitos)
+
+**Base medida:** `main@526fdeac920b8bc52f787290af58669bf9069bed` (HEAD local y remoto, posteriores a `19d592e5` y a `v0.62.0-rc6`). Sin reescritura del roadmap oficial ni de los BLOQUE 1..5 ya existentes; esta sección **inserta cuatro hitos** subordinados a la misma autoridad (`ROADMAP.md` §0/§13 → `QUALITY_VALUE_ADDENDUM.md` → `AGENTS.md`).
+
+**Integridad de la inserción:** los cuatro hitos reproducen aquí el mandato de implementación del paquete externo; la autoridad final sigue siendo este repositorio. `git ls-files` no muestra un script `integrar_pipelinek_roadmap.py` aplicado como artefacto binario, por lo que la inserción se hace manualmente como texto normativo. La adenda resultante es idempotente bajo la regla "esta sección es la única autorizada para Hito N — duplicar la numeración fuera de aquí es un defecto".
+
+#### Hito 1 — Ciclos seguros y gates fiables (BQ4 P0 + BQ1)
+
+- Corregir el borrado de archivos en `CycleRunner`, registrando explícitamente qué creó cada ciclo.
+- Hacer que `:test-harness:cycle` propague los errores y eliminar valores predeterminados que puedan producir identidades falsas.
+- Correfir la identificación de suites por módulo, FQCN e invocación, verificando procedencia, digest y fidelidad.
+- Proteger las modificaciones del propio harness mediante pruebas de impacto.
+- Ejecutar dos AAT efímeras: archivo ajeno que debe sobrevivir y evidencia falsificada que debe rechazarse.
+- Retirar los tests temporales tras conservar las garantías mínimas.
+
+**Refs:** `EPHEMERAL_CYCLE_LIFECYCLE_SPEC.md`, `TEST_IMPACT_AND_EVIDENCE_SPEC.md`, `ADR-PK-QV-002`, `ADR-PK-QV-003`.
+**Agent Teams:** ciclo/filesystem | selector/evidencia | pruebas adversariales.
+**Cierre:** integración remota, gate sobre el código final y nueva RC verificable.
+
+**Estado al `526fdeac`:** avance parcial reciente en el bloque BQ4 P0 — la serie BQ4 v22..v27 (`526fdeac` y anteriores) cerró las cadenas `<pending>` y `<refused:*>`, las parejas nullable paralelas (`Proposal` tipada), las exportaciones JSON a mano (`InventoryClassifierMain` + `LanePlannerMain` con `@Serializable`), los campos vacíos de los carriers de retirement/cycle/plan y la validación estricta de SHA-1/SHA-256 en `DigestFormat`. Pendiente la pieza nuclear del P0: preservar `ProbeOutcome`/`ObservedBoundary` tipados hasta `Cycle.decide`, validar source SHA real, aislar el borrado por propiedad del directorio, y propagar fallo de `:test-harness:cycle` al build. **No declarar BQ4 P0 DONE hasta cerrar esos cuatro puntos.**
+
+#### Hito 2 — Desarrollo rápido desde checkout limpio (BQ2 + BQ1 residual)
+
+- Separar realmente los tests rápidos de los que necesitan plugins externos.
+- Conseguir que un checkout limpio compile y ejecute las pruebas afectadas sin JARs precalentados.
+- Eliminar las reconstrucciones innecesarias y medir p50/p95 sobre ejecuciones comparables.
+- Verificar la distribución instalada y el conjunto exacto de cinco assets exigidos.
+- Ejecutar una UAT de checkout limpio, un E2E instalado y una AAT de assets incorrectos.
+- Promover los fitness imprescindibles y borrar pruebas temporales.
+
+**Refs:** `TEST_EXECUTION_LANES_SPEC.md`, `DISTRIBUTION_RELEASE_SPEC.md`, `P2_MAVEN_PUBLICATION.md`, `ADR-PK-DF-001`.
+**Agent Teams:** Gradle | rendimiento/gates | distribución/SDK.
+**Cierre:** tests rápidos medidos, consumidor real, integración remota y RC.
+
+**Estado al `526fdeac`:** `LanePlannerMain` ya emite el JSON por catálogo real (BQ4 v27). `installedContractTest` aún no tiene `testClassesDirs`/`classpath` explícitos ni se localizan clases `@Tag("installed-contract")`. El checkout fresco sigue necesitando JAR de plugin preexistente. La medición p50/p95 está pendiente.
+
+#### Hito 3 — Entregar una mejora funcional del runtime (BQ3 + OBS-2)
+
+- Reproducir los defectos de primera escritura y salida incremental de `OBS-A` y `OBS-PC-208`.
+- Corregir el flujo de bytes entre productor, redactor, Output Plane y consola.
+- Conservar una única autoridad sobre bytes, cursores y replay.
+- Ejecutar una UAT que observe stdout antes de terminar el Step y una AAT de secretos fragmentados.
+- Ejecutar kill/restart únicamente si el cambio afecta a esa garantía.
+- Mantener la menor regresión permanente y eliminar las pruebas efímeras.
+
+**Refs:** `FUNCTIONAL_CORE_ONTOLOGY_SPEC.md`, `OBS_PROGRESSIVE_CONSOLE_ROADMAP.md`, `ADR-OBS-003`, `ADR-0103`.
+**Agent Teams:** Output Plane | redacción/canales | consumidor CLI.
+**Cierre:** defecto reproducido y corregido, CLI utilizable, integración y RC.
+
+**Estado al `526fdeac`:** BQ3 no tocado en esta tanda. ADR-0103 (una autoridad de replay) y la separación `ReplayPolicy` vs `Effect` están documentadas en `AGENTS.md` y validadas por `E-EM-11 NEVER-1`. La selección de la vertical (ConsoleOperationSelection, ShExecution, retry/waitUntil) queda abierta; el mandato dice priorizar la que tenga incidencia activa.
+
+#### Hito 4 — Reducir pruebas heredadas y asegurar consumidores (BQ5 + distribución SDK pendiente)
+
+- Recuperar el fitness de imports prohibidos de JGit, que pertenece al productor.
+- Auditar las UAT deshabilitadas y clasificarlas por garantía, defecto, coste y propietario.
+- Exigir equivalencia real en `pipelinek-release-harness` antes de retirar cada prueba heredada.
+- Verificar los contratos Maven y el BOM con un consumidor limpio.
+- Ejecutar una UAT de equivalencia y una AAT de recibo falso; añadir E2E SDK solo si falta cobertura.
+- Eliminar únicamente pruebas autorizadas por equivalencia y las temporales del propio ciclo.
+
+**Refs:** `RESPONSIBILITY_MIGRATION_ROADMAP.md`, `BQ_ACCEPTANCE_MATRIX.md`, `P2_MAVEN_PUBLICATION.md`, `ADR-PK-QV-003`, `ADR-0105`.
+**Agent Teams:** inventario/productor | SDK | harness externo.
+**Cierre:** reducción cuantificada de deuda y mantenimiento, integración y RC si existe entrega real y los gates permiten publicarla.
+
+**Estado al `526fdeac`:** la serie BQ4 v6/v11..v22 cerró los carriers de retirement (`TestRecord`, `HarnessVerdict.Verified`, `FailureFingerprint`, `DeletionDecision`, `ProbeEntry`, `Contract`, `EscalationRule`, etc.) para que ningún veredicto fabricado llegue al guard. La validación estricta de SHA en `DigestFormat` cubre los formatos con los que el certifier firma. La oleada de retiro (smoke → CLI/distribución → kill/restart/sandbox/secretos → V1) sigue dependiendo del veredicto externo del certifier; sin ese veredicto, el retiro queda `BLOCKED_EXTERNAL`.
+
+#### Protocolo obligatorio para los cuatro hitos (no se relaja el existente)
+
+1. Aplicar `delivery-first-testing` con su router y lentes: `change-impact`, `ephemeral-uat`, `regression-promotion`, `failure-triage`, `merge-assurance`, `integration-assurance`, `release-assurance` y `harness-economics`.
+2. Preferir ADTs ya existentes, funciones puras, datos inmutables e intérpretes de efectos; evitar segundas autoridades y refactors por estética.
+3. Ejecutar tests afectados durante desarrollo; integración y certificación según riesgo y frontera.
+4. Antes de congelar el SHA, retirar UAT/E2E/AAT de sesión después de guardar evidencia y proteger las garantías necesarias. No borrar pruebas heredadas sin equivalencia.
+5. Repetir los gates sobre el código definitivo, integrar en `origin/main`, descubrir un tag RC libre y verificar los assets publicados. Nunca confundir candidata publicada con producto certificado.
+6. Si una dependencia externa impide completar el hito, declarar `BLOCKED_EXTERNAL`. No publicar una RC vacía únicamente para cerrar un TODO.
+
+#### Lenguaje ubicuo (referencia operativa, no se duplica con el anexo)
+
+`Capability` (comportamiento), `Contract` (garantía), `ADT` (tipo cerrado con variantes exhaustivas), `Decider` (función pura), `Interpreter` (componente que realiza efectos autorizados), `Evidence` (observación con identidad), `Verdict` (decisión tipada), `CandidateId` (digest SHA-256 de los bytes del candidato), `Probe efímera` (UAT de aceptación de un hito), `Equivalence` (demostración de que una prueba sustituta detecta el mismo defecto), `STOP` (condición que impide afirmar una entrega o certificación). El glosario canónico está al final del documento; este párrafo solo lo reproduce para que la sección sea legible aislada.
+
 ### Anexo — glosario (lenguaje ubicuo)
 
 | Término | Significado |

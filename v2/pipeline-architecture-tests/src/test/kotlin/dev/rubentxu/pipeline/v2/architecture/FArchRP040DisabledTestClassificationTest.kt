@@ -1,8 +1,12 @@
 package dev.rubentxu.pipeline.v2.architecture
 
+import java.nio.file.Files
+import java.nio.file.Path
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 
 /**
  * RP-040 fitness test: enforce the policy "nunca contar tests omitidos
@@ -22,6 +26,19 @@ import org.junit.jupiter.api.Test
  * clasificados, nunca contar tests omitidos como PASS").
  */
 class FArchRP040DisabledTestClassificationTest {
+
+    /**
+     * A `@Disabled` in annotation position, with or without a reason.
+     *
+     * The `(?![\w])` boundary matters: it keeps `@Disabled` from also matching the
+     * prefix of `@DisabledBecauseYouForgot`. Requiring a `(` here instead would be
+     * a silent blind spot — the bare `@Disabled` this policy exists to catch is
+     * precisely the one with no argument.
+     */
+    private val ANNOTATION = Regex("""(?m)^[ \t]*@Disabled(?![\w])""")
+
+    /** A string literal, possibly the first of several concatenated to build a reason. */
+    private val STRING_LITERAL = Regex("""\s*"((?:[^"\\]|\\.)*)"""")
 
     @Test
     fun `every @Disabled annotation in the test tree carries a textual reason`() {
@@ -51,11 +68,21 @@ class FArchRP040DisabledTestClassificationTest {
             "pipeline-artefacts-local/src/test",
         )
 
-        // Strict regex: real @Disabled annotation on a code line.
-        // Requires the annotation to be followed by an opening
-        // parenthesis, with either a string argument or no argument.
-        // Excludes pure-mention lines (in comments / strings).
-        val annotationRegex = Regex("""^\s*@Disabled(\([^)]*\))?""")
+        // The annotation is located in the SANITIZED form — comments and literal
+        // bodies blanked, offsets preserved — and its reason is then read from the
+        // RAW text at the same offset, because the locator necessarily blanks the
+        // very string that IS the reason.
+        //
+        // The previous version did the opposite: it stripped block comments with
+        // `replace(Regex("""/\*[\s\S]*?\*/"""), "")`, which is not a comment
+        // stripper on Kotlin. `artifacts = "build/libs/*.jar"` opens a phantom
+        // block comment that swallows the following 353 lines, including three
+        // REAL annotations in CoreArchiveArtifactsStepUnitTest. Measured: that
+        // strip alone dropped the file from 3 annotations to 0, so the fitness was
+        // blind to reasonless @Disabled in every file whose glob literals precede
+        // one. It also had no way to see an annotation that is only a string
+        // fixture, which is the same confusion in the opposite direction.
+        val annotationRegex = ANNOTATION
 
         val disabledWithoutReason = mutableListOf<String>()
 
@@ -72,58 +99,16 @@ class FArchRP040DisabledTestClassificationTest {
                 .filter { it.name != "FArchRP040DisabledTestClassificationTest.kt" }
                 .forEach { file ->
                     val text = file.readText()
-                    // Strip block comments (/* ... */) and KDoc (/** ... */)
-                    // so we only scan real code lines. Line comments (//)
-                    // are stripped on a per-line basis inside the regex
-                    // (the regex requires the annotation to be at the start
-                    // of the line, optionally indented).
-                    val stripped = text
-                        .replace(Regex("""/\*[\s\S]*?\*/"""), "")
-                    val lines = stripped.lines()
-                    lines.forEachIndexed { i, line ->
-                        val match = annotationRegex.find(line)
-                        if (match != null) {
-                            // Decide multi-line from the RAW line, not from the
-                            // regex match. `(\([^)]*\))?` only participates when a
-                            // closing paren is on the SAME line, so a reason built
-                            // by concatenation —
-                            //
-                            //     @Disabled("migrated-pending X; … " +
-                            //         "second case")
-                            //
-                            // collapsed the match to bare `@Disabled`, DISCARDING
-                            // the `(` that is the only signal that the annotation
-                            // continues. `endsWith("@Disabled(")` was therefore
-                            // unreachable and every concatenated reason was
-                            // reported as a reasonless @Disabled.
-                            val afterMarker = line.substringAfter("@Disabled", "")
-                            val sb = StringBuilder(line.trim())
-                            var j = i + 1
-                            // Accumulate only when the annotation actually
-                            // opened. A bare `@Disabled` must NOT swallow the
-                            // following lines.
-                            //
-                            // Paren counting is deliberately NOT used: a reason
-                            // string may itself contain parentheses
-                            // ("Falsifier (x)"), which would unbalance the count.
-                            if (afterMarker.contains('(') && !afterMarker.contains(')')) {
-                                while (j < lines.size &&
-                                    !sb.toString().substringAfter("@Disabled").contains(')')
-                                ) {
-                                    sb.append(' ').append(lines[j].trim())
-                                    j++
-                                }
-                            }
-                            val full = sb.toString().substringAfter("@Disabled").trim()
-                            // The argument is whatever sits inside the outer
-                            // parens; absent parens mean absent argument.
-                            val argument =
-                                if (full.startsWith('(')) full.substring(1).substringBeforeLast(')')
-                                else ""
-                            if (!argument.contains('"')) {
-                                disabledWithoutReason +=
-                                    "${root.relativize(file.toPath())}:${i + 1}: ${line.trim()}"
-                            }
+                    val sanitized = KotlinSourceSanitizer.sanitizedSource(text)
+                    annotationRegex.findAll(sanitized).forEach { match ->
+                        // Offsets are preserved by the lexer, so this indexes the
+                        // real reason, not whatever happened to sit at a
+                        // position the lexer had shifted.
+                        val raw = STRING_LITERAL.find(text, match.range.last + 1)
+                        if (raw == null) {
+                            val line = sanitized.take(match.range.last).count { it == '\n' } + 1
+                            disabledWithoutReason +=
+                                "${root.relativize(file.toPath())}:$line: ${annotationLine(sanitized, match.range.last)}"
                         }
                     }
                 }
@@ -135,6 +120,115 @@ class FArchRP040DisabledTestClassificationTest {
                 "Bare @Disabled without a reason is a smell: it leaves the test in the " +
                 "catalogue without explaining why it was disabled. Findings: $disabledWithoutReason"
         )
+    }
+
+    /** The source line containing [offset], for the failure message. */
+    private fun annotationLine(sanitized: String, offset: Int): String =
+        sanitized.substring(offset)
+            .lineSequence()
+            .first()
+            .trim()
+
+    /**
+     * Pins the two ways this fitness used to look at the wrong thing.
+     *
+     * Both rows exercise the production scan path. A version of this test that
+     * reimplemented the scan inline inside the fixture would pass while the
+     * shipped locator was broken — which is exactly how the phantom-comment
+     * strip survived: the class asserted a property its own scanner did not have.
+     */
+    @Nested
+    inner class AnnotationLocatorFixture {
+
+        @TempDir
+        lateinit var tempDir: Path
+
+        private fun write(body: String): Path =
+            tempDir.resolve("Fixture.kt").also { Files.writeString(it, body) }
+
+        @Test
+        fun `an annotation inside a string literal is not a reasonless annotation`() {
+            write(
+                """
+                package dev.rubentxu.pipeline.v2.architecture
+                class DetectorTest {
+                    private val source = ${"\"\"\""}
+                        @Disabled
+                    ${"\"\"\""}
+                }
+                """.trimIndent(),
+            )
+
+            assertEquals(
+                emptyList<String>(),
+                reasonlessAnnotations(tempDir.resolve("Fixture.kt")),
+                "A bare @Disabled used as a string fixture is text under test, not an " +
+                    "annotation the tree forgot to justify",
+            )
+        }
+
+        @Test
+        fun `a glob inside a string literal does not hide the annotations after it`() {
+            // The trailing comment is LOAD-BEARING, and the first version of this
+            // fixture omitted it. A stripper that treats `/*` as a block-comment
+            // opener only erases anything if a `*/` appears LATER; with the glob
+            // alone it finds no partner, strips nothing, and the fixture passes
+            // while the defect it names is fully present — a green row with no
+            // teeth. This shape (glob first, real block comment further down) is
+            // the one that actually hid three annotations in
+            // CoreArchiveArtifactsStepUnitTest.
+            write(
+                """
+                package dev.rubentxu.pipeline.v2.architecture
+                class GlobTest {
+                    private val artifacts = "build/libs/*.jar"
+
+                    @Disabled
+                    fun bare() = Unit
+
+                    /* trailing comment */
+                    fun other() = Unit
+                }
+                """.trimIndent(),
+            )
+
+            assertEquals(
+                1,
+                reasonlessAnnotations(tempDir.resolve("Fixture.kt")).size,
+                "`\"build/libs/*.jar\"` opens a phantom block comment for a regex-based " +
+                    "strip, which pairs it with the next `*/` and silently hides every " +
+                    "annotation in between",
+            )
+        }
+
+        @Test
+        fun `a reason spelled by concatenation is accepted`() {
+            write(
+                """
+                package dev.rubentxu.pipeline.v2.architecture
+                class ConcatenatedReasonTest {
+                    @Disabled("migrated-pending: first half " + "and second half")
+                    fun annotated() = Unit
+                }
+                """.trimIndent(),
+            )
+
+            assertEquals(
+                emptyList<String>(),
+                reasonlessAnnotations(tempDir.resolve("Fixture.kt")),
+                "A reason assembled by concatenation is still a reason",
+            )
+        }
+    }
+
+    /** The reasonless `@Disabled` findings in [file], by the same locator the policy test uses. */
+    private fun reasonlessAnnotations(file: Path): List<String> {
+        val text = Files.readString(file)
+        val sanitized = KotlinSourceSanitizer.sanitizedSource(text)
+        return ANNOTATION.findAll(sanitized)
+            .filterNot { STRING_LITERAL.find(text, it.range.last + 1) != null }
+            .map { annotationLine(sanitized, it.range.last) }
+            .toList()
     }
 
     @Test

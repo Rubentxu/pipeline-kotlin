@@ -140,7 +140,27 @@ data class LaneAssignmentReport(
     @SerialName("contract_id") val contractId: String,
     val lane: TestLane,
     val reason: String,
-)
+) {
+    // Carrier self-protect (2026-10-17): the producer
+    // [buildReport] is fed by [LaneAssignment] (already
+    // self-protected: `require(contractId.isNotBlank())` /
+    // `require(reason.isNotBlank())`), so today's
+    // construction never produces a blank field. But the
+    // carrier is `public` (no visibility modifier) and a
+    // future test fixture, a future typed carrier, or a
+    // refactor that breaks the upstream protection would
+    // silently emit `"contract_id": ""` / `"reason": ""`
+    // in the JSON wire format. The typed carrier now
+    // refuses blanks at construction with precise
+    // messages naming the field, matching the rest of
+    // the codebase's self-protect pattern
+    // ([TestSuiteId], [HarnessVerdict.Pending],
+    // [LaneAssignment], …).
+    init {
+        require(contractId.isNotBlank()) { "LaneAssignmentReport.contractId must not be blank" }
+        require(reason.isNotBlank()) { "LaneAssignmentReport.reason must not be blank" }
+    }
+}
 
 /**
  * The local `Json` configuration. Pretty-printed with 2-space

@@ -7,11 +7,18 @@ group = "dev.rubentxu.pipeline.v2"
 
 // H0 — the harness contracts module.
 //
-// Deliberately minimal dependencies. The catalogue is DATA plus pure functions over it, so it needs
+// Deliberately minimal dependencies. The CATALOGUE is DATA plus pure functions over it, so it needs
 // no product class, no persistence, no process runner and no test framework at runtime. That is what
 // lets a selection run before anything is compiled: if the catalogue needed the product on the
 // classpath, impact analysis could not answer "what must be tested" until the product already
 // built, which is one moment too late.
+//
+// "no process runner" describes `harness/cycle` and `harness/retirement`, which stay pure. It does
+// NOT describe `harness/plan`: that package evaluates a gate, so it runs `git` and `gradlew`, and
+// reads `version --json` from the installed launcher — four declared sites in
+// FArchM3CanonicalTaskRuntimeTest.harnessProcessSites, which fails on any site it does not list.
+// The distinction is kept deliberately: the catalogue must stay answerable before anything compiles,
+// and a gate that cannot run the build cannot certify anything.
 dependencies {
     implementation(libs.kotlinx.serialization.json)
     testImplementation(kotlin("test"))

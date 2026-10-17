@@ -36,7 +36,88 @@ object PromotionEvidenceVerifier {
 
     sealed interface Verdict {
         data object Verified : Verdict
-        data class Refused(val reason: String) : Verdict
+
+        /**
+         * Typed refusal: each subtype is a distinct well-known
+         * reason the verifier refused. The previous shape was a
+         * single `data class Refused(val reason: String)` and the
+         * runner consumed the reason verbatim; a future reason
+         * (a new failure mode) silently misrouted to the wrong
+         * typed case at the consumer. The new shape makes each
+         * case a distinct data class with typed fields. The
+         * carrier [reason] is preserved verbatim so the
+         * operator-facing text survives the refactor (the
+         * companion [CycleRefusalProjectionFitnessTest] in
+         * the cycle package pins the absence of the previous
+         * shape in production code).
+         */
+        sealed interface Refused : Verdict {
+            val reason: String
+
+            // Typed Refused subtypes (BQ1 v2, 2026-10-17). Each
+            // carries the typed payload the audit named. The carrier
+            // `reason` is computed from the payload, not stored in
+            // parallel — there is no separate "reason string" the
+            // projection would have to re-parse.
+            data class OtherCommit(
+                val observedCommit: String,
+                val expectedCommit: String,
+            ) : Refused {
+                init {
+                    require(observedCommit.isNotBlank()) { "OtherCommit.observedCommit must not be blank" }
+                    require(expectedCommit.isNotBlank()) { "OtherCommit.expectedCommit must not be blank" }
+                }
+                override val reason: String get() =
+                    "other commit: evidence bound to $observedCommit, runner saw $expectedCommit"
+            }
+            data class FidelityMismatch(
+                val observed: String,
+                val expected: String,
+            ) : Refused {
+                init {
+                    require(observed.isNotBlank()) { "FidelityMismatch.observed must not be blank" }
+                    require(expected.isNotBlank()) { "FidelityMismatch.expected must not be blank" }
+                }
+                override val reason: String get() =
+                    "fidelity mismatch: evidence=$observed, expected=$expected"
+            }
+            data class ContractFileMissing(
+                val relativePath: String,
+                val resolvedPath: String,
+            ) : Refused {
+                init {
+                    require(relativePath.isNotBlank()) { "ContractFileMissing.relativePath must not be blank" }
+                    require(resolvedPath.isNotBlank()) { "ContractFileMissing.resolvedPath must not be blank" }
+                }
+                override val reason: String get() =
+                    "contract file missing: '$relativePath' (resolved to $resolvedPath)"
+            }
+            data class ContentDigestMismatch(
+                val manifestDigest: String,
+                val actualDigest: String,
+                val relativePath: String,
+            ) : Refused {
+                init {
+                    require(manifestDigest.isNotBlank()) { "ContentDigestMismatch.manifestDigest must not be blank" }
+                    require(actualDigest.isNotBlank()) { "ContentDigestMismatch.actualDigest must not be blank" }
+                    require(relativePath.isNotBlank()) { "ContentDigestMismatch.relativePath must not be blank" }
+                }
+                override val reason: String get() =
+                    "content_digest mismatch: manifest=$manifestDigest, file=$actualDigest (at $relativePath)"
+            }
+            data class OracleNotPassed(
+                val commit: String,
+                val oracle: String,
+            ) : Refused {
+                init {
+                    require(commit.isNotBlank()) { "OracleNotPassed.commit must not be blank" }
+                    require(oracle.isNotBlank()) { "OracleNotPassed.oracle must not be blank" }
+                }
+                override val reason: String get() =
+                    "oracle not PASS at commit $commit: $oracle"
+            }
+        }
+
         data class BlockedExternal(val reason: String) : Verdict
     }
 
@@ -74,17 +155,21 @@ object PromotionEvidenceVerifier {
         // (1) commit identity — OtherCommit guard. The runner's
         // sourceSha is the manifest's sourceSha (the runner
         // inherits it); the evidence's boundCommit must match.
+        // BQ1 v2 (typed verifier, 2026-10-17): emit a typed
+        // [Verdict.Refused.OtherCommit] rather than a free
+        // String. The reason is computed from the typed fields
+        // so the runner does not have to re-parse it.
         if (evidence.boundCommit != runnerSourceSha) {
-            return Verdict.Refused(
-                "other commit: evidence bound to ${evidence.boundCommit}, " +
-                    "runner saw $runnerSourceSha",
+            return Verdict.Refused.OtherCommit(
+                observedCommit = evidence.boundCommit,
+                expectedCommit = runnerSourceSha,
             )
         }
         // (2) fidelity — cheap, check before file I/O.
         if (evidence.fidelity != manifestExpectedHF) {
-            return Verdict.Refused(
-                "fidelity mismatch: evidence=${evidence.fidelity}, " +
-                    "expected=$manifestExpectedHF",
+            return Verdict.Refused.FidelityMismatch(
+                observed = evidence.fidelity,
+                expected = manifestExpectedHF,
             )
         }
 
@@ -106,23 +191,26 @@ object PromotionEvidenceVerifier {
         // (3) existence
         val file = repoRoot.resolve(ev.sourcePath).normalize()
         if (!Files.isRegularFile(file)) {
-            return Verdict.Refused(
-                "contract file missing: '${ev.sourcePath}' (resolved to $file)",
+            return Verdict.Refused.ContractFileMissing(
+                relativePath = ev.sourcePath,
+                resolvedPath = file.toString(),
             )
         }
         // (4) digest — the file's SHA-256 must match the manifest.
         val actualDigest = sha256HexOfFile(file)
         if (!actualDigest.equals(ev.contentDigest, ignoreCase = true)) {
-            return Verdict.Refused(
-                "content_digest mismatch: manifest=${ev.contentDigest}, " +
-                    "file=$actualDigest (at ${ev.sourcePath})",
+            return Verdict.Refused.ContentDigestMismatch(
+                manifestDigest = ev.contentDigest,
+                actualDigest = actualDigest,
+                relativePath = ev.sourcePath,
             )
         }
         // (5) oracle — the test that proves the contract must
         // have last passed at the bound commit.
         if (!oracleLedger.hasPassed(ev.oracle, ev.boundCommit)) {
-            return Verdict.Refused(
-                "oracle not PASS at commit ${ev.boundCommit}: ${ev.oracle}",
+            return Verdict.Refused.OracleNotPassed(
+                commit = ev.boundCommit,
+                oracle = ev.oracle.toString(),
             )
         }
         return Verdict.Verified

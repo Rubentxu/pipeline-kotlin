@@ -158,24 +158,23 @@ sealed interface ChangedInput {
      */
     data class UnknownProduction(
         override val path: String,
-        val proposedCapability: String,
-        val proposedOwner: String,
+        // BQ4 v24 (typed proposal pair, 2026-10-17):
+        // the previous shape carried the two fields as
+        // parallel `String` declarations
+        // (`proposedCapability`, `proposedOwner`). The
+        // new shape uses the shared [Proposal] carrier
+        // — a single concept (the operator's
+        // starting-point proposal) as a single
+        // self-protected typed value. A consumer reads
+        // the pair atomically via `proposal.capability`
+        // and `proposal.owner` rather than via two
+        // parallel fields. The [Proposal] carrier
+        // self-protects: a blank `capability` or `owner`
+        // is refused at construction.
+        val proposal: Proposal,
     ) : ChangedInput {
-        // BQ4 v10 (plan carrier self-protect, 2026-10-17):
-        // `proposeOwnerAndCapability` is the only producer
-        // and always returns a non-blank pair, so the
-        // strict-validate is for the structural
-        // invariant: a future direct construction that
-        // passes blanks would fabricate the operator's
-        // proposed owner / capability.
         init {
             require(path.isNotBlank()) { "UnknownProduction.path must not be blank" }
-            require(proposedCapability.isNotBlank()) {
-                "UnknownProduction.proposedCapability must not be blank"
-            }
-            require(proposedOwner.isNotBlank()) {
-                "UnknownProduction.proposedOwner must not be blank"
-            }
         }
     }
 
@@ -363,8 +362,18 @@ object ChangedInputClassifier {
         val (proposedOwner, proposedCapability) = proposeOwnerAndCapability(path)
         return ChangedInput.UnknownProduction(
             path = path,
-            proposedCapability = proposedCapability,
-            proposedOwner = proposedOwner,
+            // BQ4 v24 (typed proposal pair, 2026-10-17):
+            // the proposal is now a single [Proposal]
+            // carrier — the two fields are wrapped
+            // atomically rather than passed as parallel
+            // arguments. The [Proposal] carrier
+            // self-protects: a blank `capability` or
+            // `owner` is refused at construction, so the
+            // typed shape is the structural invariant.
+            proposal = Proposal(
+                capability = proposedCapability,
+                owner = proposedOwner,
+            ),
         )
     }
 

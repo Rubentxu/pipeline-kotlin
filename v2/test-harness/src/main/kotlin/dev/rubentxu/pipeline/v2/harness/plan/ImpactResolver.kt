@@ -116,8 +116,19 @@ object ImpactResolver {
                 unknown.map {
                     SelectionRefusal.UnclassifiedPath(
                         path = it.path,
-                        proposedCapability = it.proposedCapability,
-                        proposedOwner = it.proposedOwner,
+                        // BQ4 v24 (typed proposal pair,
+                        // 2026-10-17): the two fields are
+                        // now a single [Proposal] carrier
+                        // — the parallel-nullable shape
+                        // encoded one concept (the
+                        // operator's starting point) as
+                        // two independent sentinels. The
+                        // producer's `UnknownProduction`
+                        // carries a non-null
+                        // `proposal: Proposal`; passing it
+                        // through is the typed shape and
+                        // the carrier self-protects.
+                        proposal = it.proposal,
                     )
                 },
             )

@@ -107,16 +107,31 @@ sealed interface SelectionRefusal {
     /** A production file the catalogue has never heard of. Action: add a row or justify the file. */
     /**
      * A production-shape path the catalogue does not bind.
-     * H1 TODO 1 added [proposedCapability] and [proposedOwner]
-     * so the operator has a starting point for adding a
-     * rule, derived from path conventions (not a per-file
-     * string table). The two fields are heuristic; the
-     * operator replaces them by adding a catalogue row.
+     * H1 TODO 1 added the [proposal] field so the operator
+     * has a starting point for adding a rule, derived from
+     * path conventions (not a per-file string table). The
+     * proposal is heuristic; the operator replaces it by
+     * adding a catalogue row.
+     *
+     * BQ4 v24 (typed proposal pair, 2026-10-17): the
+     * previous shape carried two parallel `String? = null`
+     * fields (`proposedCapability`, `proposedOwner`) — a
+     * parallel-nullable defect class where the two
+     * fields encoded a single concept (the operator's
+     * starting-point proposal) as two independent
+     * sentinels. The producer
+     * [dev.rubentxu.pipeline.v2.harness.plan.ImpactResolver.resolve]
+     * always sets both together, but a future consumer
+     * that read one without the other had no compile-time
+     * signal. The new shape is a single [Proposal]
+     * carrier; the proposal is either present (typed,
+     * self-protected) or absent (`null`). A consumer
+     * either reads the pair atomically or does not read
+     * it at all.
      */
     data class UnclassifiedPath(
         val path: String,
-        val proposedCapability: String? = null,
-        val proposedOwner: String? = null,
+        val proposal: Proposal? = null,
     ) : SelectionRefusal {
         init {
             require(path.isNotBlank()) { "UnclassifiedPath.path must not be blank" }
@@ -405,4 +420,39 @@ object SuitePolicy {
     /** The suites for [capability], empty when the capability is unbound. */
     fun suitesFor(capability: String): List<TestSuiteId> =
         BINDINGS.filter { it.capability == capability }.flatMap { it.suites }
+}
+
+/**
+ * The operator's starting-point proposal for what to add to
+ * the catalogue. The proposal is heuristic: a path
+ * `v2/<module>/...` proposes the module name as the
+ * [owner] and `Unknown.<module>` as the [capability]. The
+ * operator replaces the heuristic by adding a row to the
+ * catalogue or a clause to the classifier.
+ *
+ * BQ4 v24 (typed proposal pair, 2026-10-17): the previous
+ * shape carried the two fields as parallel `String? = null`
+ * fields on [SelectionRefusal.UnclassifiedPath]. The
+ * parallel-nullable shape encoded a single concept (a
+ * proposal) as two independent sentinels. The new shape is
+ * a single self-protected carrier: a proposal is either
+ * present (typed, atomic) or absent (`null`).
+ *
+ * The carrier self-protects: a direct construction with
+ * a blank [capability] or [owner] is refused. The producer
+ * [dev.rubentxu.pipeline.v2.harness.plan.ChangedInputClassifier
+ * .proposeOwnerAndCapability] is the only legitimate
+ * source and always returns a non-blank pair, so the
+ * strict-validate is for the structural invariant: a
+ * future direct construction that passes blanks would
+ * fabricate the operator's starting point.
+ */
+data class Proposal(
+    val capability: String,
+    val owner: String,
+) {
+    init {
+        require(capability.isNotBlank()) { "Proposal.capability must not be blank" }
+        require(owner.isNotBlank()) { "Proposal.owner must not be blank" }
+    }
 }

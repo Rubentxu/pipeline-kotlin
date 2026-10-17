@@ -79,16 +79,57 @@ class ChangedInputCarrierStrictnessTest {
     }
 
     @Test
-    fun `UnknownProduction refuses a blank proposedCapability at construction`() {
+    fun `UnknownProduction refuses a blank proposal_capability at construction`() {
+        // BQ4 v24 (typed proposal pair, 2026-10-17):
+        // the two parallel fields are now a single
+        // [Proposal] carrier; the strict-validate moves
+        // to the carrier's init. A blank `capability` is
+        // refused by the [Proposal] carrier with a
+        // message naming the carrier's field.
         val ex = assertThrows<IllegalArgumentException> {
             ChangedInput.UnknownProduction(
                 path = "v2/foo/src/main/kotlin/Foo.kt",
-                proposedCapability = "",
-                proposedOwner = ":foo",
+                proposal = Proposal(capability = "", owner = ":foo"),
             )
         }
         assertTrue(
-            (ex.message ?: "").contains("proposedCapability must not be blank"),
+            (ex.message ?: "").contains("Proposal.capability must not be blank"),
+            "refusal must name the field; got ${ex.message}",
+        )
+    }
+
+    @Test
+    fun `UnknownProduction refuses a blank proposal_owner at construction`() {
+        val ex = assertThrows<IllegalArgumentException> {
+            ChangedInput.UnknownProduction(
+                path = "v2/foo/src/main/kotlin/Foo.kt",
+                proposal = Proposal(capability = "Unknown.foo", owner = ""),
+            )
+        }
+        assertTrue(
+            (ex.message ?: "").contains("Proposal.owner must not be blank"),
+            "refusal must name the field; got ${ex.message}",
+        )
+    }
+
+    @Test
+    fun `Proposal refuses a blank capability at construction`() {
+        val ex = assertThrows<IllegalArgumentException> {
+            Proposal(capability = "", owner = ":foo")
+        }
+        assertTrue(
+            (ex.message ?: "").contains("Proposal.capability must not be blank"),
+            "refusal must name the field; got ${ex.message}",
+        )
+    }
+
+    @Test
+    fun `Proposal refuses a blank owner at construction`() {
+        val ex = assertThrows<IllegalArgumentException> {
+            Proposal(capability = "Unknown.foo", owner = "")
+        }
+        assertTrue(
+            (ex.message ?: "").contains("Proposal.owner must not be blank"),
             "refusal must name the field; got ${ex.message}",
         )
     }

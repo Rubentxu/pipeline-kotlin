@@ -30,17 +30,17 @@ class WaveTest {
 
     @Test
     fun `ProcessBuilder observed is Wave C`() {
-        assertEquals(Wave.C, Wave.forRecord(rec(observedProcessApi = "ProcessBuilder(")))
+        assertEquals(Wave.C, Wave.forRecord(rec(observedProcessApi = Wave.WAVE_C_PROCESS_APIS[0])))
     }
 
     @Test
     fun `AppBinSupport observed is Wave C`() {
-        assertEquals(Wave.C, Wave.forRecord(rec(observedProcessApi = "AppBinSupport")))
+        assertEquals(Wave.C, Wave.forRecord(rec(observedProcessApi = Wave.WAVE_C_PROCESS_APIS[1])))
     }
 
     @Test
     fun `OwnedSubprocess observed is Wave C`() {
-        assertEquals(Wave.C, Wave.forRecord(rec(observedProcessApi = "OwnedSubprocess")))
+        assertEquals(Wave.C, Wave.forRecord(rec(observedProcessApi = Wave.WAVE_C_PROCESS_APIS[2])))
     }
 
     @Test

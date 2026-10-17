@@ -42,6 +42,28 @@ enum class Wave(val label: String, val ordinalRank: Int) {
     D("v1 legacy / scripts", 3);
 
     companion object {
+        /**
+         * Substrings whose presence in [TestRecord.observedProcessApi]
+         * marks the test as owning a subprocess (Wave C). The strings
+         * are substrings of the Kotlin/AST-derived call sites
+         * (e.g. `ProcessBuilder(args)`); a missing `(` would not match
+         * a usage like `ProcessBuilder::class` or `ProcessBuilder.javaClass`,
+         * which is the intent — those are reference sites, not calls.
+         *
+         * The list is internal so the test class in the same package
+         * can build TestRecord fixtures that intentionally exercise
+         * each branch without duplicating the literal at the test
+         * site. A future refactor to a typed [ObservedProcessApi] ADT
+         * would replace the list with three typed cases; the list is
+         * the intermediate state that names the discriminator without
+         * spreading the literal across files.
+         */
+        internal val WAVE_C_PROCESS_APIS: List<String> = listOf(
+            "ProcessBuilder(",
+            "AppBinSupport",
+            "OwnedSubprocess",
+        )
+
         /** Pure: derive the wave from the test record metadata. */
         fun forRecord(record: TestRecord): Wave = when {
             // Wave D first: V1 is the lowest-fidelity authority; if the
@@ -49,9 +71,7 @@ enum class Wave(val label: String, val ordinalRank: Int) {
             record.runnerHint == RunnerHint.LEGACY_NOT_DEFAULT_V2 -> D
             // Wave C: tests that own subprocesses or sandbox profiles.
             // These carry the highest blast radius on retirement.
-            record.observedProcessApi.contains("ProcessBuilder(") -> C
-            record.observedProcessApi.contains("AppBinSupport") -> C
-            record.observedProcessApi.contains("OwnedSubprocess") -> C
+            WAVE_C_PROCESS_APIS.any { it in record.observedProcessApi } -> C
             // Wave B: tests that are explicitly marked release-scale
             // or carry an UAT/E2E name AND live in the V2 Gradle
             // runner. These belong to the harness.

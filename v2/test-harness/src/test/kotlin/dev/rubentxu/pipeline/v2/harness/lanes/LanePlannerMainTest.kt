@@ -6,6 +6,7 @@ import kotlinx.serialization.json.jsonArray
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
@@ -124,5 +125,71 @@ class LanePlannerMainTest {
             fastIds.contains("""evil\"with\\quote"""),
             "library-escaped form expected; got: " + fastIds,
         )
+    }
+
+    // ---- carrier self-protect: the typed JSON carrier
+    // refuses blank String fields at construction, matching
+    // the pattern of [TestSuiteId], [HarnessVerdict.Pending],
+    // and [LaneAssignment]. The producer [buildReport] is
+    // fed by [LaneAssignment] (already self-protected), so
+    // today's production path never produces a blank. The
+    // test pins the contract so a future test fixture or
+    // a refactor that breaks the upstream protection is
+    // rejected at construction rather than emitting
+    // `"contract_id": ""` / `"reason": ""` in the JSON. ----
+
+    @Test
+    fun `LaneAssignmentReport refuses a blank contractId`() {
+        val ex = assertThrows(IllegalArgumentException::class.java) {
+            LaneAssignmentReport(
+                contractId = "",
+                lane = TestLane.FAST,
+                reason = "valid reason",
+            )
+        }
+        assertTrue(
+            ex.message?.contains("contractId") == true,
+            "the rejection must name the field; got: ${ex.message}",
+        )
+    }
+
+    @Test
+    fun `LaneAssignmentReport refuses a blank reason`() {
+        val ex = assertThrows(IllegalArgumentException::class.java) {
+            LaneAssignmentReport(
+                contractId = "valid.id",
+                lane = TestLane.FAST,
+                reason = "",
+            )
+        }
+        assertTrue(
+            ex.message?.contains("reason") == true,
+            "the rejection must name the field; got: ${ex.message}",
+        )
+    }
+
+    @Test
+    fun `buildReport over the real catalogue produces no blank assignment fields`() {
+        // The producer is [buildReport], fed by the real
+        // [ContractCatalogue] (already self-protected
+        // through [LaneAssignment]). Every assignment in
+        // the report must have a non-blank contractId and
+        // reason. This is the property the self-protect
+        // init pins against a future regression where
+        // the catalogue's protection is bypassed.
+        val specs = realSpecsFromCatalogueForTests()
+        val report = buildReport(specs)
+        for (assignment in report.assignments) {
+            assertTrue(
+                assignment.contractId.isNotBlank(),
+                "every assignment in the real-catalogue report must have a non-blank contractId; " +
+                    "found blank for $assignment",
+            )
+            assertTrue(
+                assignment.reason.isNotBlank(),
+                "every assignment in the real-catalogue report must have a non-blank reason; " +
+                    "found blank for $assignment",
+            )
+        }
     }
 }

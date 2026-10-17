@@ -74,6 +74,41 @@ import kotlin.io.path.readText
  *
  * Comments are stripped before the scan, so a file may discuss the installed
  * distribution in prose without being convicted of depending on it.
+ *
+ * ## The claim is mutation-tested (2026-10-17)
+ *
+ * This fitness went GREEN twice over a real escaping harness, so its own credibility was
+ * the open question rather than its logic. It is now killed by the mutation it claims to
+ * detect:
+ *
+ * ```text
+ * baseline   GREEN   1 selected, 1 ran, 0 skipped          (executed)
+ * mutation   RED     delete @Tag("installed-contract") from RunExecutesStepsInstalledUatTest,
+ *                    a tagged + enabled class that requires the distribution
+ *            -> AssertionFailedError at line 202, the `untagged.isEmpty()` assertion
+ *            -> the test task reported `2 executed`, so this is a real run, not cache
+ * restore    GREEN   `git checkout` of the mutated file; sha256 byte-identical
+ *                     (a7fb7796…d8), then the test re-executed (`1 executed`, fresh XML)
+ * ```
+ *
+ * The mutation is the minimal edit that expresses the defect: not "break the predicate" or
+ * "break the parser", but remove one lane declaration from one harness. A fitness that only
+ * dies to a sledgehammer has not been shown to see the thing it was written for.
+ *
+ * **Both directions are killed, not one.** The second assertion has a claim of its own — that
+ * a harness does not claim a precondition it does not have — and an unmutated assertion is
+ * characterisation wearing a verification label:
+ *
+ * ```text
+ * mutation 2  RED  add @Tag("installed-contract") to CorePathSemanticsTest, a pure in-process
+ *                   test with no distribution requirement anywhere in it
+ *              -> AssertionFailedError at `taggedWithoutRequirement.isEmpty()`
+ *              -> 2 executed; restore byte-identical (c5e725a3…f5d)
+ * ```
+ *
+ * What this still does NOT claim: that the predicate catches every possible way of obtaining a
+ * distribution. That remains the documented limitation above, and no mutation can establish
+ * it — the population of unobserved spellings is unbounded by construction.
  */
 class InstalledContractTagMembershipFitnessTest {
 

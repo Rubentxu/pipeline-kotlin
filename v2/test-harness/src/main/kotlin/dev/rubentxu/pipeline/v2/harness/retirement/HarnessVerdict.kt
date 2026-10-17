@@ -48,7 +48,30 @@ sealed interface HarnessVerdict {
         val authority: String,
         val candidateSha256: String,
         val failureFingerprint: FailureFingerprint,
-    ) : HarnessVerdict
+    ) : HarnessVerdict {
+        init {
+            // BQ4 v6 (strict digest carrier, 2026-10-17):
+            // the previous shape had no init validation
+            // on the three SHA-256 fields. The reader's
+            // `requireSha256` validated at parse time, but
+            // the carrier was defenseless against a direct
+            // construction (a test, a future consumer, or
+            // a refactor that bypasses the reader). A
+            // direct `Verified(contentSha256 = "0", ...)`
+            // was accepted as a "verified" verdict. The
+            // carrier now mirrors the reader's format
+            // requirement (64-char lowercase hex SHA-256);
+            // a blank or short digest is refused at
+            // construction with a precise message that
+            // names the field and the format.
+            requireSha256("contentSha256", contentSha256)
+            requireSha256("proofDigest", proofDigest)
+            requireSha256("candidateSha256", candidateSha256)
+            require(authority.isNotBlank()) {
+                "Verified.authority must not be blank"
+            }
+        }
+    }
 
     /**
      * The harness ran the scenario and the result was NOT comparable:
@@ -91,12 +114,37 @@ data class FailureFingerprint(
     val cause: String,
 ) {
     init {
-        require(inputDigest.length == 64) {
-            "inputDigest must be a 64-char hex SHA-256"
-        }
+        // BQ4 v6 (strict digest carrier, 2026-10-17):
+        // the previous shape checked length but NOT hex
+        // characters. An uppercase digest or a non-hex
+        // string of length 64 was accepted as a
+        // "SHA-256" and compared by string equality
+        // against the producer's lowercase digest,
+        // silently never matching. The carrier now
+        // mirrors the reader's format requirement
+        // (lowercase hex), so a direct construction is
+        // self-protecting.
+        requireSha256("inputDigest", inputDigest)
         require(symptom.isNotBlank()) { "symptom must not be blank" }
         require(type.isNotBlank()) { "type must not be blank" }
         require(cause.isNotBlank()) { "cause must not be blank" }
+    }
+}
+
+/**
+ * BQ4 v6 (strict digest carrier helper, 2026-10-17):
+ * the SHA-256 format requirement (64-char lowercase hex)
+ * is the same across every digest field on the
+ * retirement carrier. One helper, one source of truth,
+ * so the reader's [HarnessVerdictReader.requireSha256]
+ * and the carrier's init cannot drift.
+ */
+private fun requireSha256(fieldName: String, value: String) {
+    require(value.length == 64) {
+        "$fieldName must be a 64-char hex SHA-256; got ${value.length} chars"
+    }
+    require(value.all { it in '0'..'9' || it in 'a'..'f' }) {
+        "$fieldName must be lowercase hex"
     }
 }
 

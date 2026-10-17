@@ -46,7 +46,25 @@ object Gate {
         expectedCommit: String,
         observedCommit: String?,
     ): ValidationPlan.Refused? {
-        if (plan !is ValidationPlan.Selected) return plan as? ValidationPlan.Refused
+        // BQ1 v2 (typed gate, 2026-10-17): the previous shape was
+        //   a `!is` check followed by a silent-null cast on the
+        //   refused branch — the audit named it the "silent null
+        //   on `as?`" defect class. The sealed interface has two
+        //   cases today, so the cast never fails, but the
+        //   `as?` explicitly hides a third (hypothetical) case
+        //   from the compiler: if `ValidationPlan.Pending` (or
+        //   any future variant) lands, the gate returns `null`
+        //   = "no refusal" = the false green the whole gate
+        //   exists to prevent. The new shape is an exhaustive
+        //   `when` over the closed set: adding a new
+        //   [ValidationPlan] case forces this `when` to grow at
+        //   compile time, not at a CI log. The companion
+        //   fitness test `GateAsCastFitnessTest` pins the
+        //   absence of the previous shape in the plan package.
+        val selected: ValidationPlan.Selected = when (plan) {
+            is ValidationPlan.Selected -> plan
+            is ValidationPlan.Refused -> return plan
+        }
 
         // Evidence is read AFTER the run, never before. Gradle leaves the previous run's reports in
         // place, so a pre-run read would accept a report this invocation never produced — and the
@@ -81,7 +99,7 @@ object Gate {
             .toMap()
 
         return ImpactResolver.adjudicate(
-            plan = plan,
+            plan = selected,
             executedSuites = executed,
             expectedCommit = expectedCommit,
             observedCommit = observedCommit,

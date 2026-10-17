@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.harness.retirement
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 
 class HarnessVerdictApplierTest {
 
@@ -157,16 +158,35 @@ class HarnessVerdictApplierTest {
     }
 
     @Test
-    fun `Verified with malformed proofDigest is refused`() {
+    fun `Verified with malformed proofDigest is refused at construction (the carrier is self-protecting)`() {
+        // BQ4 v6 (strict digest carrier, 2026-10-17): the
+        // previous shape's "Verified with malformed proofDigest
+        // is refused" tested the APPLIER's behavior on a
+        // malformed input. The applier is now only the
+        // semantic matcher (path / content sha / candidate
+        // sha / fingerprint); the carrier's init is the
+        // format validator. A malformed proofDigest is
+        // refused at construction (before the applier is
+        // called) with a precise message naming the field
+        // and the format requirement.
         val r = rec()
-        val out = HarnessVerdictApplier.apply(
-            DeletionDecision.MigrateExternalPending,
-            r,
-            verified(proofDigest = "too-short"),
-            fingerprint,
-            candidateSha,
+        val ex = assertThrows<IllegalArgumentException> {
+            verified(proofDigest = "too-short")
+        }
+        assertTrue(
+            (ex.message ?: "").contains("proofDigest must be a 64-char hex SHA-256"),
+            "refusal must name the field and the format requirement; got ${ex.message}",
         )
-        assertTrue(out is VerdictApplication.Refused.ShaMismatch) { "got $out" }
+        // The applier is no longer the format validator.
+        // A 64-char non-hex digest (uppercase or non-hex
+        // chars) is also refused at construction.
+        val ex2 = assertThrows<IllegalArgumentException> {
+            verified(proofDigest = "Z".repeat(64))
+        }
+        assertTrue(
+            (ex2.message ?: "").contains("lowercase hex"),
+            "refusal must name the lowercase-hex requirement; got ${ex2.message}",
+        )
     }
 
     @Test

@@ -1,5 +1,9 @@
 package dev.rubentxu.pipeline.v2.harness.plan
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -82,6 +86,8 @@ sealed interface ObservedProvenance {
  */
 object InstalledDistribution {
 
+    private val parser = Json { ignoreUnknownKeys = true }
+
     /**
      * Where `installDist` writes the launcher, relative to the build root.
      *
@@ -94,20 +100,54 @@ object InstalledDistribution {
     /**
      * The `buildCommit` in a `version --json` document.
      *
-     * A targeted field read rather than a JSON parse: the document is one flat object produced by
-     * this project's own CLI, and the failure this guards against is a MISSING commit, not a
-     * malformed payload. Anything that is not a recognisable commit comes back [Unreadable] and
-     * therefore refuses, which is the same outcome a parse error would produce without needing a
-     * parser dependency in the harness.
+     * BQ4 v25 (typed JSON field read, 2026-10-17): the
+     * previous shape was a regex-based targeted field
+     * read (`"buildCommit"\s*:\s*"([^"]*)"`). The
+     * regex was deliberately narrow — the document is
+     * one flat object produced by this project's own
+     * CLI, and a proper JSON parse felt like overhead
+     * for a single field. The cost was the same
+     * defect class as the previous `EVIDENCE_DIGIT_RE`
+     * regex (closed in `2af30aff`) and the previous
+     * `parseFlatObject` (closed in `1358b771`): a
+     * fragile custom parser where a proper library is
+     * the right answer. The new shape uses
+     * `kotlinx.serialization.json.Json` to parse the
+     * document and the typed `JsonObject` API to
+     * access the field; the dependency is already in
+     * the test-harness (the `HarnessVerdictReader`
+     * uses it). Every previous-shape failure mode
+     * (empty input, missing field, empty value, JSON
+     * `null` value) maps to a typed [Unreadable] case
+     * via the parser + a single `is JsonNull` check.
      */
     fun parse(json: String): ObservedProvenance {
         val document = json.trim()
         if (document.isEmpty()) {
             return ObservedProvenance.Unreadable("`version --json` printed nothing")
         }
-        val field = Regex("\"buildCommit\"\\s*:\\s*\"([^\"]*)\"").find(document)
-            ?: return ObservedProvenance.Unreadable("`version --json` reported no buildCommit field")
-        val commit = field.groupValues[1].trim()
+        val root = try {
+            parser.parseToJsonElement(document)
+        } catch (ex: Exception) {
+            return ObservedProvenance.Unreadable(
+                "`version --json` is not valid JSON: ${ex.message ?: ex::class.simpleName ?: "parse error"}",
+            )
+        }
+        val rootObj = root as? JsonObject
+            ?: return ObservedProvenance.Unreadable(
+                "`version --json` is not a flat JSON object",
+            )
+        val field = rootObj["buildCommit"]
+        if (field == null || field is JsonNull) {
+            return ObservedProvenance.Unreadable(
+                "`version --json` reported no buildCommit field",
+            )
+        }
+        val primitive = field as? JsonPrimitive
+            ?: return ObservedProvenance.Unreadable(
+                "`version --json` buildCommit is not a string",
+            )
+        val commit = primitive.content.trim()
         if (commit.isEmpty()) {
             return ObservedProvenance.Unreadable("buildCommit is empty")
         }

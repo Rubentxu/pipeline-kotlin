@@ -297,9 +297,32 @@ object HarnessVerdictReader {
 
 sealed interface ParseOutcome {
     data class Parsed(val verdict: HarnessVerdict) : ParseOutcome
-    data class Missing(val path: String) : ParseOutcome
-    data class Malformed(val path: String, val reason: String) : ParseOutcome {
-        init { require(reason.isNotBlank()) }
+    data class Missing(val path: String) : ParseOutcome {
+        // BQ4 v16 (retirement carrier self-protect,
+        // 2026-10-17): a blank `path` would be the
+        // parser's record of "verdict file missing"
+        // for a path that has no name — a fabrication.
+        init { require(path.isNotBlank()) { "Missing.path must not be blank" } }
     }
-    data class UnknownStatus(val path: String, val status: String) : ParseOutcome
+    data class Malformed(val path: String, val reason: String) : ParseOutcome {
+        init {
+            require(path.isNotBlank()) { "Malformed.path must not be blank" }
+            require(reason.isNotBlank()) { "Malformed.reason must not be blank" }
+        }
+    }
+    data class UnknownStatus(val path: String, val status: String) : ParseOutcome {
+        // BQ4 v16 (retirement carrier self-protect,
+        // 2026-10-17): a blank `path` would be the
+        // parser's record of "verdict status unknown"
+        // for a path that has no name; a blank `status`
+        // is the parser's record of an unknown status
+        // that has no name — a fabrication. The
+        // status field is a diagnostic that names
+        // the literal value seen; a blank value would
+        // be a fabrication, not a diagnostic.
+        init {
+            require(path.isNotBlank()) { "UnknownStatus.path must not be blank" }
+            require(status.isNotBlank()) { "UnknownStatus.status must not be blank" }
+        }
+    }
 }

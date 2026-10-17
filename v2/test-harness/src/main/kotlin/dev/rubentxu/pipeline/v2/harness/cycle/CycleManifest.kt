@@ -53,6 +53,18 @@ data class CycleManifest(
         require(sourceSha.length == 40) {
             "sourceSha must be a 40-char SHA-1 hex; got ${sourceSha.length} chars"
         }
+        // BQ4 v7 (cycle carrier strict-validate, 2026-10-17):
+        // the previous shape was length-only; an uppercase or
+        // non-hex string of length 40 was accepted as a
+        // "SHA-1" and compared by string equality against
+        // the runner's lowercase sourceSha, silently never
+        // matching. The format check now mirrors the rest
+        // of the cycle package (PromotionEvidence, EvidenceManifest,
+        // JsonOracleLedger) which all pair length with a
+        // lowercase-hex check on the same field.
+        require(sourceSha.all { it in '0'..'9' || it in 'a'..'f' }) {
+            "sourceSha must be lowercase hex; got '$sourceSha'"
+        }
         require(expectedHF in ALLOWED_FIDELITY_NAMES) {
             "expectedHF must be one of $ALLOWED_FIDELITY_NAMES; got '$expectedHF'"
         }

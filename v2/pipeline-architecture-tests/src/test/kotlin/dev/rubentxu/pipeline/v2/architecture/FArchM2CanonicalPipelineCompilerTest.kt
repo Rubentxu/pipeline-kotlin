@@ -3,9 +3,13 @@ package dev.rubentxu.pipeline.v2.architecture
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.io.path.createDirectories
+import kotlin.io.path.writeText
 
 class FArchM2CanonicalPipelineCompilerTest {
 
@@ -212,8 +216,24 @@ class FArchM2CanonicalPipelineCompilerTest {
                 }
             }
 
+    /**
+     * A **top-level** declaration of [name].
+     *
+     * `(?m)^` with NO leading `\s*` is load-bearing. The previous pattern was `^\s*`, so it
+     * matched a declaration at ANY nesting depth and named it after its bare token — which
+     * made the allowlist test report
+     * `MainInspectCli.InspectField.Stage` (a nested projection field of the `--fields` CLI
+     * column set, in `…application`, no relation to `domain.Stage`) as a SECOND canonical
+     * `Stage`. Two different types in two packages, one of them nested, is not a second
+     * source of truth; it is a name collision, and the test that says otherwise is the defect.
+     *
+     * Column 0 is not a hope: `detekt`'s `Indentation` rule is active (it is absent from
+     * `config/detekt/detekt.yml`, so detekt's default applies) and `detekt` is wired into
+     * `check` in `v2/build.gradle.kts`, so an indented top-level declaration cannot reach this
+     * scanner unflagged by another authority.
+     */
     private fun canonicalDeclarationPattern(name: String): Regex = Regex(
-        """(?m)^\s*(?:@[\w.]+(?:\s*\([^)]*\))?\s*)*""" +
+        """(?m)^(?:@[\w.]+(?:\s*\([^)]*\))?\s*)*""" +
             """(?:(?:public|internal|private|protected|data|sealed|open|abstract|enum|annotation|value|fun)\s+)*""" +
             """(?:class|interface|object|typealias)\s+$name\b""",
     )
@@ -226,4 +246,77 @@ class FArchM2CanonicalPipelineCompilerTest {
     private fun sanitizedSource(file: Path): String =
         KotlinSourceSanitizer.sanitizedSource(file)
 
+    /**
+     * Negative rows for the canonical-declaration scanner.
+     *
+     * The allowlist test can be made green by a scanner that matches nothing, or by one that
+     * matches the wrong thing — and both states look identical from the outside. These rows
+     * pin the discriminator from both sides: a NESTED declaration of a canonical name is not
+     * a second authority, and a SECOND TOP-LEVEL one is.
+     */
+    @Nested
+    inner class DeclarationScannerFixture {
+        @TempDir
+        lateinit var tempDir: Path
+
+        /** Mirrors the production filter: the scanner only reads `src/main/kotlin`. */
+        private fun write(relPath: String, body: String): Path =
+            tempDir.resolve(relPath).also {
+                it.parent.createDirectories()
+                it.writeText(body)
+            }
+
+        @Test
+        fun `a NESTED declaration of a canonical name is not a second authority`() {
+            write(
+                "src/main/kotlin/Nested.kt",
+                """
+                package dev.rubentxu.pipeline.v2.application
+                sealed class Field(val cli: String) {
+                    object Stage : Field("STAGE")
+                    object Step : Field("STEP")
+                }
+                """.trimIndent(),
+            )
+
+            assertEquals(
+                emptyList<Finding>(),
+                scanCanonicalDeclarations(tempDir, setOf("Stage", "Step")),
+                "A nested object that shares a canonical token is a different type in a " +
+                    "different package, not a second source of truth",
+            )
+        }
+
+        @Test
+        fun `a SECOND top-level declaration of a canonical name is reported`() {
+            write(
+                "src/main/kotlin/Owner.kt",
+                """
+                package dev.rubentxu.pipeline.v2.domain
+                data class Stage(val name: String)
+                """.trimIndent(),
+            )
+            write(
+                "src/main/kotlin/Impostor.kt",
+                """
+                package dev.rubentxu.pipeline.v2.domain
+                class Stage(val name: String)
+                """.trimIndent(),
+            )
+
+            val findings = scanCanonicalDeclarations(tempDir, setOf("Stage"))
+
+            assertEquals(
+                2,
+                findings.size,
+                "Two top-level declarations of one canonical symbol are exactly the defect " +
+                    "the allowlist exists to catch, so tightening the scanner to top-level " +
+                    "must not have blinded it: $findings",
+            )
+            assertTrue(
+                findings.all { it.token == "Stage" },
+                "every finding must be the scanned symbol, got: $findings",
+            )
+        }
+    }
 }

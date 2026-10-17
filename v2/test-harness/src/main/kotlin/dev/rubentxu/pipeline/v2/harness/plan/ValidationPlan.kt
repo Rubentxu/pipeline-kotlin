@@ -63,7 +63,21 @@ value class ContractId(val capability: String)
  * parameters, and boxing a two-field identity to save an allocation would be a poor trade for a
  * type that appears once per selected suite.
  */
-data class TestSuiteId(val filter: String, val gradleProject: String)
+data class TestSuiteId(val filter: String, val gradleProject: String) {
+    // BQ4 v9 (plan carrier self-protect, 2026-10-17):
+    // the previous shape had no init validation. A blank
+    // `filter` or `gradleProject` would silently never
+    // match a real suite in the JUnit XML reader, and
+    // the suite would be a no-op in the plan. The
+    // carrier now refuses blanks with precise messages
+    // naming the field; the `gradleProject` shape
+    // (`:module`) is a domain convention, not a format
+    // requirement, so the check is `isNotBlank` only.
+    init {
+        require(filter.isNotBlank()) { "TestSuiteId.filter must not be blank" }
+        require(gradleProject.isNotBlank()) { "TestSuiteId.gradleProject must not be blank" }
+    }
+}
 
 /**
  * Why a capability entered the plan.
@@ -73,10 +87,19 @@ data class TestSuiteId(val filter: String, val gradleProject: String)
  */
 sealed interface SelectionReason {
     /** A named source file changed. */
-    data class SourceChanged(val path: String, val capability: String) : SelectionReason
+    data class SourceChanged(val path: String, val capability: String) : SelectionReason {
+        init {
+            require(path.isNotBlank()) { "SourceChanged.path must not be blank" }
+            require(capability.isNotBlank()) { "SourceChanged.capability must not be blank" }
+        }
+    }
 
     /** A module the changed file belongs to has no classification at all. */
-    data class ModuleUnclassified(val module: String) : SelectionReason
+    data class ModuleUnclassified(val module: String) : SelectionReason {
+        init {
+            require(module.isNotBlank()) { "ModuleUnclassified.module must not be blank" }
+        }
+    }
 }
 
 /** Why the plan is refused. Each case names a different operator action. */
@@ -94,7 +117,11 @@ sealed interface SelectionRefusal {
         val path: String,
         val proposedCapability: String? = null,
         val proposedOwner: String? = null,
-    ) : SelectionRefusal
+    ) : SelectionRefusal {
+        init {
+            require(path.isNotBlank()) { "UnclassifiedPath.path must not be blank" }
+        }
+    }
 
     /**
      * H1 TODO 2: a suite in the plan has no sidecar
@@ -109,7 +136,12 @@ sealed interface SelectionRefusal {
     data class IncompleteEvidence(
         val suite: String,
         val missingField: String,
-    ) : SelectionRefusal
+    ) : SelectionRefusal {
+        init {
+            require(suite.isNotBlank()) { "IncompleteEvidence.suite must not be blank" }
+            require(missingField.isNotBlank()) { "IncompleteEvidence.missingField must not be blank" }
+        }
+    }
 
     /**
      * H1 TODO 2: a suite in the plan has a sidecar file,
@@ -125,7 +157,12 @@ sealed interface SelectionRefusal {
     data class MalformedSidecar(
         val suite: String,
         val reason: String,
-    ) : SelectionRefusal
+    ) : SelectionRefusal {
+        init {
+            require(suite.isNotBlank()) { "MalformedSidecar.suite must not be blank" }
+            require(reason.isNotBlank()) { "MalformedSidecar.reason must not be blank" }
+        }
+    }
 
     /**
      * H1 TODO 2: the suite's sidecar evidence declares
@@ -140,7 +177,13 @@ sealed interface SelectionRefusal {
         val suite: String,
         val expected: String,
         val observed: String,
-    ) : SelectionRefusal
+    ) : SelectionRefusal {
+        init {
+            require(suite.isNotBlank()) { "StaleBinary.suite must not be blank" }
+            require(expected.isNotBlank()) { "StaleBinary.expected must not be blank" }
+            require(observed.isNotBlank()) { "StaleBinary.observed must not be blank" }
+        }
+    }
 
     /**
      * H1 TODO 2: the suite's sidecar evidence declares
@@ -165,7 +208,11 @@ sealed interface SelectionRefusal {
         val suite: String,
         val observed: Fidelity,
         val required: Set<Fidelity>,
-    ) : SelectionRefusal
+    ) : SelectionRefusal {
+        init {
+            require(suite.isNotBlank()) { "InsufficientFidelity.suite must not be blank" }
+        }
+    }
 
     /**
      * A required suite has no runnable target in the policy. Action: restore the suite binding.
@@ -183,14 +230,27 @@ sealed interface SelectionRefusal {
 
         /** The capability has no suite bound at all. Distinct from `Bound` because the operator
          *  action is different: add a binding, not fix a named one. */
-        data class Unbound(override val capability: String) : MissingSuite
+        data class Unbound(override val capability: String) : MissingSuite {
+            init {
+                require(capability.isNotBlank()) { "MissingSuite.Unbound.capability must not be blank" }
+            }
+        }
 
         /** A suite was named by the binding but is not runnable (future case). */
-        data class Bound(override val capability: String, val suite: String) : MissingSuite
+        data class Bound(override val capability: String, val suite: String) : MissingSuite {
+            init {
+                require(capability.isNotBlank()) { "MissingSuite.Bound.capability must not be blank" }
+                require(suite.isNotBlank()) { "MissingSuite.Bound.suite must not be blank" }
+            }
+        }
     }
 
     /** The evidence names a suite that the plan selected but that was not executed. */
-    data class SelectedButNotRun(val suite: String) : SelectionRefusal
+    data class SelectedButNotRun(val suite: String) : SelectionRefusal {
+        init {
+            require(suite.isNotBlank()) { "SelectedButNotRun.suite must not be blank" }
+        }
+    }
 
     /**
      * A Gradle invocation the plan required exited non-zero, so the suites it owned have no
@@ -200,7 +260,12 @@ sealed interface SelectionRefusal {
      * here the build that would have run it did not succeed at all. Both refuse, but the operator
      * action differs — one is a coverage gap, the other is a broken invocation.
      */
-    data class SuiteDidNotRun(val suite: String, val gradleProject: String) : SelectionRefusal
+    data class SuiteDidNotRun(val suite: String, val gradleProject: String) : SelectionRefusal {
+        init {
+            require(suite.isNotBlank()) { "SuiteDidNotRun.suite must not be blank" }
+            require(gradleProject.isNotBlank()) { "SuiteDidNotRun.gradleProject must not be blank" }
+        }
+    }
 
     /**
      * The evidence was produced by a binary built from a different commit, or the binary
@@ -217,11 +282,20 @@ sealed interface SelectionRefusal {
         val expected: String
 
         /** Evidence names a different commit. */
-        data class Mismatched(override val expected: String, val observed: String) : StaleEvidence
+        data class Mismatched(override val expected: String, val observed: String) : StaleEvidence {
+            init {
+                require(expected.isNotBlank()) { "StaleEvidence.Mismatched.expected must not be blank" }
+                require(observed.isNotBlank()) { "StaleEvidence.Mismatched.observed must not be blank" }
+            }
+        }
 
         /** The binary reported no commit at all. Distinct from `Mismatched` because the operator
          *  action is different: the installed distribution is the problem, not the commit. */
-        data class NoCommitObserved(override val expected: String) : StaleEvidence
+        data class NoCommitObserved(override val expected: String) : StaleEvidence {
+            init {
+                require(expected.isNotBlank()) { "StaleEvidence.NoCommitObserved.expected must not be blank" }
+            }
+        }
     }
 }
 

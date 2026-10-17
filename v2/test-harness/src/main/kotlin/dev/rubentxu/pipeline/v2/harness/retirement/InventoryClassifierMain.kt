@@ -36,7 +36,7 @@ fun main(args: Array<String>) {
                 path = row[ix.getValue("path")],
                 kindHint = parseKind(row[ix.getValue("kind_hint")]),
                 runnerHint = parseRunner(row[ix.getValue("runner_hint")]),
-                observedProcessApi = row[ix.getValue("observed_process_api")],
+                observedProcessApis = ObservedProcessApi.parser(row[ix.getValue("observed_process_api")]),
                 testAnnotated = row[ix.getValue("test_annotated")].toInt(),
                 disabledAnnotations = row[ix.getValue("disabled_annotations")].toInt(),
                 releaseScaleTag = row[ix.getValue("release_scale_tags")].toInt() > 0,

@@ -11,7 +11,7 @@ class TestClassifierTest {
         path: String = "v2/x/src/test/kotlin/SampleTest.kt",
         kindHint: KindHint = KindHint.OTHER_TEST_SOURCE,
         runnerHint: RunnerHint = RunnerHint.V2_GRADLE,
-        observedProcessApi: String = "",
+        observedProcessApis: List<ObservedProcessApi> = emptyList(),
         testAnnotated: Int = 1,
         disabledAnnotations: Int = 0,
         releaseScaleTag: Boolean = false,
@@ -19,7 +19,7 @@ class TestClassifierTest {
         path = path,
         kindHint = kindHint,
         runnerHint = runnerHint,
-        observedProcessApi = observedProcessApi,
+        observedProcessApis = observedProcessApis,
         testAnnotated = testAnnotated,
         disabledAnnotations = disabledAnnotations,
         releaseScaleTag = releaseScaleTag,
@@ -46,7 +46,7 @@ class TestClassifierTest {
 
     @Test
     fun `process API observed is MigrateExternalPending`() {
-        val d = TestClassifier.classify(rec(observedProcessApi = "ProcessBuilder("))
+        val d = TestClassifier.classify(rec(observedProcessApis = listOf(ObservedProcessApi.ProcessBuilder)))
         assertEquals(DeletionDecision.MigrateExternalPending, d)
     }
 
@@ -91,7 +91,7 @@ class DeletionGuardTest {
             path = "v2/x/src/test/kotlin/SampleTest.kt",
             kindHint = KindHint.OTHER_TEST_SOURCE,
             runnerHint = RunnerHint.V2_GRADLE,
-            observedProcessApi = "",
+            observedProcessApis = emptyList(),
             testAnnotated = 1,
             disabledAnnotations = 0,
             releaseScaleTag = false,
@@ -108,7 +108,7 @@ class DeletionGuardTest {
             path = "v2/x/src/test/kotlin/SampleTest.kt",
             kindHint = KindHint.OTHER_TEST_SOURCE,
             runnerHint = RunnerHint.V2_GRADLE,
-            observedProcessApi = "",
+            observedProcessApis = emptyList(),
             testAnnotated = 1,
             disabledAnnotations = 0,
             releaseScaleTag = false,
@@ -153,7 +153,7 @@ class DeletionGuardTest {
             path = "v2/x/src/test/kotlin/SampleTest.kt",
             kindHint = KindHint.OTHER_TEST_SOURCE,
             runnerHint = RunnerHint.V2_GRADLE,
-            observedProcessApi = "",
+            observedProcessApis = emptyList(),
             testAnnotated = 1,
             disabledAnnotations = 0,
             releaseScaleTag = false,
@@ -178,7 +178,7 @@ class DeletionGuardTest {
             path = "v2/x/src/test/kotlin/SampleTest.kt",
             kindHint = KindHint.OTHER_TEST_SOURCE,
             runnerHint = RunnerHint.V2_GRADLE,
-            observedProcessApi = "",
+            observedProcessApis = emptyList(),
             testAnnotated = 1,
             disabledAnnotations = 0,
             releaseScaleTag = false,
@@ -203,7 +203,7 @@ class DeletionGuardTest {
             path = PERMANENT_FITNESS_PATHS.first(),
             kindHint = KindHint.EXPLICIT_UAT_E2E,
             runnerHint = RunnerHint.V2_GRADLE,
-            observedProcessApi = "",
+            observedProcessApis = emptyList(),
             testAnnotated = 2,
             disabledAnnotations = 0,
             releaseScaleTag = false,
@@ -224,7 +224,7 @@ class DeletionGuardTest {
             path = PERMANENT_FITNESS_PATHS.first(),
             kindHint = KindHint.EXPLICIT_UAT_E2E,
             runnerHint = RunnerHint.V2_GRADLE,
-            observedProcessApi = "",
+            observedProcessApis = emptyList(),
             testAnnotated = 2,
             disabledAnnotations = 1,
             releaseScaleTag = false,

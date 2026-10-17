@@ -23,7 +23,7 @@ class HarnessVerdictApplierTest {
         path = path,
         kindHint = KindHint.EXPLICIT_UAT_E2E,
         runnerHint = RunnerHint.V2_GRADLE,
-        observedProcessApi = "",
+        observedProcessApis = emptyList(),
         testAnnotated = 1,
         disabledAnnotations = 0,
         releaseScaleTag = false,

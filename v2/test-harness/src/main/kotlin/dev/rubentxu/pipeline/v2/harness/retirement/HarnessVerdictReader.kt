@@ -73,78 +73,108 @@ object HarnessVerdictReader {
     }
 
     private fun parseVerified(source: String, fields: Map<String, String>): ParseOutcome {
-        val path = requireString(source, fields, "path")
-        val content = requireSha256(source, fields, "content_sha256")
-        val proof = requireSha256(source, fields, "proof_digest")
-        val authority = requireString(source, fields, "authority")
-        val candidate = requireSha256(source, fields, "candidate_sha256")
-        val fp = parseFingerprint(source, fields)
-        val firstErr: FieldResult.Invalid? = listOf(path, content, proof, authority, candidate)
-            .filterIsInstance<FieldResult.Invalid>()
-            .firstOrNull()
-        if (firstErr != null) {
-            return ParseOutcome.Malformed(source, firstErr.reason)
+        // The previous shape collected all field results, filtered to
+        // the first invalid, and re-extracted the values via unchecked
+        // `(x as FieldResult.Valid).value`. The cast was safe by
+        // construction (the firstErr check rules out Invalid on every
+        // field) but the unchecked form was the dual-emitter defect
+        // class: a future FieldResult case (or a refactor that drops
+        // the firstErr check) would silently misroute. The new shape
+        // uses an exhaustive `when` on each field with smart-cast
+        // extraction; the `return ParseOutcome.Malformed(...)` in the
+        // Invalid branch is the short-circuit, the Valid branch is
+        // the typed value.
+        val path = when (val r = requireString(source, fields, "path")) {
+            is FieldResult.Invalid -> return ParseOutcome.Malformed(source, r.reason)
+            is FieldResult.Valid -> r.value
         }
-        if (fp is FingerprintResult.Invalid) {
-            return ParseOutcome.Malformed(source, fp.reason)
+        val content = when (val r = requireSha256(source, fields, "content_sha256")) {
+            is FieldResult.Invalid -> return ParseOutcome.Malformed(source, r.reason)
+            is FieldResult.Valid -> r.value
+        }
+        val proof = when (val r = requireSha256(source, fields, "proof_digest")) {
+            is FieldResult.Invalid -> return ParseOutcome.Malformed(source, r.reason)
+            is FieldResult.Valid -> r.value
+        }
+        val authority = when (val r = requireString(source, fields, "authority")) {
+            is FieldResult.Invalid -> return ParseOutcome.Malformed(source, r.reason)
+            is FieldResult.Valid -> r.value
+        }
+        val candidate = when (val r = requireSha256(source, fields, "candidate_sha256")) {
+            is FieldResult.Invalid -> return ParseOutcome.Malformed(source, r.reason)
+            is FieldResult.Valid -> r.value
+        }
+        val fp = when (val r = parseFingerprint(source, fields)) {
+            is FingerprintResult.Invalid -> return ParseOutcome.Malformed(source, r.reason)
+            is FingerprintResult.Valid -> r.value
         }
         return ParseOutcome.Parsed(
             HarnessVerdict.Verified(
-                path = (path as FieldResult.Valid).value,
-                contentSha256 = (content as FieldResult.Valid).value,
-                proofDigest = (proof as FieldResult.Valid).value,
-                authority = (authority as FieldResult.Valid).value,
-                candidateSha256 = (candidate as FieldResult.Valid).value,
-                failureFingerprint = (fp as FingerprintResult.Valid).value,
+                path = path,
+                contentSha256 = content,
+                proofDigest = proof,
+                authority = authority,
+                candidateSha256 = candidate,
+                failureFingerprint = fp,
             ),
         )
     }
 
     private fun parseBlocked(source: String, fields: Map<String, String>): ParseOutcome {
-        val path = requireString(source, fields, "path")
-        val reason = requireString(source, fields, "reason")
-        val firstErr: FieldResult.Invalid? = listOf(path, reason)
-            .filterIsInstance<FieldResult.Invalid>()
-            .firstOrNull()
-        if (firstErr != null) {
-            return ParseOutcome.Malformed(source, firstErr.reason)
+        val path = when (val r = requireString(source, fields, "path")) {
+            is FieldResult.Invalid -> return ParseOutcome.Malformed(source, r.reason)
+            is FieldResult.Valid -> r.value
+        }
+        val reason = when (val r = requireString(source, fields, "reason")) {
+            is FieldResult.Invalid -> return ParseOutcome.Malformed(source, r.reason)
+            is FieldResult.Valid -> r.value
         }
         return ParseOutcome.Parsed(
             HarnessVerdict.Blocked(
-                path = (path as FieldResult.Valid).value,
-                reason = (reason as FieldResult.Valid).value,
+                path = path,
+                reason = reason,
             ),
         )
     }
 
     private fun parsePending(source: String, fields: Map<String, String>): ParseOutcome {
-        val path = requireString(source, fields, "path")
-        if (path is FieldResult.Invalid) {
-            return ParseOutcome.Malformed(source, path.reason)
+        val path = when (val r = requireString(source, fields, "path")) {
+            is FieldResult.Invalid -> return ParseOutcome.Malformed(source, r.reason)
+            is FieldResult.Valid -> r.value
         }
-        return ParseOutcome.Parsed(HarnessVerdict.Pending(path = (path as FieldResult.Valid).value))
+        return ParseOutcome.Parsed(HarnessVerdict.Pending(path = path))
     }
 
     private fun parseFingerprint(source: String, fields: Map<String, String>): FingerprintResult {
         val raw = fields["fingerprint"] ?: return FingerprintResult.Invalid("missing 'fingerprint' object")
         val fpFields = parseFlatObject(raw)
             ?: return FingerprintResult.Invalid("'fingerprint' is not a flat JSON object")
-        val inputDigest = requireSha256(source, fpFields, "input_digest")
-        val symptom = requireString(source, fpFields, "symptom")
-        val type = requireString(source, fpFields, "type")
-        val cause = requireString(source, fpFields, "cause")
-        val firstErr: FieldResult.Invalid? = listOf(inputDigest, symptom, type, cause)
-            .filterIsInstance<FieldResult.Invalid>()
-            .firstOrNull()
-        if (firstErr != null) {
-            return FingerprintResult.Invalid(firstErr.reason)
+        // Same per-field `when` extraction as parseVerified: the
+        // unchecked `(x as FieldResult.Valid).value` was safe by
+        // construction (the firstErr check) but the smart-cast
+        // `when` is the typed shape and the compiler enforces it.
+        val inputDigest = when (val r = requireSha256(source, fpFields, "input_digest")) {
+            is FieldResult.Invalid -> return FingerprintResult.Invalid(r.reason)
+            is FieldResult.Valid -> r.value
+        }
+        val symptom = when (val r = requireString(source, fpFields, "symptom")) {
+            is FieldResult.Invalid -> return FingerprintResult.Invalid(r.reason)
+            is FieldResult.Valid -> r.value
+        }
+        val type = when (val r = requireString(source, fpFields, "type")) {
+            is FieldResult.Invalid -> return FingerprintResult.Invalid(r.reason)
+            is FieldResult.Valid -> r.value
+        }
+        val cause = when (val r = requireString(source, fpFields, "cause")) {
+            is FieldResult.Invalid -> return FingerprintResult.Invalid(r.reason)
+            is FieldResult.Valid -> r.value
         }
         return FingerprintResult.Valid(
             FailureFingerprint(
-                inputDigest = (inputDigest as FieldResult.Valid).value,
-                symptom = (symptom as FieldResult.Valid).value,
-                type = (type as FieldResult.Valid).value,
-                cause = (cause as FieldResult.Valid).value,
+                inputDigest = inputDigest,
+                symptom = symptom,
+                type = type,
+                cause = cause,
             ),
         )
     }

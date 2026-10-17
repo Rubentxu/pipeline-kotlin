@@ -1,6 +1,11 @@
 # Fast-lane wall clock — measured 2026-10-17
 
-**Base SHA:** `15640e98` (`main`, clean tree)
+> **Current state: GREEN at 1367 s.** The run described below was RED; both fixes landed
+> and a full-module re-run on `1c21f303` passes with an identical corpus. See
+> *Re-verification on the fixed bytes*. The wall clock did not improve, and the tail is
+> still unaddressed — this receipt is a measurement, not a fix.
+
+**Base SHA of the RED run:** `15640e98` (`main`, clean tree)
 **Command:** `v2/gradlew -p v2 :pipeline-application:test --rerun -Plane=fast`
 **Budget:** 1800 s (`timeout`), **observed: 1418 s (23m38s)**, `BUILD FAILED`
 **Verdict:** completes, **not fast**. No CI exists for this SHA (see AGENTS.md
@@ -116,12 +121,46 @@ history — stated as a lead, not as a diagnosis.
 
 </details>
 
+## Re-verification on the fixed bytes — 2026-10-17, `1c21f303`
+
+```text
+v2/gradlew -p v2 :pipeline-application:test --rerun -Plane=fast
+BUILD SUCCESSFUL in 22m47s          (1367 s, budget 1800 s)
+384 classes   2871 tests   0 failures   0 errors   230 skipped (8.0%)
+```
+
+The canary XML was deleted before the launch, so every result below is from this run.
+
+**The corpus and the skip count are byte-identical to the RED run above** — 384 classes,
+2871 tests, 230 skipped. That is the load-bearing detail: the green was not bought by
+anything going quietly skipped. The 5 rows fixed by `e22c814f` and `1ab6cd0d` all pass
+here at full-module scope, which is the evidence the per-class runs could not give:
+
+| class | rows | result |
+| --- | ---: | --- |
+| `TestSandboxFitnessTest` | 1 | green (`skipped=0`) |
+| `ObsBLiveOutputIngressTest` | 2 | green |
+| `ObsBJvmDeathOutputRecoveryUatTest` | 1 | green |
+| `ObsCChannelAndTailCharacterisationTest` | 1 | green |
+
+The wall clock is otherwise unmoved, which is the expected result and worth stating
+plainly rather than reading as a regression: these fixes touch the byte-visibility path,
+not the subprocess-heavy tail.
+
+```text
+                   RED run        green run
+sum of class time  1408.6 s       1342.8 s
+median class          0.02 s         0.02 s
+mean class            3.67 s         3.50 s
+top 15 share          71.6 %         72.1 %
+classes over 10 s        29             28
+```
+
 ## What this receipt does NOT establish
 
 - That the lane split improved the wall clock. No base-vs-head measurement exists.
-- That the lane is green. The 5 failures here were fixed in `e22c814f` and `1ab6cd0d`, but no
-  full-module run has been executed on the fixed bytes; the per-class evidence is scoped, not global.
-- A fix for the 29-class tail. Only where the cost is.
-- Any statement about `:installedContractTest`; this run is `-Plane=fast` only.
+- That the lane is *fast*. It is green at 1367 s. The 28-class tail is still there and
+  still owns ~72% of the time; nothing in this cycle addressed it.
+- Anything about `:installedContractTest`; every run here is `-Plane=fast` only.
 - Anything about a release candidate. No RC was published; all of this is internal
   harness/build quality, and an empty candidate would be forbidden anyway.

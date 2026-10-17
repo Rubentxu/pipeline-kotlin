@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.runtime.control
 
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
@@ -157,7 +158,7 @@ class RuntimeControlPortStoreAdapter(
             runId = runId,
             attempt = 1,
         )
-        val fingerprintHex = sha256Hex("$cancelOpId|${json.encodeToString(cancelInput)}")
+        val fingerprintHex = Sha256.ofText("$cancelOpId|${json.encodeToString(cancelInput)}")
         val cancelOp = RerunOperation(
             id = cancelOpId,
             fingerprint = Fingerprint(fingerprintHex),
@@ -225,12 +226,6 @@ class RuntimeControlPortStoreAdapter(
             terminalAtMs = terminalAtMs,
             streamsSealed = streamsSealed,
         )
-    }
-
-    private fun sha256Hex(text: String): String {
-        val md = java.security.MessageDigest.getInstance("SHA-256")
-        val bytes = md.digest(text.toByteArray(Charsets.UTF_8))
-        return bytes.joinToString("") { "%02x".format(it) }
     }
 
     private fun Throwable.shortDiagnostic(): String {

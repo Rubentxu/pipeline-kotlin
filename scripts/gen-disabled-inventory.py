@@ -118,6 +118,86 @@ CLASSIFICATION = {
          "Superseded S2-A6/G4 counter snapshot (asserts 6 residual keys), same successor as the row "
          "above. Held by the enabled `post-S2-B10-G5` sibling, which pins the catalogue to 0.", "no"),
     ],
+
+    # The line applied to the five rows below, stated once so the next reader can
+    # check it rather than re-derive it. A row may be declared only when it names
+    # either an OWNER that is checkable today — an enabled guard, a successor
+    # test, a tracked defect document — or a DEFECT that is named and described.
+    # Declaring a row to move a number is the failure this table exists to
+    # prevent, so the test is not "is the row inconvenient" but "can a reader
+    # verify the owner in one jump".
+    #
+    # Lfc2ConcreteBodyRoutingDebtFitnessTest$ViolationFixture is deliberately NOT
+    # listed. Its @Disabled says the fixture "needs synthetic sources" and names
+    # a follow-up only in prose; there is no owner artefact, no tracked defect and
+    # no successor, and the ten tests it holds are the guard's own decision logic.
+    # It stays UNKNOWN and keeps Gate-1 open until someone does the refactor.
+
+    # OBSOLETE: pins the rc1 `--kind` semantic drop that RC3 closed. The body
+    # still asserts the pass-through ("the kind axis is a pass-through for now"),
+    # which is the OPPOSITE of the shipped contract, so leaving it enabled would
+    # be worse than leaving it disabled. Owner:
+    # ConsoleOperationSelectionTest (RC3-3..RC3-6, empty-axis behaviour included).
+    "v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/ConsoleFrameFiltersTest.kt": [
+        ("StageStepKindResolver treats empty axes as no-op conjuncts", "OBSOLETE",
+         "Pins the `--kind` semantic drop that RC3 closed. The retained body asserts the pre-RC3 "
+         "pass-through, which is the opposite of the shipped contract, so it cannot be re-enabled. "
+         "Owner: ConsoleOperationSelectionTest (RC3-3..RC3-6); receipt "
+         "docs/v2/07-uat/R4_WU_RC3_CONSOLE_SELECTION_RECEIPT.md.", "no"),
+    ],
+    # HISTORICAL: the body is an empty stub. The original referenced
+    # CanonicalCoreStepCommand.IsUnix and CanonicalIsUnixNodeDispatcher, both
+    # physically removed at G5, so it could not compile; the verbatim body is
+    # archived as a .txt fixture. Absence proof owner:
+    # S3IsUnixLegacyRemovedFitnessTest.
+    "v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreIsUnixRegistryPrimaryFitnessTest.kt": [
+        ("G4 flip — legacy source code is physically present (LEGACY_UNREACHABLE, not LEGACY_REMOVED)", "HISTORICAL",
+         "G5 stub: the body is empty (the original referenced symbols removed at G5 and is archived "
+         "verbatim in CoreIsUnixRegistryPrimaryFitnessTestRow8Fixture.kt.txt). Source-level absence "
+         "proof owner: S3IsUnixLegacyRemovedFitnessTest.", "no"),
+    ],
+    # KNOWN_DEFECT: the row is NOT the historical snapshot its @Disabled reason
+    # describes. The reason names S3PwdLegacyRemovedFitnessTest, which asserts
+    # about Pwd; this row is about core.sleep, and its own comment admits the
+    # assertion "is structurally flawed" and asks for a successor against
+    # CoreSleepStep.descriptor that was never authored.
+    #
+    # The comment also claims "the assertion removed", and it is not removed:
+    # `assertEquals(null, resolved?.recoveryPolicy)` is still there. It is
+    # VACUOUS rather than wrong — core.sleep is registry-primary, so
+    # CoreLegacyStepMetadataResolver.resolve returns null and the assertion
+    # cannot fail. Recorded rather than corrected here: a stale claim about a
+    # disabled fixture is worth fixing at the fixture, not only in the inventory.
+    "v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreLegacyStepMetadataResolverTest.kt": [
+        ("resolves sleep metadata by step key matching the decoded command", "KNOWN_DEFECT",
+         "Vacuous assertion on a registry-primary key: resolve() returns null for core.sleep, so "
+         "`assertEquals(null, resolved?.recoveryPolicy)` cannot fail. Two gaps named in the fixture "
+         "itself: its comment claims the assertion was removed and it was not, and it asks for a "
+         "successor against CoreSleepStep.descriptor that does not exist. The successor named in the "
+         "@Disabled reason (S3PwdLegacyRemovedFitnessTest) covers Pwd, a different subject.", "no"),
+    ],
+    # KNOWN_DEFECT: a probe that re-implements RuntimeApiVersion.parse locally.
+    # Under HARNESS FIDELITY LAW §1 a harness that copies the algorithm under
+    # test certifies the copy: it cannot detect a production regression, only a
+    # change to itself. Its KDoc says so and forbids re-enabling it. The defect
+    # it documents is real and measured: docs/v2/05-roadmap/P3_CANDIDATE_VERSION_BLOCKER.md.
+    "v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/RuntimeApiVersionPrereleaseProbeTest.kt": [
+        ("a plain version parses", "KNOWN_DEFECT",
+         "Class-level probe over a LOCAL COPY of RuntimeApiVersion.parse (HARNESS FIDELITY LAW §1: "
+         "the copy certifies itself, not production). Documents the measured P3 prerelease-version "
+         "blocker in docs/v2/05-roadmap/P3_CANDIDATE_VERSION_BLOCKER.md; its KDoc forbids "
+         "re-enabling it as a weakened assertion.", "no"),
+    ],
+    # KNOWN_DEFECT: a WONTFIX whose helper hangs. The finding it characterises
+    # (a second lifecycle burst on terminal resume) is the designed contract, not
+    # a defect, and two enabled tests already pin it.
+    "v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/cli/WULpr010CliCharacterizationTest.kt": [
+        ("WONTFIX (WU-LPR-011 F5) - resume of a terminal run reuses the recorded aggregate - "
+         "zero child re-execution, journaled lifecycle reprinted", "KNOWN_DEFECT",
+         "WONTFIX: the run() helper hangs. The F5 finding it characterises is the designed contract "
+         "(resume re-emits the lifecycle bookends and re-executes zero children), already pinned by "
+         "CanonicalDurableRunCoordinatorTest and UatDsl003ParallelTest.P6.", "no"),
+    ],
 }
 
 # --------------------------------------------------------------------------

@@ -7,7 +7,9 @@ import dev.rubentxu.pipeline.v2.domain.durable.OutputChunk
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.durable.TaskStream
+import dev.rubentxu.pipeline.v2.domain.durable.decideTaskTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.executeBlocking
+import dev.rubentxu.pipeline.v2.domain.durable.isSuccessFromDecision
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
@@ -81,8 +83,8 @@ class Lpr040OutputObservationHarnessTest {
         val result = runtime().executeBlocking(shellRequest(script, "lpr040-p1"), sink)
         val ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0)
         val out = text(chunks, TaskStream.STDOUT)
-        println("LPR-040 P1: ok=${result.succeeded} ms=$ms bytes=${out.length} chunks=${chunks.size}")
-        check(result.succeeded) { "task did not succeed" }
+        println("LPR-040 P1: ok=${isSuccessFromDecision(decideTaskTerminal(result))} ms=$ms bytes=${out.length} chunks=${chunks.size}")
+        check(isSuccessFromDecision(decideTaskTerminal(result))) { "task did not succeed" }
         check(out.length >= 100L * 1024 * 1024) { "expected >=100MiB stdout, got ${out.length} bytes" }
     }
 
@@ -104,8 +106,8 @@ class Lpr040OutputObservationHarnessTest {
         val ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0)
         val out = text(chunks, TaskStream.STDOUT)
         val err = text(chunks, TaskStream.STDERR)
-        println("LPR-040 P2: ok=${result.succeeded} ms=$ms outBytes=${out.length} errBytes=${err.length} chunks=${chunks.size}")
-        check(result.succeeded) { "task did not succeed" }
+        println("LPR-040 P2: ok=${isSuccessFromDecision(decideTaskTerminal(result))} ms=$ms outBytes=${out.length} errBytes=${err.length} chunks=${chunks.size}")
+        check(isSuccessFromDecision(decideTaskTerminal(result))) { "task did not succeed" }
         check(out.count { it == '\n' } == 50_000) { "expected 50000 stdout lines, got ${out.count { it == '\n' }}" }
         check(err.count { it == '\n' } == 50_000) { "expected 50000 stderr lines, got ${err.count { it == '\n' }}" }
         check(!out.contains("ERR-") && !err.contains("OUT-")) { "stream identity violated" }
@@ -126,7 +128,7 @@ class Lpr040OutputObservationHarnessTest {
                 val ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0)
                 val bytes = chunks.filter { it.stream == TaskStream.STDOUT }
                     .sumOf { it.data.size.toLong() }
-                Triple(result.succeeded, ms, bytes)
+                Triple(isSuccessFromDecision(decideTaskTerminal(result)), ms, bytes)
             }
         }.awaitAll()
         results.forEachIndexed { i, (ok, ms, bytes) ->
@@ -151,8 +153,8 @@ class Lpr040OutputObservationHarnessTest {
         val t0 = System.nanoTime()
         val result = runtime().executeBlocking(shellRequest(script, "lpr040-p4"), sink)
         val ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0)
-        println("LPR-040 P4: ok=${result.succeeded} ms=$ms (with slow sink)")
-        check(result.succeeded) { "task did not succeed despite slow sink" }
+        println("LPR-040 P4: ok=${isSuccessFromDecision(decideTaskTerminal(result))} ms=$ms (with slow sink)")
+        check(isSuccessFromDecision(decideTaskTerminal(result))) { "task did not succeed despite slow sink" }
         // Hard law: slow external observation must not break execution.
         // If this check ever fires we have producer-coupled observation.
         check(ms < 120_000) { "task took ${ms}ms with slow sink — possible backpressure coupling" }
@@ -174,8 +176,8 @@ class Lpr040OutputObservationHarnessTest {
         val (sink, chunks) = collectingSink()
         val result = runtime().executeBlocking(shellRequest(script, "lpr040-p5"), sink)
         val out = text(chunks, TaskStream.STDOUT)
-        println("LPR-040 P5: ok=${result.succeeded} outLen=${out.length} chunks=${chunks.size}")
-        check(result.succeeded) { "task did not succeed" }
+        println("LPR-040 P5: ok=${isSuccessFromDecision(decideTaskTerminal(result))} outLen=${out.length} chunks=${chunks.size}")
+        check(isSuccessFromDecision(decideTaskTerminal(result))) { "task did not succeed" }
         // Characterization: current runtime does not perform secret
         // redaction on the output stream. The observation-plane gate
         // (WU-LPR-043) will require "streaming secret redaction before
@@ -199,8 +201,8 @@ class Lpr040OutputObservationHarnessTest {
         val min = sizes.minOrNull() ?: 0
         val max = sizes.maxOrNull() ?: 0
         val avg = if (sizes.isEmpty()) 0 else sizes.sum() / sizes.size
-        println("LPR-040 P6: ok=${result.succeeded} chunks=${sizes.size} minChunk=$min maxChunk=$max avgChunk=$avg bytes=${sizes.sum()}")
-        check(result.succeeded) { "task did not succeed" }
+        println("LPR-040 P6: ok=${isSuccessFromDecision(decideTaskTerminal(result))} chunks=${sizes.size} minChunk=$min maxChunk=$max avgChunk=$avg bytes=${sizes.sum()}")
+        check(isSuccessFromDecision(decideTaskTerminal(result))) { "task did not succeed" }
         check(sizes.isNotEmpty()) { "expected at least one chunk" }
     }
 }

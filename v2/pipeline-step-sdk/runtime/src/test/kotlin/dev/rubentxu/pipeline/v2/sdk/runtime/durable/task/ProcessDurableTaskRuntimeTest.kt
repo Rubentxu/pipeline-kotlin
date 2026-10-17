@@ -8,7 +8,9 @@ import dev.rubentxu.pipeline.v2.domain.durable.OutputChunk
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.durable.TaskStream
+import dev.rubentxu.pipeline.v2.domain.durable.decideTaskTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.executeBlocking
+import dev.rubentxu.pipeline.v2.domain.durable.isSuccessFromDecision
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -64,7 +66,7 @@ class ProcessDurableTaskRuntimeTest {
 
         val result = runtime().executeBlocking(execRequest(listOf("/bin/echo", "hello-m3")), sink)
 
-        assertTrue(result.succeeded)
+        assertTrue(isSuccessFromDecision(decideTaskTerminal(result)))
         assertEquals(0, result.exitCode)
         assertTrue(text(chunks, TaskStream.STDOUT).contains("hello-m3"))
     }
@@ -96,7 +98,7 @@ class ProcessDurableTaskRuntimeTest {
 
         val result = runtime().executeBlocking(request, sink)
 
-        assertTrue(result.succeeded)
+        assertTrue(isSuccessFromDecision(decideTaskTerminal(result)))
         val controlDir = tempDir.resolve("ctrl").resolve("r1-s0-1")
         assertTrue(Files.isRegularFile(controlDir.resolve("script.sh")), "script must be materialised as a file")
         assertEquals("echo script-ran", Files.readString(controlDir.resolve("script.sh")))
@@ -125,7 +127,7 @@ class ProcessDurableTaskRuntimeTest {
     fun `nonzero exit maps to a failed result`() = runBlocking {
         val result = runtime().executeBlocking(execRequest(listOf("/bin/false"), opId = "r1-s0-3"), noopSink())
 
-        assertFalse(result.succeeded)
+        assertFalse(isSuccessFromDecision(decideTaskTerminal(result)))
         assertEquals(1, result.exitCode)
         assertFalse(result.timedOut)
         assertFalse(result.cancelled)
@@ -147,7 +149,7 @@ class ProcessDurableTaskRuntimeTest {
         val elapsed = System.currentTimeMillis() - started
 
         assertTrue(result.timedOut, "must be timedOut")
-        assertFalse(result.succeeded)
+        assertFalse(isSuccessFromDecision(decideTaskTerminal(result)))
         assertTrue(elapsed < 15_000, "timeout must fire promptly, took ${elapsed}ms")
 
         awaitGone("m3-tree-probe")
@@ -192,7 +194,7 @@ class ProcessDurableTaskRuntimeTest {
 
         val result = runtime().executeBlocking(request, sink)
 
-        assertTrue(result.succeeded)
+        assertTrue(isSuccessFromDecision(decideTaskTerminal(result)))
         val received = chunks.filter { it.stream == TaskStream.STDOUT }.sumOf { it.data.size.toLong() }
         assertEquals(totalBytes, received, "all 100MB must be delivered through bounded chunks")
         val maxChunk = chunks.maxOf { it.data.size }
@@ -248,7 +250,7 @@ class ProcessDurableTaskRuntimeTest {
         }
 
         results.forEachIndexed { index, (result, stdout) ->
-            assertTrue(result.succeeded)
+            assertTrue(isSuccessFromDecision(decideTaskTerminal(result)))
             assertTrue(stdout.contains("op-${index + 1}"), "stdout: $stdout")
         }
         (1..4).forEach { i ->

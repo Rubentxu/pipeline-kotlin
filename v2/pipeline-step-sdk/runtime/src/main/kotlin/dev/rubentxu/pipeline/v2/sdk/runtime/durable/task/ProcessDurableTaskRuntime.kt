@@ -7,6 +7,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.OutputChunk
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionResult
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
+import dev.rubentxu.pipeline.v2.domain.durable.TaskTerminalDecision
+import dev.rubentxu.pipeline.v2.domain.durable.decideTaskTerminal
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -161,7 +163,18 @@ class ProcessDurableTaskRuntime(
             startedAtEpochMs = startedAt,
             endedAtEpochMs = endedAt,
         )
-        val record = if (result.timedOut) "TIMED_OUT" else "EXIT ${result.exitCode}"
+        val record = when (val decision = decideTaskTerminal(result)) {
+            // TimedOut: watchdog killed the process tree after TaskExecutionRequest.timeoutMs.
+            is TaskTerminalDecision.TimedOut -> "TIMED_OUT"
+            // Cancelled is structurally unreachable at this site: the catch block above writes
+            // "CANCELLED" and rethrows, so by construction result.cancelled is false here. The
+            // explicit error() is the audit-trail witness for that invariant: any future refactor
+            // that drops the catch's CANCELLED write will hit it.
+            is TaskTerminalDecision.Cancelled -> error(
+                "cancellation reached writeAtomicResult; the catch block above should have written CANCELLED"
+            )
+            is TaskTerminalDecision.Exited -> "EXIT ${decision.exitCode}"
+        }
         writeAtomicResult(controlDir, record)
         return result
     }

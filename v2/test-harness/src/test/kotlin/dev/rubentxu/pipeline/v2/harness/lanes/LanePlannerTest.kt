@@ -19,7 +19,7 @@ class LanePlannerTest {
     }
 
     @Test
-    fun `requiresInstalledBinary lands in CANDIDATE lane`() {
+    fun `LaneAccess Installed lands in CANDIDATE lane`() {
         val partition = LanePlanner.partition(LanePlanner.exampleSpecs())
         assertTrue(partition[TestLane.CANDIDATE]!!.contains("candidate.installed"))
     }
@@ -31,7 +31,7 @@ class LanePlannerTest {
     }
 
     @Test
-    fun `requiresExternalCertifier lands in ONLINE_SMOKE lane`() {
+    fun `LaneAccess InstalledWithCertifier lands in ONLINE_SMOKE lane`() {
         val partition = LanePlanner.partition(LanePlanner.exampleSpecs())
         assertTrue(partition[TestLane.ONLINE_SMOKE]!!.contains("online.smoke"))
     }

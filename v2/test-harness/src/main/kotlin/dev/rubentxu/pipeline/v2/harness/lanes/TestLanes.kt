@@ -37,6 +37,45 @@ enum class TestLane(val tag: String) {
 }
 
 /**
+ * The execution environment a test requires.
+ *
+ * The previous shape was a pair of booleans (`requiresInstalledBinary`,
+ * `requiresExternalCertifier`). That pair is a 2×2 state space, but the
+ * `(installed=false, certifier=true)` corner is impossible: a certifier
+ * runs against an installed binary, so the two booleans are not
+ * independent. The boolean pair let a hand-built `LaneSpec` describe a
+ * physically unrealisable test, and the decider had to fall through
+ * without a typed reason.
+ *
+ * The [LaneAccess] ADT names the three legitimate cases. The impossible
+ * combination is no longer representable; adding a fourth (e.g. a
+ * future "service-only" lane) is one new case in the sealed type plus
+ * one new arm in [LanePlanner.laneFor].
+ */
+sealed interface LaneAccess {
+    /**
+     * HF0/HF1: no install, no certifier. The unit / contract
+     * tests that the V2 module classpath runs without a
+     * distribution build.
+     */
+    data object InProcess : LaneAccess
+
+    /**
+     * HF2/HF3/HF4: the installed CLI is required but the
+     * certifier does not run. CANDIDATE lane, RESTART lane,
+     * SERVICE_SANDBOX lane.
+     */
+    data object Installed : LaneAccess
+
+    /**
+     * HF5/HF6: installed CLI plus an external certifier. A
+     * test in this lane runs against the harness's verdict
+     * path, not just the producer's byte-checked output.
+     */
+    data object InstalledWithCertifier : LaneAccess
+}
+
+/**
  * A contract / capability pair the lane decider partitions.
  *
  * The caller composes this from whichever catalogue they trust (H0's
@@ -48,8 +87,7 @@ data class LaneSpec(
     val contractId: String,
     val capability: String,
     val minimumFidelity: Int,
-    val requiresInstalledBinary: Boolean,
-    val requiresExternalCertifier: Boolean,
+    val access: LaneAccess,
 ) {
     init {
         require(contractId.isNotBlank()) { "contractId must not be blank" }

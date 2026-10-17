@@ -88,10 +88,10 @@ fun main(args: Array<String>) {
  * real catalogue. This function derives one `LaneSpec` per
  * contract, with `minimumFidelity = contract.minFidelity.ordinal`
  * (HF0..HF6 ordinals match the planner's `minimumFidelity` axis)
- * and `requiresInstalledBinary = HF >= 2` (HF2+ tests fork the
- * installed CLI per AGENTS.md rule 11). `requiresExternalCertifier`
- * is set per the audit's sensitivity to the harness-verdict path
- * (HF5/HF6 contracts are certifier-grade by ADR-0072).
+ * and `access` derived per ADR-0072: HF2+ tests fork the installed
+ * CLI (AGENTS.md rule 11), HF5/HF6 are certifier-grade, and the
+ * [LaneAccess] ADT makes the impossible "certifier without
+ * install" combination unrepresentable.
  *
  * The function lives here rather than in `LanePlanner` so the
  * planner remains a pure decider over an externally-built
@@ -107,12 +107,18 @@ private fun realSpecsFromCatalogue(): List<LaneSpec> {
             contractId = contract.capability,
             capability = contract.capability,
             minimumFidelity = fidelity,
-            requiresInstalledBinary = fidelity >= 2,
-            // HF5 (Service Sandbox) and HF6 (Online Smoke) are
-            // the certifier-grade fidelities per ADR-0072. A
-            // contract whose minFidelity is one of those is
-            // owned by the harness, not the producer.
-            requiresExternalCertifier = fidelity >= 5,
+            // HF2+ tests fork the installed CLI per AGENTS.md rule
+            // 11. HF5 (Service Sandbox) and HF6 (Online Smoke) are
+            // the certifier-grade fidelities per ADR-0072; a
+            // contract whose minFidelity is one of those is owned by
+            // the harness, not the producer. The [LaneAccess] ADT
+            // makes the impossible "certifier without install"
+            // combination unrepresentable.
+            access = when {
+                fidelity >= 5 -> LaneAccess.InstalledWithCertifier
+                fidelity >= 2 -> LaneAccess.Installed
+                else -> LaneAccess.InProcess
+            },
         )
     }
 }

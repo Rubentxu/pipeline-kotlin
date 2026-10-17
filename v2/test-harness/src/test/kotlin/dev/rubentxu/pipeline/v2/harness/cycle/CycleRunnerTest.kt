@@ -501,6 +501,77 @@ class CycleRunnerTest {
     }
 
     @Test
+    fun `BQ4 P0 HITO 1 weakness 1 - finalise does NOT delete a file added concurrently after prepare`(
+        @TempDir tmp: Path,
+    ) {
+        // The HITO 1 "Propiedad explícita de ficheros" bullet
+        // in QUALITY_VALUE_ADDENDUM.md (2026-10-17) named this
+        // as the most expensive defect class in the cycle:
+        // the previous shape used
+        // `currentEntries - operatorOwnedSnapshot` to decide
+        // what the runner owned. A file added by an external
+        // process (a co-resident tool, a watcher, a manual
+        // operator action) AFTER the runner's `prepare()`
+        // snapshot was therefore in the diff and was DELETED
+        // by `finalise()`. The audit's "Debilidades" list
+        // names this as item (1).
+        //
+        // The new shape uses an explicit registry of paths
+        // the runner and the executor themselves created;
+        // concurrent files are not in the registry and
+        // survive `finalise()`. This is the property the
+        // test pins.
+        val dir = tmp.resolve("cycles/cyc-1")
+        val (runner, _, _) = setupPromotableRunner(tmp)
+        val aligned = CycleRunner(
+            cycleId = "cyc-1",
+            manifestPath = runner.manifestPath,
+            cycleDir = dir,
+            oracleLedger = MapOracleLedger(
+                mapOf(
+                    OracleRef.Fitness("TestRunner.fixture", ":test-harness") to
+                        setOf("0123456789abcdef0123456789abcdef01234567"),
+                ),
+            ),
+            repoRoot = tmp,
+        )
+        aligned.prepare()
+        aligned.runProbesWithVerified()
+        aligned.observeAll("abc123")
+        aligned.requestPromote(evidence = requireNotNull(aligned.manifest).replacement.evidence)
+        assertTrue(aligned.state is CycleState.Promoted) { "got ${aligned.state}" }
+        aligned.requestClose("test close")
+        assertTrue(aligned.state is CycleState.Closed) { "got ${aligned.state}" }
+
+        // A concurrent process adds a file AFTER prepare() and
+        // BEFORE finalise(). The runner's registry does not
+        // know about this file; finalise() must leave it
+        // alone. The audit's "carreras" (races) concern is
+        // exactly this scenario.
+        val alienFile = dir.resolve("alien-from-other-process.txt")
+        Files.writeString(alienFile, "this file was added by a concurrent process")
+
+        aligned.finalise()
+
+        assertTrue(
+            Files.exists(alienFile),
+            "BQ4 P0 HITO 1: finalise() MUST NOT delete a file added by an " +
+                "external process after prepare() — only files the runner or " +
+                "executor themselves registered as created are owned by the " +
+                "runner. The previous snapshot-diff shape classified the " +
+                "concurrent file as runner-owned and DELETED it; the new " +
+                "registry shape leaves it in place. A regression to the " +
+                "snapshot-diff re-opens the 'carreras' (races) defect class.",
+        )
+        assertEquals(
+            "this file was added by a concurrent process",
+            Files.readString(alienFile),
+            "BQ4 P0 HITO 1: the concurrent file's content MUST survive " +
+                "finalise() unchanged",
+        )
+    }
+
+    @Test
     fun `finalise deletes the cycle directory only when state is Closed`(@TempDir tmp: Path) {
         val dir = tmp.resolve("cycles/cyc-1")
         val (runner, _, _) = setupPromotableRunner(tmp)

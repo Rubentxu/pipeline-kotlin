@@ -115,6 +115,62 @@ class CycleRunner(
         private set
 
     /**
+     * BQ4 P0 (HITO 1 "Propiedad explícita de ficheros",
+     * 2026-10-17): the explicit registry of paths the
+     * runner and the executor themselves created. The
+     * `finalise()` deletion phase uses THIS set (not a
+     * snapshot diff) to decide what is runner-owned. A
+     * file added by an external process after `prepare()`
+     * is therefore not in the registry and SURVIVES
+     * `finalise()`; the previous snapshot-diff shape
+     * classified such a file as runner-owned and DELETED
+     * it (the "carreras" / races defect class the audit
+     * named).
+     *
+     * Population rules: the runner registers the cycle
+     * directory in `prepare()`; the executor registers
+     * the probe JSON file in `runProbes` via a thin
+     * wrapper that captures the persisted path. Any
+     * other runner/executor file creation MUST also
+     * register; the registry is the structural
+     * invariant.
+     */
+    private val _createdFiles: MutableSet<Path> = mutableSetOf()
+
+    /** The typed registry as an unmodifiable view. */
+    val createdFiles: Set<Path> get() = _createdFiles.toSet()
+
+    /**
+     * Register a path as runner/executor-owned. The path
+     * MUST resolve inside the cycle directory; the check
+     * is a real-path containment (defeats symlink
+     * escapes). The carrier is the typed surface for the
+     * deletion scope and refuses a path outside the cycle
+     * dir at construction — there is no second
+     * "where can it live?" check.
+     *
+     * BQ4 P0 (HITO 1, follow-up): the path does NOT need
+     * to exist at registration time. The registry is for
+     * "paths the runner/executor created"; the deletion
+     * is a per-file `Files.deleteIfExists` that is a
+     * no-op if the file is already gone. A `toRealPath`
+     * that fails (file not present) is therefore
+     * acceptable: we use the lexically-canonicalised
+     * path instead. The carrier still refuses a path
+     * outside the cycle dir at construction — symlink
+     * escape via the lexical path is still caught.
+     */
+    fun registerCreatedFile(path: Path) {
+        val normalised = path.toAbsolutePath().normalize()
+        val realCycle = cycleDir.toAbsolutePath().normalize()
+        require(normalised.startsWith(realCycle)) {
+            "refusing to register a created file outside the cycle " +
+                "directory: '$normalised' is not under '$realCycle'"
+        }
+        _createdFiles.add(normalised)
+    }
+
+    /**
      * `prepare`: reads the manifest from `manifestPath`, parses it,
      * validates all required fields, anchors the manifest's
      * `relativePath` entries inside the cycle directory, and
@@ -165,6 +221,18 @@ class CycleRunner(
             // audit's "manifest of property" requirement is
             // pinned here, where the property boundary is real.
             operatorOwnedSnapshot = snapshotOwned(cycleDir)
+            // BQ4 P0 (HITO 1 "Propiedad explícita de ficheros",
+            // 2026-10-17): the cycle dir is NOT registered in
+            // the runner-owned set. The dir is the carrier
+            // for operator-owned, executor-owned, and
+            // concurrent files; the runner does not own its
+            // children wholesale. `finalise()` deletes
+            // only registered files and then deletes the
+            // cycle dir iff empty (preserving operator and
+            // concurrent children). The previous
+            // `deleteRecursively(cycleDir)` shape walked the
+            // whole tree and was the surface for the
+            // "carreras" defect.
             manifest = parsed
         }
         return transition
@@ -225,6 +293,21 @@ class CycleRunner(
     fun runProbes(executor: ProbeExecutor): List<ProbeOutcome> {
         val parsed = manifest
             ?: error("runProbes requires a parsed manifest; call prepare() first")
+        // BQ4 P0 (HITO 1 "Propiedad explícita de ficheros",
+        // 2026-10-17): wrap the executor in a thin adapter
+        // that registers every persisted file with the
+        // runner's typed registry. The previous shape
+        // computed `runnerOwned = currentEntries -
+        // operatorOwnedSnapshot` in `finalise()` and any
+        // path created after `prepare()` was classified as
+        // runner-owned and DELETED — including files added
+        // by an external process. The new shape uses the
+        // registry (populated ONLY by the runner/executor
+        // themselves) as the deletion scope; a concurrent
+        // file is not in the registry and SURVIVES. The
+        // wrapper is a single-class change and the
+        // executor's public API is unchanged.
+        val registering = RegisteringExecutorAdapter(executor, this)
         val outcomes = mutableListOf<ProbeOutcome>()
         for (probe in parsed.probes) {
             // BQ4 v21 (typed marker, 2026-10-17): the previous
@@ -240,9 +323,9 @@ class CycleRunner(
             // on the closed ADT and the compiler forces both
             // cases to be handled; no string sentinel crosses
             // the boundary.
-            val outcome: ProbeOutcome = when (val result = executor.execute(probe, parsed)) {
+            val outcome: ProbeOutcome = when (val result = registering.execute(probe, parsed)) {
                 is ProbeExecutor.Companion.ProbeExecutionResult.NeedsPersist ->
-                    executor.persist(probe)
+                    registering.persist(probe)
                 is ProbeExecutor.Companion.ProbeExecutionResult.AlreadyPersisted ->
                     result.outcome
             }
@@ -358,53 +441,158 @@ class CycleRunner(
         // the files the runner or the executor created during
         // this cycle, NOT everything under the cycle dir. The
         // property boundary is the [operatorOwnedSnapshot] the
-        // runner took at `prepare()` time: an entry that was
-        // already there when the cycle started is the
-        // operator's property and the runner will not touch it;
-        // an entry created AFTER the snapshot is the
-        // runner/executor's property and the runner owns its
-        // deletion. Symlinks whose real path leaves the cycle
-        // dir are refused; the cycle is a closed world.
+        // runner took at `prepare()` time AND the typed
+        // [createdFiles] registry the runner and the executor
+        // populated. The previous shape computed
+        // `currentEntries - operatorOwnedSnapshot` and treated
+        // every entry created after the snapshot as
+        // runner-owned — including files added by an external
+        // process after `prepare()` (the "carreras" / races
+        // defect class the HITO 1 audit named). The new shape
+        // uses the registry (the runner/executor's own
+        // creations) as the deletion scope; an entry NOT in
+        // the registry is left alone, whether it was operator
+        // property or concurrent property. Symlinks whose real
+        // path leaves the cycle dir are refused; the cycle is
+        // a closed world.
         if (asFile.exists()) {
-            val currentEntries: Set<Path> = Files.list(realCycle).use { stream ->
-                stream.map { it.toRealPath() }.collect(java.util.stream.Collectors.toSet())
-            }
-            val runnerOwned = currentEntries - operatorOwnedSnapshot
-            for (target in runnerOwned) {
-                if (!target.startsWith(realCycle) && target != realCycle) {
+            // BQ4 P0 (HITO 1 "Propiedad explícita de ficheros",
+            // 2026-10-17): the deletion scope is the typed
+            // [createdFiles] registry — files the runner or
+            // the executor themselves registered. Each
+            // registered path is deleted with a per-file
+            // `Files.deleteIfExists`. Symlinks whose real
+            // path leaves the cycle dir are refused; the
+            // cycle is a closed world.
+            for (target in createdFiles) {
+                if (!target.startsWith(realCycle)) {
                     error(
                         "refusing to delete path '$target' that escapes the cycle " +
                             "directory '$realCycle' (symlink escape?)",
                     )
                 }
-                deleteRecursively(target, realCycle)
+                Files.deleteIfExists(target)
             }
-            // After the runner-owned children are gone, the
-            // cycle dir contains exactly the operator-owned
-            // entries (we never touch those, by construction of
-            // [operatorOwnedSnapshot]). Therefore:
-            //   - if operator-owned entries exist, leave the
-            //     dir in place — the audit's "do not over-delete"
-            //     rule wins, the operator may still want to
-            //     inspect their files.
-            //   - if operator-owned entries are empty, the dir
-            //     is empty and we delete it.
-            // The previous shape had a third "fall-through"
-            // branch that was logically unreachable (the
-            // post-deletion empty check already covers the
-            // operator-empty case); removing it makes the
-            // invariant explicit.
-            val postDeletion = if (Files.exists(realCycle)) {
-                Files.list(realCycle).use { stream ->
-                    stream.map { it.toRealPath() }.collect(java.util.stream.Collectors.toSet())
+            // After every registered file is deleted, the
+            // cycle dir contains:
+            //   - operator-owned entries (snapshot at
+            //     `prepare()` time) — never touched
+            //   - concurrent entries (added after
+            //     `prepare()`) — never touched
+            //   - subdirs the runner or executor created
+            //     (e.g. `probes/`) — empty after the
+            //     registered-file deletes; should also
+            //     be removed so the cycle dir can be
+            //     deleted when it becomes empty
+            //
+            // The deletion policy for subdirs: a subdir
+            // NOT in the operator-owned snapshot is
+            // runner-owned (the runner/executor created
+            // it). Recursively delete its contents,
+            // refusing to walk into operator-owned
+            // children. Then delete the subdir itself if
+            // it became empty.
+            //
+            // The previous shape used
+            // `deleteRecursively(cycleDir)` which walked
+            // the WHOLE tree — including operator-owned
+            // and concurrent entries. The new shape
+            // scopes the recursive walk to subdirs the
+            // runner/executor created.
+            val runnerOwnedSubdirs: List<Path> = Files.list(realCycle).use { stream ->
+                stream.toList().filter { child ->
+                    Files.isDirectory(child) && child !in operatorOwnedSnapshot
                 }
-            } else emptySet()
+            }
+            for (sub in runnerOwnedSubdirs) {
+                deleteRunnerOwnedSubtree(sub, realCycle, operatorOwnedSnapshot)
+            }
+            // The cycle dir is deleted ONLY if it is
+            // empty after the registered-file deletes
+            // and the runner-owned subdir cleans. This
+            // is the "do not over-delete" invariant the
+            // audit named: operator-owned and concurrent
+            // children survive; the cycle dir is removed
+            // only when there is nothing left of the
+            // runner's claim.
+            val postDeletion = if (Files.exists(realCycle)) {
+                Files.list(realCycle).use { stream -> stream.toList() }
+            } else emptyList()
             if (postDeletion.isEmpty()) {
                 Files.deleteIfExists(realCycle)
             }
-            // else: dir has operator-owned content; leave it alone.
+            // else: dir has operator-owned, concurrent, or
+            // unregistered executor content; leave it
+            // alone.
         }
         return state
+    }
+
+    /**
+     * Delete a subdir the runner/executor created, plus
+     * any children the runner/executor also created.
+     * Operator-owned children (those in the
+     * [operatorOwnedSnapshot]) are SKIPPED — they are
+     * the operator's property and the runner does not
+     * touch them. Concurrent children (not in the
+     * snapshot and not registered) are also SKIPPED —
+     * the runner is not the authority on whether they
+     * exist; the only authority is the registry, and
+     * a non-registered child is not in it.
+     *
+     * The `toRealPath` containment check defeats symlink
+     * escapes: a child whose real path leaves the cycle
+     * dir is refused, the runner does not follow it.
+     */
+    private fun deleteRunnerOwnedSubtree(
+        sub: Path,
+        realCycle: Path,
+        operatorOwned: Set<Path>,
+    ) {
+        if (!Files.isDirectory(sub)) {
+            Files.deleteIfExists(sub)
+            return
+        }
+        Files.list(sub).use { children ->
+            for (child in children.toList()) {
+                val realChild = try {
+                    child.toRealPath()
+                } catch (_: java.io.IOException) {
+                    continue
+                }
+                if (!realChild.startsWith(realCycle)) {
+                    error(
+                        "refusing to delete child '$realChild' of '$sub' that " +
+                            "escapes the cycle directory '$realCycle'",
+                    )
+                }
+                if (realChild in operatorOwned) {
+                    // Operator's property; leave alone.
+                    continue
+                }
+                if (realChild in createdFiles) {
+                    // Already deleted by the registered-file
+                    // pass above; nothing to do.
+                    continue
+                }
+                // Otherwise: a runner/executor-created
+                // descendant. Recurse.
+                if (Files.isDirectory(realChild)) {
+                    deleteRunnerOwnedSubtree(realChild, realCycle, operatorOwned)
+                } else {
+                    Files.deleteIfExists(realChild)
+                }
+            }
+        }
+        // After every descendant is processed, the
+        // subdir either has operator-owned entries
+        // (left alone) or is empty. Delete if empty.
+        val remaining = Files.list(sub).use { it.toList() }
+        if (remaining.isEmpty()) {
+            Files.deleteIfExists(sub)
+        }
+        // else: subdir has operator-owned entries; leave
+        // it in place.
     }
 
     /**
@@ -547,5 +735,41 @@ class CycleRunner(
         state = outcome.nextState
         context = outcome.nextContext
         return outcome
+    }
+}
+
+/**
+ * BQ4 P0 (HITO 1 "Propiedad explícita de ficheros",
+ * 2026-10-17): a thin [ProbeExecutor] adapter that
+ * delegates to the inner executor and registers every
+ * persisted file with the [CycleRunner]'s typed
+ * [CycleRunner.createdFiles] registry. The runner's
+ * `finalise()` deletion scope is the registry, so every
+ * file the executor writes must flow through this
+ * adapter. The inner executor's public API is unchanged;
+ * the adapter is a single-class change that closes the
+ * `currentEntries - operatorOwnedSnapshot` races
+ * defect without touching the executor's surface.
+ */
+private class RegisteringExecutorAdapter(
+    private val inner: ProbeExecutor,
+    private val registry: CycleRunner,
+) : ProbeExecutor(cycleDir = inner.cycleDir) {
+    override fun execute(
+        probe: ProbeEntry,
+        manifest: CycleManifest,
+    ): ProbeExecutor.Companion.ProbeExecutionResult = inner.execute(probe, manifest)
+
+    override fun persist(probe: ProbeEntry): ProbeOutcome.Verified {
+        val verified = inner.persist(probe)
+        // The `evidenceRef` is the real-path the
+        // executor wrote the probe JSON to. Register it
+        // with the runner's typed registry. The
+        // `registerCreatedFile` carrier refuses any
+        // path outside the cycle dir, so a buggy
+        // executor that wrote outside is rejected at
+        // registration time, not at deletion time.
+        registry.registerCreatedFile(java.nio.file.Paths.get(verified.evidenceRef))
+        return verified
     }
 }

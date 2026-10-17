@@ -653,6 +653,22 @@ class EmitEventStepContractSuiteTest {
             }
         assertFalse(decoderSource.contains("ARCHIVE_ARTIFACTS_PLUGIN_ID"))
         assertFalse(decoderSource.contains("CLEAN_WS_PLUGIN_ID"))
+        // EMIT_EVENT_PLUGIN_ID is the third retired decoder constant in this
+        // family, and it was the one assertion the two disabled snapshot rows
+        // above carried that NO enabled guard owned: they assert it, they are
+        // disabled, and the enabled row that supersedes them checked
+        // ARCHIVE_ARTIFACTS and CLEAN_WS but skipped this one. An invariant that
+        // only a disabled test can see is an invariant nobody is holding.
+        //
+        // The constant survives in the decoder as three COMMENT mentions
+        // (lines 75, 246, 277), which is why `decoderSource` is comment-stripped
+        // above: the assertion is about CODE, and it passes today. It is here so
+        // that re-adding a live EMIT_EVENT branch goes red here instead of
+        // waiting for a row that cannot run.
+        assertFalse(
+            decoderSource.contains("EMIT_EVENT_PLUGIN_ID"),
+            "the retired EMIT_EVENT decoder constant MUST stay out of CODE",
+        )
         assertFalse(
             Files.exists(
                 java.nio.file.Paths.get(

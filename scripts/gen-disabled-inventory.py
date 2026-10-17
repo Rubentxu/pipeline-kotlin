@@ -88,6 +88,36 @@ CLASSIFICATION = {
         ("SC-011-11 load executes script content", "COMPATIBILITY",
          "INC-024: coordinator does not yet inject loaded pipeline; load is explicitly non-blocking for local-core-v1", "no"),
     ],
+    # HISTORICAL: two disabled S2-A5/G4 and S2-A6/G4 counter snapshots in the
+    # EmitEvent contract suite. Their own @Disabled reasons call the count
+    # superseded and name the successor; what they assert is now held by the
+    # ENABLED `no legacy resurrection — irreversible G5 state holds
+    # post-S2-B10-G5` in the same class, which pins the CURRENT counter (0, a
+    # strictly stronger claim than 7 or 6) and the retired decoder forms.
+    #
+    # This row is only honest because the enabled sibling was made to OWN every
+    # property these two carried. It did not, until 6ce2cbc9 + the assertion
+    # added alongside it: the sibling checked ARCHIVE_ARTIFACTS_PLUGIN_ID and
+    # CLEAN_WS_PLUGIN_ID but not EMIT_EVENT_PLUGIN_ID, so the only test that saw
+    # that constant was one that could not run. An invariant only a disabled
+    # test can see is an invariant nobody is holding — declaring these rows
+    # HISTORICAL before closing that would have been a hole re-opened through
+    # the front door of a table row.
+    #
+    # The dispatcher-file assertion is owned separately: LegacyResidualSnapshot
+    # globs every `Canonical*NodeDispatcher.kt` against `physicalResidual =
+    # emptySet()`, so CanonicalEmitEventNodeDispatcher.kt is covered by the
+    # enabled LegacyResidualConvergenceFitnessTest.
+    "v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/EmitEventStepContractSuiteTest.kt": [
+        ("no legacy resurrection — irreversible G5 state holds from inside the contract suite", "HISTORICAL",
+         "Superseded S2-A5/G4 counter snapshot (asserts 7 residual keys). Every property it asserts "
+         "is held by the enabled `post-S2-B10-G5` sibling in this same class: the retired decoder "
+         "forms, the retired dispatcher file, and the catalogue size, which the sibling pins to 0 — "
+         "strictly stronger than the 7 recorded here.", "no"),
+        ("no legacy resurrection — irreversible G5 state holds post-S2-A6-G4", "HISTORICAL",
+         "Superseded S2-A6/G4 counter snapshot (asserts 6 residual keys), same successor as the row "
+         "above. Held by the enabled `post-S2-B10-G5` sibling, which pins the catalogue to 0.", "no"),
+    ],
 }
 
 # --------------------------------------------------------------------------

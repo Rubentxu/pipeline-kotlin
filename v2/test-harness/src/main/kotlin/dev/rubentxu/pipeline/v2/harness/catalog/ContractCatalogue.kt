@@ -321,44 +321,61 @@ object ContractCatalogue {
 
     /**
      * Glob matcher with `*` (single segment) and `**` (recursive).
-     * Backed by a regex compiled from the pattern; cached for the
-     * lifetime of the call. `*` does not match `/`; `**` does.
+     * Backed by a regex compiled from the pattern and cached in
+     * a [java.util.concurrent.ConcurrentHashMap] keyed by the
+     * raw pattern. The cache is process-wide: a pattern is
+     * compiled at most once, and subsequent calls amortize the
+     * compilation cost. `*` does not match `/`; `**` does.
      */
+    private val patternCache = java.util.concurrent.ConcurrentHashMap<String, Regex>()
+
     fun matchesPattern(path: String, pattern: String): Boolean {
-        val regex = buildString {
-            append('^')
-            var i = 0
-            while (i < pattern.length) {
-                when {
-                    pattern.startsWith("**", i) -> {
-                        append(".*")
-                        i += 2
+        val regex = patternCache.computeIfAbsent(pattern) { p ->
+            val compiled = buildString {
+                append('^')
+                var i = 0
+                while (i < p.length) {
+                    when {
+                        p.startsWith("**", i) -> {
+                            append(".*")
+                            i += 2
+                        }
+                        p[i] == '*' -> {
+                            append("[^/]*")
+                            i++
+                        }
+                        p[i] == '.' || p[i] == '(' || p[i] == ')' ||
+                            p[i] == '+' || p[i] == '|' || p[i] == '^' ||
+                            p[i] == '$' || p[i] == '{' || p[i] == '}' ||
+                            p[i] == '\\' -> {
+                            append('\\'); append(p[i]); i++
+                        }
+                        else -> { append(p[i]); i++ }
                     }
-                    pattern[i] == '*' -> {
-                        append("[^/]*")
-                        i++
-                    }
-                    pattern[i] == '.' || pattern[i] == '(' || pattern[i] == ')' ||
-                        pattern[i] == '+' || pattern[i] == '|' || pattern[i] == '^' ||
-                        pattern[i] == '$' || pattern[i] == '{' || pattern[i] == '}' ||
-                        pattern[i] == '\\' -> {
-                        append('\\'); append(pattern[i]); i++
-                    }
-                    else -> { append(pattern[i]); i++ }
                 }
+                append('$')
             }
-            append('$')
+            Regex(compiled)
         }
-        return Regex(regex).matches(path)
+        return regex.matches(path)
     }
 
-    /** The fidelity required for [path], accounting for escalation. Deduplicated and ordered. */
+    /**
+     * The fidelity required for [path], accounting for
+     * escalation. Deduplicated and ordered. The previous shape
+     * called [contractsFor] twice (once for `minFidelity`, once
+     * for `capability`); the new shape computes the matching
+     * set once and derives both, halving the catalog traversal
+     * per call.
+     */
     fun requiredFidelityFor(path: String): Set<Fidelity> {
-        val base = contractsFor(path).map { it.minFidelity }.toSet()
-        if (base.isEmpty()) return emptySet()
+        val matching = contractsFor(path)
+        if (matching.isEmpty()) return emptySet()
+        val baseFidelities = matching.map { it.minFidelity }.toSet()
+        val matchingCapabilities = matching.map { it.capability }.toSet()
         val escalated = ESCALATIONS
-            .filter { rule -> rule.capability in contractsFor(path).map { it.capability } }
+            .filter { rule -> rule.capability in matchingCapabilities }
             .map { rule -> rule.to }
-        return (base + escalated).toSortedSet()
+        return (baseFidelities + escalated).toSortedSet()
     }
 }

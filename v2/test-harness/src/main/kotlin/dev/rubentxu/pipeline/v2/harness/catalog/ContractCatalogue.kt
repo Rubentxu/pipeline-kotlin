@@ -99,7 +99,28 @@ object ContractCatalogue {
          * least one source path matches each contract).
          */
         val pathPatterns: List<String> = emptyList(),
-    )
+    ) {
+        // BQ4 v8 (catalogue carrier self-protect, 2026-10-17):
+        // the previous shape had no init validation. A blank
+        // `capability` or a `sourcePaths` list with a blank
+        // entry would silently miss the contract's selection
+        // (the resolver's `isProductionPath` substring chain
+        // never matches ""), and the contract would be a
+        // silent no-op. The carrier now refuses blanks at
+        // construction with precise messages naming the
+        // field; the catalogue fitness test pins the
+        // well-formed shape.
+        init {
+            require(capability.isNotBlank()) { "Contract.capability must not be blank" }
+            require(owningModule.isNotBlank()) { "Contract.owningModule must not be blank" }
+            require(sourcePaths.all { it.isNotBlank() }) {
+                "Contract.sourcePaths must not contain blank entries; got $sourcePaths"
+            }
+            require(pathPatterns.all { it.isNotBlank() }) {
+                "Contract.pathPatterns must not contain blank entries; got $pathPatterns"
+            }
+        }
+    }
 
     /**
      * Contracts whose source change must ALSO escalate fidelity.
@@ -114,7 +135,27 @@ object ContractCatalogue {
         val from: Fidelity,
         val to: Fidelity,
         val reason: String,
-    )
+    ) {
+        // BQ4 v8 (catalogue carrier self-protect, 2026-10-17):
+        // the previous shape had no init validation. A
+        // blank `capability` would never match a contract
+        // (the resolver's `matchingCapabilities.toSet()`
+        // membership check fails), and an `from == to`
+        // escalation would be a silent no-op. The
+        // carrier now refuses both at construction.
+        init {
+            require(capability.isNotBlank()) {
+                "EscalationRule.capability must not be blank"
+            }
+            require(from != to) {
+                "EscalationRule.from and to must be different fidelities; " +
+                    "an escalation that does not change the fidelity is a silent no-op"
+            }
+            require(reason.isNotBlank()) {
+                "EscalationRule.reason must not be blank"
+            }
+        }
+    }
 
     /**
      * The bindings.
@@ -261,11 +302,25 @@ object ContractCatalogue {
     val ESCALATIONS: List<EscalationRule> = listOf(
         EscalationRule(
             capability = "Provenance.build.identity",
+            // BQ4 v8 (catalogue carrier self-protect,
+            // 2026-10-17): the previous shape had
+            // `from = HF2, to = HF2` — a silent no-op
+            // (the carrier's `from != to` init now
+            // refuses that shape). The intent of the
+            // rule (per the KDoc) is "prior evidence is
+            // stale, must be re-earned at a higher
+            // fidelity"; HF3 matches the sibling rules
+            // (OutputPlane.read.cursor, OutputPlane.write.commit)
+            // that share the same `from = HF2`
+            // starting point. A build file change is
+            // at least as severe as the read/write
+            // changes it gates.
             from = Fidelity.HF2,
-            to = Fidelity.HF2,
+            to = Fidelity.HF3,
             reason =
                 "A change to the build file invalidates the identity of every artefact built " +
-                    "before it, so prior evidence is stale by construction and must be re-earned.",
+                    "before it, so prior evidence is stale by construction and must be re-earned " +
+                    "at a higher fidelity (HF3 matches the sibling OutputPlane rules).",
         ),
         EscalationRule(
             capability = "OutputPlane.read.cursor",

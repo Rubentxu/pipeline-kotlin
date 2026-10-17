@@ -1,6 +1,10 @@
 package dev.rubentxu.pipeline.v2.harness.lanes
 
 import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Fidelity
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.nio.file.Files
 import java.nio.file.Paths
 
@@ -30,6 +34,30 @@ import java.nio.file.Paths
  * real catalogue is exhaustive and non-empty` pins this
  * contract: the CLI and the test classpath agree on the
  * catalogue.
+ *
+ * BQ4 v27 (typed JSON output, 2026-10-17): the previous
+ * shape hand-rolled the JSON via
+ * `buildString { append("\"total_specs\": ${specs.size},\n") }`
+ * with `${a.contractId}` and `${a.reason}` interpolated as
+ * raw strings. The hand-rolled writer did NOT escape `"`
+ * or `\`; a contractId or reason containing one would have
+ * produced invalid JSON. The new shape is a typed
+ * [LaneReport] carrier with `@Serializable`; the library
+ * does proper escaping of all JSON special characters. The
+ * field declaration order of [LaneReport] matches the
+ * previous hand-rolled `buildString` order so the output
+ * JSON has the same field sequence. The map iteration
+ * order is preserved (the [LinkedHashMap] returned by
+ * [LanePlanner.partition] is iterated by the library in
+ * insertion order, which matches the previous
+ * `partition.entries.joinTo(...)` behaviour). The
+ * whitespace formatting changes: the typed encoder uses
+ * standard JSON (`": "` no space before the colon, `", "`
+ * space after the comma in arrays) instead of the
+ * previous `" : "` (space before colon) and `","` (no
+ * space after comma in arrays). The JSON is
+ * semantically equivalent; a `json.loads` consumer
+ * accepts both.
  */
 fun main(args: Array<String>) {
     var outputPath: String? = null
@@ -54,30 +82,77 @@ fun main(args: Array<String>) {
     val out = outputPath ?: "build/reports/lane-planner.json"
 
     val specs = realSpecsFromCatalogue()
-    val partition = LanePlanner.partition(specs)
-    val assignments = LanePlanner.assign(specs)
-
-    val body = buildString {
-        append("{\n")
-        append("  \"total_specs\": ${specs.size},\n")
-        append("  \"by_lane\": {\n")
-        partition.entries.joinTo(this, separator = ",\n") { (lane, ids) ->
-            val idsJson = ids.joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
-            "    \"${lane.name}\" : $idsJson"
-        }
-        append("\n  },\n")
-        append("  \"assignments\": [\n")
-        assignments.joinTo(this, separator = ",\n") { a ->
-            "    { \"contract_id\": \"${a.contractId}\", \"lane\": \"${a.lane.name}\", " +
-                "\"reason\": \"${a.reason}\" }"
-        }
-        append("\n  ]\n")
-        append("}\n")
-    }
+    val report = buildReport(specs)
+    val body = LANE_REPORT_JSON.encodeToString(report)
     val outPath = Paths.get(out)
     outPath.parent?.toFile()?.mkdirs()
     Files.writeString(outPath, body)
-    System.err.println("WROTE $outPath (total_specs=${specs.size}, lanes=${partition.size})")
+    System.err.println("WROTE $outPath (total_specs=${specs.size}, lanes=${report.byLane.size})")
+}
+
+/**
+ * The pure builder: takes the catalogue-derived specs and
+ * produces the typed [LaneReport]. The function is
+ * testable: callers (tests) inspect the typed value
+ * directly, not the JSON bytes.
+ */
+internal fun buildReport(specs: List<LaneSpec>): LaneReport {
+    val partition = LanePlanner.partition(specs)
+    val assignments = LanePlanner.assign(specs)
+    return LaneReport(
+        totalSpecs = specs.size,
+        byLane = partition,
+        assignments = assignments.map { a ->
+            LaneAssignmentReport(
+                contractId = a.contractId,
+                lane = a.lane,
+                reason = a.reason,
+            )
+        },
+    )
+}
+
+/**
+ * The typed JSON output shape. Field declaration order matches
+ * the previous hand-rolled `buildString` order
+ * (`total_specs`, `by_lane`, `assignments`) so the output JSON
+ * has the same field sequence. The `@SerialName` annotations
+ * use `snake_case` to match the previous wire format
+ * (`total_specs`, `by_lane`, `contract_id`).
+ */
+@Serializable
+data class LaneReport(
+    @SerialName("total_specs") val totalSpecs: Int,
+    @SerialName("by_lane") val byLane: Map<TestLane, List<String>>,
+    val assignments: List<LaneAssignmentReport>,
+) {
+    /**
+     * Encode the report with the CLI's [Json] config. Exposed
+     * for tests so they can drive the typed carrier end-to-end
+     * and assert on the JSON output (field names, escaping)
+     * without re-deriving the configuration.
+     */
+    fun toJsonString(): String = LANE_REPORT_JSON.encodeToString(this)
+}
+
+@Serializable
+data class LaneAssignmentReport(
+    @SerialName("contract_id") val contractId: String,
+    val lane: TestLane,
+    val reason: String,
+)
+
+/**
+ * The local `Json` configuration. Pretty-printed with 2-space
+ * indent to match the previous hand-rolled format (one level
+ * of indent per nesting level); the consumer is a developer
+ * reading the file, so the byte-level indentation is
+ * presentation only.
+ */
+private val LANE_REPORT_JSON: Json = Json {
+    prettyPrint = true
+    prettyPrintIndent = "  "
+    encodeDefaults = true
 }
 
 /**

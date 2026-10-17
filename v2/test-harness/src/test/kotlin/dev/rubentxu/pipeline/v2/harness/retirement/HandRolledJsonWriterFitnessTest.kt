@@ -76,7 +76,7 @@ class HandRolledJsonWriterFitnessTest {
         //      `InventoryClassifierMain` used.
         //   2. `replace("\"", "\\\"")` — the only escape
         //      the previous `jsonKey` function performed.
-        val buildStringWriter = Regex("""buildString\s*\{[^}]*append\(\s*\\"""")
+        val buildStringWriter = Regex("""buildString\s*\{[^}]*append\("""")
         val jsonKeyStyleEscape = Regex("""\.replace\(\s*"\\""\s*,\s*"\\\\\\""""")
         val blockComment = Regex("""/\*[\s\S]*?\*/""")
         val lineComment = Regex("""//[^\n]*""")

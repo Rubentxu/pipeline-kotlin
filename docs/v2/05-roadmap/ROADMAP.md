@@ -556,3 +556,30 @@ demuestra por sí solo el PRODUCT-GATE. Cada gate registra SHA y tree SHA, coman
 tests/fallos/errores/skipped, tareas ejecutadas y `UP-TO-DATE`, detekt y API check, cobertura cuando
 aplique, artefacto y SHA-256, UAT, mutaciones probadas, restricciones de plataforma, deuda abierta y
 resultado `PASS`/`FAIL`/`BLOCKED`/`NOT_RUN`.
+
+### 13.7 Plan `product-first` — propuesta ejecutora subordinada (2026-10-17)
+
+**Un único enlace, no un segundo backlog.** La secuencia `B0..B7` de esta sección sigue siendo la
+única autoritativa: este enlace no la reordena, no la sustituye y no crea un TODO paralelo. La
+propuesta se ejecuta *dentro* de los bloques que ya existen, usando su backlog y su ciclo SDDK.
+
+- Plan: [`PRODUCT_FIRST_PRODUCTION_READY_2026-10-17.md`](PRODUCT_FIRST_PRODUCTION_READY_2026-10-17.md) (H0..H5)
+- Especificación: [`PRODUCT_FIRST_MINIMUM_VERIFICATION_SPEC.md`](../03-specifications/PRODUCT_FIRST_MINIMUM_VERIFICATION_SPEC.md)
+- Decisión: [`ADR-PK-DF-002-bounded-validation-and-product-first.md`](../04-adrs/ADR-PK-DF-002-bounded-validation-and-product-first.md) — **`status: proposed`, NO ratificada**
+
+**Lo que la propuesta NO autoriza por existir aquí.** Copiar un ADR `proposed` a su ruta canónica no
+lo ratifica. Las enmiendas que `ADR-PK-DF-002` enumera (AGENTS.md, este ROADMAP,
+`RESPONSIBILITY_MIGRATION_ROADMAP.md` §4 y las specs `TEST_IMPACT_AND_EVIDENCE_SPEC`,
+`TEST_EXECUTION_LANES_SPEC`, `EPHEMERAL_CYCLE_LIFECYCLE_SPEC`) requieren decisión explícita del
+operador antes de que H0.4 pueda ejecutarse. Si una SPEC exige `CycleManifest`/`DeletionGuard` y la
+enmienda no está aprobada, el resultado es **bloqueo declarado**, nunca simular que la garantía existe.
+
+**Regla de poda con el nombre `harness` (medido, no supuesto).** `dev.rubentxu.pipeline.v2.harness` es
+un prefijo compartido por **tres** módulos — `:pipeline-event-harness` (que **se conserva**, alimenta
+`pipeline events verify`), `:test-harness` (que se corta) y el `harness/` propio de
+`:pipeline-application`. Ninguna poda puede guiarse por el nombre del paquete: se discrimina por
+**módulo** y por **sitio de import** (`MainEventsVerifyCli` pertenece al lado que se conserva).
+
+**Condición de reversión.** Si la poda obliga a construir `Harness2`, más ADTs o una segunda matriz de
+fidelidad, se revierte al contrato simple Gradle/JUnit. El objetivo declarado es menos infraestructura
+de pruebas, no una infraestructura nueva.

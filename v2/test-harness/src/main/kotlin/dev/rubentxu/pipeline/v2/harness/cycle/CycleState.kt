@@ -278,7 +278,19 @@ sealed interface CycleEvent {
     data object PrepareStarted : CycleEvent
     /** Emit ONLY when the probe returned [ProbeOutcome.Verified]. Other cases refuse. */
     data class ProbeFinished(val outcome: ProbeOutcome) : CycleEvent
-    data class AllProbesObserved(val observedCommit: String) : CycleEvent
+    data class AllProbesObserved(val observedCommit: String) : CycleEvent {
+        // BQ4 v17 (cycle event carrier self-protect,
+        // 2026-10-17): a blank `observedCommit` is the
+        // decider's record of "all probes observed
+        // against commit X" for a commit that has no
+        // SHA — a fabrication. The event refuses
+        // blanks at construction. The cycle runner
+        // always supplies a non-blank SHA via the
+        // CLI's --source-sha (strict-validated in
+        // CycleCli); a test or future consumer that
+        // bypasses the runner would now fail fast.
+        init { require(observedCommit.isNotBlank()) { "AllProbesObserved.observedCommit must not be blank" } }
+    }
     /**
      * The substitute guarantee the cycle retires with. The carrier
      * is a typed [PromotionEvidence] (a sealed interface with
@@ -290,6 +302,25 @@ sealed interface CycleEvent {
      * (the carrier's data class init refuses blanks).
      */
     data class PromoteRequested(val replacementEvidence: PromotionEvidence) : CycleEvent
-    data class CloseRequested(val closeReason: String) : CycleEvent
-    data class ExternalBlockerRaised(val blocker: String) : CycleEvent
+    data class CloseRequested(val closeReason: String) : CycleEvent {
+        // BQ4 v17 (cycle event carrier self-protect,
+        // 2026-10-17): a blank `closeReason` is the
+        // decider's record of "cycle closed because X"
+        // for a reason that has no content — a
+        // fabrication. The event refuses blanks at
+        // construction; the cycle runner always
+        // supplies a non-blank reason via
+        // [CycleRunner.requestClose] and the CLI's
+        // "cycle closed by CycleCli" message.
+        init { require(closeReason.isNotBlank()) { "CloseRequested.closeReason must not be blank" } }
+    }
+    data class ExternalBlockerRaised(val blocker: String) : CycleEvent {
+        // BQ4 v17 (cycle event carrier self-protect,
+        // 2026-10-17): a blank `blocker` is the
+        // decider's record of "cycle blocked on
+        // external authority X" for a blocker that
+        // has no name — a fabrication. The event
+        // refuses blanks at construction.
+        init { require(blocker.isNotBlank()) { "ExternalBlockerRaised.blocker must not be blank" } }
+    }
 }

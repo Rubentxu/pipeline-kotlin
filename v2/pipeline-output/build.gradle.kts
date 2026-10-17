@@ -24,7 +24,7 @@ dependencies {
     // byte range is not a domain concept, and depending on it would let event vocabulary leak
     // back in through a shared type.
     testImplementation(libs.junit.jupiter)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")
 }
 
 tasks.test {

@@ -47,7 +47,7 @@ fun main(args: Array<String>) {
         return
     }
 
-    val cycleDir = parsed.cycleDir ?: defaultCycleDir(parsed.cycleId)
+    val cycleDir = parsed.cycleDir
     ensureOutsideGitRepo(cycleDir)
 
     Files.createDirectories(
@@ -120,8 +120,8 @@ fun main(args: Array<String>) {
 private const val USAGE = """usage: CycleCliKt
     --cycle-id <id>           (required)
     --manifest <path>         (required; snake_case JSON)
-    [--cycle-dir <path>]      (default: workspace/.pipelinek-cycles/<cycle-id>/)
-    [--source-sha <40-hex>]   (default: 40 zeros, accept-only for now)
+    --cycle-dir <path>        (required; absolute path outside the Git working tree)
+    --source-sha <40-hex>     (required; 40-char lowercase hex SHA-1)
     [--repo-root <path>]      (default: current dir; for resolving evidence.sourcePath)
     [--oracle-ledger <path>]  (default: refuse all oracles; JSON file required for a Verified cycle)
     [--dry-run]               (do not call finalise; keep cycle dir for inspection)
@@ -130,7 +130,17 @@ private const val USAGE = """usage: CycleCliKt
 private data class CliArgs(
     val cycleId: String,
     val manifestPath: Path,
-    val cycleDir: Path?,
+    // BQ4 P0 (HITO 1 "errores veraces", 2026-10-17): the
+    // CLI now REFUSES a missing `--cycle-dir` at the
+    // argument boundary (parseArgs returns null with an
+    // error) and a missing `--source-sha` (same). The
+    // carrier therefore exposes non-nullable `cycleDir`
+    // and `sourceSha`; the previously-optional shapes
+    // were the surface for the silent zero-SHA / in-tree
+    // default-dir defaults the audit named. A cycle is
+    // either a complete invocation or a refused one; no
+    // third "synthesised placeholder" state.
+    val cycleDir: Path,
     val sourceSha: String,
     val repoRoot: Path?,
     val oracleLedgerPath: Path?,
@@ -141,7 +151,30 @@ private fun parseArgs(args: Array<String>): CliArgs? {
     var cycleId: String? = null
     var manifestPath: Path? = null
     var cycleDir: Path? = null
-    var sourceSha: String = "0".repeat(40)
+    // BQ4 P0 (HITO 1 "errores veraces", 2026-10-17): the
+    // previous shape defaulted `sourceSha` to `"0".repeat(40)`
+    // (40 hex zeros) and let the operator omit the flag. A
+    // missing `--source-sha` then reached the runner, was
+    // compared by string equality against the manifest's
+    // `boundCommit`, and produced `OtherCommit` — a refusal
+    // with the WRONG reason: the operator's "I forgot to
+    // pass --source-sha" looked like "the source SHA is
+    // not the bound one" (always true for the zero
+    // sentinel). The zero SHA is also exactly the wrong
+    // identity to feed `prepare()`'s `requireSha1`-checked
+    // diff. The CLI now refuses a missing `--source-sha`
+    // at the argument boundary (the operator sees a
+    // usage error) and never constructs a CliArgs with
+    // a zero placeholder. The `--cycle-dir` flag follows
+    // the same rule: the previous `defaultCycleDir()`
+    // fallback returned `workspace/.pipelinek-cycles/<id>`
+    // — a path inside the producer's Git working tree
+    // that `ensureOutsideGitRepo` immediately rejected,
+    // so the cycle never started but the operator saw a
+    // confusing "refuses to write inside Git" instead
+    // of "you forgot --cycle-dir". A missing
+    // `--cycle-dir` now exits 2 with a clear message.
+    var sourceSha: String? = null
     var repoRoot: Path? = null
     var oracleLedgerPath: Path? = null
     var dryRun = false
@@ -206,6 +239,14 @@ private fun parseArgs(args: Array<String>): CliArgs? {
         }
     }
     if (cycleId == null || manifestPath == null) return null
+    if (sourceSha == null) {
+        System.err.println("--source-sha is required (40-char lowercase hex SHA-1)")
+        return null
+    }
+    if (cycleDir == null) {
+        System.err.println("--cycle-dir is required (an explicit absolute path outside the Git working tree)")
+        return null
+    }
     return CliArgs(
         cycleId = cycleId,
         manifestPath = manifestPath,
@@ -234,10 +275,22 @@ private fun parseArgs(args: Array<String>): CliArgs? {
  * is now shared at `dev.rubentxu.pipeline.v2.harness.util.DigestFormat`;
  * the CLI is one of three call sites (CycleCli, GateCli,
  * HarnessVerdict) that previously had its own copy.
+ *
+ * BQ4 P0 (HITO 1 "errores veraces", 2026-10-17): the
+ * previous shape also had a `defaultCycleDir()` helper
+ * that returned `workspace/.pipelinek-cycles/<id>` —
+ * a path inside the producer's Git working tree. The
+ * CLI's `ensureOutsideGitRepo()` check then refused the
+ * call with a "refuses to write inside Git" message
+ * and exit 1, so the operator saw a confusing
+ * Git-conflict refusal when they had simply omitted
+ * `--cycle-dir`. The helper is removed; a missing
+ * `--cycle-dir` now exits 2 with the explicit "flag
+ * required" message and the typed `CliArgs` carrier
+ * is non-nullable for `cycleDir`. The same logic
+ * applies to `--source-sha`: the previous 40-zero
+ * sentinel is gone; a missing flag exits 2.
  */
-
-private fun defaultCycleDir(cycleId: String): Path =
-    Paths.get("workspace").resolve(".pipelinek-cycles").resolve(cycleId)
 
 /**
  * The cycle directory must live OUTSIDE the Git producer repo. We

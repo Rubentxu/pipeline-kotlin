@@ -80,11 +80,23 @@ val cycle by tasks.registering(JavaExec::class) {
 
     mainClass.set("dev.rubentxu.pipeline.v2.harness.cycle.CycleCliKt")
     classpath = sourceSets["main"].runtimeClasspath
-    // The CLI is opt-in: it requires --cycle-id and --manifest.
-    // When the operator runs `:test-harness:cycle`, Gradle will
-    // surface the CLI's argument error and exit 2. We do not
-    // pre-validate the args here to keep the task single-purpose.
-    isIgnoreExitValue = true
+    // BQ4 P0 (HITO 1 "errores veraces", 2026-10-17): the
+    // previous shape had `isIgnoreExitValue = true` and
+    // justified it as "let Gradle surface the CLI's
+    // argument error and exit 2". That is the bug: a
+    // cycle that fails for a real reason (oracle refused,
+    // source SHA mismatch, evidence digest invalid) also
+    // exits non-zero, and the `true` swallowed that as
+    // silently as the `2` from missing args. The CLI now
+    // refuses missing required flags (`--cycle-id`,
+    // `--manifest`, `--cycle-dir`, `--source-sha`) at
+    // the argument boundary with exit 2, and the Gradle
+    // task lets every non-zero exit propagate as a
+    // build failure. The contract is: `:test-harness:cycle`
+    // exits 0 iff the cycle completed and reached a
+    // verdicted terminal state; any other exit is a
+    // refusal the operator must read.
+    isIgnoreExitValue = false
 }
 
 // ---------------------------------------------------------------------------------------------

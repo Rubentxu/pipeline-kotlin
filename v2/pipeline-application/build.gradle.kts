@@ -128,6 +128,61 @@ sourceSets.main {
     resources.srcDir(generateVersionResource)
 }
 
+// FAST-LANE SPLIT (2026-10-17). Read the FAST-LANE INVARIANT note on `tasks.test`
+// for the defect this removes.
+//
+// Three certification suites compile against the external example plugin JARs:
+// `UppercaseStepContractSuiteTest`, `ExampleBlockPluginCertificationTest` and
+// `DirectivePluginContractSuiteTest`. They are in-process certification runs of the
+// PRODUCTION engine against a real plugin -- they import 25-40 production classes each
+// (`CanonicalDurableRunCoordinator`, `StepRegistry`, the DSL, the domain nodes) -- so
+// they belong in this module and cannot live in the plugin's own build, which compiles
+// against the published SDK and never sees the coordinator.
+//
+// Their COMPILE classpath therefore needs the plugin JARs, and those JARs are produced by
+// an `Exec` task that forks a second Gradle against `build/sdk-repo`. While they sat in
+// the `test` source set, that made the inner loop pay for external certification on every
+// `pipeline-domain` edit -- the SDK is republished six times over and a second Gradle is
+// forked -- which is the exact cost the H1 TODO 3 comment claimed the fast lane did not
+// have.
+//
+// The split is by SOURCE SET and NOT by duplication. `pluginContractTest` extends
+// `testImplementation`, so it inherits junit, coroutines and the step-sdk plugins, and it
+// additionally consumes `sourceSets.test.output`: the shared `CoordinatorFixture` (168
+// lines, used by 31 classes) stays compiled once in `test` and is reused. Copying it would
+// have been the cheaper-looking edit and the more expensive one to maintain.
+val pluginContractTest: SourceSet by sourceSets.creating {
+    // `main.output` is added EXPLICITLY: the java plugin wires it into the `test` source
+    // set as a SourceSet-level entry, not as a member of `testCompileClasspath`, so a
+    // source set created by hand inherits none of it. Without this line every production
+    // class in the module -- the coordinator, the registry factory, the credential port --
+    // resolves as Unresolved, which is a loud and instantly diagnosable failure.
+    compileClasspath += sourceSets["main"].output +
+        sourceSets["test"].output +
+        configurations["testCompileClasspath"]
+    runtimeClasspath += output + compileClasspath
+}
+configurations["pluginContractTestImplementation"].extendsFrom(configurations["testImplementation"])
+configurations["pluginContractTestRuntimeOnly"].extendsFrom(configurations["testRuntimeOnly"])
+
+dependencies {
+    // The shared test fixtures, compiled once by `test`.
+    "pluginContractTestImplementation"(sourceSets["test"].output)
+
+    // The three external example plugin JARs. Declared as a buildable file collection
+    // over the Exec tasks that produce them, so the task dependency is carried BY THE
+    // DEPENDENCY rather than by a hand-written `dependsOn` in another file. That is what
+    // makes the fast-lane invariant meaningful: the only thing that can pull a plugin
+    // build into this module is this declaration, in the lane that needs it.
+    "pluginContractTestImplementation"(
+        files(
+            rootProject.tasks.named("buildExamplePlugin"),
+            rootProject.tasks.named("buildExternalDirectivePlugin"),
+            rootProject.tasks.named("buildExampleBlockPlugin"),
+        ),
+    )
+}
+
 dependencies {
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-events"))
@@ -195,17 +250,11 @@ dependencies {
     testImplementation(project(":pipeline-step-sdk:http"))
     // F5.2: JUnit OFFICIAL_PLUGIN (typed report summary + XXE-hardened parser).
     testImplementation(project(":pipeline-step-sdk:junit"))
-    // LB-02 / Lane R: external plugin under certification (example.uppercase) — the
-    // same JAR the installed distribution hosts via --plugin-jar. Test classpath only.
-    // Produced by :buildExamplePlugin from THIS revision's SDK; not a committed artifact.
-    testImplementation(files(rootDir.resolve("../examples/example-uppercase-plugin/build/libs/example-uppercase-plugin-0.1.0.jar")))
-    // S1-D: external directive plugin under certification (example.lock/acme.lock) —
-    // same pattern: real JAR from THIS revision's SDK, test classpath only.
-    testImplementation(files(rootDir.resolve("../examples/example-directive-plugin/build/libs/example-directive-plugin-0.1.0.jar")))
-    // WU-RP-035 / slice D: external BODY plugin under certification (example.repeat) —
-    // its handler drives its own body through the bound continuation. Real JAR from THIS
-    // revision's SDK, test classpath only.
-    testImplementation(files(rootDir.resolve("../examples/example-block-plugin/build/libs/example-block-plugin-0.1.0.jar")))
+    // The three external example plugin JARs are NOT on the fast lane's compile
+    // classpath. The suites that compile against them live in the `pluginContractTest`
+    // source set (FAST-LANE SPLIT above); declaring the JARs here is what forced the
+    // inner loop to build them. example.uppercase / example.lock /
+    // example.repeat are unchanged in substance and are still certified, by `check`.[[
     // Override BOM-enforced wrong version (junit-platform-launcher uses 1.x not 5.x)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 }
@@ -291,6 +340,45 @@ tasks.test {
     // adds the three plugin builds to its own `dependsOn` so the
     // gate always sees a fresh artifact set.
     mustRunAfter(":buildExamplePlugin", ":buildExternalDirectivePlugin", ":buildExampleBlockPlugin")
+
+    // FAST-LANE INVARIANT (2026-10-17). The comment block above states the fast lane
+    // MUST NOT pay for the three external plugin builds, and the ROOT build made it pay
+    // anyway: `tasks.named("test") { dependsOn(buildExamplePlugin) }`. `mustRunAfter`
+    // does not survive a `dependsOn` from anywhere in the build -- the dependency wins,
+    // the plugin builds are scheduled, and every inner-loop run on a `pipeline-domain`
+    // edit republished six SDK modules to `build/sdk-repo` and forked a second Gradle.
+    //
+    // This asserts the RESOLVED task graph rather than the text, because the text is
+    // what disagreed with reality in the first place: the two wirings lived in different
+    // files, so a reviewer reading either one saw a build that does not exist.
+    // `taskDependencies` is fully resolved by execution time.
+    //
+    // LIMITATION, stated rather than implied: `doFirst` runs only when `:test` actually
+    // executes. If the task is UP-TO-DATE the check is skipped -- the benign direction,
+    // because a regression that adds a `dependsOn` also changes what must be scheduled.
+    // It cannot certify the invariant; it can only refuse to let it pass silently on a
+    // run that happened anyway.
+    doFirst {
+        val externalPluginBuilds = setOf(
+            ":buildExamplePlugin",
+            ":buildExternalDirectivePlugin",
+            ":buildExampleBlockPlugin",
+            ":publishSdkForExternalPlugin",
+        )
+        val leaked = taskDependencies.getDependencies(this)
+            .map { it.path }
+            .filter { it in externalPluginBuilds }
+            .sorted()
+        check(leaked.isEmpty()) {
+            "the fast lane :test must not depend on the external plugin builds. Resolved " +
+                "graph leaks: $leaked. Those tasks republish the SDK to build/sdk-repo and " +
+                "fork a second Gradle, so every inner-loop run after a pipeline-domain " +
+                "edit pays for external plugin certification. The plugin-coupled " +
+                "certification suites belong to the pluginContractTest lane, which builds " +
+                "them from the file collection in its own dependency block. See the " +
+                "FAST-LANE INVARIANT note above."
+        }
+    }
 
     // BLOCK 2.5 / PK-R1: DirectivePluginShaReproducibilityTest rebuilds the example directive
     // plugin from a clean state, and the rebuild resolves its pipeline-domain coordinate from
@@ -403,6 +491,30 @@ tasks.test {
             excludeTags("release-scale")
         }
     }
+}
+
+// The plugin-certification lane. It owns the three external example plugin JARs: they
+// are on ITS compile classpath and it builds them, through the buildable file collection
+// declared in the FAST-LANE SPLIT block. No wiring from the root build is involved, and
+// none is needed -- the dependency travels with the declaration that requires it.
+//
+// It is wired into `check`, so the gate still certifies the plugins exactly as before.
+// The suites were never optional; what changed is that the INNER LOOP stopped paying.
+tasks.register<Test>("pluginContractTest") {
+    group = "verification"
+    description = "Certifies the external example plugins against the production engine (HF1)."
+    testClassesDirs = pluginContractTest.output.classesDirs
+    classpath = pluginContractTest.runtimeClasspath
+    useJUnitPlatform()
+    // Same fork economy as the other lanes in this module: one fork at a time.
+    maxParallelForks = 1
+    forkEvery = 1
+}
+
+// `check` must carry the plugin certification, or the split would have quietly retired
+// the guarantee instead of relocating it.
+tasks.named("check") {
+    dependsOn(tasks.named("pluginContractTest"))
 }
 
 // BQ2 (2026-10-16 audit): a separate task for the installed-CLI

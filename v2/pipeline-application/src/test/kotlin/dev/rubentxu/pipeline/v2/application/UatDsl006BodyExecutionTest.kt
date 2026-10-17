@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.events.StepStarted
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Tag
+import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.Disabled
@@ -51,12 +52,20 @@ class UatDsl006BodyExecutionTest {
     private val appBin: Path by lazy { AppBinSupport.discover() }
 
     /**
-     * Creates a temporary pipeline script file.
+     * Scratch for the pipeline scripts this test writes, owned by the test that writes them.
+     *
+     * The name is an index rather than a timestamp so a failure names the same file on a re-run,
+     * which is the whole point of reproducible evidence.
      */
+    @TempDir
+    lateinit var scratch: Path
+    private var scriptOrdinal = 0
+
+    /** Write one pipeline script into [scratch]; the test's lifetime is its own. */
     private fun tempScript(content: String): Path {
-        val temp = Files.createTempFile("body-exec-", ".pipeline.kts")
-        Files.writeString(temp, content)
-        return temp
+        val script = scratch.resolve("body-exec-${scriptOrdinal++}.pipeline.kts")
+        Files.writeString(script, content)
+        return script
     }
 
     /**

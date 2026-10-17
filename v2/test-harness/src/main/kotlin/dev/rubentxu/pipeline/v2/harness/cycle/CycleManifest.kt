@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.harness.cycle
 
+import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Fidelity
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -52,8 +53,8 @@ data class CycleManifest(
         require(sourceSha.length == 40) {
             "sourceSha must be a 40-char SHA-1 hex; got ${sourceSha.length} chars"
         }
-        require(expectedHF in ALLOWED_FIDELITIES) {
-            "expectedHF must be one of $ALLOWED_FIDELITIES; got '$expectedHF'"
+        require(expectedHF in ALLOWED_FIDELITY_NAMES) {
+            "expectedHF must be one of $ALLOWED_FIDELITY_NAMES; got '$expectedHF'"
         }
         require(isolationPolicy == "cycleDirOnly") {
             "the only supported isolationPolicy is 'cycleDirOnly'; got '$isolationPolicy'"
@@ -68,14 +69,33 @@ data class CycleManifest(
         }
     }
 
+    /**
+     * The typed view of [expectedHF].
+     *
+     * The wire field stays a [String] for round-trip with the JSON
+     * consumer; this accessor parses the validated string into the
+     * closed [Fidelity] enum the runner and the verifier match on.
+     * The [init] guarantees the string is in [ALLOWED_FIDELITIES]
+     * before this is ever called, so [Fidelity.valueOf] cannot throw.
+     */
+    val expectedFidelity: Fidelity
+        get() = Fidelity.valueOf(expectedHF)
+
     companion object {
         /**
-         * The fidelities this vertical supports. HF2..HF6 are explicitly
-         * refused by the runner before any I/O; the
-         * [dev.rubentxu.pipeline.v2.harness.cycle.ProbeExecutor] returns
+         * The fidelities this vertical supports, as their wire-format
+         * name (HF0/HF1). HF2..HF6 are explicitly refused by the
+         * runner before any I/O; the [ProbeExecutor] returns
          * `UnsupportedFidelity` for any `expectedHF` not in this set.
          */
-        val ALLOWED_FIDELITIES: Set<String> = setOf("HF0", "HF1")
+        val ALLOWED_FIDELITY_NAMES: Set<String> = setOf("HF0", "HF1")
+
+        /**
+         * The same set as [ALLOWED_FIDELITY_NAMES], typed. The
+         * [init] validates the string and the dispatcher matches
+         * the enum; this is the single source of truth for both.
+         */
+        val ALLOWED_FIDELITIES: Set<Fidelity> = setOf(Fidelity.HF0, Fidelity.HF1)
     }
 }
 

@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.harness.cycle
 
+import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Fidelity
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -40,7 +41,7 @@ sealed interface PromotionEvidence {
     val boundCommit: String
 
     /** The fidelity the evidence is proven at. HF label. */
-    val fidelity: String
+    val fidelity: Fidelity
 
     /** The test that proves the contract. */
     val oracle: OracleRef
@@ -61,7 +62,7 @@ sealed interface PromotionEvidence {
         @SerialName("bound_commit") override val boundCommit: String,
         @SerialName("source_path") val sourcePath: String,
         @SerialName("content_digest") val contentDigest: String,
-        @SerialName("fidelity") override val fidelity: String,
+        @SerialName("fidelity") override val fidelity: Fidelity,
         @SerialName("oracle") override val oracle: OracleRef,
     ) : PromotionEvidence {
         init {
@@ -82,7 +83,6 @@ sealed interface PromotionEvidence {
             require(contentDigest.all { it in '0'..'9' || it in 'a'..'f' }) {
                 "PermanentContract.contentDigest must be lowercase hex; got '$contentDigest'"
             }
-            require(fidelity.isNotBlank()) { "PermanentContract.fidelity must not be blank" }
         }
     }
 
@@ -104,7 +104,7 @@ sealed interface PromotionEvidence {
         @SerialName("receipt_id") val receiptId: String,
         @SerialName("signed_commit") override val boundCommit: String,
         @SerialName("receipt_digest") val receiptDigest: String,
-        @SerialName("fidelity") override val fidelity: String,
+        @SerialName("fidelity") override val fidelity: Fidelity,
         @SerialName("oracle") override val oracle: OracleRef,
     ) : PromotionEvidence {
         init {
@@ -121,7 +121,6 @@ sealed interface PromotionEvidence {
             require(receiptDigest.all { it in '0'..'9' || it in 'a'..'f' }) {
                 "CertifierReceipt.receiptDigest must be lowercase hex; got '$receiptDigest'"
             }
-            require(fidelity.isNotBlank()) { "CertifierReceipt.fidelity must not be blank" }
         }
     }
 }

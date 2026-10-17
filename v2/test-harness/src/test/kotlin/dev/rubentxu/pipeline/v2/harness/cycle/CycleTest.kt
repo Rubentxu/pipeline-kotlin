@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.harness.cycle
 
+import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Fidelity
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -23,7 +24,7 @@ class CycleTest {
             boundCommit = boundCommit,
             sourcePath = "test/Contract.kt",
             contentDigest = "0".repeat(64),
-            fidelity = "HF0",
+            fidelity = Fidelity.HF0,
             oracle = OracleRef.Fitness("test.fixture", ":test-harness"),
         )
 

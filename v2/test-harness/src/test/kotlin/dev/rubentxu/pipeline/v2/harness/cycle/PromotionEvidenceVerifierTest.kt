@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.harness.cycle
 
+import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Fidelity
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -33,7 +34,7 @@ import java.security.MessageDigest
 class PromotionEvidenceVerifierTest {
 
     private val runnerSourceSha = "0123456789abcdef0123456789abcdef01234567"
-    private val manifestExpectedHF = "HF0"
+    private val manifestExpectedHF = Fidelity.HF0
     private val oracle = OracleRef.Fitness("VerifierTest.fixture", ":test-harness")
 
     private fun sha256HexOfFile(path: Path): String {
@@ -126,13 +127,13 @@ class PromotionEvidenceVerifierTest {
             boundCommit = runnerSourceSha,
             sourcePath = "MyContract.kt",
             contentDigest = digest,
-            fidelity = "HF1",
+            fidelity = Fidelity.HF1,
             oracle = oracle,
         )
         val verdict = PromotionEvidenceVerifier.verify(
             evidence = evidence,
             runnerSourceSha = runnerSourceSha,
-            manifestExpectedHF = "HF0",
+            manifestExpectedHF = Fidelity.HF0,
             repoRoot = tmp,
             oracleLedger = ledgerSaying(pass = true),
         )
@@ -140,8 +141,8 @@ class PromotionEvidenceVerifierTest {
             "got $verdict"
         }
         val refused = verdict as PromotionEvidenceVerifier.Verdict.Refused.FidelityMismatch
-        assertEquals("HF1", refused.observed)
-        assertEquals("HF0", refused.expected)
+        assertEquals(Fidelity.HF1, refused.observed)
+        assertEquals(Fidelity.HF0, refused.expected)
     }
 
     @Test
@@ -318,7 +319,7 @@ class PromotionEvidenceVerifierTest {
             boundCommit = "fedcba9876543210fedcba9876543210fedcba98",
             sourcePath = "MyContract.kt",
             contentDigest = digest,
-            fidelity = "HF5",
+            fidelity = Fidelity.HF5,
             oracle = oracle,
         )
         val verdict = PromotionEvidenceVerifier.verify(

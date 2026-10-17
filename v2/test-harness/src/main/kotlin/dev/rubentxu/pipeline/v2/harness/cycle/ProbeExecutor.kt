@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.harness.cycle
 
 import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue
+import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Fidelity
 import dev.rubentxu.pipeline.v2.harness.plan.ImpactResolver
 import dev.rubentxu.pipeline.v2.harness.plan.ValidationPlan
 import java.nio.file.Files
@@ -223,15 +224,29 @@ open class ProbeExecutor(
         // forced to declare its `persist` override, and the
         // `finalise` digest check will fail loudly if the JSON
         // was never written.
-        val raw = when (manifest.expectedHF) {
-            "HF0" -> runHF0(probe, manifest)
-            "HF1" -> ProbeOutcome.BlockedExternal(
+        val raw = when (manifest.expectedFidelity) {
+            // BQ4 fidelity (2026-10-17): the previous shape
+            // matched the wire string `"HF0"` / `"HF1"` and
+            // had a bare `else` for the rest. A typo at the
+            // wire (e.g. "hf0" lowercase) would silently fall
+            // to `else` and surface as `UnsupportedFidelity`
+            // — the dual emitter/parser defect class. The
+            // manifest's [init] now guarantees the string is
+            // one of [CycleManifest.ALLOWED_FIDELITIES] and
+            // [CycleManifest.expectedFidelity] parses it to
+            // the typed [Fidelity] enum, so the match is
+            // exhaustive and the compiler forces a branch
+            // for every case (HF2..HF6 land in the
+            // `UnsupportedFidelity` arm).
+            Fidelity.HF0 -> runHF0(probe, manifest)
+            Fidelity.HF1 -> ProbeOutcome.BlockedExternal(
                 evidenceRef = "",
                 blocker = "HF1 product-side executor not wired in this vertical; " +
                     "the CLI must supply a custom ProbeExecutor that invokes " +
                     "CanonicalDurableRunCoordinator for HF1 probes",
             )
-            else -> ProbeOutcome.UnsupportedFidelity(manifest.expectedHF)
+            Fidelity.HF2, Fidelity.HF3, Fidelity.HF4, Fidelity.HF5, Fidelity.HF6 ->
+                ProbeOutcome.UnsupportedFidelity(manifest.expectedHF)
         }
         // The only outcome that needs persist is the HF0 happy
         // path, where `runHF0` returns `Verified(PENDING_EVIDENCE_REF)`.

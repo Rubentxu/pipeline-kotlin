@@ -46,19 +46,27 @@ set dotenv-load := false
     ./scripts/sandbox/run-uat.sh
 
 @uat-local-010:
-    devbox run -- ./gradlew -p v2 :pipeline-application:test --tests 'UatLocal010*'
+    devbox run -- v2/gradlew -p v2 :pipeline-application:test --tests 'UatLocal010*'
 
 # ─── test efficiency (AGENTS.md rules 2/4/11/17) ─────────────────
 
 # Inner loop: single test by pattern, fixed 600s
 @t pattern:
-    timeout 600 ./gradlew -p v2 :pipeline-application:test --tests '{{pattern}}'
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+    # Own the results dir: a leftover XML from an earlier run would otherwise be summed into
+    # the verdict below and mask a skip (rule 25's canary, applied to the whole directory).
+    rm -rf v2/pipeline-application/build/test-results/test
+    timeout 600 v2/gradlew -p v2 :pipeline-application:test --tests '{{pattern}}' \
+      -PpipelineTestForkEvery=0
+    # A filter that selected only disabled tests exits 0. See scripts/assert-test-evidence.sh.
+    ./scripts/assert-test-evidence.sh v2/pipeline-application/build/test-results/test
 
 # WU-RP-005: application inner loop, excludes the two most expensive CLI-fork
 # classes (UatDsl003ParallelTest 65s, UatLocal010SmokeE2ESandboxTest 34s).
 # Those run only in gate-app / round gate. Budget 900s.
 @app-fast budget="900":
-    timeout {{budget}} ./gradlew -p v2 :pipeline-application:test \
+    timeout {{budget}} v2/gradlew -p v2 :pipeline-application:test \
       --tests 'dev.rubentxu.pipeline.v2.application.*' \
       --tests '!dev.rubentxu.pipeline.v2.application.UatDsl003ParallelTest*' \
       --tests '!dev.rubentxu.pipeline.v2.application.UatLocal010SmokeE2ESandboxTest*'
@@ -66,22 +74,25 @@ set dotenv-load := false
 # WU-RP-005: full application-module gate (L3 round-gate equivalent) before
 # pushing WUs that touch pipeline-application. Budget 1500s.
 @gate-app budget="1500":
-    timeout {{budget}} ./gradlew -p v2 :pipeline-application:test
+    timeout {{budget}} v2/gradlew -p v2 :pipeline-application:test
 
 # Round gate: incremental by default (1s when nothing changed since last green)
 @gate budget="1270":
-    timeout {{budget}} ./gradlew -p v2 check
+    timeout {{budget}} v2/gradlew -p v2 check
 
 # Escalation only: after a killed run or suspected stale green (rule 2)
 @gate-escalate budget="1270":
-    timeout {{budget}} ./gradlew -p v2 check --rerun-tasks
+    timeout {{budget}} v2/gradlew -p v2 check --rerun-tasks
 
 # Single corpus fixture by number 1..13, e.g.: just corpus 11
 @corpus n:
     #!/usr/bin/env bash
     set -Eeuo pipefail
     nn=$(printf '%02d' "{{n}}")
-    timeout 600 ./gradlew -p v2 :pipeline-application:test --tests "CompatibilityCorpusTest.fixture${nn}*"
+    rm -rf v2/pipeline-application/build/test-results/test
+    timeout 600 v2/gradlew -p v2 :pipeline-application:test --tests "CompatibilityCorpusTest.fixture${nn}*" \
+      -PpipelineTestForkEvery=0
+    ./scripts/assert-test-evidence.sh v2/pipeline-application/build/test-results/test
 
 # Change-driven selection: which tests does my diff touch? (rule 17)
 @changed base="HEAD":
@@ -110,9 +121,9 @@ set dotenv-load := false
             v2/*) tasks[":$(echo "$f" | cut -d/ -f2):test"]=1; docs_only=0 ;;
         esac
     done <<< "$files"
-    for t in "${!tasks[@]}"; do echo "timeout 600 ./gradlew -p v2 $t"; done
+    for t in "${!tasks[@]}"; do echo "timeout 600 v2/gradlew -p v2 $t"; done
     if [[ $corpus -eq 1 ]]; then
-        echo "timeout 600 ./gradlew -p v2 :pipeline-application:test --tests 'CompatibilityCorpusTest'  # or single fixture: just corpus <n>"
+        echo "timeout 600 v2/gradlew -p v2 :pipeline-application:test --tests 'CompatibilityCorpusTest'  # or single fixture: just corpus <n>"
     fi
     if [[ $docs_only -eq 1 ]]; then
         echo "docs-only change: markdown/link validation suffices"

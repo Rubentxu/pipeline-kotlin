@@ -57,11 +57,17 @@ sealed interface ExitVerdict {
 
         /** The cycle ran but no probe produced verifiable evidence. Not retriable blindly. */
         data class NoEvidence(override val reason: String) : Refusal {
+            // BQ4 v11 (cycle carrier self-protect, 2026-10-17):
+            // a blank reason would be the operator-facing
+            // diagnostic's fabrication. The carrier refuses
+            // blanks at construction with a precise message.
+            init { require(reason.isNotBlank()) { "NoEvidence.reason must not be blank" } }
             override val exitCode: Int = 1
         }
 
         /** The cycle is not authorised against the source commit the runner saw. */
         data class OtherCommit(override val reason: String) : Refusal {
+            init { require(reason.isNotBlank()) { "OtherCommit.reason must not be blank" } }
             override val exitCode: Int = 1
         }
 
@@ -73,11 +79,13 @@ sealed interface ExitVerdict {
          * separately from a generic `1`.
          */
         data class UnsupportedFidelity(override val reason: String) : Refusal {
+            init { require(reason.isNotBlank()) { "UnsupportedFidelity.reason must not be blank" } }
             override val exitCode: Int = 64
         }
 
         /** The cycle failed for any other reason named by [reason]. */
         data class Generic(override val reason: String) : Refusal {
+            init { require(reason.isNotBlank()) { "Generic.reason must not be blank" } }
             override val exitCode: Int = 1
         }
     }
@@ -89,6 +97,7 @@ sealed interface ExitVerdict {
      * it red.
      */
     data class BlockedExternal(val reason: String) : ExitVerdict {
+        init { require(reason.isNotBlank()) { "BlockedExternal.reason must not be blank" } }
         override val exitCode: Int = 75
     }
 
@@ -99,6 +108,7 @@ sealed interface ExitVerdict {
      * re-discover the missing case from logs.
      */
     data class Incomplete(val reason: String) : ExitVerdict {
+        init { require(reason.isNotBlank()) { "Incomplete.reason must not be blank" } }
         override val exitCode: Int = 1
     }
 

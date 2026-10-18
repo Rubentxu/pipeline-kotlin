@@ -75,10 +75,41 @@ dangerous), and I had planned for the wrong one.
   Step-contract sites, it is the only one whose Step exercises retry or
   waitUntil semantics; the rest need a coordinator for unrelated reasons and
   are unaffected.
-- **The journal-bound production path has in-process coverage only where a
-  test forks the real CLI** — `UatRetryBlockDurableTest` (`WL-R2`, `WL-R3`)
-  and `UatLocal011WorkflowControlTest` (`SC-011-07/08/12`). No in-process
-  test crosses `RetryEngine`/`WaitUntilEngine` in production composition.
+- **The journal-bound production path had no composition coverage.** This
+  needs its denominator stated, because an earlier version of this section
+  said the engines had no in-process coverage at all, and that was false:
+  `WULpr302RetryEngineTest` (`RetryEngine(` at :535) and
+  `WULpr302WaitUntilEngineTest` (`WaitUntilEngine(` at :581) construct and
+  exercise each engine directly, in isolation from the coordinator: each
+  names `BlockStepNode` and constructs **zero**
+  `CanonicalDurableRunCoordinator(`. They are 2 of the 22 such files in the
+  sweep below, not a population of their own.
+
+  What was actually missing is narrower and is what this block closed: **no
+  in-process test drove a coordinator across the branch in production
+  composition**, i.e. binding the journal and letting `BodyExecutionEngine`
+  select the engine. Both engines were unit-tested and the seam between them
+  and the dispatcher was not.
+- **The population, and the instrument that measures it.** Over every
+  `src/test/kotlin` under `v2/` (two module levels included), excluding
+  `**/build/**`:
+
+  | predicate | count |
+  | --- | --- |
+  | files mentioning `BlockStepNode` | 33 |
+  | …that also construct a `CanonicalDurableRunCoordinator(` | 11 |
+  | …that also name `core.retry` or `core.waitUntil` | **4** |
+
+  The third row is the denominator §4 acts on; §4 names the four classes and
+  owns the decision about each one. The instrument is stated because the
+  two-term version is **misleading by a factor of nearly three**: 7 of the 11
+  coordinator files construct `BlockStepNode` for a *different* Step key —
+  external body Steps, `LockFeasibilityProofTest`, `B11ContextBlocksRuntimeTest`
+  — so "a test that builds a BlockStepNode and a coordinator" would pull in 7
+  classes that never reach a retry or waitUntil branch. An earlier version of
+  this section quoted the two-term figure and its "14 further candidates";
+  both numbers were wrong (22 of the 33 mention `BlockStepNode` without a
+  coordinator, and the two-term intersection is 11, not 4).
 
 ## 4. The block this actually unblocks
 

@@ -32,14 +32,22 @@ class FArchS0SurfaceManifestTest {
     // Manifest location
     // ------------------------------------------------------------------
 
-    private fun manifestFile(): File {
+    private fun manifestFile(): File = repoFile("docs/v2/surface/DSL_SURFACE_MANIFEST.md")
+
+    /**
+     * Locate a repo-relative file by walking up from the working directory.
+     *
+     * AGENTS.md is an input here, declared like the manifest is: without it the Gradle
+     * up-to-date check cannot see that the census table changed.
+     */
+    private fun repoFile(relative: String): File {
         var dir = File(System.getProperty("user.dir"))
         repeat(6) {
-            val candidate = File(dir, "docs/v2/surface/DSL_SURFACE_MANIFEST.md")
+            val candidate = File(dir, relative)
             if (candidate.isFile) return candidate
             dir = dir.parentFile ?: return@repeat
         }
-        error("DSL_SURFACE_MANIFEST.md not found upward from ${System.getProperty("user.dir")}")
+        error("$relative not found upward from ${System.getProperty("user.dir")}")
     }
 
     private data class Row(
@@ -198,6 +206,18 @@ class FArchS0SurfaceManifestTest {
         val staleRowAllowlist = setOf("retry conditions")
         val nameNormalization = mapOf("retry (retrofit)" to "retry")
         val missing = loadRows()
+            // A construct contributed by an external plugin is not a member of the core
+            // scopes this test reflects over: its builder lives in the plugin's own JAR,
+            // which this module does not put on the reflection classpath. Skipping these
+            // is a scope boundary, not an allowlist entry — the manifest marks them with
+            // OFFICIAL_PLUGIN in the interpreter column, so the exclusion is data the
+            // manifest itself carries and cannot be added by editing this test.
+            //
+            // `httpRequest` is the first row that reached here at all: until 2026-10-18 it
+            // was invisible to the manifest model (its interpreter cell contained a literal
+            // `|`, so the six-cell parse dropped it), which meant no law in this file
+            // applied to it — not this one, not the category law, not the fail-closed law.
+            .filter { !it.interpreter.contains("OFFICIAL_PLUGIN") }
             .map { it.construct }
             .filter { it !in staleRowAllowlist }
             .map { nameNormalization[it] ?: it }
@@ -571,6 +591,108 @@ class FArchS0SurfaceManifestTest {
         return generateSequence(declaring) {
             it.supertypes.firstNotNullOfOrNull { s -> s.classifier as? kotlin.reflect.KClass<*> }
         }.any { it.annotations.any { a -> a.annotationClass.qualifiedName == marker } }
+    }
+
+    // ------------------------------------------------------------------
+    // The census: AGENTS.md's population figures, measured rather than asserted
+    // ------------------------------------------------------------------
+
+    /**
+     * AGENTS.md states how many constructs the manifest carries. Those numbers were
+     * 50 / 3 until 2026-10-18 and were wrong in both directions, because nothing
+     * recomputed them: 53 constructs are in the five, and the two fail-closed rows
+     * are `retry (retrofit)` and `retry conditions` — `agent` had been counted as a
+     * fail-closed stub years after it became a stable directive.
+     *
+     * This row makes the number a measurement. A census without its denominator
+     * cannot be audited, and a census nobody recomputes is a census nobody checked.
+     *
+     * It also catches a failure mode the other rows here cannot see. [loadRows] drops
+     * any row that does not split into exactly six cells, so a construct row whose
+     * interpreter cell contains a literal `|` vanishes from the manifest model — with
+     * its category and its state — and every per-row law above quietly stops applying
+     * to it. That is exactly what happened to `httpRequest` until 2026-10-18: its
+     * interpreter cell embedded `matrix: httpRequest | OFFICIAL_PLUGIN candidate`, a
+     * nested table, and the row has been outside the Semantic Conservation Law's reach
+     * for as long as it has existed. A dropped row shows up HERE as a one-off census
+     * drift, which is the only place it is visible.
+     *
+     * The parse is deliberately strict: a missing or renamed table is a FAILURE, not
+     * a silent skip. A fitness that cannot find its subject passes vacuously, and a
+     * vacuous guard is indistinguishable from a working one until the day it matters.
+     */
+    @Test
+    fun `AGENTS census figures equal the measured manifest population`() {
+        val rows = loadRows()
+        val five = setOf(
+            "DECLARATIVE_DIRECTIVE", "ATOMIC_STEP", "BLOCK_STEP",
+            "PURE_BUILDER", "SCRIPTED_RUNTIME_CALL",
+        )
+        val measured = mapOf(
+            "constructs in the five" to rows.count { it.category in five },
+            "UNSUPPORTED_FAIL_CLOSED" to rows.count { it.category == "UNSUPPORTED_FAIL_CLOSED" },
+            "unclassified" to rows.count { it.category !in five && it.category != "UNSUPPORTED_FAIL_CLOSED" },
+        )
+        val declared = censusTable()
+        for ((label, count) in measured) {
+            val published = declared[label]
+                ?: error("AGENTS.md census table has no '$label' row; the table must stay parseable")
+            check(published == count) {
+                "AGENTS.md publishes $published for '$label' but DSL_SURFACE_MANIFEST.md measures $count. " +
+                    "Either the manifest changed and the census was not restated, or the census was edited " +
+                    "without the manifest. Measured breakdown: $measured"
+            }
+        }
+        check(declared.keys == measured.keys) {
+            "AGENTS.md census rows ${declared.keys} do not match the measured labels ${measured.keys}"
+        }
+    }
+
+    /**
+     * The anti-vacuo pair for the census row: every one of the five categories is
+     * actually populated. Without it, a manifest that had collapsed to a single
+     * category would still satisfy "53 in the five", and a broken parser that
+     * classified everything as one thing would look like a small drift rather than
+     * the collapse it is.
+     */
+    @Test
+    fun `each of the five categories is populated`() {
+        val rows = loadRows()
+        val five = listOf(
+            "DECLARATIVE_DIRECTIVE", "ATOMIC_STEP", "BLOCK_STEP",
+            "PURE_BUILDER", "SCRIPTED_RUNTIME_CALL",
+        )
+        val empty = five.filter { category -> rows.none { it.category == category } }
+        check(empty.isEmpty()) {
+            "categories with no manifest row: $empty. A category with no members is a " +
+                "category the census cannot distinguish from a deleted one."
+        }
+    }
+
+    /** Parses the census table AGENTS.md publishes, keyed by its first column. */
+    private fun censusTable(): Map<String, Int> {
+        val lines = repoFile("AGENTS.md").readLines()
+        val wanted = setOf("constructs in the five", "UNSUPPORTED_FAIL_CLOSED", "unclassified")
+        val found = mutableMapOf<String, Int>()
+        for (line in lines) {
+            // A markdown table row is `| a | b |`, so trimming the delimiters FIRST
+            // is what makes the cell count match; splitting a bare `| a | b |` yields
+            // two empty leading/trailing cells and every row reads as the wrong width.
+            val cells = line.trim().trim('|').split('|').map { it.trim() }
+            if (cells.size != 2) continue
+            // AGENTS.md writes `UNSUPPORTED_FAIL_CLOSED` in code ticks; compare the text,
+            // not the formatting, or the row silently stops being found.
+            val label = cells[0].trim('`')
+            if (label !in wanted) continue
+            val count = cells[1].toIntOrNull()
+                ?: error("AGENTS.md census row '$label' is '${cells[1]}', which is not a count")
+            found[label] = count
+        }
+        check(found.isNotEmpty()) {
+            "no census table found in AGENTS.md; expected rows named $wanted. A guard that cannot " +
+                "find its subject passes vacuously, so this is a failure and not a skip."
+        }
+        return found
     }
 
     /** Every public DSL builder on the live surface, by simple name. */

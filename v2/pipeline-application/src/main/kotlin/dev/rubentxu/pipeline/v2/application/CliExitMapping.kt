@@ -10,12 +10,12 @@ package dev.rubentxu.pipeline.v2.application
  */
 fun CliError.toCliExit(): CliExit = when (this) {
     CliError.MissingCommand -> CliExit.InvalidArgument(
-        message = "no command provided; expected one of: validate, run, version, doctor, events, console, observe, credentials, capabilities, sdk-info",
-        hint = "run 'pipeline --help' or see the launch contract in the release-receipt",
+        message = "no command provided; expected one of: ${CLI_VERBS.joinToString(", ") { it.first }}",
+        hint = "run 'pipelinek --help'",
     )
     is CliError.InvalidCommand -> CliExit.InvalidArgument(
         message = "unknown command: $value",
-        hint = "expected one of: validate, run, version, doctor, events, console, observe, credentials, capabilities, sdk-info",
+        hint = "expected one of: ${CLI_VERBS.joinToString(", ") { it.first }}; run 'pipelinek --help'",
     )
     is CliError.MissingOptionValue -> CliExit.InvalidArgument(
         message = "option $option requires a value",

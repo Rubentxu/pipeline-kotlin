@@ -290,6 +290,95 @@ precondición que la decisión 2b conserva para ellos.
                                                             (el s=1 es un @Disabled pre-existente)
   ```
 
+- [x] **H1.5 — Un censo publicado sin nada que lo midiera, y el stdout que `sh` esconde. Cerrado el censo; abierto el stdout.**
+
+  **Parte 1 — el censo. Cerrado.** `AGENTS.md` afirmaba `50` constructs en las cinco categorías y `3` en `UNSUPPORTED_FAIL_CLOSED`, y nombraba el tercero: `agent`. Medido sobre el manifiesto real:
+
+  ```text
+  constructs en las cinco   53     (publicado: 50)
+  UNSUPPORTED_FAIL_CLOSED     2     (publicado: 3)
+  sin clasificar              0
+  ```
+
+  Los dos directions estaban mal: faltaban tres constructs y sobraba uno. El que sobra no era un conteo, era una **imputación**: `agent` no es `UNSUPPORTED_FAIL_CLOSED`, es un `DECLARATIVE_DIRECTIVE` en estado `STABLE`. El compilador lo acepta y lo ejecuta; llamarlo «rechazado en cerrado» describía un contrato que el producto no tiene.
+
+  El defecto de fondo es el de `a-census-that-measures-its-own-parser` por tercera vez: **una cifra publicada sin un denominador detrás**. Y la fila nueva volvió a delatarlo — al medir 53, apareció que `FArchS0SurfaceManifestTest.loadRows()` llevaba tiempo **descartando en silencio la fila entera de `httpRequest`**, porque su celda de intérprete contenía un `|` literal y el parser descarta toda fila que no tenga seis celdas. Es decir: la Ley de Conservación Semántica nunca se había aplicado a ese construct, y la cifra publicada era correcta por casualidad aritmética, no por medición.
+
+  ```text
+  FArchS0SurfaceManifestTest   13 tests  f=0 e=0 s=0
+  mutaciones 1:1, aplicadas-verificadas por sha256 antes de leer el resultado
+
+  M1  AGENTS.md 53 -> 52                    -> RED 1 de 13 (fila del censo)
+  M2  pwd/isUnix SCRIPTED_RUNTIME_CALL ->
+      ATOMIC_STEP                           -> RED 1 de 13 (fila de categorías pobladas)
+  M3  reintroducir el `|` en el intérprete
+      de httpRequest                        -> RED 1 de 13 (fila del censo)
+  fiabilidad tras restaurar los tres        -> 13 de 13 verdes, canario fresco
+  ```
+
+  M3 es la que prueba la afirmación de la fila: reintroducir el `|` hace bajar el censo a 52 **y nada más se mueve**, porque `httpRequest` sale del modelo otra vez en lugar de disparar el cruce contra la superficie viva. Esa fila es lo único en el repositorio que puede ver un construct escapar al parser del manifiesto.
+
+  Se añade además la pareja anti-vacuo `each of the five categories is populated`: sin ella, una implementación que vaciara una categoría entera —borrando la fila y con ella el count— seguiría cuadrando el censo.
+
+  **Parte 2 — el stdout que `sh` esconde. ABIERTO, con el mecanismo medido.** No salió de los reports: salió de ejecutar la distribución construida con las cuatro formas que un autor escribiría para ver la salida de `sh`.
+
+  | expresión | resultado medido en 0.62.0 |
+  | --- | --- |
+  | `echo("ANTES")` fuera de `script { }` | **visible** |
+  | `echo("DENTRO")` dentro de `script { }` | inyectado como `echo "DENTRO"` en el shell, ejecutado, **no proyectado** |
+  | `sh("echo …")` en un stage | ejecuta, marca `ok`, **stdout nunca mostrado** |
+  | `shStdout("echo hi")` | `Unresolved reference` — no existe |
+  | `sh("echo BRANCH=${'$'}{branch}")` | **válido**; payload `branch=main; echo BRANCH=${branch}`, y el shell expande |
+
+  El mecanismo, trazado hasta el final: `EchoOutputCaptured` lo emite `ShExecution` **sólo en el camino no-durable** (`controlDirRoot == null`). Con `controlRoot`, los bytes van al Output Plane —escritos, enmarcados y sellados, 58 bytes, 2 frames— y la consola de `run` renderiza **sólo eventos**, así que un `sh` exitoso no produce ningún evento de transcripción. El KDoc de `CoreShellStep` decía que `ShExecution` es «la única autoridad de `EchoOutputCaptured`», lo cual es cierto y a la vez la razón del gap.
+
+  `ShStepContractSuiteTest` fila C3 lee `ConsolePlaneProbe.singleStepTranscript(...)` del Output Plane; su propio comentario declara que leer de `EchoOutputCaptured` es «la conflación que la migración cerró». Es decir: **ningún test cruza la autoridad que el operador consume**, y HARNESS FIDELITY §1 pide precisamente que se nombre. C3 certifica recuperabilidad, no la salida de `run`; el hueco es real y no es una contradicción de C3.
+
+  **Contraargumento ya identificado, que es lo que hace esto difícil y no obvio.** Hacer que `run` vacíe el Output Plane a pelo recrearía la conflación que C3 certifica cerrada, y rompería el `--view full` de `observe`, que **rechaza** ese plano a propósito. No es un bug de `run`: son dos consumidores con contratos distintos sobre el mismo canal.
+
+  Diseños candidatos, ninguno elegido todavía:
+
+  1. **Flush por operación en `StepFinished`**, reutilizando el lector del Output Plane con un `OutputCursor` —投影 incrementally sin que `run` lea el plano entero. Es el que más respeta los dos contratos, y el más caro.
+  2. **`observe` componiendo planos** — `run` queda event-only a propósito y la capacidad se entrega donde ya existe la lectura de plano. Más barato; deja al autor de un pipeline sin transcripción en vivo, que es justo lo que se reportó.
+  3. **Hacer el bloque del DSL explícitamente azúcar de shell**, con el `script { }` documentado como generador de un único `core.sh` y sin identidad propia para los steps de dentro. documentation-only, pero elimina la mitad de la sorpresa: hoy el autor escribe `echo` dentro de un bloque y cree que ha escrito un step.
+
+  Pendiente además: el hueco de capacidad que el bloque `script { }` tiene (no puede leer el valor de retorno de otro step; el valor vive en el shell, y eso es correcto, pero no está escrito).
+
+- [x] **H1.3c — El CLI señalaba un `--help` que no existía. Cerrado 2026-10-18.**
+
+  Mismo día y misma distribución, la medición del stdout destapó esto al teclear un verbo mal escrito:
+
+  ```text
+  ANTAS
+    $ pipelinek observ
+    Invalid CLI arguments: InvalidCommand(value=observ)
+    Usage: pipeline <validate|run> [--db <path>] [--resume|--rerun] [--control-root <path>] <script>
+
+    $ pipelinek --help
+    Invalid CLI arguments: InvalidCommand(value=--help)
+    Usage: pipeline <validate|run> …
+  ```
+
+  **Tres defectos, una causa.** `CliExitMapping.toCliExit()` ya tenía el mensaje humano correcto con la lista de verbos; `Main.kt:233` lo descartaba e interpolaba el ADT, así que el operador recibía la forma del tipo sellado (`InvalidCommand(value=observ)`). Encima imprimía una **segunda** representación del mismo hecho, escrita a mano, que nombraba 2 de 11 verbos y usaba `pipeline` —un binario que este producto no tiene— por nombre. Y el `hint` de esa misma línea decía `run 'pipeline --help'`, que caía en el mismo rechazo: una promesa sin nada detrás, la clase de `index-link-is-a-promise`.
+
+  La lista del `hint` tampoco estaba: nombraba 10 verbos y omitía `inspect`, que sí despacha. Es el defecto del censo por cuarta vez, esta vez en el mensaje de un CLI.
+
+  El arreglo no añade un consumidor: `CLI_VERBS` es la única lista escrita, `printUsage` la renderiza, y `toCliExit()` la referencia. `--help`, `-h` y `help` pasan a ser verbos reales mediante un predicado extraído (`isHelpRequest`) **para que la pregunta sea respondible en un test** — un hint que nombra un flag que el CLI no acepta sólo se puede guardar si se puede preguntar.
+
+  ```text
+  :pipeline-application:test --tests '*Pk1ContractTypesTest*'   11 tests  f=0 e=0 s=0
+  mutaciones 1:1, aplicadas-verificadas por sha256 antes de leer el resultado
+
+  M4  '--help' sale del conjunto de tokens aceptados  -> RED 1 de 11 ("el CLI rechaza ese flag")
+  M6  CLI_VERBS anuncia un verbo que nada despacha     -> RED 1 de 11, pero por la guarda de cobertura
+  M7  la misma, con el orden de aserciones corregido -> RED 1 de 11, por la aserción que nombra el verbo
+  fiabilidad tras restaurar                          -> 11 de 11 verdes, canario fresco
+  ```
+
+  **El hallazgo del método es M6.** La mutación murió, pero por la aserción equivocada: yo había puesto primero la guarda de cobertura, y como una mutación que añade un verbo también reduce `dispatched.size`, la guarda fired antes que la aserción que nombra el verbo. Verde igualmente, atribución 1:1 no. El orden de las aserciones es parte de la atribución, y no es cosmético: es lo que decide qué dice el fallo cuando algo se rompe.
+
+  Y una corrección propia que salió en el camino: la primera versión de la fila de hints pasó **en verde siendo vacua** — mi regex buscaba un flag suelto entre comillas simples y el hint cita `pipelinek --help`, con el nombre del binario delante. La guarda `no flag named in any hint` que escribí para eso disparó contra mi propia fila en la primera ejecución. Es exactamente para lo que está.
+
 - [ ] **H1.4** Integrar código de producto, cambios de poda aprobados, `main`, release candidate de valor real y handoff. `CERTIFIED` solo externo.
 
 **Agent teams:** consola/lectura, escritor/redactor (seams distintos), integración del CLI; archivo compartido se asigna a uno. R-1 del H0 ya terminó antes.

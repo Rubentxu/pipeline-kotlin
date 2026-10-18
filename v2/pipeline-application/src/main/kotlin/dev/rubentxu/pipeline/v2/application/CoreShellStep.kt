@@ -469,7 +469,11 @@ object CoreShellStep {
      *   computed by the single authority
      *   [dev.rubentxu.pipeline.v2.application.durable.toStepOutcome] (LB-02 / G3-A4.3).
      *   No string parsing; no event emission; the [ShExecution] substrate is
-     *   the single authority for `EchoOutputCaptured`.
+     *   the single authority for `EchoOutputCaptured` — on the NON-durable path.
+     *   Measured 2026-10-18: with a `controlRoot` the same bytes are sealed in the Output
+     *   Plane and NO `EchoOutputCaptured` is emitted, so `run`'s console — which renders
+     *   events — shows a successful `sh` with no transcript. Reading it as "the substrate
+     *   emits it" is what makes that gap look like a caller bug. Tracked as H1.5.
      *
      * It MUST NOT:
      * - reach `CanonicalRuntimeContext`,

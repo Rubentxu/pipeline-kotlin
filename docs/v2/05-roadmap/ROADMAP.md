@@ -5,6 +5,36 @@
 **Estado de esta entrega:** SOLO DOCUMENTACIÓN; NO se ha recompilado ni recertificado HEAD.
 **Estado de producto publicado:** v0.39.0, GitHub Release de 2026-09-19; su certificación NO se transmite a commits posteriores.
 
+**Reconciliación de hechos 2026-10-18 (medida, no inferida). Supersede los bloques del
+2026-10-08, 2026-10-09 y 2026-10-10 como referencia de estado; se conservan literalmente por
+trazabilidad.** El bloque `a554fd55` (2026-09-21) se conserva igual por el mismo motivo: un
+baseline fechado es el resultado de una auditoría, y sustituirlo por HEAD no lo actualiza, lo
+falsifica.
+
+```text
+origin/main observado      f3260074a1375c1e0a7e82c21691bd7f9685c884 (2026-10-18)
+rama                       main; working tree = origin/main, 0 commits sin pushear
+versión de producto        0.62.0   (v2/build.gradle.kts rootProject.version, línea 105)
+publicación más reciente   v0.62.0-rc6, Pre-release, 2026-10-16T23:00:53Z
+superficie de CI           inexistente (.github/workflows/ -> 0 ficheros; solo Dependabot)
+checks requeridos en main  ninguno (la carga de protección de main no contiene
+                           required_status_checks)
+ciclos SDDK                NO OBSERVABLE — el binario no está instalado (ver abajo)
+```
+
+**Sobre la fila `ciclos SDDK`.** Los bloques anteriores la publicaban como hecho observado
+(`42 OPEN, 4 BLOCKED, 82 CLOSED, 1 RELEASE_PENDING`). Medido el 2026-10-18, `command -v sddk`
+no devuelve nada y no existe en `~/.local/bin`, `/usr/local/bin` ni `/opt`. Una cifra sin
+instrumento no es una cifra: es una afirmación que nadie puede volver a comprobar, y una fila
+de estado que no se puede observar no debe figurar como observada. La fila se retira del bloque
+vigente; el texto de los bloques anteriores se conserva sin editar. La decisión y su
+razonamiento están en `AGENTS.md` (nota SDDK, 2026-10-18) y en `../00-governance/ACTIVE_DOCUMENTS.md`.
+
+**Lo que este bloque NO afirma.** No afirma el veredicto de certificación de `v0.62.0-rc6`: ese
+veredicto es del harness y vive en su recibo, no en este repositorio. Desde aquí es `NOT_RUN`.
+Tampoco afirma nada sobre el estado de la batería UAT externa, que es del harness por contrato
+de separación de responsabilidades.
+
 **Actualización de hechos 2026-10-08 (observada, no inferida). Supersede las tres líneas anteriores como referencia de estado; se conservan por trazabilidad.**
 
 ```text

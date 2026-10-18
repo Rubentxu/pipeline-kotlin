@@ -5,22 +5,31 @@
 ## Autoridad operativa
 
 ```text
-SDDK + Git + ADRs/contratos publicados + evidencia externa (harness, GitHub)
-       → autoridad efectiva
+Git + ADRs/contratos publicados + evidencia externa (harness, GitHub)
+      → autoridad efectiva
 ROADMAP / ACTIVE_DOCUMENTS / ADR / specs / UAT
-       → autoridad de producto/documental
+      → autoridad de producto/documental
 .agent/SESSION_POINTER.md, .agent/WORK_JOURNAL.md, .agent/TECH_DEBT_BACKLOG.md
-       → proyección humana opcional / histórico; NO autoridad
+      → proyección humana opcional / histórico; NO autoridad
 ```
 
-> Cualquier discrepancia entre el contenido de `.agent/*` y el estado real (SDDK + Git + CI) se resuelve a favor del estado real.
+> **RESUELTO 2026-10-18.** Esta cadena nombraba `SDDK` como primer peldaño. Medido ese día,
+> `command -v sddk` no devuelve nada y no hay `sddk` en `~/.local/bin`, `/usr/local/bin` ni
+> `/opt`. Un peldaño que no se puede observar no puede gobernar, y un protocolo obligatorio cuya
+> primera orden falla no es un protocolo: un operador que lo lea, lo ejecute y encuentre
+> `command not found` no puede deducir qué hacer. `SDDK` sale de la cadena vigente y entra
+> `Git + ADRs + ROADMAP`, que sí existen. Si SDDK volviera a instalarse, se reintroduce aquí por
+> decisión registrada, no por inercia. La decisión y su razonamiento están en la nota SDDK de
+> `AGENTS.md` (2026-10-18); el texto anterior se conserva arriba únicamente como historia.
+
+> Cualquier discrepancia entre el contenido de `.agent/*` y el estado real (Git + ADRs) se resuelve a favor del estado real.
 
 ## Empezar siempre aquí
 
-1. Recuperar estado mediante SDDK: `sddk status --cycle <active-cycle>` y `sddk project resolve --root . --scope .`.
+1. **El estado real se lee de Git y de las ADRs**, que son los peldaños que existen: `git status --short`, `git rev-parse HEAD`, `git log -1`, la rama, y el campo `status:` de cada ADR implicada. Un estado que nadie puede observar se escribe `NOT_RUN`; nunca se afirma. (El paso que antes ocupaba este número, `sddk status --cycle`, se retiró por la razón del bloque anterior; el histórico de ciclos vive hoy en el propio ROADMAP y en sus recibos, no en un planner.)
 2. docs/v2/05-roadmap/ROADMAP.md — única secuencia de trabajo y exit criteria actuales.
 3. docs/v2/07-uat/CERTIFICATION_PROTOCOL.md y PRODUCTION_READY_UAT_MATRIX.md — qué significa certificar.
-4. docs/v2/01-product/STEP_REGISTRY_PLAN.md — cola histórica/constitución técnica del ecosistema; reconciliar su inventario con el estado SDDK antes de ejecutar cualquier WU.
+4. docs/v2/01-product/STEP_REGISTRY_PLAN.md — cola histórica/constitución técnica del ecosistema; reconciliar su inventario con el estado medido (Git + ADRs) antes de ejecutar cualquier WU. (Esta línea decía «con el estado SDDK»; un planificador ausente no puede ser el estado contra el que reconciliar. Misma decisión y mismo reasoning que el bloque de autoridad de arriba.)
 5. docs/v2/03-specifications/STEP_PLUGIN_CERTIFICATION.md, ADR-0070..0099 y AGENTS.md — límites normativos que un roadmap no revocar. ADR-0099 fija la autoridad de `main` para candidatos y releases y supersede ADR-0091.
    > **RESUELTO 2026-10-18 por [`ADR-PK-REG-001`](../04-adrs/ADR-PK-REG-001-adr-status-registry.md).** Esta línea ya no afirma que el rango 0070..0099 esté «aceptado» como bloque: **el registro de verdad es el campo `status:` de cada fichero**, y un rango no es una unidad de estado. El conjunto cerrado es `{proposed, accepted, superseded}` y `AdrStatusRegistryFitnessTest` lo hace cumplir con fallo cerrado. Para saber si una ADR concreta está en vigor, se lee su campo; este índice ya no lo afirma por rango.
    > Las dos mediciones del conflicto registrado eran de un **parseo**, no del corpus: sólo aceptaba `- **Status:** v` en línea, de modo que contaba 61 ADR «sin campo» que sí lo tienen en otra de las tres formas legales, y contaba 8 grafías que son casing, negrita y backticks sobre 3 valores. Cerrado también en `CONFLICT-ADR-STATUS-REGISTRY.md`, que se conserva por trazabilidad.

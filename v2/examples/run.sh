@@ -7,14 +7,14 @@
 # assertions beyond two optional per-pipeline directives, so a scenario cannot
 # grow into a test suite with its own vocabulary.
 #
-#   #! expect-exit 1                  default is 0
-#   #! expect-stderr <substring>      the refusal must be this specific, not
+#   //@ expect-exit 1                 default is 0
+#   //@ expect-stderr <substring>     the refusal must be this specific, not
 #                                     merely a nonzero exit
-#   #! durable                        run twice against one control root and
+#   //@ durable                       run twice against one control root and
 #                                     require the second run not to repeat the
 #                                     effect; the pipeline itself asserts the
 #                                     count, this only re-runs it
-#   #! requires-seeded-credentials    NOT_RUN: the scenario needs a credential
+#   //@ requires-seeded-credentials   NOT_RUN: the scenario needs a credential
 #                                     store seeded in advance, and the product
 #                                     offers no non-interactive way to seed one
 #                                     (`credentials add` prompts on the TTY).
@@ -23,6 +23,23 @@
 #
 # The distribution must already exist:
 #     cd v2 && ./gradlew :pipeline-application:installDist
+#
+# Why `//@` and not `#!`. An earlier revision read directives from `#!` comment
+# lines, on the assumption that the product supported them. It does not: no
+# source under any `src/main` reads `#!`. The convention only ever worked by
+# accident, because the Kotlin script compiler strips a shebang from the FIRST
+# line of a file. That accident is a one-line budget, and it was spent wrongly:
+# two `#!` lines make the second one an ordinary syntax error, so a scenario
+# carrying both `expect-exit` and `expect-stderr` failed to COMPILE with
+# "Syntax error: Expecting an element" instead of failing for its own reason.
+# Measured, not assumed: two `#!` lines give VALIDATION FAILED; the same two as
+# `//` comments give VALIDATION SUCCESSFUL.
+#
+# `//@` is an ordinary Kotlin comment, so it is position-independent, repeatable
+# and always legal. The `@` is load-bearing rather than decorative: real
+# scenarios already carry prose comments such as
+# "// durable execution over the journal", so a bare `//` prefix would let a
+# sentence in a comment silently switch a directive on.
 
 set -Eeuo pipefail
 
@@ -64,12 +81,12 @@ run_scenario() {
     local directive
     while IFS= read -r directive; do
         case "$directive" in
-            '#! expect-exit '*)    expect_exit="${directive#\#! expect-exit }" ;;
-            '#! expect-stderr '*)  expect_stderr="${directive#\#! expect-stderr }" ;;
-            '#! durable')          durable=1 ;;
-            '#! requires-seeded-credentials') needs_seeded_credentials=1 ;;
+            '//@ expect-exit '*)   expect_exit="${directive#//@ expect-exit }" ;;
+            '//@ expect-stderr '*) expect_stderr="${directive#//@ expect-stderr }" ;;
+            '//@ durable')         durable=1 ;;
+            '//@ requires-seeded-credentials') needs_seeded_credentials=1 ;;
         esac
-    done < <(grep -m 20 '^#!' "$script" || true)
+    done < <(grep -m 20 '^//@ ' "$script" || true)
 
     if [[ "$needs_seeded_credentials" == 1 ]]; then
         # Declared up front, before any execution, so the verdict cannot depend

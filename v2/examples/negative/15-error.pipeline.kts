@@ -1,6 +1,5 @@
-
-#! expect-exit 1
-#! expect-stderr Pipeline finished with FAILURE: test error message
+//@ expect-exit 1
+//@ expect-stderr Pipeline finished with FAILURE: test error message
 // The `error` Step is the subject: it must fail the run. An exit-0
 // expectation here would let an engine that swallowed the typed USER
 // failure pass, and the substring pins the message so an unrelated crash

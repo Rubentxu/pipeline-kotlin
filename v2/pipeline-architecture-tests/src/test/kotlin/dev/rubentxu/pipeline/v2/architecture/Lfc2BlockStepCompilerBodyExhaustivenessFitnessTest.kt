@@ -192,7 +192,7 @@ class Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest {
         // `body: List<StepSpec>` and is routed through blockStepNode like the rest of
         // the block family.
         "WaitUntilBlock" to { body ->
-            StepSpec.WaitUntilBlock(initialRecurrencePeriod = 5L, quiet = false, body = body)
+            StepSpec.WaitUntilBlock(initialRecurrencePeriod = 5L, body = body)
         },
         // WU-091 / RP6-A: core.lock joins the closed block family with the same
         // mechanical proof as the rest — a non-empty child body must survive

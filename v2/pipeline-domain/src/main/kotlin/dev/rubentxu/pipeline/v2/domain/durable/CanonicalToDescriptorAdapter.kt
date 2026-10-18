@@ -76,7 +76,6 @@ object CanonicalToDescriptorAdapter {
         )
         is CanonicalBlockShellScope.WaitUntilScope -> BlockShellScopeDescriptor.WaitUntil(
             initialRecurrencePeriodMs = canonical.initialRecurrencePeriod,
-            quiet = canonical.quiet,
         )
         else -> error(
             "CanonicalToDescriptorAdapter.adaptScope: unknown canonical scope " +
@@ -163,7 +162,6 @@ sealed interface CanonicalBlockShellScope {
     data class Retry(val maxAttempts: Int) : CanonicalBlockShellScope
     data class WaitUntilScope(
         val initialRecurrencePeriod: Long,
-        val quiet: Boolean,
         val maxBackoffMs: Long = 60_000L,
     ) : CanonicalBlockShellScope
 }

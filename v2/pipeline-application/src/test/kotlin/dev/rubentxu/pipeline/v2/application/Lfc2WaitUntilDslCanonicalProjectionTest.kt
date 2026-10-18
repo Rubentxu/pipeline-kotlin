@@ -68,7 +68,6 @@ class Lfc2WaitUntilDslCanonicalProjectionTest {
                 steps = listOf(
                     StepSpec.WaitUntilBlock(
                         initialRecurrencePeriod = 1L,
-                        quiet = false,
                         body = listOf(
                             StepSpec.Shell(command = "test -f /tmp/marker"),
                         ),
@@ -194,7 +193,6 @@ class Lfc2WaitUntilDslCanonicalProjectionTest {
                     steps = listOf(
                         StepSpec.WaitUntilBlock(
                             initialRecurrencePeriod = 25L,
-                            quiet = false,
                             maxBackoffMs = 2500L,
                             body = listOf(StepSpec.Shell(command = "test -f /tmp/marker")),
                         ),

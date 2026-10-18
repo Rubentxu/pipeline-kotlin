@@ -43,14 +43,14 @@ import java.util.UUID
 /**
  * Typed input payload of `core.waitUntil`.
  *
- * The legacy wire payload for `waitUntil(initialRecurrencePeriod = X, quiet = Y)` is:
- * `{"kind":"waitUntil","initialRecurrencePeriod":X,"quiet":Y}`
+ * The wire payload for `waitUntil(initialRecurrencePeriod = X)` is:
+ * `{"kind":"waitUntil","initialRecurrencePeriod":X}`
  *
- * The codec preserves the legacy envelope structure.
+ * The codec preserves that envelope structure. A payload written by an older build may also
+ * carry a `"quiet"` key; decoding ignores it, which is safe because nothing ever read it.
  */
 data class WaitUntilInput(
     val initialRecurrencePeriod: Long = DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS,
-    val quiet: Boolean = false,
 ) {
     init {
         require(initialRecurrencePeriod >= 0) {
@@ -147,7 +147,6 @@ object CoreWaitUntilStep {
                     buildJsonObject {
                         put("kind", JsonPrimitive("waitUntil"))
                         put("initialRecurrencePeriod", JsonPrimitive(value.initialRecurrencePeriod))
-                        put("quiet", JsonPrimitive(value.quiet))
                     },
                 ),
             )
@@ -159,8 +158,7 @@ object CoreWaitUntilStep {
             }
             val initialRecurrencePeriod = obj["initialRecurrencePeriod"]?.jsonPrimitive?.content?.toLongOrNull()
                 ?: DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS
-            val quiet = obj["quiet"]?.jsonPrimitive?.booleanOrNull ?: false
-            return WaitUntilInput(initialRecurrencePeriod, quiet)
+            return WaitUntilInput(initialRecurrencePeriod)
         }
     }
 

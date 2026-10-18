@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
 import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -52,22 +53,25 @@ class CoreWaitUntilDifferentialContractTest {
 
     @Test
     fun `input codec — WaitUntilInput produces canonical dsl-v1 envelope with correct defaults`() {
-        val input = WaitUntilInput(initialRecurrencePeriod = 500L, quiet = true)
+        val input = WaitUntilInput(initialRecurrencePeriod = 500L)
         val encoded = CoreWaitUntilStep.definition.contract.inputCodec.encode(input)
 
-        // Must match the legacy decoder expectation
         assertTrue(encoded.value.contains("\"kind\":\"waitUntil\""))
         assertTrue(encoded.value.contains("\"initialRecurrencePeriod\":500"))
-        assertTrue(encoded.value.contains("\"quiet\":true"))
+        assertFalse(
+            encoded.value.contains("quiet"),
+            "the envelope MUST NOT carry a quiet key: no production reader ever consumed it, so " +
+                "writing it was the SEMANTIC CONSTITUTION section 2 defect, and an unread key in " +
+                "an identity envelope is a second thing to keep in sync with nothing.",
+        )
     }
 
     @Test
     fun `input codec — default values produce expected envelope`() {
-        val input = WaitUntilInput() // defaults: period=1000, quiet=false
+        val input = WaitUntilInput() // default: period=1000
         val encoded = CoreWaitUntilStep.definition.contract.inputCodec.encode(input)
 
         assertTrue(encoded.value.contains("\"initialRecurrencePeriod\":1000"))
-        assertTrue(encoded.value.contains("\"quiet\":false"))
     }
 
     // ===== 2. handler emits events =====
@@ -77,7 +81,7 @@ class CoreWaitUntilDifferentialContractTest {
         val eventStore = InMemoryEventStore()
         val ctx = testContext(eventStore)
 
-        val input = WaitUntilInput(initialRecurrencePeriod = 500L, quiet = false)
+        val input = WaitUntilInput(initialRecurrencePeriod = 500L)
         val output = CoreWaitUntilStep.definition.handler.execute(input, ctx)
 
         // Verify events emitted
@@ -129,12 +133,11 @@ class CoreWaitUntilDifferentialContractTest {
 
     @Test
     fun `codec round-trip — encoded by registry, decodeable as legacy would expect`() {
-        val input = WaitUntilInput(initialRecurrencePeriod = 1000L, quiet = false)
+        val input = WaitUntilInput(initialRecurrencePeriod = 1000L)
         val encoded = CoreWaitUntilStep.definition.contract.inputCodec.encode(input)
         val decoded = CoreWaitUntilStep.definition.contract.inputCodec.decode(encoded)
 
         assertEquals(input.initialRecurrencePeriod, decoded.initialRecurrencePeriod)
-        assertEquals(input.quiet, decoded.quiet)
     }
 
     // ===== 6. event fields are properly populated =====

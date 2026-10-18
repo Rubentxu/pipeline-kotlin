@@ -91,7 +91,6 @@ class DslInterpreterDeadlineContractFitnessTest {
     fun `WaitUntil scope does not introduce a new deadline`() {
         val scope = BlockShellScopeDescriptor.WaitUntil(
             initialRecurrencePeriodMs = 60_000L,
-            quiet = false,
         )
         val projection = BodyExecutionProjectionDescriptor.Scope(scope)
         val interpreted = interpreter.interpret(projection)
@@ -161,7 +160,7 @@ class DslInterpreterDeadlineContractFitnessTest {
             "None" to BlockShellScopeDescriptor.None,
             "Timeout(30s)" to BlockShellScopeDescriptor.Timeout(30_000L),
             "Retry(3)" to BlockShellScopeDescriptor.Retry(3),
-            "WaitUntil" to BlockShellScopeDescriptor.WaitUntil(60_000L, false),
+            "WaitUntil" to BlockShellScopeDescriptor.WaitUntil(60_000L),
             "Timestamps" to BlockShellScopeDescriptor.Timestamps("run-1"),
             "Directory" to BlockShellScopeDescriptor.Directory(
                 java.nio.file.Paths.get("/tmp/x"),

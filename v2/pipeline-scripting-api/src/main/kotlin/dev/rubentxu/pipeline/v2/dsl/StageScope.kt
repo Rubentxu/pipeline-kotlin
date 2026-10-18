@@ -401,7 +401,15 @@ class StageScope(
      * Polls a condition closure until it returns true or a deadline elapses.
      *
      * Jenkins verbatim:
-     * `waitUntil(initialRecurrencePeriod: Long = 1, quiet: Boolean = false) { condition }`
+     * `waitUntil(initialRecurrencePeriod: Long = 1) { condition }`
+     *
+     * Jenkins also carries a `quiet: Boolean = false`. It is NOT accepted here: this engine's
+     * `waitUntil` narration already renders at `Family.NOTE`, and `ObservationView.NORMAL`
+     * hides that family, so a `quiet` flag had nothing left to silence in the default view.
+     * Accepting it and discarding it would be the `SEMANTIC CONSTITUTION` section 2 defect
+     * "metadata accepted but never interpreted"; omitting it makes `waitUntil(quiet = true)`
+     * fail at compile time instead of compiling into nothing. Polling narration stays visible
+     * under `--view events`, which is where a caller who wants to watch it looks.
      *
      * Body is the inner StepSpec list captured at construction time.
      *
@@ -431,7 +439,6 @@ class StageScope(
      * consistency by fixing one builder.
      *
      * @param initialRecurrencePeriod Initial poll interval in milliseconds (default 1000ms)
-     * @param quiet If true, suppress output during polling
      * @param maxBackoffMs Ceiling in milliseconds the poll interval backs off to
      *   (default 60000ms); must be at least `initialRecurrencePeriod`
      * @param body Lambda producing the nested steps whose last step emits
@@ -439,7 +446,6 @@ class StageScope(
      */
     fun waitUntil(
         initialRecurrencePeriod: Long = DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS,
-        quiet: Boolean = false,
         maxBackoffMs: Long = DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS,
         body: StageScope.() -> Unit,
     ) {
@@ -452,7 +458,6 @@ class StageScope(
         inner.body()
         steps.add(StepSpec.WaitUntilBlock(
             initialRecurrencePeriod = initialRecurrencePeriod,
-            quiet = quiet,
             maxBackoffMs = maxBackoffMs,
             body = inner.steps(),
         ))

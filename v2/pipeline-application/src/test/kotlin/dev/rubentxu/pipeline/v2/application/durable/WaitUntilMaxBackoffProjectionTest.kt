@@ -173,7 +173,7 @@ class WaitUntilMaxBackoffProjectionTest {
         block(payload).projectBodyExecution(
             policy = BodyExecutionPolicy.Retrying(
                 policy = RetryPolicy(),
-                waitUntil = WaitUntilShape(initialRecurrencePeriodMs = periodMs, quiet = false),
+                waitUntil = WaitUntilShape(initialRecurrencePeriodMs = periodMs),
             ),
             options = shOptions,
         )

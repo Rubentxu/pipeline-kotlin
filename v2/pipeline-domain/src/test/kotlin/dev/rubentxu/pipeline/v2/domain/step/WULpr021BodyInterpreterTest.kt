@@ -150,7 +150,6 @@ class WULpr021BodyInterpreterTest {
                 BodyExecutionProjectionDescriptor.Scope(
                     BlockShellScopeDescriptor.WaitUntil(
                         initialRecurrencePeriodMs = 1_000L,
-                        quiet = true,
                     ),
                 ),
             ) as InterpretedBody.Scoped
@@ -240,7 +239,7 @@ class WULpr021BodyInterpreterTest {
             BodyExecutionProjectionDescriptor.Scope(BlockShellScopeDescriptor.Timeout(1000L)),
             BodyExecutionProjectionDescriptor.Scope(BlockShellScopeDescriptor.Retry(3)),
             BodyExecutionProjectionDescriptor.Scope(
-                BlockShellScopeDescriptor.WaitUntil(500L, false),
+                BlockShellScopeDescriptor.WaitUntil(500L),
             ),
             BodyExecutionProjectionDescriptor.Scope(BlockShellScopeDescriptor.Timestamps("r")),
             BodyExecutionProjectionDescriptor.CredentialLease(emptyList()),

@@ -254,7 +254,7 @@ class B1dBodyExecutionEngineClockSeparationTest {
                 bodyInvokerAdapter = CanonicalBodyInvokerAdapter(),
             )
             engine.executeScope3b(
-                scope = BlockShellScope.WaitUntilScope(initialRecurrencePeriod = 1L, quiet = true, maxBackoffMs = 2L),
+                scope = BlockShellScope.WaitUntilScope(initialRecurrencePeriod = 1L, maxBackoffMs = 2L),
                 block = block(),
                 runId = RUN_ID,
                 stageName = "S",

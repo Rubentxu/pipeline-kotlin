@@ -75,7 +75,7 @@ sealed interface BodyExecutionPolicy {
      * never from memory (ADR-0075, ADR-0081 D9).
      *
      * The optional [waitUntil] sub-shape carries `waitUntil`-specific timing
-     * parameters (initial recurrence, quiet) and is consumed by the canonical
+     * parameters (initial recurrence, poll backoff ceiling) and is consumed by the canonical
      * body engine without a per-StepKey branch. When `null`, the body is a
      * plain retry of the declared [policy]; when set, the engine re-dispatches
      * with the declared poll cadence and emits `WaitUntilPolled` / `WaitUntilCompleted`
@@ -263,9 +263,9 @@ data class RetryPolicy(
  * Declared on the Step descriptor (not derived from a StepKey) so the canonical
  * body engine can dispatch the polling loop without a per-StepKey branch in the
  * coordinator. The default `initialRecurrencePeriodMs` matches Jenkins verbatim
- * (`1000ms`). `quiet` mirrors Jenkins verbatim and is forwarded to the body
- * engine; its semantics are owned by the canonical waitUntil Step, not by the
- * coordinator.
+ * (`1000ms`). Jenkins' `quiet` flag is deliberately absent: this engine renders the polling
+ * narration at `Family.NOTE`, which `ObservationView.NORMAL` already hides, so the flag had
+ * no observable effect to carry and carrying it would be a metadata field nothing reads.
  *
  * The shape is a structural property of the Step KIND, not runtime data: the
  * engine re-dispatches the body using this declaration; the attempt budget and
@@ -274,7 +274,6 @@ data class RetryPolicy(
 @Serializable
 data class WaitUntilShape(
     val initialRecurrencePeriodMs: Long = DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS,
-    val quiet: Boolean = false,
     val maxBackoffMs: Long = DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS,
 )
 

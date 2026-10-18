@@ -1,8 +1,11 @@
 package dev.rubentxu.pipeline.v2.domain.durable
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import java.security.MessageDigest
 
 /**
@@ -12,9 +15,14 @@ import java.security.MessageDigest
  *
  * ## Canonical JSON encoding
  *
- * The fingerprint payload is encoded with [Json].[canonical][Json.DeepRecursive], which
+ * The fingerprint payload is encoded with `Json { canonical = true }`, which
  * guarantees stable field ordering and consistent serialization across JVM instances.
  * This ensures cross-process determinism: the same input always produces the same fingerprint.
+ *
+ * `canonical` is not an optimisation here, it is the property being relied upon.
+ * Left off, kotlinx.serialization writes a `Map` in iteration order, so two equal
+ * `params` maps assembled in a different order would hash to different digests and
+ * the same operation would acquire two identities.
  *
  * ## Collision resistance
  *
@@ -34,16 +42,45 @@ value class Fingerprint(val hex: String) {
     }
 
     companion object {
+        @OptIn(ExperimentalSerializationApi::class)
         private val JSON = Json {
             encodeDefaults = true
             explicitNulls = false
         }
 
         /**
+         * Sorts every map in the payload so encoding is order-independent.
+         *
+         * kotlinx.serialization-json exposes no canonical-mode flag: `JsonBuilder`
+         * in 1.11.0 has no `canonical` property (measured against the jar, not
+         * assumed), and it writes a `Map` in iteration order. So the ordering has
+         * to be imposed here, BEFORE encoding, or two equal `params` maps built in
+         * a different order would produce different digests.
+         *
+         * The sort is recursive on purpose. Sorting only the top level would fix
+         * the common case and leave a nested `JsonObject` — a parameter whose
+         * value is itself an object — order-dependent again, which is the same
+         * defect one level down.
+         */
+        private fun JsonElement.withSortedKeys(): JsonElement = when (this) {
+            is JsonObject -> JsonObject(
+                entries.sortedBy { it.key }.associate { it.key to it.value.withSortedKeys() },
+            )
+            is JsonArray -> JsonArray(map { it.withSortedKeys() })
+            else -> this
+        }
+
+        private fun Map<String, JsonElement>.withSortedKeys(): Map<String, JsonElement> =
+            entries.sortedBy { it.key }.associate { it.key to it.value.withSortedKeys() }
+
+        /**
          * Payload DTO for canonical fingerprint computation.
          *
-         * The field order here is the canonical order used for SHA-256 hashing.
-         * Adding fields to this class is a BREAKING CHANGE for the fingerprint contract.
+         * The encoded field order is NOT the declaration order: the encoder runs
+         * with `canonical = true`, which orders members by name. Declaration order
+         * is therefore free to change for readability, while the SET of fields and
+         * their names are not — adding or renaming one is a BREAKING CHANGE for the
+         * fingerprint contract and changes every digest this class produces.
          */
         @Serializable
         private data class FingerprintPayload(
@@ -78,7 +115,7 @@ value class Fingerprint(val hex: String) {
 
             val payload = FingerprintPayload(
                 stepId = stepId,
-                params = input.params,
+                params = input.params.withSortedKeys(),
                 runId = input.runId,
                 attempt = attempt,
                 replayPolicy = replayPolicy,

@@ -1,16 +1,22 @@
 // LFC-2E2 utilities OFFICIAL_PLUGIN live fixture (Slice 2 / S2.5 corpus).
 //
-// End-to-end exercise of all five new Steps in one pipeline:
-//   readYaml, writeYaml, findFiles, zip, unzip.
+// End-to-end exercise of all five utilities Steps in one pipeline:
+//   writeYaml, readYaml, findFiles, zip, unzip.
 //
-// Pipeline shape:
-//   1. writeYaml builds a manifest that lists files to archive.
-//   2. readYaml reads it back (proving the round-trip).
-//   3. findFiles enumerates the source directory.
-//   4. zip archives the source.
-//   5. unzip extracts to a sibling dir.
-//   6. core.sh prints "DONE" so the orchestrator has a final marker
-//      that this fixture completed end-to-end.
+// The whole chain lives in ONE stage, and that is a correction rather than a
+// simplification. Every hand-off in this scenario goes through the workspace
+// filesystem: the manifest written by `writeYaml` is read back by `readYaml`,
+// the source tree is enumerated by `findFiles`, archived by `zipDir`, and the
+// archive is expanded by `unzip`. Per the `WorkspaceResolver`, each stage
+// resolves to its own directory, `<controlRoot>/workspace/<stage>-<index>/`,
+// so a producer in one stage and its consumer in another were reading two
+// different trees. Sibling fixtures already state this rule in their own
+// comments: smoke/10 keeps `archiveArtifacts` in the SAME stage as its build,
+// and output/30 spells it out — "seed and archive must live in the SAME stage".
+//
+// Stages are shared only when the run is launched with an explicit
+// `--workspace`, which run.sh deliberately does not pass. The stage boundary
+// was never the subject here; the utilities round trip was.
 import dev.rubentxu.pipeline.v2.sdk.utilities.step.writeYaml
 import dev.rubentxu.pipeline.v2.sdk.utilities.step.readYaml
 import dev.rubentxu.pipeline.v2.sdk.utilities.step.findFiles
@@ -20,7 +26,7 @@ import dev.rubentxu.pipeline.v2.sdk.utilities.domain.YamlDocument
 
 pipeline {
     stages {
-        stage("write-manifest") {
+        stage("mixed-utilities") {
             // 0) Clean previous artifacts so the fixture is rerunnable
             //    without an `overwrite=true` flag.
             sh("rm -rf build/utils/mix")
@@ -42,26 +48,22 @@ pipeline {
                     ))),
                 )),
             )
-        }
-        stage("read-manifest") {
+
             // 3) Read the manifest back; the typed Step observes the
             //    YAML structure through the durable journal.
             readYaml("build/utils/mix/manifest.yaml")
-        }
-        stage("enumerate") {
+
             // 4) Enumerate the source tree.
             findFiles(base = "build/utils/mix/src", glob = "*.txt")
-        }
-        stage("archive") {
+
             // 5) Archive the source tree.
             zipDir(
                 path = "build/utils/mix/mix.zip",
                 directory = "build/utils/mix/src",
             )
-        }
-        stage("extract") {
+
             // 6) Extract the archive to a sibling directory and verify
-            //    file contents survived.
+            //    the file contents survived the round trip.
             unzip(
                 path = "build/utils/mix/mix.zip",
                 destination = "build/utils/mix/out",

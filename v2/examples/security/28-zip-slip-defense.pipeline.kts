@@ -1,3 +1,5 @@
+#! expect-exit 1
+#! expect-stderr Zip Slip
 // LFC-2E2 utilities OFFICIAL_PLUGIN live fixture (Slice 2 / S2.4 + S2.5).
 //
 // End-to-end defence-in-depth proof of CVE-2023-32981 containment on

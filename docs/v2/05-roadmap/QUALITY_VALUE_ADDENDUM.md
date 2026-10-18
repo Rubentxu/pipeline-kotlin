@@ -266,6 +266,25 @@ El publicador verifica presencia de los assets listados por el manifiesto, pero 
 
   **Correccion de un documento-caducado, en el sentido contrario al que se leia.** `docs/v2/07-uat/DELIVERY_FIRST_RADICAL_INTEGRATION_2026-10-17.md:300-312` afirma que FArchM3 sigue ROJO y que el remedio es borrar el modulo. **Medido: `FArchM3CanonicalTaskRuntimeTest` esta 7/7 verde** (`failures="0" errors="0"`, XML `2026-10-18T11:22:52Z`) y la propia `ADR-PK-DF-002` dice que ese sintoma "no debe volver a citarse como bloqueo". Un informe que cita como bloqueo vivo un sintoma que la ADR aceptada ya retiro es el segundo tablero divergente que esta reconciliacion existe para evitar.
 - [ ] En el `releaseGate`, exigir exactamente el perfil vigente de cinco assets: runtime ZIP, SBOM, SDK ZIP, BOM JSON y SHA256SUMS; comprobar **completitud e integridad**, sin extras, y probar los mismos bytes como consumidor. Mantener ADR-PK-DF-001 Opción A mientras no se autorice expresamente la B de PR #142. Publicación Maven remota = `BLOCKED_EXTERNAL` si faltan destino/credenciales.
+
+  **Estado reconciliado 2026-10-18 contra `main@21c9dcd7`. Esta casilla se parte en dos mitades con donosidades distintas, y la mitad local tiene un mecanismo medido -- no una simple ausencia de comprobacion.**
+
+  **Lo que NO debe implementarse aqui: la igualdad exacta del conjunto remoto.** Es la autoridad del certifier: el gate `assets.distribution-allowlist` es lo que rechazo la rc6, y `AGENTS.md` §8 establece que el publicador vive en `pipelinek-release-harness` y audita el conjunto antes de tocar GitHub. Duplicarlo aqui seria crear un segundo sistema de gating, que `ADR-PK-DF-002` decision 2b prohibe explicitamente ("Prohibido crear un segundo sistema de gating para reemplazar al primero"). Esa mitad es `BLOCKED_EXTERNAL` **por diseño**, no por falta de trabajo.
+
+  **Lo que SI es local, y falla: la completitud, por un mecanismo concreto.** Medido sobre `pipeline-release/build.gradle.kts` y `CandidateMaterializer.kt`:
+
+  ```text
+  asset        como se degradan si falta              hay rechazo?
+  ZIP          doFirst isFile -> GradleException      SI (unico asset con guardia)
+  SBOM         copyTo(...) if isFile; firstOrNull    NO  -> sbom = null
+  SDK ZIP      takeIf { it.isFile }                   NO  -> sdkZip = null
+  BOM JSON     takeIf { it.isFile }                   NO  -> bomJson = null
+  SHA256SUMS   se escribe sobre `covered`             NO  (ver abajo)
+  ```
+
+  Y el codigo que produce el dano no es una comprobacion ausente sino una **contencion silenciosa**. `CandidateMaterializer.materialize` construye `covered = listOfNotNull(zip, sbom, sdkZip, bomJson)`, y la unica invariancia que el materializador impone es "`covered` no vacio y `sha256sums` no nulo -> escribir SHA256SUMS". Por tanto, si el SDK ZIP falta: `covered` encoge de cinco a cuatro, `SHA256SUMS` se escribe **certificando un subconjunto mas pequeno**, el manifiesto registra `sdk = null`, y `CandidateAdmission` devuelve `Admitted` igualmente. Denominador medido: **cero** referencias en `pipeline-release/src/main` que nombren cualquiera de los tres assets opcionales en un rechazo. Es la forma "digest de lo que hay" en lugar de "digest del perfil": el fichero de sumas sigue siendo verificable y sigue siendo cierto, y precisamente por eso no delata que le falta un miembro.
+
+  **Por que esto no es lo mismo que el fallo de rc6.** rc6 publico un conjunto remoto incompleto y lo detecto el certifier. Esto es anterior: la candidata se **admite** con un perfil incompleto, y el digest que la acompana certifica el perfil incompleto como si fuera el completo. El daño se vuelve invisible justo en el artefacto cuya funcion es detectar damage. El arreglo correcto es fail-closed en `admit` (los cuatro assets obligatorios, no `Path?`), mas una asercion de que `covered` tiene el tamano del perfil antes de escribir sumas. **No se aplica aqui**: Gradle esta ocupado y `pipeline-release` es ruta de candidata, que exige verificar sobre el artefacto, no sobre un test de modulo.
 - [ ] **Pruebas efímeras mínimas:** UAT de checkout limpio que ejecute el test afectado; E2E único que instale el ZIP y ejecute un pipeline pequeño; AAT de asset faltante/extra. Promover fitness de lanes y contrato exacto de assets; borrar los scripts/fixtures efímeros después de resultados observados.
 
 **Agent Teams:** B1 Gradle/source sets; B2 selección, frescura y rendimiento del gate; B3 release/SDK y consumidor. B2 no toca lógica Gradle de B1; B3 no modifica el publicador simultáneamente con otro agente.

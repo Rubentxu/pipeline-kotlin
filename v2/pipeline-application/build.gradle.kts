@@ -684,32 +684,20 @@ if (lane == "installed" || lane == "release") {
     tasks.named("test").configure { dependsOn("installedContractTest") }
 }
 
-// BQ2 (2026-10-16 audit, RC2): wire the LanePlanner into the
-// build so the lane partitioning is observable at the Gradle
-// level, not just in unit tests. The task reads the same
-// `LaneSpec` inputs the planner unit tests use and writes the
-// partition to `build/reports/lane-planner.json` for human
-// review. It is intentionally a no-side-effect task: it
-// computes the partition, writes JSON, and exits. The
-// plan-driven choice of `:test` vs `:installedContractTest`
-// is made ABOVE via `-Plane=...`; this task is the receipt
-// that proves the planner was consulted.
-val laneReportClasspath = configurations.create("laneReportClasspath")
-dependencies {
-    // The LanePlanner lives in :test-harness (sibling project).
-    // We depend on its runtime classpath directly so the
-    // planner main class is reachable from this JavaExec task.
-    laneReportClasspath(project(":test-harness"))
-    laneReportClasspath("org.jetbrains.kotlin:kotlin-stdlib:2.4.10")
-    laneReportClasspath("org.jetbrains.kotlin:kotlin-reflect:2.4.10")
-}
-val laneReportCp = laneReportClasspath
-tasks.register<JavaExec>("laneReport") {
-    group = "verification"
-    description = "Runs LanePlanner.partition and writes build/reports/lane-planner.json"
-    classpath = laneReportCp
-    mainClass.set("dev.rubentxu.pipeline.v2.harness.lanes.LanePlannerMainKt")
-    val out = layout.buildDirectory.file("reports/lane-planner.json")
-    outputs.file(out)
-    args("--output", out.get().asFile.absolutePath)
-}
+// BQ2 (2026-10-16 audit, RC2) removed 2026-10-18: the `laneReport` JavaExec task and its
+// `laneReportClasspath` configuration are gone. The task wrote
+// `build/reports/lane-planner.json` "for human review" and its own comment claimed it
+// was "the receipt that proves the planner was consulted" — but measured, NOTHING read
+// that file (only the writer and two comments named it) and NOTHING depended on the task
+// (`tasks.register` with no `dependsOn` from `check` or anywhere else). It ran only when a
+// human typed its name by hand.
+//
+// It was a self-certifying receipt in the exact shape ADR-PK-DF-002 decision 7 targets
+// ("mecanismos de auto-certificación ad hoc"), and it held the only non-test-side
+// dependency edge from this module to `:test-harness`. Removing it leaves exactly one
+// reference, `testImplementation(project(":test-harness"))` above, which is test-side.
+//
+// The lane partitioning itself is unaffected and never lived here: `-Plane=fast|installed|
+// release` is the block above, implemented in Gradle. The `harness.lanes` package went with
+// it: measured, it had zero importers outside itself, and its four test files guarded only
+// its own source — deleting it loses no coverage of anything outside it.

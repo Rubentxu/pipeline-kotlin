@@ -300,16 +300,25 @@ STAGED_PATHS=()
 stage_manifest_asset() {
     # $1 = manifest field path (e.g. "asset.name"); $2 = local source path
     # (resolved against v2/pipeline-application/build/distributions/).
-    # If the manifest field is non-null, copies the file to EVIDENCE_DIR and
-    # appends the staged path to STAGED_PATHS. If the field is null, prints
-    # a note and returns 0.
+    # Copies the named file to EVIDENCE_DIR and appends it to STAGED_PATHS.
+    #
+    # A null field REFUSES. It used to print a note and `return 0`, and that
+    # made the §8 completeness check unverifiable: the verification loop after
+    # `gh release create` iterates STAGED_PATHS, so an asset the manifest
+    # omitted never entered the list and therefore never had to be present on
+    # the published release. A release missing its SDK or its BOM passed the
+    # check written to catch exactly that. Every field this function is called
+    # with is mandatory under §8, so there is no legitimate skip here.
     local field="$1"
     local src="$2"
     local fname
     fname=$(read_manifest_field "$field" "")
     if [ -z "$fname" ]; then
-        echo "release-pipelinek: manifest field '$field' is null; skipping."
-        return 0
+        echo "release-pipelinek: manifest field '$field' is null; §8 fixes the asset set" >&2
+        echo "    exactly, so an incomplete manifest cannot be published. Refusing before the" >&2
+        echo "    tag is created, so no release exists to unpick." >&2
+        rm -rf "$EVIDENCE_DIR"
+        exit 1
     fi
     if [ ! -f "$src" ]; then
         echo "release-pipelinek: manifest names '$fname' at $src but the file does not exist." >&2

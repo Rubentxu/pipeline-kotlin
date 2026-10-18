@@ -118,6 +118,53 @@ assert_in_lines '\$\{STAGED_PATHS\[@\]\}' \
     "$UPLOAD_SECTION" \
     "upload uses \${STAGED_PATHS[@]} (no hardcoded asset list)"
 
+# ----------------------------------------------------------------------------
+# Test 8: a null manifest field must REFUSE, not skip.
+#
+# This is the completeness property that tests 1-7 do not cover, and its
+# absence made test 5 circular. The verification loop iterates STAGED_PATHS,
+# which is populated only by the fields that were non-null, so a manifest that
+# omitted the SDK produced a release without one AND a verification loop that
+# never asked for it. §8 fixes the asset set exactly, so every field
+# stage_manifest_asset is called with is mandatory.
+#
+# STRUCTURAL, not behavioural: reaching this block requires the real
+# releaseGate (distZip + cyclonedxBom + candidateAdmission + test) to have run,
+# so a behavioural test here would cost a full distribution build per run. The
+# claim asserted is a property of the text, and it is labelled as such.
+# ----------------------------------------------------------------------------
+FN_START=$(grep -n '^stage_manifest_asset() {' "$SCRIPT" | head -1 | cut -d: -f1)
+FN_END=$(awk -v s="$FN_START" 'NR>s && /^}/ {print NR; exit}' "$SCRIPT")
+if [ -z "$FN_START" ] || [ -z "$FN_END" ]; then
+    echo "  FAIL  stage_manifest_asset() not found in $SCRIPT" >&2
+    fail=$((fail+1))
+else
+    FN_BODY=$(sed -n "${FN_START},${FN_END}p" "$SCRIPT")
+
+    if printf '%s\n' "$FN_BODY" | grep -qE 'skipping'; then
+        echo "  FAIL  a null manifest field is SKIPPED, so an incomplete manifest publishes a" >&2
+        echo "        release whose missing asset is also missing from the verification loop" >&2
+        fail=$((fail+1))
+    else
+        echo "  PASS  a null manifest field does not skip; it refuses"
+        pass=$((pass+1))
+    fi
+
+    # The second row is scoped to the NULL branch specifically. Asserting only
+    # that the function contains `exit 1` would pass on the unrelated
+    # "file does not exist" exit, which is a green row satisfied for the wrong
+    # reason -- it would survive a fix that never touched this branch.
+    NULL_BODY=$(printf '%s\n' "$FN_BODY" | awk '/if \[ -z "\$fname" \]; then/{f=1} f{print} f && /^    fi$/{exit}')
+    if printf '%s\n' "$NULL_BODY" | grep -qE 'exit 1'; then
+        echo "  PASS  the null-field branch itself fails closed"
+        pass=$((pass+1))
+    else
+        echo "  FAIL  the null-field branch has no fail-closed exit of its own:" >&2
+        printf '%s\n' "$NULL_BODY" | sed 's/^/        /' >&2
+        fail=$((fail+1))
+    fi
+fi
+
 echo
 echo "summary: pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

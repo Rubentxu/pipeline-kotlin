@@ -78,6 +78,87 @@ exige STEP-CERT sobre el SHA nuevo, no que compile. Además `FArchS0SurfaceManif
 el censo desde el manifiesto, de modo que tocar la firma de la línea 98 invalida su entrada. La Ley
 de Certificación no admite "compila" como evidencia.
 
+### Corrección registrada 2026-10-18 — el punto de contacto 5 estaba mal, y la rebanada 1 ya está
+
+Decisión registrada: **rebanada 1 = dar nombre al códec y delegar**, sin tocar la firma del DSL ni
+el portador de `maxBackoffMs`. Commit `cf459bd5`. El texto anterior se conserva arriba como
+historia, incluidas las dos frases que este bloque corrige.
+
+**Falsado por medición: «la autoridad estructural ya parsea ese mismo payload» (línea 41).** No lo
+hace. `CanonicalStructuralDecisions.kt:485-497` lee `policy.waitUntil` de la **política declarada en
+el descriptor**, y `BodyExecutionPolicy.WaitUntilShape` dice literalmente que *la forma es una
+propiedad estructural del KIND del Step, no dato de ejecución*. El payload del bloque no se abre en
+ese camino. Consecuencia, que es la corrección de fondo:
+
+```text
+punto de contacto 5, tal como estaba escrito   leer el payload en el decoder estructural
+punto de contacto 5, medido                     ESE LECTOR NO EXISTE
+```
+
+El payload del bloque tiene **exactamente un escritor y ningún lector de producción**. Los únicos
+que tocan su región son el regex de `StepDispatchEngine.kt:698-700` —que busca una clave que nadie
+escribe— y las aserciones de los tests. Añadir ahí la lectura de `maxBackoffMs` no es «la segunda
+lectura de un valor que la primera ya posee» (línea 42, y esa frase también estaba mal): es **la
+primera**.
+
+**El `kind` divergente no era un defecto.** `kind="waitUntil"` (portador del registro,
+`encodedInput`, decodificado por el códec del Step) y `kind="waitUntilBlock"` (portador del bloque,
+`payload`) son **dos formatos de dos portadores distintos**, no dos escritores de un mismo formato. Y
+`kind="waitUntilBlock"` **no era un literal huérfano**:
+`Lfc2WaitUntilDslCanonicalProjectionTest.kt:145` lo afirma cruzando `DslCompiledPipelineCompiler.compile`.
+Por eso el códec extraído lo emite byte a byte, `DR-10` no dispara y no hace falta revisión de
+compatibilidad.
+
+**Censo de escritores, después de la rebanada 1** — leído rama por rama, no por clasificador:
+
+| rama (`DslCompiledPipelineCompiler.kt:332-396`) | veredicto |
+| --- | --- |
+| `Dir` (333) · `Timestamps` (337) · `WithEnv` (340) · `TimeoutBlock` (355) · `RetryBlock` (367) | escriben el cable a mano |
+| `WithCredentialsBlock` (344) → `CredentialBindingsPayload.encode` | delegan |
+| `WaitUntilBlock` (376) → `CoreWaitUntilWireCodec.encode` | delegan (esta rebanada) |
+| `Lock` (382) → `CoreLockWireCodec.encode` | delegan |
+| `Input` (386) → `CoreInputWireCodec.encode` | delegan |
+
+```text
+9 Steps en blockPayload:  4 delegan en una autoridad nombrada   5 escriben a mano
+antes de cf459bd5:        3 delegaban                           6 escribían a mano
+```
+
+Denominador: las 9 ramas nombradas de `blockPayload`; la décima cabecera es el `else -> "{}"`, y
+`TimeoutBlock` contiene un `when` anidado cuyo `else` no es una rama de `blockPayload` (contarlo
+como tal fue el error de dos instrumentos seguidos).
+
+**Corrección de un censo ya publicado.** El bloque de `31e4b5df` afirmaba «9 ramas, 2 delegan
+(`Input`, `Lock`)». Era falso por uno: `WithCredentialsBlock` delegaba desde antes, en
+`CredentialBindingsPayload.encode`. El instrumento buscaba el sufijo `*WireCodec` y una autoridad
+sin ese sufijo le era invisible. Es la cuarta vez esta semana que un instrumento con forma de nombre
+no ve el sujeto que debía contar (la tercera fue el detector de códecs anónimos, la segunda un
+clasificador de ramas, la primera un grupo de rutas escrito a mano). Regla, ya escrita: **si el
+instrumento no puede ver una parte del denominador, el resultado es `NOT_RUN`, no un número**.
+
+El censo **por formato** sigue `NOT_RUN`: ningún instrumento de este ciclo ha distinguido todavía un
+`StepCodec` anónimo de la ausencia de uno.
+
+**Hueco medido que la rebanada deja escrito:** `BodyStructureDigest` **no tiene clase de test
+propia**. Sus únicas menciones bajo `src/test` son los dos ficheros añadidos en `cf459bd5`. Los
+bytes congelados están garantizados por igualdad de cadena en el test de contrato; **el digest en sí
+no está probado**. Es trabajo de otra rebanada, no un apéndice de esta.
+
+**Lo que queda, y su orden real.** El punto 6 (borrar el regex) **no puede ir antes que el punto 3**:
+borrarlo sin darle antes un lector tipado al campo deja el techo de backoff sin ninguna vía en
+producción, que es exactamente el defecto que la reversión del 2026-10-18 ya pagó una vez. Orden
+medido, no estimado:
+
+```text
+3  portador tipado de maxBackoffMs + lectura en el decoder estructural (crea el lector que falta)
+6  SE BORRA el regex, sólo después, con STEP-CERT sobre el SHA nuevo
+1  StageScope.kt:436              añadir el parámetro al builder DSL
+2  DSL_SURFACE_MANIFEST.md:98      la firma de la fila cambia, y su censo se recalcula
+```
+
+Y por debajo de todo eso sigue la deuda horizontal: 6 ramas más escriben su cable a mano. La rebanada
+1 no las arregla; las deja contadas.
+
 **Lo que NO es aceptable como atajo:** enseñar a leer la clave al decodificador estructural sin
 exponerla en la emisión. Eso consagra un campo que sólo los tests escriben, y la exposición
 tipada lo reescribiría acto seguido sobre los mismos ficheros. Es trabajo doble.

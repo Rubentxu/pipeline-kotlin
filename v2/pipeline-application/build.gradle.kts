@@ -245,9 +245,16 @@ dependencies {
     // :buildExamplePlugin, :buildExternalDirectivePlugin, and
     // :buildExampleBlockPlugin in the root build, all of which depend
     // on `publishSdkForExternalPlugin` so the JARs exist before the
-    // application graph is wired. The test runtime uses the same JARs
-    // (see `testImplementation` further down) so the gate and the
-    // application suite observe the same bytes.
+    // application graph is wired. The test classpath that needs them
+    // reaches the same three JAR files through
+    // `pluginContractTestImplementation` (FAST-LANE SPLIT below), so the
+    // gate and the application suite observe the same bytes.
+    //
+    // This used to read "see `testImplementation` further down". That was
+    // true until the fast-lane split moved the JARs off the fast lane's
+    // compile classpath, and it outlived the move: a reader following the
+    // pointer forward finds no `testImplementation(files(...))` anywhere,
+    // because there is none.
     runtimeOnly(files(rootDir.resolve("../examples/example-uppercase-plugin/build/libs/example-uppercase-plugin-0.1.0.jar")))
     runtimeOnly(files(rootDir.resolve("../examples/example-directive-plugin/build/libs/example-directive-plugin-0.1.0.jar")))
     runtimeOnly(files(rootDir.resolve("../examples/example-block-plugin/build/libs/example-block-plugin-0.1.0.jar")))
@@ -262,19 +269,24 @@ dependencies {
     // classpath. The suites that compile against them live in the `pluginContractTest`
     // source set (FAST-LANE SPLIT above); declaring the JARs here is what forced the
     // inner loop to build them. example.uppercase / example.lock /
-    // example.repeat are unchanged in substance and are still certified, by `check`.[[
+    // example.repeat are unchanged in substance and are still certified, by `check`.
     // Override BOM-enforced wrong version (junit-platform-launcher uses 1.x not 5.x)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 }
 
-// Lane R: test *compilation* needs the plugin JAR on the test classpath. The
-// JARs are declared above on `testImplementation` via `files(...)`. To avoid
-// re-building the example plugins on every dev edit (the audit's P1 BQ2
-// defect), the explicit `dependsOn` is removed. If the JARs are absent
-// (a fresh checkout), the developer MUST run `:publishSdkForExternalPlugin`
-// (or one of the example plugin builds) once before the first `:test`.
-// The fast-lane build assumes the JARs are on disk, which is the steady
-// state after any prior `:pipeline-application:installDist`.
+// Lane R: test *compilation* against the plugin JARs needs them on a test
+// classpath. Since the fast-lane split they are NOT on `testImplementation`:
+// the suites that reference them compile in the `pluginContractTest` source
+// set, which carries them through `pluginContractTestImplementation` as a
+// buildable file collection over the three Exec tasks that produce them.
+//
+// The consequence is stronger than the one this paragraph used to state. It
+// used to say the JARs sit on `testImplementation` and that a fresh checkout
+// therefore fails `:test` fast on a missing JAR. That is no longer the
+// mechanism at all: `:test` neither declares nor schedules the plugin builds,
+// so it does not consult those JARs. A fresh checkout now runs the fast lane
+// fine and builds the plugins on demand the first time the LANE THAT NEEDS
+// THEM runs.
 
 tasks.test {
     // SOURCE-SCANNING FITNESS INPUT (2026-10-18).
@@ -299,11 +311,14 @@ tasks.test {
     // only gate available.
     //
     // The tree is the declared input, named per module rather than as one fileTree rooted at `v2`.
-    // Two reasons, and the first one is a gate: `FArch011V2NoCompileExcludesTest` rejects the token
-    // `exclude(` in ANY build file, so the obvious `exclude("**/build/**")` fix is itself refused.
-    // The second is the overlap a root-level tree creates: rooting at `v2` makes the declared input
-    // overlap every other module's build directory and Gradle refuses the task for using an output it
-    // never declared. Naming each module's own `src/test/kotlin` sidesteps both. `pipeline-`
+    // The reason is overlap: rooting at `v2` makes the declared input cover every other module's
+    // build directory and Gradle refuses the task for declaring an output it never produced.
+    // Naming each module's own `src/test/kotlin` sidesteps that and keeps the input to source.
+    // (An earlier version of this comment also claimed `FArch011V2NoCompileExcludesTest` rejected
+    // the token `exclude(` in ANY build file, which is false -- it bans excluding sources from
+    // COMPILATION and its own KDoc records that the blanket form over-fired on three legitimate
+    // input filters. Overlap is the real obstacle, and naming paths is the real fix.)
+    // `pipeline-`
     // application's OWN test sources are already inputs through `compileTestKotlin`, so they are not
     // listed here. `pipeline-architecture-tests` declares the same shape for `src/main/kotlin`, and
     // documents the reasoning in full at that file's "Cross-module inputs, declared" block.
@@ -322,18 +337,27 @@ tasks.test {
     // (defined below); it carries the dependsOn for the
     // three example plugin builds.
     //
-    // The `testImplementation(files(...))` lines at the top
-    // of the dependencies block reference the same JARs.
-    // Gradle's strict task-dependency validation refuses to
-    // schedule `:test` if those JAR files are missing at
-    // test time. The pre-existing JARs on disk (from any
-    // prior `:publishSdkForExternalPlugin` or
-    // `:installedContractTest` run) satisfy the file()s; a
-    // truly fresh checkout will fail fast at the
-    // `testImplementation` resolution step rather than at a
-    // silent no-op later. The fast lane is honest about
-    // its dependency on the JARs being on disk; it just
-    // does not PAY for them on every run.
+    // The `runtimeOnly(files(...))` lines above in the
+    // dependencies block reference the same JARs, and
+    // `testRuntimeOnly` extends `runtimeOnly`, so they ARE on
+    // `:test`'s runtime classpath. Gradle's strict
+    // task-dependency validation therefore refuses to schedule
+    // `:test` if those JAR files are missing from disk. The
+    // pre-existing JARs on disk (from any prior
+    // `:publishSdkForExternalPlugin` or `:installedContractTest`
+    // run) satisfy the file()s; a truly fresh checkout fails
+    // fast at runtime-classpath resolution rather than at a
+    // silent no-op later. The fast lane is honest about its
+    // dependency on the JARs being on disk; it just does not PAY
+    // for them on every run.
+    //
+    // This paragraph used to cite `testImplementation(files(...))`
+    // and say the failure surfaces "at the `testImplementation`
+    // resolution step". No such line exists in this file, and the
+    // classpath that carries them is `runtimeOnly`. A reader
+    // debugging a missing-JAR fast-lane failure was sent to grep
+    // for a declaration that had been deleted by the split, and
+    // the paragraph sits 40 lines above the split that deleted it.
     //
     // BQ2 (2026-10-16 audit, RC3 close-out): the previous
     // configuration coupled `:test` to
@@ -357,10 +381,10 @@ tasks.test {
     // picks the lane without re-typing the task name.
     //
     // The fast lane keeps the in-process contract test
-    // fixture: the compile classpath already carries the
-    // plugin JARs (declared above on `testImplementation`),
-    // so a typical test that only references the plugin
-    // from the JVM does not need `installDist` at all.
+    // fixture: the runtime classpath already carries the
+    // plugin JARs (through the `runtimeOnly` declarations
+    // above), so a typical test that only references the
+    // plugin from the JVM does not need `installDist` at all.
     //
     // S6/C: BuiltPluginManifestArtifactTest admits the REAL utilities artifact from the filesystem
     // at runtime, NOT from the compile classpath. The fast lane does NOT need this JAR to be
@@ -694,6 +718,53 @@ tasks.register<Test>("installedContractTest") {
     useJUnitPlatform {
         includeTags("installed-contract")
     }
+
+    // Cross-module inputs, declared. Three classes in this lane read files that no
+    // `dependsOn` here produces, so until now the lane could answer `UP-TO-DATE` after any of
+    // them changed. The reads, with the class that makes each one:
+    //
+    //   repoRoot/pipeline.kts            SelfHostedPipelineScriptHonestyTest   (version carrier)
+    //   repoRoot/v2/build.gradle.kts     SelfHostedPipelineScriptHonestyTest   (projectVersion())
+    //   v2/compatibility/**.pipeline.kts CompatibilityCorpusTest, Lfc2WaitUntilCanonicalReentryFitnessTest
+    //
+    // The consequence is narrower than "a stale test" and wider than it looks: this is the lane
+    // that certifies the SHIPPED `pipelinek` binary. A green served from a changed corpus is a
+    // candidate signed against bytes nobody re-checked.
+    //
+    // What is deliberately NOT here, and why, because the obvious answer is wrong twice:
+    //
+    //   - `examples/**`. Two classes in this lane read from it
+    //     (`PluginAdmissionInstalledDistributionUatTest`, `P3DPluginEventInstalledDistributionUatTest`)
+    //     and they read exactly one file: `example-uppercase-plugin-0.1.0.jar`. That same file is
+    //     already an input through `testRuntimeClasspath`, because the `runtimeOnly(files(...))`
+    //     declarations above put it there and every `Test` task declares its runtime classpath as an
+    //     input. Naming the tree would add nothing but 1251 files this lane never opens: measured,
+    //     `examples` holds 1409 files of which 1251 sit under `build/` or `.gradle/`, all of them
+    //     regenerated by the example module builds this task already `dependsOn`. That would make
+    //     the input hash move on every run, so the lane would never be UP-TO-DATE and would pay a
+    //     full `installDist` every time -- exactly the cost the fast-lane split exists to remove.
+    //   - the generated roots under `v2/compatibility` (11 of its 45 files). Same reason, smaller:
+    //     they are outputs, not corpus.
+    //
+    // The narrowing below is an `include` on the corpus extension, which needs no `exclude` at all:
+    // `.pipeline.kts` is what the corpus IS, so naming it is enough to leave the generated roots
+    // out. (An `exclude` here would be equally legal if one were needed --
+    // `FArch011V2NoCompileExcludesTest` bans hiding SOURCES from the COMPILER
+    // (`KotlinCompile { exclude(...) }`, `sourceSets { setExcludes(...) }`), not filtering the
+    // inputs of a task; its own KDoc records that a blanket ban on the token over-fired on three
+    // legitimate input filters on 2026-10-08, which is why the law was narrowed to compile shapes.)
+    val repoRootDir = rootProject.projectDir
+    val installedLaneInputs = listOf(
+        repoRootDir.resolve("pipeline.kts"),
+        repoRootDir.resolve("v2/build.gradle.kts"),
+        fileTree(repoRootDir.resolve("v2/compatibility")) {
+            include("**/*.pipeline.kts")
+        },
+    )
+    inputs.files(installedLaneInputs)
+        .withPropertyName("installedLaneExternalReads")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+
     // Same fork-economy as `:test`: the wedge documented in
     // PK-0-57-RC1 (T3) is still in force, so this lane runs
     // one fork at a time. A future ticket may relax this when

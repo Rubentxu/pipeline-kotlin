@@ -123,6 +123,65 @@ class ChangedInputClassifierTest {
     @Nested
     inner class NonProductionClassifications {
 
+        /**
+         * The three paths are the ones the gate named, verbatim, when it
+         * refused a real change on 2026-10-18. They are not a
+         * hand-picked sample: they are the gate's own output.
+         *
+         * The claim is that a repository-owned TEST SCRIPT is a test
+         * source. It is not an unclassified production path, and the
+         * difference is operational, not cosmetic: an
+         * `UnknownProduction` makes the resolver refuse, so before this
+         * rule the gate could not certify ANY change touching the
+         * installer harness or the release publisher — including a
+         * change to `scripts/validation-gate.py`, the gate's own entry
+         * point. The remedy the refusal names ("add a catalogue row")
+         * is nonsense for a test script: a test harness is not a
+         * product contract, and binding it as one would buy a green by
+         * writing a lie into the catalogue.
+         *
+         * `TestSource` is the honest variant and it already exists. The
+         * new case is deliberately NOT `TestHarnessInternal`: BQ4 P0
+         * removed a self-owned prefix exemption from the classifier
+         * because a prefix exemption reads as coverage while being a
+         * silent green, and reusing that variant for a second prefix
+         * would reintroduce the defect under a second name. A naming
+         * convention over an explicit case list is the opposite of a
+         * per-file table, which ADR-PK-QV-002 D2 forbids.
+         */
+        @Test
+        fun `a repository test script under scripts is NonProduction TestSource`() {
+            for (path in listOf(
+                "scripts/test_install_pipelinek.py",
+                "scripts/test_release_publisher.sh",
+                "scripts/test_release_publisher_assets.sh",
+            )) {
+                val classified = ChangedInputClassifier.classify(path)
+                assertTrue(classified is ChangedInput.TestSource) {
+                    "$path classified as $classified; the gate refuses an UnknownProduction, " +
+                        "so a change to the installer harness or the release publisher cannot be " +
+                        "certified at all."
+                }
+            }
+        }
+
+        /**
+         * The control for the row above, and the reason the row cannot be
+         * satisfied by widening the exemption. `scripts/` is not one
+         * thing: the release and install entry points decide what ships
+         * and stay Production. A rule that made the whole directory
+         * non-production would turn the operator-facing half of the
+         * release path into a silent green.
+         */
+        @Test
+        fun `a release script is still Production when a test script beside it is not`() {
+            assertTrue(
+                ChangedInputClassifier.isProductionPath("scripts/release-pipelinek.sh"),
+                "widening the test-script exemption swallowed a DistributionScript; the two " +
+                    "scripts live in one directory and mean different things.",
+            )
+        }
+
         @Test
         fun `a kt source under v2 test-harness src main is Production SourceCode`() {
             // BQ4 P0 (HITO 1 "selección y evidencia vinculadas",

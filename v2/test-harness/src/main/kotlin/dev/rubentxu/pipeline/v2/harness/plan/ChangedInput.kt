@@ -186,28 +186,54 @@ sealed interface ChangedInput {
     sealed interface NonProduction : ChangedInput
 
     /**
-     * The test-harness's own sources. The audit (2026-10-16)
-     * is explicit: a defect in the harness makes the
-     * harness over-report, which is noisy but safe.
-     * Self-owned prefixes are NOT production changes;
-     * the resolver treats them as NonProduction and the
-     * plan ignores them. The exemption is scoped to
-     * `v2/test-harness/` (a prefix, not a wildcard) so
-     * a real product change that landed in the wrong
-     * module is still refused.
+     * RESERVED and, as of BQ4 P0 (2026-10-17), NOT CONSTRUCTED by the
+     * classifier. Kept so a future narrower self-owned exemption has a
+     * home, and so the decision that removed the old one stays legible.
+     *
+     * It previously carried a `v2/test-harness/` prefix exemption, and
+     * the audit that removed it was explicit: a self-owned prefix makes
+     * a defect in the harness's own `src/main` a SILENT GREEN. The gate
+     * saw "no production change" and discharged. That variant's
+     * description below therefore describes what the exemption WAS, not
+     * what the classifier does — and a KDoc that describes the wiring
+     * the code no longer has is the same defect class as a test that
+     * asserts it.
+     *
+     * Read the current rule instead: a path under
+     * `v2/test-harness/src/main` falls through to [SourceCode]
+     * (Production), and one under its `src/test` falls through to
+     * [TestSource].
+     *
+     * (Written without a trailing glob on purpose: Kotlin block comments
+     * NEST, so a slash followed by a star inside one opens a nested
+     * comment, and a single closing delimiter then leaves the outer one
+     * open. `src/test` with no glob states the same fact and cannot
+     * close the file's comment. This cost two build failures before it
+     * was noticed, and the lesson is worth the four lines.)
      */
     data class TestHarnessInternal(override val path: String) : NonProduction {
         init { require(path.isNotBlank()) { "TestHarnessInternal.path must not be blank" } }
     }
 
     /**
-     * A test source under `src/test/` (with `.kt` or
-     * `.java` extension). Test changes are not product
-     * changes; the catalogue does not bind test sources
-     * and the resolver ignores them. A test source under
-     * `v2/test-harness/` is classified as
-     * [TestHarnessInternal] (the prefix check fires
-     * first).
+     * A test source. Two shapes reach this variant, and the
+     * distinction is incidental to what the variant MEANS:
+     *
+     * 1. a `.kt`/`.java` file under `src/test/` (step 6), and
+     * 2. a repository-owned test script, `scripts/test_*.py` and
+     *    `scripts/test_*.sh` (step 6b).
+     *
+     * Test changes are not product changes; the catalogue does not
+     * bind test sources and the resolver ignores them. The second
+     * shape was added on 2026-10-18 because a test script that is
+     * not recognised as a test source is refused as an
+     * [UnknownProduction], and the remedy that refusal names — a
+     * catalogue row — is a lie for a test harness. See step 6b for
+     * the measurement.
+     *
+     * A test source under `v2/test-harness/` is NOT this variant: it
+     * falls through to [SourceCode], because the harness IS the
+     * product (BQ4 P0).
      */
     data class TestSource(override val path: String) : NonProduction {
         init { require(path.isNotBlank()) { "TestSource.path must not be blank" } }
@@ -354,6 +380,42 @@ object ChangedInputClassifier {
             (path.endsWith(".kt") || path.endsWith(".java"))
         ) {
             return ChangedInput.TestSource(path)
+        }
+
+        // 6b. Repository-owned test scripts (NonProduction).
+        //
+        //     Measured 2026-10-18: the `scripts/` distribution rule
+        //     above matched 2 of the 31 files in `scripts/`. The other
+        //     29 fell through to [ChangedInput.UnknownProduction],
+        //     and the resolver REFUSES on that — so a change to
+        //     `scripts/test_install_pipelinek.py`,
+        //     `scripts/test_release_publisher.sh` or
+        //     `scripts/test_release_publisher_assets.sh` made
+        //     `scripts/validation-gate.py` refuse to certify it, with
+        //     "add a catalogue row or remove the file". A gate that
+        //     cannot certify a change to itself is not a gate.
+        //
+        //     These are TEST SOURCES: they do not ship (measured —
+        //     `unzip -l` on the 0.62.0 distribution lists zero
+        //     `scripts/` entries), and they are not consumer-facing.
+        //     The refusal's own remedy is the tell: binding a test
+        //     harness as a product contract would buy a green by
+        //     writing a lie into the catalogue.
+        //
+        //     `test_` is the repository's naming convention across 11
+        //     files, so this is a convention and not a per-file table
+        //     (ADR-PK-QV-002 D2 forbids the table). It is deliberately
+        //     NOT [ChangedInput.TestHarnessInternal]: BQ4 P0 removed a
+        //     self-owned prefix exemption because it read as coverage
+        //     while being a silent green, and re-adding one under a
+        //     second name would restore the defect, not fix it.
+        if (path.startsWith("scripts/")) {
+            val fileName = path.substringAfterLast('/')
+            if (fileName.startsWith("test_") &&
+                (fileName.endsWith(".py") || fileName.endsWith(".sh"))
+            ) {
+                return ChangedInput.TestSource(path)
+            }
         }
 
         // 7. Documentation. `.md` and `docs/` paths are

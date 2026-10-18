@@ -82,6 +82,57 @@ de Certificación no admite "compila" como evidencia.
 exponerla en la emisión. Eso consagra un campo que sólo los tests escriben, y la exposición
 tipada lo reescribiría acto seguido sobre los mismos ficheros. Es trabajo doble.
 
+### Corrección registrada 2026-10-18 — `maxBackoffMs` es un caso de `DEBT-WIRE-AUTHORITY`, no un hueco aislado
+
+El texto anterior queda **en pie en su conclusión** (en producción la clave no aparece, y por tanto
+no se puede simplemente borrar el override) pero **corrige su alcance** en dos puntos medidos después de
+escribirlo. Se conservan las dos lecturas anteriores sin borrar, porque el error es la lección.
+
+**Corrección 1 — no son «dos escritores del mismo formato».** Son dos *formas* con dos `kind`
+distintos. El códec del Step emite `kind="waitUntil"` (`CoreWaitUntilStep.kt:148`); la proyección
+del bloque emite `kind="waitUntilBlock"` (`DslCompiledPipelineCompiler.kt:375`), y **ningún lector
+de producción compara contra `"waitUntilBlock"`**: ese literal aparece en un único fichero, el propio
+compilador. El decodificador estructural no discrimina por `kind` en absoluto — lee
+`shape.initialRecurrencePeriodMs` de un `WaitUntilShape` ya tipado. La convención del repositorio es
+la contraria: cada códec hace `require(obj["kind"] == "<su kind>")` (`CoreDeleteDirStep.kt:116`,
+`CoreReadFileStep.kt:92`, `CoreArchiveArtifactsStep.kt:85`, …). Es decir: el payload del bloque es
+consumido por la vía estructural, y siOutlineara el códec fallaría cerrado. La conclusión de
+producción sigue valiendo —ninguno de los dos `kind` emite `maxBackoffMs`— pero el mecanismo que
+importa es la proyección del compilador, no un códec compartido.
+
+**Corrección 2 — el bloque pertenece a una deuda ya registrada, con dueño y prioridad.**
+`Lfc2LockWireAuthorityFitnessTest` declara la ley en su propio KDoc (líneas 21-25): *«`core.sh` is
+the counter-example frozen by WU-091: its compiler producer and its codec self-encoding drifted
+(`kind=sh|shell`, `command|script`, `returnStdout|returnMode`), and every alias is a compatibility
+shim added after the divergence»*, y la divergencia es la forma exacta que sufre `waitUntil` hoy. Su
+líneas 27-30 acotan el alcance y **nombran la deuda**: `DEBT-WIRE-AUTHORITY`, backlog
+`bl-bl-01M3YGH3FE000387X13PG607G0`, P2, Triaged, registrada en
+`docs/v2/07-uat/WU091_LOCK_RELEASE_RECEIPT.md:57` y `WU092_INPUT_RELEASE_RECEIPT.md:57`, y
+deliberadamente NO plegada en este tren.
+
+Lo medido sobre `blockPayload` (`DslCompiledPipelineCompiler.kt:332-396`): **9 ramas, 9 Steps, y
+sólo 2 delegan** en un códec (`Input`, `Lock`); las otras 7 escriben su cable a mano — `Dir`,
+`Timestamps`, `WithEnv`, `TimeoutBlock`, `RetryBlock`, `WaitUntilBlock`, `WithCredentialsBlock`. El
+deuda registrada nombra 4 (`Dir`, `WithEnv`, `TimeoutBlock`, `RetryBlock`); **`Timestamps`,
+`WaitUntilBlock` y `WithCredentialsBlock` nunca fueron nombrados**.
+
+**Lo que NO se afirma, y por qué.** El censo *por formato* de «qué ramas tienen además un códec
+propio» queda `NOT_RUN`. El instrumento que construí —buscar un `*Codec` cuyo nombre contenga el
+nombre del Step— devolvió «no hay códec» para `WaitUntilBlock`, y es un **falso negativo**: su
+códec existe y es anónimo (`CoreWaitUntilStep.kt:142`, un `object : StepCodec<WaitUntilInput>` sin
+nombre). Un instrumento que no ve códecs anónimos no puede contarlos, y una cifra producida por él no
+es citable. Éste es el tercer instrumento de este ciclo que hubo que descartar — junto con el regex de
+clasificación de ramas, que marcó 8 de 9 como `DELEGA`— y por eso el censo se escribe `NOT_RUN` en
+lugar de estimarse.
+
+**Consecuencia para el bloque siguiente.** Parchear `maxBackoffMs` como si fuera un hueco aislado
+convierte 1 caso de una deuda horizontal de 7 casos nominales en un caso especial permanente — que es
+la forma que la misma nota de alcance del fitness advierte no de plegar. El orden correcto es tratar
+`waitUntil` dentro de `DEBT-WIRE-AUTHORITY` (extraer su códec nombrado y dejar de hand-escribir el
+cable del bloque), y el portador tipado de `maxBackoffMs` cae como consecuencia, no como objetivo.
+Eso no cambia el diagnóstico del override —sigue siendo producción-muerto y sólo los tests lo
+escriben— sino el **tamaño** del arreglo: uno horizontal, no uno local.
+
 **Actualización de hechos 2026-10-08 (observada, no inferida). Supersede las tres líneas anteriores como referencia de estado; se conservan por trazabilidad.**
 
 ```text

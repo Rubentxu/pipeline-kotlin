@@ -76,7 +76,38 @@ integrado; las cuatro amendments de `ADR-PK-DF-002` siguen requiriendo firma del
   - `f02` sobrevive a M-2 porque su aserción es una ausencia y un plano vacío la satisface. Verde sin haber medido. → **cerrado en H1.3** (marcador benigno presente + rojo bajo M-2).
   - `OperationOutputStreams.init` valida `runId`/`operationId` y **no** que los canales sean distintos: un `stderr` con canal `STDOUT` lo satisface. La suposición que la clase expresa no tiene invariante que la sostenga. → **cerrado en H1.3** (dos `require` de identidad de canal + `OperationOutputStreamsChannelInvariantTest`). **Medido como latente, no vivo**: la única construcción del repo era correcta. Y existía un **gemelo** en `runtime-api` con el mismo hole → cerrado también en H1.3.
 
-- [ ] **H1.2** Corregir productor→redactor→Output Plane→CLI sin segundo writer/event plane de bytes. Propiedad redacción antes de persistencia; no duplicar responsabilidades de recovery.
+- [x] **H1.2** Corregir productor→redactor→Output Plane→CLI sin segundo writer/event plane de bytes. Propiedad redacción antes de persistencia; no duplicar responsabilidades de recovery.
+
+  **La propiedad de redacción NO tenía implementación. Cerrado en `3bf9f6a2`.** ADR-0049 §D8 afirma que el contenido de una credencial no aparece en superficies de evento. El contrato estaba aceptado y el código no hacía nada al respecto: `Main.kt` carries una comentario que dice que los secretos del store «se añaden independientemente», y no los añade ningún camino — lo verifiqué enumerando las escrituras de `registeredSecrets` antes de tocar nada, no leyéndolo.
+
+  **La clase de defecto nueva: un falsificador con DOS causas de vacuidad.** Las tres filas eran incapaces de fallar por dos razones independientes, y **arreglar sólo la primera las dejaba verdes**:
+  1. ejecutaban `sh("echo done")` — nada imprimible que poder filtrar;
+  2. afirmaban sólo sobre `stdout`. La salida de `sh` no vive en el log de eventos sino en la transcripción durable, alcanzable por `shTranscript`.
+
+  Cambiar `echo done` por `printenv`/`cat` **no** las vuelve rojas: siguen afirmando sobre la superficie donde la salida no puede llegar. Lo comprobé — la primera ronda de falsificadores salió 3/3 verde y la leí como «la redacción funciona». Era la segunda causa. Ambas tenían que cerrarse, y por eso el valor del falsificador está en haber medido el mecanismo en vez de accepting el verde.
+
+  **La costura es el binding, y no el store.** Es el último punto donde el valor existe y el primero donde un proceso hijo puede leerlo. Ni antes —el store reclamaría lookahead para credenciales que la ejecución nunca enlaza, y cada byte reclamado es latencia de salida pagada en cada step— ni después.
+
+  **Dos formas de secreto, dos registros distintos.** Los handles de env llevan el valor y se registran enteros. Los ficheros materializados se enlazan por su **ruta**, que va enmascarada a propósito (`JAVA_HOME`, `PATH`): redactar la ruta rompería el binding, y el propio executor ya afirma que una ruta enlazada **debe** aparecer. El contenido es otro secreto, y se registra desde la materialización retenida — `ProjectionResult.retainedMaterializations`, no olfateando strings.
+
+  **Registro por registro, y lo medí antes de escribirlo.** `maxLiteralByteLength()` es el **máximo** de todo lo registrado y es el lookahead del `StreamingRedactor`: una sola clave SSH de 3 KB registrada entera obliga a retener 6 KB antes de emitir un byte, en cada step. Por registro la ventana es 2 × el registro más largo, y OpenSSH/PEM envuelven base64 a 70 columnas — ~140 bytes en vez de ~6 KB. El hueco que queda, escrito en el KDoc de producción y no escondido: un secreto *reconstruido* a través de registros, que necesita un redactor que re-divisione, no un literal mayor.
+
+  ```text
+  UatLocal008CredentialsTest clase completa     tests=27 failures=0 errors=0 skipped=1 (CR-BD-034, preexistente)
+  MUTACION  anular el registro                  -> ROJAS 029, 030, 031 y 022, cada una con el mensaje de su contrato
+  CR-BD-032 bajo la misma mutacion              -> sigue VERDE (control: la fila de ámbito no está acoplada a la costura)
+  :pipeline-credentials-api / executor / domain tests=838 failures=0 errors=0 skipped=0
+  ```
+
+  **Un footgun latente encontrado al implementar.** `addSecret(handle)` llamaba `use`, que **borra el buffer al salir**: registrar una credencial enlazada la destruía antes de que `sh` corriera. Invisible porque todo call site actual registra un handle que acaba de construir y tira. De ahí `SecretHandle.peek` — «estoy mirando» y «he terminado con esto» son hechos distintos sobre la vida, y colapsarlos en un flag es exactamente cómo un wipe-on-exit se convierte en wipe-on-first-peek.
+
+  **Dos filas afirmaban la fuga, y una de ellas era la única testigo de su propio contrato.**
+  - CR-BD-022 afirmaba `U_P=admin:secret123` en la transcripción: **certificaba la fuga** que §D8 prohíbe. Invertida a dos afirmaciones — la clave presente (la vinculación llegó) y el valor ausente.
+  - CR-BD-032 afirmaba valores para distinguir outer/inner/restored. Con redacción activa los tres renglones son `****` e idénticos, así que el contrato de ámbito que la fila existe para probar queda **inobservable**. Sus valores pasan a 7 bytes, por debajo de `MIN_MASKABLE_LENGTH` y por diseño no enmascarables. El comentario explica por qué **no** deben «mejorarse» a longitudes realistas: eso borraría en silencio la única cobertura de ámbito que existe.
+
+  **Verifiqué el mecanismo antes de reescribir los tests**, porque «expected true but was false» admite dos explicaciones con arreglos opuestos: redacción (correcto, hay que arreglar el test) o truncamiento por ventana (defecto de producto, hay que arreglar el redactor). Metí el transcript en el mensaje de aserción y medí: `outer=**** / inner=**** / restored=****` — la salida **completa** sobrevive y sólo los valores se enmascaran. Era redacción.
+
+  **Latente, NO corregido aquí.** `MaterializedCredential.close()` (credentials-api/spi) hace `handle?.let { /* handle cleanup if needed */ }` — un no-op disfrazado de trabajo, la clase «comentario que afirma una propiedad que el cableado no tiene». Sus únicos constructores `fromHandle` están en tests, así que no lo ejecuta producción: enumeré las construcciones antes de calificarlo. Fix de una línea, sin trazabilidad de milestone propia, y meterlo en un commit de seguridad sería peor que dejarlo escrito.
 - [x] **H1.3** Solo test del seam de salida afectado + **1 UAT temporal** de CLI con stdout/stderr/cursor y negativo secreto si riesgo afectado. Reusar smoke instalado del RC. Borrar pruebas temporales y fixtures tras aceptación.
 
   **Cerrado el alcance que H1.1 dejó medido.** No hizo falta UAT nueva: los dos ítems eran locales y uno de ellos era de producto. Sin ampuляр el gate.

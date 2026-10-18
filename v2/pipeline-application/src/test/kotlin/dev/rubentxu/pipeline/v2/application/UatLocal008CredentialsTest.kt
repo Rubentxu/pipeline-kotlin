@@ -1560,6 +1560,19 @@ pipeline {
             command = args,
             timeout = PIPELINE_RUN,
             workingDirectory = scriptPath.parent.toFile(),
+            // These rows are about execution and redaction, not about credentials, so they must
+            // SAY there is no store rather than inherit whatever the developer happens to have.
+            //
+            // OwnedSubprocess MERGES this map into the inherited environment, so omitting the entry
+            // left the run reading the real `$HOME/.pipeline/credentials.bin`. A developer who has
+            // ever run `credentials add` therefore got a run that exits 3 in
+            // composeWithCredentialsExecutor — before the event stream opens — and every row that
+            // asserts on events failed with "No RunFinished event in output". The suite's result
+            // depended on the machine, not on the code. The path is inside this test's own
+            // controlRoot, so it is absent by construction rather than by luck.
+            environment = mapOf(
+                "PIPELINE_CREDENTIALS_STORE" to controlRoot.resolve("no-store-in-this-run.bin").toString(),
+            ),
         ).stdout
     }
 

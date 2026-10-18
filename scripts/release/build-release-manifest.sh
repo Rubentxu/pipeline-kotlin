@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # build-release-manifest.sh — produce the SHA256SUMS digest authority for a release.
 #
-# Authority:
-#   docs/v2/03-specifications/DISTRIBUTION_RELEASE_SPEC.md §4
-#
 # Why this is a separate script
 # -----------------------------
 # `resolve-release-digest.sh` is the CONSUMER half of the same contract: it

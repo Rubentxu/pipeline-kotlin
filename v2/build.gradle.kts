@@ -116,8 +116,7 @@ version = "0.62.0"
 //     Its receipt was corrected to retract the scmGit finding (e18ef439); the
 //     finding is now fixed properly by the S0-C1 consumption gate.
 //   - v0.43.0-rc1 was the candidate of the previous train; immutable. Its
-//     installed-distribution UAT (docs/v2/07-uat/S1_EF_INSTALLED_DIRECTIVE_UAT_RECEIPT.md)
-//     certified the bytes built at 1910083e.
+//     installed-distribution UAT certified the bytes built at 1910083e.
 //   - v0.44.0-rc1 was the candidate of the previous step of this train; its
 //     bytes remain a historical candidate and are NOT renamed to GA. TRAIN P3
 //     changed the declared product version to the final 0.44.0, which produced

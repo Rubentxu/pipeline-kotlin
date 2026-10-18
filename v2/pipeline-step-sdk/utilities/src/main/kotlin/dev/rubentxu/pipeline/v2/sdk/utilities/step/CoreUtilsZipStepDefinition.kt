@@ -33,8 +33,7 @@ import kotlin.streams.toList
  * `core-utils.zip` OFFICIAL_PLUGIN Step (LFC-2E2 utilities, Slice 2 / S2.4).
  *
  * Jenkins reference: pipeline-utility-steps-plugin::ZipStep
- * (MIT, CloudBees). Behaviour summary in
- * `docs/v2/07-uat/S2_ZIP_JENKINS_REFERENCE.md`.
+ * (MIT, CloudBees).
  *
  * Security:
  *  - Every source path is resolved against its declared base (workspace

@@ -40,8 +40,7 @@ import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
  * Implementations return the closed
  * [ShellInvocationResult] ADT directly. Re-classification to
  * [dev.rubentxu.pipeline.v2.domain.StepOutcome] is the responsibility of
- * the registry execution boundary (or a future typed-output seam — see
- * `docs/v2/00-context/LB02_TYPED_OUTPUT_DECISION.md`).
+ * the registry execution boundary (or a future typed-output seam).
  */
 interface ShellOperations {
 

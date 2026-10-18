@@ -44,8 +44,6 @@ import kotlinx.serialization.json.put
 /**
  * `core.input` — ask a human and continue only if they say yes (RP6-B / WU-092).
  *
- * Contract: `docs/v2/07-uat/SPEC_WU092_INPUT.md`.
- *
  * ## Why HANDLER_CONTINUATION and not a body policy
  *
  * The body is CONDITIONAL in the strongest sense: an `Abort` means the author

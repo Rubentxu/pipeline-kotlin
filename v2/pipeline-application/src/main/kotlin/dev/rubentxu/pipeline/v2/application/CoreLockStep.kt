@@ -45,9 +45,6 @@ import kotlinx.serialization.json.put
 /**
  * `core.lock` — hold a named resource while the enclosed body runs (RP6-A / WU-091).
  *
- * Contract: `docs/v2/07-uat/SPEC_WU091_LOCK.md`.
- * Reasoning and evidence: `docs/v2/07-uat/RP6A_LOCK_CHARACTERIZATION.md`.
- *
  * ## Why HANDLER_CONTINUATION and not a body policy
  *
  * The body of a `lock` is CONDITIONAL: under contention, under `skipIfLocked`, or

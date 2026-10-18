@@ -79,11 +79,6 @@ import kotlinx.serialization.json.jsonPrimitive
  *   emit.
  * - Recovery stays at the descriptor (A4.1.3 declares `recoveryPolicy`); this
  *   slice does NOT touch the recovery substrate.
- *
- * @see docs/v2/00-context/LB02_CORE_SH_CONTRACT_DRAFT.md
- * @see docs/v2/00-context/LB02_TYPED_OUTPUT_DECISION.md
- * @see docs/v2/07-uat/LB02_G3_A4_1_DESCRIPTOR_RECOVERY.md
- * @see docs/v2/07-uat/LB02_G3_A4_2_SHELL_OPERATIONS_CAPABILITY.md
  */
 object CoreShellStep {
 

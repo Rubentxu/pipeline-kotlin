@@ -8,9 +8,9 @@ package dev.rubentxu.pipeline.v2.release
  * recorded source commit does not identify the bytes compiled. This file
  * refuses the published artifact whose tag/bytes association is broken —
  * either by republishing an asset without moving the tag (v0.40.0 / v0.43.0
- * version-laundering, see [docs/v2/03-specifications/DISTRIBUTION_RELEASE_SPEC.md]
- * §7a) or by uploading bytes that were built from a different commit than the
- * tag's peel (the v0.48.0-rc2 proveniencia incident of 2026-10-10).
+ * version-laundering) or by uploading bytes that were built from a different
+ * commit than the tag's peel (the v0.48.0-rc2 proveniencia incident of
+ * 2026-10-10).
  *
  * The law: **the published asset's bytes must identify with the source commit
  * the handoff names; the tag (when present) must identify with the same source

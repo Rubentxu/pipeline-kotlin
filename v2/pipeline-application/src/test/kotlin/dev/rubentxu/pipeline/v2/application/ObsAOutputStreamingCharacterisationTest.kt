@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
@@ -19,17 +18,46 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
- * OBS-A — characterises what the observation path does NOT do yet, with deterministic barriers.
+ * OBS-A — process output reaches the console while the step is still running.
  *
- * ## Why these rows are characterisations and not requirements
+ * ## Why these rows were characterisations
  *
- * Each row asserts a **defect**. They are written so the defect is named and reproducible BEFORE
- * the live ingress (OBS-B) and the machine streams (OBS-E) exist, because a gate introduced
- * alongside the fix cannot distinguish the fix from the gate.
+ * Each row originally asserted a **defect**, and they were written that way BEFORE the live
+ * ingress (OBS-B) and the machine streams (OBS-E) existed, because a gate introduced alongside
+ * the fix cannot distinguish the fix from the gate. Every row's message named the work that
+ * closes it, and said the row is INVERTED into a non-regression test when that work lands.
  *
- * Every row's message names the work that closes it. When OBS-B or OBS-E lands the row is
- * INVERTED and becomes a non-regression test; that transition is explicit in the message rather
- * than a silent rewrite of what was expected.
+ * ## That transition is now done, and it was measured
+ *
+ * Both rows were `@Disabled("migrated-pending OBS-A; characterization Falsifier proving the
+ * Output Plane first-write garbling defect... the release-gate cannot pass with this row RED")`.
+ * That reason had outlived the fact it described: the defect it names is closed, so the rows
+ * were not RED, and a `@Disabled` whose stated reason is a REDNESS that no longer exists keeps a
+ * closed capability unverified. Measured on `main@28851ee5`, 2026-10-18:
+ *
+ * ```text
+ * with @Disabled     tests=2 skipped=2 failures=0 errors=0   (BUILD SUCCESSFUL, meaning nothing)
+ * with the rows on   tests=2 skipped=0 failures=0 errors=0   (6.5 s and 6.0 s of real forked work)
+ * ```
+ *
+ * The XML is the receipt, not the exit code: `skipped=2` under `BUILD SUCCESSFUL` is the trap
+ * this row was most vulnerable to.
+ *
+ * ## The rows have teeth, which is why they were re-enabled rather than deleted
+ *
+ * A green row that cannot go red certifies nothing. Mutating `startLiveOutputObserver` so the
+ * observer never starts — `Main.kt:1174`, `if (format == ObservationFormat.JSON)` to `if (true)`
+ * — kills **both** rows, each through its own live assertion rather than a shared wrapper:
+ *
+ * ```text
+ * M-1  observer never starts   -> failures=2 of 2
+ *       row 1 dies on "must be visible WHILE the step is provably still blocked"
+ *       row 2 dies on "must carry process output records at all"
+ * ```
+ *
+ * The mutation was verified to APPLY before its result was read, and `Main.kt` was restored to a
+ * byte-identical `git diff`-empty state afterwards. A row that could not be made to fail would
+ * have been deleted instead of re-enabled.
  *
  * ## Why barriers and not durations
  *
@@ -227,13 +255,7 @@ class ObsAOutputStreamingCharacterisationTest {
      * `startLiveOutputObserver` follows the Output Plane on its own thread while the run is in
      * flight, and the observation is of DURABLE committed bytes.
      */
-        @Disabled("migrated-pending OBS-A; characterization Falsifier proving the " +
-        "Output Plane first-write garbling defect documented at " +
-        "memory/output-plane-first-write-garbling.md. The release-gate cannot pass with " +
-        "this row RED; it is the harness's responsibility to re-host the characterization " +
-        "(the Falsifier flips to a non-regression test when the defect closes per the " +
-        "OBS-A KDoc).")
-    @Test
+        @Test
     fun `sh output reaches the live console while the step is still running`() {
         val script = writeBlockingScript()
         val run = runSamplingDuringBlock(script)
@@ -291,10 +313,7 @@ class ObsAOutputStreamingCharacterisationTest {
      * protocol stream, that output arrives while the step is alive, and that every line parses.
      * Their relative order is the consumer's own observation order, not a claim about causality.
      */
-        @Disabled("migrated-pending OBS-A; second characterization Falsifier for the " +
-        "Output Plane first-write garbling defect. See the row above and " +
-        "memory/output-plane-first-write-garbling.md.")
-    @Test
+        @Test
     fun `jsonl carries process output and every line stays parseable`() {
         val script = writeBlockingScript()
         val run = runSamplingDuringBlock(script, "--format", "jsonl")

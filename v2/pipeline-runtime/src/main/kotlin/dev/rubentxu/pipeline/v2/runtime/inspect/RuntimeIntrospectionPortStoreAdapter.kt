@@ -422,9 +422,20 @@ class RuntimeIntrospectionPortStoreAdapter(
                 )
             }
             // M7 I.6 PARTIAL closure: read the typed events to drive
-            // event-driven grouping. When the port is null OR returns
-            // Empty / Refused, fall back to the M6 synthetic view.
-            val typedEvents: List<TypedEvent> = readTypedEventsForRun(runId)
+            // event-driven grouping. An absent plane, an unconfigured plane
+            // or an event-free run falls back to the M6 synthetic view —
+            // all three describe a stable property of the build. A plane
+            // that FAILED, or that does not know a run the journal has rows
+            // for, refuses instead: those are claims about the READ, and
+            // rendering them as "this run has no event-driven shape" hands
+            // the caller a structure the run does not have.
+            val typedEvents: List<TypedEvent> =
+                when (val availability = readTypedEventsForRun(runId)) {
+                    is TypedEventAvailability.Available -> availability.events
+                    is TypedEventAvailability.Unreadable ->
+                        return RunStructureResult.Refused(availability.refusal)
+                    TypedEventAvailability.Unavailable -> emptyList()
+                }
             val startOpOrdinal: Int = options.cursor?.operationOrdinal ?: 0
             if (startOpOrdinal >= journalOps.size) {
                 return RunStructureResult.Structure(
@@ -593,21 +604,76 @@ class RuntimeIntrospectionPortStoreAdapter(
     // ── M7 helpers (private) ──────────────────────────────────────────────
 
     /**
-     * Read the typed events for [runId] via the constructor's
-     * [eventShapeRead] port. Returns an empty list when the port is
-     * null (the M6 path), when the port returns [Empty], or when the
-     * port returns [Refused] (the caller's failure mode is the typed
-     * refusal, not a synthetic fallback that hides the failure).
+     * What the event shape plane answered for [runId].
+     *
+     * Three cases because the plane has three, and two of them are claims
+     * about the RUN while the third is a claim about the READ — the same
+     * distinction [EventStorePresence] draws one function above.
+     *
+     * - [Available] — typed events are present; grouping can be event-driven.
+     * - [Unavailable] — there is no event-driven grouping to have. Three
+     *   distinct inputs collapse here because they are the same *state of
+     *   the build*, not three ways of failing: the port is absent (the M6
+     *   path, a build with no event plane wired), the run is known but has
+     *   no typed events yet, or the plane reports it is not configured
+     *   ([dev.rubentxu.pipeline.v2.events.shape.EventShapeRefusal.NoEventStore]).
+     *   The M6 synthetic view is the correct answer for all three.
+     * - [Unreadable] — the plane could not answer. This is NOT a statement
+     *   that the run has no events, and rendering it as one is the defect
+     *   this case exists to prevent.
      */
-    private fun readTypedEventsForRun(runId: String): List<TypedEvent> {
-        val port = eventShapeRead ?: return emptyList()
+    private sealed interface TypedEventAvailability {
+        data class Available(val events: List<TypedEvent>) : TypedEventAvailability
+
+        data object Unavailable : TypedEventAvailability
+
+        data class Unreadable(val refusal: IntrospectionRefusal) : TypedEventAvailability
+    }
+
+    /**
+     * Read the typed events for [runId] via the constructor's
+     * [eventShapeRead] port, keeping [TypedEventAvailability.Unavailable]
+     * (a legitimate M6 state) distinct from
+     * [TypedEventAvailability.Unreadable] (the plane failed, or does not
+     * know the run).
+     *
+     * The two are not the same fact and must not share an answer. Pre-fix
+     * this function returned `emptyList()` for a `Refused` as well, so a
+     * transient substrate failure and a build with no event plane both
+     * produced an identical synthetic structure — a confident claim about
+     * the run's shape that no caller could falsify. The M6 fallback keeps
+     * its meaning for [TypedEventAvailability.Unavailable], which describes
+     * a stable property of the build; only a failure stops degrading.
+     */
+    private fun readTypedEventsForRun(runId: String): TypedEventAvailability {
+        val port = eventShapeRead ?: return TypedEventAvailability.Unavailable
         return when (val r = port.eventShapesForRun(
             runId,
             dev.rubentxu.pipeline.v2.events.shape.EventShapeOptions.Default,
         )) {
-            is dev.rubentxu.pipeline.v2.events.shape.EventShapeResult.Events -> r.events
-            dev.rubentxu.pipeline.v2.events.shape.EventShapeResult.Empty,
-            is dev.rubentxu.pipeline.v2.events.shape.EventShapeResult.Refused -> emptyList()
+            is dev.rubentxu.pipeline.v2.events.shape.EventShapeResult.Events ->
+                TypedEventAvailability.Available(r.events)
+            dev.rubentxu.pipeline.v2.events.shape.EventShapeResult.Empty ->
+                TypedEventAvailability.Unavailable
+            is dev.rubentxu.pipeline.v2.events.shape.EventShapeResult.Refused ->
+                when (val refusal = r.refusal) {
+                    // Not a failure: the plane is not configured, which is the
+                    // same state as an absent port. Degrading here is correct.
+                    dev.rubentxu.pipeline.v2.events.shape.EventShapeRefusal.NoEventStore ->
+                        TypedEventAvailability.Unavailable
+                    // An answer about the RUN. Reaching this branch means the
+                    // journal returned rows for a run the event plane does not
+                    // know; that disagreement is worth surfacing rather than
+                    // hiding behind a synthetic view.
+                    is dev.rubentxu.pipeline.v2.events.shape.EventShapeRefusal.UnknownRun ->
+                        TypedEventAvailability.Unreadable(
+                            IntrospectionRefusal.UnknownRun(runId),
+                        )
+                    is dev.rubentxu.pipeline.v2.events.shape.EventShapeRefusal.StorageError ->
+                        TypedEventAvailability.Unreadable(
+                            IntrospectionRefusal.StorageError(refusal.cause),
+                        )
+                }
         }
     }
 
@@ -755,21 +821,6 @@ class RuntimeIntrospectionPortStoreAdapter(
                 )
             }
     }
-}
-
-/**
- * M2 — the [OutputFrameIndex] extension used by the introspection adapter to
- * list the declared streams of a run.
- *
- * The interface already publishes [OutputFrameIndex.streamsOfRun]; this helper
- * keeps the adapter symmetric (every other input it passes is via the
- * constructor) and lets the test substitute an in-memory implementation
- * without subclassing `OutputFrameIndex` directly.
- */
-fun OutputFrameIndex.streamsOfRunOrEmpty(runId: String): List<OutputStreamId> = try {
-    streamsOfRun(runId)
-} catch (_: Exception) {
-    emptyList()
 }
 
 /**

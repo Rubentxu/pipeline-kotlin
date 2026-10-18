@@ -109,6 +109,21 @@ class UatLocal012ErrorHandlingTest {
             .directory(tempDir.toFile())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
+            // HARNESS FIDELITY LAW 4: this harness MUST NOT read ambient $HOME. The
+            // CLI resolves the credentials store to $HOME/.pipeline/credentials.bin
+            // and, when that file exists and no passphrase is set, refuses with exit 3
+            // BEFORE the pipeline runs. A machine where someone once ran
+            // `credentials add` then turns every row red for a product that never
+            // started. These fixtures use no credentials, so point the store at a path
+            // inside this test's temp dir that does not exist: the documented
+            // "store file does not exist -> null" branch runs and no credential
+            // material is required.
+            .also {
+                it.environment().put(
+                    "PIPELINE_CREDENTIALS_STORE",
+                    tempDir.resolve("absent-credentials.bin").toString(),
+                )
+            }
 
         val process = pb.start()
         processes.add(process)

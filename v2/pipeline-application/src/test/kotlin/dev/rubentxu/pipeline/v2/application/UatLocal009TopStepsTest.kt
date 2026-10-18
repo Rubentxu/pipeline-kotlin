@@ -101,6 +101,16 @@ class UatLocal009TopStepsTest {
             .directory(tempDir.toFile())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
+            // HARNESS FIDELITY LAW 4: this harness MUST NOT read ambient $HOME.
+            // Without this the CLI resolves the credentials store to
+            // $HOME/.pipeline/credentials.bin and refuses with exit 3 before the
+            // pipeline runs, so the row fails on a machine, not on the product.
+            .also {
+                it.environment().put(
+                    "PIPELINE_CREDENTIALS_STORE",
+                    tempDir.resolve("absent-credentials.bin").toString(),
+                )
+            }
 
         val process = pb.start()
         processes.add(process)

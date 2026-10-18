@@ -32,13 +32,23 @@ import kotlinx.serialization.json.put
  *
  * 1. `Lfc2WaitUntilDslCanonicalProjectionTest` asserts, across the productive
  *    authority, that the compiled block payload carries `kind="waitUntilBlock"`.
- * 2. `BodyStructureDigest` appends `child.payload.encoded` — the STRING — so a
- *    single changed character moves the durable body identity and DR-10 fails
- *    closed on existing history.
+ * 2. The compiled payload is the one string hashed into the operation identity
+ *    (`StepDispatchEngine` puts `payload.encoded` into `OperationInput.params`,
+ *    which `OperationInput` documents as fingerprint input), and the replay
+ *    table's first rule is `!hasJournalEntry -> RERUN`. So a changed payload does
+ *    not silently reuse old history: the operation runs again.
  *
- * So this extraction changes AUTHORSHIP, not the format. Removing the
- * discriminator later is a separate decision that needs a compatibility review,
- * not a side effect of naming the codec.
+ * This text previously cited `BodyStructureDigest` for reason 2. That was wrong.
+ * `BodyStructureDigest.of()` appends the payload string, but its only call-site is
+ * guarded by `hasBodyContinuation`, bound solely for the `HANDLER_CONTINUATION`
+ * owner, which only `core.lock` and `core.input` declare. `core.waitUntil` is an
+ * engine-driven block, so its payload never reaches that digest. The conclusion
+ * (bytes unchanged, extraction is about authorship) survived; the mechanism did not.
+ *
+ * `maxBackoffMs` is therefore a deliberate format CHANGE made in a later slice,
+ * and it is safe for the reason above: the durable resume misses its old key and
+ * re-executes, which is the fail-closed direction DR-10 asks for. Removing the
+ * discriminator later is a separate decision that needs a compatibility review.
  *
  * ## Not the same format as the registry one
  *
@@ -58,6 +68,7 @@ object CoreWaitUntilWireCodec : StepCodec<CoreWaitUntilInput> {
             put("kind", JsonPrimitive(BLOCK_WIRE_KIND))
             put("initialRecurrencePeriod", JsonPrimitive(value.initialRecurrencePeriod))
             put("quiet", JsonPrimitive(value.quiet))
+            put("maxBackoffMs", JsonPrimitive(value.maxBackoffMs))
         }
         return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
     }
@@ -84,6 +95,8 @@ object CoreWaitUntilWireCodec : StepCodec<CoreWaitUntilInput> {
             initialRecurrencePeriod = obj["initialRecurrencePeriod"]?.jsonPrimitive?.longOrNull
                 ?: DEFAULT_INITIAL_RECURRENCE_PERIOD_MS,
             quiet = obj["quiet"]?.jsonPrimitive?.booleanOrNull ?: false,
+            maxBackoffMs = obj["maxBackoffMs"]?.jsonPrimitive?.longOrNull
+                ?: DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS,
         )
     }
 

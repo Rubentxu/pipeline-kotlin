@@ -29,8 +29,18 @@ class ScriptingHostEmitsEventsTest {
         override fun eventsFor(runId: String) = _events.asSequence()
     }
 
+    /**
+     * The label is asserted, not just the format, because this event is the durable surface:
+     * [CacheKey.version] is the field that tells a reader which algorithm produced `value`. A
+     * change in the identity's composition that did NOT move the label would make an old value
+     * unreadable while still claiming the old recipe.
+     *
+     * Moved `v1` -> `v2` when the identity completed to the shape declared by
+     * `SCRIPTING_COMPILER_SPEC.md` §7: length-framed pre-image, plus the compiler options as a
+     * real dimension instead of a manual `hostVersion` bump. See `CacheKey.kt`.
+     */
     @Test
-    fun `happy compile emits start then finished with v1 cache key`() {
+    fun `happy compile emits start then finished with v2 cache key`() {
         val sink = RecordingEventSink()
         val host = Kotlin24ScriptingHost(sink)
 
@@ -51,7 +61,7 @@ class ScriptingHostEmitsEventsTest {
         val finishEvent = sink.events[1]
         assertTrue(finishEvent is CompilationFinished)
         val cf = finishEvent as CompilationFinished
-        assertEquals("v1", cf.cacheKey.version)
+        assertEquals("v2", cf.cacheKey.version)
         assertEquals(64, cf.cacheKey.value.length)
     }
 

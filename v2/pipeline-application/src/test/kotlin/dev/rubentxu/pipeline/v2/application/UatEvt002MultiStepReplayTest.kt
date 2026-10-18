@@ -148,7 +148,7 @@ class UatEvt002MultiStepReplayTest {
         )
 
         val cf = events[2] as CompilationFinished
-        assertEquals("v1", cf.cacheKey.version, "cacheKey.version must be v1")
+        assertEquals("v2", cf.cacheKey.version, "cacheKey.version must be v2")
         // M1-F.1 (PK-R1 R1-B extension): the Kotlin 2.4.10 compiler confirms
         // `-Xuse-fast-jar-file-system=false` with an INFO diagnostic. The diagnostic
         // is NOT a failure — it is the observable confirmation that the option was

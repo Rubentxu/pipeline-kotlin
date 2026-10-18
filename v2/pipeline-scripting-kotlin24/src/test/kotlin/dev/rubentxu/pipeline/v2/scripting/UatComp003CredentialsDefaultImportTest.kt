@@ -135,13 +135,20 @@ class UatComp003CredentialsDefaultImportTest {
         )
 
         // CR-CLASS-005: cacheKey is byte-identical between two identical evaluations
-        // INV-CACHEKEY-STABLE: sha256Hex(scriptText, sortedClasspath, kotlinVersion, hostVersion)
-        // does NOT include defaultImports — so identical inputs produce identical keys.
+        // INV-CACHEKEY-STABLE: the identity does NOT include defaultImports — so identical
+        // inputs produce identical keys.
         assertEquals(result1.cacheKey.value, result2.cacheKey.value,
             "Cache key must be identical across two identical evaluations (INV-CACHEKEY-STABLE)")
-        assertEquals("v1", result1.cacheKey.version,
-            "Cache key version must be v1")
-        assertEquals("v1", result2.cacheKey.version,
-            "Cache key version must be v1")
+        // The label moved from "v1" to "v2" when the identity completed to the shape declared by
+        // SCRIPTING_COMPILER_SPEC.md §7 (framed pre-image + the compiler options as a real
+        // dimension). The literal below was updated with it rather than left stale: a disabled
+        // test that asserts a label the product stopped emitting is a trap for whoever re-enables
+        // it. The LIVE proof of the same invariant is
+        // M1F1KotlinCompilerUnsafeEliminationTest."cache key is stable across two evaluations
+        // of the same script", which does not hard-code the version.
+        assertEquals("v2", result1.cacheKey.version,
+            "Cache key version must be v2")
+        assertEquals("v2", result2.cacheKey.version,
+            "Cache key version must be v2")
     }
 }

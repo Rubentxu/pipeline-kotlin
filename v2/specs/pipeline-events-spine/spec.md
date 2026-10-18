@@ -99,13 +99,15 @@ SHALL emit `CompilationStarted` before delegating and
 ### Requirement: CompilationFinished payload carries cacheKey.version
 
 `CompilationFinished` SHALL carry `cacheKey` as an object with
-`value: String` (64-char hex) and `version: String` (`"v1"`).
+`value: String` (64-char hex) and `version: String` (the algorithm tag the
+producer used: `"v1"` or `"v2"`; the tag is what tells a reader which recipe
+produced `value`, so it is part of the contract and not decoration).
 
-#### Scenario: every CompilationFinished has version v1
+#### Scenario: every CompilationFinished carries the producing algorithm tag
 
 - GIVEN a host bound to a recording `EventSink`
 - WHEN two definitions with different classpaths compile
-- THEN both `CompilationFinished` carry `cacheKey.version == "v1"`
+- THEN both `CompilationFinished` carry `cacheKey.version == "v2"`
   AND `cacheKey.value` 64-char hex
 
 ### Requirement: CLI prints JSON event log

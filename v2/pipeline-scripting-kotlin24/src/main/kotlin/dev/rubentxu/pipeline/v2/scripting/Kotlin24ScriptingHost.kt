@@ -60,17 +60,17 @@ class Kotlin24ScriptingHost(
     /**
      * Host implementation version fed into the cache key.
      *
-     * S0-C1: bumped to 1.1.0 when `-Xreturn-value-checker=check` was added. The
-     * cache key is (script, classpath, kotlin version, HOST VERSION) and does
-     * NOT include the compilation configuration, so adding or removing a
-     * compiler option without bumping this value leaves previously compiled
-     * scripts being served from cache — OBSERVED: the flag was in the binary,
-     * yet a script compiled before the change still discarded its result
-     * silently.
+     * S0-C1: bumped to 1.1.0 when `-Xreturn-value-checker=check` was added, and
+     * M1-F.1: bumped to 1.2.0 when `-Xuse-fast-jar-file-system=false` was added. In both
+     * cases the bump was the ONLY thing invalidating previously compiled scripts, because the
+     * options themselves were not part of the key — OBSERVED in S0-C1: the flag was in the
+     * binary, yet a script compiled before the change still discarded its result silently.
      *
-     * M1-F.1: bumped to 1.2.0 when `-Xuse-fast-jar-file-system=false` was
-     * added. Same fast-jar-file-system rationale: the option is a real
-     * behaviour change that MUST invalidate previously compiled scripts.
+     * That defence is now a second line rather than the only one: [compilerFlags] is its own
+     * cache-key dimension (see [cacheKeyFor]), so an option change invalidates the key whether
+     * or not anyone remembers this value. The bumps above stay, because [hostVersion] still
+     * covers host changes that are not options — a different classpath assembly, a different
+     * compiler invocation — and because a stale `v1` label is still on old event payloads.
      */
     private val hostVersion = "1.2.0"
 
@@ -84,9 +84,10 @@ class Kotlin24ScriptingHost(
      * jar reads through the regular `JarFile` path, which is the documented
      * workaround and removes the call entirely. See ADR-M1-F D1.
      *
-     * The option is also a cache-key input (via [hostVersion]): adding it
-     * without bumping the host version would silently keep the old compiled
-     * artifacts in cache, the same defect the S0-C1 comment above records.
+     * The option list is read directly into the compilation identity (see [cacheKeyFor]), so
+     * adding an option invalidates the key by construction. It was previously covered only by
+     * the [hostVersion] bump discipline described above, which is a comment asking every future
+     * author to remember something that the key can enforce instead.
      */
     private val compilerFlags: List<String> = listOf(
         // Pure Builder Consumption Gate: an unconsumed return value from
@@ -229,10 +230,7 @@ class Kotlin24ScriptingHost(
             .filter { it.severity >= ScriptDiagnostic.Severity.INFO }
             .map(::mapDiagnostic)
         // scriptText is already captured at line 78; reuse it for the cache key.
-        val cacheKey = CacheKey(
-            CacheKey.sha256Hex(scriptText, sortedClasspath, kotlinVersion, hostVersion),
-            CacheKey.V1,
-        )
+        val cacheKey = cacheKeyFor(scriptText, sortedClasspath)
 
         val result = if (rwd is ResultWithDiagnostics.Success) {
             @Suppress("UNCHECKED_CAST")
@@ -316,21 +314,48 @@ class Kotlin24ScriptingHost(
             column = 0,
             path = definition.sourcePath?.toString() ?: "<inline>",
         )
+        // One key, used by BOTH the event and the result. These were two independent
+        // hand-written constructions of the same expression; nothing forced them to agree, so
+        // a future edit to one could report a compilation identity the other denied.
+        val cacheKey = cacheKeyFor(scriptText, sortedClasspath)
         eventSink.append(
             CompilationFinished(
                 eventId = UUID.randomUUID().toString(),
                 runId = effectiveRunId,
                 sequence = 0L,
                 occurredAt = Instant.now(),
-                cacheKey = CacheKey(CacheKey.sha256Hex(scriptText, sortedClasspath, kotlinVersion, hostVersion), CacheKey.V1),
+                cacheKey = cacheKey,
                 diagnostics = listOf(diag),
             )
         )
         return ScriptCompilationResult.Failure(
             diagnostics = listOf(diag),
-            cacheKey = CacheKey(CacheKey.sha256Hex(scriptText, sortedClasspath, kotlinVersion, hostVersion), CacheKey.V1),
+            cacheKey = cacheKey,
         )
     }
+
+    /**
+     * The one place this host derives a compilation identity.
+     *
+     * It was three hand-written constructions of the same expression — in [compile] and twice in
+     * [compilationFailure] — and each one had to remember the same four dimensions. That is the
+     * duplication `Sha256` (B0) was created to remove for digesting, one layer up: a divergence
+     * between two spellings is a divergence nobody notices until the keys disagree.
+     *
+     * Reading [compilerFlags] from here rather than from the caller is what makes the option
+     * dimension unskippable. It used to be covered only by the [hostVersion] bump discipline,
+     * which is a comment asking every future author to remember something.
+     */
+    private fun cacheKeyFor(scriptText: String, sortedClasspath: String): CacheKey =
+        CacheKey.Companion.v2.compute(
+            CompilationIdentity(
+                pipelineSource = scriptText,
+                kotlinVersion = kotlinVersion,
+                hostVersion = hostVersion,
+                approvedClasspath = sortedClasspath,
+                compilerOptions = compilerFlags,
+            )
+        )
 
     private fun mapDiagnostic(diag: ScriptDiagnostic): ScriptingDiagnostic {
         val severity = when (diag.severity) {

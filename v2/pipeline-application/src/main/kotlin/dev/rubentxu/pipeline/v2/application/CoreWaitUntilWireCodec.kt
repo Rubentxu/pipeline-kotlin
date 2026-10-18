@@ -69,7 +69,6 @@ object CoreWaitUntilWireCodec : StepCodec<CoreWaitUntilInput> {
         val obj: JsonObject = buildJsonObject {
             put("kind", JsonPrimitive(BLOCK_WIRE_KIND))
             put("initialRecurrencePeriod", JsonPrimitive(value.initialRecurrencePeriod))
-            put("quiet", JsonPrimitive(value.quiet))
             put("maxBackoffMs", JsonPrimitive(value.maxBackoffMs))
         }
         return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
@@ -96,7 +95,6 @@ object CoreWaitUntilWireCodec : StepCodec<CoreWaitUntilInput> {
         return CoreWaitUntilInput(
             initialRecurrencePeriod = obj["initialRecurrencePeriod"]?.jsonPrimitive?.longOrNull
                 ?: DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS,
-            quiet = obj["quiet"]?.jsonPrimitive?.booleanOrNull ?: false,
             maxBackoffMs = obj["maxBackoffMs"]?.jsonPrimitive?.longOrNull
                 ?: DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS,
         )

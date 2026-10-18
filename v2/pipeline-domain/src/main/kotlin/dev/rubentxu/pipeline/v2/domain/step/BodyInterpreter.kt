@@ -152,7 +152,6 @@ sealed interface BlockShellScopeDescriptor {
     /** Body-polling contract: re-dispatched until condition succeeds or backoff exceeds max. */
     data class WaitUntil(
         val initialRecurrencePeriodMs: Long,
-        val quiet: Boolean,
     ) : BlockShellScopeDescriptor
 }
 

@@ -55,7 +55,6 @@ class CoreWaitUntilWireCodecContractTest {
 
     private fun compiledBlockPayload(
         initialRecurrencePeriod: Long = 7L,
-        quiet: Boolean = false,
     ): String {
         val spec = PipelineSpec(
             stages = listOf(
@@ -64,7 +63,6 @@ class CoreWaitUntilWireCodecContractTest {
                     steps = listOf(
                         StepSpec.WaitUntilBlock(
                             initialRecurrencePeriod = initialRecurrencePeriod,
-                            quiet = quiet,
                             body = listOf(StepSpec.Shell(command = "test -f /tmp/marker")),
                         ),
                     ),
@@ -92,7 +90,7 @@ class CoreWaitUntilWireCodecContractTest {
         // accept a reordered or renamed key, which is exactly the durable-identity
         // move this row exists to prevent.
         assertEquals(
-            """{"kind":"waitUntilBlock","initialRecurrencePeriod":7,"quiet":false,"maxBackoffMs":60000}""",
+            """{"kind":"waitUntilBlock","initialRecurrencePeriod":7,"maxBackoffMs":60000}""",
             compiledBlockPayload(),
         )
     }
@@ -100,8 +98,8 @@ class CoreWaitUntilWireCodecContractTest {
     @Test
     fun `compiled block payload carries every declared field verbatim`() {
         assertEquals(
-            """{"kind":"waitUntilBlock","initialRecurrencePeriod":250,"quiet":true,"maxBackoffMs":60000}""",
-            compiledBlockPayload(initialRecurrencePeriod = 250L, quiet = true),
+            """{"kind":"waitUntilBlock","initialRecurrencePeriod":250,"maxBackoffMs":60000}""",
+            compiledBlockPayload(initialRecurrencePeriod = 250L),
         )
     }
 
@@ -113,7 +111,7 @@ class CoreWaitUntilWireCodecContractTest {
         // there is one producer.
         assertEquals(
             CoreWaitUntilWireCodec.encode(
-                CoreWaitUntilInput(initialRecurrencePeriod = 7L, quiet = false),
+                CoreWaitUntilInput(initialRecurrencePeriod = 7L),
             ).value,
             compiledBlockPayload(),
         )
@@ -121,9 +119,9 @@ class CoreWaitUntilWireCodecContractTest {
 
     @Test
     fun `the wire round-trips through its own decoder`() {
-        val encoded = EncodedStepValue(compiledBlockPayload(initialRecurrencePeriod = 33L, quiet = true))
+        val encoded = EncodedStepValue(compiledBlockPayload(initialRecurrencePeriod = 33L))
         assertEquals(
-            CoreWaitUntilInput(initialRecurrencePeriod = 33L, quiet = true),
+            CoreWaitUntilInput(initialRecurrencePeriod = 33L),
             CoreWaitUntilWireCodec.decode(encoded),
         )
     }
@@ -134,7 +132,7 @@ class CoreWaitUntilWireCodecContractTest {
         // Two formats share two field names, so a tolerant decoder would silently
         // accept the wrong one; the refusal names which carrier arrived.
         val registryShaped = EncodedStepValue(
-            """{"kind":"waitUntil","initialRecurrencePeriod":10,"quiet":false}""",
+            """{"kind":"waitUntil","initialRecurrencePeriod":10}""",
         )
         val failure = assertThrows(CoreWaitUntilCodecException::class.java) {
             CoreWaitUntilWireCodec.decode(registryShaped)

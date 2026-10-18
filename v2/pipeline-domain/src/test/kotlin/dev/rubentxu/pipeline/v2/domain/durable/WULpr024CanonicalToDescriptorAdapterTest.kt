@@ -94,18 +94,16 @@ class WULpr024CanonicalToDescriptorAdapterTest {
         }
 
         @Test
-        fun `WaitUntilScope maps initialRecurrencePeriod to initialRecurrencePeriodMs and preserves quiet`() {
+        fun `WaitUntilScope maps initialRecurrencePeriod to initialRecurrencePeriodMs`() {
             val adapted = CanonicalToDescriptorAdapter.adaptScope(
                 CanonicalBlockShellScope.WaitUntilScope(
                     initialRecurrencePeriod = 1_500L,
-                    quiet = true,
                     maxBackoffMs = 120_000L,
                 ),
             )
             assertTrue(adapted is BlockShellScopeDescriptor.WaitUntil)
             val wait = adapted as BlockShellScopeDescriptor.WaitUntil
             assertEquals(1_500L, wait.initialRecurrencePeriodMs)
-            assertEquals(true, wait.quiet)
         }
     }
 

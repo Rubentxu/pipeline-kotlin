@@ -358,7 +358,6 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
 
     data class WaitUntilBlock(
         val initialRecurrencePeriod: Long = DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS,
-        val quiet: Boolean = false,
         val maxBackoffMs: Long = DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS,
         val body: List<StepSpec> = emptyList(),
     ) : StepSpec {

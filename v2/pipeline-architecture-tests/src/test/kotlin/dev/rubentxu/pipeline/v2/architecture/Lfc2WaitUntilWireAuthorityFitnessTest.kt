@@ -235,7 +235,9 @@ class Lfc2WaitUntilWireAuthorityFitnessTest {
     @Test
     fun `waitUntil block wire vocabulary lives in the wire authority`() {
         val code = codeOnly(read(wireCodecSource))
-        val expected = listOf("waitUntilBlock", "initialRecurrencePeriod", "quiet", "maxBackoffMs")
+        // `quiet` was here until the removal. It left this set for the same reason it left
+        // the wire: a key with no reader is not vocabulary this authority owns.
+        val expected = listOf("waitUntilBlock", "initialRecurrencePeriod", "maxBackoffMs")
         val missing = expected.filter { !code.contains(it) }
         assertTrue(
             missing.isEmpty(),
@@ -348,6 +350,73 @@ class Lfc2WaitUntilWireAuthorityFitnessTest {
             ),
             owner = "DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS (OWNER",
         )
+
+    /**
+     * The waitUntil block carries no dead semantic parameter.
+     *
+     * `SEMANTIC CONSTITUTION` §2 forbids "metadata accepted but never interpreted". `quiet`
+     * was exactly that, and it is removed rather than wired. The reason it cannot be wired
+     * cheaply is measured, not stylistic:
+     *
+     * ```
+     * ConsoleFamilyLines.controlNote:  is WaitUntilPolled    -> Line(Family.NOTE, …)
+     *                                    is WaitUntilCompleted -> Line(Family.NOTE, …)
+     * HumanConsoleRenderer.visible:    NORMAL -> family != NOTE      // NOTE is already hidden
+     * ```
+     *
+     * So in the default view the whole `waitUntil` narration is already silent, and `quiet =
+     * true` had nothing left to silence. Making it observable would mean either a nullable
+     * `line()` — which contradicts `RendererRoutePartitionTest`'s "every routed event is
+     * rendered by the family it is routed to", an existing law — or a new `Family` member,
+     * which grows a closed type to express a case the default view cannot show.
+     *
+     * Leaving a Jenkins-familiar parameter that silently does nothing is the worse of the two
+     * outcomes for a migrating user: `waitUntil(quiet = true)` compiles today and does nothing,
+     * and after removal it fails at compile time with an unknown-parameter error. Fail-closed
+     * is the honest answer for a parameter this engine never honoured.
+     *
+     * Denominator: [quietSites] — the seven files that carry the parameter. The token is
+     * matched per file, so a reintroduction is named by site rather than counted.
+     */
+    @Test
+    fun `the waitUntil block carries no dead semantic parameter`() {
+        val present = quietSites
+            .filter { codeOnly(read(path(it))).contains("quiet") }
+            .map { "$it names the removed `quiet` parameter" }
+        assertTrue(
+            present.isEmpty(),
+            "The waitUntil block grew a semantic parameter again. Every parameter on this " +
+                "carrier MUST have a production reader; `quiet` had none and is gone. Offenders: $present. " +
+                "If you are re-adding a parameter, name the production reader that consumes it " +
+                "before the DSL accepts it (SEMANTIC CONSTITUTION section 2).",
+        )
+    }
+
+    /**
+     * The ten files that carried `quiet`, for the removal census.
+     *
+     * Two files were missed by the first census and are named here because the count was
+     * wrong twice before it was right. `BodyInterpreter.kt` carries
+     * `BlockShellScopeDescriptor.WaitUntil`, the descriptor twin of the very scope the
+     * parameter rode on; it had been filed under "unrelated `quiet` hits" because other hits
+     * in that file are unrelated. `DslCompiledPipelineCompiler.kt` carries the
+     * `StepSpec.WaitUntilBlock -> CoreWaitUntilInput` projection that forwarded the field.
+     * Both were found by the compiler, not by the census — which is the point: a census
+     * classified by "does this hit look like the subject?" is the name-shaped instrument
+     * defect, and the compiler is the last line, not the instrument.
+     */
+    private val quietSites = listOf(
+        "pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/StageScope.kt",
+        "pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/StepSpec.kt",
+        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilInput.kt",
+        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilWireCodec.kt",
+        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilStep.kt",
+        "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy.kt",
+        "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/step/BodyInterpreter.kt",
+        "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/durable/CanonicalToDescriptorAdapter.kt",
+        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalStructuralDecisions.kt",
+        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompiler.kt",
+    )
 
     /**
      * One literal, written once, at the site that owns it — and every other site proves it

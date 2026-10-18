@@ -425,7 +425,6 @@ object DslCompiledPipelineCompiler {
      */
     private fun StepSpec.WaitUntilBlock.toCoreWaitUntilInput(): CoreWaitUntilInput = CoreWaitUntilInput(
         initialRecurrencePeriod = initialRecurrencePeriod,
-        quiet = quiet,
         maxBackoffMs = maxBackoffMs,
     )
 

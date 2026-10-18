@@ -130,13 +130,12 @@ class WaitUntilStepContractSuiteTest {
     private fun waitUntilNode(
         nodeId: String = "build/waitUntil",
         initialRecurrencePeriod: Long = 1000L,
-        quiet: Boolean = false,
     ) = OpaqueStepNode(
         id = StepId(nodeId),
         pluginStepId = CoreWaitUntilStep.KEY,
         payload = VersionedStepPayload(
             schemaVersion = "dsl-v1",
-            encoded = """{"kind":"waitUntil","initialRecurrencePeriod":$initialRecurrencePeriod,"quiet":$quiet}""",
+            encoded = """{"kind":"waitUntil","initialRecurrencePeriod":$initialRecurrencePeriod}""",
         ),
     )
 
@@ -197,17 +196,33 @@ class WaitUntilStepContractSuiteTest {
     // ===== 3. input codec round-trip =====
 
     @Test
-    fun `codec input — unit input encodes to the canonical legacy envelope and round-trips`() {
+    fun `codec input — unit input encodes to the canonical envelope and round-trips`() {
         val encoded = CoreWaitUntilStep.definition.contract.inputCodec.encode(
-            WaitUntilInput(initialRecurrencePeriod = 1000L, quiet = false),
+            WaitUntilInput(initialRecurrencePeriod = 1000L),
         )
         assertEquals(
-            """{"kind":"waitUntil","initialRecurrencePeriod":1000,"quiet":false}""",
+            """{"kind":"waitUntil","initialRecurrencePeriod":1000}""",
             encoded.value,
-            "input codec must emit the canonical legacy dsl-v1 envelope",
+            "input codec must emit the canonical dsl-v1 envelope. It no longer carries \"quiet\": " +
+                "that key was a dead semantic parameter, and a key nothing reads is not part of " +
+                "an identity envelope.",
         )
         val decoded = CoreWaitUntilStep.definition.contract.inputCodec.decode(encoded)
-        assertEquals(WaitUntilInput(initialRecurrencePeriod = 1000L, quiet = false), decoded)
+        assertEquals(WaitUntilInput(initialRecurrencePeriod = 1000L), decoded)
+    }
+
+    @Test
+    fun `codec input — a payload written by an older build still decodes, and its quiet key is ignored`() {
+        val decoded = CoreWaitUntilStep.definition.contract.inputCodec.decode(
+            EncodedStepValue("""{"kind":"waitUntil","initialRecurrencePeriod":1000,"quiet":true}"""),
+        )
+        assertEquals(
+            WaitUntilInput(initialRecurrencePeriod = 1000L),
+            decoded,
+            "a pre-existing journal payload carries a quiet key. Decoding it must succeed and " +
+                "produce the same typed value as a payload without the key, so history written " +
+                "before the removal is not reinterpreted into a different run.",
+        )
     }
 
     // ===== 4. input codec rejection =====
@@ -257,14 +272,15 @@ class WaitUntilStepContractSuiteTest {
     // ===== 7. canonical envelope =====
 
     @Test
-    fun `canonical envelope — input codec envelope is byte-identical to legacy dsl-v1 waitUntil envelope`() {
+    fun `canonical envelope — the input codec envelope is exactly the two dsl-v1 waitUntil keys`() {
         val registryEnvelope = CoreWaitUntilStep.definition.contract.inputCodec
-            .encode(WaitUntilInput(initialRecurrencePeriod = 500L, quiet = true)).value
-        val legacyEnvelope = """{"kind":"waitUntil","initialRecurrencePeriod":500,"quiet":true}"""
+            .encode(WaitUntilInput(initialRecurrencePeriod = 500L)).value
         assertEquals(
-            legacyEnvelope,
+            """{"kind":"waitUntil","initialRecurrencePeriod":500}""",
             registryEnvelope,
-            "registry input codec MUST emit a byte-identical dsl-v1 envelope",
+            "the envelope is part of the durable identity, so its exact bytes are pinned here. " +
+                "When a key is legitimately removed this row is where the change is declared, " +
+                "not silently absorbed.",
         )
     }
 
@@ -447,7 +463,7 @@ class WaitUntilStepContractSuiteTest {
             val h = freshHarness(eventStore)
 
             val encoded = CoreWaitUntilStep.definition.contract.inputCodec
-                .encode(WaitUntilInput(initialRecurrencePeriod = 500L, quiet = false))
+                .encode(WaitUntilInput(initialRecurrencePeriod = 500L))
 
             val preparation = RegistryExecutionPreparation.prepare(
                 registry = h.registry,

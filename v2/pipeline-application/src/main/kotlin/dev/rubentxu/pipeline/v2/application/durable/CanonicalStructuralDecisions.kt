@@ -419,7 +419,6 @@ internal sealed interface BlockShellScope {
      * so restart/replay reconstructs poll state from the journal, not memory.
      *
      * initialRecurrencePeriod: initial delay in ms before first poll
-     * quiet: suppress logging if true
      * maxBackoffMs: ceiling for exponential backoff, DECODED from the block payload
      *   (see [projectWaitUntilScope]). Required rather than defaulted: an absent key means
      *   [dev.rubentxu.pipeline.v2.domain.step.WaitUntilShape.maxBackoffMs], so a default here
@@ -427,7 +426,6 @@ internal sealed interface BlockShellScope {
      */
     data class WaitUntilScope(
         val initialRecurrencePeriod: Long,
-        val quiet: Boolean,
         val maxBackoffMs: Long,
     ) : BlockShellScope
 }
@@ -547,7 +545,6 @@ private fun BlockStepNode.projectWaitUntilScope(
     return BodyExecutionProjection.Scope(
         BlockShellScope.WaitUntilScope(
             initialRecurrencePeriod = initialRecurrencePeriodMs,
-            quiet = shape.quiet,
             maxBackoffMs = maxBackoffMs,
         ),
     )

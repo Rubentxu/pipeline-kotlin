@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -58,20 +59,19 @@ class CoreWaitUntilStepUnitTest {
 
     @Test
     fun `codec input — WaitUntilInput encodes to canonical dsl-v1 envelope`() {
-        val input = WaitUntilInput(initialRecurrencePeriod = 500L, quiet = false)
+        val input = WaitUntilInput(initialRecurrencePeriod = 500L)
         val encoded = CoreWaitUntilStep.definition.contract.inputCodec.encode(input)
         assertTrue(encoded.value.contains("\"kind\":\"waitUntil\""))
         assertTrue(encoded.value.contains("\"initialRecurrencePeriod\":500"))
-        assertTrue(encoded.value.contains("\"quiet\":false"))
+        assertFalse(encoded.value.contains("quiet"), "the dead quiet key must not be re-encoded")
     }
 
     @Test
     fun `codec input — round-trip reconstructs WaitUntilInput`() {
-        val original = WaitUntilInput(initialRecurrencePeriod = 2000L, quiet = true)
+        val original = WaitUntilInput(initialRecurrencePeriod = 2000L)
         val encoded = CoreWaitUntilStep.definition.contract.inputCodec.encode(original)
         val decoded = CoreWaitUntilStep.definition.contract.inputCodec.decode(encoded)
-        assertEquals(original.initialRecurrencePeriod, decoded.initialRecurrencePeriod)
-        assertEquals(original.quiet, decoded.quiet)
+        assertEquals(original, decoded)
     }
 
     @Test

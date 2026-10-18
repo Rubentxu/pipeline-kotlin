@@ -54,6 +54,15 @@ object EnvModel {
         // 2. Apply PATH prepend logic using the materialized path values
         // 3. Wrap transformed plain values back in SecretHandle.plain()
 
+        // T-02 regression, applied to the typed form as well: an empty step environment
+        // must stay empty. Falling through to the PATH seed below would materialise the
+        // CONTROLLER's PATH and hand it to the child, so a pipeline that declared no
+        // environment at all silently inherited one from the machine running it. The
+        // legacy overload already returned early for exactly this reason.
+        if (env.isEmpty()) {
+            return emptyMap()
+        }
+
         // Track whether PATH was originally masked (before any loop could add it)
         val originalPathInInput = env.containsKey("PATH")
         val originalPathHandle = env["PATH"]
@@ -68,24 +77,29 @@ object EnvModel {
         // Copy all entries: non-masked PATH+= captured for prepend,
         // non-masked non-PATH+= copied directly, masked non-PATH+= propagated as-is
         for ((key, handle) in env) {
-            if (!handle.isMasked) {
-                val match = PATH_PLUS_REGEX.matchEntire(key)
-                if (match != null) {
-                    // PATH+= prepend syntax: capture the directory to prepend
-                    val dir = match.groupValues[1]
-                    pathPlusDirs.add(dir)
-                } else {
-                    out[key] = handle
-                }
+            if (PATH_PLUS_REGEX.matches(key)) {
+                // PATH+=<dir>: the handle's VALUE is the directory to prepend. The regex
+                // capture group is only the variable NAME — prepending it injected a
+                // directory literally called MAVEN instead of /opt/maven/bin. This is
+                // the form `DurableShellExecutor` actually runs: ShOptions.env is
+                // Map<String, SecretHandle>, and it materialises this result straight
+                // into ProcessBuilder. A PATH+= key is consumed either way: a literal
+                // PATH+MAVEN variable in the child environment is meaningless to any
+                // process and would only leak the user's variable naming.
+                pathPlusDirs.add(handle.materialize())
             } else {
-                // Masked non-PATH+= entry — propagate as-is (not a secret value)
+                // Masked and unmasked entries are carried alike: a mask marks a value as
+                // non-secret, it does not remove the variable from the environment.
                 out[key] = handle
             }
         }
 
-        // Apply PATH+= prepends in order (deduplicated, preserving order)
+        // Apply PATH+= prepends in order (deduplicated, preserving order).
+        // Jenkins verbatim: the FIRST declared entry is the OUTERMOST one, so it
+        // comes first in the final PATH. Iterating forwards made the last declared
+        // entry outermost, the reverse of what the legacy overload documents.
         var currentPath = originalPath
-        for (dir in pathPlusDirs) {
+        for (dir in pathPlusDirs.asReversed()) {
             if (dir.isNotEmpty()) {
                 currentPath = "$dir${if (currentPath.isNotEmpty()) ":$currentPath" else ""}"
             }

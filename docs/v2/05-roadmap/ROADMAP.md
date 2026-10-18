@@ -583,3 +583,60 @@ un prefijo compartido por **tres** módulos — `:pipeline-event-harness` (que *
 **Condición de reversión.** Si la poda obliga a construir `Harness2`, más ADTs o una segunda matriz de
 fidelidad, se revierte al contrato simple Gradle/JUnit. El objetivo declarado es menos infraestructura
 de pruebas, no una infraestructura nueva.
+
+**Documentos sombra — NO son autoridad (registrado 2026-10-18, corregido el mismo día).** La frase
+«un único enlace» de esta sección necesita un cierre: existen cuatro artefactos de roadmap en el
+árbol que una búsqueda por palabra clave puede confundir con la secuencia vigente. Ninguno es
+autoridad y ninguno se ha ejecutado sobre ningún SHA.
+
+**Criterio de disposición, medido: quién cita a quién.** La primera versión de este bloque
+declaraba los cuatro paquetes «sin trackear» y los trataba por ello como residuo. Eso es
+incorrecto, y la medición lo refuta en los dos sentidos:
+
+```text
+paquete                                     citas desde ficheros TRACKEADOS
+docs/pipelinek-delivery-first-2026-10-16/          10   <- no es residuo
+docs/pipelinek_delivery_first_radical/overlay/       1
+docs/pipelinek_roadmap_integracion_2026-10-17/       0
+ROADMAP.md (raíz del repo)                            0
+```
+
+Las 10 citas del primer paquete incluyen **una ADR ratificada** (`ADR-PK-DF-001`,
+`status: accepted`, en `related:` y en dos párrafos) y **cuatro documentos de evidencia** de
+`docs/v2/06-evidence/` que citan **números de línea** concretos (46, 59–69, 71, 79) como el
+mandato que justificó una decisión de clasificación. Un lector en un clon limpio no puede
+verificar ninguna de ellas. «Sin trackear» no significaba «muerto»; significaba **una referencia
+rota que además parecía justificativa**.
+
+**Las líneas citadas se verificaron una a una** y todas resuelven al mandato que se les
+atribuye: 46 → heading de H2; 59–69 → cuerpo de H3 con sus cuatro TODO y su STOP; 71 → heading de
+H4; 79 → STOP de H4. El contenido es el correcto, luego trackearlo sella la cita tal como está
+escrita.
+
+```text
+ROADMAP.md (raíz del repo)                                  NO trackeado, 12.7K
+  Distinto de docs/v2/05-roadmap/DISTRIBUTION_ROADMAP.md. Auditoría remota del 16-10.
+  NO es este ROADMAP.md. Si algo cita "ROADMAP.md", el qualified path decide.
+  Sin citas desde documentos trackeados: trackearlo sólo añadiría un `ROADMAP.md`
+  competing en la raíz. Se queda fuera a propósito.
+
+docs/pipelinek-delivery-first-2026-10-16/                   trackeado como PROCEDENCIA
+  Paquete predecesor, superado por docs/pipelinek_delivery_first_radical/. Se declara él
+  mismo subordinado y «propuesta operativa, no prueba de cierre». Trackeado porque 10
+  documentos ya ratificados o publicados lo citan.
+
+docs/pipelinek_delivery_first_radical/overlay/              trackeado como PROCEDENCIA
+  Sus tres documentos viven ya en rutas canónicas, pero NO los tres byte-idénticos:
+  2/3 idénticos, y PRODUCT_FIRST_PRODUCTION_READY_2026-10-17.md DIVERGE — el overlay es
+  el input prístino y el canónico lleva la edición posterior. Es procedencia de una
+  edición, no una copia muerta; borrarlo destruiría contra qué se editó.
+
+docs/pipelinek_roadmap_integracion_2026-10-17/              NO trackeado
+  Continuación BQ1–BQ5 sobre main@19d592e5. Se declara ella misma subordinada: «no sustituye
+  ROADMAP.md». Útil para los TODO de BQ; no es secuencia, y nada lo cita. Queda fuera.
+```
+
+**Trackeado ≠ autorizado.** Estos paquetes son procedencia: el input que una ADR o un recibo
+citan como origen. Entran en Git para que esas citas resuelvan, y **no** por eso se convierten
+en secuencia, gate o autoridad. La precedencia de `ACTIVE_DOCUMENTS.md` sigue vigente: la
+única secuencia es `B0..B7` más la de BQ.

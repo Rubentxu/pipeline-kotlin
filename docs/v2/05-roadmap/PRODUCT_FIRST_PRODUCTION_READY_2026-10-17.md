@@ -2,6 +2,28 @@
 
 **Estado:** propuesta ejecutora subordinada a `docs/v2/05-roadmap/ROADMAP.md` (única secuencia RP/B0–B7). Base inspeccionada `1c21f303`. **No duplicar TODO autoritativo ni crear roadmap alternativo**: integrar este fichero mediante un único enlace en §13 y actualizar la agenda real/SDDK. Política nueva condicionada a aceptar ADR-PK-DF-002 y las enmiendas de `AGENTS.md`/ADR-PK-QV-003.
 
+## Estado medido (2026-10-18, `main@4dd4f725`)
+
+Este bloque existe porque el checklist de abajo y el recibo
+`docs/v2/07-uat/DELIVERY_FIRST_RADICAL_INTEGRATION_2026-10-17.md` se contradecían: el
+checklist declaraba H0 entera sin empezar mientras el recibo documentaba H0.3 ejecutada y
+verificada sobre el artefacto instalado. Un lector que abría sólo este fichero concluía que
+no se había hecho nada. Aplicar la regla de `ROADMAP.md` §13.7 — *registrar `DONE` sólo tras
+código eliminado e integración real* — a la evidencia ya comprometida, sin ratificar nada nuevo.
+
+| Hito | Estado | Evidencia / bloqueo |
+|---|---|---|
+| H0.1 | `BLOCKED_POLICY` | `ADR-PK-DF-002` sigue `status: proposed`. Enmiendas enumeradas pero **no ratificadas**. Requiere decisión del operador. |
+| H0.2 | `NOT_RUN` — bloqueado por **evidencia**, no por permiso | Medido con `tools/disabled_equivalence_audit.py`: **47 de 51** claims de equivalencia no resuelven a un test vivo. `test_portfolio.py` reclasificó 16 candidatos a `R0_ARCHIVED_TRACEABILITY`; población `R0_PRUNE_DISABLED_METHODS` **17 → 1**. **0 borrados autorizados.** |
+| H0.3 | `DONE` | `5e816d84`. `InProcessProductProbeExecutor` `src/main`→`src/test`; `implementation`→`testImplementation`. Verificado sobre el ZIP instalado, no en el árbol. Guardarraíl `FArch021QaModulesStayOffRuntimeClasspathTest` mutation-tested en ambos sentidos. **Revalidado en HEAD**: los dos únicos usos restantes de `:test-harness` en `pipeline-application` son `testImplementation` (`:212`) y `laneReportClasspath` (`:702`). |
+| H0.4 | `BLOCKED` por H0.1 | El módulo sigue vivo: `settings.gradle.kts:102`, 89 ficheros Kotlin. Su consecuencia observable es **`FArchM3` en ROJO honesto**: `ProcessBuilder` en 4 ficheros de `test-harness/src/main`. La única cura es el borrado; no se silencia ni se debilita el fitness. |
+| H0.5 | `NOT started` | — |
+| H0.6 | parcial | Las comprobaciones de H0.3/R1 se ejecutaron (compile, `installDist`, smoke `events verify`). La integración como preparación de H1 no ocurrió. |
+
+**Lo que este bloque NO hace.** No ratifica la ADR, no autoriza ninguna poda, y no convierte
+`BLOCKED_POLICY` en progreso. Marcar H0.3 `DONE` es aplicar una regla aceptada a un commit ya
+integrado; las cuatro amendments de `ADR-PK-DF-002` siguen requiriendo firma del operador.
+
 ## Norte y criterio de prioridad
 
 **Primero capacidad útil, luego solo pruebas que detecten defectos reales.** Desde RC6 se tocaron 9.530 líneas en QA frente a 437 de producto; invertir tendencia. Una unidad de trabajo sin consumidor real queda subordinada. Por defecto ninguna feature puede crear subsistemas nuevos de harness, sidecars, manifests, routers, catálogos o múltiples E2E. La excepción P0 exige defecto reproducido.
@@ -12,10 +34,10 @@
 
 **Refs vigentes:** `TEST_EXECUTION_LANES_SPEC.md`, `TEST_IMPACT_AND_EVIDENCE_SPEC.md`, `EPHEMERAL_CYCLE_LIFECYCLE_SPEC.md`, ADR-0072, ADR-PK-QV-003, ADR-0105, ADR-PK-DF-002 (pendiente), `RESPONSIBILITY_MIGRATION_ROADMAP.md`.
 
-- [ ] **H0.1 Aceptar o bloquear explícitamente política:** revisar ADR-PK-DF-002, proponer enmiendas mínimas a `AGENTS.md`, roadmap y specs. Si no se autoriza cambiar la obligación `check` y borrado legacy, continuar solo R0 y separar dependencia; etiquetar `BLOCKED_POLICY`, nunca dar por aprobada una relajación.
-- [ ] **H0.2 Borrado inmediato de código muerto:** podar métodos `@Disabled` históricos (p.ej. en `CoreSleepRegistryPrimaryFitnessTest`), guardas de conteo de líneas (candidato `CoordinatorGrowthGuardrailTest`), restos sin consumidor, reglas duplicadas de inspección textual de detalles privados. **No** sustituir por tests equivalentes del framework. Guardar un solo test funcional si era una ley real.
-- [ ] **H0.3 Fuera del runtime:** eliminar o reclasificar `InProcessProductProbeExecutor` (`application/src/main/harness`), su ServiceLoader y dependencia `implementation(project(":test-harness"))`; conservar HF1 por tests de `PipelineRule`/Step. Demostrar que distribución no contiene ese QA. **No** retirar `pipeline-event-harness`, consumidor de `events verify`.
-- [ ] **H0.4 Eliminar los subsistemas completos:** `v2/test-harness/{cycle,retirement,lanes,plan,catalog,util}` y sus 51 tests después de verificar owners; borrar `laneReport`, `validationPlan`, `scripts/validation-gate.py`, entrada de settings y referencias runtime. Sustituir por tasks Gradle que YA existen, y RC externa. **No crear otro Kotlin harness más pequeño**.
+- [ ] **H0.1 Aceptar o bloquear explícitamente política:** revisar ADR-PK-DF-002, proponer enmiendas mínimas a `AGENTS.md`, roadmap y specs. Si no se autoriza cambiar la obligación `check` y borrado legacy, continuar solo R0 y separar dependencia; etiquetar `BLOCKED_POLICY`, nunca dar por aprobada una relajación. **→ `BLOCKED_POLICY` (2026-10-18): amendments propuestas, ninguna ratificada.**
+- [ ] **H0.2 Borrado inmediato de código muerto:** podar métodos `@Disabled` históricos (p.ej. en `CoreSleepRegistryPrimaryFitnessTest`), guardas de conteo de líneas (candidato `CoordinatorGrowthGuardrailTest`), restos sin consumidor, reglas duplicadas de inspección textual de detalles privados. **No** sustituir por tests equivalentes del framework. Guardar un solo test funcional si era una ley real. **→ `NOT_RUN` (2026-10-18): medido antes de cortar; la etiqueta autorizaba 54 borrados de archivo de trazabilidad. Población 17 → 1, 0 autorizados.**
+- [x] **H0.3 Fuera del runtime:** eliminar o reclasificar `InProcessProductProbeExecutor` (`application/src/main/harness`), su ServiceLoader y dependencia `implementation(project(":test-harness"))`; conservar HF1 por tests de `PipelineRule`/Step. Demostrar que distribución no contiene ese QA. **No** retirar `pipeline-event-harness`, consumidor de `events verify`.
+- [ ] **H0.4 Eliminar los subsistemas completos:** `v2/test-harness/{cycle,retirement,lanes,plan,catalog,util}` y sus 51 tests después de verificar owners; borrar `laneReport`, `validationPlan`, `scripts/validation-gate.py`, entrada de settings y referencias runtime. Sustituir por tasks Gradle que YA existen, y RC externa. **No crear otro Kotlin harness más pequeño**. **→ `BLOCKED` por H0.1 (2026-10-18). Su síntoma observable es `FArchM3` ROJO, y es correcto: `ProcessBuilder` en 4 ficheros de `test-harness/src/main`.**
 - [ ] **H0.5 Poda del portafolio real:** revisar candidatas `migrated-pending`, UAT de binario y fitness de estructura. Retirar en tandas por garantías y evidencia, conservar críticos hasta equivalencia. Eliminar métodos @Disabled por historia de commits. No confundir `migrated-pending` con certifier verificado.
 - [ ] **H0.6 Comprobación mínima:** 1 test compilación + 1 contrato real afectado + 1 negativo veraz del gate cambiado; build ZIP y smoke existente sin runtime QA; verificación integrada según política autorizada. Datos antes/después: archivos, clases, tiempo, classpath, tamaño de ZIP, falsos rojos. Integrar como preparación de **la siguiente entrega funcional H1**, sin RC solo de limpieza.
 

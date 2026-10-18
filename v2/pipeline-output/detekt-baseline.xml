@@ -2,6 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>NewLineAtEndOfFile:OperationOutputStreamsChannelInvariantTest.kt:dev.rubentxu.pipeline.v2.output.OperationOutputStreamsChannelInvariantTest.kt</ID>
+
   </CurrentIssues>
 </SmellBaseline>

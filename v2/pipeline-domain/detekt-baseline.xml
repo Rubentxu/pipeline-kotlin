@@ -6,6 +6,5 @@
     <ID>CyclomaticComplexMethod:ParallelReconciler.kt:ParallelReconciler$fun reconcile: ParallelDecision</ID>
     <ID>CyclomaticComplexMethod:RetryReconciler.kt:RetryReconciler$fun reconcile: RetryReconciliationDecision</ID>
     <ID>NewLineAtEndOfFile:TaskTerminalDecision.kt:dev.rubentxu.pipeline.v2.domain.durable.TaskTerminalDecision.kt</ID>
-    <ID>NewLineAtEndOfFile:TaskTerminalDecisionTest.kt:dev.rubentxu.pipeline.v2.domain.durable.TaskTerminalDecisionTest.kt</ID>
   </CurrentIssues>
 </SmellBaseline>

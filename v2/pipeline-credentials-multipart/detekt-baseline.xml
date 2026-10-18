@@ -2,7 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>TooGenericExceptionThrown:LocalFileMaterializationGoldenTest.kt:InMemorySecretStore$throw Exception("Not found")</ID>
-    <ID>UnusedParameter:CredentialMaterializerTest.kt:CredentialMaterializerTest$@TempDir tempDir: Path</ID>
+
   </CurrentIssues>
 </SmellBaseline>

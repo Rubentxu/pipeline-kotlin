@@ -2,7 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>TooGenericExceptionThrown:DirExecutorTest.kt:DirExecutorTest$throw RuntimeException("boom")</ID>
     <ID>UnusedParameter:DirExecutor.kt:DirExecutor$stepIndex: Int</ID>
   </CurrentIssues>
 </SmellBaseline>

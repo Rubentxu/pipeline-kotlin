@@ -91,6 +91,17 @@ class ArtifactHandleTest {
     }
 
     @Test
+    fun `ArchivedFileEntry rejects sha256 that is 64 chars but not hex`() {
+        // The sibling of the wrong-length row, and the one the old guard let through: it
+        // checked `length == 64` alone, so 64 characters of anything passed and then
+        // travelled as a digest that could never match a real one. A message promising
+        // "64 hex characters" while testing only the length is the shape of the defect.
+        assertThrows(IllegalArgumentException::class.java) {
+            ArchivedFileEntry(relPath = "x", sha256 = "z".repeat(64), sizeBytes = 0, absolutePath = "/x")
+        }
+    }
+
+    @Test
     fun `ArchivedFileEntry rejects negative sizeBytes`() {
         assertThrows(IllegalArgumentException::class.java) {
             ArchivedFileEntry(relPath = "x", sha256 = "a".repeat(64), sizeBytes = -1, absolutePath = "/x")

@@ -105,8 +105,19 @@ class CleanWsExecutor(
 
         // Check MEMOIZED marker for idempotent re-run
         if (Files.exists(markerFile)) {
+            // A marker this executor wrote is a SHA-256 of the marker content; anything else in
+            // the file was not written here (a hand edit, a truncated write, a different producer).
+            //
+            // Such a file is treated as NOT a marker, and the cleanup proceeds normally, rather
+            // than refusing. The refusal was the obvious form and it is wrong: it wedges the
+            // workspace permanently, because once a bad marker exists no future run could clean
+            // it either. Re-running a cleanup is safe by definition — deleting already-deleted
+            // content is a no-op — so the convergent answer is also the operable one. What must
+            // not happen is the marker value flowing on as a digest, which is what the old
+            // `isNotEmpty()` gate did: any non-empty text reached CleanWsOutput.sha256 and
+            // then the journal, where it could never match a real digest.
             val existingSha = try {
-                Files.readString(markerFile).trim()
+                Files.readString(markerFile).trim().takeIf(Sha256::isSha256Hex).orEmpty()
             } catch (_: Exception) {
                 ""
             }

@@ -113,6 +113,32 @@ object Sha256 {
     fun ofString(value: String): String = ofText(value)
 
     /**
+     * Whether [value] is one of this object's own outputs: 64 characters of lowercase hex.
+     *
+     * ## Why the minting class has to answer this
+     *
+     * Every method above states the format in prose — "lowercase, 64 characters" — and until
+     * this one, no caller could ask whether a string it *received* held that format. So each
+     * site that consumes a digest written elsewhere had to re-decide the format, and measured
+     * 2026-10-18 that several of them decided it as `length == 64` alone: 64 characters of any
+     * kind passed, and reached every consumer as a digest that could never match a real one.
+     * A length check against a field documented as a SHA-256 is an assertion about a format it
+     * does not test.
+     *
+     * The class that produces the value is the only place the answer can stay correct when the
+     * format changes, so this lives here rather than in each consumer.
+     *
+     * ## Why uppercase is refused rather than accepted
+     *
+     * [ofBytes] emits `0-9a-f` only, so uppercase was not written by this object. Accepting it
+     * would give one digest two spellings that compare unequal, which is the same defect
+     * B0 exists to remove. `dev.rubentxu.pipeline.v2.domain.step.SemVer` accepts `A-F`
+     * deliberately — that is a version string, not a digest, and it simply does not call this.
+     */
+    fun isSha256Hex(value: String): Boolean =
+        value.length == 64 && value.all { it in '0'..'9' || it in 'a'..'f' }
+
+    /**
      * A stable digest of a directory's regular files, in path order, with generated metadata
      * excluded by EXACT file name.
      *

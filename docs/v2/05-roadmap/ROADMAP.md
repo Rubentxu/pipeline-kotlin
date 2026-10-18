@@ -69,8 +69,55 @@ BRECHA    No existe certificación del harness para v0.48.0-rc1 (su evidence/ ll
 Hallazgos de esa reconciliación, con evidencia y dueño, en `../07-uat/B0_RECONCILIATION_RECEIPT.md`.
 Los dos P0 de 2026-10-08 ya no lo son ambos: B0-F1 quedó resuelto, y B0-F2 sigue abierto con
 remedio externo compartido con B0-F4.
-**Autoridad operativa (TRAIN-0 cutover 2026-09-26):** SDDK + Git + ADRs + evidencia externa. `.agent/SESSION_POINTER.md` queda como proyección humana opcional / histórico (no autoridad). **Pruebas vinculantes:** ../07-uat/CERTIFICATION_PROTOCOL.md y ../07-uat/PRODUCTION_READY_UAT_MATRIX.md.
+**Autoridad operativa (TRAIN-0 cutover 2026-09-26; corregida 2026-10-18):** Git + ADRs/contratos publicados + evidencia externa. La mención a SDDK que este bloque hacía hasta 2026-10-18 se retiró porque la herramienta no está instalada y una autoridad que no se puede observar no puede gobernar (ver el bloque de hechos de 2026-10-18). `.agent/SESSION_POINTER.md` queda como proyección humana opcional / histórico (no autoridad). **Pruebas vinculantes:** ../07-uat/CERTIFICATION_PROTOCOL.md y ../07-uat/PRODUCTION_READY_UAT_MATRIX.md.
 **Continuación auditada (2026-10-16):** [QUALITY_VALUE_ADDENDUM.md](QUALITY_VALUE_ADDENDUM.md) §«Continuación operativa auditada» conserva BQ1–BQ5 y agrega el plan operativo medido sobre `main@a66fe88c`, incluyendo PR #142, P2 Maven y la limpieza de UAT/E2E/AAT de sesión al final de cada bloque. **No altera el orden RP ni la autoridad del certifier**.
+
+**Hechos del 2026-10-18 (observado, no inferido). Supersede el bloque del 2026-10-10
+como referencia de estado; aquel se conserva por trazabilidad. El baseline auditado de
+`a554fd55` se sigue conservando intacto, por el mismo motivo que en el bloque anterior.**
+
+```text
+origin/main observado      080ef7d7d839e0d359a3efb253167549a4d419b4
+rama de trabajo            main, en sync con origin/main (sin trabajo sin commitear
+                           salvo dos rutas sin seguimiento, pendientes de decisión)
+producto publicado         v0.62.0-rc6 (tag v0.62.0-rc6); ProductVersion 0.62.0;
+                           release-train 0.62.0 / candidateSequence 6;
+                           candidate-id sha256:dd4508022a6d2e8313dc2c2982c138f3b7ea07ad6eecdd78d83e1bb3ab1b8111
+                           (manifiesto y handoff en docs/v2/06-evidence/0-62-rc6/)
+version declarada          v2/build.gradle.kts -> version = "0.62.0"
+superficie de CI           inexistente (.github/workflows no existe)
+ciclos SDDK                NOT_RUN — la herramienta no está instalada
+```
+
+**Corrección material sobre la línea `ciclos SDDK` de los tres bloques anteriores.** Los
+bloques del 2026-10-08, 2026-10-09 y 2026-10-10 repiten la cifra
+`42 OPEN, 4 BLOCKED, 82 CLOSED, 1 RELEASE_PENDING`. Medido hoy 2026-10-18:
+
+```text
+command -v sddk                              vacío
+~/.local/bin/sddk                            no existe (tampoco en /usr/local/bin ni en /opt)
+residuo en disco que SÍ existe               ~/.local/bin/sddk-tmp-purge
+                                             ~/.local/bin/__pycache__/sddk-dashboard.cpython-314.pyc
+                                             ~/.local/bin/skills/sddk-{archive,propose,cycle-resume}/SKILL.md
+```
+
+El residuo prueba que la herramienta existió, no que exista: los `SKILL.md` de `sddk-*`
+consultan «authoritative CLI queries», es decir el CLI ausente, así que tampoco funcionan.
+La cifra la produjo una herramienta que aquí no se puede ejecutar: **no es reproducible en
+esta máquina** y no puede sostener una decisión de secuenciación. Por la regla ya escrita
+en `AGENTS.md` —«un peldaño de autoridad que no se puede observar no puede gobernar», y
+toda afirmación que dependa de un estado no observable se escribe `NOT_RUN`— se sustituye
+por `NOT_RUN`.
+
+Los tres bloques anteriores **no se borran**: su cifra era la lectura de quien las escribió
+y la trazabilidad exige conservarla. Lo que no debe ocurrir es volver a citarla como estado
+actual, porque parece medible y no lo es. Si SDDK vuelve a instalarse, la cifra se
+reintroduce aquí por decisión registrada, no por inercia.
+
+**Nota de método.** Esta actualización NO declara el estado de los bloques B0–B6, ni de los
+ciclos individuales, ni reevalúa gates: no se ha ejecutado ningún gate sobre este SHA en esta
+sesión, y el producto publicado se lee de su manifiesto, no de una reconstrucción. La
+afirmación es sobre los hechos observables de arriba y nada más.
 
 **Subroadmap derivado:** la consola progresiva y el streaming durable se evolucionan en [OBS_PROGRESSIVE_CONSOLE_ROADMAP.md](OBS_PROGRESSIVE_CONSOLE_ROADMAP.md) (OBS-1 … OBS-7). Ese documento **no** es una autoridad de producto paralela: la prioridad, la integración y el calendario siguen siendo los de este roadmap, y ningún bloque OBS se admite antes de cumplir su gate ni bloquea la publicación del SDK.
 
@@ -437,7 +484,8 @@ Jenkins, Kubernetes o control plane. Si aparece una, se clasifica como trabajo d
 ## 12. Mecánica de ejecución y actualización
 
 - Cada WU sigue: caracterización RED real o baseline → especificación/ADR cuando proceda → parche mínimo → pruebas T0 contrato, T1 módulo, T2 fitness/corpus, T3 instalada, T4 durable/fallos, T5 release/soak cuando el impacto lo exige → recibo y commit.
-- La unidad de entrega es el **TRAIN** (un ciclo SDDK con sus WUs internas). El estado operativo se recupera vía SDDK (`sddk status --cycle <active-cycle>`, `sddk project resolve`, `sddk cycle next`). `.agent/SESSION_POINTER.md`, `.agent/WORK_JOURNAL.md`, `.agent/TESTING-STATE.md` y `.agent/TECH_DEBT_BACKLOG.md` son **proyección humana opcional / histórico** y NO autoridad. Si contradicen SDDK/Git/CI, la resolución es a favor del estado real y se marca el fichero como obsoleto para esa sesión.
+- La unidad de entrega es el **TRAIN** (un ciclo con sus WUs internas). **Cómo se recupera el estado operativo (corregido 2026-10-18):** no existe una herramienta de ciclo en este repositorio, así que el estado se lee de **Git + ADRs + este roadmap** — `git status --short`, `git rev-parse HEAD`, `git log -1`, rama, y el `status:`/`accepted` de cada ADR implicada. Hasta el 2026-10-18 este apartado mandaba ejecutar `sddk status --cycle <active-cycle>`; el binario no está instalado (`command -v sddk` vacío), de modo que esa instrucción no se podía cumplir y se retira en lugar de conservarse con una salvedad. Si una decisión depende de un estado que no se puede observar, se escribe `NOT_RUN`. Si la herramienta vuelve a instalarse, se reintroduce aquí por decisión registrada.
+- `.agent/SESSION_POINTER.md`, `.agent/WORK_JOURNAL.md`, `.agent/TESTING-STATE.md` y `.agent/TECH_DEBT_BACKLOG.md` son **proyección humana opcional / histórico** y NO autoridad. Si contradicen Git/ADRs/evidencia externa, la resolución es a favor del estado real y se marca el fichero como obsoleto para esa sesión.
 - Cada cierre registra fecha UTC, base SHA, HEAD SHA, TRAIN/WU, decisiones, paths, test argv/exit/XML, hashes de artefactos, errores abiertos, evidencia caducada, próximo primer comando y motivo. La validación histórica no se reescribe.
 - Los porcentajes se publican sólo para cohortes cerradas con denominador verificable (p. ej. WUs 2/6); si una WU está TBD, el avance global es NO_CALCULABLE.
 - La secuencia puede evolucionar por descubrimiento respaldado por un ADR/recibo, preservando trazabilidad y gates. Ni un TODO ni un comentario de código prevalecen sobre una prueba ejecutada.
@@ -451,8 +499,8 @@ aceptada. Si un bloque y un ADR aceptado discrepan, el ADR gana y el bloque se c
 
 El bloque activo de esta sección (B0) está registrado como WorkItem `f8fc07e6` del ciclo
 `rp7-sem-s6-plugin-sdk`; los bloques siguientes se abren como WorkItem al iniciarse, no antes. La
-ejecución opera por la unidad de entrega del §12 (TRAIN / ciclo SDDK + WU internas), y el orden
-`B0 -> B1 -> ...` no autoriza a adelantar el gate del que depende cada bloque.
+ejecución opera por la unidad de entrega del §12 (TRAIN + WU internas), y el orden
+`B0 -> B1 -> ...` no autoriza a adelantar el gate del que depende cada bloque. La unidad de entrega (TRAIN + WU internas) se define en el §12, donde vive desde 2026-10-18 la forma de recuperar el estado sin SDDK.
 
 ### 13.1 Trazabilidad bloque → RP existente
 
@@ -561,7 +609,7 @@ resultado `PASS`/`FAIL`/`BLOCKED`/`NOT_RUN`.
 
 **Un único enlace, no un segundo backlog.** La secuencia `B0..B7` de esta sección sigue siendo la
 única autoritativa: este enlace no la reordena, no la sustituye y no crea un TODO paralelo. La
-propuesta se ejecuta *dentro* de los bloques que ya existen, usando su backlog y su ciclo SDDK.
+propuesta se ejecuta *dentro* de los bloques que ya existen, usando su backlog y la unidad de entrega del §12.
 
 - Plan: [`PRODUCT_FIRST_PRODUCTION_READY_2026-10-17.md`](PRODUCT_FIRST_PRODUCTION_READY_2026-10-17.md) (H0..H5)
 - Especificación: [`PRODUCT_FIRST_MINIMUM_VERIFICATION_SPEC.md`](../03-specifications/PRODUCT_FIRST_MINIMUM_VERIFICATION_SPEC.md)

@@ -163,6 +163,79 @@ Y por debajo de todo eso sigue la deuda horizontal: 6 ramas más escriben su cab
 exponerla en la emisión. Eso consagra un campo que sólo los tests escriben, y la exposición
 tipada lo reescribiría acto seguido sobre los mismos ficheros. Es trabajo doble.
 
+### Corrección registrada 2026-10-18 — la lectura de DR-10 era correcta, pero la razón que citaba era falsa
+
+Al medir el punto 3, para saber si añadir `maxBackoffMs` al payload movía la identidad durable,
+primero elevé una corrección propia —«`BodyStructureDigest.of()` anexa la cadena, luego añadir la
+clave mueve la identidad del cuerpo»— y después la elevé al ROADMAP. **Las dos son falsas.** Se
+conservan las tres lecturas sin borrar, porque el recorrido es la lección: un hash que se cita sin
+leer la guarda que lo invoca se lee al revés.
+
+**Afirmación refutada por medición (ROADMAP:59-62), textual:**
+
+> **DR-10 cerrado por medición, no por suposición.** `BodyStructureDigest.kt:67` anexa
+> `child.payload.encoded` — la **cadena**. Leer una clave más de esa misma cadena no cambia un byte de
+> la forma canónica, así que añadir el campo **no mueve la identidad del cuerpo**. Esta era la
+> pregunta que bloqueaba el bloque; está respondida.
+
+**La conclusión se sostiene; el mecanismo no.** `BodyStructureDigest.of()` sí anexa la cadena, pero
+**no está en el camino de `core.waitUntil`**. Su único call-site está guardado
+(`StepDispatchEngine.kt:239`):
+
+```kotlin
+val bodyStructure: String? = if (hasBodyContinuation && step is BlockStepNode) {
+    BodyStructureDigest.of(step.body)
+} else {
+    null
+}
+```
+
+`hasBodyContinuation` se ata **sólo** para `BodyExecutionOwner.HANDLER_CONTINUATION`
+(`StepDispatchEngine.kt:201,332`), y ese owner lo declaran exactamente dos Steps en todo el producto:
+`CoreLockStep.kt:182` (`core.lock`) y `CoreInputStep.kt:88` (`core.input`). `core.waitUntil` es un
+bloque **dirigido por el motor**, no una continuación de handler, así que recibe `null` y su payload
+nunca entra en ese digest. El propio KDoc del objeto lo dice (`BodyStructureDigest.kt:41-45`):
+*«Engine-driven blocks keep their existing fingerprint so that every journal row written by the
+published 0.45.0 candidate stays valid»*.
+
+**El mecanismo real, y sí está en el camino de `waitUntil`.** El payload entra sin guarda en la
+huella de la operación (`StepDispatchEngine.kt:246`):
+
+```kotlin
+put("payload", JsonPrimitive(step.payload.encoded))
+```
+
+y `OperationInput.params` es, por su propio contrato (`OperationInput.kt:11`), *«Encoded as canonical
+JSON for fingerprint computation»*. Esa huella es la clave del diario. Y la regla 1 de la tabla
+normativa ADR-0103 D1 (`EffectReplayPolicy.decide:137`) es `!hasJournalEntry -> ReplayDecision.RERUN`,
+mientras que `SKIP` —que es el nombre engañoso que significa *reutilizar*— sólo se alcanza en las
+reglas 4 y 5, **que exigen una entrada de diario existente para esa huella exacta**.
+
+Por tanto el efecto de añadir la clave es, medido:
+
+```text
+payload nuevo  ->  huella distinta  ->  no hay entrada con esa clave  ->  RERUN
+payload viejo  ->  fila vieja en el diario  ->  queda huérfana y no se consulta
+```
+
+Es decir: **la historia existente nunca se reinterpreta en silencio; sencillamente no se encuentra
+bajo la identidad nueva, y la operación se ejecuta.** Ésa es la dirección segura, y es exactamente
+lo que DR-10 pide: el cambio es fail-closed sobre el reuse, no una reinterpretación silenciosa. **No
+hay bloqueador DR-10, y el punto 3 queda autorizado a continuar.**
+
+Una objeción que se considered legítimo y se midió antes de descartarla: `schemaVersion` **sí** está
+en el texto canónico del digest (`BodyStructureDigest.kt:66`), de modo que subirlo sería la palanca
+diseñada. Pero `PAYLOAD_SCHEMA_VERSION` es **una sola constante compartida por los nueve puntos de
+emisión** (`DslCompiledPipelineCompiler.kt:57`, usada en 191, 280, 326, 550, 568, 613, 651, 703), y no
+hay versión por Step. Subirla movería la identidad durable de *todo* Step del producto, no la de
+`waitUntil`: un evento estrictamente mayor que el que provoca el campo. Descartada por medición de
+alcance, no por preferencia.
+
+**Lección, en la forma del ciclo.** Es la quinta vez esta semana que un instrumento no ve su sujeto,
+y la primera en que el defecto no es del instrumento sino de **no leer la guarda**. El hash estaba a
+veinte líneas; su invocación, a tres. La generalización «esta función anexa la cadena, luego el
+campo mueve la identidad» era correcta como algebra y falsa como afirmación sobre este camino.
+
 ### Corrección registrada 2026-10-18 — `maxBackoffMs` es un caso de `DEBT-WIRE-AUTHORITY`, no un hueco aislado
 
 El texto anterior queda **en pie en su conclusión** (en producción la clave no aparece, y por tanto

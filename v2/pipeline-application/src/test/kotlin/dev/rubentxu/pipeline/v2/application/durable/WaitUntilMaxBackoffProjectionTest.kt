@@ -97,11 +97,11 @@ class WaitUntilMaxBackoffProjectionTest {
 
     @Test
     fun `a ceiling below the effective period is refused here, not deferred to the engine`() {
-        // The effective period is the declared SHAPE's, not the period the payload spells:
-        // structural fields come from the Step KIND, so a payload claiming 10 ms cannot
-        // lower a shape whose cadence is 1000 ms.
+        // The ceiling is compared against the EFFECTIVE period, which is the one the payload
+        // spells: 10 ms of cadence cannot carry a 5 ms backoff ceiling, whatever the shape's
+        // own default is.
         val projection = project(
-            payload = """{"kind":"waitUntilBlock","initialRecurrencePeriod":10,"quiet":false,"maxBackoffMs":25}""",
+            payload = """{"kind":"waitUntilBlock","initialRecurrencePeriod":10,"quiet":false,"maxBackoffMs":5}""",
             periodMs = 1000L,
         )
 
@@ -116,6 +116,23 @@ class WaitUntilMaxBackoffProjectionTest {
         assertTrue(
             invalid.detail.contains("maxBackoffMs"),
             "The refusal must name the field, got: ${invalid.detail}",
+        )
+    }
+
+    @Test
+    fun `the period the DSL spells is the period the poll uses`() {
+        val scope = projectedScope(
+            payload = """{"kind":"waitUntilBlock","initialRecurrencePeriod":7,"quiet":false,"maxBackoffMs":5000}""",
+            periodMs = 1000L,
+        )
+
+        assertEquals(
+            7L,
+            scope.initialRecurrencePeriod,
+            "StageScope.waitUntil(initialRecurrencePeriod = ...) spells this value into the " +
+                "payload, so a caller that asks for 7 ms must get 7 ms. Reading the declared " +
+                "shape instead makes the parameter decorative: it compiles, it is encoded, and " +
+                "nothing reads it.",
         )
     }
 
@@ -142,9 +159,13 @@ class WaitUntilMaxBackoffProjectionTest {
         assertEquals(3L, decoded.initialRecurrencePeriod, "the existing field must survive the round trip")
     }
 
-    private fun projectedScope(payload: String): BlockShellScope.WaitUntilScope {
-        val projection = project(payload)
-        val scope = assertInstanceOf(BodyExecutionProjection.Scope::class.java, projection).scope
+    private fun projectedScope(payload: String, periodMs: Long = 1L): BlockShellScope.WaitUntilScope {
+        val projection = project(payload, periodMs)
+        val scope = assertInstanceOf(
+            BodyExecutionProjection.Scope::class.java,
+            projection,
+            "payload=$payload shapePeriodMs=$periodMs -> $projection",
+        ).scope
         return assertInstanceOf(BlockShellScope.WaitUntilScope::class.java, scope)
     }
 

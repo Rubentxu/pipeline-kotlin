@@ -77,6 +77,32 @@ class Lfc2WaitUntilWireAuthorityFitnessTest {
         "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/BodyExecutionEngine.kt",
     )
 
+    /**
+     * Every file in the chain that decides what an undeclared cadence means.
+     *
+     * Denominator is six files, named: the descriptor that owns the value, the two DSL
+     * surfaces a caller writes, the block carrier, the block codec's absent-key branch and
+     * the registry carrier plus its own absent-key branch. Named rather than globbed so
+     * that a file joining the chain forces an edit here instead of silently escaping the
+     * census — the guard cannot see a subject it was never told about.
+     */
+    private val cadenceAuthorityFiles = listOf(
+        "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy.kt" to
+            "WaitUntilShape.initialRecurrencePeriodMs",
+        "pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/StepSpec.kt" to
+            "StepSpec.WaitUntilBlock.initialRecurrencePeriod",
+        "pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/StageScope.kt" to
+            "StageScope.waitUntil(initialRecurrencePeriod)",
+        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilInput.kt" to
+            "CoreWaitUntilInput.initialRecurrencePeriod",
+        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilWireCodec.kt" to
+            "CoreWaitUntilWireCodec absent-key branch",
+        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilStep.kt" to
+            "WaitUntilInput.initialRecurrencePeriod + registry decoder absent-key branch",
+    )
+
+    private fun path(rel: String) = ScannerSupport.v2Root().resolve(rel)
+
     private fun read(path: java.nio.file.Path): String {
         require(Files.exists(path)) { "Expected source not found: $path" }
         return Files.readString(path)
@@ -172,6 +198,75 @@ class Lfc2WaitUntilWireAuthorityFitnessTest {
             !engine.contains("maxBackoffMsOverride"),
             "BodyExecutionEngine still declares a maxBackoffMsOverride parameter. With the " +
                 "projection as the only reader it has no caller that can supply a non-null value.",
+        )
+    }
+
+    /**
+     * An undeclared poll cadence has ONE declared value, written once.
+     *
+     * Measured 2026-10-18, before this row existed: six sites declared a value for an
+     * undeclared cadence — three as `1000L` and three as `1L`. The two values never met,
+     * and each was dead for a different reason: the codec's `1000L` was unreachable
+     * because the DSL always fills the key at the call site, and the DSL's `1L` was
+     * encoded but never read, because the projection took the cadence from the declared
+     * shape. That is two authorities for one question, each invisible to the other.
+     *
+     * About the instrument, because it took three passes to be wider than its subject. This
+     * row went through three vocabularies and each reported a wrong number for a right
+     * reason: keyed on `initialRecurrencePeriod` it saw 5 of the 6 (the sixth was a private
+     * constant named `DEFAULT_INITIAL_RECURRENCE_PERIOD_MS`); after the fix, keyed the same
+     * way, it saw 0 of the 1 (the surviving literal had moved into the shared
+     * `DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS`, whose name still does not contain
+     * the property name); only when it matched both the camelCase property and the
+     * SCREAMING_SNAKE constant did it see 1 of 1. A guard that cannot see a site must not
+     * report it as counted, and a count is not a census until its instrument has been read.
+     *
+     * Making the parameter live is what exposed it: once the projection reads the
+     * payload, the DSL's `1L` reaches the poll, and every DSL `waitUntil` that omits
+     * the argument would change from a 1000 ms cadence to 1 ms. The value that
+     * actually executes today is `1000L` ([WaitUntilShape]'s Jenkins-parity default),
+     * so that is the one the whole chain must name.
+     *
+     * Denominator: [cadenceAuthorityFiles], six named files. One literal — the constant's
+     * own declaration — and five references to it.
+     */
+    @Test
+    fun `the poll cadence default is declared once and named everywhere else`() {
+        val declaration = Regex(
+            // Both shapes a site can declare the value with: a camelCase property named
+            // `initialRecurrencePeriod…`, or the SCREAMING_SNAKE constant that now owns it.
+            // Keying on either one alone is how this row first reported "Found 0" on a tree
+            // that still held exactly one literal — an instrument narrower than its subject
+            // reports the correct answer for the wrong reason.
+            """(?:\w*[iI]nitialRecurrencePeriod\w*|\w*RECURRENCE_PERIOD\w*)\s*(?::\s*Long\s*)?=\s*([0-9][0-9_]*)L?""",
+        )
+        val literals = cadenceAuthorityFiles.flatMap { (rel, site) ->
+            declaration.findAll(codeOnly(read(path(rel)))).map { "${site} = ${it.groupValues[1]}" }.toList()
+        }
+
+        assertTrue(
+            literals.size == 1,
+            "The undeclared poll cadence must be written as a numeric literal exactly once, in " +
+                "the descriptor that owns it. Found ${literals.size}: $literals. Every additional " +
+                "literal is a second authority for a value the projection now reads from the " +
+                "payload, so the two sites can disagree without anything failing.",
+        )
+        assertTrue(
+            literals.single().startsWith("WaitUntilShape"),
+            "The one surviving literal must be WaitUntilShape's own declaration, the Jenkins " +
+                "parity default that actually executes today, not: ${literals.single()}",
+        )
+
+        val name = "DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS"
+        val unnamed = cadenceAuthorityFiles
+            .filterNot { (rel, site) -> site.startsWith("WaitUntilShape") }
+            .filter { (rel, _) -> !codeOnly(read(path(rel))).contains(name) }
+            .map { it.second }
+        assertTrue(
+            unnamed.isEmpty(),
+            "Every other site must name the constant instead of inventing a value: $unnamed. " +
+                "A literal here is a cadence that can drift from the descriptor without a " +
+                "failing test.",
         )
     }
 }

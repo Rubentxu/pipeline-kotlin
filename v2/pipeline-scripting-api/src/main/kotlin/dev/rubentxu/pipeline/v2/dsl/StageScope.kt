@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.dsl
 
 import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.domain.RuntimeConfig
+import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS
 
 /**
  * Receiver scope for the `directives { }` block inside a stage (S1-B).
@@ -428,13 +429,13 @@ class StageScope(
      * `script`, etc. WU-LPR-401 documents the pattern; it does not break
      * consistency by fixing one builder.
      *
-     * @param initialRecurrencePeriod Initial poll interval in milliseconds (default 1ms)
+     * @param initialRecurrencePeriod Initial poll interval in milliseconds (default 1000ms)
      * @param quiet If true, suppress output during polling
      * @param body Lambda producing the nested steps whose last step emits
      *   WaitUntilPredicateEvaluated(true/false)
      */
     fun waitUntil(
-        initialRecurrencePeriod: Long = 1L,
+        initialRecurrencePeriod: Long = DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS,
         quiet: Boolean = false,
         body: StageScope.() -> Unit,
     ) {

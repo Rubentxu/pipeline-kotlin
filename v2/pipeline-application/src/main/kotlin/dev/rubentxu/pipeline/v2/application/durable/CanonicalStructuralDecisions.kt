@@ -522,27 +522,50 @@ private fun BlockStepNode.projectWaitUntilScope(
     shape: WaitUntilShape,
 ): BodyExecutionProjection {
     val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
-    val declared = payload["maxBackoffMs"]
-    val maxBackoffMs = if (declared == null) {
-        DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS
-    } else {
-        declared.jsonPrimitive.contentOrNull?.toLongOrNull()
-            ?: return BodyExecutionProjection.InvalidInput("maxBackoffMs must be an integer")
+
+    // Both cadences are DECODED INPUT, not structure. The shape is the Step KIND's default;
+    // the payload is what this call site asked for, and Jenkins makes both configurable per
+    // call. Reading the shape here once made `initialRecurrencePeriod` a decorative parameter:
+    // `StageScope.waitUntil(initialRecurrencePeriod = 7)` compiled, was encoded into the
+    // payload, and never reached either engine.
+    val initialRecurrencePeriodMs = payload.longOrDefault("initialRecurrencePeriod", shape.initialRecurrencePeriodMs)
+        ?: return BodyExecutionProjection.InvalidInput("initialRecurrencePeriod must be an integer")
+    val maxBackoffMs = payload.longOrDefault("maxBackoffMs", DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS)
+        ?: return BodyExecutionProjection.InvalidInput("maxBackoffMs must be an integer")
+    if (initialRecurrencePeriodMs < 1) {
+        return BodyExecutionProjection.InvalidInput(
+            "initialRecurrencePeriod must be >= 1, got $initialRecurrencePeriodMs",
+        )
     }
     // The same invariant `WaitUntilEngine` enforces on its own constructor. Enforcing it
     // here means an impossible poll never reaches the engine to fail at run time.
-    if (maxBackoffMs < shape.initialRecurrencePeriodMs) {
+    if (maxBackoffMs < initialRecurrencePeriodMs) {
         return BodyExecutionProjection.InvalidInput(
-            "maxBackoffMs ($maxBackoffMs) must be >= initialRecurrencePeriod (${shape.initialRecurrencePeriodMs})",
+            "maxBackoffMs ($maxBackoffMs) must be >= initialRecurrencePeriod ($initialRecurrencePeriodMs)",
         )
     }
     return BodyExecutionProjection.Scope(
         BlockShellScope.WaitUntilScope(
-            initialRecurrencePeriod = shape.initialRecurrencePeriodMs,
+            initialRecurrencePeriod = initialRecurrencePeriodMs,
             quiet = shape.quiet,
             maxBackoffMs = maxBackoffMs,
         ),
     )
+}
+
+/**
+ * Reads a JSON number that may be absent, and refuses one that is present but not a number.
+ *
+ * Absence is not an error: a payload written before a field existed, or by hand in a fixture,
+ * falls back to the declared default. Presence with an unusable value IS an error, because
+ * silently substituting a default there would make a typo indistinguishable from an omission.
+ */
+private fun kotlinx.serialization.json.JsonObject.longOrDefault(
+    key: String,
+    default: Long,
+): Long? {
+    val element = this[key] ?: return default
+    return element.jsonPrimitive.contentOrNull?.toLongOrNull()
 }
 
 /** Which context dimension a scoped body projects, and how its value is decoded. */

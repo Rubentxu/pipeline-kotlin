@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS
+
 /**
  * Typed payload of the `core.waitUntil` **block** carrier.
  *
@@ -26,22 +28,27 @@ package dev.rubentxu.pipeline.v2.application
  *
  * ## What these fields are for
  *
- * [initialRecurrencePeriod] and [quiet] are STRUCTURE: they name the cadence of
- * the declared [dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy.WaitUntilShape],
- * which is a property of the Step KIND. They are emitted for the wire to be
- * whole, and the structural projection reads the declared shape, not this carrier.
+ * All three fields are DECODED INPUT. The declared
+ * [dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy.WaitUntilShape] is the Step
+ * KIND's default; a call site that asks for something else says so here, and the projection
+ * reads what this carrier says.
  *
- * [maxBackoffMs] is the exception, and the reason this carrier earns its keep:
- * it is RUNTIME DATA — a per-block ceiling that the shape cannot express — so it
- * has to travel in the payload and be decoded at the projection. Before this field
- * existed, the only code that could set it was a regex over the raw payload whose
- * result reached exclusively the INLINE polling branch; the durable branch, which is
- * the one production reaches, polled at [DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS] no
- * matter what the payload said. The projection now reads it here, through this
- * carrier, so both branches get the same number from one authority.
+ * That sentence was false until 2026-10-18, when this KDoc claimed the first two fields were
+ * STRUCTURE and that "the structural projection reads the declared shape, not this carrier".
+ * The projection did read the shape — for the cadence — so `StageScope.waitUntil(
+ * initialRecurrencePeriod = 7)` compiled, was encoded, and reached neither polling branch.
+ * A dead semantic parameter (SEMANTIC CONSTITUTION §2), and a documented one.
+ *
+ * [maxBackoffMs] is the field that disproved the claim: it is RUNTIME DATA — a per-block
+ * ceiling the shape cannot express — and before it existed the only code that could set it
+ * was a regex over the raw payload whose result reached exclusively the INLINE polling
+ * branch; the durable branch, which is the one production reaches, polled at
+ * [DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS] no matter what the payload said. The projection now
+ * reads all three here, through this carrier, so both branches get the same numbers from
+ * one authority.
  */
 data class CoreWaitUntilInput(
-    val initialRecurrencePeriod: Long = 1L,
+    val initialRecurrencePeriod: Long = DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS,
     val quiet: Boolean = false,
     val maxBackoffMs: Long = DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS,
 )

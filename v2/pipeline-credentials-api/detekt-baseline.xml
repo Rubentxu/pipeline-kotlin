@@ -1,9 +1,0 @@
-<?xml version="1.0" ?>
-<SmellBaseline>
-  <ManuallySuppressedIssues/>
-  <CurrentIssues>
-    <ID>CyclomaticComplexMethod:StreamingRedactor.kt:StreamingRedactor.RedactingInputStream$override fun read: Int</ID>
-    <ID>InvalidPackageDeclaration:SubstituteContract.kt:package dev.rubentxu.pipeline.v2.uat_fixtures.uat_001</ID>
-    <ID>PackageNaming:SubstituteContract.kt:package dev.rubentxu.pipeline.v2.uat_fixtures.uat_001</ID>
-  </CurrentIssues>
-</SmellBaseline>

@@ -2,6 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-
+    <ID>UnnecessaryNotNullOperator:RuntimeRecoverDecision.kt:RuntimeRecoverDecision$journal.terminalRow!!</ID>
   </CurrentIssues>
 </SmellBaseline>

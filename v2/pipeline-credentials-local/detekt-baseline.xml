@@ -1,7 +1,0 @@
-<?xml version="1.0" ?>
-<SmellBaseline>
-  <ManuallySuppressedIssues/>
-  <CurrentIssues>
-    <ID>NewLineAtEndOfFile:CredentialsStorePath.kt:dev.rubentxu.pipeline.v2.credentials.local.CredentialsStorePath.kt</ID>
-  </CurrentIssues>
-</SmellBaseline>

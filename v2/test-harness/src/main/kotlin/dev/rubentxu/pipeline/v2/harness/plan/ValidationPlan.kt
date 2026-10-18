@@ -75,6 +75,11 @@ value class ContractId(val capability: String)
  *   pass the real FQCN so two same-named suites
  *   in different modules cannot collide.
  *
+ *   That "SHOULD" is policed, not advisory: every binding is required
+ *   to name a real FQCN by `SuiteBindingIdentityFitnessTest`, so
+ *   dropping one back to this default is a red test rather than a gate
+ *   that quietly refuses every selected suite.
+ *
  * [gradleProject] is the module whose `test` task runs it. It is part of the value rather than
  * derived at dispatch time because a suite attributed to the wrong module is a suite that
  * silently does not run, and deriving it by guessing from the class name is exactly how that would

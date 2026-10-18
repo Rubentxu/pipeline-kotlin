@@ -207,5 +207,38 @@ class CandidateMaterializerTest {
                 "different bytes are different candidates, whatever they are called",
             )
         }
+
+        @Test
+        fun `a covered asset set with nowhere to write SHA256SUMS is refused, not materialized without it`() {
+            val zip = buildZip("0.44.0")
+            val out = tempDir.resolve("no-sums")
+            val result = assertInstanceOf(
+                MaterializationResult.Refused::class.java,
+                CandidateMaterializer.materialize(
+                    zip = zip,
+                    productVersion = ProductVersion.parseOrThrow("0.44.0"),
+                    gitCommit = "deadbeef",
+                    candidateRef = "v0.44.0",
+                    toolchain = "gradle-test",
+                    sbom = null,
+                    sdk = null,
+                    bom = null,
+                    sha256sums = null,
+                    covered = listOf(zip),
+                    candidateSequence = 1,
+                    outDir = out,
+                ),
+                "a non-empty `covered` is a claim that those assets MUST be digested. With no " +
+                    "path to write SHA256SUMS there is nowhere to keep that proof, so the honest " +
+                    "outcomes are `refused` or a manifest carrying the digests -- and materializing " +
+                    "it records `sha256sums = null` next to an asset list nothing digested. That is " +
+                    "the silent absence, and it is what this row closes.",
+            )
+            assertTrue(
+                result.reason.contains("SHA256SUMS"),
+                "the refusal must name the artifact it could not write, got: ${result.reason}",
+            )
+            assertFalse(Files.exists(out), "a refused candidate must leave no partial material behind")
+        }
     }
 }

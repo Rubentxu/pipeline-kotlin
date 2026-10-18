@@ -15,10 +15,19 @@ import java.nio.file.Path
  * The mandate says: "Restaurar como fitness interno la
  * prohibición de imports de JGit actualmente deshabilitada en
  * `UatLocal005BannedImportsTest`." The new test is the
- * permanent gate in this repository; the UAT remains
- * @Disabled as documentation of the harness's eventual
- * equivalent, and the harness owns the cross-fidelity
- * production-vs-installed verdict (ADR-PK-QV-003).
+ * permanent gate in this repository.
+ *
+ * The UAT row IMP-001 stays @Disabled, but its reason was corrected:
+ * it used to promise that the rule "belongs to
+ * pipelinek-release-harness" and could only be retired once the
+ * harness produced a 5-axis verdict. `RESPONSIBILITY_MIGRATION_ROADMAP.md`
+ * classifies this rule **KEEP**, and a rule over source code does not
+ * belong to a certifier that consumes a ZIP. The reason now records
+ * that it is superseded by this fitness rather than awaiting an
+ * external verdict that nothing tracks. The harness's
+ * cross-fidelity production-vs-installed verdict (ADR-PK-QV-003) is
+ * unaffected: that is a different guarantee and it still belongs
+ * to the harness.
  *
  * Architectural authority: F-ARCH-L5-001 (CLI-git only, no
  * JGit) and ADR-0050. JGit is the Eclipse pure-Java Git

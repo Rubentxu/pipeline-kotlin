@@ -768,7 +768,14 @@ internal const val CONSOLE_USAGE_TEXT: String =
         "       | --range FROM:TO [--format text|jsonl]\n" +
         "       | --frames [--frame-limit N] [--after-ordinal N] [--follow]\n" +
         "                  [--stage S]... [--step N]... [--kind K]...\n" +
-        "                  [--format text|jsonl]"
+        "                  [--format text|jsonl]\n" +
+        "\n" +
+        "<opId> is \"<runId>-s<stageIndex>-<stepIndex>\" and nothing shorter. List the ones\n" +
+        "this run can actually serve instead of composing one:\n" +
+        "    ls <path>/output-plane/streams/   # <runId>_<opId>_stdout, one per readable op\n" +
+        "Measured 2026-10-18: \"<runId>-s0\" is refused as unknown-stream while\n" +
+        "\"<runId>-s0-0\" reads the transcript, and a step that printed nothing (echo) has\n" +
+        "no stream directory and is refused the same way — so the listing is the exact set."
 
 /** One stable line per refusal, so a script can branch on the reason. */
 fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal) {

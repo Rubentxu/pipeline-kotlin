@@ -24,66 +24,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-step-sdk:runtime"))
-    testImplementation(libs.junit.jupiter)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
-}
-
-tasks.test {
-    useJUnitPlatform()
-    // PK-RELEASE-CONSOLIDATION H1.4: the test task asserts the SBOM
-    // exists next to the distribution ZIP. The candidateAdmission task
-    // is what stages it there, and the test must depend on it (or on
-    // the cyclonedxBom that produces the source) so a developer
-    // running `:pipeline-release:test` directly observes the same
-    // staging the releaseGate does.
-    dependsOn(":pipeline-application:cyclonedxBom")
-    dependsOn("candidateAdmission")
-    // PK-RELEASE-CONSOLIDATION R1.1 (audit fix, refined after M1.1
-    // mutation, fixed after probe-env diagnostic): the audit of
-    // 12c3ac17 flagged that releaseGate's previous wiring set
-    // PIPELINEK_DIST_ZIP inside doFirst on the aggregator task.
-    // By the time the doFirst ran, the test task it depends on
-    // had either already forked its JVM or completed, and the
-    // env var arrived too late. The first attempt at a fix
-    // (c1896473) wired the env var in the test task's own
-    // configuration as a resolved String — the path of the
-    // distZip output — but the env var was unconditional: a
-    // mutation test with PIPELINEK_DIST_ZIP=/tmp/nonexistent-
-    // zzz-999.zip on the command line was silently overridden
-    // by the build script, and the test green-passed against
-    // a path that did not exist. That mutation proved the
-    // wiring was over-riding the operator's intent.
-    //
-    // The refined wiring: resolve the provider chain to a
-    // String AT configuration time (so the JVM sees a real
-    // path, not a Provider.toString() literal — the latter
-    // would render as "or(valueof(...), fixed(/var/...))"
-    // and the test would read that literal as a path,
-    // breaking the test for a different reason). The chain
-    // still preserves the operator's value: a pre-existing
-    // PIPELINEK_DIST_ZIP is honoured; a missing one defaults
-    // to the distZip this task dependsOn.
-    val distZipProvider: Provider<RegularFile> = project(":pipeline-application")
-        .layout.buildDirectory
-        .file("distributions/pipelinek-${project.version}.zip")
-    dependsOn(":pipeline-application:distZip")
-    inputs.file(distZipProvider)
-        .withPropertyName("release.dist.zip.input")
-        .withPathSensitivity(PathSensitivity.RELATIVE)
-    val distZipPath = distZipProvider.get().asFile.absolutePath
-    val envValue: String = providers.environmentVariable("PIPELINEK_DIST_ZIP")
-        .orElse(distZipPath)
-        .get()
-    environment("PIPELINEK_DIST_ZIP", envValue)
-    val sysPropValue: String = providers.systemProperty("release.dist.zip")
-        .orElse(distZipPath)
-        .get()
-    systemProperty("release.dist.zip", sysPropValue)
-    // Honour a system property override so CI can point the real-artifact
-    // checks at a different build tree. Default: this module lives at
-    // v2/pipeline-release/, so the parent is v2/.
-    val v2RootDefault = projectDir.parentFile.absolutePath
-    systemProperty("release.v2.root", System.getProperty("release.v2.root", v2RootDefault))
 }
 
 // ---------------------------------------------------------------------------
@@ -391,38 +331,23 @@ tasks.register("releaseGate") {
     group = "distribution"
     description = "PK-RC-PLUGIN-001 + PK-RC-RENDER-001 + PK-NEXT R0.2 + PK-RELEASE-CONSOLIDATION H1.4: " +
         "run the candidate gate end-to-end. Dist ZIP + cyclonedxBom + candidateAdmission + " +
-        "renderer partition + application regression suite + mandatory-plugin test (7 plugins: 4 " +
-        "official + 3 external) + LaunchReceipt contract + SDK BOM alignment. " +
-        "Non-zero on any refusal. The mandatory-plugin test fails (not skips) when " +
-        "PIPELINEK_DIST_ZIP is unset, so a missing distribution is a hard red."
+        "LaunchReceipt contract + SDK BOM alignment. Non-zero on any refusal."
+    //
+    // The description used to enumerate four certifications that no longer run here: the
+    // renderer partition test, the application regression suite, and the mandatory-plugin test
+    // (7 plugins) whose failure-on-unset-`PIPELINEK_DIST_ZIP` was the gate's hard-red path for a
+    // missing distribution. All three read a JUnit source set that is empty. Naming them would
+    // have been the exact false compliance this removal exists to end: a task description is read
+    // as a claim about what ran. The distribution is now exercised by
+    // `scripts/run-e2e-pipelines.sh`, which runs the real binary.
 
     dependsOn(
         ":pipeline-application:distZip",
         ":pipeline-application:cyclonedxBom",
         "candidateAdmission",
-        // PK-RC-RENDER-001: the renderer partition test would have caught
-        // the rc4 regression (`run: [RunCorrelated]`) if it had been in
-        // this gate. Adding it here is the structural reason a RunCorrelated
-        // added to the routing table cannot survive a release without a
-        // matching arm in `ConsoleFamilyLines.run(...)`.
-        ":pipeline-architecture-tests:test",
-        ":pipeline-application:test",
-        // PK-RC-PLUGIN-001 / R0.2: the mandatory-plugin test now observes
-        // the distZip through the test task's own configuration (env var
-        // + system property), not through a doFirst on the aggregator
-        // (audit R1.1 fix). The dependsOn on distZip ensures the file
-        // exists before the test task is scheduled.
-        "test",
-        // H0..H4 closure (2026-10-16): the application test classpath
-        // references three example plugin JARs
-        // (example-uppercase-plugin, example-directive-plugin,
-        // example-block-plugin). The fast lane `:test` does NOT depend
-        // on their build tasks (H1 TODO 3) — that's the inner-loop
-        // performance contract. The release gate, however, must not
-        // run with stale or missing JARs: a candidate is only as
-        // honest as the bytes the gate exercises. Adding the three
-        // `:buildExample*Plugin` tasks here means the release gate
-        // pays for them ONCE per RC, not on every inner-loop run.
+        // The three external example plugin JARs must be rebuilt before a candidate is
+        // admitted, so the gate is not run against stale bytes: a candidate is only as honest
+        // as the plugin JARs it ships. These are paid for ONCE per release gate run.
         ":buildExamplePlugin",
         ":buildExternalDirectivePlugin",
         ":buildExampleBlockPlugin",
@@ -452,3 +377,19 @@ tasks.register("releaseGate") {
         }
     }
 }
+
+// The JUnit lane was REMOVED (2026-10-18, testing RESET). Everything it configured existed to
+// certify the SHIPPED artifact from a JVM: the SBOM staging dependency, the
+// `PIPELINEK_DIST_ZIP` environment plumbing, the `release.dist.zip` and `release.v2.root` system
+// properties, and the `releaseGate` entries that depended on `:test` and on
+// `:pipeline-application:test`.
+//
+// Gradle 8 defaults `Test.failOnNoDiscoveredTests` to false, and `src/test` is empty here, so
+// that lane reported a distribution certification while executing zero classes -- the most
+// expensive false green in the build, because it names a real ZIP and a real SBOM. The gate
+// entries go with it: a `dependsOn(":pipeline-application:test")` on an empty source set makes
+// `releaseGate` slower and no more honest.
+//
+// Its replacement is `scripts/run-e2e-pipelines.sh`, which stages the distribution once and runs
+// the real binary against `.pipeline.kts` pipelines. That path executes the shipped bytes, so it
+// certifies the artifact instead of asserting a tag over an empty classpath.

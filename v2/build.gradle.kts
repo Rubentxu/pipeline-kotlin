@@ -2,7 +2,6 @@ plugins {
     base
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.protobuf) apply false
-    alias(libs.plugins.kover) apply true
     alias(libs.plugins.detekt) apply false
     // C5 / D-011 (audit 2026-09-26): binary-compatibility-validator declared at
     // root and applied per-module via subprojects { ... } below. See comments in
@@ -11,10 +10,11 @@ plugins {
 }
 
 group = "dev.rubentxu.pipeline.v2"
-// WU-RP-040 R7: root-level repositories are required because the kover merge
-// configuration (kover(project(...))) resolves external deps of merged modules
-// in the ROOT project (Gradle resolves configurations in the consuming
-// project). dependencyResolutionManagement covers subprojects only.
+// Root-level repositories. This block existed for the Kover merge configuration
+// (kover(project(...)) resolves external deps in the ROOT project, which
+// `dependencyResolutionManagement` does not cover). Kover was removed 2026-10-18;
+// the block is kept because `buildSrc` and the root plugin classpath resolve
+// through it, and removing it would be a change without a measured reason.
 repositories {
     mavenCentral()
 }
@@ -186,146 +186,15 @@ subprojects {
     }
 }
 
-// WU-RP-040 R1: risk-based coverage verification (Kover).
-// Thresholds are grounded in criticality, not vanity numbers:
-//  - domain / sdk-api / events: pure decision + codec/policy logic -> HIGH bar
-//  - application: coordinator composition mostly exercised by real-process UATs -> MEDIUM bar
-// Exclusions: generated protobuf, scripting test harness bootstrap, example plugins.
-kover {
-    reports {
-        verify {
-            rule("Branch coverage of critical decision modules") {
-                disabled = false
-            }
-        }
-        filters {
-            excludes {
-                packages(
-                    "dev.rubentxu.pipeline.v2.protos",
-                    "dev.rubentxu.pipeline.v2.generated",
-                )
-            }
-        }
-    }
-}
-
-subprojects {
-    pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
-        // WU-RP-040 R7: kover must be applied to EVERY Kotlin module. Root-level
-        // `kover(project(...))` against a module WITHOUT the plugin treats it as
-        // an external artifact and resolves its runtime classpath with
-        // usage=kover attributes, which external modules (kotlin-stdlib) do not
-        // publish — known upstream bug Kotlin/kotlinx-kover#798. With the plugin
-        // applied everywhere, the merge consumes only in-project variants.
-        pluginManager.apply("org.jetbrains.kotlinx.kover")
-        // D-002: Rp022ThroughputProbe pins a 20 MB/s perf floor. Kover agent
-        // instrumentation adds per-read overhead to StreamingRedactor and pushes
-        // the probe below the floor on loaded machines. Coverage collected by
-        // the probe has zero value; exclude the redactor classes from
-        // instrumentation in this module so kover-all runs the full suite
-        // without tripping the known flake (their coverage still comes from
-        // the dedicated redaction tests, which stay instrumented).
-        if (project.name == "pipeline-credentials-api") {
-            kover {
-                currentProject {
-                    instrumentation {
-                        excludedClasses.add("dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor*")
-                    }
-                }
-            }
-        }
-        if (project.name in setOf("pipeline-domain", "pipeline-events")) {
-            kover {
-                currentProject {
-                    sources {
-                        excludedSourceSets.addAll(listOf("integrationTest"))
-                    }
-                }
-            }
-        }
-        // D-013 (audit 2026-09-26): per-module Kover bound rules with
-        // measured-and-reasoned `minValue` per module. The historical single
-        // 55-bound for pipeline-domain/pipeline-events (named "branch coverage"
-        // but the kover `bound` rule actually checks LINE coverage by default)
-        // was useful, but it left the other 18 tracked modules unmonitored
-        // against silent regressions. The numbers below are derived from the
-        // most recent Kover HTML snapshots in `*/build/reports/kover/html/
-        // index.html` (line %, "all classes" row); the value chosen is current
-        // - 5pp for HIGH modules (≥75 line%) and current - 5pp for MID modules
-        // (50-75 line%), with a generous floor of 30 for modules below 50.
-        // Modules with disabled=true are intentionally not gated: their
-        // coverage is dominated by generated code (KSP/api), DSL builders,
-        // or fitness assertions, where a line-coverage metric is not the
-        // right invariant. They keep being measured for visibility.
-        // Note: the historical rule `minValue = 55` was effectively a
-        // line-coverage gate (kover 0.9.x default metric for `bound` is
-        // LINE). It was passing at 82.8% (domain) and 77.6% (events) so
-        // the new 75/70 thresholds preserve the same intent (anti-regression
-        // guard with slack) while bringing consistency to the rest of the
-        // tracked modules.
-        val koverRuleMinByModule = mapOf(
-            // HIGH coverage (≥75 line)
-            ":pipeline-artefacts-local"       to 85,
-            ":pipeline-binding-factory"       to 85,
-            ":pipeline-domain"                to 75, // historical intent preserved at line-based
-            ":pipeline-events"                to 70, // 77.6 - 5 + slack for D-002 instrumentation overhead
-            ":pipeline-event-harness"         to 70,
-            ":pipeline-step-sdk:runtime"      to 70,
-            ":pipeline-step-sdk:utilities"    to 65,
-            // MID coverage (50-75 line)
-            ":pipeline-step-sdk:scm-git"      to 55,
-            ":pipeline-credentials-executor"  to 55,
-            ":pipeline-scripting-kotlin24"    to 55,
-        )
-        val koverRuleDisabledByModule = setOf(
-            // generated / DSL / fitness / no-data modules: line metric not the right invariant
-            ":pipeline-step-sdk:api",         // 1.5% line: pure codec IR + interfaces
-            ":pipeline-step-sdk:processor",   // 9.4% line: KSP code generator
-            ":pipeline-step-sdk:junit",       // 15.5% line: dominant case is contract fixtures
-            ":pipeline-step-sdk:http",        // contract/fitness dominant; the wire is pinned by golden vectors
-            ":pipeline-step-sdk:files",       // no line data: only branch/class visible
-            ":pipeline-scripting-api",        // 32.1% line: pure DSL builder methods
-            ":pipeline-credentials-api",      // no line data: only branch visible
-            ":pipeline-credentials-local",    // no line data: only branch visible
-            ":pipeline-credentials-multipart",// no line data: only class/method visible
-            ":pipeline-testkit",              // test-only support module
-            ":pipeline-architecture-tests",   // fitness assertions only
-            ":pipeline-application",          // coordinator composition; coverage from harness UATs
-        )
-        // COV-01 fix: address by `project.path` (with leading colon), not `project.name`. The
-        // previous code used slash-separated names (e.g. "pipeline-step-sdk/runtime") against
-        // `project.name`, which for a nested project is just the leaf ("runtime"); the maps
-        // never matched and the `when` fell through silently — no rule was applied to any
-        // nested subproject, neither the min nor the disabled list. With Gradle paths the
-        // selection is exact and unambiguous.
-        when {
-            project.path in koverRuleMinByModule -> {
-                kover {
-                    reports {
-                        verify {
-                            rule("D-013 branch coverage (anti-regression)") {
-                                bound {
-                                    minValue.set(koverRuleMinByModule.getValue(project.path))
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            project.path in koverRuleDisabledByModule -> {
-                kover {
-                    reports {
-                        verify {
-                            rule("D-013 branch coverage (informational)") {
-                                disabled = true
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
+// Kover was REMOVED (2026-10-18, testing RESET). Coverage verification is derived
+// from executed tests; with the Kotlin suites gone it measures 0% and every
+// `bound` rule would fail `check` for a reason that says nothing about the
+// product. Keeping a disabled-but-configured coverage gate is the same false
+// signal as a green empty `Test` task, so the plugin and its per-module rule
+// maps went with the suites they measured.
+//
+// Static analysis is NOT removed: detekt below is the "análisis estático" leg of
+// the current verification pyramid and needs no tests to produce a verdict.
 
 // WU-RP-040 R5: SAST (detekt). Applied to every Kotlin subproject with a single
 // shared config, and wired into each subproject's own `check` so the root
@@ -346,12 +215,10 @@ subprojects {
             config.setFrom(rootProject.files("config/detekt/detekt.yml"))
             buildUponDefaultConfig.set(true)
             parallel.set(true)
-            source.setFrom(
-                files(
-                    "src/main/kotlin",
-                    "src/test/kotlin",
-                ),
-            )
+            // Only `src/main/kotlin`: `src/test/kotlin` no longer exists, and listing
+            // a non-existent source directory is how a source-set guard silently
+            // covers nothing.
+            source.setFrom(files("src/main/kotlin"))
             // WU-RP-040 R5: initial honest debt snapshot (2026-09-23, HEAD 6f7c445f).
             // Baseline freezes pre-existing findings; the gate fails on ANY new
             // issue. Debt burn-down tracked in the slice receipt.
@@ -375,33 +242,10 @@ subprojects {
     }
 }
 
-// WU-RP-040 R7: Kover-all. Root is the merging module: `./gradlew koverXmlReport`
-// at the root now aggregates classes + coverage from every Kotlin module that
-// has tests (the full per-module test suite runs first). Modules without test
-// sources are omitted from the merge (Kover issue #706: empty kover deps fail).
-dependencies {
-    listOf(
-        ":pipeline-domain",
-        ":pipeline-application",
-        ":pipeline-events",
-        ":pipeline-event-harness",
-        ":pipeline-scripting-api",
-        ":pipeline-scripting-kotlin24",
-        ":pipeline-step-sdk:api",
-        ":pipeline-step-sdk:runtime",
-        ":pipeline-step-sdk:scm-git",
-        ":pipeline-step-sdk:http",
-        ":pipeline-step-sdk:files",
-        ":pipeline-step-sdk:utilities",
-        ":pipeline-step-sdk:workflow-control",
-        ":pipeline-credentials-api",
-        ":pipeline-credentials-local",
-        ":pipeline-credentials-multipart",
-        ":pipeline-credentials-executor",
-        ":pipeline-binding-factory",
-        ":pipeline-artefacts-local",
-    ).forEach { kover(project(it)) }
-}
+// The Kover-all merge module was removed with the plugin (2026-10-18). It aggregated
+// coverage from the Kotlin suites; with those gone every dependency in the merge list
+// resolves to zero coverage, so it reported a number that could not fail and could not
+// pass either.
 
 // Lane R: expose the repository root to tests. Tests that must read files from the
 // repository previously hardcoded a developer-specific absolute path such as
@@ -410,6 +254,7 @@ dependencies {
 val repositoryRoot: String = rootDir.parentFile.absolutePath
 
 subprojects {
+    // Lane R: expose the repository root to tests that must read files from the repository.
     tasks.withType<Test>().configureEach {
         systemProperty("pipeline.repoRoot", repositoryRoot)
     }
@@ -538,14 +383,16 @@ val publishedContractModules = listOf(
     "pipeline-output",
     // 0.52.0-rc1 / CRIC-M2: the runtime publish/subscribe ports. The four existing entries
     // (read-side contracts for events, output, scripting, and domain) gave consumers a
-    // complete read plane; this fifth entry adds the write plane. The invariant
-    // "PublishedContractBoundaryFitnessTest must stay exactly the four" predates this
-    // entry; the fitness test is updated in lock-step (see
-    // v2/pipeline-architecture-tests/.../PublishedContractBoundaryFitnessTest.kt), and the
-    // BOM picks up the matching `api(...)` constraint (see
-    // v2/pipeline-sdk-bom/build.gradle.kts). The publication plan (§3.4 row 2,
-    // docs/v2/07-uat/evidence/cric-m2-publication-plan.md) names this expansion as the
-    // gate for 0.52.0-rc1.
+    // complete read plane; this fifth entry adds the write plane, and the BOM picks up the
+    // matching `api(...)` constraint (see v2/pipeline-sdk-bom/build.gradle.kts).
+    //
+    // This comment used to name `PublishedContractBoundaryFitnessTest` as the guard on the
+    // size of this list, and pointed at its source under
+    // `v2/pipeline-architecture-tests/`. That fitness was deleted on 2026-10-18 with the rest
+    // of the QA harness, so the list above now has NO automated guard on its membership.
+    // `apiCheck` proves the published surface is internally consistent; it does not prove the
+    // list is the right list. Anyone adding a sixth published contract must decide here, in
+    // review, whether it earns publication.
     "pipeline-runtime-api",
 )
 
@@ -587,7 +434,7 @@ val buildExamplePlugin by tasks.registering(Exec::class) {
     description = "Builds the independent external example plugin against this revision's SDK."
     dependsOn(publishSdkForExternalPlugin)
 
-    val pluginDir = file("../examples/example-uppercase-plugin")
+    val pluginDir = file("examples/example-uppercase-plugin")
     inputs.dir(pluginDir.resolve("src"))
     inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
     // The plugin's output depends on the SDK jars of THIS revision, not on the
@@ -657,7 +504,7 @@ val buildExternalDirectivePlugin by tasks.registering(Exec::class) {
     description = "Builds the independent external directive plugin against this revision's SDK."
     dependsOn(publishSdkForExternalPlugin)
 
-    val pluginDir = file("../examples/example-directive-plugin")
+    val pluginDir = file("examples/example-directive-plugin")
     inputs.dir(pluginDir.resolve("src"))
     inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
     inputs.files(":pipeline-domain:jar")
@@ -687,7 +534,7 @@ val buildExampleBlockPlugin by tasks.registering(Exec::class) {
     description = "Builds the independent external body plugin against this revision's SDK."
     dependsOn(publishSdkForExternalPlugin)
 
-    val pluginDir = file("../examples/example-block-plugin")
+    val pluginDir = file("examples/example-block-plugin")
     inputs.dir(pluginDir.resolve("src"))
     inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
     inputs.files(":pipeline-domain:jar")
@@ -737,9 +584,9 @@ val stageExternalExamples by tasks.registering {
 
     val appLibDir = file("pipeline-application/build/install/pipelinek/lib")
     val targets = listOf(
-        file("../examples/example-uppercase-plugin/build/libs/example-uppercase-plugin-0.1.0.jar") to "example-uppercase-plugin-0.1.0.jar",
-        file("../examples/example-directive-plugin/build/libs/example-directive-plugin-0.1.0.jar") to "example-directive-plugin-0.1.0.jar",
-        file("../examples/example-block-plugin/build/libs/example-block-plugin-0.1.0.jar") to "example-block-plugin-0.1.0.jar",
+        file("examples/example-uppercase-plugin/build/libs/example-uppercase-plugin-0.1.0.jar") to "example-uppercase-plugin-0.1.0.jar",
+        file("examples/example-directive-plugin/build/libs/example-directive-plugin-0.1.0.jar") to "example-directive-plugin-0.1.0.jar",
+        file("examples/example-block-plugin/build/libs/example-block-plugin-0.1.0.jar") to "example-block-plugin-0.1.0.jar",
     )
 
     inputs.files(targets.map { it.first })
@@ -829,7 +676,7 @@ val verifyFabricContractConsumer by tasks.registering(Exec::class) {
     description = "Compiles and tests the independent consumer against this revision's published contracts."
     dependsOn(publishSdkForExternalPlugin)
 
-    val consumerDir = file("../examples/fabric-contract-consumer")
+    val consumerDir = file("examples/fabric-contract-consumer")
     inputs.dir(consumerDir.resolve("src"))
     inputs.files(consumerDir.resolve("build.gradle.kts"), consumerDir.resolve("settings.gradle.kts"))
     // The consumer reads the five CONTRACT modules, so those are the jars whose bytes it compiles
@@ -884,7 +731,7 @@ val verifySdkExternalExecution by tasks.registering(Exec::class) {
     dependsOn(publishSdkForExternalPlugin)
     dependsOn(":pipeline-application:installDist")
 
-    val externalDir = file("../examples/sdk-external-execution")
+    val externalDir = file("examples/sdk-external-execution")
     inputs.dir(externalDir.resolve("src"))
     inputs.dir(externalDir.resolve("fixtures"))
     inputs.files(
@@ -940,7 +787,7 @@ val verifyScriptingContractConsumer by tasks.registering(Exec::class) {
     description = "Proves FailureKind reaches a consumer declaring only pipeline-scripting-api, via publisher metadata."
     dependsOn(publishSdkForExternalPlugin)
 
-    val consumerDir = file("../examples/scripting-contract-consumer")
+    val consumerDir = file("examples/scripting-contract-consumer")
     inputs.dir(consumerDir.resolve("src"))
     inputs.files(consumerDir.resolve("build.gradle.kts"), consumerDir.resolve("settings.gradle.kts"))
     // Only the scripting jar's bytes are read. Listing `pipeline-domain` here would defeat the

@@ -54,20 +54,6 @@ dependencies {
     implementation(project(":pipeline-output-store"))
     implementation(libs.kotlin.stdlib)
 
-    testImplementation(libs.junit.jupiter)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
-}
-
-tasks.test {
-    // Required, not optional. Without it Gradle defaults to the JUnit 4 runner,
-    // discovers zero JUnit 5 tests, and reports BUILD SUCCESSFUL with an empty
-    // result set — a green gate that ran nothing. The M1-A test surface keeps
-    // the same guard here.
-    useJUnitPlatform()
-    testLogging {
-        events("failed")
-        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
-    }
 }
 
 // PK-R1 / CRIC-M2 — module split precondition. This `publishing { }` block is
@@ -96,3 +82,19 @@ publishing {
         }
     }
 }
+
+// Unit-test wiring REMOVED (2026-10-18, testing RESET).
+//
+// This module carries no unit tests: it is the RUNTIME that executes steps; a JUnit class
+// driving it is a harness, and the plan bans harness code. Its verification is the executable
+// E2E layer -- `.pipeline.kts` pipelines under `v2/examples/`, driven by
+// `scripts/run-e2e-pipelines.sh` -- and not a JUnit class.
+//
+// The JUnit dependency, the launcher and the `useJUnitPlatform()` block were removed together.
+// Left in place they were a SILENT green: Gradle 8 defaults `Test.failOnNoDiscoveredTests` to
+// false, so a `Test` task whose source set is empty reports success while executing zero
+// classes.
+//
+// The root build now sets `failOnNoDiscoveredTests = true` on every `Test` task, so an empty
+// source set is a hard failure rather than a green. That rule is only safe because the wiring
+// that could have produced the misleading green is gone from the modules that have no tests.

@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
+import dev.rubentxu.pipeline.v2.application.durable.FileBasedWaitUntilControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
@@ -30,6 +31,7 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.writeText
 
@@ -44,8 +46,19 @@ import kotlin.io.path.writeText
  *
  * This class does NOT re-derive the production decision. It crosses the productive
  * authority — `CanonicalDurableRunCoordinator.run` with the real
- * `CoreStepRegistryFactory.registry()` — and observes ONE discrete fact: whether the
- * body's own effect happened. A marker file written by the body is the observable.
+ * `CoreStepRegistryFactory.registry()` and a real `FileBasedWaitUntilControlJournal`,
+ * so the body is driven by `WaitUntilEngine.execute` — and observes ONE discrete fact:
+ * whether the body's own effect happened. A marker file written by the body is the
+ * observable.
+ *
+ * ## Why the journal is bound (measured 2026-10-18)
+ *
+ * `BodyExecutionEngine` has two waitUntil branches: `WaitUntilEngine.execute` when a
+ * journal is bound, and `executeWaitUntilInline` when it is null. Production binds it
+ * (`CompositionRoot`), so the inline branch is unreachable from `src/main`. Before this
+ * change the journal was left null here, which made this class certify the inline path:
+ * a green certification of code the product never runs. The claim did not change; the
+ * engine it crosses did.
  */
 @DisplayName("B1.3 — core.waitUntil handler vs the body it stands in for")
 @Timeout(60)
@@ -109,6 +122,7 @@ class CoreWaitUntilBodyVsHandlerTest {
     ) = runBlocking {
         val marker = tmp.resolve("marker")
         val clock = SystemClock()
+        val controlRoot = tmp.resolve("control")
 
         val outcome = CanonicalDurableRunCoordinator(
             dispatcher = CanonicalNodeDispatcher(),
@@ -118,6 +132,12 @@ class CoreWaitUntilBodyVsHandlerTest {
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             eventSink = InMemoryEventStore(),
             credentialScopePort = noOpCredentialScopePort(),
+            // The journal is bound so this class crosses `WaitUntilEngine.execute`, which is the
+            // branch production takes. Left null, `BodyExecutionEngine` falls to
+            // `executeWaitUntilInline` — a path unreachable from `src/main`, because
+            // `CompositionRoot` binds both journals for every real run. A certification of
+            // "the body runs" that crosses the inline path certifies code the product never runs.
+            waitUntilControlJournal = FileBasedWaitUntilControlJournal(controlRoot),
             stepRegistry = CoreStepRegistryFactory.registry(),
         ).run(markerBodyPipeline(marker), RunId("waituntil-body-vs-handler"))
 
@@ -139,6 +159,37 @@ class CoreWaitUntilBodyVsHandlerTest {
             RunOutcome.Success,
             outcome,
             "precondition: with the body proven to have run, the run must also report Success",
+        )
+
+        // WHICH engine ran is itself part of the claim, and it is the part a green marker alone
+        // cannot distinguish: both `WaitUntilEngine` and `executeWaitUntilInline` run the body,
+        // so the marker above is green either way. Only the engine that drives a durable control
+        // row leaves one behind. Without this assertion the journal binding above is an
+        // unverified claim, and removing it would leave the class silently certifying the inline
+        // path again — a green row surviving an untested configuration change.
+        val controlDir = controlRoot.resolve("wait-until-control")
+        val controlRows: List<Path> =
+            if (!Files.isDirectory(controlDir)) {
+                // An absent control directory is the observable of the wrong branch, not an
+                // exception. `Files.walk` throws `NoSuchFileException` on a missing root, which
+                // would replace this assertion's diagnosis with a stack trace and lose the
+                // reason the reader needs.
+                emptyList()
+            } else {
+                Files.walk(controlDir).use { s ->
+                    s.filter { Files.isRegularFile(it) }
+                        .filter { it.fileName.toString().endsWith(".attempts.json") }
+                        .sorted()
+                        .toList()
+                }
+            }
+        assertEquals(
+            1,
+            controlRows.size,
+            "the production waitUntil engine drives exactly one durable control row; found " +
+                "${controlRows.map { it.fileName }} under $controlDir. An empty set means the " +
+                "run crossed `executeWaitUntilInline` (journal null), not `WaitUntilEngine`, so " +
+                "this class would be certifying a path `src/main` cannot reach.",
         )
     }
 

@@ -600,7 +600,18 @@ pipeline {
         val runFinished = events.filterIsInstance<RunFinished>().firstOrNull()
         assertEquals("success", runFinished?.outcome, "USERNAME_COLON_PASSWORD binding pipeline should succeed")
         val transcript = shTranscript(controlRoot, dbPath, stdout)
-        assertTrue(transcript.contains("U_P=admin:secret123"), "Colon-joined credential should appear in the transcript")
+        // This assertion used to require `U_P=admin:secret123` in the transcript. That is the
+        // leak ADR-0049 §D8 forbids: `sh("echo U_P=$U_P")` writes the credential into a durable
+        // surface, and the old row CERTIFIED that it got there.
+        //
+        // The binding's contract is two claims, and only the first one was ever load-bearing here:
+        // the colon-joined value RESOLVED and reached the step. Both are now asserted — the key
+        // present, the value absent.
+        assertTrue(transcript.contains("U_P="), "Colon-joined binding should reach the step as U_P=")
+        assertFalse(
+            transcript.contains("admin:secret123"),
+            "Colon-joined credential must NOT appear in the transcript. ADR-0049 §D8",
+        )
     }
 
     // ─── CR-BD-023..025 — wipe-on-close for file-based kinds ─────────────────
@@ -923,8 +934,28 @@ pipeline {
 
     // ─── CR-BD-029..031 — redaction: no secret values in events ─────────────
 
+    /*
+     * These three rows, until 2026-10-18, could not fail — for two independent reasons, and
+     * fixing only the first would have left them green.
+     *
+     * 1. They ran `sh("echo done")`. They bound a credential, printed nothing capable of
+     *    containing it, and asserted its absence.
+     * 2. They asserted on `stdout` alone. `sh` output does not live in the event log; it lands in
+     *    the durable console transcript, reachable through `shTranscript` below. So even a step
+     *    that printed the secret in plain text was invisible to them.
+     *
+     * Both are the same failure as a green row whose fixture was never a valid instance of the
+     * thing it names: the row could not distinguish the contract holding from the contract being
+     * absent. They now print the bound secret the way a real pipeline would, and they read the
+     * surface that secret would actually reach. See each row's KDoc.
+     */
+
     /**
      * CR-BD-029: SecretText value never appears in event surfaces (only in env injection).
+     *
+     * The step is `printenv API_KEY` rather than `echo done`: a row that prints nothing asserts
+     * nothing. `printenv` also keeps the command line itself free of the secret, so a failure can
+     * only mean the OUTPUT path leaked — not that the transcript recorded the command.
      */
     @Test
     fun `CR-BD-029 SecretText redaction — no secret in events`(@TempDir tempDir: Path) {
@@ -951,7 +982,7 @@ pipeline {
                     "API_KEY"
                 )
             )) {
-                sh("echo done")
+                sh("printenv API_KEY")
             }
         }
     }
@@ -961,13 +992,17 @@ pipeline {
         Files.writeString(scriptPath, scriptContent)
 
         val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
-        val encodedAll = JsonEventLog.encode(JsonEventLog.decode(stdout))
-        assertFalse(encodedAll.contains(secret),
+        val surfaces = stdout + shTranscript(controlRoot, dbPath, stdout)
+        assertFalse(surfaces.contains(secret),
             "SecretText value must NOT appear in event surfaces. ADR-0049 §D8")
     }
 
     /**
      * CR-BD-030: UsernamePassword password never appears in event surfaces.
+     *
+     * The step is `printenv DB_PASS` rather than `echo done` — see the block comment above this
+     * group. This is the shape a multi-field binding has to satisfy: one handle carries the
+     * username and the other the password, and only the second is secret.
      */
     @Test
     fun `CR-BD-030 UsernamePassword redaction — no password in events`(@TempDir tempDir: Path) {
@@ -995,7 +1030,7 @@ pipeline {
                     "DB_PASS"
                 )
             )) {
-                sh("echo done")
+                sh("printenv DB_PASS")
             }
         }
     }
@@ -1005,13 +1040,25 @@ pipeline {
         Files.writeString(scriptPath, scriptContent)
 
         val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
-        val encodedAll = JsonEventLog.encode(JsonEventLog.decode(stdout))
-        assertFalse(encodedAll.contains(password),
+        val surfaces = stdout + shTranscript(controlRoot, dbPath, stdout)
+        assertFalse(surfaces.contains(password),
             "UsernamePassword password must NOT appear in event surfaces. ADR-0049 §D8")
     }
 
     /**
      * CR-BD-031: SshPrivateKey private key bytes never appear in event surfaces.
+     *
+     * ## Why the step prints the key file
+     *
+     * Until 2026-10-18 this row ran `sh("echo done")`. It bound a private key, printed nothing
+     * that could contain it, and then asserted the key was absent from the event surfaces — a
+     * green that could not fail, because nothing had ever put the key there. The guarantee ADR-0049
+     * §D8 claims was therefore never under test here.
+     *
+     * The step now does what a real pipeline does with an SSH key binding: it reads the file the
+     * binding exported. `cat`, not `printenv`, because the binding's env var holds the PATH — that
+     * path is deliberately NOT secret (this class already asserts it appears in the transcript, in
+     * the `SSH_KEY_FILE=/` row above) and printing it would prove nothing about redaction.
      */
     @Test
     fun `CR-BD-031 SshPrivateKey redaction — no private key in events`(@TempDir tempDir: Path) {
@@ -1038,7 +1085,7 @@ pipeline {
                     "SSH_KEY_FILE"
                 )
             )) {
-                sh("echo done")
+                sh("cat \"${'$'}SSH_KEY_FILE\"")
             }
         }
     }
@@ -1048,8 +1095,11 @@ pipeline {
         Files.writeString(scriptPath, scriptContent)
 
         val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
-        val encodedAll = JsonEventLog.encode(JsonEventLog.decode(stdout))
-        assertFalse(encodedAll.contains("REDACTED_PRIVATE_KEY_CONTENT"),
+        val surfaces = stdout + shTranscript(controlRoot, dbPath, stdout)
+        // On the WHOLE key, not on one token inside it. The previous form asserted only that
+        // `REDACTED_PRIVATE_KEY_CONTENT` was absent, so a transcript holding the PEM headers and
+        // the real body — everything that matters — passed.
+        assertFalse(surfaces.contains(privateKey.trim()),
             "SshPrivateKey private key must NOT appear in event surfaces. ADR-0049 §D8")
     }
 
@@ -1060,14 +1110,29 @@ pipeline {
      */
     @Test
     fun `CR-BD-032 nested withCredentials inner shadows outer binding`(@TempDir tempDir: Path) {
+        // The two values are deliberately BELOW SecretPatternRegistry.MIN_MASKABLE_LENGTH (8).
+        //
+        // They used to be `outer-secret` / `inner-secret`. Every bound secret is now registered
+        // for redaction, so the transcript became:
+        //
+        //     outer=**** / inner=**** / restored=****
+        //
+        // — the three lines are IDENTICAL, and the shadowing contract this row exists to prove
+        // became unobservable. Redaction itself is covered by CR-BD-029/030/031, which are the
+        // rows whose subject it is.
+        //
+        // A 7-byte value is documented as deliberately unmaskable: a literal that short collides
+        // with ordinary output, and a redactor that scrubs four characters everywhere destroys
+        // more observability than it protects. Do NOT "improve" these to realistic lengths — that
+        // silently deletes the scope coverage this row is the only witness for.
         val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
             store.add(
                 CredentialsId("outer-key"),
-                SecretText(CredentialsId("outer-key"), CredentialScope.GLOBAL, "outer-secret".toByteArray())
+                SecretText(CredentialsId("outer-key"), CredentialScope.GLOBAL, "outer_k".toByteArray())
             )
             store.add(
                 CredentialsId("inner-key"),
-                SecretText(CredentialsId("inner-key"), CredentialScope.GLOBAL, "inner-secret".toByteArray())
+                SecretText(CredentialsId("inner-key"), CredentialScope.GLOBAL, "inner_k".toByteArray())
             )
         }
         val javaHome = System.getProperty("java.home")
@@ -1106,9 +1171,9 @@ pipeline {
 
         val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
         val transcript = shTranscript(controlRoot, dbPath, stdout)
-        assertTrue(transcript.contains("outer=outer-secret"), "Outer binding should be visible")
-        assertTrue(transcript.contains("inner=inner-secret"), "Inner binding should shadow outer")
-        assertTrue(transcript.contains("restored=outer-secret"), "Outer binding should be restored after inner block")
+        assertTrue(transcript.contains("outer=outer_k"), "Outer binding should be visible")
+        assertTrue(transcript.contains("inner=inner_k"), "Inner binding should shadow outer")
+        assertTrue(transcript.contains("restored=outer_k"), "Outer binding should be restored after inner block")
     }
 
     // ─── CR-BD-033 — exception-path unbound ──────────────────────────────────

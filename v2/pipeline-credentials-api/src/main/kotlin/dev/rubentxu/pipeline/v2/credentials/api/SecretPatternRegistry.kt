@@ -44,20 +44,66 @@ class SecretPatternRegistry {
     /**
      * Registers a secret for masking.
      *
+     * Observes the bytes without consuming the handle. This method used to call `use`, which
+     * WIPED the handle on return — so registering a bound credential destroyed the credential.
+     * The canary call sites never noticed, because they register handles they just built and
+     * throw away; a call site that registers a handle the pipeline still owns would have found
+     * its secret zeroed out before `sh` ran.
+     *
      * @param handle The [SecretHandle] wrapping the secret bytes
-     * @throws SecretShorterThanMinimumMaskableLengthWarning if secret is below minimum length
      */
     fun addSecret(handle: SecretHandle) {
-        val secretValue = handle.use { bytes ->
-            String(bytes, Charsets.UTF_8)
-        }
+        handle.peek { bytes -> addSecretValue(String(bytes, Charsets.UTF_8)) }
+    }
 
+    /**
+     * Registers an already-materialised secret value for masking.
+     *
+     * The seam for a caller that HAS the bytes but no handle — a value read out of a credential
+     * binding, or one record of a large file-backed secret.
+     *
+     * Values below [MIN_MASKABLE_LENGTH] are not registered: a literal that short collides with
+     * ordinary output, and a redactor that scrubs four characters everywhere destroys more
+     * observability than it protects.
+     */
+    fun addSecretValue(secretValue: String) {
         if (secretValue.length < MIN_MASKABLE_LENGTH) {
             // Short secrets are not registered — emit warning handled by caller
             return
         }
 
         registeredSecrets.add(secretValue)
+    }
+
+    /**
+     * Registers every RECORD of a multi-line secret for masking.
+     *
+     * ## Why this exists rather than [addSecretValue]
+     *
+     * [maxLiteralByteLength] is the MAXIMUM over everything registered, and it is the
+     * `StreamingRedactor` lookahead — so a single 3 KB SSH key registered whole makes the redactor
+     * hold 6 KB before emitting any byte, on every step of the run. Registering the whole document
+     * is what made that cost real. Registering it RECORD BY RECORD bounds the window at
+     * `2 x longest record`: OpenSSH and PEM wrap base64 at 70 columns, so a real key costs a
+     * ~140-byte window instead of ~6 KB.
+     *
+     * ## What this does and does not catch
+     *
+     * It catches a record appearing in output, which is exactly what `cat $KEY_FILE`, `git` or any
+     * other consumer of a text-format credential emits: the newlines that split the records are
+     * the newlines the output carries. A record with no trailing newline still registers — the
+     * reader, not the delimiter, defines the record.
+     *
+     * It does NOT catch a secret *constructed* across records (e.g. base64 re-wrapped by the
+     * consumer at a different column width). That is a real and accepted gap: it needs a
+     * re-chunking redactor, not a bigger literal.
+     */
+    fun addSecretRecords(content: String) {
+        for (record in content.lineSequence()) {
+            if (record.length >= MIN_MASKABLE_LENGTH) {
+                registeredSecrets.add(record)
+            }
+        }
     }
 
     /**

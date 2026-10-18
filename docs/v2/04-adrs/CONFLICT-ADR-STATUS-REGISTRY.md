@@ -6,9 +6,14 @@
 `ACTIVE_DOCUMENTS.md` §Autoridad: *"Si existen documentos normativos contradictorios, NO
 inventar un ganador: registrar el conflicto y requerir ADR."*
 
-> Este documento **no elige** qué side es la correcta y **no** ratifica nada. Lo mide y
-> lo escala. Cualquier lectura de "qué ADR está en vigor" debe tratar este fichero como
-> una advertencia activa hasta que exista una ADR que lo resuelva.
+> **CERRADO 2026-10-18 por [`ADR-PK-REG-001`](ADR-PK-REG-001-adr-status-registry.md).** Este
+> documento ya no es una advertencia vigente: se conserva por trazabilidad, y sus tres mediciones
+> están corregidas allí — dos contaban el parseo en vez del corpus. El conflicto normativo que
+> parecía abierto no lo estaba; lo que quedaba era un campo sin guardarraíl.
+>
+> Este documento **no eligió** qué side era la correcta ni **ratificó** nada. Lo midió y lo escaló,
+> que era lo que entonces correspondía. La medición resultó ser la parte equivocada del trabajo, y
+> dejarla escrita es lo que permitió que la siguiente la corrigiera sobre datos.
 
 ## El conflicto
 

@@ -2,7 +2,7 @@
 type: adr
 id: ADR-0075
 title: "Retry control reconciles durable state before scheduling child effects"
-status: proposed
+status: accepted
 date: 2026-09-10
 deciders: "Rubentxu (product owner)"
 supersedes: null

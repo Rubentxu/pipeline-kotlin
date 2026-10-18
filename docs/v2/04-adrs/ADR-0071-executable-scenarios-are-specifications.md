@@ -2,7 +2,7 @@
 type: adr
 id: ADR-0071
 title: "Executable scenarios are first-class product specifications"
-status: proposed
+status: accepted
 date: 2026-09-08
 deciders: "Rubentxu (product owner)"
 supersedes: null

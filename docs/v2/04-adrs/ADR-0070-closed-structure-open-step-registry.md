@@ -2,7 +2,7 @@
 type: adr
 id: ADR-0070
 title: "Closed execution structure with an open Step registry; core and external plugins share one execution path"
-status: proposed
+status: accepted
 date: 2026-09-08
 deciders: "Rubentxu (product owner)"
 supersedes: null

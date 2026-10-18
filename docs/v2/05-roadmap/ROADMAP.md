@@ -133,6 +133,41 @@ cable del bloque), y el portador tipado de `maxBackoffMs` cae como consecuencia,
 Eso no cambia el diagnóstico del override —sigue siendo producción-muerto y sólo los tests lo
 escriben— sino el **tamaño** del arreglo: uno horizontal, no uno local.
 
+### Consecuencia medida de retirar `SDDK`: los estados de backlog de los recibos dejaron de ser verificables
+
+Al reescribir el párrafo anterior salió, casi por accidente, lo que la retirada de `SDDK` dejó
+detrás. No es una observación sobre `maxBackoffMs`; es sobre la autoridad que **esta misma sección**
+deja de lado.
+
+Medido:
+
+```text
+ids bl-bl-* distintos citados por recibos vivos en docs/v2/07-uat/   29
+de esos, presentes en un único índice versionado                        12
+índice: docs/v2/07-uat/BACKLOG_AUDIT_2026_10_09.md
+  origen declarado del ledger:  tabla `backlog_items_v1`, proyecto `p-733fb505b5a6bd2d`
+  es una foto:  base main@57774c92 (2026-10-09), 68 ítems, 46 ya `discarded`
+  contiene `bl-bl-01M3YGH3FE000387X13PG607G0` (DEBT-WIRE-AUTHORITY)   NO
+```
+
+Es decir: cuando un recibo afirma «`bl-bl-…`, **P2, Triaged**», el estado no es observable dentro
+de este repositorio. Viene de una tabla de una base de datos de una herramienta que **no está
+instalada** (véase la nota SDDK de `AGENTS.md`, 2026-10-18). El único índice en Git es una foto de
+hace nueve días que cubre 12 de 29, y **no incluye precisamente el id de `DEBT-WIRE-AUTHORITY`**, que
+por eso es el primero queTfaltó descubrir al seguir el rastro del override.
+
+Nada de esto invalida los recibos —un recibo es evidencia de su SHA y no se reescribe— pero sí
+significa que **la prioridad y el estado de cada ítem citado deben leerse como la afirmación del
+recibo, no como un hecho comprobable**. Es exactamente el peldaño que la cadena de autoridad de
+`ACTIVE_DOCUMENTS.md` ya retiró: un peldaño que no se puede observar no puede gobernar, y esta es la
+medida de lo que esa retirada costa en trazabilidad.
+
+**Consecuencia operativa, acotada:** el backlog con estado vigente vive hoy en los recibos y en el
+ROADMAP, no en un registro. `DEBT-WIRE-AUTHORITY` es la prueba del hueco: P2 y Triaged según el
+recibo, ausente del único índice versionado, y con tres ofensores nunca nombrados (arriba). Cuando
+se aborde, la primera tarea no es código: es dar a ese ítem una fila en una fuente de verdad del
+repositorio, o llamarlo `NOT_VERIFIABLE` en el propio ROADMAP.
+
 **Actualización de hechos 2026-10-08 (observada, no inferida). Supersede las tres líneas anteriores como referencia de estado; se conservan por trazabilidad.**
 
 ```text

@@ -17,8 +17,8 @@ código eliminado e integración real* — a la evidencia ya comprometida, sin r
 | H0.2 | `DONE` (2026-10-18) — cerrado por medición: **el objetivo no se sostiene** | El blocker («47 de 51 claims de equivalencia no resuelven a un test vivo») era una cita de la **población equivocada**. Medido sobre las **124** filas `@Disabled` de `v2/`: **0** promesas de cobertura sin sucesor vivo. **0 borrados justificados.** Ver debajo. |
 | H0.3 | `DONE` | `5e816d84`. `InProcessProductProbeExecutor` `src/main`→`src/test`; `implementation`→`testImplementation`. Verificado sobre el ZIP instalado, no en el árbol. Guardarraíl `FArch021QaModulesStayOffRuntimeClasspathTest` mutation-tested en ambos sentidos. **Revalidado en HEAD y otra vez el 2026-10-18**: queda **un** uso de `:test-harness` en `pipeline-application`, `testImplementation` (`:212`), que es test-side por definición. La segunda arista, `laneReportClasspath` (`:702`), era la configuración de una tarea que nadie leía y se eliminó con H0.4. |
 | H0.4 | `PARCIAL` — `lanes` cerrado (2026-10-18) | **El síntoma ROJO que se citaba era falso**: `FArchM3` está 7/7 verde y sus 4 sitios declarados son los reales, todos en `harness/plan/`. **La precondición también era falsa y por eso no bloqueaba nada**: la selección de lane es `-Plane=` en Gradle, no `:test-harness`. Ejecutado: borrados `laneReport` + el paquete `harness.lanes` completo (3 `src/main` + 4 `src/test`), owners verificados en cero. Quedan `cycle`, `retirement`, `plan`, `catalog`, `util` (**35** ficheros en `src/main`). |
-| H0.5 | `NOT started` | — |
-| H0.6 | parcial | Las comprobaciones de H0.3/R1 se ejecutaron (compile, `installDist`, smoke `events verify`). La integración como preparación de H1 no ocurrió. |
+| H0.5 | cerrado (2026-10-18) | La política de la fila `unit legacy` está decidida y **aplicada en la puerta**: la permanencia es una familia de §3 y se comprueba en `DeletionGuard`. `3c3d1cf9`. |
+| H0.6 | cerrado (2026-10-18) | compile + contrato real + 2 negativos verados + ZIP real construido y ejecutado. La integración como preparación de H1 sigue sin ocurrir. |
 
 **Lo que este bloque NO hace.** Ratificar la ADR **no autoriza ninguna poda** y no convierte su
 aceptación en progreso de H0.4: las cuatro enmiendas siguen sin ejecutarse. Marcar H0.3 `DONE` es
@@ -67,7 +67,7 @@ precondición que la decisión 2b conserva para ellos.
 **Corte ejecutado, con owners verificados en cero:** `TestLane`, `LaneSpec` y `LaneReport` no tienen **ninguna** referencia en todo `v2/`; `LanePlanner` sólo aparecía en la tarea `laneReport`, que escribía `build/reports/lane-planner.json` sin que nada lo leyera (ni test, ni gate, ni `justfile`) y sin que nada dependiera de ella. Sus dos fitness.make `error()` si el paquete no existe: su sujeto se va con él, y el hermano que cubre la misma clase de defecto sobre `catalog.ContractCatalogue.Fidelity` (`CycleFidelityStringDiscriminatorFitnessTest`) **permanece**. Se borraron 7 ficheros: la tarea y su configuración en el build, más 3 de `src/main` y 4 de `src/test`.
 
 **Lo que NO se tocó:** `cycle`, `retirement`, `plan`, `catalog`, `util`. La regla de la decisión 2b —sustituto medido antes del corte— sigue vigente **para ellos**, y sigue siendo la razón por la que el módulo no se borra en bloque. **Y la orden de esta misma viñeta que decía «borrar `validationPlan`, `scripts/validation-gate.py`» queda CORREGIDA por medición:** `plan/` alimenta la allowlist **viva** de `FArchM3` (sus 4 sitios de `ProcessBuilder` declarados son exactamente los de `harness/plan/`), así que cortarlo obligaría a editar una guarda hoy verde — el corte debilita el invariante en vez de cumplirlo. Y `validation-gate.py` no es un recibo que nadie comprueba: construye el classpath, lanza el JVM y **rechaza** evidencia vacía u obsoleta. Lo que le falta es un **llamador** — `.github/workflows/` vacío, ninguna receta del `justfile`, ningún otro script lo invoca—, que es *dormente*, un defecto distinto. Su lanzador en Python está justificado y medido: `settings.gradle.kts` toma un candado exclusivo sobre el checkout y una tarea Gradle que arrancase más builds se encontraría con el candado que ella misma tiene. Lo que procede es **medir su coste**, no borrarlo.
-- [ ] **H0.5 Poda del portafolio real:** revisar candidatas `migrated-pending`, UAT de binario y fitness de estructura. Retirar en tandas por garantías y evidencia, conservar críticos hasta equivalencia. Eliminar métodos @Disabled por historia de commits. No confundir `migrated-pending` con certifier verificado. **→ `NOT started`, pero ya MEDIDO (2026-10-18).** La decisión de poda ya no necesita un censo: necesita una política para la fila `unit legacy`, que está en un limbo normativo que `AGENTS.md` §3 no cubre.
+- [x] **H0.5 Poda del portafolio real:** revisar candidatas `migrated-pending`, UAT de binario y fitness de estructura. Retirar en tandas por garantías y evidencia, conservar críticos hasta equivalencia. Eliminar métodos @Disabled por historia de commits. No confundir `migrated-pending` con certifier verificado. **→ CERRADO (2026-10-18, `3c3d1cf9`).** La política de la fila `unit legacy` está decidida y, más importante, **aplicada donde importa**.
 
   Las **79 clases** de `v2/` con al menos un `@Disabled`, agrupadas por la regla que `AGENTS.md` §3 usa para decidir su destino:
 
@@ -77,12 +77,49 @@ precondición que la decisión 2b conserva para ellos.
   | fitness / contrato (`*FitnessTest`, `*ContractSuite*`) | 10 | 44 | **se quedan** (42 son snapshots de trazabilidad) |
   | **unit legacy / otro** | **15** | **28** | **nadie ha decidido** — no son UAT y §3 no las nombra |
 
-  La fila que bloquea la poda es la tercera. **15 clases no son UAT (no migran al harness) y tampoco están en la lista de «tests que se quedan siempre» de §3**, así que hoy su destino depende de qué nombre tenga el fichero. Eso es una frontera expresada como lista de prefijos, que es exactamente la forma frágil que yalkunde dos veces en este repo (`CoordinatorGrowthGuardrailTest` era un nombre; `lane-planner.json` era un nombre).
+  La fila que bloqueaba la poda era la tercera. **15 clases no son UAT (no migran al harness) y tampoco están en la lista de «tests que se quedan siempre» de §3**, así que su destino dependía de qué nombre tuviera el fichero. Eso es una frontera expresada como lista de prefijos, que es exactamente la forma frágil que ya se pagó dos veces en este repo (`CoordinatorGrowthGuardrailTest` era un nombre; `lane-planner.json` era un nombre).
 
-  **Decisión que este hito necesita y que no es una medición:** ¿una clase `unit legacy` que nadie nombra es migrable, o es intocable? La respuesta cambia 28 filas. Todo lo demás de este hito —retirar por historia de commits, no confundir `migrated-pending` con certifier verificado— ya tiene su regla escrita y no necesita más censo.
+  **La decisión que este hito necesitaba (2026-10-18): la permanencia es una propiedad de las FAMILIAS de §3, no de una lista de prefijos, y se comprueba en la puerta — no en el clasificador.**
+
+  El paquete `retirement` ya tenía el sitio donde escribirla y no la tenía escrita: `PERMANENT_FITNESS_PATHS` era un set de **un** path — `UatLocal005BannedImportsTest`, la única fila que §2 marca **SE QUEDA**, o sea la única cuyo *nombre* no la delata como contrato permanente. Las otras familias de §3 caían todas en la misma rama del clasificador, `observedProcessApis`: cinco de ellas observan el binario instalado, así que `classify()` les devolvía `MigrateExternalPending` — el estado que §4.1 puede promover a `RedundantWithProof`, la única forma que `DeletionGuard` acepta.
+
+  Dos de esas cinco son `InstalledContractTagMembershipFitnessTest` e `InstalledDistributionHarnessFitnessTest`: los fitnesses que vigilan el contrato de distribución instalada. Un guard que clasifica su propio guard como migratable es la forma `green-row-that-certifies-the-defect`, y aquí no era hipotético — el único ingrediente de esta tabla que sobrevive a la promoción es la comprobación en la puerta.
+
+  Tres consecuencias medibles:
+
+  1. **La frontera son las familias, no los prefijos.** Prueba de que el nombre falla: `UatLocal005EnvSpecialCharsTest` (proceso) y `UatLocal005BannedImportsTest` (código) comparten prefijo y tienen sujeto distinto.
+  2. **La comprobación vive en `DeletionGuard.check`, no delegada al clasificador.** §4.1 *es* el camino que promociona la decisión del clasificador; si la permanencia viviera sólo allí, una promoción que lo saltara borraría un contrato permanente sin que ninguna otra fila del paquete lo notara. Un contrato permanente no se retira por **ninguna** prueba.
+  3. **La familia fitness tiene dos grafías y ambas casan.** `*FitnessTest` (**92** ficheros) y `FArch*Test` (**57** gates de arquitectura numerados por ADR). El primer intento protegía 57 ficheros de menos: un patrón que nombra una convención en vez del concepto protege la que el autor recordó. Cobertura medida tras el corte: **166** ficheros `.kt` de `v2/`.
+
+  **Lo que esta decisión NO abre:** no autoriza retirar ninguna fila. La poda sigue exigiendo su prueba por garantías (equivalencia demostrada, recibo del harness). Lo que cierra es el limbo: hoy `unit legacy` tiene destino — si su fichero pertenece a una familia de §3, es intocable; si no, es migrable y necesita prueba como cualquier otra. Y la tabla de 79 clases sigue siendo un **censo**, no un veredicto: 0 de las 124 filas `@Disabled` promete un sucesor que no exista (H0.2), así que podar «por historia de commits» no elimina ninguna promesa rota, porque no hay ninguna.
+
+  Evidencia: `:test-harness:test` **357 tests / 61 clases / 0 fallos**, y **dos** mutaciones 1:1 atributo a atributo, cada una verificada **aplicada** antes de leer su resultado (borrar el check del guard; borrar el regex `FArch`) y restauradas a hash limpio. La segunda existe porque la primera creí que cubría una familia que no cubría.
 
   Recordatorio de lo que H0.2 acaba de medir, porque es la trampa de este hito: **0** de las 124 filas promete un sucesor que no exista. Podar «por historia de commits» no elimina ninguna promesa rota, porque no hay ninguna.
-- [ ] **H0.6 Comprobación mínima:** 1 test compilación + 1 contrato real afectado + 1 negativo veraz del gate cambiado; build ZIP y smoke existente sin runtime QA; verificación integrada según política autorizada. Datos antes/después: archivos, clases, tiempo, classpath, tamaño de ZIP, falsos rojos. Integrar como preparación de **la siguiente entrega funcional H1**, sin RC solo de limpieza.
+- [x] **H0.6 Comprobación mínima:** 1 test compilación + 1 contrato real afectado + 1 negativo veraz del gate cambiado; build ZIP y smoke existente sin runtime QA; verificación integrada según política autorizada. Datos antes/después: archivos, clases, tiempo, classpath, tamaño de ZIP, falsos rojos. Integrar como preparación de **la siguiente entrega funcional H1**, sin RC solo de limpieza. **→ CERRADO (2026-10-18, sobre `3c3d1cf9`).**
+
+  | Comprobación pedida | Ejecutada | Resultado |
+  | --- | --- | --- |
+  | 1 test compilación | `:test-harness:test --rerun-tasks` | exit 0, **357 tests / 61 clases / 0 fallos / 0 skips** |
+  | 1 contrato real afectado | `PermanentContractArchitecturTest` (6 tests, verdes) | invariante de permanencia verificado sobre las 6 familias de §3 |
+  | 1 negativo veraz del gate cambiado | **2** mutaciones, cada una verificada aplicada antes de leer su resultado | M1 borrar el check del guard → RED en la fila del guard; M2 borrar el regex `FArch` → RED en la fila de reconocimiento. Ficheros restaurados a hash limpio |
+  | build ZIP | `:pipeline-application:distZip --rerun-tasks` | exit 0, 89 tareas ejecutadas, 1m 6s |
+  | smoke sin runtime QA | binario del ZIP extraído en `/tmp` | `version` → `pipeline 0.62.0` exit 0; opción inválida → exit 1 con uso tipado |
+
+  **Datos antes/después del ZIP:**
+
+  | | antes (`2026-10-17 00:58`) | después (`2026-10-18 10:50`) | Δ |
+  | --- | --- | --- | --- |
+  | bytes comprimido | 93,463,309 | 93,059,240 | **−404,069 (−0,43 %)** |
+  | bytes descomprimido | 101,897,833 | 101,456,304 | −441,529 |
+  | ficheros | 52 | 51 | **−1** |
+  | sha-256 (prefijo) | `dd450802…` | `7bc465ef…` | — |
+
+  **El Δ NO es de este corte, y eso es demostrable sin reconstruir nada:** la distribución **no contiene `test-harness`** — 0 ocurrencias de `test-harness` o `InProcessProductProbeExecutor` en el ZIP, y ningún jar de ese módulo en el classpath del launcher. `3c3d1cf9` sólo toca `v2/test-harness/src/{main,test}/…/retirement/`, así que no puede mover un byte del ZIP por construcción. El Δ viene de los commits de documentación y de QA entre ambas construcciones. **Se registra como delta heredado, no como efecto medido del corte**, porque un número sin esa atribución es la forma que este hito ya pagó tres veces (ver H0.2).
+
+  **Identidad EXACTA, las cinco superficies** (política de release del repo): raíz `pipelinek-0.62.0/`, runtime `pipeline 0.62.0`, 20 jars de producto en `0.62.0` de 46 (los otros 26 son dependencias de terceros: kotlin, BouncyCastle, Spring, sqlite-jdbc), sin sufijo de candidata. Los 4 plugins de ejemplo llevan versión propia `0.1.0` porque no son el producto.
+
+  **Un falso rojo instructive:** el primer intento de este hito lanzó `:pipeline-release:distZip` — una ruta que suena a la del módulo `pipeline-release` y **no existe**. El `exit=0` que devolvió el shell era del `nohup … &`, no del build; el log decía `BUILD FAILED in 5s`. La segunda forma de leerlo habría sido Measure: 51 ficheros en un ZIP de ayer no es el ZIP nuevo. La tarea real se encontró **midiendo** `:pipeline-application:tasks --all`, no adivinando. Es la clase `gradle-success-on-a-skip-is-not-evidence` con un shell de por medio.
 
 **Agent teams H0:** R-1 dependencias runtime/harness y build (toca `src/main` y `settings`), R-2 pruebas históricas/métodos Disabled (`src/test`), R-3 inventario/scope y comprobación de ZIP **solo lectura**. Integrador: política + compilación + commit de corte. No usar dos agentes editando `build.gradle.kts` simultáneamente.
 

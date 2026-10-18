@@ -24,6 +24,19 @@ class EvidenceReaderTest {
     private val redactor = "v2/pipeline-credentials-api/src/main/kotlin/dev/rubentxu/pipeline/v2/" +
         "credentials/api/StreamingRedactor.kt"
 
+    /**
+     * The bound suite these tests model, taken from the catalogue.
+     *
+     * A real Gradle report carries the FQCN in BOTH the `testsuite` attribute and the file name.
+     * These fixtures used to write a bare class name, which happened to equal the FQCN — so every
+     * producer/consumer disagreement stayed invisible here, and one assertion even carried a
+     * placeholder comment next to the literal it asserted on. Deriving the name from the binding
+     * keeps the fixture honest without introducing a second place to fix when a suite moves.
+     */
+    private val redactionSuite: TestSuiteId = SuitePolicy.BINDINGS
+        .flatMap { it.suites }
+        .first { it.filter == "ShTranscriptRedactionReproductionTest" }
+
     private fun report(
         dir: Path,
         className: String,
@@ -65,16 +78,16 @@ class EvidenceReaderTest {
 
     @Test
     fun `a clean report counts as evidence`(@TempDir dir: Path) {
-        report(dir, "ShTranscriptRedactionReproductionTest")
+        report(dir, redactionSuite.fqcn)
         assertEquals(
-            setOf("ShTranscriptRedactionReproductionTest") /* placeholder */,
+            setOf(redactionSuite.fqcn),
             EvidenceReader.suitesWithEvidence(dir).keys,
         )
     }
 
     @Test
     fun `a report with a failure does NOT count as evidence`(@TempDir dir: Path) {
-        report(dir, "ShTranscriptRedactionReproductionTest", failures = 1)
+        report(dir, redactionSuite.fqcn, failures = 1)
         assertTrue(
             EvidenceReader.suitesWithEvidence(dir).isEmpty(),
             "a failing suite is not evidence of anything; treating it as evidence is how a red run " +
@@ -84,13 +97,13 @@ class EvidenceReaderTest {
 
     @Test
     fun `a report with an error does NOT count as evidence`(@TempDir dir: Path) {
-        report(dir, "ShTranscriptRedactionReproductionTest", errors = 2)
+        report(dir, redactionSuite.fqcn, errors = 2)
         assertTrue(EvidenceReader.suitesWithEvidence(dir).isEmpty())
     }
 
     @Test
     fun `a corrupt report does NOT count as evidence`(@TempDir dir: Path) {
-        report(dir, "ShTranscriptRedactionReproductionTest", corrupt = true)
+        report(dir, redactionSuite.fqcn, corrupt = true)
         assertTrue(
             EvidenceReader.suitesWithEvidence(dir).isEmpty(),
             "unreadable XML is an absence of evidence, not evidence",
@@ -233,7 +246,7 @@ class EvidenceReaderTest {
 
     @Test
     fun `a selected suite whose report has a failure refuses the gate`(@TempDir dir: Path) {
-        report(dir, "ShTranscriptRedactionReproductionTest", failures = 1)
+        report(dir, redactionSuite.fqcn, failures = 1)
         val plan = ImpactResolver.resolve(listOf(redactor))
         val refusal = EvidenceReader.verify(plan, dir, "abc123", "abc123")
         assertNotNull(refusal, "a red suite must not discharge the plan")
@@ -249,7 +262,7 @@ class EvidenceReaderTest {
         // the gate refuses on InsufficientFidelity.
         val hf = plan.minimumFidelities.firstOrNull()?.name ?: "HF0"
         plan.suites.forEach {
-            report(dir, it.filter, sidecar = true, sourceCommit = commit, hf = hf)
+            report(dir, it.fqcn, sidecar = true, sourceCommit = commit, hf = hf)
         }
         assertNull(
             EvidenceReader.verify(plan, dir, commit, commit),
@@ -262,7 +275,7 @@ class EvidenceReaderTest {
     fun `evidence from another commit refuses even when every suite ran`(@TempDir dir: Path) {
         val plan = ImpactResolver.resolve(listOf(redactor)) as ValidationPlan.Selected
         val commit = "0".repeat(40)
-        plan.suites.forEach { report(dir, it.filter, sidecar = true, sourceCommit = commit) }
+        plan.suites.forEach { report(dir, it.fqcn, sidecar = true, sourceCommit = commit) }
         val refusal = EvidenceReader.verify(plan, dir, commit, "abc123")
         assertNotNull(refusal, "a stale binary's green is not this commit's green")
         assertTrue(
@@ -274,7 +287,7 @@ class EvidenceReaderTest {
     @Test
     fun `a binary reporting no commit refuses rather than passing silently`(@TempDir dir: Path) {
         val plan = ImpactResolver.resolve(listOf(redactor)) as ValidationPlan.Selected
-        plan.suites.forEach { report(dir, it.filter) }
+        plan.suites.forEach { report(dir, it.fqcn) }
         assertNotNull(
             EvidenceReader.verify(plan, dir, "abc123", null),
             "an absent commit is unknown provenance, and unknown is not clean",

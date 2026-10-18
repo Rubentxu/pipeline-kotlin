@@ -85,13 +85,18 @@ object Gate {
             )
         }
 
-        // H1 TODO 2: the evidence map is keyed by
-        // simple class name (the binding's filter).
-        // We union the maps from every project's
-        // results directory; later writes win on
-        // collision, but the gate reads each suite
-        // exactly once because the plan's suite
-        // filters are unique.
+        // The evidence map is keyed by the FQCN each report declares
+        // (`EvidenceReader.suitesWithEvidence`), and every binding in
+        // `SuitePolicy.BINDINGS` names the same FQCN in `TestSuiteId.fqcn`, so the union below
+        // is keyed the way `ImpactResolver.adjudicate` looks it up. An earlier version of this
+        // comment claimed the key was the simple class name, which stopped being true when the
+        // producer moved to FQCN and had not been updated — and a comment that contradicts the
+        // code three lines below it is how the resulting wedge stayed invisible.
+        //
+        // The union can still collide: two modules may own a class with the same FQCN, and
+        // `.toMap()` lets the last one win. That is now unreachable in practice (an FQCN is
+        // unique per JVM, and the two sides of the lookup agree on it), so it is stated rather
+        // than defended.
         val executed: Map<String, EvidenceReader.SuiteEvidence> = byModule.keys
             .flatMap { project ->
                 EvidenceReader.suitesWithEvidence(resultsDirFor(resultsRoot, project)).toList()

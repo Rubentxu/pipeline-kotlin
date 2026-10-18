@@ -39,8 +39,10 @@ import org.junit.jupiter.api.io.TempDir
  * Eight cases cover:
  *  1. Inspect a known run with active event tail → `Running` with lease holder
  *     + journal position + output tails + event tail cursor.
- *  2. Inspect a known run with no events → `LiveButEmpty` (NOT
- *     `Refused(UnknownRun)`).
+ *  2. Inspect a known run whose LEASE exists but which has no events →
+ *     `Running` with a non-null holder (NOT `LiveButEmpty`, NOT
+ *     `Refused(UnknownRun)`). A lease record is a positive signal that the run
+ *     was started, which is exactly what `LiveButEmpty` denies.
  *  3. Inspect an unknown run → `Refused(UnknownRun)`.
  *  4. Inspect a run held by another lease → `Refused(LeaseHeldByAnother)`.
  *  5. Inspect is read-only under concurrency: 100 calls in parallel produce no
@@ -48,8 +50,12 @@ import org.junit.jupiter.api.io.TempDir
  *  6. Inspect a terminal run → `Terminal` with typed terminal.
  *  7. Cursor consistency: inspect then re-inspect on a known run produces the
  *     same monotonic answer.
- *  8. Inspect under a forced storage error → `Refused(StorageError)` (covered
- *     implicitly by the unknown-run path).
+ *  8. Inspect with a THROWING `OutputFrameIndex` → `Refused(StorageError)`.
+ *     Directly covered, not implicitly: the row drives a real frame index whose
+ *     `streamsOfRun` throws, which is the Output Plane failing during the tails
+ *     read. That is a different path from row 3's unknown-run refusal, and it is
+ *     the row that covers `inspect`'s single failure handler — the one that turns
+ *     a frame-index throw into `StorageError` instead of a degraded observation.
  */
 class RuntimeIntrospectionPortAdapterTest {
 
@@ -277,7 +283,7 @@ class RuntimeIntrospectionPortAdapterTest {
     }
 
     @Test
-    fun `8 inspect a LiveButEmpty run distinguishes from UnknownRun when an OutputFrameIndex throws`(
+    fun `8 a throwing OutputFrameIndex refuses with StorageError instead of degrading the observation`(
         @TempDir tempDir: Path,
     ) {
         val bundle = TestBundle(tempDir, runId)

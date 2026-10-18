@@ -384,7 +384,7 @@ tasks.register("releaseGate") {
 // properties, and the `releaseGate` entries that depended on `:test` and on
 // `:pipeline-application:test`.
 //
-// Gradle 8 defaults `Test.failOnNoDiscoveredTests` to false, and `src/test` is empty here, so
+// Gradle 8.14 has no `Test.failOnNoDiscoveredTests` property and `src/test` is empty here, so
 // that lane reported a distribution certification while executing zero classes -- the most
 // expensive false green in the build, because it names a real ZIP and a real SBOM. The gate
 // entries go with it: a `dependsOn(":pipeline-application:test")` on an empty source set makes

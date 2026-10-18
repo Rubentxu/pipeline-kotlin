@@ -226,8 +226,8 @@ dependencies {
 //                                         cross-module `inputs.files(...)` fitness inputs.
 //   * `forkEveryPerClass`             -- declared once, read only by `tasks.test`.
 //
-// The mechanism they shared is the reason the whole set had to go together. Gradle 8 defaults
-// `Test.failOnNoDiscoveredTests` to false, so a `Test` task whose source set is empty reports
+// The mechanism they shared is the reason the whole set had to go together. Gradle 8.14 has no
+// `Test.failOnNoDiscoveredTests` property, and a `Test` task whose source set is empty reports
 // GREEN while executing zero classes. Each surviving registration would have printed a
 // certification that never ran: a plugin certification, a shipped-binary certification, and a
 // fast lane passing over an empty classpath. `check` aggregates all of them. This is exactly

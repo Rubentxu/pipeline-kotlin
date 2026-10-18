@@ -108,6 +108,24 @@ integrado; las cuatro amendments de `ADR-PK-DF-002` siguen requiriendo firma del
   **Una corrección que la medición obligó.** Escribí que el invariante hacía el cruce «irrepresentable». **Es falso, y lo medí antes de dejar el KDoc**: `require` es un rechazo en runtime, no una restricción de tipos — ambos campos son `OutputStreamAddress` y una dirección sobre el canal STDOUT es una dirección válida. Lo que M-3 demuestra es *dónde* aflora el defecto: antes el par se construía en silencio y todo consumidor lo heredaba; ahora no existe valor que heredar. El KDoc de producción y el del test llevan la corrección escrita, porque una afirmación más fuerte que la comprobada es exactamente el defecto que este test existe para cazar.
 
   El defecto propio fue el **arnés**: escribí las dos filas de rechazo con la construcción **fuera** del `assertThrows`, y como `init` rechaza en construcción, el rechazo correcto se escapaba de la aserción y la fila reportaba un defecto de producto inexistente. Dos filas rojas con el mensaje exacto del invariante que acababa de funcionar. La construcción va dentro del lambda, y el porqué está en el KDoc de la fila.
+  **d) La clase de validación de digest, y un test que **certificaba** el defecto. Cerrado.** Auditando por qué el predicado de formato vivía disperso encontré la respuesta: el dueño del formato, `Sha256`, declara "lowercase, 64 characters" en su KDoc pero no dejaba que nadie lo *comprobara*. Cada consumidor que recibía un digest de fuera tenía que decidir el formato solo, y medido 2026-10-18 varios lo decidían como `length == 64` a secas: 64 caracteres de cualquier tipo pasaban y llegaban como un digest que nunca podría coincidir con uno real. Un `require` cuyo mensaje promete "64 hex characters" mientras prueba sólo la longitud es la forma exacta del defecto.
+
+  ```text
+  :pipeline-domain:test (Sha256 + ArtifactHandle)   tests=14 skipped=0 failures=0 errors=0
+  :pipeline-runtime-api:test                        tests=5  skipped=0 failures=0 errors=0
+  :pipeline-step-sdk:files:test                     tests=22 skipped=0 failures=0 errors=0
+  M-A  se quita takeIf(...) en DeleteDirExecutor    -> RED 1 de 22, la fila que apunta
+  M-B  se quita takeIf(...) en CleanWsExecutor      -> RED 1 de 22, la FILA GEMELA; la de
+                                                           deleteDir sobrevive -> las dos son
+                                                           independientes, no un guard común
+  ```
+
+  El hallazgo importante no era el hole sino **el test que lo sostenía**: `WCL-S-002 deleteDir idempotent with pre-existing marker` escribía `knownSha = "abc123def456"` — 12 caracteres, no hex — y afirmaba que ese texto llegaba como `sha256`. La fila **certificaba el defecto** y por eso llevaba años verde. Corregido el fixture (un digest real) y añadida la fila que fija el comportamiento nuevo.
+
+  **El guard refusaba era la forma elegante y la equivocada.** Ante un marker corrupto, un `require` atasca el workspace para siempre: una vez escrito un marker malo, ninguna ejecución posterior podría limpiar. La respuesta convergente —"esa cosa no es un marker", se limpia de nuevo— es segura *porque* borrar contenido ya borrado es un no-op. No es un silencio: hace el trabajo, y lo que se prohíbe es que el texto llegue como digest.
+
+  La unificación es lo que deja el arreglo pequeño: `Sha256.isSha256Hex` es la respuesta del que acuña el formato, y los tres carriers (`ArchivedFileEntry`, `OperationInspection`, `OperationSummary`) más los dos ejecutores la usan. No es el helper genérico que había rechazado antes —`SemVer` acepta `A-F` a propósito y simplemente no la llama—, sino el predicado del dueño de un formato concreto.
+
 - [ ] **H1.4** Integrar código de producto, cambios de poda aprobados, `main`, release candidate de valor real y handoff. `CERTIFIED` solo externo.
 
 **Agent teams:** consola/lectura, escritor/redactor (seams distintos), integración del CLI; archivo compartido se asigna a uno. R-1 del H0 ya terminó antes.

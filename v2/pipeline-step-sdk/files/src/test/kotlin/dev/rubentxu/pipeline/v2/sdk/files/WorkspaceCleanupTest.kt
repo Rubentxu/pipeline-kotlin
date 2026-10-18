@@ -1,7 +1,9 @@
 package dev.rubentxu.pipeline.v2.sdk.files
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -90,12 +92,49 @@ class WorkspaceCleanupTest {
             workspaceResolver = { _, _ -> workspace },
             rootDestruction = RootDestruction.ScratchOwned,
         )
-        val knownSha = "abc123def456"
+        // A real 64-char digest. This row used the literal "abc123def456", which is 12
+        // characters and not hex: the fixture asserted that ARBITRARY TEXT in `.deleted`
+        // flows through as result.sha256, and the run kept that because nothing checked the
+        // marker. The contract was the defect; only the fixture was wrong about it.
+        val knownSha = Sha256.ofText("marker-content")
         Files.writeString(workspace.resolve(".deleted"), knownSha)
 
         val result = executor.execute(stageName = "Test", stageIndex = 0, stepIndex = 0, spec = StepSpec.DeleteDir())
         assertEquals(0, result.deletedCount, "should be no-op with existing marker")
         assertEquals(knownSha, result.sha256, "sha256 must match pre-existing marker")
+    }
+
+    @Test
+    fun `WCL-S-002 deleteDir a marker that is not a digest is not a marker`(@TempDir tempDir: Path) {
+        // The row that pins the fix. A `.deleted` file holding anything this executor did not
+        // write — a hand edit, a truncated write — must NOT be read as a completed deletion,
+        // because its text would otherwise become DeleteDirOutput.sha256 and reach the journal
+        // as a digest that can never match.
+        //
+        // It also must NOT refuse. A refusal wedges the workspace permanently: once a bad
+        // marker exists, no later run could clean it either. The convergent answer — do the
+        // cleanup again — is safe precisely because deleting deleted content is a no-op.
+        val workspace = tempDir.resolve("workspace/build-0")
+        Files.createDirectories(workspace)
+        Files.writeString(workspace.resolve("a.txt"), "hello")
+        Files.writeString(workspace.resolve(".deleted"), "abc123def456")
+
+        val executor = DeleteDirExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            rootDestruction = RootDestruction.ScratchOwned,
+        )
+        val result = executor.execute(stageName = "Test", stageIndex = 0, stepIndex = 0, spec = StepSpec.DeleteDir())
+
+        assertTrue(result.deletedCount >= 1, "a junk marker must not skip the cleanup")
+        assertTrue(
+            Sha256.isSha256Hex(result.sha256),
+            "the reported sha256 must be a digest this executor computed, not the junk text. " +
+                "Got '${result.sha256}'",
+        )
+        assertFalse(
+            result.sha256 == "abc123def456",
+            "the junk marker text must not survive as a digest",
+        )
     }
 
     // =============================================================================
@@ -151,6 +190,39 @@ class WorkspaceCleanupTest {
         assertTrue(!Files.exists(workspace.resolve("target/y.class")), "target/y.class must be deleted")
         assertEquals(2, result.deletedFiles, "deletedFiles should be 2")
         assertTrue(result.patterns.contains("target/**/*"), "patterns must be preserved")
+    }
+
+    @Test
+    fun `WCL-S-004 cleanWs a cleaned-marker that is not a digest is not a marker`(@TempDir tempDir: Path) {
+        // The cleanWs twin of the deleteDir row, and genuinely a different path: this one only
+        // honours the marker when `patterns` is empty, so the junk-marker case and the
+        // idempotent case meet here for the first time. Without a row the cleanWs guard would
+        // be a claim with no verifier, which is the thing HF5 exists to prevent.
+        val workspace = tempDir.resolve("workspace/build-0")
+        Files.createDirectories(workspace)
+        Files.createDirectories(workspace.resolve("target"))
+        Files.writeString(workspace.resolve("target/x.class"), "class1")
+        Files.writeString(workspace.resolve(".cleaned"), "abc123def456")
+
+        // ScratchOwned + an EMPTY (not null) pattern list is the only route to the marker
+        // branch: the executor refuses a `null` pattern list outright, and the idempotency
+        // check is skipped when patterns are present.
+        val executor = CleanWsExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            rootDestruction = RootDestruction.ScratchOwned,
+        )
+        val result = executor.execute(
+            stageName = "Test",
+            stageIndex = 0,
+            stepIndex = 0,
+            spec = StepSpec.CleanWs(deleteDirs = true, patterns = emptyList()),
+        )
+
+        assertTrue(!Files.exists(workspace.resolve("target")), "a junk marker must not skip the cleanup")
+        assertTrue(
+            Sha256.isSha256Hex(result.sha256),
+            "the reported sha256 must be a digest this executor computed. Got '${result.sha256}'",
+        )
     }
 
     // =============================================================================

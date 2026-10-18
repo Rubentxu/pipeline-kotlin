@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.runtime.inspect
 
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 
 /**
@@ -62,8 +63,8 @@ data class OperationInspection(
         require(endedAtMs == null || startedAtMs == null || endedAtMs >= startedAtMs) {
             "endedAtMs must be null or >= startedAtMs, got $endedAtMs vs $startedAtMs"
         }
-        require(fingerprint == null || fingerprint.length == 64) {
-            "fingerprint must be null or 64 chars, got ${fingerprint?.length}"
+        require(fingerprint == null || Sha256.isSha256Hex(fingerprint)) {
+            "fingerprint must be null or a 64-char lowercase hex SHA-256; got '$fingerprint'"
         }
     }
 }

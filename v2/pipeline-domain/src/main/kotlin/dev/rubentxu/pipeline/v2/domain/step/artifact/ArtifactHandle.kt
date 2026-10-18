@@ -86,8 +86,11 @@ data class ArchivedFileEntry(
 ) {
     init {
         require(relPath.isNotEmpty()) { "relPath must not be empty" }
-        require(sha256.length == 64) {
-            "sha256 must be 64 hex characters; got '${sha256.take(8)}...'"
+        // One predicate, owned by the class that mints the format. The previous form checked
+        // `length == 64` alone while its message promised "64 hex characters", so 64 characters
+        // of any kind passed: the guard described a format it did not test.
+        require(Sha256.isSha256Hex(sha256)) {
+            "sha256 must be 64 lowercase hex characters (0-9a-f); got '${sha256.take(8)}...' (${sha256.length} chars)"
         }
         require(sizeBytes >= 0) { "sizeBytes must be non-negative" }
         require(absolutePath.isNotEmpty()) { "absolutePath must not be empty" }

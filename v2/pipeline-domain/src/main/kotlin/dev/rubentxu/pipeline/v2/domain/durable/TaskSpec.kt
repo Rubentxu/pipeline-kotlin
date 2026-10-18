@@ -19,8 +19,7 @@ enum class InterpreterPolicy(val binary: String) {
  * Specification of ONE durable task to execute (LF-0301).
  *
  * The closed set is [ShellScriptTask] and [ExecTask] — exactly the two
- * process shapes the durable runtime supports (see
- * `docs/v2/03-specifications/DURABLE_TASK_RUNTIME_SPEC.md`).
+ * process shapes the durable runtime supports.
  *
  * ## Invariants pinned by the spec
  *

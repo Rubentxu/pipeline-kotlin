@@ -34,7 +34,7 @@ import kotlin.io.path.readBytes
  *   - source:  ReadYamlStep.java / ReadYamlStep.Execution in
  *              `https://github.com/jenkinsci/pipeline-utility-steps-plugin/blob/master/src/main/java/org/jenkinsci/plugins/pipeline/utility/steps/conf/ReadYamlStep.java`
  *
- * Adaptation (full table in `docs/v2/07-uat/S2_READYAML_WRITEYAML_JENKINS_REFERENCE.md`):
+ * Adaptation:
  *  - file XOR text is encoded by the sealed [ReadYamlSource] hierarchy.
  *  - SnakeYAML 2.3 + [SafeConstructorOnlyOptions] + explicit tag allow-list.
  *  - Output is a typed [YamlDocument] ADT, not `Map<String, Any?>`. The

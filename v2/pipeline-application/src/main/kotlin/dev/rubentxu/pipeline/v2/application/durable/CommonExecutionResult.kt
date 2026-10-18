@@ -28,7 +28,6 @@ import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
  * — backwards-behaviour-preserving. Registry-routed paths MAY populate [encodedOutput]
  * with a non-null value when the handler returns a non-`Unit` typed value.
  *
- * @see docs/v2/00-context/LB02_TYPED_OUTPUT_DECISION.md
  * @see <a href="AGENTS.md STEP CONSTITUTION">AGENTS.md STEP CONSTITUTION</a>
  */
 data class CommonExecutionResult(

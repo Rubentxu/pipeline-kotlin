@@ -71,8 +71,7 @@ sealed interface CompileResult {
  *
  * ## Why the port lives in domain
  *
- * Per [CANONICAL_CONTRACTS_SPEC.md](docs/v2/03-specifications/CANONICAL_CONTRACTS_SPEC.md)
- * §Platform services, the runtime is the only entity that knows what a
+ * The runtime is the only entity that knows what a
  * "pipeline" *means* in execution. The compiler is the only entity that
  * knows what a pipeline source *means* in code. Both are domain concerns.
  * Adapters (the actual parsers) live in [application][dev.rubentxu.pipeline.v2.application]

@@ -50,8 +50,6 @@ import kotlinx.serialization.json.JsonPrimitive
  *
  * Note the ordering law, unchanged: the terminal journal append happens BEFORE the
  * caller may advance the cursor (ReplayCursorStore's R-C mitigation).
- *
- * @see docs/v2/04-adrs/ADR-0103-one-replay-authority.md (D5, D7)
  */
 internal class DurableStepExecutor(
     private val eventSink: EventSink,

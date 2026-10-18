@@ -48,8 +48,6 @@ package dev.rubentxu.pipeline.v2.sdk.files
  * no safety gain: [UserOwned] already refuses the root before any effect. The
  * defect was never the default's existence, it was that the default's outcome
  * was decided by a bit the caller could pass wrong.
- *
- * See `docs/v2/07-uat/C8_WORKSPACE_ROOT_DELETION_RECEIPT.md`.
  */
 enum class RootDestruction {
     /** PipelineK's own scratch. Wiping it is the point of the Step. */

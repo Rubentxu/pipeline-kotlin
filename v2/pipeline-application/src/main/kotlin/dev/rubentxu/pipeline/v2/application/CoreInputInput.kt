@@ -18,12 +18,11 @@ import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
  *
  * Derived from the official `input` step reference
  * (<https://www.jenkins.io/doc/pipeline/steps/workflow-durable-task-step/>).
- * `withId` and the permission/role parameters are deliberately absent; the reasons
- * are in `docs/v2/07-uat/SPEC_WU092_INPUT.md` §1. `timeoutSeconds` is an addition
- * and not a Jenkins parameter: Jenkins bounds `input` by wrapping it in `timeout`,
- * and this runner already bounds a suspending wait with the enclosing scope budget
- * (SPEC_WU092_INPUT.md §3.4), so an author-level bound here is the same fact stated
- * in the place the author looks.
+ * `withId` and the permission/role parameters are deliberately absent. `timeoutSeconds`
+ * is an addition and not a Jenkins parameter: Jenkins bounds `input` by wrapping it in
+ * `timeout`, and this runner already bounds a suspending wait with the enclosing scope
+ * budget, so an author-level bound here is the same fact stated in the place the author
+ * looks.
  */
 data class CoreInputInput(
     val message: String,

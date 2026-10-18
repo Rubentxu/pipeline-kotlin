@@ -16,7 +16,7 @@ package dev.rubentxu.pipeline.v2.application
  * Derived from the official `lock` step reference
  * (<https://www.jenkins.io/doc/pipeline/steps/lockable-resources/>). The
  * parameters that step also accepts and WU-091 deliberately does NOT expose are
- * listed in `docs/v2/07-uat/SPEC_WU091_LOCK.md` §1 with the reason for each:
+ * excluded with the reason for each:
  * they need a resource catalogue or an ordered queue, which are RP-8
  * requirements, and `variable` couples this Step to the context system without
  * adding anything to exclusion.

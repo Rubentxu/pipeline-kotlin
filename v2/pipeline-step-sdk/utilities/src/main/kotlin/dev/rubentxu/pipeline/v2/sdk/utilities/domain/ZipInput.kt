@@ -6,7 +6,6 @@ import kotlinx.serialization.Serializable
  * `core-utils.zip` typed Input (LFC-2E2 utilities, Slice 2 / S2.4).
  *
  * Jenkins reference: pipeline-utility-steps-plugin::ZipStep.
- * Behaviour summary in `docs/v2/07-uat/S2_ZIP_JENKINS_REFERENCE.md`.
  *
  * The shape is closed: exactly one of the three [ZipSources] cases is
  * chosen by the caller. The dst `path` is workspace-relative unless

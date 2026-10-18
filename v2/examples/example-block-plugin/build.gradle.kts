@@ -222,8 +222,7 @@ val computeBlockRelease = tasks.register("computeBlockRelease") {
                 //
                 // The ceiling is the NEXT MINOR of the resolved SDK, not the resolved version itself:
                 // PipelineKApiRange.accepts() is `runtime < untilExclusive`, so a ceiling equal to
-                // sdkVersion would make the plugin refuse the very host that loads it. See
-                // docs/adr and evidence D1-RANGE-CEILING-RULE.md.
+                // sdkVersion would make the plugin refuse the very host that loads it.
                 appendLine("pipeline.example.block.compatibility.min=$blockApiRangeMin")
                 appendLine("pipeline.example.block.compatibility.untilExclusive=$nextMinor")
             },

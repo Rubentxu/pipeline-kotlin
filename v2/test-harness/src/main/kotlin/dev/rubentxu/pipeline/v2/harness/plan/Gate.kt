@@ -154,11 +154,21 @@ interface SuiteRunner {
  * 'pipeline-kotlin'". Measured, not assumed: that was the first real gate run to reach execution.
  *
  * The working directory must be the build that OWNS the modules, which is `buildRoot`, the same
- * directory the wrapper lives in. [repoRoot] is still needed, for the Git queries and for locating
- * the per-module report directories, so both are parameters and neither is guessed.
+ * directory the wrapper lives in and the same directory the per-module reports hang off.
+ *
+ * ## Why it takes ONE root and not two
+ *
+ * It used to take `repoRoot` and `buildRoot`, and it cleared stale reports from `repoRoot` while
+ * every other reader read from `buildRoot`. The two differ by the `v2/` segment, so the cleared
+ * directory did not exist and `clearStaleReports` returned on its `isDirectory` guard on every
+ * run — the deletion the KDoc above gives as the gate's defence against a stale green had never
+ * happened. No test caught it because the one row asserting it planted its fixture on the
+ * writer's side, so the two halves agreed without crossing the seam.
+ *
+ * So the wrong root is now unrepresentable rather than merely unused: there is one root, it is the
+ * one the reports actually live under, and a caller cannot pass the other one.
  */
 class GradleSuiteRunner(
-    private val repoRoot: Path,
     private val buildRoot: Path,
 ) : SuiteRunner {
 
@@ -166,7 +176,15 @@ class GradleSuiteRunner(
     private val gradlew: Path = buildRoot.resolve("gradlew")
 
     override fun run(invocation: Dispatch.GradleInvocation): Boolean {
-        val resultsDir = Gate.resultsDirFor(repoRoot, invocation.gradleProject)
+        // `buildRoot`, not `repoRoot`. The reports live under `<repoRoot>/v2/<module>/…`, because
+        // `GateCli` hands `Gate.run` its `resultsRoot` as `repoRoot.resolve("v2")`; `buildRoot` is
+        // that same `v2/` directory, and `buildRoot` is the build that OWNS the modules. Passing
+        // `repoRoot` here resolved `<repoRoot>/<module>/build/test-results/test`, a path that does
+        // not exist in this composite checkout, so `clearStaleReports` returned on its
+        // `isDirectory` guard every time and the deletion never happened. Measured 2026-10-18: the
+        // two call sites of `resultsDirFor` disagreed on the root, and a test that planted its
+        // fixture on the writer's side stayed green while the reader looked somewhere else.
+        val resultsDir = Gate.resultsDirFor(buildRoot, invocation.gradleProject)
         clearStaleReports(resultsDir)
 
         // Gradle skips a `Test` task whose inputs are unchanged, so without an explicit re-run the

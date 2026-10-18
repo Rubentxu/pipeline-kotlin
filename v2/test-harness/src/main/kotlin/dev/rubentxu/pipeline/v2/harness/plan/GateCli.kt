@@ -325,7 +325,7 @@ fun main(args: Array<String>) {
         // runs in and where report directories hang off, while the build root is the Gradle build
         // that OWNS the modules. Passing the repo root as both is what made every dispatch fail
         // with "task not found in root project 'pipeline-kotlin'".
-        runner = GradleSuiteRunner(repoRoot = root, buildRoot = buildRoot),
+        runner = GradleSuiteRunner(buildRoot = buildRoot),
         provenance = provenance,
         expectedCommit = expectedCommit,
     )

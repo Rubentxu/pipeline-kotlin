@@ -115,11 +115,54 @@ class GateTest {
         )
     }
 
+    /**
+     * The runner must clear the directory the gate READS, not a similarly-shaped one.
+     *
+     * The gate has two roots and they are not the same value. `GateCli` hands `Gate.run` a
+     * `resultsRoot` of `repoRoot.resolve("v2")`, because the modules live under `v2/`; the
+     * `GradleSuiteRunner` is constructed with both `repoRoot` and `buildRoot`, and `buildRoot` IS
+     * that same `v2/` directory. Nothing forces the two to agree: they are two separate call sites
+     * of the same `resultsDirFor`, and they were written with different arguments.
+     *
+     * Measured 2026-10-18: `GradleSuiteRunner.run` passed `repoRoot`, so it cleared
+     * `<root>/mod-one/build/test-results/test` — a directory that does not exist in this composite
+     * checkout — and `clearStaleReports` returned on its `isDirectory` guard every single time. The
+     * deletion the class KDoc and `Gate.run`'s own KDoc both give as the reason the gate is not a
+     * stale green had never run. Meanwhile a sibling row stayed green because it planted its fixture
+     * on the WRITER's path, so it could not see the disagreement: two halves agreeing without
+     * crossing the seam.
+     *
+     * So the assertion here is deliberately a comparison between the two sides rather than a
+     * behaviour of either one alone: a stale report placed where the gate reads must be gone after
+     * the runner returns. The wrapper is a real file that exits non-zero, so the invocation fails
+     * exactly as a broken build would; the clearing is still the property under test.
+     */
+    @Test
+    fun `the runner clears the directory the gate reads evidence from`(@TempDir tmp: Path) {
+        val readResultsDir = Gate.resultsDirFor(tmp.resolve("v2"), ":mod-one")
+        writeXml(readResultsDir, "AlphaTest", 0, 0)
+
+        val buildRoot = Files.createDirectories(tmp.resolve("v2"))
+        val fakeGradlew = buildRoot.resolve("gradlew")
+        Files.writeString(fakeGradlew, "#!/bin/sh\nexit 1\n")
+        fakeGradlew.toFile().setExecutable(true)
+
+        GradleSuiteRunner(buildRoot = buildRoot).run(
+            Dispatch.GradleInvocation(":mod-one", "test", listOf("AlphaTest")),
+        )
+
+        assertTrue(
+            !Files.exists(readResultsDir.resolve("TEST-AlphaTest.xml")),
+            "GradleSuiteRunner left the previous run's report in place at $readResultsDir, which is " +
+                "exactly where Gate.run reads evidence from; a suite that stopped running still has " +
+                "a passing XML on disk and the gate reads it as this run's",
+        )
+    }
+
     @Test
     fun `a stale report left by a previous run does not discharge the gate`(@TempDir tmp: Path) {
         // The mutation this kills is reading the evidence BEFORE running: a report left by an
         // earlier run then satisfies the gate even though nothing executed this time.
-        // `GradleSuiteRunner` deletes the reports first for exactly this reason.
         //
         // The report must be ON DISK when the gate starts and GONE by the time it adjudicates.
         // A runner that deletes it is the production behaviour; a runner that leaves it is the
@@ -149,34 +192,6 @@ class GateTest {
             listOf(SelectionRefusal.SelectedButNotRun("AlphaTest")),
             refusal?.reasons,
             "the report was deleted before the run, so no evidence survives it",
-        )
-
-        // And the gate must not accept a report the run left untouched. Gate cannot decide that on its
-        // own — it has no way to know whether the runner cleared the directory — so the guarantee
-        // lives where it can be enforced: `GradleSuiteRunner` removes every `TEST-*.xml` before
-        // invoking Gradle, and this asserts that removal actually happens rather than trusting the
-        // comment. The wrapper is a real file that exits non-zero, so the invocation fails exactly
-        // as a broken build would, and the clearing is still the property under test.
-        writeXml(resultsDir, "AlphaTest", 0, 0)
-
-        // `buildRoot` holds the wrapper: the runner resolves `gradlew` inside the build that owns
-        // the modules. Putting the fake wrapper directly in the repo root would pass a test that no
-        // longer describes how the runner finds it.
-        val buildRoot = Files.createDirectories(tmp.resolve("v2"))
-        val fakeGradlew = buildRoot.resolve("gradlew")
-        Files.writeString(fakeGradlew, "#!/bin/sh\nexit 1\n")
-        fakeGradlew.toFile().setExecutable(true)
-
-        val gradleRunner = GradleSuiteRunner(repoRoot = tmp, buildRoot = buildRoot)
-        val succeeded = gradleRunner.run(
-            Dispatch.GradleInvocation(":mod-one", "test", listOf("AlphaTest")),
-        )
-
-        assertTrue(!succeeded, "a Gradle invocation that exits non-zero must report failure")
-        assertEquals(
-            emptyMap<String, EvidenceReader.SuiteEvidence>(),
-            EvidenceReader.suitesWithEvidence(resultsDir),
-            "GradleSuiteRunner must clear the previous run's reports before invoking Gradle",
         )
     }
 

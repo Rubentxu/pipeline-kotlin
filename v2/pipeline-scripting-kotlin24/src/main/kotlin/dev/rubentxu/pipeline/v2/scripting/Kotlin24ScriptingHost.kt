@@ -20,11 +20,12 @@ import kotlin.script.experimental.host.StringScriptSource
 import kotlin.script.experimental.jvm.dependenciesFromCurrentContext
 import kotlin.script.experimental.jvm.jvm
 import kotlin.script.experimental.jvm.updateClasspath
-import kotlin.script.experimental.jvmhost.BasicJvmScriptingHost
 import kotlin.script.experimental.jvmhost.createJvmCompilationConfigurationFromTemplate
 
 /**
- * Kotlin 2.4.10 adapter that wraps [BasicJvmScriptingHost] and
+ * Kotlin 2.4.10 adapter that wraps [CachingJvmScriptingHost] (a
+ * [kotlin.script.experimental.jvmhost.BasicJvmScriptingHost] that may reuse a
+ * stored compilation) and
  * exposes the [ScriptingHost] contract from `:pipeline-scripting-api`.
  *
  * Design contract (see design.md §"Adapter shape"):
@@ -50,9 +51,8 @@ import kotlin.script.experimental.jvmhost.createJvmCompilationConfigurationFromT
 class Kotlin24ScriptingHost(
     private val eventSink: EventSink = NullEventSink,
     private val runId: String? = null,
+    private val cache: CompiledScriptCache = CompiledScriptCache.fromEnvironment(),
 ) : ScriptingHost {
-
-    private val host = BasicJvmScriptingHost()
 
     /** Kotlin language version fed into the cache key. */
     private val kotlinVersion = "2.4.10"
@@ -176,6 +176,16 @@ class Kotlin24ScriptingHost(
         // a step that never legitimately existed. Mapping it to a compilation
         // Failure restores the honest category: the pipeline could not be
         // BUILT, and nothing was admitted.
+        // Identity is computed BEFORE the compilation so the same value can be
+        // handed to the cache (as the store key) and to the emitted event. A key
+        // derived inside the caching host instead would be a second derivation
+        // of one fact, and the two could disagree without any visible symptom.
+        val cacheKey = cacheKeyFor(scriptText, sortedClasspath)
+
+        // A fresh host per compilation: the cache key is fixed data for this one
+        // compilation, so this object carries no mutable state across compiles.
+        val host = CachingJvmScriptingHost(cache, cacheKey)
+
         val rwd: ResultWithDiagnostics<*> = try {
             host.evalWithTemplate<Any>(
                 source,
@@ -229,9 +239,6 @@ class Kotlin24ScriptingHost(
         val diagnostics = rwd.reports
             .filter { it.severity >= ScriptDiagnostic.Severity.INFO }
             .map(::mapDiagnostic)
-        // scriptText is already captured at line 78; reuse it for the cache key.
-        val cacheKey = cacheKeyFor(scriptText, sortedClasspath)
-
         val result = if (rwd is ResultWithDiagnostics.Success) {
             @Suppress("UNCHECKED_CAST")
             val evalResult = rwd.value as kotlin.script.experimental.api.EvaluationResult

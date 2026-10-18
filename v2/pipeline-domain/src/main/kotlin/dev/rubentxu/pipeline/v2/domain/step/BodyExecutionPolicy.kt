@@ -275,6 +275,7 @@ data class RetryPolicy(
 data class WaitUntilShape(
     val initialRecurrencePeriodMs: Long = DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS,
     val quiet: Boolean = false,
+    val maxBackoffMs: Long = DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS,
 )
 
 /**
@@ -290,6 +291,22 @@ data class WaitUntilShape(
  * was dead for a different reason, so the disagreement was invisible rather than harmless.
  */
 const val DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS: Long = 1_000L
+
+/**
+ * The backoff ceiling a `waitUntil` polls with when neither the call site nor its payload
+ * declares one.
+ *
+ * The second half of the waitUntil default authority, beside
+ * [DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS]. It lives in the domain rather than in the
+ * wire codec because the DSL surface needs it too: once `StageScope.waitUntil` exposes the
+ * ceiling, `StepSpec` and `StageScope` must default to the same value, and an `internal`
+ * constant in `pipeline-application` cannot be named from `pipeline-scripting-api`. A second
+ * literal on the DSL side would be a second authority for the same question -- which is how
+ * six sites ended up declaring three `1000L` and three `1L` for the cadence.
+ *
+ * `60_000ms` is the value every polling branch used before the ceiling became readable.
+ */
+const val DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS: Long = 60_000L
 
 /**
  * Structural parallel parameters that are a property of the Step KIND: the key

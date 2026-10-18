@@ -172,4 +172,52 @@ class Lfc2WaitUntilDslCanonicalProjectionTest {
                 "pluginStepId: ${waitUntilStep.pluginStepId.value}.",
         )
     }
+
+    /**
+     * A ceiling a caller spells must arrive in the compiled payload.
+     *
+     * The productive authority this crosses is [DslCompiledPipelineCompiler.compile] — the same
+     * entry point the two rows above use, from a `StepSpec` to a `BlockStepNode` and its encoded
+     * payload. Nothing between the call site and the bytes is stubbed.
+     *
+     * Before this row the DSL had no way to say a ceiling at all, so the field existed only on
+     * tests and on the wire codec. That is the shortcut the ROADMAP refuses: teaching a reader
+     * to parse a key that no emitter produces consagres a parameter nothing can set, and the
+     * typed exposure rewrites the same files one step later regardless.
+     */
+    @Test
+    fun `a ceiling the caller spells must reach the compiled payload`() {
+        val spec = PipelineSpec(
+            stages = listOf(
+                StageSpec(
+                    name = "ceiling-test",
+                    steps = listOf(
+                        StepSpec.WaitUntilBlock(
+                            initialRecurrencePeriod = 25L,
+                            quiet = false,
+                            maxBackoffMs = 2500L,
+                            body = listOf(StepSpec.Shell(command = "test -f /tmp/marker")),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val compiled = DslCompiledPipelineCompiler.compile(
+            spec = spec,
+            sourcePath = "ceiling-test.pipeline.kts",
+            sourceContent = """pipeline { stages { stage("ceiling-test") { waitUntil(25L) { sh("test -f /tmp/marker") } } } }""",
+            pluginLockDigest = Digest("test-lock"),
+        )
+
+        val block = (compiled.stages.single().body as StageBody.Steps).steps.single() as BlockStepNode
+        val payload = Json.parseToJsonElement(block.payload.encoded) as JsonObject
+
+        assertTrue(
+            payload["maxBackoffMs"]?.toString()?.trim('"') == "2500",
+            "StageScope.waitUntil(maxBackoffMs = 2500) must reach the compiled payload. " +
+                "Without it the field is settable only by a test, and the projection's reader of " +
+                "maxBackoffMs has no emitter. Payload: ${block.payload.encoded}",
+        )
+    }
 }

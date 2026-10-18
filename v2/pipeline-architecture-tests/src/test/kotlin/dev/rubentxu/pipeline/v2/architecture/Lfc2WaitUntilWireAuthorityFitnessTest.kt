@@ -78,27 +78,102 @@ class Lfc2WaitUntilWireAuthorityFitnessTest {
     )
 
     /**
-     * Every file in the chain that decides what an undeclared cadence means.
+     * A site in the default-authority chain: its path, what it is, and — for a site that does
+     * not own the value — the token that proves it delegates rather than invents.
      *
-     * Denominator is six files, named: the descriptor that owns the value, the two DSL
-     * surfaces a caller writes, the block carrier, the block codec's absent-key branch and
-     * the registry carrier plus its own absent-key branch. Named rather than globbed so
-     * that a file joining the chain forces an edit here instead of silently escaping the
-     * census — the guard cannot see a subject it was never told about.
+     * `delegatesTo == null` means the field is not part of that file's carrier at all. It is not
+     * an exemption: the global literal count still scans this file, so a value written here is
+     * fatal even though the site is not required to name the constant.
      */
-    private val cadenceAuthorityFiles = listOf(
-        "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy.kt" to
-            "WaitUntilShape.initialRecurrencePeriodMs",
-        "pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/StepSpec.kt" to
+    private data class DefaultSite(
+        val rel: String,
+        val label: String,
+        val delegatesTo: String?,
+    )
+
+    private val cadenceChain = listOf(
+        DefaultSite(
+            "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy.kt",
+            "WaitUntilShape.initialRecurrencePeriodMs (OWNER: declares the constant)",
+            null,
+        ),
+        DefaultSite(
+            "pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/StepSpec.kt",
             "StepSpec.WaitUntilBlock.initialRecurrencePeriod",
-        "pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/StageScope.kt" to
+            "DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS",
+        ),
+        DefaultSite(
+            "pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/StageScope.kt",
             "StageScope.waitUntil(initialRecurrencePeriod)",
-        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilInput.kt" to
+            "DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS",
+        ),
+        DefaultSite(
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilInput.kt",
             "CoreWaitUntilInput.initialRecurrencePeriod",
-        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilWireCodec.kt" to
+            "DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS",
+        ),
+        DefaultSite(
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilWireCodec.kt",
             "CoreWaitUntilWireCodec absent-key branch",
-        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilStep.kt" to
+            "DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS",
+        ),
+        DefaultSite(
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilStep.kt",
             "WaitUntilInput.initialRecurrencePeriod + registry decoder absent-key branch",
+            "DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS",
+        ),
+        DefaultSite(
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalStructuralDecisions.kt",
+            "projectWaitUntilScope absent-key branch",
+            "shape.initialRecurrencePeriodMs",
+        ),
+    )
+
+    /**
+     * The same chain for the ceiling, which is one file shorter and for a real reason.
+     *
+     * `core.waitUntil` has TWO carriers with two vocabularies: the registry invocation
+     * (`kind="waitUntil"`, `CoreWaitUntilStep`) and the block IR (`kind="waitUntilBlock"`,
+     * `CoreWaitUntilWireCodec`). The ceiling belongs to the block, so the registry carrier
+     * legitimately does not mention it. Naming it there would be as wrong as inventing it
+     * there, which is why this list is not the cadence list reused verbatim.
+     */
+    private val ceilingChain = listOf(
+        DefaultSite(
+            "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy.kt",
+            "DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS (OWNER: declares the constant)",
+            null,
+        ),
+        DefaultSite(
+            "pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/StepSpec.kt",
+            "StepSpec.WaitUntilBlock.maxBackoffMs",
+            "DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS",
+        ),
+        DefaultSite(
+            "pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/StageScope.kt",
+            "StageScope.waitUntil(maxBackoffMs)",
+            "DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS",
+        ),
+        DefaultSite(
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilInput.kt",
+            "CoreWaitUntilInput.maxBackoffMs",
+            "DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS",
+        ),
+        DefaultSite(
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilWireCodec.kt",
+            "CoreWaitUntilWireCodec absent-key branch",
+            "DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS",
+        ),
+        DefaultSite(
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilStep.kt",
+            "registry carrier: the ceiling is not in this vocabulary",
+            null,
+        ),
+        DefaultSite(
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalStructuralDecisions.kt",
+            "projectWaitUntilScope absent-key branch",
+            "shape.maxBackoffMs",
+        ),
     )
 
     private fun path(rel: String) = ScannerSupport.v2Root().resolve(rel)
@@ -227,46 +302,99 @@ class Lfc2WaitUntilWireAuthorityFitnessTest {
      * actually executes today is `1000L` ([WaitUntilShape]'s Jenkins-parity default),
      * so that is the one the whole chain must name.
      *
-     * Denominator: [cadenceAuthorityFiles], six named files. One literal — the constant's
-     * own declaration — and five references to it.
+     * Denominator: [cadenceChain], six delegating sites plus the owner, all named. One literal —
+     * the constant's own declaration — and every other site proves delegation by naming the
+     * constant or, for the projection, the descriptor it reads.
      */
     @Test
-    fun `the poll cadence default is declared once and named everywhere else`() {
-        val declaration = Regex(
-            // Both shapes a site can declare the value with: a camelCase property named
-            // `initialRecurrencePeriod…`, or the SCREAMING_SNAKE constant that now owns it.
-            // Keying on either one alone is how this row first reported "Found 0" on a tree
-            // that still held exactly one literal — an instrument narrower than its subject
-            // reports the correct answer for the wrong reason.
-            """(?:\w*[iI]nitialRecurrencePeriod\w*|\w*RECURRENCE_PERIOD\w*)\s*(?::\s*Long\s*)?=\s*([0-9][0-9_]*)L?""",
+    fun `the poll cadence default is declared once and named everywhere else`() =
+        assertDeclaredOnce(
+            label = "poll cadence",
+            chain = cadenceChain,
+            declaration = Regex(
+                // Both shapes a site can declare the value with: a camelCase property named
+                // `initialRecurrencePeriod…`, or the SCREAMING_SNAKE constant that now owns it.
+                // Keying on either one alone is how this row first reported "Found 0" on a tree
+                // that still held exactly one literal — an instrument narrower than its subject
+                // reports the correct answer for the wrong reason.
+                """(?:\w*[iI]nitialRecurrencePeriod\w*|\w*RECURRENCE_PERIOD\w*)\s*(?::\s*Long\s*)?=\s*([0-9][0-9_]*)L?""",
+            ),
+            owner = "WaitUntilShape.initialRecurrencePeriodMs (OWNER",
         )
-        val literals = cadenceAuthorityFiles.flatMap { (rel, site) ->
-            declaration.findAll(codeOnly(read(path(rel)))).map { "${site} = ${it.groupValues[1]}" }.toList()
+
+    /**
+     * The same law for the backoff ceiling, and it earns its own row because exposing the
+     * ceiling on the DSL surface created two more declaration sites on the same day.
+     *
+     * The ceiling was previously declared once, as an `internal` constant in
+     * `pipeline-application`. That was fine while the ceiling had no DSL surface; it stopped
+     * being usable the moment `StageScope.waitUntil(maxBackoffMs = …)` needed a default, because
+     * `pipeline-scripting-api` cannot name an `internal` in `pipeline-application`. The constant
+     * moved to the domain authority beside the cadence, and this row holds it there.
+     *
+     * Writing this row is what paid for itself immediately: it found a second literal nobody
+     * had noticed, `private const val MAX_BACKOFF_MS = 60_000L` in `CoreWaitUntilStep`, whose
+     * only occurrence in the whole repository was its own declaration. A private constant with
+     * no reader is not a style question: it is a value that looks authoritative and disagrees
+     * with the authority on any change to either. Deleted.
+     */
+    @Test
+    fun `the backoff ceiling default is declared once and named everywhere else`() =
+        assertDeclaredOnce(
+            label = "backoff ceiling",
+            chain = ceilingChain,
+            declaration = Regex(
+                """(?:\w*[mM]axBackoff\w*|\w*MAX_BACKOFF\w*)\s*(?::\s*Long\s*)?=\s*([0-9][0-9_]*)L?""",
+            ),
+            owner = "DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS (OWNER",
+        )
+
+    /**
+     * One literal, written once, at the site that owns it — and every other site proves it
+     * delegates by naming [DefaultSite.delegatesTo].
+     *
+     * The delegation token is per-site rather than a single constant for the whole chain
+     * because the projection legitimately does not name the constant: it is the READER, and an
+     * absent key means `WaitUntilShape`, so the projection asks the descriptor rather than
+     * repeating its value. Demanding the constant there would have been the same
+     * second-authority mistake this row exists to prevent, in the guard instead of the code.
+     *
+     * The literal count is global over the chain regardless of `delegatesTo`: a site with no
+     * delegation token is still scanned, so a value written there fails the count rather than
+     * passing as an exemption.
+     */
+    private fun assertDeclaredOnce(
+        label: String,
+        chain: List<DefaultSite>,
+        declaration: Regex,
+        owner: String,
+    ) {
+        val literals = chain.flatMap { site ->
+            declaration.findAll(codeOnly(read(path(site.rel))))
+                .map { "${site.label} = ${it.groupValues[1]}" }
+                .toList()
         }
 
         assertTrue(
             literals.size == 1,
-            "The undeclared poll cadence must be written as a numeric literal exactly once, in " +
-                "the descriptor that owns it. Found ${literals.size}: $literals. Every additional " +
-                "literal is a second authority for a value the projection now reads from the " +
-                "payload, so the two sites can disagree without anything failing.",
+            "The undeclared $label must be written as a numeric literal exactly once, in the " +
+                "descriptor that owns it. Found ${literals.size}: $literals. Every additional " +
+                "literal is a second authority for a value the projection reads from the payload, " +
+                "so the two sites can disagree without anything failing.",
         )
         assertTrue(
-            literals.single().startsWith("WaitUntilShape"),
-            "The one surviving literal must be WaitUntilShape's own declaration, the Jenkins " +
-                "parity default that actually executes today, not: ${literals.single()}",
+            literals.single().startsWith(owner),
+            "The one surviving $label literal must be $owner's own declaration, not: ${literals.single()}",
         )
 
-        val name = "DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS"
-        val unnamed = cadenceAuthorityFiles
-            .filterNot { (rel, site) -> site.startsWith("WaitUntilShape") }
-            .filter { (rel, _) -> !codeOnly(read(path(rel))).contains(name) }
-            .map { it.second }
+        val notDelegating = chain
+            .filterNot { it.label.startsWith(owner) }
+            .filter { site -> site.delegatesTo?.let { !codeOnly(read(path(site.rel))).contains(it) } ?: false }
+            .map { "${it.label} does not name ${it.delegatesTo}" }
         assertTrue(
-            unnamed.isEmpty(),
-            "Every other site must name the constant instead of inventing a value: $unnamed. " +
-                "A literal here is a cadence that can drift from the descriptor without a " +
-                "failing test.",
+            notDelegating.isEmpty(),
+            "Every other site must delegate instead of inventing a value. Offenders: $notDelegating. " +
+                "A literal here is a value that can drift from the descriptor without a failing test.",
         )
     }
 }

@@ -842,6 +842,12 @@ public final class dev/rubentxu/pipeline/v2/output/RunLifecycle$Terminal : dev/r
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/output/StreamingUtf8Decoder {
+	public fun <init> ()V
+	public final fun decode ([B)Ljava/lang/String;
+	public final fun reset ()V
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/output/follow/FollowState {
 }
 

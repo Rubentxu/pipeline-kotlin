@@ -138,7 +138,7 @@ reintentar.
 | Fase | WUs | Tests afectados |
 |---|---|---|
 | **M0 — Bootstrap del harness** | WU-HARNESS-001 + 002 (esquema manifiesto) | Preparación, sin UATs aún. |
-| **M1 — Migración inicial (~14 tests, sin sandbox)** | WU-HARNESS-003 + WU-HARNESS-004 r1 | `UatLocal003..004`, `UatDsl*`, `UatStep001..004`, `UatDurableDefaultReuse*`, `UatTimeout/Retry/Parallel*`, `UatEvt001..002*`, `UatLocal011..013`, `UatLocal005Corpus/Env/Regression/RequiresGit`, `UatCompat001` (parte que no necesita sandbox), `v2/pipeline-testkit/UatM0001*`, `v2/pipeline-scripting-kotlin24/UatComp*`. |
+| **M1 — Migración inicial (~14 tests, sin sandbox)** | WU-HARNESS-003 + WU-HARNESS-004 r1 | `UatLocal003..004`, `UatLocal009TopSteps*`, `UatDsl*`, `UatStep001..004`, `UatDurableDefaultReuse*`, `UatTimeout/Retry/Parallel*`, `UatEvt001..002*`, `UatLocal011..013`, `UatLocal005Corpus/Env/Regression/RequiresGit`, `UatCompat001` (parte que no necesita sandbox), `v2/pipeline-testkit/UatM0001*`, `v2/pipeline-scripting-kotlin24/UatComp*`. |
 | **M2 — Sandbox (~17 tests, con Podman/Docker)** | WU-HARNESS-006 | `UatLocal001..002Kill/Resume`, `UatLocal005Checkout/AuthCanary`, `UatLocal006/007`, `UatLocal010*E2E`, `Lpr011*`, `PublishHtmlAdapter`, `StashOpsAdapter`, `UatCompat001` parte sandbox. |
 | **M3 — Cierre formal** | WU-HARNESS-008 | Apertura del gate de promoción con todos los movimientos cerrados. |
 

@@ -86,3 +86,107 @@ Si la política de migración se define en B1 (este bloque), WIP-4 reabre. Si se
 ## Próximo paso
 
 WIP-5: §1.3 RUN-01 — atomicidad de `RunIdDirectory.record`.
+---
+
+# Addendum 2026-10-18 — la decisión anterior era un menu cerrado, y OUT-01 ya está cerrado
+
+Este addendum no reescribe la reproduced arriba; la conserva como evidencia de
+su propio SHA. Registra por qué la "Decisión sobre el fix" de arriba ya no
+describe el estado real.
+
+## La premisa de la decisión era falsa
+
+El recibo decidió **no** tocar OUT-01 porque "cualquier fix toca el formato
+físico", y a continuación listó las dos únicas opciones que contempló:
+
+```text
+  - hashear safeStreamName          -> cambia nombres en disco
+  - hashear runPrefix               -> cambia nombres en disco
+```
+
+Ambas cambian el formato. La conclusión "necesita política de migración" se
+sostiene **dentro de ese menú** — pero el menú estaba incompleto. La tercera
+rama nunca se escribió: **cambiar solo el predicado de selección**. No cambia
+ningún nombre en disco. Por tanto la decisión pendiente era del artefacto, no
+del formato, y la pregunta que había que responder era "¿qué tendría que
+cambiar en disco?", no "¿qué formato nuevo propondemos?".
+
+## Además, OUT-01 es una COLISIÓN DE PREFIJO, no una falta de inyectividad
+
+`safe` podía ser inyectiva y el defecto seguiría existiendo: `run` produce el
+prefijo `run_`, y el directorio de `run_x` empieza por `run_`. Nada se pliega.
+Esto importa porque descarta de raíz la mitad del menú (hash por nombre), que
+era la que sí habría exigido migración.
+
+## Y el arreglo "solo lo declarado" tampoco era el fix
+
+Es la rama que este addendum midió y **descartó**. `declareStream` rechaza por
+diseño un id cuyo último segmento no sea un token de canal, y
+`ShExecution.ingestTranscriptIntoOutputPlane` (`ShExecution.kt:148`) escribe
+exactamente esa forma (`OutputPlaneProvider.streamId(runId, opId)` →
+`.../transcript`) en cada paso `sh`. Seleccionar solo lo declarado deja la
+transcripción durable de producción **permanentemente impodable**: no borra
+nada, no avisa a nadie. Medido el 2026-10-18 como **10 filas rojas en 5 clases**
+de `:pipeline-output-store:test`.
+
+```text
+  prefix puro     prune("run") borra run_x   -> perdida de datos en otro run
+  solo declarado  prune("run") borra nada    -> fuga de retencion silenciosa
+```
+
+## Estado real tras 4f220c1c
+
+```text
+OUT-01  CERRADO. Predicado de seleccion de prune por pertenencia probada.
+OUT-02  Sigue @Disabled. Requiere decision de formato y NO fue tocado:
+        `safeStreamName` no es inyectivo (`run/abc` y `run_abc` colapsan a
+        `run_abc`) y no hay ningun byte dentro del directorio que cargue el
+        runId. No se mejora con este trabajo, y no se afirma lo contrario.
+```
+
+Layout en disco: **sin cambios**. Los directorios mantienen sus nombres.
+
+Evidencia (mismo SHA, XML fresco):
+
+```text
+:pipeline-output-store:test  15 clases, 136 tests, 0 fallos, 0 errores, 1 skip (OUT-02)
+consumidores de prune, :pipeline-application:test
+  RunOutputRetentionTest, RetentionAuthorityFitnessTest,
+  B1aOutputPlaneProviderLifecycleCharacterizationTest,
+  B1aShNonDurableRouteCharacterizationTest, ScriptedStageExecutionTest
+                             5 clases, 33 tests, 0 fallos
+```
+
+Dientes por mutación, ambas ramas del predicado:
+
+```text
+  quitar la exclusión por declaración -> solo prefijo   -> mata OUT-01
+  quitar la rama de no declarados     -> solo declarado -> mata 11 filas
+```
+
+### Residuo irreducible, declarado
+
+Dos runs cuyos nombres seguros colisionan por prefijo y cuyos streams son
+**ambos no declarados** siguen siendo indistinguibles en disco, y podar el más
+corto borra la transcripción legacy del más largo. No hay byte dentro del
+directorio que cargue el runId (`Layout` solo contiene cur.seg / cur.cmt /
+cur.res / sealed / seal / ownership, y el lock de ownership nunca se lee como
+contenido). Ese resto es más estrecho que el defecto original exactamente en el
+conjunto de streams que algún run declaró.
+
+## Contrato de cierre del WU
+
+```text
+Implementacion de referencia consultada: ninguna externa. La semantica de
+  retencion y la forma del Output Plane son internas; el baseline de Jenkins no
+  aporta aqui.
+Comportamiento adoptado:  la pertenencia se prueba, no se infiere del nombre.
+Desviaciones intencionadas: ninguna.
+Implicaciones de seguridad revisadas: n/a para este WU (no hay credenciales ni
+  superficie de datos exposed; el cambio reduce una via de perdida de datos).
+Tests que demuestran el contrato:
+  SegmentOutputStoreTest."OUT-01 prune of a short runId must not delete
+    streams of a longer runId sharing the safe prefix"
+  SegmentOutputStoreTest."an undeclared pre-channel stream is still pruned -
+    declaring is not the only ownership evidence"
+```

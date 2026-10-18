@@ -83,6 +83,46 @@ object CandidateMaterializer {
                     "Refusing to write a manifest that would assert an unverified root.",
             )
 
+        // §8 — SHA256SUMS is where the proof that `covered` was digested is kept,
+        // so the two are decided together and BEFORE the manifest is built.
+        //
+        // A non-empty `covered` is a claim that those assets MUST be digested.
+        // With no `sha256sums` path there is nowhere to keep that proof, so the
+        // candidate is refused: materializing it would write a manifest whose
+        // `sha256sums` slot is null next to an asset list that nothing digested,
+        // and the file it DID write earlier (the SHA256SUMS of a smaller set) would
+        // still verify — the same silent absence as the `locateSbom` null, one
+        // layer down.
+        //
+        // An EMPTY `covered` is a genuinely different thing and is not refused:
+        // no assets declared means nothing to digest, and a pre-existing sums
+        // path is then a reference the manifest records without rewriting.
+        //
+        // Previously this was the `else -> null` arm of a `when`, which covered
+        // this case and returned null — while the comment above it claimed the
+        // case was refused. The comment was true about the intent and false about
+        // the code, and nothing measured which one shipped.
+        val sumsRef: DistributionArtifactRef? = when {
+            covered.isNotEmpty() -> {
+                val target = sha256sums
+                    ?: return MaterializationResult.Refused(
+                        "covered declares ${covered.size} asset(s) to digest, which is the whole " +
+                            "point of SHA256SUMS, but no path was given to write it. Refusing to " +
+                            "materialize a candidate whose manifest could only record " +
+                            "`sha256sums = null` next to assets it never digested; §8 of the " +
+                            "DISTRIBUTION-FIRST RELEASE POLICY fixes the asset set exactly, and a " +
+                            "digest that was never computed is a defect to fix, not a member to " +
+                            "ship around. Either pass the path to write, or declare an empty " +
+                            "`covered` if no assets are being certified.",
+                    )
+                Files.createDirectories(target.parent)
+                writeSha256Sums(target, covered)
+                DistributionArtifactRef(target.fileName.toString(), sha256Of(target))
+            }
+            else ->
+                sha256sums?.let { DistributionArtifactRef(it.fileName.toString(), sha256Of(it)) }
+        }
+
         val manifest = DistributionManifest(
             version = productVersion,
             asset = DistributionAsset(
@@ -96,24 +136,7 @@ object CandidateMaterializer {
             sbom = sbom?.let { DistributionArtifactRef(it.fileName.toString(), sha256Of(it)) },
             sdk = sdk?.let { DistributionArtifactRef(it.fileName.toString(), sha256Of(it)) },
             bom = bom?.let { DistributionArtifactRef(it.fileName.toString(), sha256Of(it)) },
-            // §8 — when the build passes a non-empty `covered` list, the
-            // materializer writes SHA256SUMS at the `sha256sums` path
-            // (overwriting any pre-existing file) and the manifest records
-            // the resulting digest. A pre-existing path with an empty
-            // `covered` is treated as a reference: the manifest records
-            // its digest but the file is not rewritten. A non-empty
-            // `covered` with a null `sha256sums` path is refused:
-            // SHA256SUMS is a contract artifact, not a courtesy.
-            sha256sums = when {
-                covered.isNotEmpty() && sha256sums != null -> {
-                    Files.createDirectories(sha256sums.parent)
-                    writeSha256Sums(sha256sums, covered)
-                    DistributionArtifactRef(sha256sums.fileName.toString(), sha256Of(sha256sums))
-                }
-                covered.isEmpty() && sha256sums != null ->
-                    DistributionArtifactRef(sha256sums.fileName.toString(), sha256Of(sha256sums))
-                else -> null
-            },
+            sha256sums = sumsRef,
         )
 
         val handoff = CandidateHandoff(

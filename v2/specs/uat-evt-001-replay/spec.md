@@ -62,7 +62,7 @@ fields, and `cacheKey` when present).
 - AND `events[1].kind == "CompilationStarted"`
 - AND `events[2].kind == "CompilationFinished"`
 - AND `events[3].kind == "RunFinished"`
-- AND `events[2].cacheKey.version == "v1"`
+- AND `events[2].cacheKey.version == "v2"`
 - AND `events[2].cacheKey.value` is 64-char hex
 
 ### Requirement: Replay equality is stable across two runs

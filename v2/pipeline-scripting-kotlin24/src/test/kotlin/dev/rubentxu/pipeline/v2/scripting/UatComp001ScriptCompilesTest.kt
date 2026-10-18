@@ -60,7 +60,10 @@ class UatComp001ScriptCompilesTest {
 
         assertEquals(result1.cacheKey.value, result2.cacheKey.value,
             "Cache key must be identical across evaluations")
-        assertEquals("v1", result1.cacheKey.version,
-            "Cache key version must be v1")
+        // The label moved v1 -> v2 when the identity completed to the shape declared by
+        // SCRIPTING_COMPILER_SPEC.md §7. See CacheKey.kt and the migration plan in
+        // docs/v2/07-uat/CACHE_KEY_V2_MIGRATION_PLAN.md.
+        assertEquals("v2", result1.cacheKey.version,
+            "Cache key version must be v2")
     }
 }

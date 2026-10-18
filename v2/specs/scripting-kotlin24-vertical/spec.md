@@ -9,8 +9,11 @@ Observable contract for the V2 Kotlin 2.4.10 scripting adapter
 ## Domain Language
 
 - `ScriptDefinition`: source text/path + `List<String>` classpath + properties.
-- `CacheKey`: versioned data class `CacheKey(value, version)`. Version `v1` is active;
-  `v2` is reserved. `sha256Hex(parts...)` joins parts with `|`, then SHA-256s UTF-8 bytes.
+- `CacheKey`: versioned data class `CacheKey(value, version)`. Version `v2` is active
+  (length-framed pre-image plus the compiler options as a dimension);
+  `v1` is retained unchanged so values already written under its label stay
+  interpretable. `sha256Hex(parts...)` joins parts with `|`, then SHA-256s UTF-8
+  bytes; it is `v1`'s pre-image and new algorithms do not use it.
 - `ScriptCompilationResult`: success value or diagnostics, plus stable `CacheKey`.
 - `ScriptingDiagnostic`: severity, message, line, column, source path.
 
@@ -57,33 +60,48 @@ mentioning the fixture file when the fixture has a type error.
 
 `CacheKey` SHALL be a `data class CacheKey(value: String, version: String)` in
 `:pipeline-scripting-api`. Version tags are `V1 = "v1"` and `V2 = "v2"` as
-companion constants. `CacheKey.v2.compute(...)` throws
-`UnsupportedOperationException("v2 reserved — algorithm not introduced in M1-R2")`.
+companion constants. `CacheKey.Companion.v2.compute(identity)` is the active
+algorithm: it digests a **length-framed** pre-image over the dimensions named by
+`SCRIPTING_COMPILER_SPEC.md` §7, with the compiler options each contributing
+their own framed part. `CacheKey.Companion.v1.compute(...)` is retained
+byte-identical so a value already written under the `v1` label still decodes with
+the recipe that produced it.
 
 #### Scenario: v1.compute returns CacheKey with version v1
 
-- GIVEN `CacheKey.v1.compute(scriptText, classpath, kotlinVersion, hostVersion)`
+- GIVEN `CacheKey.Companion.v1.compute(scriptText, classpath, kotlinVersion, hostVersion)`
 - THEN the returned `CacheKey.value` is a 64-char hex string
 - AND `CacheKey.version == "v1"`
 
-#### Scenario: v2.compute throws
+#### Scenario: v2.compute returns CacheKey with version v2 and is injective on the assignment
 
-- GIVEN `CacheKey.v2.compute(...)`
-- WHEN it is called
-- THEN it throws `UnsupportedOperationException` with message containing "v2 reserved"
+- GIVEN two `CompilationIdentity` values differing only in how a separator falls
+  across two dimensions (a `|` inside `approvedClasspath` vs. at the boundary
+  between `approvedClasspath` and the first `compilerOptions` entry)
+- WHEN `CacheKey.Companion.v2.compute(...)` is called for each
+- THEN the two `CacheKey.value` differ AND each is 64-char hex
+- AND `CacheKey.version == "v2"`
+
+#### Scenario: v2.compute treats the compiler options as an ordered set
+
+- GIVEN two `CompilationIdentity` values that differ only in the compiler
+  options passed, or only in their order
+- WHEN `CacheKey.Companion.v2.compute(...)` is called for each
+- THEN the two `CacheKey.value` differ
 
 ### Requirement: Stable compiler cache key (versioned contract)
 
 The system SHALL expose `cacheKey: CacheKey` in every `ScriptCompilationResult`.
-`CacheKey.v1.compute(...)` returns `CacheKey(sha256Hex(...), "v1")`.
-`sha256Hex(parts...)` joins parts with `|`, then SHA-256s UTF-8 bytes.
-Identical across two evaluations of the same input.
+The host computes it with `CacheKey.Companion.v2.compute(...)`, so the value is
+64-char hex under the `v2` label. Identical across two evaluations of the same
+input. (`CacheKey.Companion.v1.compute(...)` still returns
+`CacheKey(sha256Hex(...), "v1")` — it is retained, not removed.)
 
 #### Scenario: cache key stable across two evals
 
 - GIVEN the same `ScriptDefinition`
 - WHEN `compile(...)` runs twice
-- THEN both `cacheKey.value` are equal AND `cacheKey.version == "v1"`
+- THEN both `cacheKey.value` are equal AND `cacheKey.version == "v2"`
 
 #### Scenario: cache key varies when classpath changes
 
@@ -156,7 +174,7 @@ carry `path` equal to that path (or canonical form). When only
 - WHEN the result is inspected
 - THEN `isSuccess == true` AND `value != null` AND
   `diagnostics.isEmpty()` AND `cacheKey.value` is 64-char hex AND
-  `cacheKey.version == "v1"`
+  `cacheKey.version == "v2"`
 
 #### Scenario: failure shape
 
@@ -164,4 +182,4 @@ carry `path` equal to that path (or canonical form). When only
 - WHEN the result is inspected
 - THEN `isSuccess == false` AND `value == null` AND
   `diagnostics.isNotEmpty()` AND `cacheKey.value` is 64-char hex AND
-  `cacheKey.version == "v1"`
+  `cacheKey.version == "v2"`

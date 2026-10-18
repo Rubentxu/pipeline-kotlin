@@ -32,7 +32,9 @@ class UatComp002ErrorSourceMappedTest {
 
         assertFalse(result.isSuccess, "Expected compilation failure for broken script")
         assertTrue(result.diagnostics.isNotEmpty(), "Expected at least one diagnostic")
-        assertEquals("v1", result.cacheKey.version, "Cache key version must be v1")
+        // Label moved v1 -> v2 with the identity; see CacheKey.kt and
+        // docs/v2/07-uat/CACHE_KEY_V2_MIGRATION_PLAN.md.
+        assertEquals("v2", result.cacheKey.version, "Cache key version must be v2")
         assertEquals(64, result.cacheKey.value.length, "Cache key value must be 64-char hex")
 
         val errors = result.diagnostics.filter { it.severity == ScriptDiagnosticSeverity.ERROR }

@@ -277,6 +277,37 @@ dependencies {
 // state after any prior `:pipeline-application:installDist`.
 
 tasks.test {
+    // SOURCE-SCANNING FITNESS INPUT (2026-10-18).
+    //
+    // A handful of fitnesses in this lane read OTHER modules' `.kt` files from the filesystem at
+    // runtime (`LiveFollowHandleIsBoundedFitnessTest` walks `v2/**/src/test`; ~10 others walk or
+    // readText() a source tree). Gradle only tracks what a task declares, so those files were
+    // invisible to the up-to-date check: editing `SegmentOutputFollowerTest.kt` — removing the very
+    // `@Timeout` the fitness exists to require — left `:pipeline-application:test` UP-TO-DATE and
+    // the build cache RESTORED its XML verbatim. The run reported exit=0 with a green row, and the
+    // green was from a previous day:
+    //
+    //     :pipeline-application:test --tests '*LiveFollowHandleIsBoundedFitnessTest'
+    //     BUILD SUCCESSFUL in 1s
+    //     70 actionable tasks: 1 from cache, 69 up-to-date
+    //     tests="2" failures="0" timestamp="2026-10-18T11:03:20.385Z"   <- unchanged by the mutation
+    //
+    // This matters more than it looks: AGENTS.md rule 2 makes Gradle's content-hash up-to-date check
+    // THE freshness oracle for the round gate, and rule for the certification policy requires the
+    // round gate to run on the exact SHA. This repo has no remote CI (removed in `754ddda0`), so an
+    // oracle that can silently serve a stale green is not a convenience defect — it invalidates the
+    // only gate available.
+    //
+    // The tree is the declared input. The cost is that editing any test source in any module now
+    // invalidates this lane; the content-hash check still short-circuits a genuine no-op, so the
+    // inner loop keeps its "0 real edits = 1s" property. Correcting the oracle is worth that.
+    inputs.files(
+        fileTree(rootProject.projectDir) {
+            include("**/src/test/**/*.kt")
+            exclude("**/build/**")
+        },
+    ).withPropertyName("scannedTestSources").withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+
     // H1 TODO 3: the fast lane (`:test`) MUST NOT depend on
     // `:buildExamplePlugin` / `:buildExternalDirectivePlugin`
     // / `:buildExampleBlockPlugin`. Those three tasks build

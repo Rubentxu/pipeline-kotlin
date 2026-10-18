@@ -21,9 +21,13 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.concurrent.thread
 
 /**
  * M1-B — real-store contract test for the [SegmentOutputFollower] backed by
@@ -70,7 +74,52 @@ import java.nio.file.Path
  *     `FollowUntil` is `UntilAllSealed`. The application-layer adapter
  *     joins the event plane for terminality.
  */
+@Timeout(value = 30, unit = TimeUnit.SECONDS)
 class SegmentOutputFollowerTest {
+
+    /**
+     * The poll cadence this class uses for every follow it opens.
+     *
+     * A constant rather than a literal because the value `0` appeared 15 times here, and `0` is
+     * not a faster test — it is a configuration the product now refuses.
+     *
+     * `pollIntervalMs` is the wait BETWEEN polls of a live follow. At `0` the wait is skipped, so
+     * a follow that has run out of history re-polls in a tight loop against a live SQLite
+     * connection. The loop then sits inside a native call, where the thread does not observe the
+     * interrupt flag, so neither `@Timeout` nor a stop signal preempts it: the same failure was
+     * measured in the events twin (`NativeDB.column_name_utf8`, 331 s wall / 298 s CPU, with a
+     * class-level `@Timeout(30)` declared and never fired).
+     *
+     * The follower therefore requires a POSITIVE interval. `1` is the smallest value that
+     * satisfies it: it keeps the test fast and still turns the spin into an await, which is what
+     * makes the row interruptible.
+     */
+    private val LIVE_POLL_MS = 1L
+
+    /**
+     * Budget for "the consumer parked in the sleep" and "close woke it". Both are generous next to
+     * the 60000 ms poll interval row 17 installs, so neither can pass by accident.
+     */
+    private val BUDGET_MILLIS = 5_000L
+
+    /**
+     * True once [thread] is inside a wait, false if it terminated first.
+     *
+     * Polling the thread STATE rather than sleeping a fixed time is what makes row 17 discriminate:
+     * the row must not close before the consumer is genuinely parked, or the wake-up path is never
+     * exercised and `hasNext()` returns false from the `closed` check instead.
+     */
+    private fun awaitBlocked(thread: Thread, budgetMillis: Long): Boolean {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(budgetMillis)
+        while (System.nanoTime() < deadline) {
+            when (thread.state) {
+                Thread.State.WAITING, Thread.State.TIMED_WAITING -> return true
+                Thread.State.TERMINATED -> return false
+                else -> Thread.onSpinWait()
+            }
+        }
+        return false
+    }
 
     // -------------------------------------------------------------- helpers
 
@@ -106,7 +155,7 @@ class SegmentOutputFollowerTest {
     @Suppress("UnusedParameter") // options is reserved for overrides that flip pollIntervalMs; the default below keeps the helper call-site tidy.
     private fun follower(
         store: SegmentOutputStore,
-        options: OutputFollowOptions = OutputFollowOptions(pollIntervalMs = 0L),
+        options: OutputFollowOptions = OutputFollowOptions(pollIntervalMs = LIVE_POLL_MS),
     ): SegmentOutputFollower = SegmentOutputFollower(
         read = store,
         frames = store.frameIndex(),
@@ -142,7 +191,7 @@ class SegmentOutputFollowerTest {
         val store = openStore(root)
         val follower = follower(store)
 
-        val handle = follower.open("run-missing", OutputFollowOptions(pollIntervalMs = 0L))
+        val handle = follower.open("run-missing", OutputFollowOptions(pollIntervalMs = LIVE_POLL_MS))
         try {
             val first = firstEvent(handle)
             val refused = assertInstanceOf(OutputFollowEvent.Refused::class.java, first)
@@ -175,7 +224,7 @@ class SegmentOutputFollowerTest {
         reservation.commit()
         assertTrue(store.hasOutputFor(runId), "byte directory must exist for the run")
 
-        val handle = follower(store).open(runId, OutputFollowOptions(pollIntervalMs = 0L))
+        val handle = follower(store).open(runId, OutputFollowOptions(pollIntervalMs = LIVE_POLL_MS))
         try {
             val events = drain(handle)
             assertEquals(2, events.size, "expected Unobservable + Completed, got $events")
@@ -203,7 +252,7 @@ class SegmentOutputFollowerTest {
 
         val handle = follower(store).open(
             runId,
-            OutputFollowOptions(pollIntervalMs = 0L, maxRecords = 16),
+            OutputFollowOptions(pollIntervalMs = LIVE_POLL_MS, maxRecords = 16),
         )
         try {
             val events = drain(handle)
@@ -237,7 +286,7 @@ class SegmentOutputFollowerTest {
         val handle = follower(store).open(
             runId,
             OutputFollowOptions(
-                pollIntervalMs = 0L,
+                pollIntervalMs = LIVE_POLL_MS,
                 pageMaxBytes = pageMax,
                 maxRecords = 64,
             ),
@@ -276,7 +325,7 @@ class SegmentOutputFollowerTest {
         val handle = follower(store).open(
             runId,
             OutputFollowOptions(
-                pollIntervalMs = 0L,
+                pollIntervalMs = LIVE_POLL_MS,
                 pageMaxBytes = 64,
                 maxRecords = 2, // cycle limit: 2 records per drainOnce
             ),
@@ -316,7 +365,7 @@ class SegmentOutputFollowerTest {
         val handle = follower(store).open(
             runId,
             OutputFollowOptions(
-                pollIntervalMs = 0L,
+                pollIntervalMs = LIVE_POLL_MS,
                 afterOrdinal = skip,
                 maxRecords = 64,
             ),
@@ -346,7 +395,7 @@ class SegmentOutputFollowerTest {
         val handle = follower(store).open(
             runId,
             OutputFollowOptions(
-                pollIntervalMs = 0L,
+                pollIntervalMs = LIVE_POLL_MS,
                 maxRecords = 16,
                 until = FollowUntil.UntilAllSealed(runId),
             ),
@@ -399,7 +448,7 @@ class SegmentOutputFollowerTest {
 
         val handle = follower(store).open(
             runId,
-            OutputFollowOptions(pollIntervalMs = 0L, maxRecords = 16),
+            OutputFollowOptions(pollIntervalMs = LIVE_POLL_MS, maxRecords = 16),
         )
         try {
             val first = firstEvent(handle)
@@ -530,7 +579,7 @@ class SegmentOutputFollowerTest {
         val handle = follower(store).open(
             runId,
             OutputFollowOptions(
-                pollIntervalMs = 0L,
+                pollIntervalMs = LIVE_POLL_MS,
                 until = FollowUntil.UntilAllSealed(runId),
             ),
         )
@@ -601,7 +650,7 @@ class SegmentOutputFollowerTest {
         val handle = follower(store).open(
             runId,
             OutputFollowOptions(
-                pollIntervalMs = 0L,
+                pollIntervalMs = LIVE_POLL_MS,
                 pageMaxBytes = 4,
                 maxRecords = 16,
             ),
@@ -659,7 +708,7 @@ class SegmentOutputFollowerTest {
         val handle = follower(store).open(
             runId,
             OutputFollowOptions(
-                pollIntervalMs = 0L,
+                pollIntervalMs = LIVE_POLL_MS,
                 until = FollowUntil.UntilAllSealed(runId),
             ),
         )
@@ -700,7 +749,7 @@ class SegmentOutputFollowerTest {
         // (no byte directory), so the first event is Refused(UnknownStream).
         val handle = follower(store).open(
             "run-unknown-refused",
-            OutputFollowOptions(pollIntervalMs = 0L),
+            OutputFollowOptions(pollIntervalMs = LIVE_POLL_MS),
         )
         try {
             val it = handle.iterator()
@@ -738,7 +787,7 @@ class SegmentOutputFollowerTest {
         val handle = follower(store).open(
             runId,
             OutputFollowOptions(
-                pollIntervalMs = 0L,
+                pollIntervalMs = LIVE_POLL_MS,
                 pageMaxBytes = 4,
                 maxRecords = 1, // forces a partial-frame drain across cycles
                 until = FollowUntil.UntilAllSealed(runId),
@@ -791,7 +840,7 @@ class SegmentOutputFollowerTest {
     // -------------------------------------------------------------- 17: close releases mid-poll wait
 
     @Test
-    fun `17 close releases a mid-poll wait within pollIntervalMs`(@TempDir root: Path) {
+    fun `17 close releases a sleeping hasNext from inside the poll wait`(@TempDir root: Path) {
         val store = openStore(root)
         val runId = "run-close-release"
         val stream = address(runId, "sh-0", OutputChannel.STDOUT)
@@ -799,42 +848,56 @@ class SegmentOutputFollowerTest {
         // enters its idle loop after the first poll.
         writeAndFrame(store, stream, OutputChannel.STDOUT, "one\n")
 
-        val pollIntervalMs = 200L
+        // A poll interval far longer than this row's own budget, so the row can only pass because
+        // close() SIGNALS the sleeping hasNext. Without the signal the consumer sits in idle() for
+        // the full minute and the join below misses it.
         val handle = follower(store).open(
             runId,
-            OutputFollowOptions(pollIntervalMs = pollIntervalMs, maxRecords = 16),
+            OutputFollowOptions(pollIntervalMs = 60_000L, maxRecords = 16),
         )
         try {
             val it = handle.iterator()
-            // Drain the initial events (Running + Bytes) so the next
-            // hasNext enters the poll loop and ultimately the idle
-            // sleep.
-            assertTrue(it.hasNext())
+            // Consume the two events the first poll cycle queued, so the consumer's next hasNext()
+            // has nothing to return and must enter the idle sleep.
+            assertTrue(it.hasNext(), "the first poll cycle queues the Running state change")
             assertInstanceOf(OutputFollowEvent.StateChanged::class.java, it.next())
-            assertTrue(it.hasNext())
+            assertTrue(it.hasNext(), "the same cycle queues the Bytes page")
             assertInstanceOf(OutputFollowEvent.Bytes::class.java, it.next())
 
-            // The next hasNext enters the idle sleep. Start a timer,
-            // close from this thread (which signals the Condition so
-            // the sleep wakes early), and assert hasNext returns
-            // false within (pollIntervalMs * 2) — a generous bound
-            // that accommodates one extra cycle. Without the
-            // Condition-based close, this assertion would only pass
-            // after the full pollIntervalMs of every remaining cycle
-            // (and would be flaky on slow CI).
-            val started = System.nanoTime()
-            handle.close()
-            val more = it.hasNext()
-            val elapsedMs = (System.nanoTime() - started) / 1_000_000L
-            assertFalse(more, "iterator must stop after close")
+            // Park a consumer on hasNext() from another thread. This run has no seal and the follow
+            // was opened without a bound, so the next call parks in idle() until something wakes it.
+            val observed = AtomicReference<Boolean>()
+            val consumer = thread(name = "follow-consumer", isDaemon = true) {
+                observed.set(it.hasNext())
+            }
+
+            // Wait for the consumer to actually be INSIDE the sleep before closing. Without this
+            // the close could win the race, hasNext would return false from the `closed` check at
+            // the top of its loop, and the row would pass without ever exercising the wake-up path.
+            // That is precisely how this row read before: it closed FIRST and then timed its own
+            // hasNext, so it measured the fast path in microseconds and certified nothing.
             assertTrue(
-                elapsedMs <= pollIntervalMs * 2L,
-                "close must release the wait within one cycle; elapsed=${elapsedMs}ms, bound=${pollIntervalMs * 2}ms",
+                awaitBlocked(consumer, BUDGET_MILLIS),
+                "the consumer never parked in the idle sleep, so close() would not be proving " +
+                    "anything: this row would pass on the `closed` fast path instead",
             )
+
+            handle.close()
+
+            consumer.join(BUDGET_MILLIS)
+            // The discrete observation, not a duration: a handle that failed to signal would leave
+            // the consumer parked for the full 60_000 ms poll interval, which this join misses.
+            assertFalse(
+                consumer.isAlive,
+                "close() must wake the sleeping hasNext; it was still parked after ${BUDGET_MILLIS}ms " +
+                    "with a 60000ms poll interval, so the idle condition was never signalled",
+            )
+            assertFalse(observed.get(), "a closed handle must report hasNext() == false")
         } finally {
             handle.close()
         }
     }
+
 
     // -------------------------------------------------------------- 18: intra-frame resumption
 
@@ -860,7 +923,7 @@ class SegmentOutputFollowerTest {
         val handle = follower(store).open(
             runId,
             OutputFollowOptions(
-                pollIntervalMs = 0L,
+                pollIntervalMs = LIVE_POLL_MS,
                 pageMaxBytes = 4,
                 maxRecords = 1,
             ),

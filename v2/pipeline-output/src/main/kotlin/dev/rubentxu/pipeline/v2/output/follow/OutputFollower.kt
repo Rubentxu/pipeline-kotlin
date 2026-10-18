@@ -154,7 +154,11 @@ data class OutputFollowOptions(
 ) {
     init {
         require(pageMaxBytes > 0) { "pageMaxBytes must be positive, got $pageMaxBytes" }
-        require(pollIntervalMs >= 0) { "pollIntervalMs must be non-negative, got $pollIntervalMs" }
+        require(pollIntervalMs > 0) {
+            "pollIntervalMs must be positive, got $pollIntervalMs; a follow that skips the wait " +
+                "between polls re-polls in a tight loop against a live store connection, and that " +
+                "loop runs inside a native call where the interrupt flag is never observed"
+        }
         require(maxRecords > 0) { "maxRecords must be positive, got $maxRecords" }
         require(afterOrdinal == null || afterOrdinal >= 0) {
             "afterOrdinal must be non-negative, got $afterOrdinal"

@@ -22,6 +22,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.domain.RunIdGenerator
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
+import dev.rubentxu.pipeline.v2.credentials.local.CredentialsStorePath
 import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
 import dev.rubentxu.pipeline.v2.credentials.local.LocalCredentialProvider
 import dev.rubentxu.pipeline.v2.credentials.multipart.CredentialMaterializer
@@ -599,7 +600,7 @@ fun main(args: Array<String>) {
         // the SAME credential injection stack as the durable branch. The default path
         // is the temp in-memory control dir's sibling; PIPELINE_CREDENTIALS_STORE env
         // overrides, exactly like the durable path.
-        val withCredentialsExecutor = composeWithCredentialsExecutor(controlDirRoot, secretPatternRegistry)
+        val withCredentialsExecutor = composeWithCredentialsExecutor(secretPatternRegistry)
         // RP034-H / ADR-0101 clause 3.1 + RP034-Id: the workspace origin is decided
         // ONCE, here at the boundary. Both facts cross into the runtime — the shared
         // directory and its owner — because a runtime that receives only the root
@@ -992,17 +993,19 @@ fun main(args: Array<String>) {
 
     // T12: Resolve SecretStore for credential injection in withCredentials blocks.
     //
-    // Design: Option A — env var PIPELINE_CREDENTIALS_STORE for store path,
-    // PIPELINE_STORE_PASSPHRASE for passphrase.  Default path is
-    // <controlDirRoot>/../credentials.bin (sibling to the journal db).
+    // The store location is CredentialsStorePath's, the ONE authority, and it is
+    // the same value composeWithCredentialsExecutor uses on the durable branch.
+    // This block used to recompute it from controlDirRoot, which is how the two
+    // branches came to disagree about a credentials file; the duplicated copy is
+    // what made the divergence invisible. PIPELINE_STORE_PASSPHRASE supplies the
+    // passphrase.
     //
     // Behavior:
     // - Store file does not exist → pass null (user runs `pipeline credentials add`
     //   first to create it; no error at startup)
     // - Store file exists + passphrase available → inject credentials
     // - Store file exists + passphrase wrong/missing → fail fast with actionable error
-    val credentialsStorePath: Path = System.getenv("PIPELINE_CREDENTIALS_STORE")?.let { Paths.get(it) }
-        ?: controlDirRoot.parent.resolve("credentials.bin")
+    val credentialsStorePath: Path = CredentialsStorePath.fromEnvironment(System.getenv())
 
     val secretStore: dev.rubentxu.pipeline.v2.credentials.api.SecretStore? =
         if (!credentialsStorePath.toFile().exists()) {

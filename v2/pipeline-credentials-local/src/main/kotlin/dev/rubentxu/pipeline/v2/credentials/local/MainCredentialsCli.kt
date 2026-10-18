@@ -46,21 +46,20 @@ import java.util.zip.ZipInputStream
  */
 object MainCredentialsCli {
 
-    // Store path resolution MUST match the runtime contract (Main.kt,
-    // composeWithCredentialsExecutor): PIPELINE_CREDENTIALS_STORE env override,
-    // else the canonical default ~/.pipeline/credentials.bin. The CLI previously
-    // ignored the env var, so `credentials add` wrote to the default file while
-    // the run read the env-provided one (divergence found by WU-RP-042 S1 R2).
+    // The store location is decided by CredentialsStorePath, the ONE authority.
+    // This comment used to spell the rule out here AND claim the runtime agreed
+    // (Main.kt, composeWithCredentialsExecutor) — and the runtime resolved a
+    // different default, because it took <controlRoot>/../credentials.bin. Two
+    // copies of one rule is how `credentials add` came to write somewhere the run
+    // never looked. See CredentialsStorePath's KDoc.
     private val STORE_FILE: Path = resolveStoreFile()
 
     /**
-     * Single authority for the CLI store path. Internal visibility exists for
-     * the contract regression test (R2, WU-RP-042): CLI and runtime MUST
-     * resolve the same store.
+     * The CLI's store path, delegated to [CredentialsStorePath] rather than
+     * recomputed. Internal visibility exists for the contract regression test
+     * (R2, WU-RP-042): CLI and runtime MUST resolve the same store.
      */
-    internal fun resolveStoreFile(): Path =
-        System.getenv("PIPELINE_CREDENTIALS_STORE")?.let { Path.of(it) }
-            ?: Path.of(System.getProperty("user.home"), ".pipeline", "credentials.bin")
+    internal fun resolveStoreFile(): Path = CredentialsStorePath.fromEnvironment(System.getenv())
 
     // Supported credential kinds
     enum class CredentialKind {

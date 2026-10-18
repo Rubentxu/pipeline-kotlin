@@ -393,7 +393,7 @@ internal sealed interface InvocationReconciliation {
 internal sealed interface BlockShellScope {
     data object None : BlockShellScope
     data class Directory(val target: Path, val previous: Path) : BlockShellScope
-    data class TimestampsScope(val runId: String) : BlockShellScope
+    data object TimestampsScope : BlockShellScope
     data class EnvScope(val overrides: List<String>, val parentEnv: Map<String, dev.rubentxu.pipeline.v2.domain.SecretHandle>) : BlockShellScope
 
     /**
@@ -572,7 +572,7 @@ internal fun BlockStepNode.projectScopedBody(
 ): BodyExecutionProjection = when (projection) {
     is BodyContextProjection.WorkingDirectory -> projectWorkingDirectory(options)
     is BodyContextProjection.Environment -> projectEnvironment(options)
-    is BodyContextProjection.Timestamps -> BodyExecutionProjection.Scope(BlockShellScope.TimestampsScope(runId = ""))
+    is BodyContextProjection.Timestamps -> BodyExecutionProjection.Scope(BlockShellScope.TimestampsScope)
     is BodyContextProjection.Deadline -> decodeDeadline()
     is BodyContextProjection.CredentialLease -> decodeCredentialBindings()
 }

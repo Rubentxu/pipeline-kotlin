@@ -132,7 +132,7 @@ sealed interface BlockShellScopeDescriptor {
     ) : BlockShellScopeDescriptor
 
     /** Body runs with the timestamps decorator around all child events. */
-    data class Timestamps(val runId: String) : BlockShellScopeDescriptor
+    data object Timestamps : BlockShellScopeDescriptor
 
     /** Body runs with the environment overrides projected around children. */
     data class Env(

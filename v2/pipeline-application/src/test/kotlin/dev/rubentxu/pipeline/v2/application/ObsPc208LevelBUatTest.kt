@@ -24,7 +24,6 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
@@ -61,6 +60,99 @@ import java.util.concurrent.TimeUnit
  * `mkfifo` real y el agente se lanza con un `java -cp` real desde una nueva
  * JVM. Sin `Files.createTempDirectory` sin padre. Sin asserts de tiempo de
  * pared. `@TempDir` por test.
+ *
+ * ## `f01` y `f04`: una razón `@Disabled` que había caducado
+ *
+ * Las dos filas llevaban `@Disabled("... The defect is real and the fix is a
+ * separate WU")`, y esa razón **era falsa**. El defecto que nombran —Output
+ * Plane first-write garbling, `memory/output-plane-first-write-garbling.md`— está
+ * cerrado en HEAD. Medido en `main@28851ee5`, 2026-10-18, con el canary de XML
+ * como recibo y no el exit code:
+ *
+ * ```text
+ * con @Disabled   tests=10 skipped=2 failures=0 errors=0   (BUILD SUCCESSFUL: no dice nada)
+ * con las filas on tests=10 skipped=0 failures=0 errors=0   (9 de las 10 filas, trabajo real forkeado)
+ * ```
+ *
+ * Un `@Disabled` cuya razón es una REDNESS que ya no existe mantiene cerrada una
+ * capacidad verificada: el plano de salida sigue sin cobertura permanente aunque
+ * las filas_GROUP passed. `skipped=2` bajo `BUILD SUCCESSFUL` es exactamente la
+ * trampa de la que esta clase era más vulnerable.
+ *
+ * ## Las mutaciones, y por qué son DOS para `f04`
+ *
+ * Una fila verde que no puede ponerse roja no certifica nada. Ambas mutaciones
+ * se verificaron APLICADAS antes de leer su resultado, y ambos targets se
+ * restauraron a un estado `git diff`-vacío.
+ *
+ * Cifras **re-verificadas después** del arreglo de harness de abajo, no las de
+ * antes: una mutación medida contra un harness distinto mide ese harness.
+ *
+ * ```text
+ * M-2  RedactingOutputIngress: nunca se llama a reservation.commit()
+ *      -> RED 7 de 10. f01 y f04 caen entre otras.
+ *         f05 y f06 sobreviven, y deben: uno afirma que un productor que no
+ *         escribe no hace deadlock, el otro property del FIFO. Ninguno depende
+ *         del commit, así que su supervivencia es la señal de que la mutación no
+ *         es "todo muere".
+ *         f02 SOBREVIVE y eso es un defecto suyo, no de la mutación: su
+ *         aserción es una AUSENCIA ("el secreto no está en el plano") y un plano
+ *         vacío la satisface. Antes del arreglo de harness moría sólo porque
+ *         agotaba el timeout; ahora pasa en verde sin haber midido nada.
+ *
+ * M-3  OperationOutputStreams.of: stderr resuelve al stream de STDOUT
+ *      -> RED 2 de 10: f04, por la comprobación de cruce de esta clase, y f03
+ *         de forma colateral ("line 1 written before the child kill must reach
+ *         the plane", otra afirmación). El mensaje de f04 es el de la
+ *         comprobación nueva, así que la atribución de ESA mitad es 1:1; la de
+ *         f03 no lo es y no se reclama.
+ * ```
+ *
+ * La asimetría entre las dos es el hallazgo, y no es ruido. M-2 mata `f04` por
+ * el COMPROMISO —lo que demuestra que la fila depende del Output Plane, no que
+ * mida el aislamiento que su nombre promete—. M-3 es lo que aísla esa segunda
+ * mitad: el bucle de presencia sigue verde porque stdout sigue escribiéndose
+ * donde debe, y sólo la comprobación de cruce cae.
+ *
+ * ## El defecto que estas filas tenían no era del producto
+ *
+ * Re-habilitadas, `f01` y `f04` pasaron 10 de 10 y después fallaron: `f04` leyó
+ * 5 de sus 10 líneas y murió en "line 6 must be present" — el síntoma exacto que
+ * su `@Disabled` citaba. La causa era el harness, no el plano:
+ * [awaitIncrement] devuelve en cuanto hay MÁS bytes que la línea base, y una
+ * muestra a mitad de drenaje la satisface. `done` lo toca el PRODUCTOR al
+ * terminar su script, que es antes de que el AGENTE haya drenado, así que la
+ * fila competía con el drenaje y normalmente ganaba por suerte.
+ *
+ * `f09` ya lleva esta lección escrita y medida en su propio KDoc, y ya esperaba
+ * el sello; a estas filas nunca se les aplicó. El arreglo es [awaitFullDrain], y
+ * `f02` y `f07` la comparten porque su contrato es el mismo: el payload entero.
+ * `f03` y las filas de `HappyPath` NO la usan porque las mata un kill, que es lo
+ * que impide el sello, y `f10` tampoco porque su afirmación es sobre lecturas
+ * DURANTE el drenaje. No es un find-replace: cada fila espera el hecho que su contrato necesita.
+ * contrato necesita.
+ *
+ * ```text
+ * antes del arreglo   10/10 verdes, y después 1 fallo de 3
+ * después             4/4 verdes (suite completa + 3 repeticiones)
+ * ```
+ * ## El invariante que M-3 atraviesa
+ *
+ * `OperationOutputStreams.init` valida que ambas direcciones pertenezcan a la
+ * **misma operación** (`runId`, `operationId`) y **no** que sus canales sean
+ * distintos. Un `stderr` con canal `STDOUT` lo satisface. La suposición que la
+ * clase expresa —"la pareja de streams de canal"— no está respaldada por un
+ * invariante que la sostenga: la sostienen el nombre de los campos y la lectura
+ * que hace el consumidor. M-3 es la medición de ese hueco, no un defecto
+ * introducido para la medición.
+ *
+ * ## Fidelidad de la re-habilitación
+ *
+ * Estas filas leen el plano **directamente** con `storeForReading`, no a través
+ * del observador de `Main.kt`. Por eso NO son la misma puerta que
+ * `ObsAOutputStreamingCharacterisationTest` y por eso una mutación en
+ * `startLiveOutputObserver` habría sido un no-op aquí: una mutación que no
+ * toca el chequeo no mide el chequeo.
  */
 @Timeout(value = 600, unit = TimeUnit.SECONDS)
 @DisplayName("OBS-PC-208 — Nivel B: garantía de producto (11 pasos + 10 falsificadores)")
@@ -477,11 +569,6 @@ class ObsPc208LevelBUatTest {
     @DisplayName("OBS-PC-208 — falsificadores")
     inner class Falsifiers {
 
-        @Disabled("migrated-pending OBS-PC-208; characterization Falsifier for the " +
-            "Output Plane first-write garbling defect. The byte at line 6 (f04) / line 26 (f01) " +
-            "is missing because the reader withholds the bytes. The defect is real and the " +
-            "fix is a separate WU; the harness re-hosts the characterization per the " +
-            "migrated-pending contract (AGENTS.md §1).")
         @Test
         @Timeout(300)
         fun `f01 — bytes without newline terminator are committed`() {
@@ -512,7 +599,7 @@ class ObsPc208LevelBUatTest {
                 scriptExtras = script,
             )
             await({ Files.exists(done) }, 90)
-            awaitIncrement(ByteArray(0), 60, "bytes without newline must reach the plane")
+            awaitFullDrain(opIdFormat(), 60)
             val raw = committedBytes()
             val text = raw.toString(Charsets.UTF_8)
             for (i in 1..30) {
@@ -566,7 +653,7 @@ class ObsPc208LevelBUatTest {
             await({ Files.exists(done) }, 90)
             // The redactor's lookahead is bounded by maxLiteral; the secret
             // can leak ONLY if the lookahead is not consulted across writes.
-            awaitIncrement(ByteArray(0), 60, "f02: pieces must be considered by the redactor")
+            awaitFullDrain(opIdFormat(), 60)
             val text = committedBytes().toString(Charsets.UTF_8)
             assertTrue(
                 !text.contains(frag1) || !text.contains(frag2) || text.contains("****"),
@@ -580,11 +667,6 @@ class ObsPc208LevelBUatTest {
             )
         }
 
-        @Disabled("migrated-pending OBS-PC-208; characterization Falsifier for the " +
-            "Output Plane first-write garbling defect. The byte at line 6 (f04) / line 26 (f01) " +
-            "is missing because the reader withholds the bytes. The defect is real and the " +
-            "fix is a separate WU; the harness re-hosts the characterization per the " +
-            "migrated-pending contract (AGENTS.md §1).")
         @Test
         @Timeout(300)
         fun `f04 — stdout active while stderr silent — both channels isolated`() {
@@ -610,7 +692,7 @@ class ObsPc208LevelBUatTest {
                 scriptExtras = script,
             )
             await({ Files.exists(done) }, 90)
-            awaitIncrement(ByteArray(0), 60, "f04: stdout-only data must reach the plane")
+            awaitFullDrain(opIdFormat(), 60)
             val raw = committedBytes()
             val text = raw.toString(Charsets.UTF_8)
             // R2.3(b) / TODO 4: probe the actual content when a falsifier
@@ -632,6 +714,28 @@ class ObsPc208LevelBUatTest {
                     )
                     assertTrue(false, "f04: stdout line $i must be present (hex+text dumped to $reportDir)")
                 }
+            }
+
+            // The half of this row's name that the loop above does NOT reach.
+            //
+            // "both channels isolated" claims two things. Presence on stdout only proves the first;
+            // a sink that routed STDERR into the stdout stream would satisfy every assertion above
+            // and still be a real defect — the caller selecting a channel downstream would get the
+            // wrong transcript. Measured 2026-10-18 (H1.1): the row shipped with the presence loop
+            // only, and M-2 — no Output Plane commit — killed it through `awaitIncrement`, which
+            // says nothing about isolation. Isolation needs its own mutation, and it is M-3.
+            //
+            // stderr is silent in this fixture, so any stdout byte found there is a crossing. This
+            // asserts on CONTENT, not on a byte count, so the empty-stream case and a
+            // one-byte-leak case are both caught.
+            val stderrText = readStreamBytes(stderr = true).toString(Charsets.UTF_8)
+            for (i in 1..10) {
+                assertTrue(
+                    !stderrText.contains("stdout-only-$i"),
+                    "f04: stdout line $i leaked into the STDERR stream, so the two channels are not " +
+                        "isolated and a caller selecting a channel downstream gets the wrong " +
+                        "transcript. stderr was:\n$stderrText",
+                )
             }
         }
 
@@ -904,7 +1008,7 @@ class ObsPc208LevelBUatTest {
                 scriptExtras = script,
             )
             await({ Files.exists(done) }, 180)
-            awaitIncrement(ByteArray(0), 180, "f07: 1MB of bytes must reach the plane")
+            awaitFullDrain(opIdFormat(), 180)
             // R2.3(b) / TODO 4: wait for the agent to fully drain the FIFO.
             // 1MB is well past the redactor's lookahead, so reading the
             // committed bytes while the agent is still draining would see
@@ -1126,6 +1230,30 @@ class ObsPc208LevelBUatTest {
 
     private fun awaitFile(marker: Path, seconds: Long, message: String) {
         if (!await({ Files.exists(marker) }, seconds)) error(message)
+    }
+
+    /**
+     * The agent has drained the FIFOs AND exited, so the transcript is whole.
+     *
+     * [awaitIncrement] is not this. It returns the first time the plane holds more than a baseline,
+     * which a mid-drain sample satisfies: measured 2026-10-18 (H1.1), `f04` read 5 of its 10 lines and
+     * failed on "line 6 must be present" — the exact symptom its `@Disabled` used to cite. The
+     * producer touches `done` when its SCRIPT ends, which is before the agent has finished draining,
+     * so `await(done)` and `awaitIncrement` race the drain and usually win it by luck.
+     *
+     * `f09` already carries the measured version of this lesson in its own KDoc — a mid-drain sample
+     * of 61 of 121 bytes satisfies "committed bytes exist" — and had the seal wait removed from it.
+     * These rows were never given it. This helper is that fix, hoisted so the five rows that need a
+     * whole transcript share one wait and one explanation.
+     *
+     * The order is the fix: the seal first makes "the agent finished and closed its sinks" a fact,
+     * and the process check second then means "and it has exited". Inverted, "no agent" is
+     * indistinguishable from "the agent has not started yet".
+     */
+    private fun awaitFullDrain(opId: String, seconds: Long) {
+        awaitStreamSealed(opId, seconds)
+        awaitNoAgentProcess(seconds)
+        OutputPlaneProvider.forgetAll()
     }
 
     private fun awaitPrefix(marker: String, seconds: Long, message: String): ByteArray {

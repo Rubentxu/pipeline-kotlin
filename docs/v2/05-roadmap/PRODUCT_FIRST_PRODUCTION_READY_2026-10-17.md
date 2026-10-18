@@ -49,9 +49,37 @@ integrado; las cuatro amendments de `ADR-PK-DF-002` siguen requiriendo firma del
 
 **Valor:** `pipelinek console --follow` consume bytes exactos desde proceso activo, mantiene stdout/stderr, cursor y secretos protegidos. Incluye deuda real de `OBS_PROGRESSIVE_CONSOLE_ROADMAP.md` (OBS-2 / OBS-3 aplicables), RP-2/RP-3/B3.
 
-- [ ] **H1.1** Verificar OBS falsificadores aún válidos en HEAD (`ObsAOutputStreamingCharacterisationTest`, `ObsPc208LevelBUatTest`) sin tratar los `@Disabled` como pruebas verdes. Reproducir **un** defecto visible real de entrada incremental/canal/cursor, o elegir siguiente defecto OBS vivo.
+- [x] **H1.1** Verificar OBS falsificadores aún válidos en HEAD (`ObsAOutputStreamingCharacterisationTest`, `ObsPc208LevelBUatTest`) sin tratar los `@Disabled` como pruebas verdes. Reproducir **un** defecto visible real de entrada incremental/canal/cursor, o elegir siguiente defecto OBS vivo.
+
+  **Cerrado 2026-10-18 en `main@28851ee5`.** Cuatro `@Disabled` cuya razón era *"the defect is real"* re-habilitados, con la transición medida y con dientes demostradas. Pero **el defecto real no era del producto, y eso es lo que H1.1 encontró**:
+
+  ```text
+  clase                       antes                  despues
+  ObsA...Characterisation     tests=2 skipped=2     tests=2 skipped=0 f=0 e=0
+  ObsPc208$Falsifiers         tests=10 skipped=2    tests=10 skipped=0 f=0 e=0
+  ```
+
+  La mitad de esa tabla es la trampa de la que H1.1 se guardaba: `skipped=2` bajo `BUILD SUCCESSFUL` no mide nada. Re-habilitadas, `f01` y `f04` pasaron 10 de 10 — y después `f04` leyó **5 de sus 10 líneas** y murió en *"line 6 must be present"*, el síntoma exacto que su propia razón `@Disabled` citaba.
+
+  **La causa era la espera, no el Output Plane.** `awaitIncrement` devuelve en cuanto hay *más bytes que la línea base*, y una muestra a mitad de drenaje la satisface; `done` lo toca el productor al terminar su script, antes de que el agente haya drenado. `f09` ya llevaba esta lección medida en su propio KDoc y ya esperaba el sello —a estas filas nunca se les aplicó—. El arreglo es `awaitFullDrain`, compartido por `f01`/`f02`/`f04`/`f07`, que es exactamente su contrato común. **No** se aplicó a `f03`/`HappyPath` (un kill impide el sello) ni a `f10` (afirma sobre lecturas *durante* el drenaje): cada fila espera el hecho que su contrato necesita.
+
+  Mutaciones, **re-verificadas después** del arreglo (una medida contra otro harness mide ese harness). Ambas aplicadas-verificadas antes de leer, y ambos targets restaurados a `git diff` vacío:
+
+  ```text
+  M-2  RedactingOutputIngress nunca hace commit   -> RED 7 de 10, f01 y f04 entre ellas
+  M-3  OperationOutputStreams: stderr -> STDOUT  -> RED 2 de 10, f04 por la comprobacion nueva
+  fiabilidad tras el arreglo                      -> 4 de 4 verdes
+  ```
+
+  Dos hallazgos que quedan abiertos y **no** se declaran cerrados aquí:
+
+  - `f02` sobrevive a M-2 porque su aserción es una ausencia y un plano vacío la satisface. Verde sin haber medido.
+  - `OperationOutputStreams.init` valida `runId`/`operationId` y **no** que los canales sean distintos: un `stderr` con canal `STDOUT` lo satisface. La suposición que la clase expresa no tiene invariante que la sostenga.
+
 - [ ] **H1.2** Corregir productor→redactor→Output Plane→CLI sin segundo writer/event plane de bytes. Propiedad redacción antes de persistencia; no duplicar responsabilidades de recovery.
 - [ ] **H1.3** Solo test del seam de salida afectado + **1 UAT temporal** de CLI con stdout/stderr/cursor y negativo secreto si riesgo afectado. Reusar smoke instalado del RC. Borrar pruebas temporales y fixtures tras aceptación.
+
+  **Reabierto con el alcance que H1.1 deja medido**, sin ampliar el gate: convertir la aserción de presencia de `f02` en una afirmación de contenido sobre un payload presente, e `init` de `OperationOutputStreams` en un invariante que prohíba el cruce de canales con un test que lo demuestre. Ambos son locales y no requieren UAT nueva.
 - [ ] **H1.4** Integrar código de producto, cambios de poda aprobados, `main`, release candidate de valor real y handoff. `CERTIFIED` solo externo.
 
 **Agent teams:** consola/lectura, escritor/redactor (seams distintos), integración del CLI; archivo compartido se asigna a uno. R-1 del H0 ya terminó antes.

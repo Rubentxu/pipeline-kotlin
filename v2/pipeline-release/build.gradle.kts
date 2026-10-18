@@ -159,29 +159,75 @@ tasks.register<JavaExec>("candidateAdmission") {
         // Stage the freshly generated BOM under the probed name. The task dependency above
         // guarantees it exists; the copy is what makes it OBSERVABLE to the admission probe,
         // which only looks inside the distributions directory.
+        //
+        // It is checked rather than assumed. `dependsOn` declares the intent to run
+        // `:pipeline-application:cyclonedxBom`; it does not promise the task emitted a
+        // file, and a task that ran and wrote nothing looks exactly like one that was
+        // never declared.
         val bomSource = project(":pipeline-application").layout.buildDirectory
             .file("reports/bom.json").get().asFile
-        if (bomSource.isFile) {
-            bomSource.copyTo(dist.resolve("pipelinek-$version.sbom.json"), overwrite = true)
+        if (!bomSource.isFile) {
+            throw GradleException(
+                "DIST-PRODUCT: :pipeline-application:cyclonedxBom is a declared dependency of " +
+                    "this task but produced no $bomSource. Refusing to admit a candidate whose " +
+                    "SBOM is absent: §8 of the DISTRIBUTION-FIRST RELEASE POLICY lists " +
+                    "pipelinek-$version.sbom.json as a required asset, and an asset set with a " +
+                    "hole in it is not a smaller candidate, it is a different product.",
+            )
+        }
+        bomSource.copyTo(dist.resolve("pipelinek-$version.sbom.json"), overwrite = true)
+
+        val sbom = dist.resolve("pipelinek-$version.sbom.json")
+
+        // §8 names three more assets besides the ZIP, and each one is backed by a
+        // `dependsOn` above. An absent file after a declared dependency ran is not an
+        // optional state; it is a dependency that did not produce what it promised.
+        //
+        // The previous shape degraded silently on all three. `takeIf { it.isFile }` turned
+        // the absence into null, null was written into argv as "-", and
+        // `CandidateAdmissionMain` mapped "-" back to null — so the handoff recorded a
+        // candidate with no SDK and no BOM while the task itself went green. `covered` shrank
+        // with them, and `CandidateMaterializer`'s only completeness invariant is
+        // `covered.isNotEmpty()`, so a `SHA256SUMS` covering the ZIP alone satisfied it.
+        // Measured 2026-10-18: three mandatory assets could be missing with every existing
+        // invariant holding and no diagnostic emitted.
+        //
+        // The ZIP check above already fails closed. These three now do too, and each refusal
+        // names the dependency that was supposed to produce the file.
+        fun requiredAsset(asset: String, file: File, producedBy: String): File {
+            if (!file.isFile) {
+                throw GradleException(
+                    "DIST-PRODUCT: $producedBy is a declared dependency of this task but " +
+                        "produced no $file. Refusing to admit a candidate without $asset; " +
+                        "§8 of the DISTRIBUTION-FIRST RELEASE POLICY fixes the asset set " +
+                        "exactly, and a missing member is a defect to fix, not a variant to " +
+                        "ship around.",
+                )
+            }
+            return file
         }
 
-        val sbom = listOf(
-            dist.resolve("pipelinek-$version.sbom.json"),
-            dist.resolve("bom.json"),
-        ).firstOrNull { it.isFile }
-
-        val sdkZip = dist.resolve("pipelinek-$version.sdk.zip").takeIf { it.isFile }
-        val bomJson = dist.resolve("pipelinek-bom-$version.json").takeIf { it.isFile }
+        val sdkZip = requiredAsset(
+            "pipelinek-$version.sdk.zip",
+            dist.resolve("pipelinek-$version.sdk.zip"),
+            ":pipeline-release:sdkZip",
+        )
+        val bomJson = requiredAsset(
+            "pipelinek-bom-$version.json",
+            dist.resolve("pipelinek-bom-$version.json"),
+            ":pipeline-release:sdkZip",
+        )
 
         // §8 — the materializer writes SHA256SUMS covering these four
         // distributable assets. The list is `;`-separated on the CLI.
-        // `covered` is required to be non-empty: a SHA256SUMS file
-        // covering nothing is the kind of unbacked claim the protocol
-        // bans. The materializer refuses to materialise a candidate
-        // whose `covered` is non-empty AND `sha256sums` is null (a
-        // strict invariant enforced at runtime, see
-        // `CandidateMaterializer.materialize`).
-        val covered = listOfNotNull(
+        //
+        // It used to be `listOfNotNull(...)` with three `?: "-"` sentinels in the
+        // argv beside it, because the three assets were `takeIf { it.isFile }` and
+        // could be absent. The checks above now make each of them a non-null `File`,
+        // so both forms are gone: a reader of this block can no longer mistake
+        // absence for a legitimate value. `covered` is exactly four paths or the task
+        // has already thrown.
+        val covered = listOf(
             zip,
             sbom,
             sdkZip,
@@ -195,9 +241,9 @@ tasks.register<JavaExec>("candidateAdmission") {
             outDir.get().asFile.absolutePath,
             candidateTag,
             candidateSequence,
-            sbom?.absolutePath ?: "-",
-            sdkZip?.absolutePath ?: "-",
-            bomJson?.absolutePath ?: "-",
+            sbom.absolutePath,
+            sdkZip.absolutePath,
+            bomJson.absolutePath,
             // P0.5 — the repository whose version control state defines this
             // candidate's provenance. RootProject lives in v2/, whose parent
             // holds the .git directory.

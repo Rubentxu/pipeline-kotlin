@@ -316,6 +316,67 @@ class EvidenceManifestTest {
         assertEquals(staleCommit, stale.first().observed)
     }
 
+    /**
+     * The sidecar names a DIFFERENT class than the report it sits beside.
+     *
+     * `EvidenceManifest.sidecarFor` derives the sidecar's path from the XML's file name, so
+     * `TEST-FooTest.xml` is only ever paired with `FooTest.json`. The JSON inside that file
+     * carries its own `class_name`, and nothing compared it — the gate keyed its map by the
+     * XML's `<testsuite name>` and read the sidecar only for `source_commit` and `hf`. A sidecar
+     * claiming to be `BarTest` therefore discharged the plan for `FooTest` without complaint.
+     *
+     * This is the identity-disagreement class again, one layer down from the producer/consumer
+     * split closed in `EvidenceKeyAgreementTest`: there the map KEY was wrong, here the sidecar's
+     * self-description is wrong. Both are "two halves naming the same thing and nobody checking".
+     *
+     * The roadmap names this obligation for BQ1 box 3 — "validar `tests>0`, `tests-skipped>0`,
+     * `errors=failures=0`, y clase/paquete, archivo por invocación" — and it was the one part of
+     * that sentence with no comparison behind it.
+     */
+    @Test
+    fun `the gate refuses a sidecar that names a different class than its report`(
+        @TempDir tmp: Path,
+    ) {
+        val dir = tmp.resolve("results")
+        Files.createDirectories(dir)
+        writeXml(dir, validClassName)
+        // The file is where `sidecarFor` demands it; the field inside names something else.
+        writeSidecar(
+            dir,
+            validClassName,
+            body = """
+                {
+                  "class_name": "SomeOtherTest",
+                  "gradle_path": "$validGradlePath",
+                  "invocation": "$validInvocation",
+                  "binary_sha256": "$validBinarySha",
+                  "hf": "$validHf",
+                  "source_commit": "$validSourceCommit"
+                }
+            """.trimIndent(),
+        )
+        val plan = ValidationPlan.Selected(
+            capabilities = setOf("x"),
+            contracts = emptySet(),
+            suites = setOf(TestSuiteId(validClassName, validGradlePath)),
+            minimumFidelities = emptySet(),
+            reasons = emptyList(),
+        )
+
+        val refusal = EvidenceReader.verify(plan, dir, validSourceCommit, validSourceCommit)
+
+        assertNotNull(
+            refusal,
+            "the sidecar's own class_name is 'SomeOtherTest' while the report it sits beside is " +
+                "'$validClassName', and the plan selected '$validClassName'. Discharging here means " +
+                "the evidence carrier can describe itself as anything and still close the run.",
+        )
+        assertEquals(
+            SelectionRefusal.SidecarNamesAnotherClass(suite = validClassName, observed = "SomeOtherTest"),
+            refusal!!.reasons.single { it is SelectionRefusal.SidecarNamesAnotherClass },
+        )
+    }
+
     @Test
     fun `the gate refuses on a sidecar whose fidelity is below the plan minimum`(
         @TempDir tmp: Path,

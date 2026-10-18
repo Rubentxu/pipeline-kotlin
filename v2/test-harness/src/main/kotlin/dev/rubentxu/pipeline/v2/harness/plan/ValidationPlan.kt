@@ -244,6 +244,34 @@ sealed interface SelectionRefusal {
     }
 
     /**
+     * The sidecar's own `class_name` names a different suite than the report it sits beside.
+     *
+     * [EvidenceManifest.sidecarFor] derives the sidecar's path from the XML's FILE NAME, so
+     * `TEST-FooTest.xml` is only ever paired with `FooTest.json`. The JSON inside that file
+     * carries its own `class_name`, and before this case existed nothing compared it — the gate
+     * keyed its map by the XML's `<testsuite name>` and read the sidecar only for `source_commit`
+     * and `hf`. A sidecar claiming to be `BarTest` therefore discharged the plan for `FooTest`
+     * without complaint.
+     *
+     * Distinct from [StaleBinary]: nothing about this evidence is old. It is about whether the
+     * evidence describes itself accurately, so the operator action is to fix the sidecar writer,
+     * not to rebuild the binary.
+     *
+     * The pair (`suite`, `observed`) is the whole disagreement — `suite` IS the expected value,
+     * so a separate `expected` field would be a restatement, and a `field: String` discriminator
+     * would be the open-world mode flag the constitution forbids for a closed ADT.
+     */
+    data class SidecarNamesAnotherClass(
+        val suite: String,
+        val observed: String,
+    ) : SelectionRefusal {
+        init {
+            require(suite.isNotBlank()) { "SidecarNamesAnotherClass.suite must not be blank" }
+            require(observed.isNotBlank()) { "SidecarNamesAnotherClass.observed must not be blank" }
+        }
+    }
+
+    /**
      * H1 TODO 2: the suite's sidecar evidence declares
      * a fidelity that is not in the plan's
      * `minimumFidelities`. The plan's `minimumFidelities`

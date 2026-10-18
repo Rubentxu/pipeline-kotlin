@@ -320,6 +320,18 @@ object ImpactResolver {
                                 required = requiredFidelities,
                             ))
                         }
+                        // The sidecar's own `class_name` versus the report it sits beside.
+                        // `EvidenceManifest.sidecarFor` keys the PAIRING by the XML's file name, so
+                        // without this the placement of the file and the name inside it could
+                        // disagree and the gate would discharge. Measured 2026-10-18: before this
+                        // comparison, `TEST-FooTest.xml` + `FooTest.json` whose `class_name` is
+                        // `SomeOtherTest` closed the plan for `FooTest` with no refusal.
+                        if (m.className != identity) {
+                            add(SelectionRefusal.SidecarNamesAnotherClass(
+                                suite = identity,
+                                observed = m.className,
+                            ))
+                        }
                     }
                 }
             }

@@ -298,15 +298,19 @@ tasks.test {
     // oracle that can silently serve a stale green is not a convenience defect — it invalidates the
     // only gate available.
     //
-    // The tree is the declared input. The cost is that editing any test source in any module now
-    // invalidates this lane; the content-hash check still short-circuits a genuine no-op, so the
-    // inner loop keeps its "0 real edits = 1s" property. Correcting the oracle is worth that.
-    inputs.files(
-        fileTree(rootProject.projectDir) {
-            include("**/src/test/**/*.kt")
-            exclude("**/build/**")
-        },
-    ).withPropertyName("scannedTestSources").withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+    // The tree is the declared input, named per module rather than as one fileTree rooted at `v2`.
+    // Two reasons, and the first one is a gate: `FArch011V2NoCompileExcludesTest` rejects the token
+    // `exclude(` in ANY build file, so the obvious `exclude("**/build/**")` fix is itself refused.
+    // The second is the overlap a root-level tree creates: rooting at `v2` makes the declared input
+    // overlap every other module's build directory and Gradle refuses the task for using an output it
+    // never declared. Naming each module's own `src/test/kotlin` sidesteps both. `pipeline-`
+    // application's OWN test sources are already inputs through `compileTestKotlin`, so they are not
+    // listed here. `pipeline-architecture-tests` declares the same shape for `src/main/kotlin`, and
+    // documents the reasoning in full at that file's "Cross-module inputs, declared" block.
+    val scannedTestSourceModules = rootProject.subprojects.filter { it.path != project.path }
+    inputs.files(scannedTestSourceModules.map { it.projectDir.resolve("src/test/kotlin") })
+        .withPropertyName("crossModuleTestSources")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
 
     // H1 TODO 3: the fast lane (`:test`) MUST NOT depend on
     // `:buildExamplePlugin` / `:buildExternalDirectivePlugin`

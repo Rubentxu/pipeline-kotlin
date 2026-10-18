@@ -26,15 +26,34 @@ package dev.rubentxu.pipeline.v2.application
  *
  * ## What these fields are for
  *
- * Today they are projected and read by nobody in production: the structural
- * decoder takes the waitUntil SHAPE from the declared descriptor policy
- * ([dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy.WaitUntilShape]),
- * which is a property of the Step KIND, not of runtime data. This type exists to
- * give the block carrier one owner and one decoder, so that the typed reader
- * these fields need can be added without another hand-written format appearing
- * somewhere new.
+ * [initialRecurrencePeriod] and [quiet] are STRUCTURE: they name the cadence of
+ * the declared [dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy.WaitUntilShape],
+ * which is a property of the Step KIND. They are emitted for the wire to be
+ * whole, and the structural projection reads the declared shape, not this carrier.
+ *
+ * [maxBackoffMs] is the exception, and the reason this carrier earns its keep:
+ * it is RUNTIME DATA — a per-block ceiling that the shape cannot express — so it
+ * has to travel in the payload and be decoded at the projection. Before this field
+ * existed, the only code that could set it was a regex over the raw payload whose
+ * result reached exclusively the INLINE polling branch; the durable branch, which is
+ * the one production reaches, polled at [DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS] no
+ * matter what the payload said. The projection now reads it here, through this
+ * carrier, so both branches get the same number from one authority.
  */
 data class CoreWaitUntilInput(
     val initialRecurrencePeriod: Long = 1L,
     val quiet: Boolean = false,
+    val maxBackoffMs: Long = DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS,
 )
+
+/**
+ * The backoff ceiling a `core.waitUntil` block polls with when its payload does not
+ * declare one.
+ *
+ * One authority: this carrier's default argument, [CoreWaitUntilWireCodec]'s decoder
+ * and the structural projection's absent-key branch all read it, so none of the three
+ * can drift from the others. It lives beside the carrier rather than beside its reader
+ * because the WIRE decides what "undeclared" means — a reader that invented its own
+ * default would be a second authority for the same question.
+ */
+internal const val DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS: Long = 60_000L

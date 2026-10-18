@@ -22,6 +22,8 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolution
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolver
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.step.WaitUntilShape
+import dev.rubentxu.pipeline.v2.application.DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS
 import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
 import dev.rubentxu.pipeline.v2.application.durable.credentials.AcquiredCredentialScope
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialBindingsPayload
@@ -419,12 +421,14 @@ internal sealed interface BlockShellScope {
      *
      * initialRecurrencePeriod: initial delay in ms before first poll
      * quiet: suppress logging if true
-     * maxBackoffMs: ceiling for exponential backoff (default 60 s)
+     * maxBackoffMs: ceiling for exponential backoff, DECODED from the block payload
+     *   (see [projectWaitUntilScope]); [DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS] is what an
+     *   absent key means.
      */
     data class WaitUntilScope(
         val initialRecurrencePeriod: Long,
         val quiet: Boolean,
-        val maxBackoffMs: Long = 60_000L,
+        val maxBackoffMs: Long = DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS,
     ) : BlockShellScope
 }
 
@@ -487,18 +491,58 @@ internal fun BlockStepNode.projectBodyExecution(
         // any other Retrying body projects to the shared Retry scope with the decoded
         // attempt budget. The body-routing dispatch is a closed ADT match on
         // BodyExecutionPolicy; there is no concrete-PluginStepId comparison here.
-        policy.waitUntil?.let { shape ->
-            BodyExecutionProjection.Scope(
-                BlockShellScope.WaitUntilScope(
-                    initialRecurrencePeriod = shape.initialRecurrencePeriodMs,
-                    quiet = shape.quiet,
-                ),
+        policy.waitUntil?.let { shape -> projectWaitUntilScope(shape) }
+            ?: BodyExecutionProjection.Scope(
+                BlockShellScope.Retry(maxAttempts = decodeAttemptBudgetMaxAttempts()),
             )
-        } ?: BodyExecutionProjection.Scope(
-            BlockShellScope.Retry(maxAttempts = decodeAttemptBudgetMaxAttempts()),
-        )
     }
     is BodyExecutionPolicy.Parallel -> BodyExecutionProjection.Unimplemented(policy.shape)
+}
+
+/**
+ * Projects the polling contract of a `core.waitUntil` block: the SHAPE is the declaration
+ * ([BodyExecutionPolicy.WaitUntilShape]), the backoff CEILING is decoded input.
+ *
+ * That split is the shape's own contract, not an invention here: `WaitUntilShape` documents
+ * itself as *"a structural property of the Step KIND, not runtime data: the attempt budget
+ * and the deadline still arrive as decoded typed input."*
+ *
+ * Why it is decoded HERE and nowhere else: this projector is the single place the
+ * coordinator asks for a body scope, and both polling branches read the ceiling from it —
+ * the durable branch at `BodyExecutionEngine` (`WaitUntilEngine(maxBackoffMs = scope.maxBackoffMs)`)
+ * and the inline branch below it. A value read anywhere else could only ever reach one of
+ * them, which is precisely how the previous regex side-channel behaved: it was consumed
+ * solely by the inline branch, so in production the durable poll always ran at the default.
+ *
+ * Absent key means [DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS]; a present but
+ * unusable one is a typed [BodyExecutionProjection.InvalidInput], matching this function's
+ * declared contract rather than throwing.
+ */
+private fun BlockStepNode.projectWaitUntilScope(
+    shape: WaitUntilShape,
+): BodyExecutionProjection {
+    val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
+    val declared = payload["maxBackoffMs"]
+    val maxBackoffMs = if (declared == null) {
+        DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS
+    } else {
+        declared.jsonPrimitive.contentOrNull?.toLongOrNull()
+            ?: return BodyExecutionProjection.InvalidInput("maxBackoffMs must be an integer")
+    }
+    // The same invariant `WaitUntilEngine` enforces on its own constructor. Enforcing it
+    // here means an impossible poll never reaches the engine to fail at run time.
+    if (maxBackoffMs < shape.initialRecurrencePeriodMs) {
+        return BodyExecutionProjection.InvalidInput(
+            "maxBackoffMs ($maxBackoffMs) must be >= initialRecurrencePeriod (${shape.initialRecurrencePeriodMs})",
+        )
+    }
+    return BodyExecutionProjection.Scope(
+        BlockShellScope.WaitUntilScope(
+            initialRecurrencePeriod = shape.initialRecurrencePeriodMs,
+            quiet = shape.quiet,
+            maxBackoffMs = maxBackoffMs,
+        ),
+    )
 }
 
 /** Which context dimension a scoped body projects, and how its value is decoded. */

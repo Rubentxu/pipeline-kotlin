@@ -27,12 +27,25 @@ import org.junit.jupiter.api.Test
  *
  * ## What is guaranteed, and why it matters
  *
- * The payload STRING is a durable input: `BodyStructureDigest` appends
- * `child.payload.encoded`, so a single changed character moves the durable body
- * identity and DR-10 fails closed on existing history. These rows therefore pin
- * the bytes exactly, not a decoded projection of them. Naming the codec moved
- * AUTHORSHIP; if it had also moved the format, the change would need a
- * compatibility review instead of a refactor.
+ * The payload STRING is a durable input. `StepDispatchEngine` puts
+ * `child.payload.encoded` into `OperationInput.params`, which `OperationInput`
+ * documents as fingerprint input, so a changed payload moves the operation
+ * identity; the replay table's first rule is `!hasJournalEntry -> RERUN`, so a
+ * resume of an older waitUntil block MISSES its journal row and re-executes
+ * rather than silently reusing it. These rows therefore pin the bytes exactly,
+ * not a decoded projection of them.
+ *
+ * These rows previously attributed that property to `BodyStructureDigest`, which
+ * is wrong: its payload-appending call is guarded by `hasBodyContinuation`, bound
+ * only for the `HANDLER_CONTINUATION` owner, which only `core.lock` and
+ * `core.input` declare. `core.waitUntil` is an engine-driven block and never
+ * reaches that digest. The conclusion held; the mechanism was invented.
+ *
+ * The format DID change after the codec was named: `maxBackoffMs` was added so
+ * the block payload can carry a per-block ceiling that `WaitUntilShape` cannot
+ * express. That is a deliberate change with a compatibility consequence (above),
+ * recorded in the ROADMAP correction of 2026-10-18 — not a side effect of naming
+ * the codec, and the frozen bytes below are the new ones.
  *
  * Sibling of `Lfc2WaitUntilDslCanonicalProjectionTest`, which asserts the
  * structural shape of the same node. This file asserts the wire.
@@ -79,7 +92,7 @@ class CoreWaitUntilWireCodecContractTest {
         // accept a reordered or renamed key, which is exactly the durable-identity
         // move this row exists to prevent.
         assertEquals(
-            """{"kind":"waitUntilBlock","initialRecurrencePeriod":7,"quiet":false}""",
+            """{"kind":"waitUntilBlock","initialRecurrencePeriod":7,"quiet":false,"maxBackoffMs":60000}""",
             compiledBlockPayload(),
         )
     }
@@ -87,7 +100,7 @@ class CoreWaitUntilWireCodecContractTest {
     @Test
     fun `compiled block payload carries every declared field verbatim`() {
         assertEquals(
-            """{"kind":"waitUntilBlock","initialRecurrencePeriod":250,"quiet":true}""",
+            """{"kind":"waitUntilBlock","initialRecurrencePeriod":250,"quiet":true,"maxBackoffMs":60000}""",
             compiledBlockPayload(initialRecurrencePeriod = 250L, quiet = true),
         )
     }

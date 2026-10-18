@@ -107,9 +107,70 @@ internal val CLI_VERBS: List<Pair<String, String>> = listOf(
     "sdk-info" to "print the SDK coordinates a plugin builds against",
 )
 
+/**
+ * Environment variables that change behaviour, rendered by [printUsage].
+ *
+ * ## Why this is a constant and not prose
+ *
+ * Measured 2026-10-18 before this existed: six `PIPELINE*` literals in product
+ * code, **zero** of them reachable from `--help`. `PIPELINE_STORE_PASSPHRASE`
+ * appeared only in two error hints, so it was discoverable exactly when
+ * something had already gone wrong; `PIPELINE_CREDENTIALS_STORE` appeared only
+ * in a comment; the sandbox pair appeared only in SDK KDoc. An operator could
+ * not find any of them without reading the source.
+ *
+ * That is the same failure mode [CLI_VERBS] exists to prevent, on the other
+ * surface: a list nobody reads drifts from the code, and here the drift is
+ * invisible because a missing env var looks like a program that simply ignored
+ * it. `CredentialsStorePath` now resolves every reader to one place, so this
+ * list is the only place a new variable has to be remembered — and a fitness
+ * checks that a variable added to the code is added here or to
+ * [CLI_ENVIRONMENT_INTERNAL].
+ *
+ * ## The six, and how the first count of three was wrong
+ *
+ * A sweep for `"PIPELINE[A-Z0-9_]*"` reports six. An earlier sweep of this
+ * session reported three, and the fitness disproved the three by failing with
+ * the names it had never returned. The cause was not the character class: it
+ * was a one-level glob, `v2/<module>/src/main/`, which matches
+ * `v2/pipeline-application` but not `v2/pipeline-step-sdk/runtime`, two levels
+ * deep. Three of the six live in the SDK. A denominator gathered by a one-level
+ * glob is not a small error; it is an error that reads as a complete answer,
+ * which is why the row comparing the two sets is the row that carries this
+ * block.
+ */
+internal val CLI_ENVIRONMENT: List<Pair<String, String>> = listOf(
+    "PIPELINE_CREDENTIALS_STORE" to "credentials store file (default ~/.pipeline/credentials.bin)",
+    "PIPELINE_STORE_PASSPHRASE" to "passphrase that decrypts the credentials store",
+    "PIPELINEK_SCRIPT_CACHE_DIR" to "compiled .pipeline.kts cache directory (default off)",
+    "PIPELINE_SANDBOX_ALLOW_EXTRA" to "comma-separated env keys the sandbox keeps despite its deny-list",
+    "PIPELINE_SANDBOX_PATH_KEEP" to "comma-separated PATH prefixes the sandbox keeps after normalising",
+)
+
+/**
+ * `PIPELINE*` names the product reads or writes for its OWN protocol, not for an
+ * operator's. These are rendered as well, because an operator who finds one in
+ * `/proc/<pid>/environ` and cannot tell whether setting it means anything has
+ * the same problem as one who cannot find a variable at all.
+ *
+ * They live in a second named list rather than being skipped inside the
+ * fitness, and that is the point: an exemption that is a name in a list can be
+ * audited, whereas an exemption expressed as a pattern or a filename can hide a
+ * real variable behind it.
+ */
+internal val CLI_ENVIRONMENT_INTERNAL: List<Pair<String, String>> = listOf(
+    "PIPELINE_OP_COOKIE" to "internal: tags one durable operation's process tree (do not set)",
+)
+
 private fun printUsage(out: Appendable) {
     out.append("Usage: pipelinek <verb> [options] [args]\n\nVerbs:\n")
     CLI_VERBS.forEach { (verb, summary) -> out.append("  %-13s %s\n".format(verb, summary)) }
+    out.append("\nEnvironment:\n")
+    CLI_ENVIRONMENT.forEach { (name, purpose) -> out.append("  %-28s %s\n".format(name, purpose)) }
+    out.append("\nEnvironment (internal, set by the product itself):\n")
+    CLI_ENVIRONMENT_INTERNAL.forEach { (name, purpose) ->
+        out.append("  %-28s %s\n".format(name, purpose))
+    }
     out.append("\nEach verb prints its own usage when called without a required argument.\n")
 }
 

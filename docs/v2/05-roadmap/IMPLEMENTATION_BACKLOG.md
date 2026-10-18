@@ -27,7 +27,7 @@ El backlog está ordenado por dependencia y riesgo. Los IDs pueden convertirse d
 - **E2-02** Kotlin24 ScriptDefinition.
 - **E2-03** explicit classpath builder.
 - **E2-04** source diagnostics mapping.
-- **E2-05** compilation cache key/storage.
+- **E2-05** compilation cache key/storage. **(key half ✅ CLOSED `c5f5d570` — `CacheKey.v2` implements the `SCRIPTING_COMPILER_SPEC.md` §7 identity (length-framed pre-image, compiler options as real dimensions), the host emits it, and ADR-0021's condition is discharged by `docs/v2/07-uat/CACHE_KEY_V2_MIGRATION_PLAN.md`; 4+2 tests green by canary, 2 mutations each flipping exactly 1 row. **storage half still OPEN** — no cache store exists; when it lands it MUST key on `(version, value)`, never read a `v2` value with `v1`'s recipe)**
 - **E2-06** compiler compatibility corpus harness.
 - **E2-07** kotlinc fallback harness.
 - **E2-08** stable/RC/EAP matrix workflow.

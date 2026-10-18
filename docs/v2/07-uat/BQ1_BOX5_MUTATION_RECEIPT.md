@@ -1,9 +1,10 @@
 # BQ1 box 5 — las cuatro mutaciones, medidas
 
-**SHA:** `cadf13f03d17ffb3b42991c62127fb76014ce7a3`
+**SHA base del recibo:** `cadf13f03d17ffb3b42991c62127fb76014ce7a3`
+**Enmienda:** §8, sobre `1e804c58` (361 tests; cierra el caso `className` de §7).
 **Fecha:** 2026-10-18
 **Caja:** `QUALITY_VALUE_ADDENDUM.md` BQ1, quinta entrega — *"demostrar mutaciones que detecten reporte 0 tests, all skipped, `buildCommit` erróneo, recurso de servicio no clasificado."*
-**Alcance:** `:test-harness:test`, 63 clases, 360 tests. Verificado verde desde canario limpio en el SHA de arriba (`TEST-*.xml` borrados y regenerados; `failures=0 errors=0 skips=0`; `^e: ` = 0).
+**Alcance:** `:test-harness:test`, 63 clases, 360 tests al emitir el recibo; 361 tras §8. Verificado verde desde canario limpio (`TEST-*.xml` borrados y regenerados; `failures=0 errors=0 skips=0`; `^e: ` = 0).
 
 Este recibo es la evidencia de la caja. El estado de la caja en el roadmap **no** cambia aquí: marcarla es una decisión de cierre que además exige los otros cuatro TODOs de BQ1.
 
@@ -122,3 +123,47 @@ Lo que falta es la decisión, y por eso queda aquí y no en un commit:
 Por la SEMANTIC CONSTITUTION §2 ("dead semantic parameter — metadata accepted but never interpreted"), (a) es el mínimo correcto hoy y (b) es el único que da valor real. Se recomienda (a) ahora y (b) como ítem propio; no se ejecuta ninguna de las dos sin la decisión, porque (b) cambia el contrato del gate y (a) toca un KDoc que hoy dice la verdad.
 
 Las dos filas existentes que lo mencionan (`EvidenceManifestTest:64` round-trip, `:99` rechazo de un valor mal formado) certifican el **parseo**, no el uso, y no deben contarse como cobertura de este punto.
+
+## 8. Amendamiento del 2026-10-18: `class_name` sí se compara
+
+§7 midió sobre el denominador completo que **cuatro de los seis campos** del sidecar se exigen y no se interpretan, y señaló `className` como el caso más nítido. Ese caso se cerró después de emitido el recibo; esta sección es su evidencia y **modifica §7**, que queda por tanto incompleto tal como está escrito.
+
+### El agujero
+
+`EvidenceManifest.sidecarFor` deriva la ruta del sidecar del **nombre de fichero** del XML:
+
+```kotlin
+val className = fileName.removePrefix("TEST-").removeSuffix(".xml")
+return xmlPath.resolveSibling("$className.json")
+```
+
+Así que `TEST-FooTest.xml` sólo puede emparejarse con `FooTest.json` — y el JSON *dentro* de ese fichero lleva su propio `class_name`, que nada comparaba. El gate indexaba por el `<testsuite name>` del XML y leía el sidecar sólo para `source_commit` y `hf`. Un sidecar que se describiera a sí mismo como `BarTest` **descargaba el plan de `FooTest` sin quejarse**.
+
+Esto implementa literalmente la mitad sin comparar de la caja 3 del roadmap — «validar `tests>0`, `tests-skipped>0`, `errors=failures=0`, y clase/paquete, archivo por invocación» — y es la misma clase de fallo que `EvidenceKeyAgreementTest` cerró un nivel más arriba: dos mitades nombrando lo mismo sin que nadie lo compruebe.
+
+### Medición
+
+```text
+RED  (antes de cablear la comparación)
+     EvidenceManifestTest  the gate refuses a sidecar that names a different class
+                            than its report
+                            ==> expected: not <null>
+```
+
+Es decir: `adjudicate` devolvía `null` — descargaba — donde la fila exige una negativa. La mutación sobre el código productivo (`if (false && m.className != identity)`) la mata por **1 fila de 361 en 63 clases**, atribuida 1:1.
+
+### Lo que cambió
+
+| sitio | cambio |
+|---|---|
+| `ValidationPlan.SelectionRefusal` | caso nuevo `SidecarNamesAnotherClass(suite, observed)` |
+| `ImpactResolver.adjudicate` | comparación `m.className != identity` en la rama `WithManifest` |
+| `GateCli.describe` | frase de operador; el `when` es exhaustivo, así que el compilador la exigía |
+
+El caso lleva `(suite, observed)` y nada más: `suite` **es** el valor esperado, así que un `expected` aparte sería una repetición, y un `field: String` discriminante sería exactamente el *flag* de modo abierto que la constitución prohíbe en un ADT cerrado.
+
+Verde desde canario completo (`*.xml` borrados y regenerados, `^e: ` = 0): **63 clases, 361 tests, `failures=0 errors=0 skipped=0`**.
+
+### Lo que §7 sigue diciendo
+
+`gradlePath`, `invocation` y `binarySha256` **continúan** sin comparación y sin cerrar. La medición de esta sección no los toca; sólo cierra `className`. La decisión (a)/(b) de §7 sigue pendiente para `binary_sha256`.

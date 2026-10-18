@@ -273,6 +273,9 @@ object GateCli {
             "suite ${refusal.suite} sidecar is malformed: ${refusal.reason}"
         is SelectionRefusal.StaleBinary ->
             "suite ${refusal.suite} ran against commit ${refusal.observed}, not ${refusal.expected}"
+        is SelectionRefusal.SidecarNamesAnotherClass ->
+            "suite ${refusal.suite} has a sidecar describing itself as ${refusal.observed}: " +
+                "the sidecar writer and the report disagree"
         is SelectionRefusal.InsufficientFidelity ->
             "suite ${refusal.suite} ran at ${refusal.observed}, required one of ${refusal.required}"
     }

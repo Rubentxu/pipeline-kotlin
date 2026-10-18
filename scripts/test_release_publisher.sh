@@ -45,6 +45,7 @@ COUNTER_DIR="$(mktemp -d)"
 run_negative_test() {
     local name="$1"
     local setup_fn="$2"
+    local expect="$3"
     local tmp
     tmp="$(mktemp -d)"
     if ! "$setup_fn" "$tmp"; then
@@ -54,18 +55,37 @@ run_negative_test() {
         return
     fi
     (
+        # The script under test resolves REPO_ROOT from its own path and then
+        # `cd "$REPO_ROOT"` (line 51), so running it from outside the sandbox
+        # made every git command act on the REAL repository and left the
+        # sandbox decorative: all three tests refused on the real tree's
+        # dirty state, so two of them never reached the pre-condition they
+        # claim to certify -- and one clean tree away from pushing a tag to
+        # origin. Copying the script into the sandbox is what makes REPO_ROOT
+        # resolve there and the test mean what it says.
+        mkdir -p "$tmp/scripts"
+        cp "$TARGET_SCRIPT" "$tmp/scripts/release-pipelinek.sh"
         cd "$tmp"
         local out
         out="$(timeout 15 env PIPELINEK_RELEASE_TAG="v0.56.0-rc999" \
                  PIPELINEK_RELEASE_TRAIN="0.56.0" \
-                 bash "$TARGET_SCRIPT" 2>&1)"
+                 bash "$tmp/scripts/release-pipelinek.sh" 2>&1)"
         local rc=$?
         if [ "$rc" -eq 124 ]; then
             echo "  FAIL  $name (script did not refuse in 15s; it leaked into the gradle call when it should have failed the pre-condition)" >&2
             echo x >> "$COUNTER_DIR/fail"
         elif [ "$rc" -ne 0 ]; then
-            echo "  PASS  $name (refused with exit=$rc: ${out##*$'\n'})"
-            echo x >> "$COUNTER_DIR/pass"
+            # Refusing is necessary but not sufficient: any earlier refusal
+            # satisfies it. Without this, a test named for the tag pre-conditions
+            # passes while being refused by the dirty-tree check that runs first.
+            if printf '%s\n' "$out" | grep -qF "$expect"; then
+                echo "  PASS  $name (refused with exit=$rc on its own pre-condition: $expect)"
+                echo x >> "$COUNTER_DIR/pass"
+            else
+                echo "  FAIL  $name (refused with exit=$rc, but NOT on '$expect'; it was stopped" >&2
+                echo "        by an earlier pre-condition. Last line: ${out##*$'\n'}" >&2
+                echo x >> "$COUNTER_DIR/fail"
+            fi
         else
             echo "  FAIL  $name (script accepted a state it should have refused; output: $out)" >&2
             echo x >> "$COUNTER_DIR/fail"
@@ -117,19 +137,24 @@ setup_remote_tag_exists() {
     setup_clean_repo "$d" || return 1
     cd "$d"
     # Push HEAD and the conflicting tag to origin (a real bare repo).
-    local bare
-    bare="$(mktemp -d)"
-    git init -q --bare "$bare/origin.git" -b main
-    git remote set-url origin "$bare/origin.git"
+    #
+    # The bare repo lives INSIDE the sandbox. It used to be a separate
+    # mktemp -d that this function deleted before returning, which destroyed
+    # the remote it had just created: `git ls-remote --tags origin` then found
+    # nothing, the remote-tag pre-condition never fired, and the script ran on
+    # into the gradle call. The test still reported PASS because it only asked
+    # for a non-zero exit, and the real repository's dirty state was supplying
+    # that. Cleanup is the caller's `rm -rf "$tmp"`.
+    local bare="$d/origin.git"
+    git init -q --bare "$bare" -b main
+    git remote set-url origin "$bare"
     git push -q origin main
-    git push -q origin "v0.56.0-rc999" || true  # if HEAD has no such tag, ignore
     # Create the tag on origin via direct push.
     git tag "v0.56.0-rc999"
     git push -q origin "v0.56.0-rc999"
     # Remove the local tag so the script's "local tag" check is irrelevant;
     # only the remote check fires.
     git tag -d "v0.56.0-rc999"
-    rm -rf "$bare"
 }
 
 # ----------------------------------------------------------------------------
@@ -137,9 +162,12 @@ setup_remote_tag_exists() {
 # ----------------------------------------------------------------------------
 echo "PK-NEXT R0.1 — release-pipelinek.sh pre-condition negative tests"
 echo
-run_negative_test "dirty working tree is refused"      setup_dirty_tree
-run_negative_test "tag already exists locally"          setup_local_tag_exists
-run_negative_test "tag already exists on origin"         setup_remote_tag_exists
+run_negative_test "dirty working tree is refused"      setup_dirty_tree \
+    "working tree is dirty"
+run_negative_test "tag already exists locally"          setup_local_tag_exists \
+    "already exists locally"
+run_negative_test "tag already exists on origin"         setup_remote_tag_exists \
+    "already exists on origin"
 
 echo
 PASS_COUNT=$(wc -l < "$COUNTER_DIR/pass")

@@ -6,7 +6,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import java.security.MessageDigest
 
 /**
  * SHA-256 fingerprint of a durable operation's input, used as a cache key.
@@ -15,24 +14,30 @@ import java.security.MessageDigest
  *
  * ## Canonical JSON encoding
  *
- * The fingerprint payload is encoded with `Json { canonical = true }`, which
- * guarantees stable field ordering and consistent serialization across JVM instances.
- * This ensures cross-process determinism: the same input always produces the same fingerprint.
+ * The payload is encoded with a plain `Json { encodeDefaults; explicitNulls }`,
+ * and the ordering is imposed on the VALUE before encoding by recursing through
+ * every map and sorting it by key. That ordering is not an optimisation here, it
+ * is the property being relied upon: kotlinx.serialization writes a `Map` in
+ * iteration order, so two equal `params` maps assembled in a different order
+ * would otherwise hash to different digests and the same operation would acquire
+ * two identities.
  *
- * `canonical` is not an optimisation here, it is the property being relied upon.
- * Left off, kotlinx.serialization writes a `Map` in iteration order, so two equal
- * `params` maps assembled in a different order would hash to different digests and
- * the same operation would acquire two identities.
+ * There is no canonical-mode flag to lean on. `JsonBuilder` in
+ * kotlinx.serialization-json 1.11.0 has no `canonical` property — an earlier
+ * revision of this comment claimed otherwise, and the dangling
+ * `[Json].[canonical][Json.DeepRecursive]` link beside it was the tell.
  *
  * ## Collision resistance
  *
  * SHA-256 over bounded input (≤ 64 KiB enforced by [OperationInput.validate]) is
- * cryptographically collision-resistant for this use case. The risk is negligible
- * and documented here per [design.md §R-B].
+ * cryptographically collision-resistant for this use case.
+ *
+ * Provenance note: this comment used to cite `design.md §E4-02` and §R-B. Those
+ * documents are not in the repository, so the citations were removed rather than
+ * left pointing at nothing. ~27 sibling citations of the same shape survive
+ * elsewhere in the Kotlin sources and need the same decision.
  *
  * @param hex 64-character lowercase hex string.
- *
- * @see <a href="design.md §E4-02">Design §E4-02</a>
  */
 @JvmInline
 value class Fingerprint(val hex: String) {

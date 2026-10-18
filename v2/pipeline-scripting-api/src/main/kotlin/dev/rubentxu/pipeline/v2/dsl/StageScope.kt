@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.dsl
 import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.domain.RuntimeConfig
 import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS
+import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS
 
 /**
  * Receiver scope for the `directives { }` block inside a stage (S1-B).
@@ -431,12 +432,15 @@ class StageScope(
      *
      * @param initialRecurrencePeriod Initial poll interval in milliseconds (default 1000ms)
      * @param quiet If true, suppress output during polling
+     * @param maxBackoffMs Ceiling in milliseconds the poll interval backs off to
+     *   (default 60000ms); must be at least `initialRecurrencePeriod`
      * @param body Lambda producing the nested steps whose last step emits
      *   WaitUntilPredicateEvaluated(true/false)
      */
     fun waitUntil(
         initialRecurrencePeriod: Long = DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS,
         quiet: Boolean = false,
+        maxBackoffMs: Long = DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS,
         body: StageScope.() -> Unit,
     ) {
         // Construction-time body capture: invoke the lambda once on a
@@ -449,6 +453,7 @@ class StageScope(
         steps.add(StepSpec.WaitUntilBlock(
             initialRecurrencePeriod = initialRecurrencePeriod,
             quiet = quiet,
+            maxBackoffMs = maxBackoffMs,
             body = inner.steps(),
         ))
     }

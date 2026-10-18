@@ -23,7 +23,6 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolution
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolver
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.WaitUntilShape
-import dev.rubentxu.pipeline.v2.application.DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS
 import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
 import dev.rubentxu.pipeline.v2.application.durable.credentials.AcquiredCredentialScope
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialBindingsPayload
@@ -422,13 +421,14 @@ internal sealed interface BlockShellScope {
      * initialRecurrencePeriod: initial delay in ms before first poll
      * quiet: suppress logging if true
      * maxBackoffMs: ceiling for exponential backoff, DECODED from the block payload
-     *   (see [projectWaitUntilScope]); [DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS] is what an
-     *   absent key means.
+     *   (see [projectWaitUntilScope]). Required rather than defaulted: an absent key means
+     *   [dev.rubentxu.pipeline.v2.domain.step.WaitUntilShape.maxBackoffMs], so a default here
+     *   would be a second authority for a value the projection always supplies explicitly.
      */
     data class WaitUntilScope(
         val initialRecurrencePeriod: Long,
         val quiet: Boolean,
-        val maxBackoffMs: Long = DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS,
+        val maxBackoffMs: Long,
     ) : BlockShellScope
 }
 
@@ -530,7 +530,7 @@ private fun BlockStepNode.projectWaitUntilScope(
     // payload, and never reached either engine.
     val initialRecurrencePeriodMs = payload.longOrDefault("initialRecurrencePeriod", shape.initialRecurrencePeriodMs)
         ?: return BodyExecutionProjection.InvalidInput("initialRecurrencePeriod must be an integer")
-    val maxBackoffMs = payload.longOrDefault("maxBackoffMs", DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS)
+    val maxBackoffMs = payload.longOrDefault("maxBackoffMs", shape.maxBackoffMs)
         ?: return BodyExecutionProjection.InvalidInput("maxBackoffMs must be an integer")
     if (initialRecurrencePeriodMs < 1) {
         return BodyExecutionProjection.InvalidInput(

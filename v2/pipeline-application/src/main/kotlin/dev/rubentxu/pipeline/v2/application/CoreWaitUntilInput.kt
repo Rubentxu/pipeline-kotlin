@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS
+import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS
 
 /**
  * Typed payload of the `core.waitUntil` **block** carrier.
@@ -52,15 +53,3 @@ data class CoreWaitUntilInput(
     val quiet: Boolean = false,
     val maxBackoffMs: Long = DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS,
 )
-
-/**
- * The backoff ceiling a `core.waitUntil` block polls with when its payload does not
- * declare one.
- *
- * One authority: this carrier's default argument, [CoreWaitUntilWireCodec]'s decoder
- * and the structural projection's absent-key branch all read it, so none of the three
- * can drift from the others. It lives beside the carrier rather than beside its reader
- * because the WIRE decides what "undeclared" means — a reader that invented its own
- * default would be a second authority for the same question.
- */
-internal const val DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS: Long = 60_000L

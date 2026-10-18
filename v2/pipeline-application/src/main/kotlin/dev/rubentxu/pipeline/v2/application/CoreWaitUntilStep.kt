@@ -137,7 +137,6 @@ object CoreWaitUntilStep {
 
     val KEY: PluginStepId = PluginStepId("core.waitUntil")
 
-    private const val MAX_BACKOFF_MS = 60_000L
     private const val DEADLINE_MS = Long.MAX_VALUE
 
     private val inputCodec = object : StepCodec<WaitUntilInput> {

@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
 import dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader
 import dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead
@@ -7,6 +8,8 @@ import dev.rubentxu.pipeline.v2.output.StreamingUtf8Decoder
 import dev.rubentxu.pipeline.v2.output.OutputRefusal
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.RunFinished
+import dev.rubentxu.pipeline.v2.events.StageFinished
+import dev.rubentxu.pipeline.v2.events.StageStarted
 import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
@@ -71,7 +74,9 @@ object MainInspectCli {
      *   * `Step`     — the step ordinal within the stage (--step).
      *   * `Outcome`  — the outcome value the record carried (success / failure / unstable / aborted).
      *   * `Message`  — the typed failure message, when the record has one.
-     *   * `ConsoleTail` — the last `logTail` bytes of the Output Plane for the failed step's op.
+     *   * `ConsoleTail` — the last `logTail` bytes of the Output Plane for THIS row's operation.
+     *     Resolved per operation, not once for the run: see [operationIdPerEvent] for the
+     *     measurement that made the run-scoped value wrong.
      *
      * Adding a sixth case is a compile-time break for every call site that pattern-matches
      * over [InspectField]; that is the discipline that makes the projection closed.
@@ -178,37 +183,38 @@ object MainInspectCli {
             return 2
         }
 
-        // Pre-fetch the Output Plane tail once for the whole run when --log-tail > 0.
-        val consoleTail: InspectConsoleTail = if (compiled.logTail > 0) {
-            try {
-                val plane = OutputPlaneProvider.storeForReading(java.nio.file.Paths.get(compiled.controlRoot))
-                val reader = FrameIndexedObservationOutputReader(plane.frameIndex(), plane, plane)
-                // R4 / WU-R4.1.3 — when --log-tail-op is set, the tail is scoped to ONE
-                // operation's stream-id prefix. Where the run-wide tail answers "what
-                // did the run print at the end", the per-op tail answers "what did THIS
-                // step print". The auto-binding (per-step → per-op without --log-tail-op)
-                // requires opId resolution from the durable control journals; that is
-                // documented in the WU-R4.1.3 receipt as a follow-up.
-                val r = if (compiled.opId != null) {
-                    reader.readTail(runId, compiled.opId, compiled.logTail.toLong())
-                } else {
-                    reader.readTail(runId, compiled.logTail.toLong())
-                }
-                // Every case of the read ADT is carried through. `ObservationOutputRead` already
-                // separates "the page" from "the store could not answer", and collapsing the second
-                // into an empty transcript made a dangling commit indistinguishable from a step
-                // that printed nothing.
-                when (r) {
-                    is ObservationOutputRead.Page -> InspectConsoleTail.Bytes(decodePageBytesAsUtf8Impl(r.page.records))
-                    is ObservationOutputRead.Refused -> InspectConsoleTail.Unreadable(r.reason)
-                }
-            } catch (e: java.io.IOException) {
-                InspectConsoleTail.NotRequested
-            }
-        } else InspectConsoleTail.NotRequested
+        // D2 — resolve each event to its operation BEFORE any Output Plane read, because the
+        // tail belongs to the operation and not to the run.
+        val opIds: List<OpId?> = operationIdPerEvent(events, runId)
 
-        val records: List<InspectionRecord> = events.map { event ->
-            toInspectionRecord(event, consoleTail)
+        if (compiled.logTail > 0 && compiled.opId != null &&
+            opIds.none { it?.format() == compiled.opId }
+        ) {
+            // Fail closed rather than render an empty transcript for every row. Without this an
+            // operator who mistypes an opId cannot tell "no such operation" from "this step
+            // printed nothing", which is the one distinction the field exists to make.
+            val owned = opIds.filterNotNull().map { it.format() }.distinct()
+            System.err.println(
+                "inspect: --log-tail-op ${compiled.opId} is not an operation of run $runId. " +
+                    if (owned.isEmpty()) {
+                        "This run declares no step operations, so it has nothing to attach a tail to."
+                    } else {
+                        "This run's step operations: ${owned.joinToString(", ")}"
+                    },
+            )
+            return 2
+        }
+
+        val consoleTails: Map<String, InspectConsoleTail> = consoleTailsByOperation(
+            opIds = opIds,
+            runId = runId,
+            controlRoot = compiled.controlRoot,
+            tailBytes = compiled.logTail.toLong(),
+            scopeOpId = compiled.opId,
+        )
+
+        val records: List<InspectionRecord> = events.mapIndexed { index, event ->
+            toInspectionRecord(event, opIds[index], consoleTails)
         }
 
         val filtered = applyFilters(records, compiled)
@@ -223,11 +229,127 @@ object MainInspectCli {
     }
 
     /**
+     * Resolve each event to the operation whose console tail it may report, in event order.
+     *
+     * ## The defect this removes
+     *
+     * `--log-tail` used to be answered ONCE for the whole run and the same value stamped onto
+     * every row. Measured 2026-10-18 against distribution 0.62.0, a two-stage run whose first
+     * stage printed `DESPUES` and whose second stage exited 7:
+     *
+     * ```text
+     * STAGE          OUTCOME   CONSOLETAIL
+     *  build/sh-0    StepStarted  DESPUES
+     *  verify/sh-0   failure     DESPUES     <- a FAILURE carrying the other step's transcript
+     * ```
+     *
+     * Thirteen rows, thirteen copies, and the failure's row quoted a step that SUCCEEDED. Same
+     * defect class as the `ok` verdict, in the opposite direction: a projection rendering a fact
+     * its event does not carry. [InspectField.ConsoleTail] had always promised "the Output Plane
+     * for THE FAILED STEP'S OP"; this function is what makes the promise true.
+     *
+     * ## Why a fold, and what it cannot do
+     *
+     * `StepFailed` carries `stepIndex` but NOT `stageIndex`, and an [OpId] needs both. The fold
+     * therefore keeps the op of the most recent [StepStarted] — a step runs inside its stage, so
+     * the open step's op is the right one — while every event that carries its own indices
+     * prefers them.
+     *
+     * Both stage boundaries CLEAR the open op: a stage-level row belongs to a stage, and a stage
+     * is not an operation. `StageFinished` was measured inheriting the last step's op and printing
+     * that step's transcript on the row that closes its stage — the same defect as the failure row,
+     * one level up, and found by reading the rendered document rather than by a test.
+     * `StageSkipped` needs no case: a skipped stage never opened a step, so `open` is already null.
+     *
+     * What the fold cannot decide: a `StepFailed` from a PARALLEL branch that reports after a
+     * sibling started. The event carries nothing to resolve it with, so it inherits the sibling.
+     * Stated rather than hidden, because wrong-but-present attribution is precisely what the
+     * measurement above removes.
+     *
+     * Pure: no clock, no filesystem, no reader. [OpId] is the typed authority for the format —
+     * this never re-templates the string.
+     */
+    internal fun operationIdPerEvent(events: List<DomainEvent>, runId: String): List<OpId?> {
+        var open: OpId? = null
+        return events.map { event ->
+            open = when (event) {
+                // A stage boundary closes every operation the stage opened. Both ends, not one:
+                // closing only the opening end leaves the stage's own summary row holding the last
+                // step's transcript.
+                is StageStarted, is StageFinished -> null
+                is StepStarted -> OpId(runId, event.stageIndex, event.stepIndex)
+                is StepFinished -> OpId(runId, event.stageIndex, event.stepIndex)
+                else -> open
+            }
+            open
+        }
+    }
+
+    /**
+     * Read each operation's tail ONCE and index it by opId.
+     *
+     * Bounded by the number of DISTINCT operations in the run, not by the number of rows: a
+     * 40-step run reads 40 indexed tails and stamps them onto however many rows each owns.
+     *
+     * [scopeOpId] (`--log-tail-op`) narrows the eligible set to the operation the operator named,
+     * so every other row projects silence rather than someone else's transcript. [main] has
+     * already validated that a named operation belongs to the run, which is what lets
+     * [OutputRefusal.UnknownStream] mean one thing here — "this operation has no output stream" —
+     * instead of two.
+     */
+    private fun consoleTailsByOperation(
+        opIds: List<OpId?>,
+        runId: String,
+        controlRoot: String,
+        tailBytes: Long,
+        scopeOpId: String?,
+    ): Map<String, InspectConsoleTail> {
+        if (tailBytes <= 0) return emptyMap()
+        val eligible = opIds.filterNotNull().map { it.format() }.toSet()
+            .let { if (scopeOpId != null) it.intersect(setOf(scopeOpId)) else it }
+        if (eligible.isEmpty()) return emptyMap()
+        return try {
+            val plane = OutputPlaneProvider.storeForReading(java.nio.file.Paths.get(controlRoot))
+            val reader = FrameIndexedObservationOutputReader(plane.frameIndex(), plane, plane)
+            eligible.associateWith { opId ->
+                // Every case of the read ADT is carried through. `ObservationOutputRead` already
+                // separates "the page" from "the store could not answer", and collapsing the
+                // second into an empty transcript made a dangling commit indistinguishable from a
+                // step that printed nothing.
+                when (val r = reader.readTail(runId, opId, tailBytes)) {
+                    is ObservationOutputRead.Page ->
+                        InspectConsoleTail.Bytes(decodePageBytesAsUtf8Impl(r.page.records))
+                    is ObservationOutputRead.Refused -> when (r.reason) {
+                        // The op is known to belong to this run (see [scopeOpId]), so a missing
+                        // stream is a FACT about it: it printed nothing. `Bytes("")` states that;
+                        // `NotRequested` would state a different fact, and `Unreadable` would
+                        // claim the bytes are lost when the plane is simply empty.
+                        is OutputRefusal.UnknownStream -> InspectConsoleTail.Bytes("")
+                        else -> InspectConsoleTail.Unreadable(r.reason)
+                    }
+                }
+            }
+        } catch (e: java.io.IOException) {
+            // Previously this became `NotRequested`, which rendered as silence on every row —
+            // the same "printed nothing" lie the class above was built to remove. An unreadable
+            // plane is unreadable on every row, and each row now says so.
+            eligible.associateWith { InspectConsoleTail.Unreadable(OutputRefusal.StorageError(e.message ?: e.javaClass.simpleName)) }
+        }
+    }
+
+    /**
      * Translate one [DomainEvent] into the row shape that [InspectField] extractors read from.
      * The mapping is intentionally narrow: the five [InspectField] cases are the contract,
      * not the union of every DomainEvent subtype.
+     *
+     * [opId] is this row's operation, or null when the event belongs to no step. A row with no
+     * operation has no transcript, and says nothing rather than borrowing one.
      */
-    private fun toInspectionRecord(event: DomainEvent, consoleTail: InspectConsoleTail): InspectionRecord {
+    private fun toInspectionRecord(
+        event: DomainEvent,
+        opId: OpId?,
+        consoleTails: Map<String, InspectConsoleTail>,
+    ): InspectionRecord {
         val stepName: String? = (event as? StepStarted)?.stepName
             ?: (event as? StepFinished)?.stepName
             ?: (event as? StepFailed)?.stepName
@@ -250,7 +372,7 @@ object MainInspectCli {
             stepOrdinal = stepOrdinal,
             outcome = outcome,
             message = message,
-            consoleTail = consoleTail,
+            consoleTail = opId?.let { consoleTails[it.format()] } ?: InspectConsoleTail.NotRequested,
         )
     }
 

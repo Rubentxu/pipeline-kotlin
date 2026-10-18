@@ -1,7 +1,9 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
 import dev.rubentxu.pipeline.v2.events.RunStarted
+import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
 import dev.rubentxu.pipeline.v2.output.OutputChannel
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
@@ -110,6 +112,15 @@ class MainInspectCliConsoleTailRefusalTest {
 
     private val controlRoot: Path get() = root.resolve("control")
     private val db: Path get() = root.resolve("events.db")
+
+    /**
+     * The step whose output this fixture publishes.
+     *
+     * `--log-tail` is attributed PER OPERATION, so the run must actually declare one: a run with no
+     * step has nothing to attach a tail to and every row projects silence. The refusal these rows
+     * are about is then a refusal on a row that genuinely owns a stream.
+     */
+    private val stepOp = OpId(runId, stageIndex = 0, stepIndex = 0)
 
     @AfterEach
     fun dropCachedStores() = OutputPlaneProvider.forgetAll()
@@ -222,7 +233,19 @@ class MainInspectCliConsoleTailRefusalTest {
 
     // ---- fixture -------------------------------------------------------------------------------
 
-    private fun stdoutStream() = OutputStreamId("$runId/build/sh-0/stdout")
+    /**
+     * The stream id, in the shape the engine MINTS — `<runId>/<opId>/<channel>`, read out of a real
+     * run's frame index.
+     *
+     * It used to be `"$runId/build/sh-0/stdout"`, which no engine ever produces. The fixture was
+     * green anyway, because the run-scoped read matched on `runId` alone and ignored the middle
+     * segments; the day the tail became per-operation, the fabricated shape stopped matching and
+     * the three rows above went red. That is the fixture telling the truth late: a stream id whose
+     * shape the product does not produce cannot be the base of a claim about how the product
+     * attributes a stream to a step. See `MainInspectCliConsoleTailAttributionTest` for the
+     * measured shape and the mutation that pins it.
+     */
+    private fun stdoutStream() = OutputStreamId("$runId/${stepOp.format()}/stdout")
 
     /**
      * Publishes [transcript] through the production write order, and returns the stdout the CLI
@@ -270,15 +293,35 @@ class MainInspectCliConsoleTailRefusalTest {
         Files.write(segment, shortened, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)
     }
 
+    /**
+     * The run must DECLARE the step that owns the stream, or `--log-tail` has nothing to attach to.
+     *
+     * Both events carry `sequence = 0L` on purpose: `SqliteEventStore.appendAssigned` is the
+     * durable authority for `UNIQUE(run_id, sequence)` and assigns the sequence itself, so a
+     * fixture that invents one collides with the counter.
+     */
     private fun appendRunStarted() {
         SqliteEventStore(db.toString()).use { store ->
+            val at = Instant.parse("2026-10-18T09:00:00Z")
             store.append(
                 RunStarted(
                     eventId = "evt-0",
                     runId = runId,
                     sequence = 0L,
-                    occurredAt = Instant.parse("2026-10-18T09:00:00Z"),
+                    occurredAt = at,
                     scriptPath = "/tmp/inspect-tail.pipeline.kts",
+                ),
+            )
+            store.append(
+                StepStarted(
+                    eventId = "evt-1",
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = at,
+                    stageIndex = stepOp.stageIndex,
+                    stepIndex = stepOp.stepIndex,
+                    stepName = "build/sh-0",
+                    stepType = "core.sh",
                 ),
             )
         }

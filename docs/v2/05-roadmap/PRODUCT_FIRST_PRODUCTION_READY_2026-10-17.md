@@ -190,7 +190,7 @@ precondición que la decisión 2b conserva para ellos.
   **Latente, NO corregido aquí.** `MaterializedCredential.close()` (credentials-api/spi) hace `handle?.let { /* handle cleanup if needed */ }` — un no-op disfrazado de trabajo, la clase «comentario que afirma una propiedad que el cableado no tiene». Sus únicos constructores `fromHandle` están en tests, así que no lo ejecuta producción: enumeré las construcciones antes de calificarlo. Fix de una línea, sin trazabilidad de milestone propia, y meterlo en un commit de seguridad sería peor que dejarlo escrito.
 - [x] **H1.3** Solo test del seam de salida afectado + **1 UAT temporal** de CLI con stdout/stderr/cursor y negativo secreto si riesgo afectado. Reusar smoke instalado del RC. Borrar pruebas temporales y fixtures tras aceptación.
 
-  **Cerrado el alcance que H1.1 dejó medido.** No hizo falta UAT nueva: los dos ítems eran locales y uno de ellos era de producto. Sin ampuляр el gate.
+  **Cerrado el alcance que H1.1 dejó medido.** No hizo falta UAT nueva: los dos ítems eran locales y uno de ellos era de producto. Sin ampu el gate.
 
   **a) `f02` era verde por vacuidad. Cerrado.** Sus dos aserciones eran de AUSENCIA, y un Output Plane vacío las satisface — por eso sobrevivía a M-2. Ahora el productor escribe un marcador benigno **antes** de los fragmentos y la fila lo exige presente. Con M-2 (`RedactingOutputIngress` nunca hace commit) `f02` pasa de verde a **ROJA** por su propia aserción nueva. La fila ya no puede go green sobre un plano sin señal.
 
@@ -380,7 +380,60 @@ precondición que la decisión 2b conserva para ellos.
 
   **Corrección propia.** Durante esta medición afirmé dos cosas que la sonda contradijo, y ambas habrían escrito un verdicto falso en este documento: que `console` rechazaba `sh` (rechazaba el opId que yo le había pasado, que no era el válido; el formato es `<runId>-s<stageIndex>-<stepIndex>`), y que `inspect --log-tail` era un no-op silencioso (está acotado a los ops de steps fallidos por diseño, y mi run había tenido éxito; además había omitido `CONSOLETAIL` de `--fields`). Tres correcciones propias en una medición es la tasa normal, no la excepción: por eso la cifra va con su sonda y no con su conclusión.
 
-  **Abierto — `--log-tail-op` estampa una transcripción sobre todas las filas.** `MainInspectCli` calcula `consoleTail` **una vez para todo el run** (`:181-208`) y `toInspectionRecord` (`:230-255`) copia ese mismo valor en **cada** `InspectionRecord`. Con `--log-tail-op <un-op>`, la fila de ese op y la de `CompilationStarted` llevan la misma transcripción. El campo está bien calculado y mal distribuido: es un valor scoped al run presentedo como scoped a la fila. Sepáralo significa decidir si `CONSOLETAIL` pertenece a la fila o a la cabecera de la respuesta — y si pertenece a la fila, `consoleTail` tiene que ser por-op.
+  **Cerrado — `--log-tail` estampa una transcripción sobre todas las filas.** `MainInspectCli` calculaba `consoleTail` **una vez para todo el run** y `toInspectionRecord` copiaba ese mismo valor en **cada** `InspectionRecord`. El KDoc de `InspectField.ConsoleTail` había prometido siempre «the Output Plane for THE FAILED STEP'S OP»: la promesa estaba escrita y no implementada.
+
+  **Corrección propia, y no una sutileza.** El párrafo que abrió este ítem decía «el campo está bien calculado y mal distribuido», y al medir resultó falso. No era una columna mal distribuida: era una **fila de fallo citando la transcripción del step que salió bien**.
+
+  ```text
+  ANTES — distribucion 0.62.0, dos stages; el stage 0 imprime DESPUES, el 1 sale con codigo 7
+  $ pipelinek inspect <run> --log-tail 200 --fields STAGE,OUTCOME,CONSOLETAIL
+    STAGE            OUTCOME     CONSOLETAIL
+     build/sh-0      StepStarted  DESPUES
+     build/sh-0      StepFinished DESPUES
+     verify/sh-0     failure      DESPUES      <- el FALLO citando el step que SI salio bien
+  ```
+
+  Trece filas, trece copias. La clasificación «presentación descuidada» era mi conclusión sin sonda; la sonda la corrigió **hacia arriba**, a la misma clase de severidad que el `ok` inventado de la parte 3, en dirección opuesta: **inventar un veredicto y tomar prestado un hecho son el mismo defecto con vocabulario distinto**.
+
+  **La decisión: atribuir por operación, con un pliegue puro.** `operationIdPerEvent(events, runId)` recorre los eventos y resuelve el op de cada fila; el read del Output Plane pasa a ser por-op (`FrameIndexedObservationOutputReader.readTail(runId, opId, n)`), que es la sobrecarga que ya existía y no se usaba. El pliegue es puro y por eso es HF0: `StepFailed` **no lleva `stageIndex`**, así que hereda la operación del step abierto en vez de adivinarla; `StageStarted` y `StageFinished` la cierran por los dos extremos.
+
+  ```text
+  DESPUES — misma distribucion reconstruida, mismas cuatro sondas
+     build/sh-0      StepStarted  DESPUES
+     verify/sh-0     failure      (vacio)
+     build/sh-0      build        (vacio)        <- el hueco de StageFinished
+  $ … --log-tail-op <runId>-s9-9                 -> exit 2, stderr nombra el op pedido
+                                                      y los ops reales del run
+  ```
+
+  Tres decisiones que la medición obligó a escribir:
+
+  1. **`--log-tail-op` con un opId ajeno al run → `exit 2`**, nombrando lo pedido y lo que el run tiene. Sin esto, un opId mal escrito renderizaba el documento entero vacío y el operador no distinguía «no existe» de «este step no imprimió» — la única distinción que el campo existe para hacer.
+  2. **`UnknownStream` → `Bytes("")`**, no `Unreadable`. El op pertenece a este run y su stream no existe: eso es un **hecho** sobre la operación —imprimió nada—, distinto de «no me lo preguntaste» (`NotRequested`). Un `IOException` por el path de lectura, en cambio, sí es `Unreadable(StorageError)` por op; antes se degradaba a `NotRequested` en todas las filas, que es el silencio que la parte anterior acababa de eliminar.
+  3. **`StageStarted, is StageFinished -> null`**, no sólo `StageStarted`. La ley es «un límite de stage cierra lo que el stage abrió», por los dos extremos. Una sola rama cerraba el inicio y dejaba abierto el final.
+
+  **El hueco del punto 3 no lo encontró ningún test: se encontró leyendo el documento renderizado** contra el binario instalado, después de que las cuatro sondas dieran verde. Las filas de `StageFinished` salían todavía con `DESPUES`. Es el segundo caso consecutivo en este bloque donde leer el producto encuentra lo que las aserciones no ven, y por eso la fila `TAIL_OP_0` existe: el pliegue tenía una rama de stage donde la ley tiene dos.
+
+  ```text
+  MainInspectCliConsoleTailAttributionTest  4 tests  f=0 e=0 s=0   (HF0 primero: el pliegue)
+  MainInspectCliConsoleTailRefusalTest     4 tests  f=0 e=0 s=0   (fixture corregido, ver abajo)
+  MainInspectCliLogTailOpTest              6 tests  f=0 e=0 s=0
+  MainInspectCliTest                       11 tests  f=0 e=0 s=0
+  CliParserUnificationTest                 20 tests  f=0 e=0 s=0
+  mutacion M-1, aplicada-verificada por sha256 antes de leer el resultado
+
+  M1  toInspectionRecord: sustituir
+      `opId?.let { consoleTails[it.format()] }`
+      por la linea pre-fix (una tail para todo el run)
+                                        -> RED 2 de 4 (TAIL_OP_1 y TAIL_OP_2)
+  fiabilidad tras restaurar              -> 4 de 4 verdes, canario fresco
+  ```
+
+  **Atribución de la mutación: medida, no predicha.** Este documento lo describió como «mata `TAIL_OP_1` sólo»; la medición mató `TAIL_OP_1` **y** `TAIL_OP_2`. Se registra porque una atribución predicha y nunca medida es la misma clase que un resultado de test predicho, y porque la corrección es la parte útil: nombró dos filas, y si la mutación hubiera matado una sola, la otra no estaba midiendo atribución.
+
+  **Fixture de la clase de rechazo: el que estaba verde por la razón equivocada.** `MainInspectCliConsoleTailRefusalTest` publicaba en `"$runId/build/sh-0/stdout"`, un stream id **que ningún motor acuña**; la forma real, medida sobre un run de verdad, es `"$runId/<runId>-s0-0/stdout"`. Pasaba porque la lectura scoped al run emparejaba sólo por `runId` e ignoraba los segmentos intermedios. Al volverse la tail por-op, la forma fabricada dejó de emparejar y tres filas cayeron. Un stream cuya forma el producto no produce no puede ser la base de una afirmación sobre cómo el producto atribuye un stream a un step.
+
+  **Un recibo anterior queda superado y no se reescribe.** `docs/v2/07-uat/R4_WU_R4_1_3_LOG_TAIL_OP_RECEIPT.md` afirma «the run-wide `--log-tail` behaviour is unchanged… the default is the run-wide read». Ese recibo es evidencia de su SHA y describe el contrato de entonces; lo que este cierre hace es **dejarlo falso como descripción del producto actual**. Un recibo no se edita: se supera por medición posterior, que es esta. La contradicción queda anotada aquí para que nadie lo lea como el contrato vigente.
 
   **Cerrado — el opId no aparecía en ninguna salida del producto.** `console` exige `<opId>` y su línea de uso lo nombraba sin decir qué es; el operador tenía que reconstruirlo a mano.
 

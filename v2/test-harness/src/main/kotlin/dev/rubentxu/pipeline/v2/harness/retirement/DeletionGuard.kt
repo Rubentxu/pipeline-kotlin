@@ -23,6 +23,9 @@ package dev.rubentxu.pipeline.v2.harness.retirement
  *
  * A test is allowed to retire only when ALL of the following hold:
  *   - the decision is `RedundantWithProof` (NOT Keep, Migrate, Fixture, etc.),
+ *   - the record's path is NOT a permanent in-repo contract (§3 of the
+ *     migration roadmap) — checked HERE rather than trusted from the
+ *     classifier, because this is the gate,
  *   - the `originalFileSha256` matches the record's `contentSha256`
  *     (file identity is the same as the one the proof refers to),
  *   - the `proofDigest` is a 64-char hex string (well-formed),
@@ -41,6 +44,26 @@ object DeletionGuard {
         retirementAuthorised: Boolean,
         retirementAuthorisedD: Boolean = false,
     ): GuardOutcome {
+        // PERMANENCE IS RE-CHECKED HERE, NOT ONLY UPSTREAM (2026-10-18).
+        //
+        // `TestClassifier` also knows about permanent contracts, but this check
+        // does NOT delegate to that: the classifier is a heuristic that returns
+        // a decision, and §4.1 is exactly the promotion path that turns
+        // `MigrateExternalPending` into a `RedundantWithProof` carrying the
+        // proof this guard then accepts. If permanence lived only in the
+        // classifier, a promotion that skipped it would delete a permanent
+        // in-repo contract, and no other row in this package would object.
+        //
+        // The authority for permanence is `RESPONSIBILITY_MIGRATION_ROADMAP.md`
+        // §3. Placing the refusal HERE means the invariant survives the
+        // promotion path: whatever produces a `RedundantWithProof`, a
+        // permanent contract cannot be retired by it.
+        if (isPermanentContract(record.path)) {
+            return GuardOutcome.Refused(
+                "${record.path} is a permanent in-repo contract " +
+                    "(RESPONSIBILITY_MIGRATION_ROADMAP.md §3); it cannot be retired by any proof",
+            )
+        }
         val wave = Wave.forRecord(record)
         if (wave == Wave.D) {
             if (!retirementAuthorisedD) {

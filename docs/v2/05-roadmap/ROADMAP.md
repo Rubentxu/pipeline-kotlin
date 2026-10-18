@@ -287,6 +287,64 @@ cable del bloque), y el portador tipado de `maxBackoffMs` cae como consecuencia,
 Eso no cambia el diagnóstico del override —sigue siendo producción-muerto y sólo los tests lo
 escriben— sino el **tamaño** del arreglo: uno horizontal, no uno local.
 
+### Corrección registrada 2026-10-18 — `quiet` es el último parámetro semántico muerto de `waitUntil`
+
+Al cerrar la rama de `waitUntil` en `DEBT-WIRE-AUTHORITY` (recibo
+`docs/v2/07-uat/DEBT_WIRE_AUTHORITY_WAITUNTIL_RECEIPT.md`, SHA `3fa12a77`) se midió el
+tercer campo del bloque. **No se corrigió**, y queda registrado aquí para que el siguiente
+bloque empiece por él y no por un hallazgo que se redescubra como nuevo.
+
+**Lo medido, con el instrumento que lo produjo** (grep de lectores de `quiet` sobre
+`pipeline-application/src/main` y `pipeline-domain/src/main`):
+
+```text
+CanonicalStructuralDecisions.kt:550   quiet = shape.quiet      ← el SCOPE ignora el payload
+CoreWaitUntilWireCodec.kt:72          put("quiet", …)           ← se codifica
+CoreWaitUntilStep.kt:150               put("quiet", …)           ← se codifica
+CanonicalToDescriptorAdapter.kt:79    quiet = canonical.quiet   ← se propaga
+                                       lectores de scope.quiet:  CERO
+```
+
+Dos defectos apilados, no uno:
+
+1. `projectWaitUntilScope` construye el scope con `shape.quiet`, o sea **descarta el valor
+   del payload**. Un `waitUntil(quiet = true)` se codifica y se pierde. Es exactamente el
+   mismo defecto que `initialRecurrencePeriod` tenía, y que este bloque acaba de cerrar.
+2. Aun leyéndolo, `scope.quiet` **no tiene lector**: no hay consumidor en producción.
+
+Por eso es la misma clase que `SEMANTIC CONSTITUTION` §2 prohíbe («metadata accepted but
+never interpreted»), y por eso no basta con la línea de la proyección: haría un campo muerto
+que al menos muere en un sitio, no en dos.
+
+**Las dos restricciones que el arreglo tiene que respetar, medidas antes de escribirlo.**
+
+```text
+la consola es el ÚNICO canal motor → consola, luego el campo tiene que ir en el evento
+HumanConsoleRenderer.line(event, scope): Line    ← NO nulable; 2 llamadas internas
+                                                                (accept() y fold()), 0 en test
+ConsoleFamilyLines.controlNote(event): Line       ← agrupa WaitUntilPolled con 15 eventos más
+3 ficheros de test construyen WaitUntilPolled (+5 de producción)
+JsonEventLog.kt:1194 + EventJsonWriter.kt:651     ← códec del evento, lectura y escritura
+```
+
+Un campo **defaulteado** (`= false`) es aditivo: los 13 constructores siguen compilando, un
+log antiguo se lee como `quiet = false`, que es exactamente el comportamiento previo, y no
+obliga a subir la versión del evento (DR-10: la compatibilidad se preserva, no se reinterpreta).
+
+**Lo que NO se decide aquí.** En Jenkins `quiet` silencia el **log**, no el stream de
+eventos; y `SEMANTIC CONSTITUTION` §8 exige que todo Step emita sus eventos observables por
+paso. Por tanto el evento durable no puede suprimirse —eso rompería la observabilidad— y la
+decisión de no narrar pertenece a **la capa de consola**, no al motor. Suprimir la emisión en
+`WaitUntilEngine` sería el arreglo fácil y el incorrecto.
+
+**Orden propuesto:** con el campo defaulted, el RED es de fidelidad HF1 sobre
+`ConsoleFamilyLines`/`HumanConsoleRenderer` con un `WaitUntilPolled(quiet = true)` real, más
+una fila pura en el test de proyección para el defecto 1. La firma `Line` → `Line?` de `line()` son **2 puntos de llamada, ambos dentro de
+`render()`**, y ninguno en test — medido, no supuesto—, así que **la firma no es el coste**
+de este arreglo. Lo que exige plan es la decisión de capa: si `quiet` silencia el evento
+durable (prohibido, `SEMANTIC CONSTITUTION` §8) o sólo su narración en consola, y qué hace
+`ConsoleFamilyLines` cuando el valor es cierto.
+
 ### Corrección registrada 2026-10-18 — `check` llevaba meses rojo, y por eso STEP-CERT no era exigible
 
 Al cerrar `DEBT-WIRE-AUTHORITY` se lanzó el round gate y terminó en **BUILD FAILED in 13s**,

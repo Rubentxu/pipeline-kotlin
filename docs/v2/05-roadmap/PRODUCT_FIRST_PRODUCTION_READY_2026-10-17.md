@@ -485,6 +485,69 @@ precondición que la decisión 2b conserva para ellos.
 
   Y una corrección propia que salió en el camino: la primera versión de la fila de hints pasó **en verde siendo vacua** — mi regex buscaba un flag suelto entre comillas simples y el hint cita `pipelinek --help`, con el nombre del binario delante. La guarda `no flag named in any hint` que escribí para eso disparó contra mi propia fila en la primera ejecución. Es exactamente para lo que está.
 
+- [x] **H1.3d — Un `--db` mal escrito respondía con un stack trace de Java y el código de salida de un pipeline fallido. Cerrado 2026-10-18.**
+
+  La medición del stdout destapó esto al teclear un verbo con una ruta que no existe:
+
+  ```text
+  $ pipelinek inspect some-run --db /tmp/probe/no-such-dir/events.db --control-root /tmp/probe/ctl
+  Exception in thread "main" java.sql.SQLException: path to '/tmp/probe/no-such-dir/events.db':
+    '/tmp/probe/no-such-dir' does not exist
+        at org.sqlite.SQLiteConnection.open(SQLiteConnection.java:261)
+        ... 12 more frames ...
+        at dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore.<init>(SqliteEventStore.kt:145)
+        at dev.rubentxu.pipeline.v2.application.MainInspectCli.main(MainInspectCli.kt:178)
+  $ echo $?
+  1
+  ```
+
+  **El stack trace era el síntoma; la causa era DR-1.** La decisión correcta ya existía **dos veces** en este repositorio, cada una con su propio literal (`MainEventsCli.kt:221`, `MainEventsVerifyCli.kt:41`), y los otros tres verbos no la preguntaban: seis sitios de construcción `SqliteEventStore(`, cuatro reacciones distintas a una sola condición.
+
+  ```text
+  verbo     sobre un --db que no abre            exit
+  events    Error: db not found: <path>             2
+  observe   java.sql.SQLException + stack trace      1
+  inspect   java.sql.SQLException + stack trace      1
+  run       java.sql.SQLException + stack trace      1
+  ```
+
+  El `1` es lo que lo hace un defecto y no una molestia: es la palabra de este CLI para «el pipeline FALLÓ», una ejecución que ocurrió y falló. Una ruta mal escrita no ejecutó nada, así que el mismo código pasó a significar dos cosas incompatibles según quién fuera el causante.
+
+  **El eje que hace falta no es un boolean sino un propósito.** Un guardián «¿existe el fichero?» escrito por cada uno tiene dos salidas posibles y ambas están rotas: o rechaza toda primera ejecución —el caso más común que existe, porque un run crea su propio almacén— o admite cualquier cosa ilegible. `EventStorePurpose` hace que la intención sea parte de la entrada, y con ella `refusalFor` es una función **pura y total** sobre dos ADTs cerrados: seis combinaciones, sin disco, sin E/S. La parte con efectos es sólo `admitEventStore`, que es la que pregunta a SQLite.
+
+  `IllegalStateException` (el `require` de WAL) **no** se convierte: es un defecto de programador, y disfrazarlo de argumento malo lo escondería. Los cuatro casos medidos —directorio ausente, no-base-de-datos, directorio sin escritura, directorio usado como db— son subclases de `SQLException`, que sí es un resultado operativo y tiene que llegar como motivo.
+
+  **La parte que en cualquier otro sitio habría pasado en verde siendo vacua:** el guard de este arreglo es el único que se omite a sí mismo. `EventStoreSingleAdmissionAuthorityFitnessTest` no es una nota de revisión: sin él, un sexto verbo añade `SqliteEventStore(path)` y nadie se entera hasta que alguien vuelve a teclear una ruta mala. Sus cuatro filas leen el árbol real de producción y cada una lleva una mutación medida, aplicada y verificada por sha256 **antes** de leer el resultado:
+
+  ```text
+  M-1  construcción directa reintroducida en MainObserveCli   -> fitness 1 ROJO; ADMIT_2 ROJO; ADMIT_1 y ADMIT_3 verdes
+  M-1  construcción directa reintroducida en MainInspectCli   -> fitness 1 ROJO; ADMIT_1 ROJO; ADMIT_2 y ADMIT_3 verdes
+  M-2  literal `db not found` duplicado en MainEventsCli      -> fitness 2 ROJO; filas 1 y 3 verdes; CLI 3/3 verde
+  M-4  la regla colapsada a una sola para todos               -> RULE_1, RULE_3, OPEN_3, OPEN_4 ROJAS; RULE_2, OPEN_1, OPEN_2 verdes
+  M-5  veredicto montado a mano en MainObserveCli             -> fitness 3 ROJO; filas 1,2,4 verdes; CLI 3/3 VERDE
+  fiabilidad tras restaurar                                   -> 14 de 14 verdes, XML fresco
+  ```
+
+  **M-5 es la fila que la auditoría encontró, y su mitad verde es el hallazgo entero.** El guard cubría la construcción del *almacén*, no la del *veredicto* — y el almacén es lo que construyes **después** de decidir. Un sexto verbo podía escribir `EventStoreAdmission.Refused(EventStoreRefusal.Absent(db))`, pasar las tres filas que existían (no construye un almacén, entrega el texto al render compartido) y reimplementar la observación entera. Bajo la mutación, **las tres filas de CLI siguen verdes**: el defecto es invisible a nivel conductual, porque produce el mensaje correcto con el código de salida correcto. Sólo un guard estructural lo ve, y eso es lo que la fila afirma.
+
+  La mitad verde de cada línea es lo que mide. Una guarda que muere con todo sólo prueba que la suite corre; una que muere en las filas del brazo mutado y sigue verde en las demás prueba que las filas están atribuidas al comportamiento que nombran. Y **M-1 mata una fila distinta en cada verbo**, lo que prueba que `ADMIT_1` y `ADMIT_2` son dos afirmaciones y no una escrita dos veces.
+
+  **Dos defectos que aparecieron al cerrar, ambos de la misma familia que ya está registrada dos veces en esta hoja:**
+
+  1. `MainEventsInspectionFlagsTest` afirmaba `db not found` con el fixture `/nonexistent-path/does-not-exist.sqlite`. El padre de ese path tampoco existe, así que la fila afirmaba la redacción de un brazo al que su fixture nunca llegaba —el brazo real es `no directory for db`. No era un contrato roto: era una fila que no ejercía su sujeto. Dividida en dos filas, cada una con su fixture en su brazo, con la segunda añadida en vez de debilitada.
+  2. `OPEN_3` moría bajo M-4 con un `ClassCastException` en vez de con su aserción, porque hacía `as Admitted` a ciegas. El orden de las aserciones es parte de la atribución —ya salió en H1.3c—: ahora el cast está detrás de un `assertInstanceOf` que nombra la causa («un WRITE debe crear su propio almacén»).
+
+  ```text
+  EventStoreAdmissionTest (HF0 pura + HF1 fábrica)                7 tests  f=0 e=0 s=0   ts 2026-10-18T10:21:40Z
+  EventStoreAdmissionCliTest  (HF1, verbos reales en proceso)       3 tests  f=0 e=0 s=0   ts 2026-10-18T10:39:09Z
+  EventStoreSingleAdmissionAuthorityFitnessTest                    4 tests  f=0 e=0 s=0   ts 2026-10-18T10:39:09Z
+  barrido de consumidores afectados, 17 clases                     126 tests f=0 e=0 s=0  ts 2026-10-18T10:39:09..11Z
+  ```
+
+  El barrido cubre los seis verbos que tocaron producción (`events`, `events-verify`, `inspect`, `observe`, `console`, `run`) más las filas deparser y de selección: 17 clases, 126 tests, cero fallos, cero errores, cero skips. No incluye el L4 de módulo, que es el `NOT_RUN` de abajo.
+
+  **Lo que NO se ejecutó, y por qué no es verde.** El L4 de módulo —`:pipeline-events-store:test` completo— está **`NOT_RUN`**, no verde. La corrida de módulo terminó con `exit=1` y produjo **un solo XML** de las N clases del módulo: el mío. El bloqueo es un **cuelgue preexistente** en `SqliteEventFollowHandle.idle:530`, alcanzado desde `EventFollowerAdapterTest` / `SqliteEventFollowLiveTailTest`, y es ajeno a D3 — este arreglo no lo toca, no lo introduce y no lo arregla. Declararlo verde por el `7 de 7` de mi propia clase sería el falso verde que este mismo arreglo existe para impedir: el número es cierto y **no es el denominador**.
+
 - [ ] **H1.4** Integrar código de producto, cambios de poda aprobados, `main`, release candidate de valor real y handoff. `CERTIFIED` solo externo.
 
 **Agent teams:** consola/lectura, escritor/redactor (seams distintos), integración del CLI; archivo compartido se asigna a uno. R-1 del H0 ya terminó antes.

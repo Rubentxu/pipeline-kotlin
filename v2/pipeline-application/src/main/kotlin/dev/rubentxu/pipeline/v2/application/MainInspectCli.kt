@@ -13,7 +13,9 @@ import dev.rubentxu.pipeline.v2.events.StageStarted
 import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
-import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
+import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
+import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
+import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
 
 /**
  * `pipelinek inspect <run>` — bounded diagnostic surface for a single run.
@@ -174,12 +176,21 @@ object MainInspectCli {
             return 2
         }
 
+        // D3 — the admission is the ONE decision on whether this store may be opened. It used to
+        // be re-asked here, and this catch only knew about IOException, so a `--db` pointing at a
+        // missing directory escaped as a raw java.sql.SQLException with a fourteen-frame stack
+        // trace and exit 1 — the code this CLI reserves for a run that executed and failed.
+        val admission = admitEventStore(compiled.dbPath, EventStorePurpose.Read)
+        if (admission is EventStoreAdmission.Refused) {
+            System.err.println(admission.refusal.render())
+            return 2
+        }
         val events: List<DomainEvent> = try {
-            SqliteEventStore(compiled.dbPath).use { store ->
+            (admission as EventStoreAdmission.Admitted).store.use { store ->
                 store.eventsFor(runId).toList()
             }
         } catch (e: java.io.IOException) {
-            System.err.println("inspect: cannot open event store at ${compiled.dbPath}: ${e.message}")
+            System.err.println("inspect: cannot read event store at ${compiled.dbPath}: ${e.message}")
             return 2
         }
 

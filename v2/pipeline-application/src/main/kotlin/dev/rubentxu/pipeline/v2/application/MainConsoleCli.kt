@@ -9,7 +9,10 @@ import dev.rubentxu.pipeline.v2.application.observation.RunPlane
 import dev.rubentxu.pipeline.v2.application.console.ConsoleOperationSelection
 import dev.rubentxu.pipeline.v2.application.console.OperationSelection
 import dev.rubentxu.pipeline.v2.application.console.SelectionOutcome
-import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
+import dev.rubentxu.pipeline.v2.application.console.SelectionRefusal
+import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
+import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
+import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
 import dev.rubentxu.pipeline.v2.application.observation.followDecision
 import dev.rubentxu.pipeline.v2.output.OutputChannel
 import dev.rubentxu.pipeline.v2.output.OutputCursor
@@ -641,7 +644,6 @@ sealed interface ConsoleCliRefusal {
     data class NotARange(val value: String) : ConsoleCliRefusal
     data class NotACursorToken(val token: String) : ConsoleCliRefusal
     data class ControlDirNotFound(val path: String) : ConsoleCliRefusal
-
     /**
      * A valued option was written and its value was not.
      *
@@ -813,6 +815,8 @@ fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal)
             "Error: ${r.axesNeedingIt.joinToString(", ")} name stage/step/kind, which are " +
                 "recorded only in the events journal — pass --db <path> so the console can " +
                 "resolve them, or use the numeric index (e.g. --stage 0)"
+        is dev.rubentxu.pipeline.v2.application.console.SelectionRefusal.EventStoreRefused ->
+            r.refusal.render()
     }
 }
 
@@ -1250,9 +1254,16 @@ object MainConsoleCli {
         val dbPath = request.dbPath
             ?: return ConsoleOperationSelection.resolve(request.runId, active.stages, active.steps, active.kinds, null)
 
+        // D3 — the shared admission, not a second opinion about the same path. `ControlDirNotFound`
+        // above already refused the OTHER durable lane with a name; this verb was letting the event
+        // lane's equivalent escape as a raw java.sql.SQLException.
+        val admission = admitEventStore(dbPath, EventStorePurpose.Read)
+        if (admission is EventStoreAdmission.Refused) {
+            return SelectionOutcome.Refused(SelectionRefusal.EventStoreRefused(admission.refusal))
+        }
         // Open the journal, read, close — in that order. The store is closed even if resolution
         // throws, so a refusal does not leak a file handle into a follow that may run for a minute.
-        return SqliteEventStore(dbPath).use { store ->
+        return (admission as EventStoreAdmission.Admitted).store.use { store ->
             ConsoleOperationSelection.resolve(
                 request.runId, active.stages, active.steps, active.kinds,
                 store.eventsFor(request.runId).asSequence(),

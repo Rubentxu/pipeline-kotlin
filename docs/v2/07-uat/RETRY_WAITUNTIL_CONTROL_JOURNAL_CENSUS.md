@@ -256,9 +256,34 @@ makes this fixable rather than an abuse:
  carrying exactly one tag, and the two tasks partition on it."
 ```
 
-So the split is lawful: rows 1-3 belong in a class without the tag, row 4 in a
-class with it. It is **not** recorded here as done, because it has three
-dependents that were measured and not yet moved:
+So the split is lawful under the lane model: rows 1-3 could live in a class
+without the tag, row 4 in a class with it.
+
+**It was not done, and the reason is now measured rather than prudential.** The
+real Gradle DAG of both lanes, from `--dry-run` on this exact checkout:
+
+| | fast lane (`:test`) | installed lane (`:installedContractTest`) |
+| --- | --- | --- |
+| tasks in the DAG | **152** | **181** |
+| `publishSdk*` publication tasks | **0** | **7** |
+| `installDist` | **0** | **1** |
+
+```bash
+./v2/gradlew -p v2 :pipeline-application:test               --dry-run
+./v2/gradlew -p v2 :pipeline-application:installedContractTest --dry-run
+```
+
+`installDist` is a `dependsOn` of the **task** (`build.gradle.kts:709`),
+unconditionally — not of any test class inside it. Gradle evaluates a task
+graph's dependencies at configuration time, so the build runs whenever the lane
+runs, no matter how many rows it carries. **Moving rows between lanes removes
+zero DAG tasks.** The whole 1749 s minus 10.871 s is task-graph and JVM start-up,
+and lane membership is not a lever on it.
+
+The measured benefit of the split is therefore: those three rows' own execution
+time moves out of the installed lane and into the fast one, i.e. **2.46 s**
+(0.001 + 0.679 + 1.780) per full `check`. Against that: four files changed, and
+three dependents that each carry a data-table row that must move with it --
 
 1. `Lpr301BurnDownCharacterizationTest.kt:21` records this class as "4 rows".
 2. `PermanentContractArchitecturTest.kt:60` maps
@@ -267,8 +292,45 @@ dependents that were measured and not yet moved:
 3. `InstalledContractTagMembershipFitnessTest` is the guard that requires any
    class calling `AppBinSupport.discover(` to carry the tag.
 
-Not done unilaterally, and the reason is not caution about the build: the
-product-level consequence is that `UAT_GATE_CLASSIFICATION.md:114` records this
-class as **RED and BLOCKING for the `core.waitUntil` STEP-CERT**, so it is on a
-certification surface, and a fitness data-table change belongs to a block that
-states its own exit criterion rather than to a census correction.
+— on a class that `UAT_GATE_CLASSIFICATION.md:114` records as **RED and BLOCKING
+for the `core.waitUntil` STEP-CERT**. **2.46 s does not buy a change to a
+certification surface**, so this is recorded as closed, not deferred.
+
+The lane's real cost is its dependency graph: 29 tasks more than the fast lane,
+7 of them Maven publication tasks that never cache. Reducing it means changing
+`build.gradle.kts:709-717`, which is BQ2 territory and not a census correction.
+
+### 8b. The same audit at lane scale — what it rules out
+
+The class above is one instance. Measured across the whole installed lane of
+`pipeline-application` (both source sets, `**/build/**` excluded), so the
+per-class finding is not mistaken for a systemic one:
+
+| population | count |
+| --- | --- |
+| `src/main/kotlin` files | 190 |
+| test-side files (`src/test/kotlin` + `src/pluginContractTest/kotlin`) | **432** (425 + 7) |
+| `@Test` methods | 3165 |
+| classes with a class-level `@Tag("installed-contract")` | **43** |
+| `@Test` rows inside those 43 classes | **217** |
+
+**The lane is not polluted at class granularity.** An automated pass over the
+43 tagged classes first reported 2 of them as never touching a binary
+(`RuntimeBuildIdentityTest`, 6 rows; `ObsFConsumerContinuityUatTest`, 3 rows) —
+that was **false**, and the reason is worth recording because it is the same
+shape as §1. Both do spawn it: `RuntimeBuildIdentityTest.kt:97,108` resolves
+`build/install/pipelinek/bin/pipelinek` and runs it through `OwnedSubprocess`,
+and `ObsFConsumerContinuityUatTest.kt:576` uses `ProcessBuilder`. The instrument
+matched `AppBinSupport.discover|appBin|binDir|pipelinekBin` and missed both the
+direct-path and the `ProcessBuilder` routes. **Measured answer: 43 of 43 tagged
+classes spawn the installed binary.** No class can be wholesale untagged.
+
+What was *not* measured is the ROW-level split inside those classes — "how many
+rows per class are pure in-process". The 3-of-4 figure above is one class read by
+hand, and it must not be multiplied by 217. Establishing that population needs
+per-row analysis, which this census does not claim.
+
+The 29 test-source files carrying **zero** `@Test` are not dead code: 16 live
+under `support/`, 7 are OBS producers, 6 are corpus/plugin fixtures. They are
+harness infrastructure that happens to live in the test source set, which is
+where the test/production file ratio gets its worst reading.

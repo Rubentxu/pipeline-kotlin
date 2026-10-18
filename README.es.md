@@ -73,63 +73,42 @@ Esto crea un JAR completo con todas las dependencias en `pipeline-cli/build/libs
 
 ## Inicio Rápido
 
-### Ejecutar con Java
+### Ejecutar la distribución
+
+PipelineK se distribuye como un ZIP con su lanzador `bin/pipelinek`; no
+como un JAR ejecutable con `java -jar`. La versión publicada se descarga
+del Release de GitHub y se ejecuta directamente:
 
 ```bash
-java -jar pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar \
-  -c pipeline-cli/testData/config.yaml \
-  -s pipeline-cli/testData/success.pipeline.kts
+unzip pipelinek-<VERSION>.zip
+./pipelinek-<VERSION>/bin/pipelinek version
+./pipelinek-<VERSION>/bin/pipelinek doctor     # jdk / os / workdir / escritura
 ```
 
-### Compilación de Imagen Nativa
-
-Para rendimiento óptimo y tiempos de arranque más rápidos, compila a un ejecutable nativo usando GraalVM:
-
-#### Método 1: Usando Plugin de Gradle (Recomendado)
+Si clonaste el repositorio, la misma distribución se construye en local:
 
 ```bash
-# Construir el shadow JAR primero
-gradle :pipeline-cli:shadowJar
-
-# Compilar a ejecutable nativo usando el plugin configurado
-gradle :pipeline-cli:nativeCompile
+cd v2 && ./gradlew :pipeline-application:installDist
+cd ..
+./v2/pipeline-application/build/install/pipelinek/bin/pipelinek version
 ```
 
-#### Método 2: Comando Directo de Native Image
+### Ejecutar un pipeline
 
 ```bash
-# Construir el shadow JAR
-gradle :pipeline-cli:shadowJar
-
-# Compilar directamente con native-image
-/ruta/a/graalvm/bin/native-image \
-  -cp pipeline-cli/build/libs/pipeline-cli.jar \
-  dev.rubentxu.pipeline.cli.MainKt \
-  --no-fallback \
-  --report-unsupported-elements-at-runtime \
-  -H:+ReportExceptionStackTraces \
-  -H:+UnlockExperimentalVMOptions \
-  -o pipeline-cli/build/native-standalone/pipeline-cli-native
+pipelinek validate mi-pipeline.pipeline.kts
+pipelinek run mi-pipeline.pipeline.kts
 ```
 
-#### Beneficios de Rendimiento
-
-- **Tamaño del ejecutable**: ~31MB (vs 152MB JAR)
-- **Tiempo de arranque**: Casi instantáneo (vs calentamiento JVM)
-- **Uso de memoria**: Significativamente reducido
-- **Tiempo de compilación**: ~37 segundos
-
-#### Ejecutar el Ejecutable Nativo
+Para partir el arranque y el estado sin tocar nada del entorno:
 
 ```bash
-# Probar el ejecutable nativo
-./pipeline-cli/build/native-standalone/pipeline-cli-native --help
-
-# Ejecutar scripts de pipeline
-./pipeline-cli/build/native-standalone/pipeline-cli-native run \
-  -c pipeline-cli/testData/config.yaml \
-  -s pipeline-cli/testData/success.pipeline.kts
+pipelinek run --isolated --control-root /tmp/mi-corrida mi-pipeline.pipeline.kts
 ```
+
+Los escenarios completos y ejecutables están en `v2/examples/`, y
+`v2/examples/run.sh` los recorre todos; su catálogo está en la sección
+Examples del [README en inglés](README.md#examples).
 
 ## Uso
 
@@ -280,27 +259,42 @@ pipeline-kotlin/
 
 ## Pruebas
 
-El proyecto mantiene 100% de cobertura de pruebas con 265 pruebas exitosas.
+Esta sección afirmaba antes «100% de cobertura con 265 pruebas
+exitosas» y daba comandos contra `gradle test`, `jacocoTestReport` y
+`:core:test`. Ninguna de las tres cosas era cierta: no existe el módulo
+`core`, la herramienta de cobertura es Kover y no Jacoco, y la suite
+heredada se borró entera el 2026-10-18 (RESET de testing). El número no
+se sustituye por otro porque no hay ninguno que anunciar todavía: la
+verificación permanente vive hoy en `scripts/verify-all.sh`.
 
-### Ejecutar Pruebas
+### La puerta de verificación
 
 ```bash
-# Ejecutar todas las pruebas
-gradle test
-
-# Ejecutar pruebas con reporte de cobertura
-gradle test jacocoTestReport
-
-# Ejecutar pruebas de módulo específico
-gradle :core:test
+scripts/verify-all.sh              # la puerta completa
+scripts/verify-all.sh --no-budget  # omite solo el techo de LOC
 ```
 
-### Categorías de Pruebas
+Ejecuta, en este orden y-parando en el primer stage que falle:
 
-- **Pruebas Unitarias**: Pruebas a nivel de componente con MockK
-- **Pruebas de Integración**: Ejecución de pipeline de extremo a extremo
-- **Pruebas de Seguridad**: Validación de sandbox y permisos
-- **Pruebas de Rendimiento**: Verificación de límites de recursos
+1. `detekt`, `apiCheck` y la distribución local (`installDist`).
+2. Los tests unitarios de cada módulo que tenga `src/test`, leyendo el
+   resultado del XML de JUnit y no el código de salida de Gradle.
+3. Los escenarios E2E de `v2/examples/`, vía `v2/examples/run.sh`.
+4. El techo de LOC (`scripts/check-budgets.py`).
+5. El techo de reloj, 900 s por AGENTS.md.
+
+### Qué existe y qué no
+
+| Capa | Estado |
+|---|---|
+| Análisis estático y compatibilidad de API | Activa: `detekt`, `apiCheck` |
+| E2E sobre la distribución real | Activa: 35 escenarios en `v2/examples/` |
+| Tests unitarios Kotlin | carril `src/test` reservado y cableado; se rellena por fases |
+| Carriles de prueba bespoke (`pluginContractTest`, `installedContractTest`) | eliminados el 2026-10-18 |
+
+Un escenario E2E marcado `NOT_RUN` —hoy `security/14-credentials-bindings`,
+que necesita un almacén de credenciales sembrado por TTY— no es un verde:
+es el tercer estado honesto, y `scripts/verify-all.sh` lo cuenta aparte.
 
 ## Contribuyendo
 

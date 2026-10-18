@@ -329,17 +329,35 @@ fun main(args: Array<String>) {
         // its IR reaches here with isSuccess == true and no usable spec.
         // Reporting SUCCESS for it was the same DEFAULT_SUCCESS the run path
         // turned into an NPE.
-        val evalFailure = compileResult.diagnostics.lastOrNull {
-            it.severity == dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity.ERROR
-        }?.message?.takeIf { it.isNotBlank() }
+        //
+        // A compilation produces a LIST of diagnostics. Measured 2026-10-18 on
+        // the built distribution, the previous shape collapsed it to one
+        // message with `lastOrNull`: a script with nine errors printed exactly
+        // one of them — the LAST one, which is the least likely to be the one
+        // the author wrote first — while the cardinality stayed visible. This
+        // verdict only has to answer "may it run, and if not, how many
+        // reasons"; the renderer above already printed each one with its
+        // position.
+        val evalFailures = compileResult.diagnostics
+            .filter { it.severity == dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity.ERROR }
+            .mapNotNull { it.message.takeIf(String::isNotBlank) }
         val noSpec = compileResult.isSuccess &&
             compileResult.scriptInstance?.javaClass?.methods?.any { it.name == "get\$\$result" } != true
-        if (!compileResult.isSuccess || evalFailure != null || noSpec) {
+        if (!compileResult.isSuccess || evalFailures.isNotEmpty() || noSpec) {
             // WU-LPR-011 F3: compile failure is an invocation/admission error,
             // not a pipeline execution failure. Exit 2 per the canonical
             // contract (0 success / 1 pipeline fail / 2 invocation+compile).
-            if (evalFailure != null) System.err.println("VALIDATION FAILED: $evalFailure")
-            else System.err.println("VALIDATION FAILED")
+            //
+            // The verdict is ONE line. The reasons were just printed above by
+            // the console renderer, each with path:line:column, on this same
+            // stream — repeating them here would print every error twice, and
+            // a doubled diagnostic reads as two distinct problems.
+            val verdict = when {
+                evalFailures.size == 1 -> "1 error"
+                evalFailures.size > 1 -> "${evalFailures.size} errors"
+                else -> "the script produced no pipeline"
+            }
+            System.err.println("VALIDATION FAILED: $verdict")
             System.exit(2)
         } else {
             System.err.println("VALIDATION SUCCESSFUL")

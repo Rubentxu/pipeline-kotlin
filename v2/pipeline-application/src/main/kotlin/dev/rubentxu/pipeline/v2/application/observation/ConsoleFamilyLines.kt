@@ -76,6 +76,8 @@ import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
 import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
 import dev.rubentxu.pipeline.v2.events.WorkflowLoaded
 import dev.rubentxu.pipeline.v2.events.WsCleaned
+import dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity
+import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
 
 /**
  * How each family of [DomainEvent] becomes console text.
@@ -124,14 +126,78 @@ internal object ConsoleFamilyLines {
 
         is CompilationStarted -> Line(Family.RUN, "Compiling pipeline")
 
-        is CompilationFinished -> Line(
-            Family.RUN,
-            if (event.diagnostics.isEmpty()) "Compilation finished"
-            else "Compilation finished with ${event.diagnostics.size} diagnostic(s)",
-        )
+        is CompilationFinished -> compilationFinished(event)
 
         else -> unrouted(event, this)
     }
+
+    /**
+     * A compilation produces a LIST of diagnostics. The previous shape announced
+     * the cardinality and withheld every word of it:
+     * `"Compilation finished with 9 diagnostic(s)"` — a user whose script does
+     * not compile was told that nine reasons existed and shown none of them, and
+     * a user whose script is fine was told the same thing about a warning they
+     * cannot see. Measured 2026-10-18 on the built distribution: even the
+     * repo's own canonical fixture (`01-basic.pipeline.kts`) printed
+     * "1 diagnostic(s)" on a `VALIDATION SUCCESSFUL` run.
+     *
+     * Three properties, one cause — the count was rendered and the content was
+     * not:
+     *
+     *  1. **The count is interpretable.** Severity is broken out, so "1" is
+     *     distinguishable as "1 warning" from "1 error". A bare number is
+     *     indistinguishable between a run that is fine and a run that cannot
+     *     start, which is why the phantom warning read as alarming.
+     *  2. **The content is shown.** Every ERROR is printed as
+     *     `path:line:column: message`. `sanitize` preserves `\n`, so the list
+     *     renders as separate lines inside this one `Line` and needs no change
+     *     to the renderer's one-line-per-event shape.
+     *  3. **Errors are always visible.** Errors land in [Family.FAILURE] —
+     *     "a failure a view can hide is a lie" — so no `ObservationView` can
+     *     filter away the reason a run failed to start. A warnings-only
+     *     compilation stays in [Family.RUN].
+     */
+    private fun compilationFinished(event: CompilationFinished): Line {
+        val errors = event.diagnostics.filter { it.severity == ScriptDiagnosticSeverity.ERROR }
+        val summary = describeBySeverity(event.diagnostics)
+        if (errors.isEmpty()) {
+            return Line(Family.RUN, summary)
+        }
+        val detail = errors.joinToString("\n") { diagnostic ->
+            val location = if (diagnostic.path.isBlank()) {
+                "${diagnostic.line}:${diagnostic.column}"
+            } else {
+                "${diagnostic.path}:${diagnostic.line}:${diagnostic.column}"
+            }
+            sanitize("$location: ${diagnostic.message}")
+        }
+        return Line(Family.FAILURE, "$summary\n$detail")
+    }
+
+    /**
+     * `"Compilation finished with 1 warning"`, `"… with 9 errors and 1 warning"`.
+     *
+     * Severity is named rather than elided because a bare count is the defect:
+     * "1 diagnostic(s)" on a green run reads as a failure, and the only way to
+     * tell an ignorable warning from a fatal error was to read a message that
+     * was never printed. Severities are listed worst-first and empty ones are
+     * dropped, so the count and the shape cannot drift apart.
+     */
+    private fun describeBySeverity(diagnostics: List<ScriptingDiagnostic>): String {
+        if (diagnostics.isEmpty()) return "Compilation finished"
+        val parts = listOf(
+            ScriptDiagnosticSeverity.FATAL to "fatal",
+            ScriptDiagnosticSeverity.ERROR to "error",
+            ScriptDiagnosticSeverity.WARNING to "warning",
+            ScriptDiagnosticSeverity.INFO to "info",
+            ScriptDiagnosticSeverity.DEBUG to "debug",
+        ).mapNotNull { (severity, noun) ->
+            val count = diagnostics.count { it.severity == severity }
+            if (count == 0) null else "$count $noun${if (count == 1) "" else "s"}"
+        }
+        return "Compilation finished with " + parts.joinToString(" and ")
+    }
+
 
     /**
      * STRUCTURE — stage and Step openers and closers, plus branch markers.

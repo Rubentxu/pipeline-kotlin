@@ -2,7 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>LargeClass:CoreUtilsStepContractSuiteTest.kt:CoreUtilsStepContractSuiteTest</ID>
     <ID>MaxLineLength:CoreUtilsReadYamlStepDefinition.kt:CoreUtilsReadYamlStepDefinition$*</ID>
     <ID>MaxLineLength:CoreUtilsWriteYamlStepDefinition.kt:CoreUtilsWriteYamlStepDefinition$*</ID>
     <ID>MaxLineLength:ReadYamlOutput.kt:YamlDocument$*</ID>

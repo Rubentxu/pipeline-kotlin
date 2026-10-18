@@ -3,6 +3,5 @@
   <ManuallySuppressedIssues/>
   <CurrentIssues>
     <ID>NewLineAtEndOfFile:CacheKey.kt:dev.rubentxu.pipeline.v2.scripting.CacheKey.kt</ID>
-    <ID>NewLineAtEndOfFile:CacheKeyIdentityTest.kt:dev.rubentxu.pipeline.v2.scripting.CacheKeyIdentityTest.kt</ID>
   </CurrentIssues>
 </SmellBaseline>

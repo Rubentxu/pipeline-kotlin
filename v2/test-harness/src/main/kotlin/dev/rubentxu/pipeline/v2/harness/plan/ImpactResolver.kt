@@ -23,13 +23,26 @@ import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue.Contract
  * "nothing to do, therefore fine", which is exactly the false green the H0 mandate forbids. The
  * refusal names the path so the operator can add a row.
  *
- * Non-production changes (docs, the harness's own tests and sources, tooling) are deliberately NOT
- * refused. A refused plan for a README edit — or for the harness editing its own catalogue — would
- * train operators to ignore refusals, and a gate nobody believes is worse than no gate.
+ * Non-production changes (docs, test sources, tooling) are deliberately NOT
+ * refused. A refused plan for a README edit would train operators to ignore refusals, and a gate
+ * nobody believes is worse than no gate.
  *
- * That exemption is scoped to [SELF_OWNED_PREFIXES] rather than applied by a wildcard, because a
- * blanket "anything under test-harness is fine" would also excuse a genuine product change that
- * happened to land in the wrong module.
+ * ## The harness is NOT exempt, and this section exists to stop that changing by accident
+ *
+ * An earlier shape carried a `SELF_OWNED_PREFIXES` list, consulted from `isProductionPath`, that
+ * made every `v2/test-harness/` path non-production. Measured 2026-10-18: that consumer no longer
+ * existed. BQ4 P0 removed the exemption from the classifier (harness `src/main` sources became
+ * Production `SourceCode`, so a harness defect stopped being a silent green), and the delegation to
+ * the classifier then removed the only reader of the list. The constant survived with no reader and
+ * a KDoc asserting an exemption the wiring did not have. It is gone now, and this paragraph is
+ * here so the absence is not mistaken for an oversight.
+ *
+ * The behaviour that replaced it is the correct one. The harness IS the product: a defect in its
+ * `src/main` code must be able to invalidate a guarantee, and the honest consequence is that a
+ * harness change needs a catalogue contract like any other production path. Census over
+ * `git ls-files` on 2026-10-18: 36 tracked paths under `v2/test-harness` classify as Production and
+ * currently have no contract, so they refuse. That refusal is fail-closed and correct; it is a
+ * coverage gap to close with a contract, not an exemption to restore.
  */
 object ImpactResolver {
 
@@ -41,19 +54,6 @@ object ImpactResolver {
      * suite field, and the only remaining `MissingSuite.Bound`
      * case carries the real suite name.
      */
-
-
-    /**
-     * Path prefixes whose changes cannot invalidate a product guarantee.
-     *
-     * The harness's own sources and its build file are in here, and the reasoning is asymmetric on
-     * purpose: a defect in the harness makes the harness over-report, which is noisy but safe,
-     * whereas a defect that makes it under-report is the silent green this whole line of work
-     * exists to prevent. So the harness is exempt from the catalogue, never the product.
-     */
-    val SELF_OWNED_PREFIXES: List<String> = listOf(
-        "v2/test-harness/",
-    )
 
     /**
      * Paths that are production code, i.e. paths whose change invalidates a guarantee.

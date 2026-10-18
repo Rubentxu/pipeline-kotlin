@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.harness.plan
 
 import dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogue
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -380,6 +381,93 @@ class ImpactResolverAdversarialTest {
                 setOf("CompatibilityCorpusTest", "ContractCatalogueFitnessTest"),
             ),
             "the suites bound to Build.composition must be selected, got $suiteFilters",
+        )
+    }
+
+    /**
+     * Measured 2026-10-18 against `scripts/validation-gate.py`: a real
+     * change to `v2/pipeline-release/build.gradle.kts` was REFUSED with
+     * `unclassified production path ... add a catalogue row or remove the
+     * file`. That file decides what ships inside the distribution ZIP, so
+     * the gate was unable to certify a change to what it packages.
+     *
+     * The classifier already called it Production `BuildComposition`; only
+     * the catalogue was missing. `Provenance.build.identity` is the right
+     * owner because a module's dependencies are exactly what the
+     * distribution contains.
+     */
+    @Test
+    fun `changing a module build file selects the provenance identity contract end to end`() {
+        val plan = ImpactResolver.resolve(
+            listOf("v2/pipeline-release/build.gradle.kts"),
+        )
+        assertTrue(
+            plan is ValidationPlan.Selected,
+            "a module build file must be certifiable, got $plan",
+        )
+        val selected = plan as ValidationPlan.Selected
+        assertTrue(
+            selected.capabilities.contains("Provenance.build.identity"),
+            "Provenance.build.identity must be selected, got ${selected.capabilities}",
+        )
+        val suiteFilters = selected.suites.map { it.filter }.toSet()
+        assertTrue(
+            suiteFilters.contains("RuntimeBuildIdentityTest"),
+            "the identity suites must be selected, got $suiteFilters",
+        )
+    }
+
+    /**
+     * The control for the row above, and the reason it cannot be
+     * satisfied by claiming every `build.gradle.kts` under one capability
+     * for the wrong reason.
+     *
+     * The ROOT `build.gradle.kts` pins the JVM toolchain for every
+     * subproject, which is composition rather than identity. If it were
+     * absorbed by the identity capability the two rows would be
+     * indistinguishable and the split would be a name, not a decision.
+     */
+    @Test
+    fun `the root build file is composition and not identity`() {
+        val plan = ImpactResolver.resolve(listOf("build.gradle.kts"))
+        assertTrue(plan is ValidationPlan.Selected, "got $plan")
+        val selected = plan as ValidationPlan.Selected
+        assertTrue(
+            selected.capabilities.contains("Build.composition"),
+            "Build.composition must be selected, got ${selected.capabilities}",
+        )
+        assertFalse(
+            selected.capabilities.contains("Provenance.build.identity"),
+            "the root build file pins the toolchain, so claiming it as build identity " +
+                "would make the two capabilities indistinguishable and the split arbitrary",
+        )
+    }
+
+    /**
+     * The control for the OTHER half of this change.
+     *
+     * `SELF_OWNED_PREFIXES` used to make every `v2/test-harness/` path
+     * non-production. Its consumer was deleted by BQ4 P0, the constant
+     * survived, and the KDoc kept asserting an exemption the wiring did
+     * not have. If anyone restores the exemption by prefix, a defect in
+     * the harness's own `src/main` code becomes a silent green again --
+     * so this row pins the refusal instead of merely allowing it.
+     */
+    @Test
+    fun `a harness production source still refuses for want of a contract`() {
+        val plan = ImpactResolver.resolve(
+            listOf("v2/test-harness/src/main/kotlin/dev/rubentxu/pipeline/v2/harness/plan/ChangedInput.kt"),
+        )
+        assertTrue(
+            plan is ValidationPlan.Refused,
+            "the harness is the product; restoring a self-owned prefix exemption would make a " +
+                "harness defect a silent green, so this path must keep refusing until a contract " +
+                "covers it. Got $plan",
+        )
+        val refused = plan as ValidationPlan.Refused
+        assertTrue(
+            refused.reasons.any { it is SelectionRefusal.UnclassifiedPath },
+            "got ${refused.reasons}",
         )
     }
 }

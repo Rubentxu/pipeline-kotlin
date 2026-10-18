@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import kotlinx.serialization.json.Json
@@ -93,20 +94,12 @@ object CoreWaitUntilWireCodec : StepCodec<CoreWaitUntilInput> {
         }
         return CoreWaitUntilInput(
             initialRecurrencePeriod = obj["initialRecurrencePeriod"]?.jsonPrimitive?.longOrNull
-                ?: DEFAULT_INITIAL_RECURRENCE_PERIOD_MS,
+                ?: DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS,
             quiet = obj["quiet"]?.jsonPrimitive?.booleanOrNull ?: false,
             maxBackoffMs = obj["maxBackoffMs"]?.jsonPrimitive?.longOrNull
                 ?: DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS,
         )
     }
-
-    /**
-     * Used only when decoding a payload that omits the field. The DSL default is `1L`
-     * ([dev.rubentxu.pipeline.v2.dsl.StepSpec.WaitUntilBlock]); this is the engine-side
-     * budget default, matching
-     * [dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy.WaitUntilShape].
-     */
-    private const val DEFAULT_INITIAL_RECURRENCE_PERIOD_MS: Long = 1_000L
 }
 
 /** Typed decode failure of a `core.waitUntil` block payload; never an exception across the kernel boundary. */

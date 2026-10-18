@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
+import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepBody
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
@@ -48,7 +49,7 @@ import java.util.UUID
  * The codec preserves the legacy envelope structure.
  */
 data class WaitUntilInput(
-    val initialRecurrencePeriod: Long = 1000L,
+    val initialRecurrencePeriod: Long = DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS,
     val quiet: Boolean = false,
 ) {
     init {
@@ -157,7 +158,8 @@ object CoreWaitUntilStep {
             require(obj["kind"]?.jsonPrimitive?.content == "waitUntil") {
                 "core.waitUntil payload kind must be 'waitUntil'"
             }
-            val initialRecurrencePeriod = obj["initialRecurrencePeriod"]?.jsonPrimitive?.content?.toLongOrNull() ?: 1000L
+            val initialRecurrencePeriod = obj["initialRecurrencePeriod"]?.jsonPrimitive?.content?.toLongOrNull()
+                ?: DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS
             val quiet = obj["quiet"]?.jsonPrimitive?.booleanOrNull ?: false
             return WaitUntilInput(initialRecurrencePeriod, quiet)
         }

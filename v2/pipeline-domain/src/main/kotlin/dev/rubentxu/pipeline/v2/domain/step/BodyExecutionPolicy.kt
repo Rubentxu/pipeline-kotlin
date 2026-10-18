@@ -273,9 +273,23 @@ data class RetryPolicy(
  */
 @Serializable
 data class WaitUntilShape(
-    val initialRecurrencePeriodMs: Long = 1000L,
+    val initialRecurrencePeriodMs: Long = DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS,
     val quiet: Boolean = false,
 )
+
+/**
+ * The poll cadence a `waitUntil` uses when neither the call site nor its payload declares one.
+ *
+ * One authority, declared here because this is the innermost module every participant can
+ * reach: the DSL surface (`StepSpec`, `StageScope`), the block carrier, both codecs and the
+ * descriptor all name it instead of writing a value. `1000ms` is Jenkins' own `waitUntil`
+ * interval and is what this engine executed before the parameter became readable, so naming
+ * it preserves every pipeline that omits the argument.
+ *
+ * Before it was named, six sites declared a value — three `1000L` and three `1L` — and each
+ * was dead for a different reason, so the disagreement was invisible rather than harmless.
+ */
+const val DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS: Long = 1_000L
 
 /**
  * Structural parallel parameters that are a property of the Step KIND: the key

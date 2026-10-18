@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>MaxLineLength:SegmentOutputStoreTest.kt:SegmentOutputStoreTest$@org.junit.jupiter.api.Disabled("reproduced; root cause: two distinct runIds (e.g., 'run/abc' and 'run_abc') collapse to the same safe form 'run_abc' on disk; tracked in UAT_GATE_CLASSIFICATION.md as a NON-BLOCKING pre-existing row under PRODUCT-GATE BLOCKED_EXTERNAL. Migrates to harness once issue pipelinek-release-harness#&lt;n&gt; opens.")</ID>
+    <ID>VariableNaming:SegmentOutputFollowerTest.kt:SegmentOutputFollowerTest$/** * Budget for "the consumer parked in the sleep" and "close woke it". Both are generous next to * the 60000 ms poll interval row 17 installs, so neither can pass by accident. */ private val BUDGET_MILLIS = 5_000L</ID>
+    <ID>VariableNaming:SegmentOutputFollowerTest.kt:SegmentOutputFollowerTest$/** * The poll cadence this class uses for every follow it opens. * * A constant rather than a literal because the value `0` appeared 15 times here, and `0` is * not a faster test — it is a configuration the product now refuses. * * `pollIntervalMs` is the wait BETWEEN polls of a live follow. At `0` the wait is skipped, so * a follow that has run out of history re-polls in a tight loop against a live SQLite * connection. The loop then sits inside a native call, where the thread does not observe the * interrupt flag, so neither `@Timeout` nor a stop signal preempts it: the same failure was * measured in the events twin (`NativeDB.column_name_utf8`, 331 s wall / 298 s CPU, with a * class-level `@Timeout(30)` declared and never fired). * * The follower therefore requires a POSITIVE interval. `1` is the smallest value that * satisfies it: it keeps the test fast and still turns the spin into an await, which is what * makes the row interruptible. */ private val LIVE_POLL_MS = 1L</ID>
+  </CurrentIssues>
+</SmellBaseline>

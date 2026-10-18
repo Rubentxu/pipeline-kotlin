@@ -21,6 +21,9 @@
     <ID>FunctionOnlyReturningConstant:ShVarScopeGap04FormFProbeTest.kt:ShVarScopeGap04FormFProbeTest$private fun dq</ID>
     <ID>FunctionOnlyReturningConstant:ShVarScopeGap04FormFProbeTest.kt:ShVarScopeGap04FormFProbeTest$private fun lc</ID>
     <ID>FunctionOnlyReturningConstant:ShVarScopeGap04FormFProbeTest.kt:ShVarScopeGap04FormFProbeTest$private fun rc</ID>
+    <ID>NewLineAtEndOfFile:CachingJvmScriptingHost.kt:dev.rubentxu.pipeline.v2.scripting.CachingJvmScriptingHost.kt</ID>
+    <ID>NewLineAtEndOfFile:CompiledScriptCache.kt:dev.rubentxu.pipeline.v2.scripting.CompiledScriptCache.kt</ID>
+    <ID>NewLineAtEndOfFile:CompiledScriptCacheTest.kt:dev.rubentxu.pipeline.v2.scripting.CompiledScriptCacheTest.kt</ID>
     <ID>TooManyFunctions:EnvVarNameExtractor.kt:EnvVarNameExtractor</ID>
   </CurrentIssues>
 </SmellBaseline>

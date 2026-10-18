@@ -2,9 +2,7 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>UnusedParameter:CacheKey.kt:CacheKey.Companion.v2$hostVersion: String</ID>
-    <ID>UnusedParameter:CacheKey.kt:CacheKey.Companion.v2$kotlinVersion: String</ID>
-    <ID>UnusedParameter:CacheKey.kt:CacheKey.Companion.v2$scriptText: String</ID>
-    <ID>UnusedParameter:CacheKey.kt:CacheKey.Companion.v2$sortedClasspath: String</ID>
+    <ID>NewLineAtEndOfFile:CacheKey.kt:dev.rubentxu.pipeline.v2.scripting.CacheKey.kt</ID>
+    <ID>NewLineAtEndOfFile:CacheKeyIdentityTest.kt:dev.rubentxu.pipeline.v2.scripting.CacheKeyIdentityTest.kt</ID>
   </CurrentIssues>
 </SmellBaseline>

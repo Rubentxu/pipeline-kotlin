@@ -1,5 +1,9 @@
 <?xml version="1.0" ?>
 <SmellBaseline>
   <ManuallySuppressedIssues/>
-  <CurrentIssues/>
+  <CurrentIssues>
+    <ID>NewLineAtEndOfFile:CredentialsStorePath.kt:dev.rubentxu.pipeline.v2.credentials.local.CredentialsStorePath.kt</ID>
+    <ID>NewLineAtEndOfFile:CredentialsStorePathIsTheOnlyNameFitnessTest.kt:dev.rubentxu.pipeline.v2.credentials.local.CredentialsStorePathIsTheOnlyNameFitnessTest.kt</ID>
+    <ID>NewLineAtEndOfFile:CredentialsStorePathTest.kt:dev.rubentxu.pipeline.v2.credentials.local.CredentialsStorePathTest.kt</ID>
+  </CurrentIssues>
 </SmellBaseline>

@@ -214,6 +214,56 @@ cable del bloque), y el portador tipado de `maxBackoffMs` cae como consecuencia,
 Eso no cambia el diagnóstico del override —sigue siendo producción-muerto y sólo los tests lo
 escriben— sino el **tamaño** del arreglo: uno horizontal, no uno local.
 
+### Corrección registrada 2026-10-18 — `check` llevaba meses rojo, y por eso STEP-CERT no era exigible
+
+Al cerrar `DEBT-WIRE-AUTHORITY` se lanzó el round gate y terminó en **BUILD FAILED in 13s**,
+con 15 tareas `detekt` FAILED y **0 tareas de test ejecutadas**. La notificación de la tarea
+anunciaba «exit code 0»: es falso, y ya había ocurrido una vez más en este mismo ciclo. Un
+código de salida no es la verdad de un build; la verdad son las tareas.
+
+**Atribución, por identidad de Git y no por sustracción.** De los 94 ficheros que `detekt`
+señalaba, sólo 4 tienen blob distinto entre la base `63dbc3df` y HEAD — los cuatro que este
+bloque introduce. Los otros 90 son byte-idénticos, luego sus hallazgos no pueden proceder de
+este cambio. Los 4 propios eran `NewLineAtEndOfFile`: los ficheros nuevos terminaban sin salto
+de línea final. Corregidos en `7ee80a98`; el Delta de SAST de este bloque pasa a ser 0.
+
+**La causa del resto, medida.** `check` engancha `detekt` (`v2/build.gradle.kts:373`), y
+`detekt` analiza `src/main/kotlin` **y** `src/test/kotlin` (líneas 349-355) con un baseline
+**por módulo** que sólo se aplica si el fichero existe (358-362). Ese baseline se congeló en
+`4b59bbc8` (2026-09-23, instantánea `6f7c445f`) y desde entonces **937 commits han tocado
+`v2/`**. Los identificadores de detekt llevan la firma —`Regla:Fichero:Entidad$firma`—, de
+modo que cualquier cambio de firma de una función señalada resucita su hallazgo, y los
+ficheros creados después de la instantánea nunca se congelaron. En `pipeline-application` hay
+110 entradas `MaxLineLength` congeladas y aun así 33 `MaxLineLength` vivos.
+
+**Medición de la deuda heredada** (idéntica en la base y en HEAD, así que no es atribuible a
+ningún cambio reciente): **104 hallazgos**, 15 tareas `detekt` FAILED. 25 en `src/main`, 79 en
+`src/test`. Por regla: 40 `MaxLineLength`, 37 `NewLineAtEndOfFile`, 10 `UnusedParameter`,
+6 `VariableNaming`, 4 `CyclomaticComplexMethod`, 2 `TooManyFunctions`, 2 `LongMethod`,
+1 `UnusedPrivateClass`, 1 `PackageNaming`, 1 `InvalidPackageDeclaration`. Cinco módulos
+—`pipeline-output`, `pipeline-output-store`, `pipeline-runtime-api`, `pipeline-runtime`,
+`test-harness`— no tenían baseline, que es lo que explica por qué nunca quedaron cubiertos.
+
+**Reparación y su prueba.** `detektBaseline` regenerado: 13 baselines modificados, 5 creados.
+Un gate que vuelve a verde sin prueba de que discrimina es el mismo defecto con otro color,
+así que la prueba es explícita: se introdujo una violación nueva (una línea de 201 caracteres)
+en un módulo con baseline viejo (`pipeline-application`) y en otro con baseline nuevo
+(`pipeline-runtime`); `detekt` FAILED y nombró el hallazgo en los dos; revertida; `detekt`
+verde con 0 hallazgos y con los baselines sin modificarse al ejecutarlo. La puerta vuelve a
+cumplir su contrato declarado —«congelar lo preexistente, fallar ante deuda nueva»— que es
+justo lo que llevaba meses sin cumplir.
+
+**Lo que esto NO es.** La deuda no desaparece: pasa a ser contable, y su conteo es el 104 de
+arriba con ese reparto por regla. Re-baselinear sin publicar la cifra habría convertido una
+puerta rota en una puerta verde y opaca; publicarla es lo que mantiene el compromiso. Quemar
+104 hallazgos —79 de ellos cosméticos en tests— sigue siendo trabajo de reducción, no
+justificación para dejar la puerta rota, y no forma parte de este bloque.
+
+**Consecuencia operativa, y es la que importa.** Durante semanas, `./v2/gradlew -p v2 check`
+ha sido ROJO con independencia del cambio, luego no podía certificar nada: un STEP-CERT
+«verde» en ese periodo sólo podía significar que nadie lo ejecutó o que se leyó otra cosa. A
+partir de ahora sí es exigible, y un rojo futuro sí será atribuible.
+
 ### Consecuencia medida de retirar `SDDK`: los estados de backlog de los recibos dejaron de ser verificables
 
 Al reescribir el párrafo anterior salió, casi por accidente, lo que la retirada de `SDDK` dejó

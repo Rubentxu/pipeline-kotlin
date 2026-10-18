@@ -253,4 +253,63 @@ object SourceScanner {
         }
         return findings
     }
+
+    /**
+     * A `.name == "..."` that CO-LOCATES with an option carrier, as 0-based line indices.
+     *
+     * ## Why co-location is part of the rule and not a refinement
+     *
+     * The obvious predicate asks two questions of the whole file and conjoins them:
+     *
+     * ```kotlin
+     * Regex(""".name\s*==\s*"[^"]*""").containsMatchIn(source) &&
+     * Regex("""\boptions\b|\bOptionSpec\b|\bStageOption\b""").containsMatchIn(source)
+     * ```
+     *
+     * That reads as "an option interpreter switched on a name", and it is not. It reads as "this
+     * file contains a name comparison SOMEWHERE, and contains the token `options` SOMEWHERE" —
+     * two facts with no relationship between them, which is a different claim.
+     *
+     * It produced a false RED on real source, measured 2026-10-18 on a 568-test
+     * `:pipeline-architecture-tests:test`:
+     *
+     * ```text
+     *   pipeline-application/.../Main.kt:412   it.name == "get\$\$result"
+     *                                            a probe for a COMPILED SCRIPT getter
+     *   pipeline-application/.../Main.kt:110   "Usage: pipelinek <verb> [options] [args]"
+     *                                            the word inside a USAGE STRING
+     * ```
+     *
+     * Neither line discriminates an option. They are 302 lines apart and about different subjects,
+     * and the file was flagged for a rule it does not break. That is the expensive kind of fitness
+     * failure: a red in the round gate teaches the next reader to discount reds, and the next real
+     * one goes unread.
+     *
+     * A real violation puts the two together, because that is what the rule is about:
+     *
+     * ```kotlin
+     * fun interpret(option: StageOption) = when {
+     *     option.name == "timeout" -> ...      // <-- the string switch
+     *     option.name == "retry"   -> ...
+     * }
+     * ```
+     *
+     * So the switch must sit near the carrier it is wrongly discriminating. [windowLines] is that
+     * neighbourhood, and it is a stated constant rather than a tuned value: it is wide enough to
+     * span a declaration and its interpreter, and narrow enough that two unrelated halves of a
+     * file do not merge into one accusation. The `scanner does not merge distant facts` fixture
+     * pins the narrow direction, so the constant cannot be widened until unrelated source reads red.
+     */
+    fun findOptionNameStringSwitches(lines: List<String>, windowLines: Int = OPTION_CONTEXT_LINES): List<Int> {
+        val nameSwitch = Regex("""\.name\s*==\s*"[^"]*"""")
+        val optionCarrier = Regex("""\boptions\b|\bOptionSpec\b|\bStageOption\b""")
+        return lines.indices.filter { i ->
+            nameSwitch.containsMatchIn(lines[i]) &&
+                (maxOf(0, i - windowLines)..minOf(lines.lastIndex, i + windowLines))
+                    .any { j -> optionCarrier.containsMatchIn(lines[j]) }
+        }
+    }
 }
+
+/** How near a name comparison must sit to an option carrier to count as discriminating one. */
+private const val OPTION_CONTEXT_LINES = 24

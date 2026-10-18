@@ -15,4 +15,5 @@ object ScannerSupport {
     fun findForbiddenImportPrefixes(r: Path, prefixes: Collection<String>) = SourceScanner.findForbiddenImportPrefixes(r, prefixes)
     fun findConcreteKeyBranches(r: Path) = SourceScanner.findConcreteKeyBranches(r)
     fun findExplicitSequenceAssignment(r: Path) = SourceScanner.findExplicitSequenceAssignment(r)
+    fun findOptionNameStringSwitches(lines: List<String>) = SourceScanner.findOptionNameStringSwitches(lines)
 }

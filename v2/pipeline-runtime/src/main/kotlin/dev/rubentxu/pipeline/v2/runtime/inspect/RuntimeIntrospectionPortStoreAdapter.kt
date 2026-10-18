@@ -95,8 +95,14 @@ class RuntimeIntrospectionPortStoreAdapter(
                         limit = 1,
                     )
                     if (evRead is dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult.Refused) {
+                        // Through the shared mapping, so a StorageError is reported as a
+                        // storage error. This branch used to re-label every refusal as
+                        // UnknownRun, which is the fail-CLOSED direction and therefore
+                        // safer than its counterpart — but it is still a wrong answer to
+                        // a question the caller asked, and it made the same read mean two
+                        // different things within one file.
                         return RuntimeIntrospectionResult.Refused(
-                            IntrospectionRefusal.UnknownRun(runId),
+                            asIntrospectionRefusal(evRead.refusal, runId),
                         )
                     }
                     return RuntimeIntrospectionResult.Observation(
@@ -149,14 +155,33 @@ class RuntimeIntrospectionPortStoreAdapter(
             }
 
             // No terminal row → Running (with lease authority) OR LiveButEmpty.
+            //
+            // Reaching this line means the run is known via a DURABLE lease record
+            // that nothing currently holds (`lease.isKnown` is row-presence, not the
+            // live lock table), or via a non-empty journal. The lease alone cannot
+            // tell a live run from a released one, so the event store is consulted
+            // here for the one fact it uniquely carries: did the run ever emit an
+            // envelope. That is a genuine second input, not a redundant authority —
+            // it is the ONLY input that separates "running" from "released and empty".
+            //
+            // What it must not be is a Boolean. The previous expression collapsed
+            // every refusal into `false`, so a transient store failure surfaced as a
+            // confidently-worded positive claim about a run that exists. `Presence`
+            // keeps the answer and the failure apart, and the failure is answered by
+            // refusing rather than by guessing.
+            val eventPresence = evStorePresenceOf(runId)
             val runExistsAnywhere = journalOps.isNotEmpty() ||
                 observedLease != null ||
-                evStoreHasRun(runId)
+                when (eventPresence) {
+                    EventStorePresence.Present -> true
+                    EventStorePresence.Absent -> false
+                    is EventStorePresence.Unreadable -> return RuntimeIntrospectionResult.Refused(eventPresence.refusal)
+                }
             if (!runExistsAnywhere) {
                 return RuntimeIntrospectionResult.Observation(
                     RuntimeObservation.LiveButEmpty(
                         attempt = AttemptId(1),
-                        reason = "no journal rows, no lease record, no event envelopes",
+                        reason = "no journal rows, no live lease, no event envelopes",
                     ),
                 )
             }
@@ -199,24 +224,13 @@ class RuntimeIntrospectionPortStoreAdapter(
                 )
             }
 
-            val outputTails: List<OutputTailView> = try {
-                frames.streamsOfRun(runId).map { streamId ->
-                    val tail: OutputTailState? = tails.tailState(streamId)
-                    OutputTailView(
-                        stream = streamId,
-                        state = when (tail) {
-                            is OutputTailState.Open -> TailState.Open(tail.committedEnd)
-                            is OutputTailState.Sealed -> TailState.Sealed(tail.finalEnd)
-                            null -> TailState.Open(0L)
-                        },
-                        lastOrdinal = frames.lastOrdinal(runId),
-                    )
-                }
-            } catch (e: Exception) {
-                return RuntimeIntrospectionResult.Refused(
-                    IntrospectionRefusal.StorageError(e.shortDiagnostic()),
-                )
-            }
+            // No inner try/catch here. The one this block used to carry built the
+            // IDENTICAL refusal the enclosing `catch` builds — same constructor, same
+            // `shortDiagnostic()` — so it was a second copy of one mapping, not a
+            // second policy. Letting the exception reach the outer handler is
+            // behaviour-preserving and keeps exactly one place that decides what a
+            // failure in this function becomes.
+            val outputTails = outputTailsOf(runId)
 
             RuntimeIntrospectionResult.Observation(
                 RuntimeObservation.Running(
@@ -239,23 +253,85 @@ class RuntimeIntrospectionPortStoreAdapter(
     }
 
     /**
-     * Check whether the event plane has an envelope for [runId]. Uses the
-     * existing cursor (`tailSequence`) so we do not need a second store API.
-     * Returns `false` for an unknown runId.
+     * The Output Plane's view of [runId]'s streams, in declaration order.
+     *
+     * Pure shape, no policy: every stream's tail state is projected, and a stream the
+     * tail port has never heard of is reported as an open tail at offset 0 rather
+     * than dropped — the frame index declared it, so it is a fact about the run even
+     * when the writer has not opened it yet.
+     *
+     * Exceptions are deliberately NOT handled here. The caller decides what a failure
+     * becomes, and there is exactly one such decision in this class's [inspect].
      */
-    private fun evStoreHasRun(runId: String): Boolean {
-        // The M1-A `runExists` callback is what the EventRecordReadPort adapter
-        // wraps for that port's own runExists/tailSequence. The introspection
-        // adapter consumes the EventRecordReadPort with `limit = 1` to detect
-        // existence: a refused-on-Unknown is the unknown answer; a Page (even
-        // empty) is the known answer.
-        val page = eventReads.readRecords(
-            runId = runId,
-            after = null,
-            query = dev.rubentxu.pipeline.v2.events.identity.EventQuery.All,
-            limit = 1,
-        )
-        return page !is dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult.Refused
+    private fun outputTailsOf(runId: String): List<OutputTailView> =
+        frames.streamsOfRun(runId).map { streamId ->
+            val tail: OutputTailState? = tails.tailState(streamId)
+            OutputTailView(
+                stream = streamId,
+                state = when (tail) {
+                    is OutputTailState.Open -> TailState.Open(tail.committedEnd)
+                    is OutputTailState.Sealed -> TailState.Sealed(tail.finalEnd)
+                    null -> TailState.Open(0L)
+                },
+                lastOrdinal = frames.lastOrdinal(runId),
+            )
+        }
+
+    /**
+     * Whether the event plane can answer "does [runId] have an envelope", and
+     * whether it answered at all.
+     *
+     * Three states because the port has three. A `Page` — even an empty one — is
+     * the store saying "I looked, here is the answer", which is [Present]: the
+     * run exists in this store's world. [Absent] is the store naming the run as
+     * unknown. [Unreadable] is the store failing for some other reason, and it
+     * carries the already-mapped refusal so the caller never has to translate
+     * the event-store vocabulary itself.
+     *
+     * A `Boolean` return could not carry all three, and the arm that got dropped
+     * was the dangerous one: folding `StorageError` into "no envelopes" reports a
+     * transient failure as a confident fact about a run that does exist.
+     */
+    private fun evStorePresenceOf(runId: String): EventStorePresence =
+        when (
+            val r = eventReads.readRecords(
+                runId = runId,
+                after = null,
+                query = dev.rubentxu.pipeline.v2.events.identity.EventQuery.All,
+                limit = 1,
+            )
+        ) {
+            is dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult.Page ->
+                EventStorePresence.Present
+            is dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult.Refused ->
+                when (val mapped = asIntrospectionRefusal(r.refusal, runId)) {
+                    // Only the store naming the run unknown is an answer about the run.
+                    is IntrospectionRefusal.UnknownRun -> EventStorePresence.Absent
+                    // Everything else is the store failing to answer, and it stays a
+                    // failure all the way out rather than becoming a claim about the run.
+                    else -> EventStorePresence.Unreadable(mapped)
+                }
+        }
+
+    /**
+     * The one translation from the event store's refusal vocabulary to this
+     * port's. Every site that reads events through [EventRecordReadPort] maps
+     * through here, so `StorageError` cannot be re-labelled as `UnknownRun` in
+     * one place and preserved in another.
+     */
+    private fun asIntrospectionRefusal(
+        refusal: dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal,
+        runId: String,
+    ): IntrospectionRefusal = when (refusal) {
+        is dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal.UnknownRun ->
+            IntrospectionRefusal.UnknownRun(runId)
+        is dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal.StorageError ->
+            IntrospectionRefusal.StorageError(refusal.cause)
+        is dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal.CursorBeyondTail ->
+            IntrospectionRefusal.StorageError(
+                "cursor beyond tail (requested ${refusal.requestedSequence}, " +
+                    "tail ${refusal.tailSequence}) for $runId",
+            )
     }
 
     private fun terminalObservationOf(
@@ -694,4 +770,24 @@ fun OutputFrameIndex.streamsOfRunOrEmpty(runId: String): List<OutputStreamId> = 
     streamsOfRun(runId)
 } catch (_: Exception) {
     emptyList()
+}
+
+/**
+ * What the event plane answered when asked whether [runId] has an envelope.
+ *
+ * Three states because [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]
+ * has three, and two of them are claims about the RUN rather than about the READ:
+ * [Present] ("I looked; the run is here") and [Absent] ("I looked; the run is
+ * unknown to me"). The third, [Unreadable], is a claim about neither — the store
+ * failed — and it carries the refusal already translated into this port's
+ * vocabulary so no caller re-derives it.
+ *
+ * The distinction that matters: `Absent` is an answer a reader acts on, and
+ * `Unreadable` is not. Collapsing the second into the first reports a transient
+ * failure as a confident statement that a run does not exist.
+ */
+private sealed interface EventStorePresence {
+    data object Present : EventStorePresence
+    data object Absent : EventStorePresence
+    data class Unreadable(val refusal: IntrospectionRefusal) : EventStorePresence
 }

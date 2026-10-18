@@ -326,11 +326,11 @@ precondición que la decisión 2b conserva para ellos.
   | --- | --- |
   | `echo("ANTES")` fuera de `script { }` | **visible** |
   | `echo("DENTRO")` dentro de `script { }` | inyectado como `echo "DENTRO"` en el shell, ejecutado, **no proyectado** |
-  | `sh("echo …")` en un stage | ejecuta, marca `ok`, **stdout nunca mostrado** |
+  | `sh("echo …")` en un stage | ejecuta, cierra la línea del step, **stdout nunca mostrado** |
   | `shStdout("echo hi")` | `Unresolved reference` — no existe |
   | `sh("echo BRANCH=${'$'}{branch}")` | **válido**; payload `branch=main; echo BRANCH=${branch}`, y el shell expande |
 
-  El mecanismo, trazado hasta el final: `EchoOutputCaptured` lo emite `ShExecution` **sólo en el camino no-durable** (`controlDirRoot == null`). Con `controlRoot`, los bytes van al Output Plane —escritos, enmarcados y sellados, 58 bytes, 2 frames— y la consola de `run` renderiza **sólo eventos**, así que un `sh` exitoso no produce ningún evento de transcripción. El KDoc de `CoreShellStep` decía que `ShExecution` es «la única autoridad de `EchoOutputCaptured`», lo cual es cierto y a la vez la razón del gap.
+  El mecanismo, trazado hasta el final: `EchoOutputCaptured` lo emite `ShExecution` **sólo en el camino no-durable** (`controlDirRoot == null`). Con `controlRoot`, los bytes van al Output Plane —escritos, enmarcados y sellados, 58 bytes, 2 frames— y la consola de `run` renderiza **sólo eventos**, así que un `sh` exitoso no produce ningún evento de transcripción. El KDoc de `CoreShellStep` dice que `ShExecution` es «la única autoridad de `EchoOutputCaptured`», lo cual es cierto y a la vez la razón del gap.
 
   `ShStepContractSuiteTest` fila C3 lee `ConsolePlaneProbe.singleStepTranscript(...)` del Output Plane; su propio comentario declara que leer de `EchoOutputCaptured` es «la conflación que la migración cerró». Es decir: **ningún test cruza la autoridad que el operador consume**, y HARNESS FIDELITY §1 pide precisamente que se nombre. C3 certifica recuperabilidad, no la salida de `run`; el hueco es real y no es una contradicción de C3.
 
@@ -338,11 +338,51 @@ precondición que la decisión 2b conserva para ellos.
 
   Diseños candidatos, ninguno elegido todavía:
 
-  1. **Flush por operación en `StepFinished`**, reutilizando el lector del Output Plane con un `OutputCursor` —投影 incrementally sin que `run` lea el plano entero. Es el que más respeta los dos contratos, y el más caro.
+  1. **Flush por operación en `StepFinished`**, reutilizando el lector del Output Plane con un `OutputCursor` — proyección incremental sin que `run` lea el plano entero. Es el que más respeta los dos contratos, y el más caro.
   2. **`observe` componiendo planos** — `run` queda event-only a propósito y la capacidad se entrega donde ya existe la lectura de plano. Más barato; deja al autor de un pipeline sin transcripción en vivo, que es justo lo que se reportó.
   3. **Hacer el bloque del DSL explícitamente azúcar de shell**, con el `script { }` documentado como generador de un único `core.sh` y sin identidad propia para los steps de dentro. documentation-only, pero elimina la mitad de la sorpresa: hoy el autor escribe `echo` dentro de un bloque y cree que ha escrito un step.
 
   Pendiente además: el hueco de capacidad que el bloque `script { }` tiene (no puede leer el valor de retorno de otro step; el valor vive en el shell, y eso es correcto, pero no está escrito).
+
+  **Parte 3 — el `ok` que el evento no llevaba, y dos cosas que la medición de esta parte dejó mal.** La misma distribución, un `sh` que sale con código 7:
+
+  ```text
+  ANTES
+    [PipelineK] [step: build] build/sh-0
+    [PipelineK] ERROR: step 'build/sh-0' failed [SCRIPT]: shell exited with code 7
+    [PipelineK] [step: build] build/sh-0 ok
+    [PipelineK] Finished: failure
+  ```
+
+  Tres líneas y la segunda se contradice con la tercera. `StepExecutionBoundary` emite `StepFinished` desde un `finally` —cierra el span en éxito, en fallo y en excepción— y el evento **no tiene campo de outcome**; `StepFailed` es el evento que lleva el fallo. El `ok` era un veredicto inventado por la proyección, y contradecía el `ERROR:` impreso justo antes. SEMANTIC CONSTITUTION §8: una proyección no renderiza un estado que su evento no lleva. `StageFinished` **sí** lleva `outcome`, y por eso su línea lo muestra.
+
+  **Cerrado.** `" ok"` → `" finished"`, verificado sobre la distribución construida:
+
+  ```text
+  DESPUES
+    [PipelineK] [step: build] build/sh-0
+    [PipelineK] ERROR: step 'build/sh-0' failed [SCRIPT]: shell exited with code 7
+    [PipelineK] [step: build] build/sh-0 finished
+    [PipelineK] Finished: failure
+  ```
+
+  ```text
+  ConsoleStepFinishedVerdictTest   3 tests  f=0 e=0 s=0   (22 clases del paquete, 131 tests, f=0 e=0 s=0)
+  mutaciones 1:1, aplicadas-verificadas por diff antes de leer el resultado
+
+  M1  volver a " ok"                          -> RED 2 de 3 (la afirmación + la fila HF1)
+  M2  quitar ` -> ${event.outcome}` a las tres
+      proyecciones que SÍ lo llevan           -> RED 1 de 3 (la guarda), nombrando las tres
+  fiabilidad tras restaurar                   -> 3 de 3 verdes, canario fresco
+  ```
+
+  La guarda anti-vacuo no es «`StageFinished` sí muestra su outcome»: es **una tabla sobre las tres** proyecciones que llevan outcome. La primera versión fue una fila, y M2 —que borraba el outcome de las tres— mató **una sola** fila: dos instancias del mismo defecto quedaban sin cubrir. Una clase de defecto con tres instancias y tres filas sigue enviando dos sin detectar; la tabla es lo que cierra la clase en vez de muestrearla.
+
+  **Corrección propia.** Durante esta medición afirmé dos cosas que la sonda contradijo, y ambas habrían escrito un verdicto falso en este documento: que `console` rechazaba `sh` (rechazaba el opId que yo le había pasado — el formato real es `<runId>-s<stepIndex>`, con el que sí imprime la salida), y que `inspect --log-tail` era un no-op silencioso (está acotado a los ops de steps fallidos por diseño, y mi run había tenido éxito; además había omitido `CONSOLETAIL` de `--fields`). Tres correcciones propias en una medición es la tasa normal, no la excepción: por eso la cifra va con su sonda y no con su conclusión.
+
+  **Abierto — `--log-tail-op` estampa una transcripción sobre todas las filas.** `MainInspectCli` calcula `consoleTail` **una vez para todo el run** (`:181-208`) y `toInspectionRecord` (`:230-255`) copia ese mismo valor en **cada** `InspectionRecord`. Con `--log-tail-op <un-op>`, la fila de ese op y la de `CompilationStarted` llevan la misma transcripción. El campo está bien calculado y mal distribuido: es un valor scoped al run presentedo como scoped a la fila. Sepáralo significa decidir si `CONSOLETAIL` pertenece a la fila o a la cabecera de la respuesta — y si pertenece a la fila, `consoleTail` tiene que ser por-op.
+
+  **Abierto — el opId no aparece en ninguna salida del producto.** `inspect` muestra `build/sh-0` y el índice del step; el operador tiene que reconstruir `<runId>-s<idx>` para poder pedírselo a `console`. La forma está en `operation_journal.op_id`, que es interno. Un `inspect` que imprime el opId que `console` acepta no necesita un documento que lo explique.
 
 - [x] **H1.3c — El CLI señalaba un `--help` que no existía. Cerrado 2026-10-18.**
 

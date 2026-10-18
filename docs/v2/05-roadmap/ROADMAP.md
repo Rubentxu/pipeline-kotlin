@@ -35,6 +35,53 @@ veredicto es del harness y vive en su recibo, no en este repositorio. Desde aqu�
 Tampoco afirma nada sobre el estado de la batería UAT externa, que es del harness por contrato
 de separación de responsabilidades.
 
+**Siguiente bloque desbloqueado (medido 2026-10-18): portador tipado de `maxBackoffMs` en
+`core.waitUntil`.** Hoy ese campo **no tiene portador tipado en el producto**. `StepDispatchEngine`
+lo recupera con una expresión regular sobre el JSON crudo del payload, y la autoridad estructural
+—que ya parsea ese mismo payload en `CanonicalStructuralDecisions.kt:491-497`— lo descarta. Es la
+segunda lectura de un valor que la primera ya posee: la forma que DR-1 prohíbe.
+
+Por qué el campo existe hoy y por qué no se puede simplemente borrar. En producción hay **dos**
+escritores del payload de `waitUntil`, y **ninguno** emite `maxBackoffMs`: el códec del Step
+(`CoreWaitUntilStep.kt:141-152`) y la proyección del bloque
+(`DslCompiledPipelineCompiler.kt:374-378`), que escribe su propio JSON en vez de delegar en el
+códec. Los dos emiten `kind`, `initialRecurrencePeriod` y `quiet`. Y no hay un tercer escritor:
+`CompiledPipeline.kt` sólo declara el tipo `VersionedStepPayload`; el único sitio de producción que
+lo construye para un bloque es `DslCompiledPipelineCompiler.kt:326` (`blockPayload(step)`), de donde
+salen esas ramas. Denominador completo: 2 escritores, 0 con la clave.
+
+Pero un test puede escribir el payload directamente, saltándose a ambos — y lo hace:
+`BodyExecutionCharacterizationTest.kt:263,296`.
+Las filas de `waitUntil` necesitan un techo de backoff de **25 ms** para terminar al instante, y esa
+es la **única** vía para obtener un techo corto. Un intento previo de borrarlo (2026-10-18, revertido
+en el mismo ciclo) rompió esa fila con `TimeoutException` a los 120 s. Registro, no hallazgo nuevo.
+
+**DR-10 cerrado por medición, no por suposición.** `BodyStructureDigest.kt:67` anexa
+`child.payload.encoded` — la **cadena**. Leer una clave más de esa misma cadena no cambia un byte de
+la forma canónica, así que añadir el campo **no mueve la identidad del cuerpo**. Esta era la
+pregunta que bloqueaba el bloque; está respondida.
+
+**Denominador del cambio (6 puntos de contacto, no 3):**
+
+```text
+pipeline-scripting-api   StageScope.kt:436      añadir el parámetro al builder DSL
+surface/                 DSL_SURFACE_MANIFEST.md:98   la firma de la fila cambia
+pipeline-application     CoreWaitUntilStep.kt   WaitUntilInput + códec (emisión)
+pipeline-application     DslCompiledPipelineCompiler.kt:374-378  proyección del payload de bloque
+pipeline-application     CanonicalStructuralDecisions.kt:491-497  lectura estructural tipada
+pipeline-application     StepDispatchEngine.kt:698-700  SE BORRA el regex
+```
+
+**Por qué no se cierra en un ciclo:** `core.waitUntil` está `CERTIFIED`
+(`07-uat/S2_A8_CORE_WAITUNTIL_G8_FINAL_CERTIFICATION_RECEIPT.md`), y cambiar su contrato público
+exige STEP-CERT sobre el SHA nuevo, no que compile. Además `FArchS0SurfaceManifestTest` recalcula
+el censo desde el manifiesto, de modo que tocar la firma de la línea 98 invalida su entrada. La Ley
+de Certificación no admite "compila" como evidencia.
+
+**Lo que NO es aceptable como atajo:** enseñar a leer la clave al decodificador estructural sin
+exponerla en la emisión. Eso consagra un campo que sólo los tests escriben, y la exposición
+tipada lo reescribiría acto seguido sobre los mismos ficheros. Es trabajo doble.
+
 **Actualización de hechos 2026-10-08 (observada, no inferida). Supersede las tres líneas anteriores como referencia de estado; se conservan por trazabilidad.**
 
 ```text

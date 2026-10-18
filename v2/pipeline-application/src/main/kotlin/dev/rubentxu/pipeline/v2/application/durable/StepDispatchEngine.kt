@@ -695,10 +695,6 @@ internal class StepDispatchEngine(
         // BodyExecutionEngine; the coordinator composes it with the projected
         // scope decided above. The credential-lease path composes through the
         // credentialLeasedBody callback (this class's own method).
-        val maxBackoffMsOverride = if (scope is BlockShellScope.WaitUntilScope) {
-            Regex("\"maxBackoffMs\"\\s*:\\s*(\\d+)").find(block.payload.encoded)
-                ?.groupValues?.get(1)?.toLongOrNull()
-        } else null
         return bodyExecutionEngine.executeScope3b(
             scope = scope,
             block = block,
@@ -711,7 +707,6 @@ internal class StepDispatchEngine(
             context = contextInBody,
             dispatcher = ::dispatchChild,
             bodyInvokerAdapter = bodyInvokerAdapter,
-            maxBackoffMsOverride = maxBackoffMsOverride,
         )
     }
 

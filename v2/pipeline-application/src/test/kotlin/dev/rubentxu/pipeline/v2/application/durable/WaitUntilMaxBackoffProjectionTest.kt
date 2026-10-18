@@ -96,6 +96,30 @@ class WaitUntilMaxBackoffProjectionTest {
     }
 
     @Test
+    fun `a ceiling below the effective period is refused here, not deferred to the engine`() {
+        // The effective period is the declared SHAPE's, not the period the payload spells:
+        // structural fields come from the Step KIND, so a payload claiming 10 ms cannot
+        // lower a shape whose cadence is 1000 ms.
+        val projection = project(
+            payload = """{"kind":"waitUntilBlock","initialRecurrencePeriod":10,"quiet":false,"maxBackoffMs":25}""",
+            periodMs = 1000L,
+        )
+
+        val invalid = assertInstanceOf(
+            BodyExecutionProjection.InvalidInput::class.java,
+            projection,
+            "A ceiling below the period produces a backoff that is already capped before the " +
+                "first step, so the loop is meaningless. WaitUntilEngine refuses that pair on its " +
+                "own constructor; refusing it in the projection also covers the inline branch, " +
+                "which never had the check.",
+        )
+        assertTrue(
+            invalid.detail.contains("maxBackoffMs"),
+            "The refusal must name the field, got: ${invalid.detail}",
+        )
+    }
+
+    @Test
     fun `the wire codec is the one that emits the key, so the projection has an authority to read`() {
         val encoded = CoreWaitUntilWireCodec.encode(CoreWaitUntilInput(maxBackoffMs = 25L)).value
 
@@ -124,11 +148,11 @@ class WaitUntilMaxBackoffProjectionTest {
         return assertInstanceOf(BlockShellScope.WaitUntilScope::class.java, scope)
     }
 
-    private fun project(payload: String): BodyExecutionProjection =
+    private fun project(payload: String, periodMs: Long = 1L): BodyExecutionProjection =
         block(payload).projectBodyExecution(
             policy = BodyExecutionPolicy.Retrying(
                 policy = RetryPolicy(),
-                waitUntil = WaitUntilShape(initialRecurrencePeriodMs = 1L, quiet = false),
+                waitUntil = WaitUntilShape(initialRecurrencePeriodMs = periodMs, quiet = false),
             ),
             options = shOptions,
         )

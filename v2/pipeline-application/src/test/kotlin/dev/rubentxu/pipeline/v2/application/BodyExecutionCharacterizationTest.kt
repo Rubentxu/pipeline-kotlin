@@ -260,7 +260,12 @@ class BodyExecutionCharacterizationTest {
                     "S",
                     block(
                         waitUntilKey,
-                        """{"kind":"waitUntil","initialRecurrencePeriod":10,"maxBackoffMs":50}""",
+                        // The ceiling must be >= the EFFECTIVE period, which is the declared
+                        // shape's 1000 ms (Jenkins verbatim), not the period this payload
+                        // spells. `WaitUntilEngine` refuses the incoherent pair on the
+                        // durable branch, and the projection now refuses it for both, so a
+                        // ceiling below 1000 is a payload no branch will run.
+                        """{"kind":"waitUntil","initialRecurrencePeriod":10,"maxBackoffMs":5000}""",
                         "s/wait-body-1",
                         echo("s", 0, "condition holds"),
                     ),
@@ -293,7 +298,8 @@ class BodyExecutionCharacterizationTest {
                     "S",
                     block(
                         waitUntilKey,
-                        """{"kind":"waitUntil","initialRecurrencePeriod":10,"maxBackoffMs":25}""",
+                        // See the note above: 25 sat below the effective 1000 ms period.
+                        """{"kind":"waitUntil","initialRecurrencePeriod":10,"maxBackoffMs":2500}""",
                         "s/wait-body-2",
                         userError("s", 0, "condition never holds"),
                     ),

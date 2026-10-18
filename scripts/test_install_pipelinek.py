@@ -744,6 +744,51 @@ def test_r10_non_allowlisted_base_url_refused() -> None:
 
 
 # ---------------------------------------------------------------------------
+# R11 - a manifest without an entry for the requested asset fails closed
+# ---------------------------------------------------------------------------
+
+
+def test_r11_manifest_without_entry_for_asset_refuses() -> None:
+    """SHA256SUMS present but silent about the asset -> refuse, install nothing.
+
+    R2 covers a manifest that names the asset with the WRONG digest. The
+    gap this row closes is the adjacent one: a manifest that never names
+    it at all. Both are digest-authority failures and both must refuse,
+    but a lookup that falls through to "trust the downloaded bytes when
+    no entry is found" is green under R2 -- the entry it disagrees with
+    is right there. Refusal must therefore name the missing entry, which
+    is what distinguishes it from an unreachable mirror.
+    """
+    root = tempdir("r11")
+    home = tempdir("r11-home")
+    try:
+        build_release(root)
+        sums = root / f"v{TARGET}" / "SHA256SUMS"
+        # Rewrite the manifest so the requested asset is absent while an
+        # unrelated asset is present: the failure is "no entry", not
+        # "empty manifest".
+        sums.write_text("0" * 64 + f"  dist/candidates/v{TARGET}/some-other-asset.tar.gz\n")
+        base = _serve(root)
+        result = run_installer(["install", TARGET], home, mirror=base)
+        combined = result.stdout + result.stderr
+        check(
+            result.returncode != 0,
+            f"a manifest with no entry for {TARGET} must fail closed:\n{combined}",
+        )
+        check(
+            "no valid entry" in combined.lower(),
+            f"refusal did not name the missing entry:\n{combined}",
+        )
+        check(
+            not (home / "versions" / TARGET).exists(),
+            f"refused install left a version directory behind:\n{combined}",
+        )
+    finally:
+        shutil.rmtree(home, ignore_errors=True)
+        shutil.rmtree(root, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 

@@ -276,19 +276,31 @@ object ImpactResolver {
                 // suite into a single evidence row.
                 // The FQCN is unique per JVM.
                 val evidence = executedSuites[suite.fqcn]
+                // Name every refusal with the identity that was
+                // actually looked up. The previous shape reported
+                // `suite.filter` here -- the JUnit filter pattern --
+                // which is precisely the ambiguous value this loop's
+                // FQCN lookup exists to eliminate. A refusal that
+                // names the filter cannot say WHICH of two
+                // same-named suites produced no evidence, and a
+                // refusal the operator cannot act on is the defect
+                // this row exists to catch. Where a call site does
+                // not override it, `TestSuiteId.fqcn` defaults to
+                // `filter` and the rendered name is byte-identical.
+                val identity = suite.fqcn
                 when (evidence) {
                     null -> {
-                        add(SelectionRefusal.SelectedButNotRun(suite.filter))
+                        add(SelectionRefusal.SelectedButNotRun(identity))
                     }
                     is EvidenceReader.SuiteEvidence.MissingSidecar -> {
                         add(SelectionRefusal.IncompleteEvidence(
-                            suite = suite.filter,
+                            suite = identity,
                             missingField = "sidecar (EvidenceManifest JSON)",
                         ))
                     }
                     is EvidenceReader.SuiteEvidence.MalformedSidecar -> {
                         add(SelectionRefusal.MalformedSidecar(
-                            suite = suite.filter,
+                            suite = identity,
                             reason = evidence.reason,
                         ))
                     }
@@ -296,14 +308,14 @@ object ImpactResolver {
                         val m = evidence.manifest
                         if (m.sourceCommit != expectedCommit) {
                             add(SelectionRefusal.StaleBinary(
-                                suite = suite.filter,
+                                suite = identity,
                                 expected = expectedCommit,
                                 observed = m.sourceCommit,
                             ))
                         }
                         if (requiredFidelities.isNotEmpty() && m.fidelity !in requiredFidelities) {
                             add(SelectionRefusal.InsufficientFidelity(
-                                suite = suite.filter,
+                                suite = identity,
                                 observed = m.fidelity,
                                 required = requiredFidelities,
                             ))

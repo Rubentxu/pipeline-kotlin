@@ -36,6 +36,26 @@ import java.nio.file.Path
  * real map. The bridge's job is to keep the in-process
  * test surface focused on the property under test, not
  * on the manifest's wire format.
+ *
+ * ## The key this bridge used to get wrong
+ *
+ * An earlier version of this helper keyed its map with
+ * `suite.filter` — the simple class name — while the
+ * production producer keys by the FQCN the report
+ * declares and [ImpactResolver.adjudicate] looks that key
+ * up. Every binding then defaulted its `fqcn` to
+ * `filter`, so the bridge agreed with the consumer and
+ * the whole adversarial suite stayed green while
+ * production refused every selected suite forever.
+ *
+ * That agreement was manufactured here, which is the
+ * point: a helper that builds its own input to match the
+ * code under study cannot detect the two disagreeing.
+ * The seam now has its own test
+ * ([EvidenceKeyAgreementTest]), which calls the real
+ * producer and the real consumer in sequence, and the
+ * bridge keys by `fqcn` so that it models production
+ * rather than flattering it.
  */
 internal fun adjudicateEvidence(
     plan: ValidationPlan,
@@ -49,10 +69,10 @@ internal fun adjudicateEvidence(
     return selected.suites
         .filter { it.filter in executed }
         .associate { suite ->
-            suite.filter to EvidenceReader.SuiteEvidence.WithManifest(
-                xml = Path.of("/nonexistent/${suite.filter}.xml"),
+            suite.fqcn to EvidenceReader.SuiteEvidence.WithManifest(
+                xml = Path.of("/nonexistent/${suite.fqcn}.xml"),
                 manifest = EvidenceManifest(
-                    className = suite.filter,
+                    className = suite.fqcn,
                     gradlePath = ":test-harness",
                     invocation = "gradle :test-harness:test --tests ${suite.filter}",
                     binarySha256 = placeholderBinarySha,

@@ -374,66 +374,137 @@ object SuitePolicy {
      * Each capability names at least one suite whose filter is a real Gradle test pattern. The
      * fitness asserts every filter resolves to a test class that exists, which is what stops a
      * removed suite from quietly satisfying a capability forever.
+     *
+     * ## Why `fqcn` is spelled out at every site
+     *
+     * [TestSuiteId.fqcn] defaults to `filter`, and leaving it defaulted is not a harmless
+     * convenience: [EvidenceReader.suitesWithEvidence] keys the evidence map by the FQCN the
+     * report declares, and [ImpactResolver.adjudicate] looks that map up BY `fqcn`. With every
+     * binding defaulted, the two sides disagreed on every suite — the map held
+     * `dev.rubentxu.pipeline.v2.application.CompatibilityCorpusTest` and the lookup asked for
+     * `CompatibilityCorpusTest` — so the gate refused every selected suite as
+     * `SelectedButNotRun`, naming a suite that had demonstrably run.
+     *
+     * A guaranteed miss is fail-closed, so this was not a silent green: it was a gate that can
+     * never discharge a plan and therefore can never certify a run. Nothing caught it because the
+     * producer and the consumer were each tested against hand-built fixtures that agreed with
+     * them, and no test called both in sequence until `EvidenceKeyAgreementTest`.
+     *
+     * So the two halves now say the same thing: the report's identity is the FQCN, and the plan's
+     * identity is the FQCN. Dropping an `fqcn` back to its default reintroduces the wedge, which
+     * is why the argument is named at the call site instead of hidden in a default.
      */
     val BINDINGS: List<SuiteBinding> = listOf(
         SuiteBinding(
             capability = "OutputPlane.redaction.streaming",
             suites = listOf(
-                TestSuiteId("ShTranscriptRedactionReproductionTest", ":pipeline-application"),
+                TestSuiteId(
+                    filter = "ShTranscriptRedactionReproductionTest",
+                    gradleProject = ":pipeline-application",
+                    fqcn = "dev.rubentxu.pipeline.v2.application.ShTranscriptRedactionReproductionTest",
+                ),
             ),
             fidelity = Fidelity.HF2,
         ),
         SuiteBinding(
             capability = "OutputPlane.write.commit",
             suites = listOf(
-                TestSuiteId("ShTranscriptRedactionReproductionTest", ":pipeline-application"),
+                TestSuiteId(
+                    filter = "ShTranscriptRedactionReproductionTest",
+                    gradleProject = ":pipeline-application",
+                    fqcn = "dev.rubentxu.pipeline.v2.application.ShTranscriptRedactionReproductionTest",
+                ),
             ),
             fidelity = Fidelity.HF2,
         ),
         SuiteBinding(
             capability = "OutputPlane.pump.drain",
             suites = listOf(
-                TestSuiteId("DurableShellExecutorAdversarialTest", ":pipeline-step-sdk:runtime"),
+                TestSuiteId(
+                    filter = "DurableShellExecutorAdversarialTest",
+                    gradleProject = ":pipeline-step-sdk:runtime",
+                    fqcn = "dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutorAdversarialTest",
+                ),
             ),
             fidelity = Fidelity.HF2,
         ),
         SuiteBinding(
             capability = "OutputPlane.read.cursor",
             suites = listOf(
-                TestSuiteId("B1aOutputPlaneProviderLifecycleCharacterizationTest", ":pipeline-application"),
-                TestSuiteId("D7CursorOwnershipBehaviourTest", ":pipeline-application"),
+                TestSuiteId(
+                    filter = "B1aOutputPlaneProviderLifecycleCharacterizationTest",
+                    gradleProject = ":pipeline-application",
+                    fqcn = "dev.rubentxu.pipeline.v2.application.durable.B1aOutputPlaneProviderLifecycleCharacterizationTest",
+                ),
+                TestSuiteId(
+                    filter = "D7CursorOwnershipBehaviourTest",
+                    gradleProject = ":pipeline-application",
+                    fqcn = "dev.rubentxu.pipeline.v2.application.durable.D7CursorOwnershipBehaviourTest",
+                ),
             ),
             fidelity = Fidelity.HF2,
         ),
         SuiteBinding(
             capability = "Shell.execution.composition",
             suites = listOf(
-                TestSuiteId("CompatibilityCorpusTest", ":pipeline-application"),
-                TestSuiteId("ShTranscriptRedactionReproductionTest", ":pipeline-application"),
+                TestSuiteId(
+                    filter = "CompatibilityCorpusTest",
+                    gradleProject = ":pipeline-application",
+                    fqcn = "dev.rubentxu.pipeline.v2.application.CompatibilityCorpusTest",
+                ),
+                TestSuiteId(
+                    filter = "ShTranscriptRedactionReproductionTest",
+                    gradleProject = ":pipeline-application",
+                    fqcn = "dev.rubentxu.pipeline.v2.application.ShTranscriptRedactionReproductionTest",
+                ),
             ),
             fidelity = Fidelity.HF2,
         ),
         SuiteBinding(
             capability = "Console.cli.selection",
             suites = listOf(
-                TestSuiteId("CompatibilityCorpusTest", ":pipeline-application"),
+                TestSuiteId(
+                    filter = "CompatibilityCorpusTest",
+                    gradleProject = ":pipeline-application",
+                    fqcn = "dev.rubentxu.pipeline.v2.application.CompatibilityCorpusTest",
+                ),
             ),
             fidelity = Fidelity.HF2,
         ),
         SuiteBinding(
             capability = "Build.composition",
             suites = listOf(
-                TestSuiteId("CompatibilityCorpusTest", ":pipeline-application"),
-                TestSuiteId("ContractCatalogueFitnessTest", ":test-harness"),
+                TestSuiteId(
+                    filter = "CompatibilityCorpusTest",
+                    gradleProject = ":pipeline-application",
+                    fqcn = "dev.rubentxu.pipeline.v2.application.CompatibilityCorpusTest",
+                ),
+                TestSuiteId(
+                    filter = "ContractCatalogueFitnessTest",
+                    gradleProject = ":test-harness",
+                    fqcn = "dev.rubentxu.pipeline.v2.harness.catalog.ContractCatalogueFitnessTest",
+                ),
             ),
             fidelity = Fidelity.HF2,
         ),
         SuiteBinding(
             capability = "Provenance.build.identity",
             suites = listOf(
-                TestSuiteId("RuntimeBuildIdentityTest", ":pipeline-application"),
-                TestSuiteId("BuildProvenanceIsReportedByTheInstalledBinaryTest", ":pipeline-application"),
-                TestSuiteId("AppBinProvenanceTest", ":pipeline-application"),
+                TestSuiteId(
+                    filter = "RuntimeBuildIdentityTest",
+                    gradleProject = ":pipeline-application",
+                    fqcn = "dev.rubentxu.pipeline.v2.application.RuntimeBuildIdentityTest",
+                ),
+                TestSuiteId(
+                    filter = "BuildProvenanceIsReportedByTheInstalledBinaryTest",
+                    gradleProject = ":pipeline-application",
+                    fqcn = "dev.rubentxu.pipeline.v2.application.BuildProvenanceIsReportedByTheInstalledBinaryTest",
+                ),
+                TestSuiteId(
+                    filter = "AppBinProvenanceTest",
+                    gradleProject = ":pipeline-application",
+                    fqcn = "dev.rubentxu.pipeline.v2.application.support.AppBinProvenanceTest",
+                ),
             ),
             fidelity = Fidelity.HF2,
         ),
@@ -449,7 +520,11 @@ object SuitePolicy {
         SuiteBinding(
             capability = "OutputPlane.uat.fixture",
             suites = listOf(
-                TestSuiteId("PromotionEvidenceVerifierTest", ":test-harness"),
+                TestSuiteId(
+                    filter = "PromotionEvidenceVerifierTest",
+                    gradleProject = ":test-harness",
+                    fqcn = "dev.rubentxu.pipeline.v2.harness.cycle.PromotionEvidenceVerifierTest",
+                ),
             ),
             fidelity = Fidelity.HF0,
         ),

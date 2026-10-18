@@ -233,6 +233,32 @@ object ContractCatalogue {
                 // whole H1.4 line depends on.
                 "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/Main.kt",
             ),
+            // Measured 2026-10-18 (census over `git ls-files`, the same
+            // impure edge `PlanCli` uses): the classifier calls every
+            // `build.gradle.kts` Production `BuildComposition` (74
+            // tracked files), and the resolver refuses any production
+            // path no contract claims. This contract listed ONE build
+            // file as a literal, so a change to
+            // `v2/pipeline-release/build.gradle.kts` -- which decides
+            // what ships inside the ZIP -- was refused with "add a
+            // catalogue row or remove the file". The comment in
+            // `Build.composition` already asserted these files were
+            // "owned by Provenance.build.identity"; that assertion was
+            // false until this pattern existed, and a comment claiming
+            // ownership the wiring does not have is the defect class
+            // this file has already paid for once.
+            //
+            // A module build file belongs to IDENTITY, not to generic
+            // composition, because its dependencies are exactly what
+            // the distribution contains. The ROOT `build.gradle.kts`
+            // is the other case and is deliberately NOT claimed here:
+            // it pins the JVM toolchain for every subproject, which is
+            // composition rather than identity, so
+            // `Build.composition` takes it.
+            pathPatterns = listOf(
+                "v2/**/build.gradle.kts",
+                "examples/**/build.gradle.kts",
+            ),
             minFidelity = Fidelity.HF2,
         ),
         Contract(
@@ -266,12 +292,23 @@ object ContractCatalogue {
             // plus version catalogs and gradle.properties at
             // any depth, without claiming every
             // `build.gradle.kts` (those are owned by
-            // Provenance.build.identity).
+            // Provenance.build.identity, which now actually
+            // claims them by pattern instead of asserting it in a
+            // comment).
+            //
+            // The last pattern is the repository-root
+            // `build.gradle.kts`, claimed here and not by identity
+            // because it pins the JVM toolchain (Java 21, jvmTarget
+            // 21) for every subproject. A change to it changes the
+            // bytecode target of the whole build while every
+            // per-module test still passes. Composition, decided by
+            // reading the file, not inferred from its name.
             pathPatterns = listOf(
                 "v2/gradle/wrapper/gradle-wrapper.properties",
                 "v2/gradle/wrapper/gradle-wrapper.jar",
                 "v2/**/libs.versions.toml",
                 "v2/**/gradle.properties",
+                "build.gradle.kts",
             ),
             minFidelity = Fidelity.HF2,
         ),

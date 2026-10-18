@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.application.support.Subprocess
 import dev.rubentxu.pipeline.v2.application.support.requireExited
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
+import dev.rubentxu.pipeline.v2.application.durable.FileBasedWaitUntilControlJournal
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import dev.rubentxu.pipeline.v2.application.SystemClock
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
@@ -39,6 +40,9 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.io.TempDir
+import java.nio.file.Files
+import java.nio.file.Path
 
 /**
  * WU-LPR-301 — `core.waitUntil` fitness: the canonical body engine dispatches
@@ -149,13 +153,27 @@ class Lfc2WaitUntilCanonicalReentryFitnessTest {
      * Fitness 3: the canonical coordinator succeeds end-to-end when `core.waitUntil` is
      * routed through the registry. No exception, no legacy dispatcher call, no
      * per-StepKey branch.
+     *
+     * ## Why the control journal is bound, and why its row is asserted (measured 2026-10-18)
+     *
+     * `BodyExecutionEngine` selects between two waitUntil branches: `WaitUntilEngine.execute`
+     * when a journal is bound, and `executeWaitUntilInline` when it is null. Production binds
+     * it in `CompositionRoot`, so the inline branch is unreachable from `src/main`. Left
+     * unbound, this fitness certified that branch — and a fitness has more authority than an
+     * ordinary test, because a failure here is read as a structural violation of the open
+     * registry seam.
+     *
+     * Binding alone would be an unverified claim, so the row also asserts the artefact only
+     * the production engine leaves behind: a `.attempts.json` control row. Both branches run
+     * the body and both report success, so `RunOutcome.Success` cannot tell them apart.
      */
     @Test
-    fun `waitUntil succeeds through the registry path`() = runBlocking {
+    fun `waitUntil succeeds through the registry path`(@TempDir tmp: Path) = runBlocking {
         val clock = SystemClock()
         val eventStore = InMemoryEventStore()
         val runId = RunId("waitUntil-registry-path")
         val journal = InMemoryOperationJournal(clock)
+        val controlRoot = tmp.resolve("control")
 
         val outcome = CanonicalDurableRunCoordinator(
             dispatcher = CanonicalNodeDispatcher(),
@@ -165,6 +183,7 @@ class Lfc2WaitUntilCanonicalReentryFitnessTest {
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             eventSink = eventStore,
             credentialScopePort = noOpCredentialScopePort(),
+            waitUntilControlJournal = FileBasedWaitUntilControlJournal(controlRoot),
             stepRegistry = CoreStepRegistryFactory.registry(),
         ).run(waitUntilPipeline(), runId)
 
@@ -172,6 +191,35 @@ class Lfc2WaitUntilCanonicalReentryFitnessTest {
             RunOutcome.Success,
             outcome,
             "waitUntil dispatched through the registry must succeed end-to-end",
+        )
+
+        // WHICH engine ran is part of the claim, and RunOutcome.Success above cannot tell
+        // the two apart: both run the body and both succeed. Only the engine that drives a
+        // durable control row leaves one behind. Without this assertion, dropping the journal
+        // above would return this fitness to certifying the inline path with the row still
+        // green — a fitness that survives an untested configuration change.
+        val controlDir = controlRoot.resolve("wait-until-control")
+        val controlRows: List<Path> =
+            if (!Files.isDirectory(controlDir)) {
+                // An absent control directory is the observable of the wrong branch, not an
+                // exception: `Files.walk` throws `NoSuchFileException` on a missing root,
+                // which would replace this row's diagnosis with a stack trace.
+                emptyList()
+            } else {
+                Files.walk(controlDir).use { s ->
+                    s.filter { Files.isRegularFile(it) }
+                        .filter { it.fileName.toString().endsWith(".attempts.json") }
+                        .sorted()
+                        .toList()
+                }
+            }
+        assertEquals(
+            1,
+            controlRows.size,
+            "the production waitUntil engine drives exactly one durable control row; found " +
+                "${controlRows.map { it.fileName }} under $controlDir. An empty set means the " +
+                "run crossed `executeWaitUntilInline` (journal null), not `WaitUntilEngine`, " +
+                "so this fitness would certify a path `src/main` cannot reach.",
         )
     }
 
@@ -201,6 +249,26 @@ class Lfc2WaitUntilCanonicalReentryFitnessTest {
             "--db", dbDir.absolutePath,
             "--control-root", ctrlDir.absolutePath,
             fixture.absolutePath,),
+            // HARNESS FIDELITY 4 (hermetic). Measured 2026-10-18: without this the
+            // installed CLI exits 3 before the pipeline starts --
+            //   "Passphrase required: set PIPELINE_STORE_PASSPHRASE or run
+            //    interactively in a TTY"
+            // -- so this row's verdict depended on the OPERATOR's ambient environment
+            // (an exported passphrase, or a TTY), not on the code under test. On a
+            // machine with neither it failed on a real binary that emits the events
+            // correctly; with the variable set the same binary exits 0 and emits
+            // 2x WaitUntilPolled + 1x WaitUntilCompleted.
+            //
+            // The claim under test is "the installed CLI emits the waitUntil events
+            // through the registry path", which has nothing to do with the credential
+            // store. The passphrase is incidental start-up infrastructure, so it is
+            // supplied explicitly rather than inherited: this makes the row hermetic in
+            // BOTH directions, because an operator who happens to have one exported no
+            // longer changes the verdict either.
+            //
+            // This is a test literal, not a credential. `Subprocess.run` merges into the
+            // inherited environment (`putAll`), so PATH and the rest survive.
+            environment = mapOf("PIPELINE_STORE_PASSPHRASE" to "lfc2-waituntil-fitness-not-a-secret"),
         ).requireExited()
         val exitCode = cliRun.exitCode
         val stdout = cliRun.stdout

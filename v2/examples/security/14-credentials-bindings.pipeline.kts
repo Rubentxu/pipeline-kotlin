@@ -1,3 +1,17 @@
+#! requires-seeded-credentials
+// NOT_RUN in the local gate, and that is deliberate rather than a shrug.
+//
+// This scenario's subject is the seven binding kinds. Resolving any of them
+// needs a credential store that already holds those entries, and the product's
+// only writer, `pipelinek credentials add`, prompts "Enter secret value:" on
+// the TTY and refuses without one. The launcher has no business synthesising a
+// seeded store: a TTY-driven seeder would be exactly the harness this tree
+// deleted, and a hand-built encrypted file would test the hand-built file.
+//
+// Left here rather than deleted on purpose. The coverage gap is real and the
+// seven-kind contract is a security boundary, so the scenario stays in the
+// inventory and keeps compiling: the day a non-interactive seeding path exists,
+// deleting the directive above turns this back into a running check.
 pipeline {
     stages {
         stage("credentials-bindings") {

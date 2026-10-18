@@ -14,6 +14,12 @@
 #                                     require the second run not to repeat the
 #                                     effect; the pipeline itself asserts the
 #                                     count, this only re-runs it
+#   #! requires-seeded-credentials    NOT_RUN: the scenario needs a credential
+#                                     store seeded in advance, and the product
+#                                     offers no non-interactive way to seed one
+#                                     (`credentials add` prompts on the TTY).
+#                                     It is reported as not executed, which is
+#                                     neither a pass nor a failure.
 #
 # The distribution must already exist:
 #     cd v2 && ./gradlew :pipeline-application:installDist
@@ -36,6 +42,7 @@ trap cleanup EXIT
 
 passed=0
 failed=0
+not_run=0
 failures=()
 
 scenario_index=0
@@ -53,14 +60,26 @@ run_scenario() {
     local expect_exit=0
     local expect_stderr=""
     local durable=0
+    local needs_seeded_credentials=0
     local directive
     while IFS= read -r directive; do
         case "$directive" in
             '#! expect-exit '*)    expect_exit="${directive#\#! expect-exit }" ;;
             '#! expect-stderr '*)  expect_stderr="${directive#\#! expect-stderr }" ;;
             '#! durable')          durable=1 ;;
+            '#! requires-seeded-credentials') needs_seeded_credentials=1 ;;
         esac
     done < <(grep -m 20 '^#!' "$script" || true)
+
+    if [[ "$needs_seeded_credentials" == 1 ]]; then
+        # Declared up front, before any execution, so the verdict cannot depend
+        # on a run whose outcome was never observed. NOT_RUN is not a pass:
+        # it is the honest third state, and it keeps the scenario in the
+        # inventory so it cannot be forgotten the way a deleted file can.
+        printf 'NOT_RUN %-50s needs a credential store seeded on a TTY\n' "$name"
+        not_run=$((not_run + 1))
+        return
+    fi
 
     local root="$cycle_root/$slug"
     # A private working directory per scenario, entered with `cd`, so a step
@@ -75,6 +94,15 @@ run_scenario() {
     # that did not set one would fail on a door rather than on its subject.
     # This value is generated for this scenario and never leaves the process.
     export PIPELINE_STORE_PASSPHRASE="e2e-${slug}-$$"
+
+    # Pin the credentials store inside this scenario's own root. Without this,
+    # `CredentialsStorePath.fromEnvironment` falls back to the real
+    # ~/.pipeline/credentials.bin, so a scenario silently reads the
+    # developer's own credential store: the run is then neither reproducible
+    # nor hermetic, and its verdict depends on the machine. Pinned, the store
+    # does not exist, the credential executor is not composed, and any scenario
+    # that actually needs one says so instead of borrowing a stranger's.
+    export PIPELINE_CREDENTIALS_STORE="$root/creds.bin"
 
     local stdout="$root/stdout.txt" stderr="$root/stderr.txt" code=0
 
@@ -128,7 +156,13 @@ while IFS= read -r script; do
 done < <(find "$here" -name '*.pipeline.kts' -type f -not -path '*/build/*' \
             -not -path '*/example-*-plugin/*' | LC_ALL=C sort)
 
-printf '\n%d scenario(s), %d passed, %d failed\n' "$scenario_index" "$passed" "$failed"
+printf '\n%d scenario(s), %d passed, %d failed, %d not run\n' \
+    "$scenario_index" "$passed" "$failed" "$not_run"
+if (( not_run > 0 )); then
+    printf 'not run (NOT_RUN is not a pass):\n'
+    printf '  - every scenario above marked NOT_RUN needs external state this\n'
+    printf '    launcher does not and must not fabricate.\n'
+fi
 if (( failed > 0 )); then
     printf 'failures:\n'
     printf '  - %s\n' "${failures[@]}"

@@ -56,6 +56,7 @@ class WithCredentialsExecutor(
     private val provider: CredentialProvider,
     private val projector: CredentialProjector,
     private val clock: Clock,
+    private val redactionRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
 ) {
 
     /**
@@ -73,6 +74,7 @@ class WithCredentialsExecutor(
         provider: CredentialProvider,
         materialization: CredentialMaterialization,
         clock: Clock,
+        redactionRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
     ) : this(
         provider = provider,
         projector = DefaultCredentialProjector(
@@ -80,6 +82,7 @@ class WithCredentialsExecutor(
             linkedSecretResolver = SpiCredentialLinkedSecretResolver(provider),
         ),
         clock = clock,
+        redactionRegistry = redactionRegistry,
     )
 
     /**
@@ -165,6 +168,8 @@ class WithCredentialsExecutor(
                 retainedProjections.add(projection)
             }
 
+            registerBoundSecrets(env, retainedProjections)
+
             return BoundCredentials(
                 env = env.toMap(),
                 credentials = credentialIds.toList(),
@@ -180,6 +185,53 @@ class WithCredentialsExecutor(
             }
             closeBoundCredentials(runId, credentialIds, eventSink, t)
             throw t
+        }
+    }
+
+    /**
+     * Registers every bound SECRET with the redaction registry, so the value cannot reach a
+     * durable surface in plain text.
+     *
+     * Two shapes, because there are two shapes of secret:
+     *
+     *  - **Env handles** ([SecretHandle.isMasked] false) carry the value itself. Registered whole:
+     *    a password or a token is tens of bytes, and whole-value matching is exact.
+     *  - **Materialised files** are reached through a MASKED env handle — a key file binds as its
+     *    PATH, and redacting the path would break the binding (and this class already asserts a
+     *    bound key path DOES appear in the transcript). The CONTENT is a separate secret, so it is
+     *    registered here from the retained materialization, record by record.
+     *
+     * ## Why this seam and not the store
+     *
+     * A binding is the moment a secret becomes *visible*: it is the last point where the value
+     * exists and the first where a child process can read it. Registering here means the registry
+     * holds exactly what was exposed — no earlier (a store would claim lookahead for credentials
+     * the pipeline never binds, and every claimed byte is output latency paid on every step) and
+     * no later (by the time a transcript exists, the value is already durable).
+     */
+    private fun registerBoundSecrets(
+        env: Map<String, SecretHandle>,
+        projections: List<dev.rubentxu.pipeline.v2.domain.credentials.ProjectionResult>,
+    ) {
+        val registry = redactionRegistry ?: return
+
+        for (handle in env.values) {
+            if (!handle.isMasked) {
+                registry.addSecret(handle)
+            }
+        }
+
+        for (materialization in projections.asSequence().flatMap { it.retainedMaterializations }) {
+            val path = materialization.path ?: continue
+            // Only a regular FILE carries credential content. A directory materialization (Zip)
+            // has no single content to register.
+            if (!java.nio.file.Files.isRegularFile(path)) continue
+            // Best-effort, deliberately. Failing the BINDING because an observability concern
+            // could not be registered would turn a redaction gap into a pipeline outage — the
+            // credential still works, it is merely less protected. The gap is documented rather
+            // than thrown.
+            runCatching { java.nio.file.Files.readString(path) }
+                .onSuccess { registry.addSecretRecords(it) }
         }
     }
 

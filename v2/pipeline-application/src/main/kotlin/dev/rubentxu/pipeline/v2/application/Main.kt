@@ -514,7 +514,7 @@ fun main(args: Array<String>) {
         // the SAME credential injection stack as the durable branch. The default path
         // is the temp in-memory control dir's sibling; PIPELINE_CREDENTIALS_STORE env
         // overrides, exactly like the durable path.
-        val withCredentialsExecutor = composeWithCredentialsExecutor(controlDirRoot)
+        val withCredentialsExecutor = composeWithCredentialsExecutor(controlDirRoot, secretPatternRegistry)
         // RP034-H / ADR-0101 clause 3.1 + RP034-Id: the workspace origin is decided
         // ONCE, here at the boundary. Both facts cross into the runtime — the shared
         // directory and its owner — because a runtime that receives only the root
@@ -942,7 +942,7 @@ fun main(args: Array<String>) {
     val credentialProvider: dev.rubentxu.pipeline.v2.credentials.spi.CredentialProvider? = secretStore?.let { LocalCredentialProvider(it) }
     val credentialMaterialization: dev.rubentxu.pipeline.v2.credentials.spi.CredentialMaterialization? = secretStore?.let { LocalFileMaterialization(CredentialMaterializer(it)) }
     val withCredentialsExecutor: WithCredentialsExecutor? = if (credentialProvider != null && credentialMaterialization != null) {
-        WithCredentialsExecutor(credentialProvider, credentialMaterialization, clock)
+        WithCredentialsExecutor(credentialProvider, credentialMaterialization, clock, secretPatternRegistry)
     } else {
         null
     }

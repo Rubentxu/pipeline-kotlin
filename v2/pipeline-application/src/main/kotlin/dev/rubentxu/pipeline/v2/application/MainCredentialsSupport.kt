@@ -23,7 +23,10 @@ import java.nio.file.Paths
  * - Store file exists + passphrase available -> WithCredentialsExecutor
  * - Store file exists + passphrase wrong/missing -> fail fast with actionable error
  */
-internal fun composeWithCredentialsExecutor(controlDirRoot: Path): WithCredentialsExecutor? {
+internal fun composeWithCredentialsExecutor(
+    controlDirRoot: Path,
+    redactionRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
+): WithCredentialsExecutor? {
     val credentialsStorePath: Path = System.getenv("PIPELINE_CREDENTIALS_STORE")?.let { Paths.get(it) }
         ?: controlDirRoot.parent.resolve("credentials.bin")
 
@@ -54,5 +57,5 @@ internal fun composeWithCredentialsExecutor(controlDirRoot: Path): WithCredentia
     val credentialProvider: dev.rubentxu.pipeline.v2.credentials.spi.CredentialProvider = LocalCredentialProvider(secretStore)
     val credentialMaterialization: dev.rubentxu.pipeline.v2.credentials.spi.CredentialMaterialization =
         LocalFileMaterialization(CredentialMaterializer(secretStore))
-    return WithCredentialsExecutor(credentialProvider, credentialMaterialization, SystemClock())
+    return WithCredentialsExecutor(credentialProvider, credentialMaterialization, SystemClock(), redactionRegistry)
 }

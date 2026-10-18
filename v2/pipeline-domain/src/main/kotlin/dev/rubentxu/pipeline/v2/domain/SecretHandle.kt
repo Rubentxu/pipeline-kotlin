@@ -88,6 +88,24 @@ class SecretHandle private constructor(
     }
 
     /**
+     * Read the secret bytes WITHOUT closing this handle.
+     *
+     * [use] is scoped access: it wipes the buffer on the way out. That is the right default for a
+     * consumer, but it is the wrong one for an OBSERVER — registering these bytes with the
+     * redaction registry is a read, and a read that destroys the handle leaves the pipeline with
+     * an empty credential.
+     *
+     * The distinction is the whole reason this method exists rather than a `[Boolean]` on [use]:
+     * "I am done with this secret" and "I am looking at it" are different facts about the
+     * lifetime, and collapsing them into a flag is how a wipe-on-exit contract turns into a
+     * wipe-on-first-peek one.
+     *
+     * Only callers that hold the handle and are NOT its owner may use this. The owner still
+     * closes.
+     */
+    fun <R> peek(block: (ByteArray) -> R): R = block(bytes)
+
+    /**
      * LF-0402 — Non-destructive time-bounded access.
      *
      * Hands the secret bytes to [block] inside a defensive copy. After the block

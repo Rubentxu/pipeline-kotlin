@@ -100,6 +100,31 @@ sha256(
 
 Cache entry registra diagnostics y binary artifact. Nunca reutilizar si una dimensión cambia.
 
+### Estado de la entrada (decisión registrada 2026-10-18, commit `40449447`)
+
+La entrada implementada guarda **el artefacto binario**, identificado por la clave
+completa `(version, value)` con la etiqueta de versión en el nombre del fichero. No
+persiste los diagnostics de compilación.
+
+Consecuencia medida y acotada: una reutilización emite `CompilationFinished` con los
+diagnostics de la evaluación, no los de la compilación. Cold `pipelinek validate`
+imprime `Compilation finished with 1 info`; warm imprime `Compilation finished`.
+
+Por qué es aceptable, y por qué no se persisten:
+
+- Una compilación **con errores nunca llega al almacén**: falla antes de `store`. Los
+  diagnostics de error —los únicos que `ConsoleFamilyLines.compilationFinished` usa
+  para ramificar, y los únicos que decide un resultado de run— no se pueden perder por
+  reutilización.
+- Lo que sí se pierde son diagnostics informativos de una compilación que tuvo éxito.
+- Persistirlos exigiría un formato propio de serialización con versión y política de
+  corrupción para información que ningún consumidor funcional lee. El coste de
+  compatibilidad no se paga con ese retorno.
+
+Lo que sí garantiza la entrada: una dimensión que cambia cambia la clave, así que un
+artefacto jamás se reutiliza bajo una identidad que no le corresponde; y un artefacto
+dañado o ilegible degrada a recompilación en vez de envenenar el almacén.
+
 ## 8. Version strategy
 
 Adapters versionados por línea:

@@ -155,10 +155,24 @@ are not live. The live coverage of the label is `ScriptingHostEmitsEventsTest`
 
 ## Follow-up this plan does NOT cover
 
-The cache **store** is E2-05's other half and remains unimplemented. When it lands,
-it must be keyed by `(version, value)` and must not read a `v2` value with `v1`'s
-recipe. That constraint is stated here so the future implementer inherits it rather
-than rediscovering it.
+The cache **store** is E2-05's other half. It was unimplemented when this plan was
+written, with the constraint stated here so the implementer would inherit it rather
+than rediscover it.
+
+**Landed 2026-10-18, commit `40449447`.** The constraint is discharged by construction,
+not by discipline: `JarCompiledScriptCache` puts the version label in the file name, so
+a `v1` value and a `v2` value cannot occupy the same path. A row asserts it
+(`the version label is part of the stored file name`), and a mutation that drops the
+label flips exactly that row. The identity itself is not re-derived inside the store —
+it arrives as the host's own `CacheKey`, because two derivations for one compilation is
+a cache that serves the wrong artifact with no visible symptom (DR-1).
+
+This supersedes only the forward-looking sentence in "The question a migration plan must
+answer" — "If a cache is ever added … the cache must be versioned by the label it
+stores". The measurements above them describe the state at this plan's moment and are
+left as written.
+
+Receipt: `docs/v2/07-uat/SCRIPT_COMPILATION_CACHE_RECEIPT.md`.
 
 ## Commands actually executed
 

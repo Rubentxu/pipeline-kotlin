@@ -338,10 +338,23 @@ El publicador verifica presencia de los assets listados por el manifiesto, pero 
                                       path is refused: SHA256SUMS is a contract
                                       artifact, not a courtesy."
   CandidateMaterializer.kt:115      else -> null        <-- la rama que CUMPLE esa condicion
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                      ESTADO 2026-10-18: CERRADO en b078bb63. La rama ya no
+                                      existe: la referencia a `sha256sums` se decide ANTES de
+                                      construir el manifiesto y devuelve `Refused` cuando
+                                      `covered` es no vacio y no hay donde escribir. Comprobado
+                                      con bytes reales, no por inspeccion.
+
   build.gradle.kts:181-183          "The materializer refuses to materialise a candidate
                                       whose `covered` is non-empty AND `sha256sums` is null
                                       (a strict invariant enforced at runtime, see
                                       CandidateMaterializer.materialize)."
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                      CITA CADUCADA. Era la cita literal de build.gradle.kts
+                                      antes de 13590e76. Ese commit reescribio el comentario y
+                                      hoy ya no invoca la promesa: describe el defecto sin
+                                      apoyarse en ella. La cita se conserva arriba solo como
+                                      registro de lo que se encontró.
   ```
 
   El `else` **es** precisamente el caso "no vacio + nulo" que el KDoc dice rechazar, y no rechaza nada: escribe `null`. No es que el rechazo este en otro sitio: la rama que lo implementaria es la que devuelve el nulo. Y el script de build **invoca esa promesa como la razon por la que su propia construccion es aceptable** ("`covered` is required to be non-empty ... a strict invariant enforced at runtime"). Una garantia(load-bearing) que alumbra la revision y que no existe. Consecuencia practica para quien lea el codigo antes de cambiarlo: el sitio parece ya protegido, asi que el encogimiento de `covered` noinvita a arreglarse.
@@ -349,6 +362,17 @@ El publicador verifica presencia de los assets listados por el manifiesto, pero 
   **Y el detector que podria delatarlo es honesto, y su honestidad se descarta.** `CandidateAdmissionTest.kt:156` (`the SBOM locator returns null when no SBOM was produced`) afirma que *"an absent SBOM must be reported as absent, not defaulted"*, y el test es verde: `locateSbom` devuelve `null` correctamente. Ese `null` viaja despues a `covered` y borra el asset. **La prueba certifica la exactitud del detector mientras el consumidor de esa exactitud la tira a la basura.** No es un test que certifique el comportamiento tolerante -- es un test honesto cuyo valor se pierde un eslabon mas alla, y por eso la cobertura de la rama de asset ausente es cero en las dos direcciones (medido: las 4 clases que invocan `materialize` pasan `sbom = sdk = bom = null` en todas sus llamadas, y ninguna espera rechazo).
 
   **Denominador del arreglo, para no abrir una segunda autoridad.** Medido por `grep` sobre `v2/`, `docs/` y `scripts/`: **no existe** ningun tipo, value class ni catalogo que exprese "conjunto de assets completo" (`assetSet|candidateAsset|requiredAsset|fiveAsset|ASSET_SET` -> cero). Por tanto el sitio del arreglo es el `doFirst` de `candidateAdmission`, donde el ZIP ya tiene su guardia y donde el contrato de cinco assets ya esta enunciado dos veces (`:124-131` y `:176-183`), **no** el modelo: `DistributionManifest.kt:61-75` declara `sdk` y `bom` opcionales en el esquema publicado, y cambiarlos es cambio de contrato (ADR), no correccion de bug. Riesgo medido y NO Run: convertir el encogimiento en fallo cambia un publish que hoy sale con codigo 0, y `scripts/release-pipelinek.sh:307-311` esta escrito sobre la tolerancia ("if present in manifest"), asi que el publicador y el arreglo divergiran en su lectura del contrato salvo que se endurezca a la vez.
+
+  **Estado medido 2026-10-18 tras `b078bb63` (la casilla sigue ABIERTA, no cerrada).** Las dos mitades que esta casilla exigía ya están: el productor falla cerrado (`13590e76`, tres guardas que nombran la dependencia que no entregó) y el consumidor también (`b078bb63`, la rama `else -> null` sustituida por un `Refused`). Verificado con bytes reales y no por inspección: `candidateAdmission` se ejecutó de verdad y el `SHA256SUMS` que escribió cubre los cuatro assets obligatorios —
+
+  ```text
+  0c2f6884…  pipelinek-0.62.0.zip
+  7f8e5dc3…  pipelinek-0.62.0.sbom.json
+  8a7b37b0…  pipelinek-0.62.0.sdk.zip
+  7324869b…  pipelinek-bom-0.62.0.json
+  ```
+
+  — y el manifiesto registra el digest de ese fichero. **Lo que queda para cerrarla es una sola cosa, y no es de código**: *"probar los mismos bytes como consumidor"*, es decir instalar el ZIP candidate y ejecutar un pipeline pequeño contra él. Eso es exactamente la casilla siguiente (*"Pruebas efímeras mínimas: ... E2E único que instale el ZIP y ejecute un pipeline pequeño"*) y es la misma capacidad que la línea `scripts/release-pipelinek.sh:307-311` todavía lee de forma tolerante; el riesgo medido y **NOT_RUN** de arriba sigue vigente hasta que ese lector se endurezca en el mismo cambio. Recibo: `docs/v2/07-uat/R_BUILD_08_MATERIALIZER_REFUSES_UNDIGESTED_ASSET_SET.md`.
 - [ ] **Pruebas efímeras mínimas:** UAT de checkout limpio que ejecute el test afectado; E2E único que instale el ZIP y ejecute un pipeline pequeño; AAT de asset faltante/extra. Promover fitness de lanes y contrato exacto de assets; borrar los scripts/fixtures efímeros después de resultados observados.
 
 **Agent Teams:** B1 Gradle/source sets; B2 selección, frescura y rendimiento del gate; B3 release/SDK y consumidor. B2 no toca lógica Gradle de B1; B3 no modifica el publicador simultáneamente con otro agente.

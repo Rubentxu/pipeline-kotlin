@@ -187,10 +187,16 @@ tasks.register<JavaExec>("candidateAdmission") {
         // the absence into null, null was written into argv as "-", and
         // `CandidateAdmissionMain` mapped "-" back to null — so the handoff recorded a
         // candidate with no SDK and no BOM while the task itself went green. `covered` shrank
-        // with them, and `CandidateMaterializer`'s only completeness invariant is
-        // `covered.isNotEmpty()`, so a `SHA256SUMS` covering the ZIP alone satisfied it.
+        // with them, and `covered.isNotEmpty()` was the only completeness invariant
+        // `CandidateMaterializer` had, so a `SHA256SUMS` covering the ZIP alone satisfied it.
         // Measured 2026-10-18: three mandatory assets could be missing with every existing
         // invariant holding and no diagnostic emitted.
+        //
+        // `covered.isNotEmpty()` is no longer the ONLY invariant there. `b078bb63` made the
+        // materializer refuse a non-empty `covered` with no `sha256sums` path, which is the
+        // second half of this defect class and landed after the paragraph above was written.
+        // The guards here are still the first line: they refuse at the producer, where the
+        // absent dependency is nameable, rather than at the consumer.
         //
         // The ZIP check above already fails closed. These three now do too, and each refusal
         // names the dependency that was supposed to produce the file.

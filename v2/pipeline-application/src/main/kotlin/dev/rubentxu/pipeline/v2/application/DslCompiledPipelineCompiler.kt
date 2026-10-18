@@ -368,14 +368,13 @@ object DslCompiledPipelineCompiler {
             put("kind", "retry")
             put("maxAttempts", step.count)
         })
-        // WU-G5R.2: waitUntil block payload — projects initialRecurrencePeriod
-        // and quiet into the IR so the coordinator can budget the retry loop
-        // without interpreting StepSpec at runtime.
-        is StepSpec.WaitUntilBlock -> Json.encodeToString(JsonObject.serializer(), buildJsonObject {
-            put("kind", "waitUntilBlock")
-            put("initialRecurrencePeriod", step.initialRecurrencePeriod)
-            put("quiet", step.quiet)
-        })
+        // DEBT-WIRE-AUTHORITY: the compiler does NOT hand-write the waitUntil block
+        // wire JSON. CoreWaitUntilWireCodec is THE single authority for that format,
+        // the same law as core.lock (WU-091) and core.input (WU-092). The encoder
+        // is byte-identical to the JSON this branch used to build, so no durable
+        // body identity moves (BodyStructureDigest appends the payload string).
+        is StepSpec.WaitUntilBlock ->
+            CoreWaitUntilWireCodec.encode(step.toCoreWaitUntilInput()).value
         // WU-091 G3.4: the compiler does NOT hand-write the core.lock wire JSON.
         // CoreLockWireCodec is THE single authority for that format; this is the
         // divergence core.sh suffered (kind=sh|shell, command|script) refused in
@@ -415,6 +414,18 @@ object DslCompiledPipelineCompiler {
         timeoutSeconds = timeoutSeconds,
         reason = reason,
         skipIfLocked = skipIfLocked,
+    )
+
+    /**
+     * DEBT-WIRE-AUTHORITY: the compiler knows the `StepSpec.WaitUntilBlock ->
+     * CoreWaitUntilInput` transformation, which is a DOMAIN decision (what the
+     * block declares); it does not know the wire format, which is an ENCODING
+     * decision owned by [CoreWaitUntilWireCodec]. Pure, total, one direction, no
+     * defaults invented here: every field maps verbatim.
+     */
+    private fun StepSpec.WaitUntilBlock.toCoreWaitUntilInput(): CoreWaitUntilInput = CoreWaitUntilInput(
+        initialRecurrencePeriod = initialRecurrencePeriod,
+        quiet = quiet,
     )
 
     /**

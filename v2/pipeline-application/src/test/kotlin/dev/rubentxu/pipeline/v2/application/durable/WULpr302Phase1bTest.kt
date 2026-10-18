@@ -285,6 +285,11 @@ class WULpr302Phase1bTest {
                 eventSink = events,
                 credentialScopePort = noOpCredentialScopePort(),
                 controlDirRoot = tempDir.resolve("control"),
+                // Bound so this row crosses `RetryEngine.execute`, the branch production takes.
+                // `CompositionRoot` binds it for every real run, so leaving it null here sends
+                // this certification down `BodyExecutionEngine`'s inline retry specialisation —
+                // the same event shape, a different engine, and not the one that ships.
+                retryControlJournal = FileBasedRetryControlJournal(tempDir.resolve("control")),
                 stepRegistry = CoreStepRegistryFactory.registry(),
             ).run(pipeline, RunId("lpr302-1b-attempts"))
 
@@ -300,6 +305,32 @@ class WULpr302Phase1bTest {
                     "distinguishes the two attempts in the journal; if they collapsed, only " +
                     "one event would appear"
             }
+
+            // The attempt events above cannot tell the two engines apart: both
+            // `RetryEngine` and the inline specialisation emit `RetryAttemptStarted` per attempt.
+            // Only the engine that drives a durable control row leaves one behind, so this
+            // assertion is what makes "this row certifies the shipped engine" a checked claim
+            // instead of a comment. Without it, dropping the journal above would silently
+            // return this certification to the inline path with the row still green.
+            val retryControlDir = tempDir.resolve("control").resolve("retry-control")
+            val controlRows: List<Path> =
+                if (!Files.isDirectory(retryControlDir)) {
+                    emptyList()
+                } else {
+                    Files.walk(retryControlDir).use { s ->
+                        s.filter { Files.isRegularFile(it) }
+                            .filter { it.fileName.toString().endsWith(".attempts.json") }
+                            .sorted()
+                            .toList()
+                    }
+                }
+            assertTrue(
+                controlRows.isNotEmpty(),
+                "the production retry engine drives a durable control row; found none under " +
+                    "$retryControlDir. An empty set means the run crossed " +
+                    "`BodyExecutionEngine`'s inline retry specialisation (journal null), not " +
+                    "`RetryEngine`, so this row would certify a path `src/main` cannot reach.",
+            )
         }
     }
 

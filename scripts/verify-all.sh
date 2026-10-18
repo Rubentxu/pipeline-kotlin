@@ -112,7 +112,7 @@ echo "    JAVA_HOME=$JAVA_HOME"
 log "stage 1/5  compile + detekt + apiCheck + installDist"
 stage_started_at=$(date +%s)
 ./v2/gradlew --no-daemon -p v2 \
-    detekt \
+    detektMain \
     apiCheck \
     :pipeline-application:installDist \
     > "${TMPDIR:-/tmp}/verify-all-stage1.log" 2>&1 \
@@ -158,7 +158,27 @@ if [[ ${#modules_with_tests[@]} -eq 0 ]]; then
     echo "    no module has a unit test yet; nothing to run (NOT_RUN, not PASS)"
 else
     tasks=()
-    for m in "${modules_with_tests[@]}"; do tasks+=(":$m:test"); done
+    # `find v2 ...` yields paths relative to the repository root, so a module
+    # reads `v2/pipeline-domain`. Gradle is invoked with `-p v2`, which makes
+    # `v2` the Gradle ROOT rather than a project segment, so its project path is
+    # `:pipeline-domain` -- not `:v2/pipeline-domain`. Prefixing the find output
+    # verbatim made every task path unresolvable, and the stage failed with
+    # "Cannot locate tasks that match ':v2/pipeline-domain:test'" before running
+    # a single test. The unit tests had therefore never executed through this gate.
+    #
+    # A NESTED module needs the other half of the translation: settings.gradle.kts
+    # declares `:pipeline-step-sdk:runtime`, with a colon, while the directory is
+    # `pipeline-step-sdk/runtime`, with a slash. Stripping only the `v2/` prefix
+    # therefore resolved the flat modules and failed on the first nested one with
+    # "Cannot locate tasks that match ':pipeline-step-sdk/runtime:test' as project
+    # 'pipeline-step-sdk/runtime' not found". Gradle aborted the whole stage, so
+    # the flat modules ran and the nested ones never did -- and the census that
+    # follows could not have reported it, because the stage had already exited.
+    for m in "${modules_with_tests[@]}"; do
+        gradle_path="${m#v2/}"
+        gradle_path="${gradle_path//\//:}"
+        tasks+=(":${gradle_path}:test")
+    done
     printf '    %s\n' "${modules_with_tests[@]}" | sed 's/^/    module: /'
     ./v2/gradlew --no-daemon -p v2 "${tasks[@]}" \
         > "${TMPDIR:-/tmp}/verify-all-stage2.log" 2>&1 \
@@ -166,21 +186,46 @@ else
     # Gradle's exit status is not the result. A Test task can report success
     # with its classes skipped or absent, so the executed/failed/skipped counts
     # are read from the JUnit XML that the task wrote.
+    #
+    # The census is scoped to the modules just asked for, deliberately. A global
+    # `find v2 -path '*/build/test-results/*'` also collects the XML that the
+    # suites deleted by the RESET left behind: it reported "283 reports,
+    # executed=1880" for a run that asked one module and executed 56 tests in
+    # 13 reports, the other 230 reports coming from code that no longer exists.
+    # A count whose set cannot be attributed to a requested task is not a
+    # measurement, so the set is taken from the same list the tasks came from.
     xml_total=0; xml_fail=0; xml_skip=0; xml_files=0
-    while IFS= read -r xml; do
-        xml_files=$((xml_files + 1))
-        line=$(head -3 "$xml" | tr '\n' ' ')
-        t=$(sed -nE 's/.*tests="([0-9]+)".*/\1/p' <<<"$line"); t=${t:-0}
-        f=$(sed -nE 's/.*failures="([0-9]+)".*/\1/p' <<<"$line"); f=${f:-0}
-        e=$(sed -nE 's/.*errors="([0-9]+)".*/\1/p' <<<"$line"); e=${e:-0}
-        s=$(sed -nE 's/.*skipped="([0-9]+)".*/\1/p' <<<"$line"); s=${s:-0}
-        xml_total=$((xml_total + t)); xml_fail=$((xml_fail + f + e)); xml_skip=$((xml_skip + s))
-    done < <(find v2 -path '*/build/test-results/*' -name 'TEST-*.xml' -not -path '*/build/*/build/*' | LC_ALL=C sort)
+    silent_modules=()
+    for m in "${modules_with_tests[@]}"; do
+        mod_reports=0
+        while IFS= read -r xml; do
+            [[ -n "$xml" ]] || continue
+            mod_reports=$((mod_reports + 1))
+            xml_files=$((xml_files + 1))
+            line=$(head -3 "$xml" | tr '\n' ' ')
+            t=$(sed -nE 's/.*tests="([0-9]+)".*/\1/p' <<<"$line"); t=${t:-0}
+            f=$(sed -nE 's/.*failures="([0-9]+)".*/\1/p' <<<"$line"); f=${f:-0}
+            e=$(sed -nE 's/.*errors="([0-9]+)".*/\1/p' <<<"$line"); e=${e:-0}
+            s=$(sed -nE 's/.*skipped="([0-9]+)".*/\1/p' <<<"$line"); s=${s:-0}
+            xml_total=$((xml_total + t)); xml_fail=$((xml_fail + f + e)); xml_skip=$((xml_skip + s))
+        done < <(find "$m/build/test-results" -name 'TEST-*.xml' 2>/dev/null | LC_ALL=C sort)
+        # A module with a test source but no discovered test is the same silent
+        # green Gradle 8 reports for an empty source set, one level deeper.
+        if [[ "$mod_reports" -eq 0 ]]; then
+            silent_modules+=("$m")
+        fi
+    done
     echo "    JUnit XML: $xml_files report(s), executed=$xml_total failed=$xml_fail skipped=$xml_skip"
     [[ "$xml_fail" -eq 0 ]] || fail "stage 2: $xml_fail failing test(s) in the JUnit XML"
     if [[ "$xml_files" -eq 0 ]]; then
         echo "verify-all: no JUnit XML was produced, so the test result is UNKNOWN." >&2
         fail "stage 2: green with no evidence"
+    fi
+    if [[ ${#silent_modules[@]} -gt 0 ]]; then
+        echo "verify-all: these modules have a test source but produced no JUnit XML," >&2
+        echo "so their test task discovered nothing while reporting success:" >&2
+        printf '  %s\n' "${silent_modules[@]}" >&2
+        fail "stage 2: green with no discovered test"
     fi
 fi
 echo "    ok in $(elapsed "$stage_started_at")s"

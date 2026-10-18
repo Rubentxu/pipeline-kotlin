@@ -281,7 +281,15 @@ El publicador verifica presencia de los assets listados por el manifiesto, pero 
 
   **La única capacidad que el ciclo puede ejecutar alguna vez es `OutputPlane.uat.fixture`.** Un productor honesto no lo cambia: el plan exigiría HF2 y nada observa por encima de HF0, así que `InsufficientFidelity` no podría dispararse y el ciclo seguiría sin descargar una garantía real. Por eso esta caja **no escribe el Sidecar** todavía, y la razón es medida.
 
-  **La pregunta del ADR es, por tanto, más grande que `hf` y `source_commit`.** Debe elegir entre (a) un ejecutor HF2 —distribución real bifurcada, HF2 según `ADR-PK-DF-001`— o (b) una **fuente nueva de observación** de la fidelidad y del commit **del módulo que produjo cada XML**, de modo que quien ejecuta la suite sea quien la declara. Sin una de las dos, el sidecar más honesto posible no descarga nada.
+  **La pregunta del ADR es, por tanto, más pequeña de lo que esta hoja asumía, y se parte en dos.** `ADR-PK-QV-002` (accepted 2026-10-16) punto 5 ya decide la dirección: *"Estructura de fidelidad incluye HF0..HF6 (ADR-0072); el runner demuestra fronteras, no el nombre del test."* Leer esa frase como "hay que elegir si el runner sube" sería volver a afirmar una cosa sobre la autoridad sin abrirla. La dirección **ya está decidida**: el runner debe demostrar la frontera ejecutándola, y negarse es correcto mientras no pueda. Por tanto:
+
+  ```text
+  (a) el ejecutor HF2            -> NO es una decision pendiente. Es la implementacion de una
+                                     ADR aceptada. El codigo actual es honesto y esta incompleto.
+  (b) la fuente de hf y source_commit en el sidecar -> SI es nueva, y si pertenece a un ADR.
+  ```
+
+  (b) debe responder de dónde salen la fidelidad y el commit **del módulo que produjo cada XML**, de modo que quien ejecuta la suite sea quien la declara, y no un espejo del plan. Sin (b), (a) tampoco descarga: el manifiesto seguiría sin construirse porque `EvidenceManifest.init` exige los seis campos.
 
   **Precisión sobre `source_commit` que reduce el problema: la observación existe y es coherente.** El gate imprime hoy `provenance: installed distribution reports commit <sha>` y coincide con HEAD; la fuente es `InstalledDistribution.kt:75`, leída por `GateCli`. Lo que falta no es "observar un commit" sino "observar el commit del artefacto que produjo cada XML": la distribución instalada es otro artefacto, y una distribución obsoleta haría fallar `StaleBinary` culpando al artefacto equivocado.
 

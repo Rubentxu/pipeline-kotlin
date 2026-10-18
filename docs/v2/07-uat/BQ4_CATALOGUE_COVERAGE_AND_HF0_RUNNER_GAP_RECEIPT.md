@@ -109,11 +109,14 @@ sidecar**, y esa es una razón medida, no una postergación.
 Esto **agranda** la pregunta que L246 declara para un ADR. La hoja dice "decidir la capacidad de
 observación de `hf` y `source_commit`". La medición añade una tercera, que es la primera:
 
-> **HF0 es la única fidelidad ejecutable, y 7 de 8 contratos exigen HF2.** El ADR debe elegir
-> entre (a) un ejecutor HF2 (distribución real bifurcada) o (b) una **fuente nueva de
-> observación** de la fidelidad y del commit **del módulo que produjo cada XML**, de modo que
-> quien corre la suite sea quien la declara. Sin una de las dos, el sidecar más honesto posible
-> no descarga nada.
+> **HF0 es la única fidelidad ejecutable, y 7 de 8 contratos exigen HF2.** La pregunta se parte
+> en dos, y sólo una de las mitades es nueva. `ADR-PK-QV-002` (accepted 2026-10-16) punto 5 ya
+> decidió la primera: *"el runner demuestra fronteras, no el nombre del test"*. Es decir, **(a) el
+> ejecutor HF2 no es una decisión pendiente: es la implementación de una ADR aceptada**, y el
+> código actual —que se niega— es correcto y está incompleto. **(b) la procedencia de `hf` y
+> `source_commit` sí es nueva** y sí pertenece a un ADR: de dónde salen la fidelidad y el commit
+> **del módulo que produjo cada XML**, sin que quien escribe el manifiesto se limite a copiar el
+> plan. Sin (b), (a) tampoco descarga, porque `EvidenceManifest.init` exige los seis campos.
 
 Una precisión sobre `source_commit`, medida hoy y que reduce el problema: la observación **existe**
 y es coherente. El gate imprime `provenance: installed distribution reports commit
@@ -139,11 +142,13 @@ XML**": la distribución instalada es otro artefacto. Una distribución obsoleta
 Verde    :test-harness:test (63 clases, 367 tests) sobre f9150ed6, canario verificado
 Verde    la puerta sigue negando lo que no sabe (exit 2, 5 rechazos) — fail-closed correcto
 Residual 886 rutas Production sin contrato  -> trabajo futuro, cuantificado
-Bloqueo  L246 requiere ADR antes de escribir el productor del sidecar
+Bloqueo  (b) la procedencia de hf/source_commit necesita ADR; (a) el ejecutor HF2 no
 ```
 
-**Próximo bloque desbloqueado:** el ADR de la pregunta de §5. Es una decisión, no código: por
-eso no se abre aquí.
+**Próximo bloque desbloqueado:** no es un ADR sobre si el runner sube —eso ya está decidido por
+`ADR-PK-QV-002` punto 5—, sino el ADR de **§5(b)**: de dónde salen la fidelidad y el commit del
+módulo que produjo cada XML. Y en paralelo, **(a) es trabajo de construcción contra una decisión
+aceptada**, no una decisión: está acotado, es grande, y no necesita permiso para empezar.
 
 ---
 

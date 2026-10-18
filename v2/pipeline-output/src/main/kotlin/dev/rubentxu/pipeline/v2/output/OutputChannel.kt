@@ -155,6 +155,28 @@ data class OutputStreamAddress(
  * consumer that wants merged bytes therefore needs [OutputFrameIndex] as well as a read port, and
  * that dependency is the honest shape: the interleaving is a fact that lives in the index, not in
  * either byte stream.
+ *
+ * ## Why the channels are pinned, and what that does NOT buy
+ *
+ * This is the only type that hands a caller "both channels of one operation" at once, so it is
+ * where "the two channels are distinguishable" has to become a fact rather than a comment. The
+ * `init` below compared `runId` and `operationId` and stopped there, which made
+ * `stderr = stdout-with-channel-STDOUT` a legal value: `select(setOf(STDERR))` on such a pair
+ * returns an EMPTY list over a live transcript, and `select(setOf(STDOUT))` returns one stream
+ * twice. M-3 measured that on 2026-10-18; `OperationOutputStreamsChannelInvariantTest` holds it.
+ *
+ * Identity rather than `!=`, because the fields are NAMED `stdout` and `stderr`: a field whose name
+ * is a channel claims that channel, and `distinct` would have admitted the reversed pair just as
+ * readily.
+ *
+ * It is a runtime refusal, **not** a type-level one. Both fields are `OutputStreamAddress`, and an
+ * address on the STDOUT channel is a valid address, so M-3 still compiles against this `init`. What
+ * changed is where the defect surfaces: the pair cannot be constructed, so there is nothing for a
+ * consumer to inherit. Removing it entirely would mean two single-valued types instead of one pair,
+ * which is a larger change than a defect in one factory justifies.
+ *
+ * [of] is the only construction in the repository and builds exactly this pair, so the invariant
+ * constrains no existing call site.
  */
 data class OperationOutputStreams(
     val stdout: OutputStreamAddress,
@@ -163,6 +185,15 @@ data class OperationOutputStreams(
     init {
         require(stdout.runId == stderr.runId && stdout.operationId == stderr.operationId) {
             "the two addresses must belong to the same operation: $stdout and $stderr"
+        }
+        require(stdout.channel == OutputChannel.STDOUT) {
+            "the field named stdout must address the STDOUT channel, and it addresses " +
+                "${stdout.channel.token}: $stdout"
+        }
+        require(stderr.channel == OutputChannel.STDERR) {
+            "the field named stderr must address the STDERR channel, and it addresses " +
+                "${stderr.channel.token}: $stderr. A pair whose stderr sits on the stdout channel " +
+                "makes a channel-selecting reader receive one stream twice and no stderr at all."
         }
     }
 

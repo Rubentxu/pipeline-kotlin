@@ -161,6 +161,13 @@ class ObsPc208LevelBUatTest {
     private val secret = "GHS9_PC208_CANARY_4b8e1d7a2c6f"
     private val runId = "r-obs-pc208"
 
+    /**
+     * A benign payload `f02` asserts is PRESENT, written before the split secret.
+     *
+     * Its job is to give the row a positive claim alongside its negative ones. See `f02`.
+     */
+    private val benignMarker = "benign-before-split-secret;"
+
     @TempDir
     lateinit var root: Path
 
@@ -628,6 +635,14 @@ class ObsPc208LevelBUatTest {
             val frag1 = secret.substring(0, half)
             val frag2 = secret.substring(half)
             val script = buildString {
+                // A benign marker the row asserts is PRESENT. This is the half that makes the
+                // rest falsifiable: both assertions below are ABSENCE claims, and an Output Plane
+                // that never received a byte satisfies both of them. Measured 2026-10-18 (H1.1),
+                // this row was the only falsifier that survived M-2 — "the redactor never commits"
+                // produced an empty plane, and an empty plane contains no secret. The marker is
+                // written BEFORE the fragments, so "the fragments are absent" and "nothing was
+                // written at all" become two distinguishable facts rather than one green.
+                append("printf '%s' '$benignMarker'; ")
                 // R2.3(b) / TODO 4: the previous version redirected the
                 // fragments to workspace files (`>> ${workspace.resolve("PIECE-A")}`),
                 // so the redactor never saw them and the falsifier was a
@@ -655,6 +670,14 @@ class ObsPc208LevelBUatTest {
             // can leak ONLY if the lookahead is not consulted across writes.
             awaitFullDrain(opIdFormat(), 60)
             val text = committedBytes().toString(Charsets.UTF_8)
+            assertTrue(
+                text.contains(benignMarker),
+                "f02: the benign bytes written BEFORE the fragments must be in the plane, or this " +
+                    "row proves nothing — every assertion below is an absence, and an empty Output " +
+                    "Plane satisfies all of them. Its absence means the redactor is not reaching " +
+                    "the plane at all, which is a different defect with a different fix. Plane " +
+                    "was ${text.length} bytes: $text",
+            )
             assertTrue(
                 !text.contains(frag1) || !text.contains(frag2) || text.contains("****"),
                 "f02: secret split across writes must be sanitised; either fragment absent or **** present",

@@ -300,17 +300,36 @@ El publicador verifica presencia de los assets listados por el manifiesto, pero 
   **Lo que SI es local, y falla: la completitud, por un mecanismo concreto.** Medido sobre `pipeline-release/build.gradle.kts` y `CandidateMaterializer.kt`:
 
   ```text
-  asset        como se degradan si falta              hay rechazo?
-  ZIP          doFirst isFile -> GradleException      SI (unico asset con guardia)
-  SBOM         copyTo(...) if isFile; firstOrNull    NO  -> sbom = null
-  SDK ZIP      takeIf { it.isFile }                   NO  -> sdkZip = null
-  BOM JSON     takeIf { it.isFile }                   NO  -> bomJson = null
-  SHA256SUMS   se escribe sobre `covered`             NO  (ver abajo)
+  asset        como se degradaba si falta (ANTES)        como se degrada ahora (13590e76)
+  ZIP          doFirst isFile -> GradleException          igual: doFirst isFile -> GradleException
+  SBOM         copyTo(...) if isFile; firstOrNull  NO    doFirst isFile -> GradleException   SI
+  SDK ZIP      takeIf { it.isFile }                 NO    requiredAsset(...)  -> GradleException  SI
+  BOM JSON     takeIf { it.isFile }                 NO    requiredAsset(...)  -> GradleException  SI
+  SHA256SUMS   se escribe sobre `covered`             NO    se escribe sobre `covered`, ya no encogible  SI
   ```
 
-  Y el codigo que produce el dano no es una comprobacion ausente sino una **contencion silenciosa**. `CandidateMaterializer.materialize` construye `covered = listOfNotNull(zip, sbom, sdkZip, bomJson)`, y la unica invariancia que el materializador impone es "`covered` no vacio y `sha256sums` no nulo -> escribir SHA256SUMS". Por tanto, si el SDK ZIP falta: `covered` encoge de cinco a cuatro, `SHA256SUMS` se escribe **certificando un subconjunto mas pequeno**, el manifiesto registra `sdk = null`, y `CandidateAdmission` devuelve `Admitted` igualmente. Denominador medido: **cero** referencias en `pipeline-release/src/main` que nombren cualquiera de los tres assets opcionales en un rechazo. Es la forma "digest de lo que hay" en lugar de "digest del perfil": el fichero de sumas sigue siendo verificable y sigue siendo cierto, y precisamente por eso no delata que le falta un miembro.
+  Y el codigo que producia el dano no era una comprobacion ausente sino una **contencion silenciosa**. `CandidateMaterializer.materialize` construia `covered = listOfNotNull(zip, sbom, sdkZip, bomJson)`, y la unica invariancia que el materializador impone es "`covered` no vacio y `sha256sums` no nulo -> escribir SHA256SUMS". Por tanto, si el SDK ZIP faltaba: `covered` encogia de cinco a cuatro, `SHA256SUMS` se escribia **certificando un subconjunto mas pequeno**, el manifiesto registraba `sdk = null`, y `CandidateAdmission` devolvia `Admitted` igualmente. Denominador medido: **cero** referencias en `pipeline-release/src/main` que nombren cualquiera de los tres assets opcionales en un rechazo. Era la forma "digest de lo que hay" en lugar de "digest del perfil": el fichero de sumas seguia siendo verificable y seguia siendo cierto, y precisamente por eso no delataba que le faltaba un miembro. **Desde `13590e76` los tres bindings son no nulos, de modo que `listOfNotNull` es `listOf` y el encogimiento no tiene forma de ocurrir desde esta tarea.**
 
-  **Por que esto no es lo mismo que el fallo de rc6.** rc6 publico un conjunto remoto incompleto y lo detecto el certifier. Esto es anterior: la candidata se **admite** con un perfil incompleto, y el digest que la acompana certifica el perfil incompleto como si fuera el completo. El daño se vuelve invisible justo en el artefacto cuya funcion es detectar damage. El arreglo correcto es fail-closed en `admit` (los cuatro assets obligatorios, no `Path?`), mas una asercion de que `covered` tiene el tamano del perfil antes de escribir sumas. **No se aplica aqui**: Gradle esta ocupado y `pipeline-release` es ruta de candidata, que exige verificar sobre el artefacto, no sobre un test de modulo.
+  **Por que esto no es lo mismo que el fallo de rc6.** rc6 publico un conjunto remoto incompleto y lo detecto el certifier. Esto es anterior: la candidata se **admite** con un perfil incompleto, y el digest que la acompana certifica el perfil incompleto como si fuera el completo. El daño se vuelve invisible justo en el artefacto cuya funcion es detectar damage.
+
+  **La mitad local esta APLICADA y verificada desde 2026-10-18 (`13590e76`); la frase "no se aplica aqui: Gradle esta ocupado" que esta casilla lucio hasta entonces queda derogada por medicion, no por decision.** El arreglo se aplico en el sitio que el denominador de abajo indicaba — el `doFirst` de `candidateAdmission`, donde el ZIP ya tenia su guardia — y se verifico **sobre la tarea real**, no con un test de modulo, porque `pipeline-release` es ruta de candidata:
+
+  ```text
+  baseline (arbol limpio, guardas en su sitio)          PASSED   -> las guardas son inertes en el camino feliz
+  mutacion (un asset obligatorio ausente)                BUILD FAILED
+      "DIST-PRODUCT: :pipeline-release:sdkZip is a declared dependency of this task but
+       produced no ... Refusing to admit a candidate without pipelinek-<v>.sdk.zip; §8 ... fixes
+       the asset set exactly, and a missing member is a defect to fix, not a variant to ship
+       around."
+  ```
+
+  El mensaje nombra la dependencia, el asset ausente y la ruta completa, y dispara en `doFirst` antes del `JavaExec`, donde ninguna otra negativa es alcanzable: la atribucion no es una inferencia.
+
+  **Consecuencia de los tres bindings, que importa mas que las propias guardas:** cada uno es ahora un `File` no nulo, de modo que `?: "-"` pasa a ser **irrepresentable** en lugar de simplemente ausente, y `covered` es `listOf(...)` y no `listOfNotNull(...)` — la segunda puerta del mismo null queda cerrada. Los tres `?: "-"` que quedaban como dead sentinel tambien se eliminaron; ya no describian un caso posible.
+
+  **Lo que NO se ha hecho, y por que sigue siendo correcto no hacerlo.** El esquema publicado mantiene `sdk`/`bom` opcionales: la guarda hace ese estado inalcanzable **desde esta tarea**, pero no irrepresentable **en el modelo**, y cambiar `DistributionManifest.kt:61-75` es cambio de contrato (ADR), no correccion de bug. Medido y **NO Run**: `scripts/release-pipelinek.sh:307-311` esta escrito sobre la tolerancia ("if present in manifest"), asi que el publicador y el productor ahora estricto discrepan en su lectura del contrato hasta que el lector se endurezca en el mismo cambio. Se registra como divergencia medida, no como riesgo difuso.
+
+  **Proteccion permanente: `CandidateAssetFailClosedFitnessTest`, mutation-tested en ambas direcciones.** Recibo: `docs/v2/07-uat/R_BUILD_07_CANDIDATE_ASSET_FAIL_CLOSED_RECEIPT.md`. La asercion positiva liga cada asset a la guarda que lo rechaza (`requiredAsset(` por adyacencia, `if (!bomSource.isFile)` para el SBOM); un escaner de nombres se quedaria verde si el nombre sobrevive en `dist.resolve(...)` mientras sale del argumento — medido, es la mutacion M2. Y hay una segunda propiedad que la tabla de arriba no dice: **la mutacion inicial dio verde sin que la fila fallara**, porque degradar un binding rompio la compilacion del build script, `test` no llego a ejecutarse y se leyo el XML de la corrida anterior (timestamp byte-identico al baseline). Se registro como lo que es —una mutacion que sobrevivio por la razon equivocada— y se reaplico en forma compilante, que es la unica por la que el defecto pudo llegar a produccion.
 
   **Ampliacion del mismo item, 2026-10-18: el defecto tiene una garantia escrita que no existe, y el build script la cita para justificarse.** Leyendo el par `CandidateMaterializer.kt:104-106` / `build.gradle.kts:180-183` verbatim:
 

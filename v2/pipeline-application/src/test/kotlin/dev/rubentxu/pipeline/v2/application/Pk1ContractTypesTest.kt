@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.events.RunCorrelated
+import java.io.File
 import java.time.Instant
 import java.util.UUID
 
@@ -161,5 +162,66 @@ class Pk1ContractTypesTest {
         val exit = cliError.toCliExit()
         assertTrue(exit is CliExit.InvalidArgument)
         assertEquals(2, exit.code)
+    }
+
+    /**
+     * H1.5 (2026-10-18). A rejection that says "run 'pipeline --help'" is a promise; the
+     * question this asks is whether the promise is kept.
+     *
+     * Before this, `--help` was itself rejected by the very path whose message pointed at
+     * it. The mutation for this row is deleting `HELP_TOKENS` from `isHelpRequest`'s set,
+     * which is indistinguishable from the shipped defect.
+     */
+    @Test
+    fun `every flag a rejection hint names is one the CLI accepts`() {
+        val hints = listOf(CliError.MissingCommand, CliError.InvalidCommand("observ"))
+            .mapNotNull { it.toCliExit().hint }
+        assertTrue(hints.isNotEmpty(), "expected at least one rejection hint to check")
+        val named = Regex("'([^']+)'").findAll(hints.joinToString(" "))
+            .flatMap { quoted -> quoted.groupValues[1].split(' ', '\t').asSequence() }
+            .filter { it.startsWith("-") }   // a flag, not the binary name in "run 'pipelinek --help'"
+            .toList()
+        assertTrue(named.isNotEmpty(), "no flag named in any hint; the cross-check would be vacuous")
+        val unkept = named.filterNot { isHelpRequest(arrayOf(it)) }
+        assertTrue(
+            unkept.isEmpty(),
+            "a rejection tells the operator to run ${unkept.joinToString(", ")}, " +
+                "and the CLI rejects that flag instead of answering it",
+        )
+    }
+
+    /**
+     * A verb in [CLI_VERBS] that nothing dispatches advertises a capability that does not
+     * exist. Measured 2026-10-18: the hand-written verb list in the rejection hint named 10
+     * verbs and omitted `inspect`, which the CLI dispatches.
+     *
+     * Both dispatch sites are read: [CLI_VERBS] is a description of the CLI, and the CLI is
+     * a chain of comparisons in `Main.kt` plus the `CliCommand` `when` in `CliParser`. Reading
+     * only one of them would let the row pass on whichever half it did not look at.
+     */
+    @Test
+    fun `every advertised verb is dispatched`() {
+        val appDir = File(TestProjectRoot.dir, "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application")
+        val main = File(appDir, "Main.kt").readText()
+        val parser = File(appDir, "CliParser.kt").readText()
+        val dispatched = buildSet {
+            Regex("""args\.firstOrNull\(\) == "([a-z-]+)"""").findAll(main).forEach { add(it.groupValues[1]) }
+            Regex(""""([a-z-]+)" -> CliCommand\.""").findAll(parser).forEach { add(it.groupValues[1]) }
+        }
+        // The specific claim FIRST, so a mutation is attributed to it and not to the
+        // coverage guard below. Guard order is part of attribution: measured 2026-10-18,
+        // adding a phantom verb failed the coverage guard before the claim that names it.
+        val undispatched = CLI_VERBS.map { it.first }.filterNot { it in dispatched }
+        assertTrue(
+            undispatched.isEmpty(),
+            "CLI_VERBS advertises ${undispatched.joinToString(", ")}, which nothing dispatches. " +
+                "Dispatched: ${dispatched.sorted()}",
+        )
+        // Then the guard that keeps the claim above from passing on a scan it cannot see.
+        assertTrue(
+            dispatched.size >= CLI_VERBS.size,
+            "read ${dispatched.size} dispatched verbs but CLI_VERBS advertises ${CLI_VERBS.size}; " +
+                "a dispatch this row cannot see is a hole in the row, not a clean scan",
+        )
     }
 }

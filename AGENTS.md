@@ -251,9 +251,24 @@ UNSUPPORTED_FAIL_CLOSED     →  it is refused, and that refusal is the contract
 neither                     →  a defect: nobody has said what it is
 ```
 
-As of RP7-SEM-0 the manifest carries 50 constructs in the five and 3 as
-`UNSUPPORTED_FAIL_CLOSED` (`agent`, `retry (retrofit)`, `retry conditions`), with
-none in the third state.
+As of 2026-10-18 the manifest census is:
+
+| population | count |
+| --- | --- |
+| constructs in the five | 53 |
+| `UNSUPPORTED_FAIL_CLOSED` | 2 |
+| unclassified | 0 |
+
+(`UNSUPPORTED_FAIL_CLOSED` is exactly `retry (retrofit)` and `retry conditions`.
+`agent` is **not** one of them: it is a `DECLARATIVE_DIRECTIVE` in `STABLE` state.)
+
+The three figures above are measured, not asserted: `FArchS0SurfaceManifestTest`
+recomputes them from `DSL_SURFACE_MANIFEST.md` and fails if this table drifts, so a
+figure copied here cannot survive a construct being added or removed. The counts were
+50 / 3 until 2026-10-18, when the census was measured for the first time with its
+denominator — the previous numbers had no parser behind them and were wrong in both
+directions (three too few constructs classified, and one fail-closed row — `agent` —
+that is a stable directive).
 
 ### 2. Semantic Conservation Law
 
@@ -645,20 +660,38 @@ read the Step key.
 
 Authoring an example or a test:
 
+The canonical shape has no wrapper block; `steps()` is a zero-argument accessor, not a
+nesting scope, so `steps { … }` is a compile error:
+
 ```kotlin
 // GOOD: declarative DSL construction
-steps {
-    echo("hola")
-    sh("./gradlew test")
+pipeline {
+    stages {
+        stage("build") {
+            echo("hola")
+            sh("./gradlew test")
+        }
+    }
 }
 ```
 
+Runtime values are **shell's** to produce, not the builder's. `sh` lowers to one
+`core.sh` invocation, so a value that exists at run time is read by the shell that
+will use it — and Kotlin must not resolve `$` first, hence the escape
+(`${'$'}` — see V2 TESTING RULES #13):
+
 ```kotlin
-// GOOD: capturing runtime values inside a scriptable block
-script {
-    val branch = shStdout("git branch --show-current").trim()
-    if (branch == "main") {
-        sh("./publish.sh")
+// GOOD: capturing a runtime value — the shell expands it at run time
+pipeline {
+    stages {
+        stage("publish") {
+            sh(
+                """
+                branch=${'$'}{BRANCH_NAME:-$(git branch --show-current)}
+                if [ "${'$'}branch" = "main" ]; then ./publish.sh; else echo "not main"; fi
+                """.trimIndent(),
+            )
+        }
     }
 }
 ```
@@ -671,10 +704,34 @@ pipeline {
 }
 ```
 
+```kotlin
+// BAD: the same fabrication wearing a Step's name
+pipeline {
+    stages {
+        stage("publish") {
+            val branch = shStdout("git branch --show-current").trim()  // no such builder
+        }
+    }
+}
+```
+
+The second BAD row was, until 2026-10-18, this section's own GOOD example. It violated
+the rule stated directly below it: no `shStdout` builder exists anywhere on the DSL
+surface, `sh(...)` returns `Unit` to the constructor (`got=kotlin.Unit`, measured), and
+writing `sh("echo ${'$'}branch")` inside a `script { }` block fails at compile time with
+`Unresolved reference 'branch'` because Kotlin resolves the name before a shell exists.
+A rule with a violating example above it is not a rule.
+
 Construction (the DSL builder) MUST NOT perform I/O, MUST NOT shell out, MUST NOT call
 `pwd()` / `isUnix()` / `now()` and pretend those are real values. Anything that needs
 runtime data lives inside a Step handler with declared capabilities (input codec is the
 canonical envelope, not ad-hoc field probing).
+
+`script { … }` is sugar for one `core.sh` invocation whose command is generated from
+the steps inside it (`echo("x")` lowers to `echo "x"`). It is therefore a shell block,
+not a Kotlin block: every step inside it is inlined into a single command, none of them
+keeps its own identity in the run, and none of their output is projected to the console
+— see the measured gap in H1.5. Prefer `sh(…)` with an explicit command.
 
 ### Block Steps (when the time comes)
 

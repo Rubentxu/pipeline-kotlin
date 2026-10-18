@@ -71,7 +71,64 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.Files
 
+/**
+ * The CLI's verb set, and the only place it is written down.
+ *
+ * Measured 2026-10-18: three defects came from this list living in prose. A rejected
+ * argument printed `Usage: pipeline <validate|run>` — 2 of 11 verbs, under a name the
+ * binary does not have. The hint on the same rejection said "run 'pipeline --help'",
+ * and `--help` was itself rejected: a promise with nothing behind it. The list inside
+ * [CliExitMapping] meanwhile named 10 verbs and omitted `inspect`.
+ *
+ * Enumerating verbs in a *message* is the census defect ([see AGENTS.md]): a hand-kept
+ * list drifts from the dispatch and nobody notices until an operator is misled. A verb
+ * list in prose is worse than no list, because it is read as authoritative.
+ *
+ * So: one constant, rendered by [printUsage], referenced by the hints. The dispatch
+ * chain below still spells each verb as its own comparison — collapsing the two is a
+ * separate concern from telling the truth about the current shape, and it would change
+ * the admission order that the per-verb guards depend on.
+ */
+internal val CLI_VERBS: List<Pair<String, String>> = listOf(
+    "validate" to "compile a script and report every diagnostic",
+    "run" to "execute a script durably (--db, --resume|--rerun, --control-root)",
+    "observe" to "read a finished run's events, console and output (--view, --format)",
+    "console" to "read one step's output plane as frames or lines",
+    "events" to "read one run's domain events as text or json",
+    "inspect" to "read a run id's digests, steps and provenance",
+    "credentials" to "list registered credential material (redacted)",
+    "doctor" to "report the installation's health",
+    "version" to "print the product version (--json)",
+    "capabilities" to "print the capability keys this build admits",
+    "sdk-info" to "print the SDK coordinates a plugin builds against",
+)
+
+private fun printUsage(out: Appendable) {
+    out.append("Usage: pipelinek <verb> [options] [args]\n\nVerbs:\n")
+    CLI_VERBS.forEach { (verb, summary) -> out.append("  %-13s %s\n".format(verb, summary)) }
+    out.append("\nEach verb prints its own usage when called without a required argument.\n")
+}
+
+/**
+ * Whether [args] asks for the usage surface.
+ *
+ * Extracted so the hints printed on a rejection can be CHECKED against it. A hint that
+ * names a flag the CLI does not accept is a promise with nothing behind it, and the
+ * cheapest way to keep that from returning is to make the question answerable in a test.
+ */
+internal fun isHelpRequest(args: Array<String>): Boolean =
+    args.firstOrNull() in HELP_TOKENS
+
+private val HELP_TOKENS = setOf("--help", "-h", "help")
+
 fun main(args: Array<String>) {
+    // `--help`, `-h` and `help` are real. Before this they fell through to the same
+    // rejection that told the operator to run them.
+    if (isHelpRequest(args)) {
+        printUsage(System.out)
+        return
+    }
+
     // WU-LPR-011 F1: `version` is a real subcommand. Reports the CLI version from the build-generated
     // version resource (authoritative source = project.version) and exits 0.
     // WU-LPR-071: the version MUST be produced by the build from project.version. The legacy
@@ -230,8 +287,15 @@ fun main(args: Array<String>) {
     val config = when (val parsed = CliParser.parse(args)) {
         is CliParseResult.Parsed -> parsed.flags
         is CliParseResult.Rejected -> {
-            System.err.println("Invalid CLI arguments: ${parsed.error}")
-            System.err.println("Usage: pipeline <validate|run> [--db <path>] [--resume|--rerun] [--control-root <path>] <script>")
+            // Render the rejection through the ONE mapping that already carries a human
+            // message and an operator hint. Interpolating `parsed.error` printed the sealed
+            // ADT's toString (`InvalidCommand(value=observ)`) and then a second, hand-written
+            // usage line that named 2 of 11 verbs — a second rendering of the same fact,
+            // free to disagree with the first, which is how `inspect` and `--help` went missing.
+            val exit = parsed.error.toCliExit()
+            System.err.println("Invalid CLI arguments: ${exit.message}")
+            exit.hint?.let { System.err.println(it) }
+            printUsage(System.err)
             System.exit(1)
             return
         }

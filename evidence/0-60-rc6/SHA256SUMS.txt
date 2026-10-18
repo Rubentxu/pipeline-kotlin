@@ -1,2 +1,0 @@
-969fd7613b1a6cfbfb0e1852a2b53dc22929b9b5cd209a28e3b3747b2a7bed01  pipelinek-0.60.0.zip
-61c39f695a2426fde8a5f01eee91fc9fd284a83ecd62c1889fd69565b88b7b11  pipelinek-0.60.0.sbom.json

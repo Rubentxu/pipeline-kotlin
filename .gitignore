@@ -96,3 +96,15 @@ __pycache__/
 # Standing constraint: .agent/HANDOFF-S1-TRAIN-20260929.md ("do not
 # commit/delete"). Ignored rather than deleted so the file stays on disk.
 BACKLOG.md
+
+# Runtime-only E2E/UAT/AAT cycles: no scripts, fixtures or evidence checked in
+/.verification-cycles/
+/.verification-results/
+
+# No build or evidence output under examples
+/v2/examples/**/.pipelinek/
+/v2/examples/**/build/
+/v2/examples/**/*.db
+/v2/examples/**/*.sqlite*
+/v2/examples/**/*.log
+/v2/examples/**/*.jsonl

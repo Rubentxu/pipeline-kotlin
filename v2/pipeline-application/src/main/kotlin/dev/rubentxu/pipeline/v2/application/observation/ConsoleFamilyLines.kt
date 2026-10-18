@@ -218,9 +218,18 @@ internal object ConsoleFamilyLines {
             "[step: ${scope.stage(event.stageIndex)}] ${event.stepName}",
         )
 
+        // "finished", never "ok". `StepExecutionBoundary` emits this from a `finally`, so it
+        // closes the step's span on success, failure and exception alike, and the event carries
+        // no outcome field to justify any verdict — `StepFailed` is the event that carries the
+        // failure. Rendering it "ok" printed, for one failing step and in this order:
+        //     ERROR: step 's1/sh-0' failed [SCRIPT]: shell exited with code 7
+        //     [PipelineK] [step: s1] s1/sh-0 ok
+        // Measured 2026-10-18 against distribution 0.62.0. SEMANTIC CONSTITUTION §8: a
+        // projection must not render a status its event does not carry. `StageFinished` above
+        // DOES carry `outcome`, which is why its line shows it and this one must not.
         is StepFinished -> Line(
             Family.STRUCTURE,
-            "[step: ${scope.stage(event.stageIndex)}] ${event.stepName} ok",
+            "[step: ${scope.stage(event.stageIndex)}] ${event.stepName} finished",
         )
 
         is ParallelBranchStarted ->

@@ -73,13 +73,29 @@ integrado; las cuatro amendments de `ADR-PK-DF-002` siguen requiriendo firma del
 
   Dos hallazgos que quedan abiertos y **no** se declaran cerrados aquí:
 
-  - `f02` sobrevive a M-2 porque su aserción es una ausencia y un plano vacío la satisface. Verde sin haber medido.
-  - `OperationOutputStreams.init` valida `runId`/`operationId` y **no** que los canales sean distintos: un `stderr` con canal `STDOUT` lo satisface. La suposición que la clase expresa no tiene invariante que la sostenga.
+  - `f02` sobrevive a M-2 porque su aserción es una ausencia y un plano vacío la satisface. Verde sin haber medido. → **cerrado en H1.3** (marcador benigno presente + rojo bajo M-2).
+  - `OperationOutputStreams.init` valida `runId`/`operationId` y **no** que los canales sean distintos: un `stderr` con canal `STDOUT` lo satisface. La suposición que la clase expresa no tiene invariante que la sostenga. → **cerrado en H1.3** (dos `require` de identidad de canal + `OperationOutputStreamsChannelInvariantTest`).
 
 - [ ] **H1.2** Corregir productor→redactor→Output Plane→CLI sin segundo writer/event plane de bytes. Propiedad redacción antes de persistencia; no duplicar responsabilidades de recovery.
-- [ ] **H1.3** Solo test del seam de salida afectado + **1 UAT temporal** de CLI con stdout/stderr/cursor y negativo secreto si riesgo afectado. Reusar smoke instalado del RC. Borrar pruebas temporales y fixtures tras aceptación.
+- [x] **H1.3** Solo test del seam de salida afectado + **1 UAT temporal** de CLI con stdout/stderr/cursor y negativo secreto si riesgo afectado. Reusar smoke instalado del RC. Borrar pruebas temporales y fixtures tras aceptación.
 
-  **Reabierto con el alcance que H1.1 deja medido**, sin ampliar el gate: convertir la aserción de presencia de `f02` en una afirmación de contenido sobre un payload presente, e `init` de `OperationOutputStreams` en un invariante que prohíba el cruce de canales con un test que lo demuestre. Ambos son locales y no requieren UAT nueva.
+  **Cerrado el alcance que H1.1 dejó medido.** No hizo falta UAT nueva: los dos ítems eran locales y uno de ellos era de producto. Sin ampuляр el gate.
+
+  **a) `f02` era verde por vacuidad. Cerrado.** Sus dos aserciones eran de AUSENCIA, y un Output Plane vacío las satisface — por eso sobrevivía a M-2. Ahora el productor escribe un marcador benigno **antes** de los fragmentos y la fila lo exige presente. Con M-2 (`RedactingOutputIngress` nunca hace commit) `f02` pasa de verde a **ROJA** por su propia aserción nueva. La fila ya no puede go green sobre un plano sin señal.
+
+  **b) `OperationOutputStreams` expresaba una suposición de dos canales sin invariante que la sostuviera. Cerrado.** Su `init` comparaba `runId`/`operationId` y nada más, así que `stderr` sobre el canal `STDOUT` era un valor **legal y silenciosamente aceptado**: `select(setOf(STDERR))` devolvía lista vacía sobre una transcripción viva, y `select(setOf(STDOUT))` devolvía el mismo stream dos veces. Añadidos dos `require` de identidad de canal — identidad y no `!=`, porque los campos se **llaman** `stdout` y `stderr` y `!=` habría admitido el par invertido igual. `of()` es la única construcción del repo, luego no restringe ningún call site existente.
+
+  ```text
+  OperationOutputStreamsChannelInvariantTest   tests=4 skipped=0 failures=0 errors=0
+  :pipeline-output completo                    tests=14 skipped=0 failures=0 errors=0
+  M-4  se elimina el require de stderr         -> RED 1 de 4, la fila que apunta
+  M-3  stderr sobre STDOUT, con el invariante  -> sigue COMPILANDO; RED 2 de 4
+  f02 bajo M-2 (antes sobrevivia)             -> ROJA por la asercion nueva
+  ```
+
+  **Una corrección que la medición obligó.** Escribí que el invariante hacía el cruce «irrepresentable». **Es falso, y lo medí antes de dejar el KDoc**: `require` es un rechazo en runtime, no una restricción de tipos — ambos campos son `OutputStreamAddress` y una dirección sobre el canal STDOUT es una dirección válida. Lo que M-3 demuestra es *dónde* aflora el defecto: antes el par se construía en silencio y todo consumidor lo heredaba; ahora no existe valor que heredar. El KDoc de producción y el del test llevan la corrección escrita, porque una afirmación más fuerte que la comprobada es exactamente el defecto que este test existe para cazar.
+
+  El defecto propio fue el **arnés**: escribí las dos filas de rechazo con la construcción **fuera** del `assertThrows`, y como `init` rechaza en construcción, el rechazo correcto se escapaba de la aserción y la fila reportaba un defecto de producto inexistente. Dos filas rojas con el mensaje exacto del invariante que acababa de funcionar. La construcción va dentro del lambda, y el porqué está en el KDoc de la fila.
 - [ ] **H1.4** Integrar código de producto, cambios de poda aprobados, `main`, release candidate de valor real y handoff. `CERTIFIED` solo externo.
 
 **Agent teams:** consola/lectura, escritor/redactor (seams distintos), integración del CLI; archivo compartido se asigna a uno. R-1 del H0 ya terminó antes.

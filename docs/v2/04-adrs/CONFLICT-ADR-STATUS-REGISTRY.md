@@ -111,6 +111,19 @@ ratificadas; si son `accepted`, entonces el campo `status:` de 16 ficheros es in
 
 ## Por qué esto **enreda** el bloqueo de H0.4, en vez de resolverlo
 
+> **Actualización 2026-10-18 — el bloqueo de H0.4 cambió, el conflicto NO.** El product owner concedió
+> el gate humano y `ADR-PK-DF-002` pasó a `accepted`. Con ello H0.1 queda `DONE` y el bloqueo
+> `BLOCKED_POLICY` de H0.4 desaparece, **pero este documento sigue íntegro**: la ratificación fue
+> explícita y acotada a esa ADR, y las 21 restantes —incluidas `ADR-0071`/`0072`/`0074` que
+> `ADR-PK-DF-002` lista en su `related:` y que `AGENTS.md` invoca como autoridad MANDATORY— siguen
+> en `proposed`. Lo que este documento pedía antes de la ratificación —decidir cuál es el registro de
+> verdad y aplicarlo a todo el rango— **sigue sin hacerse**. La línea de abajo ya no describe el
+> estado de H0.4, y se conserva porque su análisis es la razón de que la ratificación no se presentara
+> como si hubiera resuelto el registro.
+>
+> Además, H0.4 declaraba su síntoma como `FArchM3` en ROJO; medido, está 7/7 verde. El síntoma era
+> falso, y su causa fue el escáner contando texto que el sanitizador enmascara.
+
 El bloqueo vigente de H0.4 está redactado como si ratificar `ADR-PK-DF-002` fuera una
 decisión local y acotada:
 

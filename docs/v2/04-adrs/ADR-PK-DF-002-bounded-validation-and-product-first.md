@@ -2,9 +2,10 @@
 type: adr
 id: ADR-PK-DF-002
 title: "Product First — retirar el framework de QA embebido y limitar pruebas por riesgo"
-status: proposed
+status: accepted
 date: 2026-10-17
-deciders: "Rubentxu (product owner): aprobación pendiente"
+ratified: 2026-10-18
+deciders: "Rubentxu (product owner): APROBADO 2026-10-18 (gate humano concedido explícitamente)"
 related:
   - ADR-0071
   - ADR-0072
@@ -18,16 +19,30 @@ related:
 
 # ADR-PK-DF-002 — Product First, retirada radical del test-harness interno
 
-**PROPUESTA — NO APROBADA.** Integrar el archivo como propuesta; no invocar este texto para eludir el `check` ni contradecir normas aceptadas. Presentar el diff de política al operador para decisión explícita antes de cambios incompatibles con `AGENTS.md` y ADR-PK-QV-003. Si no se ratifica, respetar el contrato vigente y registrar `BLOCKED_POLICY`.
+**ACEPTADA 2026-10-18.** Sustituye las políticas incompatibles enumeradas abajo, **cada una en su momento y por su propia enmienda**, no de golpe: la decisión 4 sigue condicionada a la enmienda de `AGENTS.md`/`ROADMAP.md`, y la decisión 2 tiene dos cláusulas con estados distintos (ver abajo). El gate humano fue concedido explícitamente por el product owner el 2026-10-18.
 
-## Contexto comprobable
+> **Alcance de esta ratificación — lo que NO resuelve.** Esta aceptación **no resuelve el conflicto del registro de verdad de estados** descrito en [`CONFLICT-ADR-STATUS-REGISTRY.md`](CONFLICT-ADR-STATUS-REGISTRY.md), que sigue abierto: 21 ADR más permanecen en `proposed`, incluidas `ADR-0071`, `ADR-0072` y `ADR-0074`, que esta misma ADR lista en su `related:` y que `AGENTS.md` invoca como autoridad MANDATORY de la STEP CONSTITUTION. Aquél documento afirma que pedir la ratificación de esta ADR sin más «no es una decisión binaria»; la decisión del product owner es explícita y se aplica, pero su alcance es **esta** ADR y el desbloqueo de H0.1, **no** la coherencia del registro en su conjunto. Resolver eso exige decidir cuál es el registro de verdad y aplicarlo a todo el rango — es un bloque propio, no una línea de este diff.
 
-RC6→HEAD: 437 líneas tocadas de producto frente a 5.788 de tests y 3.742 de fuentes de test-harness. V2 tiene `:test-harness` como módulo Kotlin de ~38 fuentes + 51 tests, con catálogos, planes, sidecars, ciclo y motor de retirada. Más importante: `pipeline-application` arrastra `:test-harness` en `implementation` y aloja `InProcessProductProbeExecutor` en `src/main`. La infraestructura QA ha entrado en la distribución ejecutable y crea otra superficie de fallo. Es una deriva económica y de responsabilidad. Las cifras son *diff*, no tiempo invertido.
+## Contexto comprobable — y su corrección tras la medición
 
-## Decisiones propuestas (sustituyen **solo tras aprobación** políticas incompatibles)
+RC6→HEAD: 437 líneas tocadas de producto frente a 5.788 de tests y 3.742 de fuentes de test-harness. V2 tiene `:test-harness` como módulo Kotlin de 38 fuentes en `src/main` + 51 tests, con catálogos, planes, sidecars, ciclo y motor de retirada.
+
+> **Corrección 2026-10-18.** El texto original afirmaba además que «`pipeline-application` arrastra `:test-harness` en `implementation` y aloja `InProcessProductProbeExecutor` en `src/main`», y de ahí concluía que «la infraestructura QA ha entrado en la distribución ejecutable». **Medido en HEAD, ambas son falsas**: las únicas dos referencias del repositorio son `testImplementation(project(":test-harness"))` (línea 212) y `laneReportClasspath(project(":test-harness"))` (línea 702) de `pipeline-application/build.gradle.kts`, ambas **test-side**; y `InProcessProductProbeExecutor` vive en `pipeline-application/src/test/kotlin/.../application/harness/`. La fuga se cerró en `5e816d84` y hoy la impide mecánicamente `FArch021QaModulesStayOffRuntimeClasspathTest`, que además afirma que su propio escaneo no es vacuoso.
+>
+> **Qué sobrevive y qué no.** El argumento económico —deriva de coste y de responsabilidad— sigue en pie y es el que sostiene esta ADR. El de severidad —superficie de fallo en el binario distribuido— **no**: era inexistente al ratificar. Una ADR cuyo contexto se corrige a la baja no se reescribe hacia abajo: se registra la medición y se acepta sobre lo que queda, que es lo suficiente para decidir.
+
+Por tanto H0.4 **no** es una fuga que cerrar: es una pregunta de existencia del módulo. `PRODUCT_FIRST_PRODUCTION_READY_2026-10-17.md` declaraba su «síntoma observable es FArchM3 ROJO»; medido el 2026-10-18, `FArchM3CanonicalTaskRuntimeTest` está **7/7 verde**, porque `KotlinSourceSanitizer` enmascara los literales de cadena y el único `ProcessBuilder(` no declarado de `:test-harness` es precisamente el literal que `retirement/TestClassifier.kt` usa para *nombrar* la API que busca. Ese síntoma no existe y no debe volver a citarse como bloqueo.
+
+## Decisiones (sustituyen **solo tras aceptación** políticas incompatibles, y solo cuando su enmienda está hecha)
 
 1. **La garantía, no el test, es la unidad de conservación.** Por cada comportamiento crítico hay una prueba mínima discriminante y en su propietario; pruebas redundantes, `@Disabled` obsoletas, métricas de forma y categorías migradas se eliminan por lotes, con un sustituto único si hace falta.
-2. **Desmontar `:test-harness` completo** del runtime y del build tras cutover demostrable. `cycle`, `plan`, `retirement`, `lanes`, `catalog` y `util` no se transfieren 1:1. Se borran si su garantía está ya cubierta por Gradle/JUnit, pruebas de dominio y `pipelinek-release-harness` externo. Prohibido crear un segundo sistema de gating para reemplazar al primero. Nunca dejar `implementation(project(":test-harness"))` en el binario.
+2. **Desmontar `:test-harness`.** Esta decisión tiene **dos cláusulas con estados distintos**, y confundirlas es lo que produjo el bloqueo falso de H0.4:
+
+   2a. **CERRADA Y PROBADA — la cláusula binaria.** *Nunca dejar `implementation(project(":test-harness"))` en el binario.* Hoy no existe tal arista, y `FArch021QaModulesStayOffRuntimeClasspathTest` la impide mecánicamente por conjunto nombrado de módulos QA (no por patrón de nombre), stripping comentarios, fallo cerrado ante build-file vacío, y con una fila propia que falla si el escaneo dejara de encontrar `:test-harness` — es decir, la guarda no puede volverse vacua al desaparecer el sujeto. **Nada que hacer aquí.**
+
+   2b. **ABIERTA — el desmontaje.** `cycle` (13 ficheros), `plan` (10), `retirement` (10), `lanes` (3), `catalog` (1) y `util` (1): 38 ficheros, 8.250 líneas en `src/main`, que **no se transfieren 1:1**. Se borran cuando su garantía esté ya cubierta por Gradle/JUnit, pruebas de dominio y el certifier externo. Prohibido crear un segundo sistema de gating para reemplazar al primero.
+
+   **Precondición nombrada para 2b, para que no se lea como permiso de borrado en bloque:** `:test-harness` es hoy el dueño del clasificador de *lanes*, que es la razón de que el bucle interior (`just t`) sea rápido en un módulo que si no cuesta ~1.500 s. Desmontarlo exige primero que Gradle exprese esa selección por sí mismo — lane por `@Tag` nativo o por task propia — **demostrado con latencia medida antes y después**, no supuestos. Quitar el módulo antes de eso cambia un gate lento por un gate que nadie sabe correr. El orden correcto es: sustituto medido → corte → borrado.
 3. **Excepción por producto:** `pipeline-event-harness` se conserva porque el consumidor real `pipeline events verify` lo utiliza. El nombre "harness" no es criterio de baja.
 4. **Ciclo habitual reducido:** desarrollo ejecuta test afectado, merge ejecuta área + contratos críticos, integración centralizada/RC asume matriz completa correspondiente, instalable y certifier externo. El `check` global deja de ser condición de **cada** merge **solo tras aprobar la enmienda** a `AGENTS.md` y `ROADMAP.md`; no se elimina como mecanismo de RC/integración.
 5. **UAT/AAT/E2E efímeras**: una ejecución externa por comportamiento nuevo cuando un test unitario no puede observarlo; 0 E2E en cambios ordinarios. No guardar cada UAT como regresión. Reusar smoke instalado por release. El test temporal se borra tras verificar aceptación y promover garantía esencial.
@@ -36,6 +51,8 @@ RC6→HEAD: 437 líneas tocadas de producto frente a 5.788 de tests y 3.742 de f
 8. **Presupuesto del QA**: un bloque de producto no puede acabar solo con más carriers, fitness/infraestructura QA o documentación de cómo probarlos. Las excepciones son P0 real y medido (secretos, pérdida de datos, falso verde grave, release corrupta). Medir latencia y falsos rojos, no introducir métricas de porcentajes como gates nuevos.
 
 ## Enmiendas necesarias tras aceptar la ADR
+
+**Estado 2026-10-18:** ninguna está hecha todavía. La aceptación de la ADR **no las ejecuta por sí sola** — es lo que mantiene la decisión 4 sin contradecir `AGENTS.md`, cuya regla de `check` por ronda sigue vigente hasta que su propio diff se aplique. Cada enmienda es un cambio normativo con su propio diff revisable; agruparlas todas en el commit de ratificación las volvería invisibles.
 
 - `AGENTS.md`: reemplazar regla de `check` global por merge selectivo + integración/RC centralizada; mantener reglas de identidad, evidencia y escalado crítico. Eliminar comandos/normas de test-harness local que se retire, sin afectar SDDK ni publicación.
 - `docs/v2/05-roadmap/ROADMAP.md`: conservar como **única autoridad** RP/B0–B7, integrar la poda como WorkUnit de desbloqueo de producto (no roadmap paralelo), registrar DONE solo tras código eliminado e integración real.

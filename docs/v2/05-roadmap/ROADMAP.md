@@ -565,14 +565,29 @@ propuesta se ejecuta *dentro* de los bloques que ya existen, usando su backlog y
 
 - Plan: [`PRODUCT_FIRST_PRODUCTION_READY_2026-10-17.md`](PRODUCT_FIRST_PRODUCTION_READY_2026-10-17.md) (H0..H5)
 - Especificación: [`PRODUCT_FIRST_MINIMUM_VERIFICATION_SPEC.md`](../03-specifications/PRODUCT_FIRST_MINIMUM_VERIFICATION_SPEC.md)
-- Decisión: [`ADR-PK-DF-002-bounded-validation-and-product-first.md`](../04-adrs/ADR-PK-DF-002-bounded-validation-and-product-first.md) — **`status: proposed`, NO ratificada**
+- Decisión: [`ADR-PK-DF-002-bounded-validation-and-product-first.md`](../04-adrs/ADR-PK-DF-002-bounded-validation-and-product-first.md) — **`status: accepted`, ratificada 2026-10-18**
 
-**Lo que la propuesta NO autoriza por existir aquí.** Copiar un ADR `proposed` a su ruta canónica no
-lo ratifica. Las enmiendas que `ADR-PK-DF-002` enumera (AGENTS.md, este ROADMAP,
-`RESPONSIBILITY_MIGRATION_ROADMAP.md` §4 y las specs `TEST_IMPACT_AND_EVIDENCE_SPEC`,
-`TEST_EXECUTION_LANES_SPEC`, `EPHEMERAL_CYCLE_LIFECYCLE_SPEC`) requieren decisión explícita del
-operador antes de que H0.4 pueda ejecutarse. Si una SPEC exige `CycleManifest`/`DeletionGuard` y la
-enmienda no está aprobada, el resultado es **bloqueo declarado**, nunca simular que la garantía existe.
+**Ratificación y su límite (2026-10-18).** El gate humano fue concedido por el product owner, así que
+H0.1 pasa a `DONE` y el bloqueo `BLOCKED_POLICY` que pesaba sobre H0.4 desaparece. **Lo que no
+desaparece es el trabajo.** La aceptación de una ADR no ejecuta sus enmiendas: siguen sin hacerse
+`AGENTS.md`, este ROADMAP, `RESPONSIBILITY_MIGRATION_ROADMAP.md` §4 y las tres specs citadas, y cada
+una necesita su propio diff revisable. En particular la decisión 4 (el `check` global deja de ser
+condición de cada merge) **sigue sin aplicación**, porque la regla de `AGENTS.md` que la contradice
+está intacta y vigente; y la decisión 2 se ha partido en dos cláusulas con estados distintos — la
+binaria está **cerrada y probada** por `FArch021`, y el desmontaje de los 38 ficheros / 8.250 líneas de
+`src/main` queda **abierto y condicionado** a un sustituto medido del clasificador de lanes.
+
+**Corrección de un síntoma que semeasurable y era falso.** Este ROADMAP y el plan citaban «H0.4 →
+su síntoma observable es FArchM3 ROJO, y es correcto». Medido el 2026-10-18: `FArchM3CanonicalTaskRuntimeTest`
+está **7/7 verde**. El único `ProcessBuilder(` no declarado en `:test-harness` es el literal de cadena
+que `retirement/TestClassifier.kt` usa para *nombrar* la API que busca, y `KotlinSourceSanitizer`
+enmascara los literales, así que el escáner no lo ve. Ese symptom no existió nunca como bloqueo y no
+debe volver a citarse. La causa real de H0.4 no era una fuga: la fuga se cerró en `5e816d84` y la
+razón de bloqueo era de política, como ya decía la fila anterior.
+
+**Lo que la propuesta NO autoriza por existir aquí.** Copiar un ADR a su ruta canónica no lo ratifica,
+y ratificarlo tampoco ejecuta sus enmiendas. Si una SPEC exige `CycleManifest`/`DeletionGuard` y la
+enmienda no está hecha, el resultado es **bloqueo declarado**, nunca simular que la garantía existe.
 
 **Regla de poda con el nombre `harness` (medido, no supuesto).** `dev.rubentxu.pipeline.v2.harness` es
 un prefijo compartido por **tres** módulos — `:pipeline-event-harness` (que **se conserva**, alimenta

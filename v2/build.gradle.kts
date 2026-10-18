@@ -221,7 +221,14 @@ subprojects {
             // WU-RP-040 R5: initial honest debt snapshot (2026-09-23, HEAD 6f7c445f).
             // Baseline freezes pre-existing findings; the gate fails on ANY new
             // issue. Debt burn-down tracked in the slice receipt.
-            val moduleBaseline = layout.projectDirectory.file("detekt-baseline.xml")
+            //
+            // The filename is the plugin's own `detekt-baseline-main.xml`, the file
+            // `./gradlew detektBaselineMain` writes. It used to be
+            // `detekt-baseline.xml`, which no task produced: running the snapshot
+            // task created a second file that the gate never read, so refreshing the
+            // debt snapshot appeared to work and changed nothing. Naming the file
+            // the task writes is what makes the refresh one reproducible command.
+            val moduleBaseline = layout.projectDirectory.file("detekt-baseline-main.xml")
             if (moduleBaseline.asFile.exists()) {
                 baseline.set(moduleBaseline)
             }
@@ -235,8 +242,19 @@ subprojects {
         }
         // Detekt 2.x no longer self-attaches to `check` (detekt 1.x did), so the
         // attachment has to be stated here or SAST is not part of the gate at all.
+        //
+        // It has to name `detektMain`, not `detekt`. In 2.0.0-alpha.6 the bare
+        // `detekt` task carries no default source set: it analyses zero files and
+        // reports success, so naming it made the gate pass without looking at the
+        // code. Measured, not inferred: a deliberately unused import added to a
+        // `src/main` file left `detekt` at BUILD SUCCESSFUL with a 79-byte, zero-file
+        // report, while `detektMain` named the import, its line and its rule.
+        //
+        // The first half of this comment was already half the fix — detekt 2.x moved
+        // the work out of the task `check` used to reach, and the attachment was
+        // restated without the task identity following it.
         tasks.named("check") {
-            dependsOn(tasks.named("detekt"))
+            dependsOn(tasks.named("detektMain"))
         }
     }
 }

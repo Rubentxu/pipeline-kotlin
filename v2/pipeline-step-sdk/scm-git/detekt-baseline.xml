@@ -1,8 +1,0 @@
-<?xml version="1.0" ?>
-<SmellBaseline>
-  <ManuallySuppressedIssues/>
-  <CurrentIssues>
-    <ID>LongMethod:GitCheckoutExecutor.kt:GitCheckoutExecutor$private fun executeInternal: Result&lt;GitCheckoutResult&gt;</ID>
-    <ID>VariableNaming:GitCredentialsApplier.kt:GitCredentialsApplier$val dollarSHELL_KEY = "\$SSH_KEY"</ID>
-  </CurrentIssues>
-</SmellBaseline>

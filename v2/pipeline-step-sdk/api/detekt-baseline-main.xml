@@ -3,5 +3,6 @@
   <ManuallySuppressedIssues/>
   <CurrentIssues>
     <ID>CyclomaticComplexMethod:BlockStepFlattener.kt:BlockStepFlattener$private fun flattenImpl</ID>
+    <ID>UnusedImport:PipelineJson.kt:import kotlinx.serialization.json.longOrNull</ID>
   </CurrentIssues>
 </SmellBaseline>

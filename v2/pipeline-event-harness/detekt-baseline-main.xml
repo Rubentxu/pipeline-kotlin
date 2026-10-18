@@ -1,0 +1,23 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>UnnecessaryFilter:EventHarness.kt:EventHarness$filter { it.kind == "RunFinished" }</ID>
+    <ID>UnusedImport:EventHarness.kt:import dev.rubentxu.pipeline.v2.events.identity.PipelineEventEnvelope</ID>
+    <ID>UnusedImport:EventHarness.kt:import dev.rubentxu.pipeline.v2.harness.model.EventConstraint</ID>
+    <ID>UnusedImport:EventHarness.kt:import dev.rubentxu.pipeline.v2.harness.model.RelationScope</ID>
+    <ID>UnusedImport:ProtocolGrammar.kt:import dev.rubentxu.pipeline.v2.events.ParallelBranchStarted</ID>
+    <ID>UnusedImport:ProtocolGrammar.kt:import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted</ID>
+    <ID>UnusedImport:ProtocolGrammar.kt:import dev.rubentxu.pipeline.v2.events.RunFinished</ID>
+    <ID>UnusedImport:ProtocolGrammar.kt:import dev.rubentxu.pipeline.v2.events.RunStarted</ID>
+    <ID>UnusedImport:ProtocolGrammar.kt:import dev.rubentxu.pipeline.v2.events.StageStarted</ID>
+    <ID>UnusedImport:ProtocolGrammar.kt:import dev.rubentxu.pipeline.v2.events.StepFailed</ID>
+    <ID>UnusedImport:ProtocolGrammar.kt:import dev.rubentxu.pipeline.v2.events.StepFinished</ID>
+    <ID>UnusedImport:ProtocolGrammar.kt:import dev.rubentxu.pipeline.v2.events.StepStarted</ID>
+    <ID>UnusedImport:ProtocolGrammar.kt:import dev.rubentxu.pipeline.v2.harness.model.VerificationResult</ID>
+    <ID>UnusedImport:YamlEventContractCodec.kt:import dev.rubentxu.pipeline.v2.harness.model.PipelineOutcome</ID>
+    <ID>UnusedPrivateProperty:ProtocolGrammar.kt:ProtocolGrammar$private const val CONTEXT = 4 // bounded window around the violating event</ID>
+    <ID>UnusedVariable:EventHarness.kt:EventHarness$val r = verify(history, contract, scope)</ID>
+    <ID>UseOrEmpty:YamlEventContractCodec.kt:YamlEventContractCodec$b["where"] as? Map&lt;String, Any&gt; ?: emptyMap()</ID>
+  </CurrentIssues>
+</SmellBaseline>

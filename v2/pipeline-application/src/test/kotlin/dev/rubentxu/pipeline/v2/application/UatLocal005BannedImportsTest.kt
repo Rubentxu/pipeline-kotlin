@@ -49,8 +49,22 @@ class UatLocal005BannedImportsTest {
      *
      * JGit is the Eclipse pure-Java Git implementation. Using it would
      * violate the CLI-git design decision (D1 in ADR-0050).
+     *
+     * SUPERSEDED, NOT MIGRATED. The previous reason on this row said the
+     * rule "belongs to pipelinek-release-harness" and could only be retired
+     * once the harness produced a 5-axis verdict. That was a promise nothing
+     * tracked and that `RESPONSIBILITY_MIGRATION_ROADMAP.md` contradicts:
+     * it classifies this rule **KEEP**, and a rule over source code does not
+     * belong to a certifier that consumes a ZIP. The guarantee therefore
+     * stays in this repository, held by
+     * `architecture.BannedImportsFitnessTest`, which is strictly stronger
+     * than this row: it discovers every production `src/main` from the file
+     * system instead of scanning the three directories named above, and a
+     * second row cross-checks that discovery against an independent
+     * derivation so the ban cannot silently narrow. Re-enabling this row
+     * would add a weaker second copy of a guarantee already held.
      */
-    @Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")
+    @Disabled("superseded by BannedImportsFitnessTest, which holds the same rule with wider coverage; kept disabled to avoid a second, weaker copy of a guarantee this repository owns (RESPONSIBILITY_MIGRATION_ROADMAP: KEEP)")
 @Test
     fun `IMP-001 no jgit imports in v2 main source`() {
         val projectRoot = TestProjectRoot.dir.toPath()

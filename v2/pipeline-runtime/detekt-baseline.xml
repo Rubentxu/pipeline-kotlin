@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>NewLineAtEndOfFile:RuntimeIntrospectionTypedEventRefusalTest.kt:dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionTypedEventRefusalTest.kt</ID>
+  </CurrentIssues>
+</SmellBaseline>

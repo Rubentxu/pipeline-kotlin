@@ -2,9 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>ClassNaming:S1B_StageDirectiveAdmissionTest.kt:S1B_StageDirectiveAdmissionTest</ID>
-    <ID>ClassNaming:S1C_DirectiveEventObservabilityTest.kt:S1C_DirectiveEventObservabilityTest</ID>
-    <ID>CyclomaticComplexMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$suspend fun run: RunOutcome</ID>
     <ID>ClassNaming:A4_1DescriptorRecoveryCharacterizationTest.kt:A4_1DescriptorRecoveryCharacterizationTest</ID>
     <ID>ClassNaming:A4_2ShellOperationsCapabilityTest.kt:A4_2ShellOperationsCapabilityTest</ID>
     <ID>ClassNaming:A4_3TypedShellOutputIntegrationTest.kt:A4_3TypedShellOutputIntegrationTest</ID>
@@ -17,9 +14,11 @@
     <ID>ClassNaming:F5_1_ScmGitStepContractTest.kt:F5_1_ScmGitStepContractTest</ID>
     <ID>ClassNaming:F5_2_JUnitStepContractTest.kt:F5_2_JUnitStepContractTest</ID>
     <ID>ClassNaming:G7_CoreShellOutputCodecRoundTripTest.kt:G7_CoreShellOutputCodecRoundTripTest</ID>
-            <ID>CyclomaticComplexMethod:Main.kt:fun main</ID>
-    <ID>CyclomaticComplexMethod:Main.kt:fun parseCliArgs: PipelineCliConfig?</ID>
-    <ID>CyclomaticComplexMethod:MainEventsCli.kt:MainEventsCli$fun main: Int</ID>
+    <ID>ClassNaming:S1B_StageDirectiveAdmissionTest.kt:S1B_StageDirectiveAdmissionTest</ID>
+    <ID>ClassNaming:S1C_DirectiveEventObservabilityTest.kt:S1C_DirectiveEventObservabilityTest</ID>
+    <ID>CyclomaticComplexMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$suspend fun run: RunOutcome</ID>
+    <ID>CyclomaticComplexMethod:Main.kt:fun main</ID>
+    <ID>CyclomaticComplexMethod:PluginAdmissionGate.kt:PluginAdmissionGate$fun admitThenLoad: PluginAdmissionResult</ID>
     <ID>CyclomaticComplexMethod:SimplePipelineCompiler.kt:SimplePipelineCompiler$override fun compile: CompileResult</ID>
     <ID>EmptyElseBlock:Spike016DurableScriptedReplayTest.kt:Children$if(p.isAlive)ProcessBuilder("kill","-KILL","-${p.pid()}").start().waitFor(1,TimeUnit.SECONDS)</ID>
     <ID>EmptyElseBlock:Spike016DurableScriptedReplayTest.kt:Runtime$if(cut==Cut.AFTER_TERMINAL||cut==Cut.AFTER_RETURN){executor.ready(checkNotNull(e.task));executor.allowFinish()}</ID>
@@ -27,16 +26,14 @@
     <ID>EmptyElseBlock:Spike016DurableScriptedReplayTest.kt:Runtime$if(old!=null){if(old.input!=input)throw Compatibility();return resume(old,id)}</ID>
     <ID>EmptyElseBlock:Spike016DurableScriptedReplayTest.kt:Runtime$if(old.input!=input)throw Compatibility()</ID>
     <ID>EmptyElseBlock:Spike016DurableScriptedReplayTest.kt:Runtime$if(replay)replayed+=id</ID>
-    <ID>EmptyIfBlock:UatCompat001CorpusSmokeRunTest.kt:UatCompat001CorpusSmokeRunTest${ }</ID>
     <ID>InvalidPackageDeclaration:FileBasedWaitUntilControlJournalTest.kt:package dev.rubentxu.pipeline.v2.application.durable</ID>
-                    <ID>LongMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$suspend fun run: RunOutcome</ID>
     <ID>LongMethod:Main.kt:fun main</ID>
+    <ID>LongMethod:PluginAdmissionGate.kt:PluginAdmissionGate$fun admitThenLoad: PluginAdmissionResult</ID>
     <ID>LongMethod:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$override fun publish: PublishHtmlResult</ID>
     <ID>LongMethod:StepDispatchEngine.kt:StepDispatchEngine$suspend fun dispatch: Dispatched</ID>
     <ID>LongMethod:UatLocal002ResumeAfterKillTest.kt:UatLocal002ResumeAfterKillTest$@Test fun `resume after kill reads result txt no reexec`</ID>
     <ID>LongMethod:WaitUntilEngine.kt:WaitUntilEngine$suspend fun execute: StepOutcome</ID>
     <ID>MaxLineLength:CanonicalCoordinatorScopeStackTest.kt:CanonicalCoordinatorScopeStackTest$"""{"kind":"CatchErrorEntered","buildResult":"UNSTABLE","stageResult":"UNSTABLE","enteredAt":"${System.currentTimeMillis()}"}"""</ID>
-    <ID>MaxLineLength:CompatibilityCorpusTest.kt:CompatibilityCorpusTest$assertEquals(0, exitCode) { "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()} stdout tail: ${stdout.takeLast(1200)}" }</ID>
     <ID>MaxLineLength:CompatibilityCorpusTest.kt:CompatibilityCorpusTest$assertEquals(31, fixtures.size, "Corpus must have 31 valid fixtures (S2 added 25..29; E1.1 / T8 added 30..30; WU-LPR-089 added 31-stash-unstash; WU-LPR-090 added 32-publish-html)")</ID>
     <ID>MaxLineLength:CompatibilityCorpusTest.kt:CompatibilityCorpusTest$println("DEBUG-LPR103 store=$storePath exists=${storePath.toFile().exists()} size=${if (storePath.toFile().exists()) java.nio.file.Files.size(storePath) else -1}")</ID>
     <ID>MaxLineLength:CompatibilityCorpusTest.kt:CompatibilityCorpusTest$store.add(CredentialsId("file-creds"), SecretFile(CredentialsId("file-creds"), CredentialScope.GLOBAL, "file-secret-content".toByteArray(), "secret.txt"))</ID>
@@ -97,13 +94,13 @@
     <ID>MaxLineLength:EmitEventStepContractSuiteTest.kt:EmitEventStepContractSuiteTest$"counters stay 6/6/6 (post-S2-A4/G5 + S2-A5/G4 + S2-A6/G4: isUnix + pwd physically removed in code; counter 7 -&gt; 6) — a contract-suite fix must not resurrect legacy"</ID>
     <ID>MaxLineLength:EmitEventStepContractSuiteTest.kt:EmitEventStepContractSuiteTest$@Disabled("Historical S2-A5/G4 snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd to REGISTRY_PRIMARY; the 7-key count is superseded by `no legacy resurrection — irreversible G5 state holds post-S2-A6-G4` below. Preserved verbatim for traceability.")</ID>
     <ID>MaxLineLength:EmitEventStepContractSuiteTest.kt:EmitEventStepContractSuiteTest$@Disabled("Historical S2-A6/G4 snapshot: later lanes (S2-A7/A9/A10/B10 G4+G5) retired core.deleteDir, core.milestone, core.cleanWs and core.archiveArtifacts, so the 6/6/6 counter is superseded by `no legacy resurrection — irreversible G5 state holds post-S2-B10-G5` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:Lpr011SecretRedactionTranscriptUatTest.kt:Lpr011SecretRedactionTranscriptUatTest$@Disabled("producer-internal: secrets cannot be reconstructed by an external harness without a fixture the producer must maintain. Reviewed 2026-10-17 (Block D TODO #2): see docs/v2/07-uat/disabled_uat_review_2026-10-17.md.")</ID>
+    <ID>MaxLineLength:Lpr011r2SecretRedactionAtRestUatTest.kt:Lpr011r2SecretRedactionAtRestUatTest$@Disabled("producer-internal: secrets cannot be reconstructed by an external harness without a fixture the producer must maintain. Reviewed 2026-10-17 (Block D TODO #2): see docs/v2/07-uat/disabled_uat_review_2026-10-17.md.")</ID>
     <ID>MaxLineLength:Main.kt:val credentialMaterialization: dev.rubentxu.pipeline.v2.credentials.spi.CredentialMaterialization? = secretStore?.let { LocalFileMaterialization(CredentialMaterializer(it)) }</ID>
-    <ID>MaxLineLength:MainEventsCli.kt:MainEventsCli$System.err.println("Usage: pipeline events --db &lt;path&gt; &lt;runId&gt; [--kind K] [--subject v1:run:ID|v1:stage:ID:N|...] [--limit N] [--after-cursor TOKEN]")</ID>
     <ID>MaxLineLength:MainEventsVerifyCli.kt:MainEventsVerifyCli$System.err.println("Usage: pipeline events verify --db &lt;path&gt; --run &lt;runId&gt; --contract &lt;events.yaml&gt; [--from-sequence N] [--after-last-run-started]")</ID>
     <ID>MaxLineLength:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$val reason = "reportDir '${input.reportDir}' (resolved to $reportDir) cannot be resolved to a real path; refusing to publish (possible broken symlink): ${e.message}"</ID>
     <ID>MaxLineLength:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$val reason = "reportDir '${input.reportDir}' resolves to '$reportDirReal' which escapes the workspace (real path '$workspaceRootReal'); refusing to follow symlinks"</ID>
-    <ID>MaxLineLength:ScmGitWorkspaceIsolationTest.kt:ScmGitWorkspaceIsolationTest$"Typed workspace must be on disk for the canonical branch; the developer-escape hatch is only for direct unit-test construction outside the canonical bridge"</ID>
-    <ID>MaxLineLength:ShExecution.kt:ShExecution$return executeNonDurableInvocation(command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot, secretPatternRegistry)</ID>
+    <ID>MaxLineLength:RuntimeBuildIdentityTest.kt:BuildProvenanceIsReportedByTheInstalledBinaryTest$when</ID>
     <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Children</ID>
     <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Codec$fun decode</ID>
     <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Codec$fun encode</ID>
@@ -138,21 +135,66 @@
     <ID>MaxLineLength:StashOperationsAdapter.kt:StashOperationsAdapter$val reason = "stash '${input.name}' matched path '$file' (real '$fileReal') which escapes the workspace (real '$workspaceRootReal'); refusing to follow symlinks"</ID>
     <ID>MaxLineLength:StashOperationsAdapter.kt:StashOperationsAdapter$val reason = "unstash '${input.name}' 'into' path '$target' (real '$targetReal') escapes workspace (real '$workspaceRootReal'); refusing to follow symlinks"</ID>
     <ID>MaxLineLength:TrapFormNegativeFixtureTest.kt:TrapFormNegativeFixtureTest$"trap form fixture must compile cleanly (Kotlin accepts it); ERROR diagnostics would mean the trap is now a Kotlin error. diagnostics=${compileFinished.diagnostics}"</ID>
+    <ID>MaxLineLength:UatCompat001CorpusSmokeRunTest.kt:UatCompat001CorpusSmokeRunTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
     <ID>MaxLineLength:UatCompat001CorpusSmokeRunTest.kt:UatCompat001CorpusSmokeRunTest$assertEquals(31, fixtures.size, "Corpus must have 31 valid fixtures (WU-LPR-076 keeps the count in lock-step with CompatibilityCorpusTest; WU-LPR-089 added 31-stash-unstash; WU-LPR-090 added 32-publish-html)")</ID>
+    <ID>MaxLineLength:UatDsl001JenkinsFamiliarityTest.kt:UatDsl001JenkinsFamiliarityTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
+    <ID>MaxLineLength:UatDsl003ParallelTest.kt:UatDsl003ParallelTest$@Disabled("producer-internal: parallel body execution semantics are the producer’s authoritative implementation; the harness can run the binary with concurrency flags and observe, but cannot author a correctness test. Reviewed 2026-10-17 (Block D TODO #2): see docs/v2/07-uat/disabled_uat_review_2026-10-17.md.")</ID>
+    <ID>MaxLineLength:UatDsl005TimeoutGrammarTest.kt:UatDsl005TimeoutGrammarTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
+    <ID>MaxLineLength:UatDurableDefaultReuseCliTest.kt:UatDurableDefaultReuseCliTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
+    <ID>MaxLineLength:UatEvt002MultiStepReplayTest.kt:UatEvt002MultiStepReplayTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
+    <ID>MaxLineLength:UatInputBlockDurableTest.kt:UatInputBlockDurableTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
     <ID>MaxLineLength:UatLocal002ResumeAfterKillTest.kt:UatLocal002ResumeAfterKillTest$val scriptContent = "pipeline {\n stages {\n stage(\"TestStage\") {\n sh(\"echo started &gt;&gt; '$markerPathStr'; sleep 8; echo done &gt;&gt; '$markerPathStr'; exit 0\")\n }\n }\n}\n"</ID>
+    <ID>MaxLineLength:UatLocal005BannedImportsTest.kt:UatLocal005BannedImportsTest$@Disabled("superseded by BannedImportsFitnessTest, which holds the same rule with wider coverage; kept disabled to avoid a second, weaker copy of a guarantee this repository owns (RESPONSIBILITY_MIGRATION_ROADMAP: KEEP)")</ID>
+    <ID>MaxLineLength:UatLocal005CheckoutGitTest.kt:UatLocal005CheckoutGitTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
+    <ID>MaxLineLength:UatLocal005ClassTimeoutAndTeardownTest.kt:UatLocal005ClassTimeoutAndTeardownTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
     <ID>MaxLineLength:UatLocal005CorpusUntouchedTest.kt:UatLocal005CorpusUntouchedTest$"Corpus must have exactly 31 valid pipeline fixtures (WU-LPR-077 keeps the count in lock-step with CompatibilityCorpusTest; S2 added 25..29; ML-R7 byte-identity frozen in CP-001; WU-LPR-089 added 31-stash-unstash; WU-LPR-090 added 32-publish-html). Found: "</ID>
     <ID>MaxLineLength:UatLocal005CorpusUntouchedTest.kt:UatLocal005CorpusUntouchedTest$// Verify the valid new fixtures exist (ML-R7: 3, ML-R9: 3, ML-R10: 2; v0.33.1 P2 corpus-closure: 4 new E2E; S2-A5/G8: 1 isunix; S2-A6/G3R: 1 pwd-tmp; WU-G5R6: 1 wait-until; WU-LPR-089: 1 stash-unstash; WU-LPR-090: 1 publish-html)</ID>
-    <ID>MaxLineLength:UatLocal005CorpusUntouchedTest.kt:UatLocal005CorpusUntouchedTest$fun</ID>
+    <ID>MaxLineLength:UatLocal005CorpusUntouchedTest.kt:UatLocal005CorpusUntouchedTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
+    <ID>MaxLineLength:UatLocal005EnvSpecialCharsTest.kt:UatLocal005EnvSpecialCharsTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
+    <ID>MaxLineLength:UatLocal005GitAuthCanaryRoundGateTest.kt:UatLocal005GitAuthCanaryRoundGateTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
+    <ID>MaxLineLength:UatLocal005RegressionGateTest.kt:UatLocal005RegressionGateTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
+    <ID>MaxLineLength:UatLocal005RequiresGitOnPathTest.kt:UatLocal005RequiresGitOnPathTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
+    <ID>MaxLineLength:UatLocal007SandboxProfileTest.kt:UatLocal007SandboxProfileTest$@Disabled("producer-internal: sandbox profile selection is not replayable by an external harness. Reviewed 2026-10-17 (Block D TODO #2): see docs/v2/07-uat/disabled_uat_review_2026-10-17.md.")</ID>
+    <ID>MaxLineLength:UatLocal008SshPrivateKeyRoundGateTest.kt:UatLocal008SshPrivateKeyRoundGateTest$@Disabled("producer-internal: SSH private key material cannot be reconstructed by an external harness without a fixture the producer must maintain. Reviewed 2026-10-17 (Block D TODO #2): see docs/v2/07-uat/disabled_uat_review_2026-10-17.md.")</ID>
+    <ID>MaxLineLength:UatLocal009TopStepsTest.kt:UatLocal009TopStepsTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
+    <ID>MaxLineLength:UatLocal010SmokeE2ESandboxOfflineTest.kt:UatLocal010SmokeE2ESandboxOfflineTest$@Disabled("producer-internal: sandbox profile selection is not replayable by an external harness. Reviewed 2026-10-17 (Block D TODO #2): see docs/v2/07-uat/disabled_uat_review_2026-10-17.md.")</ID>
+    <ID>MaxLineLength:UatLocal010SmokeE2ESandboxTest.kt:UatLocal010SmokeE2ESandboxTest$@Disabled("producer-internal: sandbox profile selection is not replayable by an external harness. Reviewed 2026-10-17 (Block D TODO #2): see docs/v2/07-uat/disabled_uat_review_2026-10-17.md.")</ID>
     <ID>MaxLineLength:UatLocal011WorkflowControlTest.kt:UatLocal011WorkflowControlTest$@org.junit.jupiter.api.Disabled("INC-024: load step produces child steps; coordinator does not yet inject loaded pipeline into execution flow. Pre-existing on c88d5c88 (v0.32.2). See comment block above.")</ID>
+    <ID>MaxLineLength:UatLocal012ErrorHandlingTest.kt:UatLocal012ErrorHandlingTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
+    <ID>MaxLineLength:UatLocal013MilestoneTimingTest.kt:UatLocal013MilestoneTimingTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
+    <ID>MaxLineLength:UatLockBlockDurableTest.kt:UatLockBlockDurableTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
+    <ID>MaxLineLength:UatParallelBlockDurableTest.kt:UatParallelBlockDurableTest$@Disabled("producer-internal: parallel body execution semantics are the producer’s authoritative implementation; the harness can run the binary with concurrency flags and observe, but cannot author a correctness test. Reviewed 2026-10-17 (Block D TODO #2): see docs/v2/07-uat/disabled_uat_review_2026-10-17.md.")</ID>
+    <ID>MaxLineLength:UatRetryBlockDurableTest.kt:UatRetryBlockDurableTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
+    <ID>MaxLineLength:UatRunConcurrencyCharacterisationTest.kt:UatRunConcurrencyCharacterisationTest$@Disabled("producer-internal: parallel body execution semantics are the producer’s authoritative implementation; the harness can run the binary with concurrency flags and observe, but cannot author a correctness test. Reviewed 2026-10-17 (Block D TODO #2): see docs/v2/07-uat/disabled_uat_review_2026-10-17.md.")</ID>
+    <ID>MaxLineLength:UatS2AWhenGateInstalledBinaryTest.kt:UatS2AWhenGateInstalledBinaryTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
+    <ID>MaxLineLength:UatS2R0RunOwnershipCliTest.kt:UatS2R0RunOwnershipCliTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
+    <ID>MaxLineLength:UatStep001ShFailureStepFinishedCountTest.kt:UatStep001ShFailureStepFinishedCountTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
+    <ID>MaxLineLength:UatTimeoutBlockDurableTest.kt:UatTimeoutBlockDurableTest$@Disabled("migrated-pending UAT; responsibility of pipelinek-release-harness, AGENTS.md §1. The UAT cannot be retired until the harness produces the 5-axis verdict (ADR-PK-QV-003) with an equivalent contract test. Until then, the UAT is excluded from the pipeline-kotlin test run; the harness owns it.")</ID>
     <ID>MaxLineLength:WURp020MavenRealUatTest.kt:WURp020MavenRealUatTest$Files.writeString(badPom, "&lt;?xml version=\"1.0\"?&gt;&lt;project xmlns=\"http://maven.apache.org/POM/4.0.0\"&gt;&lt;modelVersion&gt;4.0.0&lt;/modelVersion&gt;&lt;groupId&gt;x&lt;/groupId&gt;&lt;artifactId&gt;y&lt;/artifactId&gt;&lt;version&gt;1&lt;/version&gt;&lt;packaging&gt;not-a-real-packaging&lt;/packaging&gt;&lt;/project&gt;")</ID>
-        <ID>TooManyFunctions:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler</ID>
-            <ID>UnusedParameter:CanonicalNodeDispatcher.kt:CanonicalNodeDispatcher$context: CanonicalRuntimeContext</ID>
+    <ID>NewLineAtEndOfFile:CliEnvironmentIsDocumentedFitnessTest.kt:dev.rubentxu.pipeline.v2.application.CliEnvironmentIsDocumentedFitnessTest.kt</ID>
+    <ID>NewLineAtEndOfFile:CompilationDiagnosticsConsoleContractTest.kt:dev.rubentxu.pipeline.v2.application.observation.CompilationDiagnosticsConsoleContractTest.kt</ID>
+    <ID>NewLineAtEndOfFile:ConsoleStepFinishedVerdictTest.kt:dev.rubentxu.pipeline.v2.application.observation.ConsoleStepFinishedVerdictTest.kt</ID>
+    <ID>NewLineAtEndOfFile:CredentialsStorePathIsNotRecomputedFitnessTest.kt:dev.rubentxu.pipeline.v2.application.CredentialsStorePathIsNotRecomputedFitnessTest.kt</ID>
+    <ID>NewLineAtEndOfFile:EventStoreAdmissionCliTest.kt:dev.rubentxu.pipeline.v2.application.EventStoreAdmissionCliTest.kt</ID>
+    <ID>NewLineAtEndOfFile:EventStoreRefusalRendering.kt:dev.rubentxu.pipeline.v2.application.EventStoreRefusalRendering.kt</ID>
+    <ID>NewLineAtEndOfFile:EventStoreSingleAdmissionAuthorityFitnessTest.kt:dev.rubentxu.pipeline.v2.application.EventStoreSingleAdmissionAuthorityFitnessTest.kt</ID>
+    <ID>NewLineAtEndOfFile:InstalledContractTagMembershipFitnessTest.kt:dev.rubentxu.pipeline.v2.application.support.InstalledContractTagMembershipFitnessTest.kt</ID>
+    <ID>NewLineAtEndOfFile:LiveFollowHandleIsBoundedFitnessTest.kt:dev.rubentxu.pipeline.v2.application.LiveFollowHandleIsBoundedFitnessTest.kt</ID>
+    <ID>NewLineAtEndOfFile:MainInspectCliConsoleTailRefusalTest.kt:dev.rubentxu.pipeline.v2.application.MainInspectCliConsoleTailRefusalTest.kt</ID>
+    <ID>NewLineAtEndOfFile:ProbeExecutionProtocolFitnessTest.kt:dev.rubentxu.pipeline.v2.application.harness.ProbeExecutionProtocolFitnessTest.kt</ID>
+    <ID>NewLineAtEndOfFile:TaskTerminalDecisionFitnessTest.kt:dev.rubentxu.pipeline.v2.application.durable.TaskTerminalDecisionFitnessTest.kt</ID>
+    <ID>TooManyFunctions:ConsoleFamilyLines.kt:ConsoleFamilyLines</ID>
+    <ID>TooManyFunctions:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler</ID>
+    <ID>TooManyFunctions:MainInspectCli.kt:MainInspectCli</ID>
+    <ID>UnusedParameter:CanonicalNodeDispatcher.kt:CanonicalNodeDispatcher$context: CanonicalRuntimeContext</ID>
     <ID>UnusedParameter:CoreArtifactQueryStepContractTest.kt:CoreArtifactQueryStepContractTest$missing: StepCapability</ID>
     <ID>UnusedParameter:CtxPConcurrencyOwnershipTest.kt:CtxPConcurrencyOwnershipTest$branchIndex: Int</ID>
     <ID>UnusedParameter:DurableInvocationResolver.kt:DurableInvocationResolver$effects: Set&lt;Effect&gt;</ID>
     <ID>UnusedParameter:DurableInvocationResolver.kt:DurableInvocationResolver$replayPolicy: ReplayPolicy</ID>
     <ID>UnusedParameter:FamilyRouter.kt:FamilyRouter$dispatcher: CanonicalNodeDispatcher</ID>
     <ID>UnusedParameter:FileBasedRetryControlJournal.kt:FileBasedRetryControlJournal$currentFingerprint: Fingerprint</ID>
+    <ID>UnusedParameter:InProcessProductProbeExecutorTest.kt:InProcessProductProbeExecutorTest$cycleDir: Path</ID>
+    <ID>UnusedParameter:PluginAdmissionGate.kt:PluginAdmissionGate$origin: ArtifactOrigin</ID>
     <ID>UnusedParameter:RetryAcceptanceMatrixTest.kt:RetryAcceptanceMatrixTest$controlOpId: String</ID>
     <ID>UnusedParameter:ScriptedRuntime.kt:ScriptedScope$returnStatus: ReturnStatus</ID>
     <ID>UnusedParameter:ScriptedRuntime.kt:ScriptedScope$returnStdout: ReturnStdout</ID>
@@ -160,10 +202,12 @@
     <ID>UnusedParameter:WULpr302RetryEngineTest.kt:WULpr302RetryEngineTest$bodyRef: dev.rubentxu.pipeline.v2.domain.step.BodyRef</ID>
     <ID>UnusedParameter:WULpr302WaitUntilEngineTest.kt:WULpr302WaitUntilEngineTest$bodyRef: BodyRef</ID>
     <ID>UnusedParameter:WorkspaceResolver.kt:WorkspaceResolver$path: Path</ID>
+    <ID>VariableNaming:ConsoleStepFinishedVerdictTest.kt:ConsoleStepFinishedVerdictTest$/** Every word a reader would read as a verdict. Closed set: this is the whole vocabulary. */ private val VERDICTS = listOf("ok", "success", "succeeded", "failed", "failure", "error")</ID>
     <ID>VariableNaming:EchoDurableSpineTest.kt:EchoDurableSpineTest$private val ECHO_KEY = PluginStepId("core.echo")</ID>
     <ID>VariableNaming:FileBasedWaitUntilControlJournalTest.kt:FileBasedWaitUntilControlJournalTest$private val CONTROL_OP_ID = "run-x/stage-0/step-2/waitUntil/0/0"</ID>
     <ID>VariableNaming:Lfc2PolicyReadinessFitnessTest.kt:Lfc2PolicyReadinessFitnessTest$private val SCOPE_FS = StepCapability("filesystem.read")</ID>
     <ID>VariableNaming:Lfc2PolicyReadinessFitnessTest.kt:Lfc2PolicyReadinessFitnessTest$val reg_step = StepRegistration(definition = def, provider = provider)</ID>
+    <ID>VariableNaming:ObsC23NoChannelFusionFitnessTest.kt:ObsC23NoChannelFusionFitnessTest$private val PERMITTED = listOf( PermittedFusion( marker = "\"mkfifo\"", why = "creates the control directory's rendezvous FIFOs; its output is mkfifo's own " + "diagnostic and never reaches the transcript", ), PermittedFusion( marker = "AGENT_MAIN_CLASS", why = "the ingest agent's own log; agent stdout and stderr are fused on purpose so a " + "pump failure's stack trace is not lost to a half-written stream", ), )</ID>
     <ID>VariableNaming:RegistryDurableInputEnvelopeTest.kt:RegistryDurableInputEnvelopeTest$private val PING_KEY = PluginStepId("plugin.ping")</ID>
     <ID>VariableNaming:RegistryDurableSpineTest.kt:RegistryDurableSpineTest$private val IDENTITY_KEY = PluginStepId("test.identity")</ID>
     <ID>VariableNaming:RegistryDurableSpineTest.kt:RegistryDurableSpineTest$private val NEEDS_KEY = PluginStepId("test.needs-unavailable")</ID>

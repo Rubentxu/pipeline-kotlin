@@ -2,6 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>CyclomaticComplexMethod:SequenceAssigner.kt:SequenceAssigner$fun withSequence: DomainEvent</ID>
+    <ID>MaxLineLength:EventFollower.kt:EventFollowHandle$*</ID>
   </CurrentIssues>
 </SmellBaseline>

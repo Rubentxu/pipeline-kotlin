@@ -1,0 +1,8 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>NewLineAtEndOfFile:JournalFingerprintFormatTest.kt:dev.rubentxu.pipeline.v2.runtime.inspect.JournalFingerprintFormatTest.kt</ID>
+    <ID>NewLineAtEndOfFile:OperationOutputStreamsDistinctStreamsTest.kt:dev.rubentxu.pipeline.v2.runtime.inspect.OperationOutputStreamsDistinctStreamsTest.kt</ID>
+  </CurrentIssues>
+</SmellBaseline>

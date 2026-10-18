@@ -3,6 +3,5 @@
   <ManuallySuppressedIssues/>
   <CurrentIssues>
     <ID>CyclomaticComplexMethod:BlockStepFlattener.kt:BlockStepFlattener$private fun flattenImpl</ID>
-    <ID>CyclomaticComplexMethod:LspMetadata.kt:LspMetadata.Companion$private fun parseLspMetadata: LspMetadata</ID>
   </CurrentIssues>
 </SmellBaseline>

@@ -446,30 +446,75 @@ class SegmentOutputStore(
     // -------------------------------------------------------------- retention
 
     /**
-     * The directory-name prefix that owns [runId]'s streams.
+     * The directories this run owns.
      *
-     * `OutputPlaneProvider.streamId` builds every id as `"$runId/$opId/transcript"` and
-     * [SegmentOutputStore.safe] maps `/` to `_`, so a run's streams share an exact
-     * `safe(runId) + "_"` prefix. That is why no per-run manifest has to be kept in step with the
-     * directories it describes: the directory name already carries the owner, and a manifest would
-     * be a second place to be wrong about which streams exist.
+     * ## The defect this predicate had
      *
-     * The prefix is a *filter*, never a parse. Nothing here turns a directory name back into an
-     * [OutputStreamId], because that transform is not invertible — `safe` folds `/` onto `_`, and
-     * an id that legitimately contains `_` could not be recovered. Undoing the collision would mean
-     * changing the on-disk layout, which is a durable format change and not this block's to make.
-     * A caller that needs stream ids builds them: it already knows the run and the operations.
+     * Selection used to be `fileName.startsWith(safe(runId) + "_")`, justified here as "the prefix is
+     * a *filter*, never a parse". The reasoning was about not *inverting* the name, and it was true
+     * — but it answered the wrong question. A filter is still an IDENTITY when it is the only thing
+     * authorising a `deleteRecursively`, and the shorter safe name is a prefix of the longer one:
+     *
+     * ```text
+     *   runId "run"    -> prefix "run_"
+     *   runId "run_x"  -> directory "run_x_step1_stdout"   which STARTS WITH "run_"
+     *   prune("run")   -> deletes run_x's stream. Another run's bytes, gone.
+     * ```
+     *
+     * That is a PREFIX COLLISION, not a fold: making `safe` injective would NOT have closed it, so
+     * no durable-format decision was ever needed — only the SELECTION predicate had to change. The
+     * on-disk layout is untouched.
+     *
+     * ## Why selection alone is not "declared streams only"
+     *
+     * The obvious repair — prune exactly what [SegmentFrameIndex.streamsOfRun] lists — is wrong too,
+     * and it was wrong in a way that measured as **a retention leak rather than a lost guarantee**.
+     * [SegmentFrameIndex.declareStream] refuses an id whose last segment is not a channel token, by
+     * design: streams written before the channels were separated carry no channel and must not be
+     * given a guessed one. But they are still written:
+     * `ShExecution.ingestTranscriptIntoOutputPlane` opens `OutputPlaneProvider.streamId(runId, opId)`
+     * — the `.../transcript` shape — on every `sh` step. Selecting by declaration alone made that
+     * production transcript permanently unprunable, which is the failure a retention port exists to
+     * prevent, and it fails silently: nothing is deleted and no caller is told.
+     *
+     * So ownership has three answers, not two:
+     *
+     * ```text
+     *   directory declared to THIS run          -> ours, unconditionally
+     *   directory declared to ANOTHER run       -> NOT ours, even if our prefix matches it
+     *   directory nobody declared (legacy shape) -> ours if our prefix matches; nobody can prove
+     *                                               otherwise, and the bytes are still this run's
+     * ```
+     *
+     * The middle line is what closes the collision: `prune("run")` still scans by prefix, but a
+     * directory `run_x` has declared is excluded before the scan can claim it.
+     *
+     * ## The residual, stated rather than papered over
+     *
+     * Two runs whose safe names collide by prefix and whose streams are BOTH undeclared are
+     * indistinguishable on disk — there is no byte inside the directory carrying the run id
+     * ([Layout] holds only segment, commit, reservation, seal and ownership-lock files, and the
+     * ownership lock is never read as content). Pruning the shorter id deletes the longer one's
+     * legacy transcript. That remainder is irreducible without changing the on-disk layout, and it
+     * is narrower than the original defect by exactly the set of streams any run declared.
      */
-    private fun runPrefix(runId: String): String = Companion.safe(runId) + "_"
-
     private fun runStreamDirs(runId: String): List<Path> {
         val streamRoot = root.resolve(STREAMS_DIR)
         if (!Files.isDirectory(streamRoot)) return emptyList()
+
+        val declaredTo: Map<String, String> = frameIndex().declaredDirOwners()
         val prefix = runPrefix(runId)
+
         return Files.newDirectoryStream(streamRoot).use { entries ->
             entries.asSequence()
                 .filter { Files.isDirectory(it) }
-                .filter { it.fileName.toString().startsWith(prefix) }
+                .filter { dir ->
+                    when (val owner = declaredTo[dir.fileName.toString()]) {
+                        runId -> true
+                        null -> dir.fileName.toString().startsWith(prefix)
+                        else -> false
+                    }
+                }
                 .toList()
         }
     }
@@ -681,6 +726,17 @@ class SegmentOutputStore(
      * in one place so the two sites cannot drift apart again, which is the defect B1c fixes.
      */
     private fun streamKey(stream: OutputStreamId): String = safe(stream.value)
+
+    /**
+     * The prefix every directory of this run's streams starts with: the folded run id and the
+     * separator that follows it.
+     *
+     * Deliberately NOT sufficient to identify a stream, and used only where the declaration cannot
+     * answer — see [runStreamDirs], which excludes any directory another run has declared before
+     * this prefix gets to claim it. The trailing separator is what makes it a prefix of *this run's*
+     * names rather than of any run whose id merely starts with the same characters.
+     */
+    private fun runPrefix(runId: String): String = safe(runId) + "_"
 
     /**
      * Drop any uncommitted bytes and return how many were dropped.

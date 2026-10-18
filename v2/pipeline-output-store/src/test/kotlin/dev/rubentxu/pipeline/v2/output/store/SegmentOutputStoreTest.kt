@@ -3,12 +3,14 @@ package dev.rubentxu.pipeline.v2.output.store
 
 import dev.rubentxu.pipeline.v2.output.OutputAdoption
 import dev.rubentxu.pipeline.v2.output.OutputAdoptionObligation
+import dev.rubentxu.pipeline.v2.output.OutputChannel
 import dev.rubentxu.pipeline.v2.output.OutputCrashInvariant
 import dev.rubentxu.pipeline.v2.output.OutputCursor
 import dev.rubentxu.pipeline.v2.output.OutputPage
 import dev.rubentxu.pipeline.v2.output.OutputPruneIntent
 import dev.rubentxu.pipeline.v2.output.OutputReadResult
 import dev.rubentxu.pipeline.v2.output.OutputRefusal
+import dev.rubentxu.pipeline.v2.output.OutputStreamAddress
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
@@ -676,61 +678,103 @@ class SegmentOutputStoreTest {
 
     // -------------------------------------------------------------- OUT-01
     //
-    // OUT-01 and OUT-02 below are @Disabled — see WIP4_OUT01_OUT02_REPRODUCED.md. The fix
-    // requires a durability-format migration policy that this B1 cycle has not decided; the
-    // tests are kept as witnesses, not removed, so the reproduction is not lost.
+    // OUT-01 and OUT-02 were both @Disabled under one excuse: "the fix requires a
+    // durability-format migration policy that this B1 cycle has not decided". Measured on
+    // 2026-10-18, that is TRUE of OUT-02 and FALSE of OUT-01, and the difference is the whole point.
+    //
+    //   OUT-01  prefix COLLISION:  `run` yields the prefix `run_`, and `run_x`'s directory
+    //           starts with `run_`. Nothing is folded and `safeStreamName` could be injective
+    //           and the defect would still delete a live run's bytes.
+    //   OUT-02  non-INJECTIVITY:  `run/abc` and `run_abc` both fold to `run_abc`. Two genuinely
+    //           distinct runIds are indistinguishable IN THE NAME, and there is no durable byte
+    //           anywhere that carries the runId — `Layout` holds only cur.seg / cur.cmt /
+    //           cur.res / segments / the seal marker / the ownership file. That one does need
+    //           a format decision, and it stays @Disabled below.
+    //
+    // So OUT-01 is closed with the authority the repository ALREADY had and was not using:
+    // `SegmentFrameIndex.streamsOfRun` returns the complete stream ids of a run, read back from
+    // `frames/<run>.streams`, written by `declareStream` before the first reservation.
 
     /**
-     * OUT-01: pruning by `safe(runId) + "_"` prefix can delete streams belonging to a different
-     * run whose safe-form starts with that prefix. Witnessed here with runId `"run"` (whose
-     * prefix is `"run_"`) and a separate runId `"run_x"` whose stream directory `run_x_stdout`
-     * starts with `"run_"`. Pruning the former must NOT delete the latter.
+     * OUT-01: pruning by the `safe(runId) + "_"` prefix deletes streams belonging to a DIFFERENT
+     * run whose safe form merely STARTS WITH that prefix.
      *
-     * Status: known to fail until the identity is made unequivocal (the durable format change
-     * is tracked separately and not this block's to make — for now, the test is a guard
-     * that fails today and must pass after the fix lands).
+     * The two halves are one row on purpose, because the naive repair inverts the defect:
+     *
+     * ```text
+     *   fault   prune(run)   deletes run_x     -> data loss in ANOTHER run
+     *   naive   prune(run)   deletes nothing   -> retention silently never fires
+     * ```
+     *
+     * Only asserting "run_x survived" would accept the second as a pass. The positive control at
+     * the end therefore requires that a THIRD stream, which shares nothing with the prefix, IS
+     * still removed — so a prune that degenerated into a no-op fails here.
+     *
+     * The write order mirrors production (`RedactingOutputIngress.handle`: `declareStream` before
+     * the first reservation). Writing straight to the store would model a path no production
+     * caller takes, and would leave the run's streams undeclared — i.e. unattributable.
      */
-    @org.junit.jupiter.api.Disabled("reproduced; root cause: pruning by `safe(runId) + '_'` prefix deletes streams of longer runIds sharing the prefix (safeStreamName is not injective); tracked in UAT_GATE_CLASSIFICATION.md as a NON-BLOCKING pre-existing row under PRODUCT-GATE BLOCKED_EXTERNAL. Migrates to harness once issue pipelinek-release-harness#<n> opens.")
     @Test
     fun `OUT-01 prune of a short runId must not delete streams of a longer runId sharing the safe prefix`(@TempDir root: Path) {
         val store = SegmentOutputStore(root)
         store.recover()
 
+        fun publish(runId: String, payload: String): OutputStreamId {
+            val stream = OutputStreamId("$runId/step1/stdout")
+            store.frameIndex().declareStream(stream, OutputChannel.STDOUT)
+            store.open(stream).reserve(16).apply { write(bytes(payload)) }.commit()
+            return stream
+        }
+
         // Run A: short runId whose safe form is "run" (prefix "run_").
         val runA = "run"
-        val streamA = OutputStreamId("$runA/stdout")
-        store.open(streamA).reserve(8).apply { write(bytes("A-stdout")) }.commit()
+        val streamA = publish(runA, "A-stdout")
 
         // Run B: longer runId whose safe form is "run_x" — its stream directory starts with "run_".
         val runB = "run_x"
-        val streamB = OutputStreamId("$runB/stdout")
-        store.open(streamB).reserve(8).apply { write(bytes("B-stdout")) }.commit()
+        val streamB = publish(runB, "B-stdout")
 
-        // Sanity: both stream directories exist and share the "run_" prefix.
+        // Run C: shares no prefix with run A, so prune(runA) MUST still reach it.
+        val runC = "other"
+        val streamC = publish(runC, "C-stdout")
+
+        // Sanity: A and B share the "run_" prefix; C does not.
         val streamsRoot = root.resolve("streams")
         val dirA = streamsRoot.resolve(safeStreamName(streamA.value))
         val dirB = streamsRoot.resolve(safeStreamName(streamB.value))
+        val dirC = streamsRoot.resolve(safeStreamName(streamC.value))
         assertTrue(Files.isDirectory(dirA), "run A's stream dir must exist pre-prune")
         assertTrue(Files.isDirectory(dirB), "run B's stream dir must exist pre-prune")
-        assertTrue(
-            dirA.fileName.toString().startsWith("run_"),
-            "run A's safe stream name must start with the 'run_' prefix (sanity)",
-        )
+        assertTrue(Files.isDirectory(dirC), "run C's stream dir must exist pre-prune")
         assertTrue(
             dirB.fileName.toString().startsWith("run_"),
             "run B's safe stream name ALSO starts with 'run_' — this is the OUT-01 trap",
+        )
+        assertTrue(
+            !dirC.fileName.toString().startsWith("run_"),
+            "run C must NOT match run A's prefix, or the positive control below proves nothing",
         )
 
         // Pruning run A must NOT delete run B's stream.
         val report = store.prune(OutputPruneIntent.RunReachedTerminalState(runId = runA))
 
-        assertEquals(1, report.streamsRemoved, "only run A's stream should be removed")
+        assertEquals(
+            1,
+            report.streamsRemoved,
+            "exactly run A's own stream is removed. 0 means prune stopped deleting at all, which " +
+                "trades data loss for silent retention failure; 2 means it reached another run.",
+        )
+        assertFalse(
+            Files.isDirectory(dirA),
+            "run A's own stream must be GONE — this is the retention guarantee, not just a " +
+                "by-product of the OUT-01 repair",
+        )
 
         // The defining OUT-01 assertion: run B's stream directory survives.
         assertTrue(
             Files.isDirectory(dirB),
-            "OUT-01: run B's stream ('run_x/stdout') must NOT be deleted by pruning run A; " +
-                "if this is missing, the prefix-based filter selected B's directory by accident",
+            "OUT-01: run B's stream must NOT be deleted by pruning run A; if this is missing, the " +
+                "prefix-based filter selected B's directory by accident",
         )
         // And run B's bytes are still readable.
         val readB = store.read(streamB, OutputCursor.start(streamB), 1024)
@@ -738,6 +782,57 @@ class SegmentOutputStoreTest {
         assertEquals(
             "B-stdout",
             String((readB as OutputReadResult.Page).page.bytes, StandardCharsets.UTF_8),
+        )
+    }
+
+    /**
+     * The other half of the repair, and the half that fails SILENTLY.
+     *
+     * `declareStream` refuses any id whose last segment is not a channel token, by design: a stream
+     * written before the channels were separated carries no channel and must not be given a guessed
+     * one. That refusal is correct, but it means such a stream is in NO declared set — and
+     * `ShExecution.ingestTranscriptIntoOutputPlane` writes exactly that shape
+     * (`OutputPlaneProvider.streamId(runId, opId)` -> `.../transcript`) on every `sh` step.
+     *
+     * So "prune exactly what the index declares" — the obvious reading of the OUT-01 fix — leaves a
+     * production transcript **permanently unprunable**. It fails the quiet way a retention port must
+     * never fail: nothing is deleted, no caller is told, and the bytes accumulate. Measured on
+     * 2026-10-18 as 10 red rows across 5 classes before the predicate was widened to reach undeclared
+     * directories by prefix once they are excluded by any run's declaration.
+     *
+     * This row is the permanent guard for that. It writes the production shape, never declares it,
+     * and requires the bytes to be gone after prune.
+     */
+    @Test
+    fun `an undeclared pre-channel stream is still pruned - declaring is not the only ownership evidence`(@TempDir root: Path) {
+        val store = SegmentOutputStore(root)
+        store.recover()
+
+        // Exactly what `ShExecution.ingestTranscriptIntoOutputPlane` writes: the trailing segment is
+        // `transcript`, which is NOT a channel token, so `declareStream` would refuse it.
+        val runId = "run-legacy"
+        val stream = OutputStreamId("$runId/run-legacy-s0-0/transcript")
+        assertNull(
+            OutputStreamAddress.parse(stream),
+            "fixture invariant: this shape must NOT be addressable, or the row proves nothing",
+        )
+
+        store.open(stream).reserve(16).apply { write(bytes("legacy transcript")) }.commit()
+        val dir = root.resolve("streams").resolve(safeStreamName(stream.value))
+        assertTrue(Files.isDirectory(dir), "the undeclared stream's directory must exist pre-prune")
+
+        val report = store.prune(OutputPruneIntent.RunReachedTerminalState(runId = runId))
+
+        assertEquals(
+            1,
+            report.streamsRemoved,
+            "a production transcript that was never declared is still this run's bytes. If prune " +
+                "removes nothing here, retention has stopped firing for every `sh` step in the " +
+                "product and no caller is told.",
+        )
+        assertFalse(
+            Files.isDirectory(dir),
+            "the undeclared stream's directory must be gone — removal counted is not removal done",
         )
     }
 

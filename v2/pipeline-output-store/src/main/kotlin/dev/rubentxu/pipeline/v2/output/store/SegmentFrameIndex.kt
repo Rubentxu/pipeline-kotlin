@@ -191,6 +191,32 @@ class SegmentFrameIndex(
     }
 
     /**
+     * Which run owns each declared stream, keyed by the **directory name** that holds its bytes.
+     *
+     * The key is the folded name rather than the stream id because the only question this answers is
+     * "when [SegmentOutputStore] is standing in a directory, whose bytes are these" — and prune
+     * reaches a stream by its directory, never by its id (`safe` folds `/` onto `_`, so the id is
+     * not recoverable from the name). A consumer that wants ids asks [streamsOfRun].
+     *
+     * A stream absent from this map is not "owned by no run": it is **undeclared**, which is a
+     * different fact. Streams written before the channels were separated carry no channel, so
+     * [declareStream] refuses them by design and they never appear here, yet they hold real bytes.
+     * The distinction is what lets prune tell "this directory is another run's" (an answer, from
+     * this map) apart from "nothing proves who wrote this" (no answer), which are opposite
+     * decisions.
+     */
+    fun declaredDirOwners(): Map<String, String> = lock.withLock {
+        val owners = HashMap<String, String>()
+        for (runId in runsWithDeclaredStreams()) {
+            if (!declaredByRun.containsKey(runId)) loadDeclared(runId)
+            declaredByRun[runId].orEmpty().forEach { stream ->
+                owners.putIfAbsent(safeStreamName(stream.value), runId)
+            }
+        }
+        owners
+    }
+
+    /**
      * Closes every gap between a stream's committed extent and its last indexed frame.
      *
      * Idempotent: with no newly committed bytes there is nothing to close, so recovery can run on

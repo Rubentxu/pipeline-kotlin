@@ -178,7 +178,7 @@ class CanonicalDurableRunCoordinator(
      *
      * `null`, which is every production call site, leaves the observer on its own real-executor
      * default, so no production behaviour or timing changes. The dependency and its rationale live
-     * on the observer's constructor; the composition-root view is [CoordinatorCaps.reattachPoll].
+     * on the observer's constructor; this parameter is the coordinator's own view of it.
      */
     private val reattachPoll: ((Path, Long) -> Int?)? = null,
 
@@ -197,42 +197,6 @@ class CanonicalDurableRunCoordinator(
      */
     private val scriptedStageExecution: ScriptedStageExecution? = null,
 ) {
-    /**
-     * Compatibility constructor for the consolidated capability bundle.
-     *
-     * The legacy 22-parameter constructor remains intact for existing named and positional
-     * call sites. This overload is the migration seam for new composition roots: all values
-     * are forwarded without reinterpretation, so both construction paths enter the same
-     * coordinator body and preserve durable execution semantics.
-     */
-    constructor(caps: CoordinatorCaps) : this(
-        dispatcher = caps.dispatcher,
-        journal = caps.journal,
-        cursorStore = caps.cursorStore,
-        clock = caps.clock,
-        effectReplayPolicy = caps.effectReplayPolicy,
-        eventSink = caps.eventSink,
-        credentialScopePort = caps.credentialScopePort,
-        controlDirRoot = caps.controlDirRoot,
-        workspaceBase = caps.workspaceBase,
-        shOptions = caps.shOptions,
-        secretPatternRegistry = caps.secretPatternRegistry,
-        capabilityContributor = caps.capabilityContributor,
-        divergenceDetector = caps.divergenceDetector,
-        stepMetadataResolver = caps.stepMetadataResolver,
-        invocationExecutor = caps.invocationExecutor,
-        commonExecutionBoundary = caps.commonExecutionBoundary,
-        stepRegistry = caps.stepRegistry,
-        retryControlJournal = caps.retryControlJournal,
-        waitUntilControlJournal = caps.waitUntilControlJournal,
-        milestoneStateStore = caps.milestoneStateStore,
-        artifactIndex = caps.artifactIndex,
-        injectedBodyPolicyResolver = caps.injectedBodyPolicyResolver,
-        bodyInvokerAdapter = caps.bodyInvokerAdapter,
-        directiveRegistry = caps.directiveRegistry,
-        gateContext = caps.gateContext,
-        reattachPoll = caps.reattachPoll,
-    )
     // B10/W1c + WU-RP-033: the body execution policy authority. The production default
     // composes TWO declared-policy authorities, both fail-closed and neither key-specific:
     //   1. the OPEN StepRegistry (same seam that resolves handlers) — a core or external

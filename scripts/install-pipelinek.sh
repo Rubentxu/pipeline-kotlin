@@ -5,9 +5,13 @@
 #   - DIST-2: the canonical artifact is the ZIP.
 #   - TRAIN P1: SHA256SUMS authority, transactional install,
 #     exact runtime identity, doctor diagnostics.
-#     Exercised by P-UAT-05 / P-UAT-06.
 #
-# Contract tests: python3 scripts/test_install_pipelinek.py
+# Verification status: the contract tests that used to cover this installer
+# (scripts/test_install_pipelinek.py, exercised by the former P-UAT-05 / P-UAT-06)
+# were deleted by the 2026-10-18 testing RESET, and the current policy forbids the
+# subprocess-based unit tests that would replace them. These guarantees are
+# therefore NOT covered by an automated check today; `doctor` is the manual
+# diagnostic a user can run against a real installation.
 #
 # Usage:
 #   install-pipelinek.sh install <version>          # download + verify + install

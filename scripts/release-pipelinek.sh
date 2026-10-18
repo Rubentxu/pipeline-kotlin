@@ -19,8 +19,12 @@
 #     ./scripts/release-pipelinek.sh
 #
 # On success: the script exits 0, the ZIP and the full §8 asset set are
-# uploaded, the Prerelease is created on GitHub, and the receipt is committed
-# under docs/v2/07-uat/evidence/<tag>/.
+# uploaded and the Prerelease is created on GitHub. The receipt, HANDOFF and
+# SHA256SUMS are PUBLISHED as release assets and the HANDOFF becomes the release
+# notes; they are not committed to the repository. An earlier version did
+# `git add` them under docs/v2/07-uat/evidence/<tag>/, which reintroduced a
+# Markdown tree this repository's policy forbids and duplicated information the
+# release page already carries.
 #
 # On any refusal: non-zero exit, no upload, no Prerelease, no commit.
 #
@@ -56,6 +60,19 @@ cd "$REPO_ROOT"
 
 : "${PIPELINEK_RELEASE_TAG:?PIPELINEK_RELEASE_TAG is required (e.g. v0.56.0-rc5)}"
 : "${PIPELINEK_RELEASE_TRAIN:?PIPELINEK_RELEASE_TRAIN is required (e.g. 0.56.0)}"
+
+# The tag names a directory (the staging path below) and is interpolated into
+# several `rm -rf` targets on the failure paths, all of which run BEFORE the
+# `git tag -a` that would reject a malformed name. So the name is validated
+# here, with git's own ref rule rather than a hand-written approximation: an
+# unvalidated `../..` would otherwise let those deletes leave the state tree.
+if ! git check-ref-format "refs/tags/${PIPELINEK_RELEASE_TAG}" >/dev/null 2>&1; then
+    echo "release-pipelinek: refusing a tag name git would not accept." >&2
+    echo "    PIPELINEK_RELEASE_TAG=${PIPELINEK_RELEASE_TAG}" >&2
+    echo "    A tag becomes a staging directory name here, so a name carrying" >&2
+    echo "    path segments is rejected before any path is built from it." >&2
+    exit 2
+fi
 
 EXPECTED_ZIP_NAME="pipelinek-${PIPELINEK_RELEASE_TRAIN}.zip"
 DIST_ZIP="v2/pipeline-application/build/distributions/${EXPECTED_ZIP_NAME}"
@@ -134,7 +151,7 @@ echo "release-pipelinek: gate PASSED. candidate_id = sha256:$LOCAL_SHA"
 
 if [ ! -f "$SBOM" ]; then
     echo "release-pipelinek: expected SBOM at $SBOM but it does not exist." >&2
-    echo "    DISTRIBUTION_RELEASE_SPEC.md §4 requires the SBOM to be published alongside the ZIP." >&2
+    echo "    The release asset set requires the SBOM to be published alongside the ZIP." >&2
     exit 1
 fi
 
@@ -142,8 +159,32 @@ echo "release-pipelinek: staging the §4 asset set for ${PIPELINEK_RELEASE_TAG} 
 
 # Evidence directory: small text artefacts only. The ZIP itself lives as
 # the GitHub release asset, not in git.
-EVIDENCE_DIR="docs/v2/07-uat/evidence/${PIPELINEK_RELEASE_TAG}"
+STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/pipelinek"
+EVIDENCE_DIR="${STATE_ROOT}/release-evidence/${PIPELINEK_RELEASE_TAG}"
 mkdir -p "$EVIDENCE_DIR"
+
+# This script issues `rm -rf "$EVIDENCE_DIR"` on several failure paths, so the
+# staging directory is required to be inside an ABSOLUTE STATE_ROOT before any of
+# it runs. A relative STATE_ROOT would otherwise both make that delete
+# unbounded and stage the upload inside whatever directory the release runs
+# from, which is the repository in the common case.
+case "$STATE_ROOT" in
+    /*) ;;
+    *)
+        echo "release-pipelinek: refusing a relative state root" >&2
+        echo "    STATE_ROOT=${STATE_ROOT}" >&2
+        exit 1
+        ;;
+esac
+case "$EVIDENCE_DIR" in
+    "${STATE_ROOT}/"*) ;;
+    *)
+        echo "release-pipelinek: refusing to stage outside the state root" >&2
+        echo "    STATE_ROOT=${STATE_ROOT}" >&2
+        echo "    EVIDENCE_DIR=${EVIDENCE_DIR}" >&2
+        exit 1
+        ;;
+esac
 cp "$RECEIPT" "${EVIDENCE_DIR}/distribution-manifest.json"
 
 # Sanity check the manifest's recorded digest matches the local ZIP. The
@@ -412,24 +453,12 @@ for staged in "${STAGED_PATHS[@]}"; do
 done
 echo "release-pipelinek: published asset set verified complete (${#STAGED_PATHS[@]} assets, manifest-driven)."
 
-# Commit the SMALL TEXT evidence only. This commit is a *post-publish*
-# documentation commit; it does not move the tag, because the tag was
-# already pushed before this commit. That is exactly the DESCENDANT relationship
-# recorded in HANDOFF.md — reverting this commit does not unpublish the release.
-#
-# The ZIP and the SBOM are explicitly NOT added. PK-NEXT R0.1 puts them in the
-# GitHub release asset store; a `git add "$EVIDENCE_DIR"` would sweep a ~90 MB
-# blob and a ~1.3 MB blob into the repository, because they are staged in the
-# same directory purely as upload sources.
-git add "${EVIDENCE_DIR}/distribution-manifest.json" \
-        "${EVIDENCE_DIR}/HANDOFF.md" \
-        "${EVIDENCE_DIR}/git-head.txt" \
-        "${EVIDENCE_DIR}/SHA256SUMS"
-if ! git diff --cached --quiet; then
-    git commit -m "docs(uat): ${PIPELINEK_RELEASE_TAG} release-receipt"
-    git push origin HEAD
-else
-    echo "release-pipelinek: no evidence changes to commit (manifest already present)"
-fi
+# Nothing is committed here. The four text artefacts were already delivered:
+# they are release assets, and HANDOFF.md is the release notes body (see the
+# --notes-file above). Committing a second copy would put run-generated output
+# into the repository, which the testing policy forbids, and would duplicate the
+# release page. The tag was pushed before this point and is not moved below.
+echo "release-pipelinek: evidence published as release assets, not committed"
+echo "release-pipelinek: evidence also retained at ${EVIDENCE_DIR}"
 
 echo "release-pipelinek: PUBLISHED ${PIPELINEK_RELEASE_TAG} with candidate_id sha256:${LOCAL_SHA}"

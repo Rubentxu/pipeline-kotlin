@@ -30,7 +30,8 @@ dependencies {
 
 // The `performanceTest` lane, its `tasks.test` tag exclusion and its Kover
 // `disabledForTestTasks` entry were REMOVED (2026-10-18, testing RESET). All three
-// read `sourceSets["test"]`, which is now empty, and Gradle 8 defaults
-// `failOnNoDiscoveredTests` to false -- so the lane would have been a green 1 GiB soak
+// read `sourceSets["test"]`, which is now empty, and Gradle 8.14 reports success for an
+// empty source set -- it has no `failOnNoDiscoveredTests` property at all -- so the lane would
+// have been a green 1 GiB soak
 // that never allocated anything. The soak's real subject (Output Plane segment growth
 // and rollover) is exercised instead by an E2E pipeline under `v2/examples/`.

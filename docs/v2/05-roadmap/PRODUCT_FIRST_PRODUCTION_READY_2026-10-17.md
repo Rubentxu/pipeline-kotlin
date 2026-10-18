@@ -237,6 +237,59 @@ precondición que la decisión 2b conserva para ellos.
 
   La unificación es lo que deja el arreglo pequeño: `Sha256.isSha256Hex` es la respuesta del que acuña el formato, y los tres carriers (`ArchivedFileEntry`, `OperationInspection`, `OperationSummary`) más los dos ejecutores la usan. No es el helper genérico que había rechazado antes —`SemVer` acepta `A-F` a propósito y simplemente no la llama—, sino el predicado del dueño de un formato concreto.
 
+- [x] **H1.3b — Un fallo de compilación se nombraba a sí mismo. Cerrado 2026-10-18.**
+
+  **La clase de defecto es «la cifra se renderiza y el contenido no».** No salió de leer los reports: salió de ejecutar la distribución construida con un script de nueve errores.
+
+  ```text
+  ANTES (0.62.0 instalado, nueve errores de compilación)
+
+    [PipelineK] Compilation finished with 9 diagnostic(s)
+    Pipeline finished with FAILURE
+      cause [SCHEMA]: Kotlin compilation failed
+
+  y `validate` imprimía exactamente UNO de los nueve — el último:
+
+    VALIDATION FAILED: Unresolved reference 'shStdout'.
+
+  DESPUÉS (mismo ZIP reconstruido)
+
+    [PipelineK] Compilation finished with 6 errors and 1 info
+    /tmp/.../nine.pipeline.kts:4:13: Unresolved reference 'shStdout'.
+    /tmp/.../nine.pipeline.kts:5:13: Unresolved reference 'echoUndefinedOne'.
+    /tmp/.../nine.pipeline.kts:8:18: Argument type mismatch: actual type is 'Int', but 'String' was expected.
+    … (las seis, con posición)
+    Pipeline finished with FAILURE
+
+    VALIDATION FAILED: 6 errors
+  ```
+
+  Tres defectos, **una** causa. (1) `CompilationFinished` renderizaba `diagnostics.size` y descartaba el contenido — announcing nine reasons and showing one. (2) `Main.kt` usaba `lastOrNull { ERROR }`, así que `validate` —que existe para ser la forma barata de encontrar un typo— enseñaba el **último**, el menos probable que sea el que el autor escribió primero. (3) El recuento no distinguía severidad: un WARNING contaba igual que un ERROR, de modo que el propio `01-basic.pipeline.kts` canónico del repo imprimía `1 diagnostic(s)` sobre un `VALIDATION SUCCESSFUL`, y una cifra desnuda no puede decir si un pipeline puede arrancar.
+
+  El arreglo no añade un consumidor: `sanitize` ya preserva `\n`, así que los seis errores caben en **una** `Line` sin tocar la forma de una-línea-por-evento del renderer. Y los errores van a `Family.FAILURE` —*una falla que una vista puede esconder es una mentira*.
+
+  **La iteración que me salvó de empeorar el producto.** Al medir, `validate` resultaba duplicando cada error dos veces (el bloque de consola y su propio `VALIDATION FAILED:` por error). Un arreglo que imprime dos veces cada diagnóstico se lee como dos problemas distintos. Se redujo a un veredicto de una línea con el recuento; los tres tests que gobiernan `validate` sólo comprueban el prefijo `VALIDATION FAILED`, no el texto, y los tres siguen verdes.
+
+  Mutaciones 1:1, cada una aplicada-**verificada** antes de leer su resultado (HF §5), y las dos restauradas al mismo `sha256`:
+
+  ```text
+  M1  volver a "N diagnostic(s)" sin contenido    -> RED 7 de 8; el mensaje del fallo reproduce
+                                                      el síntoma medido literal
+                                                      ("Compilation finished with 9 diagnostic(s)")
+  M2  quitar sanitize() del detalle del error     -> RED 1 de 8, exactamente la fila de escapes
+  fiabilidad tras restaurar                       -> 8 de 8 verdes, canario fresco
+  ```
+
+  M1 mata 7 y sobrevive la fila de escapes porque ésa es la fila de M2: la atribución se sostiene 1:1 en las dos direcciones. La fila de escapes existe porque el mensaje del compilador es **entrada externa** y este corte abrió un camino nuevo hacia la consola; un camino nuevo hacia una consola es donde aterriza la inyección.
+
+  La cobertura anti-vacuo es la pareja de Warnings-only: mismo evento, sin ERROR, `RUN` con la severidad nombrada. Sin ella, una implementación que rechazara **toda** compilación satisfaría las tres primeras aserciones.
+
+  ```text
+  :pipeline-application:test --tests '*observation*'   14 clases  119 tests  f=0 e=0 s=0
+  :pipeline-application:installedContractTest         3 clases    17 tests  f=0 e=0 s=1
+                                                            (el s=1 es un @Disabled pre-existente)
+  ```
+
 - [ ] **H1.4** Integrar código de producto, cambios de poda aprobados, `main`, release candidate de valor real y handoff. `CERTIFIED` solo externo.
 
 **Agent teams:** consola/lectura, escritor/redactor (seams distintos), integración del CLI; archivo compartido se asigna a uno. R-1 del H0 ya terminó antes.

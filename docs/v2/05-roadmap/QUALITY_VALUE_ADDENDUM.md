@@ -265,6 +265,27 @@ El publicador verifica presencia de los assets listados por el manifiesto, pero 
   El escritor debe ir en el borde de efectos (`GradleSuiteRunner`), no en `EvidenceReader`: el lector observa, y un lector que también fabrica su propia evidencia es la segunda autoridad que DR-1 prohíbe. Y `gradlePath`/`invocation`/`binarySha256` deben pasar de "exigido y no comparado" a comparado, que es la decisión (a)/(b) del §7 del recibo `BQ1_BOX5_MUTATION_RECEIPT.md`.
 
   **Estado 2026-10-18: no se escribe el productor todavía.** Escribir sólo los tres campos honestos deja el manifiesto sin construir (`EvidenceManifest.init` exige los seis) y por tanto no mejora nada; escribir los seis deja dos rechazos permanentemente muertos. La caja requiere una decisión previa sobre la capacidad de observación de `hf` y `source_commit`, y esa decisión pertenece a un ADR, no a una línea de roadmap.
+
+  **La medición que amplía la pregunta del ADR (2026-10-18, `f9150ed6`).** Antes de escribir el productor se cerró el hueco de cobertura que esta hoja daba por cerrado (dos clases de rechazo separadas: hueco del clasificador para `scripts/test_*.py|sh`, cerrado en `7e66a652`; hueco del catálogo para los `build.gradle.kts` de módulo, cerrado en `f9150ed6`; recibo `BQ4_CATALOGUE_COVERAGE_AND_HF0_RUNNER_GAP_RECEIPT.md`). Al dejar de añadir capacidades se midió el corredor, y el resultado es mayor que el hueco de cobertura:
+
+  ```text
+  ProbeExecutor.execute  despacha sobre manifest.expectedFidelity:
+      HF0        -> runHF0(...)                 unico camino real
+      HF1        -> BlockedExternal
+      HF2..HF6   -> UnsupportedFidelity
+  runHF0 (línea 418) se niega si HF0 no está en plan.minimumFidelities
+
+  ContractCatalogue: 8 capacidades, 7 declaran minFidelity = HF2,
+                     1 (OutputPlane.uat.fixture) declara HF0
+  ```
+
+  **La única capacidad que el ciclo puede ejecutar alguna vez es `OutputPlane.uat.fixture`.** Un productor honesto no lo cambia: el plan exigiría HF2 y nada observa por encima de HF0, así que `InsufficientFidelity` no podría dispararse y el ciclo seguiría sin descargar una garantía real. Por eso esta caja **no escribe el Sidecar** todavía, y la razón es medida.
+
+  **La pregunta del ADR es, por tanto, más grande que `hf` y `source_commit`.** Debe elegir entre (a) un ejecutor HF2 —distribución real bifurcada, HF2 según `ADR-PK-DF-001`— o (b) una **fuente nueva de observación** de la fidelidad y del commit **del módulo que produjo cada XML**, de modo que quien ejecuta la suite sea quien la declara. Sin una de las dos, el sidecar más honesto posible no descarga nada.
+
+  **Precisión sobre `source_commit` que reduce el problema: la observación existe y es coherente.** El gate imprime hoy `provenance: installed distribution reports commit <sha>` y coincide con HEAD; la fuente es `InstalledDistribution.kt:75`, leída por `GateCli`. Lo que falta no es "observar un commit" sino "observar el commit del artefacto que produjo cada XML": la distribución instalada es otro artefacto, y una distribución obsoleta haría fallar `StaleBinary` culpando al artefacto equivocado.
+
+  **Lo que deliberadamente no se cierra:** las 36 rutas `src/main` bajo `v2/test-harness` que se niegan sin contrato. Añadir una capacidad las haría certificables, pero es el bucle de auto-certificación que `ADR-PK-DF-002` decisión 7 nombra para retirada. Quedan como cobertura pendiente, no como tarea.
 - [x] **Pruebas efímeras mínimas:** AAT de archivo ajeno creado durante el ciclo (debe sobrevivir) y AAT de suites homónimas/sidecar falso (debe rechazarse). Un UAT del CLI real solo si las AAT no prueban el comportamiento invocado. Conservar únicamente tests puros/fitness de esas dos garantías; borrar temporales y fixtures exclusivos antes del gate final. → las dos garantias tienen fitness permanente (los cuatro de arriba); ningun commit de correccion dejo scripts ni fixtures efimeros. NO se afirma aqui que el gate se ejecutara sobre el codigo final: no se ejecuto en esta reconciliacion.
 
 **Agent Teams:** A1 `cycle/` y prueba filesystem; A2 `plan/` + `Gate` y evidencia; A3 negativos en directorio temporal. Propietarios separados; un integrador reúne y pasa los gates.

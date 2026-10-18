@@ -194,7 +194,11 @@ data class EventFollowOptions(
     val lagReportInterval: Duration = Duration.ofSeconds(1),
 ) {
     init {
-        require(pollIntervalMs >= 0) { "pollIntervalMs must be non-negative, got $pollIntervalMs" }
+        require(pollIntervalMs > 0) {
+            "pollIntervalMs must be positive, got $pollIntervalMs; a follow that skips the wait " +
+                "between polls re-polls in a tight loop against a live store connection, and that " +
+                "loop runs inside a native call where the interrupt flag is never observed"
+        }
         require(maxRecords > 0) { "maxRecords must be positive, got $maxRecords" }
         require(!lagReportInterval.isNegative) { "lagReportInterval must be non-negative, got $lagReportInterval" }
     }

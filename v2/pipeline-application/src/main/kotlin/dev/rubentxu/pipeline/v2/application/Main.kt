@@ -45,6 +45,9 @@ import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunCorrelated
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
+import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
+import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
+import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector
 import kotlinx.serialization.json.Json
 import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
@@ -735,7 +738,19 @@ fun main(args: Array<String>) {
 
     // Durable mode: SqliteEventStore + PipelineOrchestrator for replay/divergence gating.
     // Both stores are wrapped with RedactingEventSink at construction time (design §Data Flow).
-    val rawEventStore = SqliteEventStore(config.dbPath)
+    // D3 — a run CREATES its event store, so the file is legitimately absent; only the DIRECTORY
+    // has to exist. That is why the purpose is part of the admission and not a flag at each site:
+    // `run` used to reach the same constructor as the read verbs and inherited neither the refusal
+    // nor the exit code, so a `--db` under a missing directory escaped as a raw SQLException with
+    // exit 1 — the code this CLI reserves for a pipeline that ran and failed.
+    val dbAdmission = admitEventStore(config.dbPath, EventStorePurpose.Write)
+    if (dbAdmission is EventStoreAdmission.Refused) {
+        System.err.println(dbAdmission.refusal.render())
+        // `main` returns Unit and this is the depth at which every other refusal ends, so the
+        // exit is the process's rather than a value handed upwards.
+        System.exit(2)
+    }
+    val rawEventStore = (dbAdmission as EventStoreAdmission.Admitted).store
     // Call raw methods BEFORE wrapping — RedactingEventSink delegates these to the inner store
     val factory = rawEventStore.underlyingConnectionFactory()
     val dbPathStr = rawEventStore.databasePath()

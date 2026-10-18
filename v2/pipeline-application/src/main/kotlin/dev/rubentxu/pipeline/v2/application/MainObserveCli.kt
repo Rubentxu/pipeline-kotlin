@@ -10,6 +10,10 @@ import dev.rubentxu.pipeline.v2.application.observation.RunObservationOutput
 import dev.rubentxu.pipeline.v2.application.observation.FollowDecision
 import dev.rubentxu.pipeline.v2.application.observation.RunPlane
 import dev.rubentxu.pipeline.v2.application.observation.followDecision
+import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
+import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
+import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
+import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.output.OutputRefusal
@@ -81,8 +85,24 @@ object MainObserveCli {
             }
         }
 
+        // D3 — the admission is decided ONCE, here, and the lane receives its outcome. `forRequest`
+        // used to build the store itself and therefore re-asked the question in a place that had
+        // no way to answer it: a `--db` pointing at a missing directory escaped as a raw
+        // java.sql.SQLException. The ADT is consumed HERE, and what crosses into the composition is
+        // which lane this request has — a named-and-open store, or no event lane at all.
+        val eventLane: EventLane = when (val dbPath = parsed.dbPath) {
+            null -> EventLane.NotNamed
+            else -> when (val admission = admitEventStore(dbPath, EventStorePurpose.Read)) {
+                is EventStoreAdmission.Refused -> {
+                    System.err.println(admission.refusal.render())
+                    return 2
+                }
+                is EventStoreAdmission.Admitted -> EventLane.Open(admission.store)
+            }
+        }
+
         val lanes = try {
-            ComposeLanes.forRequest(parsed)
+            ComposeLanes.forRequest(parsed, eventLane)
         } catch (e: java.io.IOException) {
             System.err.println("observe: cannot open a durable store: ${e.message}")
             return 2
@@ -615,8 +635,13 @@ sealed interface ObserveRefusal {
  */
 internal object ComposeLanes {
 
-    fun forRequest(parsed: ObservationParseResult.Parsed): ObserveLanes {
-        val eventStore = parsed.dbPath?.let { dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore(it) }
+    /**
+     * [eventLane] is what the caller's admission produced, already decided. Passing it in rather
+     * than building the store here is what keeps a single admission authority: this function used
+     * to construct the store, so it was a second place that had to know how to open one, and it had
+     * no way to report that it could not.
+     */
+    fun forRequest(parsed: ObservationParseResult.Parsed, eventLane: EventLane): ObserveLanes {
         val store = parsed.controlRoot?.let {
             dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider.storeForReading(
                 java.nio.file.Paths.get(it),
@@ -625,8 +650,9 @@ internal object ComposeLanes {
         // The store is all three authorities at once: the frame index says WHICH ranges were
         // published, the read port supplies the bytes, the tail port says whether more can arrive.
         val reader = store?.let { FrameIndexedObservationOutputReader(it.frameIndex(), it, it) }
+        val eventStore = eventLane.storeOrNull
         return object : ObserveLanes {
-            override val hasEventStore: Boolean get() = eventStore != null
+            override val hasEventStore: Boolean get() = eventLane is EventLane.Open
             override val hasOutputPlane: Boolean get() = reader != null
             override fun eventsOf(runId: String): Sequence<DomainEvent> =
                 eventStore?.eventsFor(runId) ?: emptySequence()
@@ -653,5 +679,29 @@ internal object ComposeLanes {
         }
     }
 }
+
+/**
+ * Which event lane this observe request has.
+ *
+ * The two cases are genuinely different and both are live: a request that named no `--db` has no
+ * event lane at all, while a request pointing at an EMPTY store has one that simply has nothing to
+ * report. Carrying that as a `SqliteEventStore?` alongside a `hasEventStore` boolean encodes the
+ * same fact twice, and two encodings of one fact are free to disagree — a store that is non-null
+ * while the boolean says otherwise is representable, and nothing would say so.
+ *
+ * A nullable is still the honest shape for [storeOrNull], which projects the case into the
+ * accessor signature that `ObserveLanes` already declares. That nullable reads a closed case; it
+ * is not a sentinel standing in for a refusal.
+ */
+internal sealed interface EventLane {
+    data object NotNamed : EventLane
+    data class Open(val store: SqliteEventStore) : EventLane
+}
+
+private val EventLane.storeOrNull: SqliteEventStore?
+    get() = when (this) {
+        is EventLane.Open -> store
+        EventLane.NotNamed -> null
+    }
 
 private fun ObservationParseResult.Parsed.controlRootOrNull(): String? = this.controlRoot

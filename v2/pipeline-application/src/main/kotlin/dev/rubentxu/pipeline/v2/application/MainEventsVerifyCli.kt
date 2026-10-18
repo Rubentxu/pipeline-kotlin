@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
+import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
+import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
+import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
 import dev.rubentxu.pipeline.v2.harness.codec.YamlEventContractCodec
 import dev.rubentxu.pipeline.v2.harness.verify.EventHarness
 
@@ -37,8 +39,10 @@ object MainEventsVerifyCli {
             System.err.println("Usage: pipeline events verify --db <path> --run <runId> --contract <events.yaml> [--from-sequence N] [--after-last-run-started]")
             return 2
         }
-        if (!java.nio.file.Files.exists(java.nio.file.Path.of(db))) {
-            System.err.println("Error: db not found: $db")
+        // D3 — the second of the two copies of this rule. Both now consult `admitEventStore`.
+        val dbAdmission = admitEventStore(db, EventStorePurpose.Read)
+        if (dbAdmission is EventStoreAdmission.Refused) {
+            System.err.println(dbAdmission.refusal.render())
             return 2
         }
         if (!java.nio.file.Files.exists(java.nio.file.Path.of(contractPath))) {
@@ -53,7 +57,7 @@ object MainEventsVerifyCli {
             return 2
         }
 
-        val store = SqliteEventStore(db)
+        val store = (dbAdmission as EventStoreAdmission.Admitted).store
         try {
             val history = EventHarness.typedHistory(store, runId, fromCursor)
             val scope = if (scopeAfterLastStart) EventHarness.Scope.AFTER_LAST_RUN_STARTED else EventHarness.Scope.WHOLE

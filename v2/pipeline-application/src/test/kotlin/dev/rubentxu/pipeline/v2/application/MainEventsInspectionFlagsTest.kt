@@ -24,6 +24,9 @@ import org.junit.jupiter.api.Timeout
 @DisplayName("R4 / WU-R4.2 — events CLI inspection flags (parser + closed ADT)")
 class MainEventsInspectionFlagsTest {
 
+    @org.junit.jupiter.api.io.TempDir
+    lateinit var root: java.nio.file.Path
+
     // ------------------------------------------------------------------ HF0 closed ADT
 
     @Test
@@ -248,11 +251,36 @@ class MainEventsInspectionFlagsTest {
         // 2 BEFORE any read attempt, and the refusal names "db not found" on stderr. This
         // is the same shape as the existing --typed path; pinning it here so a future
         // re-shape of the projection does not regress to a silent exit-0 default.
-        val r = cli("--db", "/nonexistent-path/does-not-exist.sqlite", "run-1", "--fields", "KIND")
+        //
+        // The fixture is a file ABSENT under a directory that EXISTS, because that is the arm
+        // whose refusal is `db not found`. It used to be `/nonexistent-path/does-not-exist.sqlite`,
+        // whose parent is also missing — a different refusal (`no directory for db`), so the row was
+        // asserting the wording of an arm its fixture never reached. The subject is unchanged and the
+        // other arm now has its own row below; splitting them is what keeps each row honest.
+        val r = cli("--db", root.resolve("absent.sqlite").toString(), "run-1", "--fields", "KIND")
         assertEquals(2, r.exitCode, "non-existent db is a usage error at the CLI layer")
         assertTrue(
             r.stderr.contains("db not found"),
             "stderr must name the db-not-found reason; got:\n${r.stderr}",
+        )
+    }
+
+    @Test
+    fun `main() refuses --fields when the db directory is missing, and says which half is absent`() {
+        // The second arm of the same decision. An operator who mistypes a parent directory needs to
+        // be told THAT is what is missing, not merely that some path was not found: the remedy is
+        // different (create the directory vs. point at another file). Both refusals name the path,
+        // and both are exit 2 — this row exists so the distinction cannot quietly collapse.
+        val missingDir = root.resolve("no-such-dir")
+        val r = cli("--db", missingDir.resolve("absent.sqlite").toString(), "run-1", "--fields", "KIND")
+        assertEquals(2, r.exitCode, "a db whose directory does not exist is a usage error")
+        assertTrue(
+            r.stderr.contains("no directory for db"),
+            "stderr must name the absent directory as the reason; got:\n${r.stderr}",
+        )
+        assertTrue(
+            r.stderr.contains(missingDir.toString()),
+            "the refusal must name the path the operator asked for; got:\n${r.stderr}",
         )
     }
 }

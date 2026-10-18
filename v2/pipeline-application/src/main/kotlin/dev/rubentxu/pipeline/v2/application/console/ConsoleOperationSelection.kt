@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.StageStarted
 import dev.rubentxu.pipeline.v2.events.StepStarted
+import dev.rubentxu.pipeline.v2.events.durable.EventStoreRefusal
 
 /**
  * R4 / WU-RC3 — the ONE decision that answers "which operations does this console request want?",
@@ -99,6 +100,18 @@ sealed interface SelectionRefusal {
      * admit the filter and pretend to apply it, the request is refused and told what to supply.
      */
     data class NoEventsAuthority(val axesNeedingIt: List<String>) : SelectionRefusal
+
+    /**
+     * The events journal was NAMED but cannot be opened.
+     *
+     * Distinct from [NoEventsAuthority], which is about a journal that was never given: here the
+     * operator pointed at one and it is unusable, so the remedy is a different path, not a
+     * different flag. [refusal] is the shared admission's own verdict, which is why this case
+     * carries it rather than re-deriving the condition.
+     */
+    data class EventStoreRefused(
+        val refusal: EventStoreRefusal,
+    ) : SelectionRefusal
 }
 
 /** What resolving a filter produced. */

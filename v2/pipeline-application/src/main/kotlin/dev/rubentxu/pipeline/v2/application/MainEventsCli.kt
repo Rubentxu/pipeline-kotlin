@@ -5,7 +5,10 @@ import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
 import dev.rubentxu.pipeline.v2.events.EventRecordRead
 import dev.rubentxu.pipeline.v2.events.UndecodableReason
 import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
+import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
+import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
 import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
+import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
 import dev.rubentxu.pipeline.v2.events.identity.EnvelopeCodec
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import dev.rubentxu.pipeline.v2.events.identity.EventField
@@ -217,8 +220,12 @@ object MainEventsCli {
      * the envelope projection.
      */
     private fun runWithArgs(p: EventsCliArgs): Int {
-        if (!java.nio.file.Files.exists(java.nio.file.Path.of(p.db))) {
-            System.err.println("Error: db not found: ${p.db}")
+        // D3 — this verb had its own copy of the admission rule, written out here and once more in
+        // MainEventsVerifyCli. Three reactions to one condition had accumulated across the verbs;
+        // the decision now lives in `admitEventStore` and only the exit code stays here.
+        val dbAdmission = admitEventStore(p.db, EventStorePurpose.Read)
+        if (dbAdmission is EventStoreAdmission.Refused) {
+            System.err.println(dbAdmission.refusal.render())
             return 2
         }
         val cursor = p.afterCursor?.let { token ->
@@ -233,7 +240,7 @@ object MainEventsCli {
             System.err.println("Error: cursor belongs to run '${cursor.runId}', not to '${p.runId}'")
             return 2
         }
-        val store = SqliteEventStore(p.db)
+        val store = (dbAdmission as EventStoreAdmission.Admitted).store
         try {
             val reader = EventHistoryReader(store)
             val run = ResourceRefs.run(p.runId)

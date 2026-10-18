@@ -170,13 +170,28 @@ val computeUppercaseRelease = tasks.register("computeUppercaseRelease") {
         val classesDir = layout.buildDirectory.dir("classes/kotlin/main").get().asFile
         val resourcesDir = layout.buildDirectory.dir("resources/main").get().asFile
         val out = propsFile.get().asFile
-        val excluded = out.absolutePath
+        // The digest MUST exclude both this provenance file (it carries the digest itself, so
+        // including it would be a fixed-point equation with no solution) AND the
+        // plugin-manifest.json emitted by `emitUppercaseManifest`, which can be left in
+        // `resourcesDir` by a previous run of that task and so reintroduced into the digest input
+        // on every re-execution of `computeUppercaseRelease`. Including the manifest's bytes
+        // makes the digest depend on content whose own value contains the digest, so on a polluted
+        // re-run the recorded SHA shifts in lockstep with the embedded one -- a different SHA per
+        // worktree, per `--rerun-tasks` flag, and per build cache state. Excluding the manifest
+        // breaks the loop and makes the digest a pure function of the plugin's source-derived
+        // bytes. The manifest IS still packed into the artifact (by `jar`, downstream); it just
+        // doesn't feed the digest this task measures. This is the same shape already applied and
+        // verified in `example-directive-plugin`; see DirectivePluginShaReproducibilityTest.
+        val manifestPath = layout.buildDirectory
+            .file("resources/main/META-INF/pipelinek/plugin-manifest.json")
+            .get().asFile.absolutePath
+        val excluded = setOf(out.absolutePath, manifestPath)
 
         val files = listOf(classesDir, resourcesDir)
             .filter { it.exists() }
             .flatMap { dir ->
                 dir.walkTopDown()
-                    .filter { it.isFile && it.absolutePath != excluded }
+                    .filter { it.isFile && it.absolutePath !in excluded }
                     .map { it.absolutePath }
                     .toList()
             }

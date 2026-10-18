@@ -4,6 +4,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
 /**
@@ -150,8 +151,7 @@ class FArchS3TypedOptionCarrierFitnessTest {
     fun `no production source discriminates an option by a name string`() {
         val offenders = productionSources
             .filter { (_, source) ->
-                Regex("""\.name\s*==\s*"[^"]*"""").containsMatchIn(source) &&
-                    Regex("""\boptions\b|\bOptionSpec\b|\bStageOption\b""").containsMatchIn(source)
+                ScannerSupport.findOptionNameStringSwitches(source.lines()).isNotEmpty()
             }
             .map { (path, _) -> path.toString() }
 
@@ -162,6 +162,71 @@ class FArchS3TypedOptionCarrierFitnessTest {
                 "typo compiles, serializes and does nothing. Match the closed StageOption ADT " +
                 "instead, so the compiler enforces exhaustiveness. Found: $offenders",
         )
+    }
+
+    /**
+     * The predicate must keep BOTH halves of its meaning.
+     *
+     * A conjoined whole-file check ("has a name comparison somewhere" AND "mentions `options`
+     * somewhere") reads as if it enforces the rule and enforces something else instead: it fires on
+     * any large file that does both by accident. That is not hypothetical — it produced a false
+     * RED on `pipeline-application/.../Main.kt`, where the name comparison is a probe for a
+     * compiled script getter and the token is the word `options` inside a usage string, 302 lines
+     * apart and about different subjects. See `SourceScanner.findOptionNameStringSwitches`.
+     *
+     * So the two fixtures below are one claim with two directions: a genuine string switch next to
+     * the carrier it is discriminating IS found, and the same two facts far apart are NOT. Without
+     * the second, the first would also be satisfied by a scanner that finds nothing.
+     */
+    @Nested
+    inner class NameStringSwitchFixture {
+
+        private fun report(source: String) =
+            ScannerSupport.findOptionNameStringSwitches(source.trimIndent().lines())
+
+        @Test
+        fun `scanner catches a name switch that discriminates the option it sits beside`() {
+            val hits = report(
+                """
+                fun interpret(option: StageOption): String = when {
+                    option.name == "timeout" -> option.value.orEmpty()
+                    option.name == "retry" -> option.value.orEmpty()
+                    else -> ""
+                }
+                """,
+            )
+
+            assertEquals(
+                listOf(1, 2),
+                hits,
+                "a `when` that branches on an option's NAME is the string switch this rule " +
+                    "forbids, and BOTH arms of the fixture carry one, so both are reported",
+            )
+        }
+
+        @Test
+        fun `scanner does not merge distant facts`() {
+            val filler = (1..300).joinToString("\n") { "// padding $it" }
+            val hits = report(
+                """
+                val usage = "Usage: pipelinek <verb> [options] [args]"
+
+                $filler
+
+                val scriptExposesResult =
+                    compileResult.scriptInstance?.javaClass?.methods?.any { it.name == "get${'$'}${'$'}result" } == true
+                """,
+            )
+
+            assertEquals(
+                emptyList<Int>(),
+                hits,
+                "this is Main.kt verbatim: a compiled-script getter probe and the word 'options' " +
+                    "inside a usage string. Neither discriminates an option, and a scanner that " +
+                    "conjoins two unrelated facts over a whole file reports it anyway — which is a " +
+                    "red in the round gate that teaches the next reader to discount reds",
+            )
+        }
     }
 
     // ------------------------------------------------------------------

@@ -310,14 +310,27 @@ class SecretPatternRegistry {
 
     /**
      * Builds the URL-encoded variant of a secret.
-     * Returns empty string if no special chars requiring encoding are present.
+     *
+     * Characters that require encoding are percent-encoded; every other character is
+     * copied verbatim. A secret needing no encoding therefore comes back UNCHANGED,
+     * not empty, and [generateEncodedVariants] is what declines to register it — its
+     * `urlEncoded != secret` test is the seam that skips a redundant duplicate of the
+     * literal pattern.
      */
     private fun buildUrlEncodedVariant(secret: String): String {
         val sb = StringBuilder()
         for (ch in secret) {
-            URL_ENCODE_CHARS[ch]?.let { encoded ->
-                sb.append(encoded)
-            }
+            // A character that does not need encoding is COPIED, not dropped. A secret is
+            // mostly letters and digits, so "replace the ones that need it" has to mean
+            // "keep the rest": dropping them made `p@ss w0rd` encode to `%40%20`, a
+            // pattern that matches neither the encoded secret (`p%40ss%20w0rd`, which
+            // therefore passed through unredacted) nor anything else that carries the
+            // credential — while matching any unrelated text that happens to hold those
+            // two encodings adjacent. `generateEncodedVariants` already guards with
+            // `urlEncoded != secret`, which was unreachable while every unreserved
+            // character was discarded, and is the seam that skips a secret needing no
+            // encoding at all.
+            sb.append(URL_ENCODE_CHARS[ch] ?: ch.toString())
         }
         return sb.toString()
     }

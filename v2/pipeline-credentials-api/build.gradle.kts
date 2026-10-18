@@ -18,14 +18,21 @@ dependencies {
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-events"))
     implementation(project(":pipeline-scripting-api"))
+
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 // The `performanceTest` lane and its Kover exclusion were REMOVED (2026-10-18,
-// testing RESET). The lane read `sourceSets["test"]`, which is now empty, and
-// Gradle 8 defaults `failOnNoDiscoveredTests` to false -- so it would have been
-// a green performance gate that measured nothing. The Kover `disabledForTestTasks`
-// entry existed only to stop that lane re-entering `check`; with the lane gone,
-// the exclusion had nothing to exclude.
+// testing RESET). The lane read `sourceSets["test"]`, and Gradle 8.14 has no
+// `failOnNoDiscoveredTests` property, so an empty source set reports success
+// regardless -- the lane would have been a green performance gate that measured
+// nothing. The Kover `disabledForTestTasks` entry existed only to stop that lane
+// re-entering `check`; with the lane gone, the exclusion had nothing to exclude.
 //
 // `StreamingRedactor`'s throughput floor is no longer enforced by a timed probe.
 // A wall-clock floor is a property of the machine, not of the code, so it could

@@ -378,11 +378,24 @@ precondición que la decisión 2b conserva para ellos.
 
   La guarda anti-vacuo no es «`StageFinished` sí muestra su outcome»: es **una tabla sobre las tres** proyecciones que llevan outcome. La primera versión fue una fila, y M2 —que borraba el outcome de las tres— mató **una sola** fila: dos instancias del mismo defecto quedaban sin cubrir. Una clase de defecto con tres instancias y tres filas sigue enviando dos sin detectar; la tabla es lo que cierra la clase en vez de muestrearla.
 
-  **Corrección propia.** Durante esta medición afirmé dos cosas que la sonda contradijo, y ambas habrían escrito un verdicto falso en este documento: que `console` rechazaba `sh` (rechazaba el opId que yo le había pasado — el formato real es `<runId>-s<stepIndex>`, con el que sí imprime la salida), y que `inspect --log-tail` era un no-op silencioso (está acotado a los ops de steps fallidos por diseño, y mi run había tenido éxito; además había omitido `CONSOLETAIL` de `--fields`). Tres correcciones propias en una medición es la tasa normal, no la excepción: por eso la cifra va con su sonda y no con su conclusión.
+  **Corrección propia.** Durante esta medición afirmé dos cosas que la sonda contradijo, y ambas habrían escrito un verdicto falso en este documento: que `console` rechazaba `sh` (rechazaba el opId que yo le había pasado, que no era el válido; el formato es `<runId>-s<stageIndex>-<stepIndex>`), y que `inspect --log-tail` era un no-op silencioso (está acotado a los ops de steps fallidos por diseño, y mi run había tenido éxito; además había omitido `CONSOLETAIL` de `--fields`). Tres correcciones propias en una medición es la tasa normal, no la excepción: por eso la cifra va con su sonda y no con su conclusión.
 
   **Abierto — `--log-tail-op` estampa una transcripción sobre todas las filas.** `MainInspectCli` calcula `consoleTail` **una vez para todo el run** (`:181-208`) y `toInspectionRecord` (`:230-255`) copia ese mismo valor en **cada** `InspectionRecord`. Con `--log-tail-op <un-op>`, la fila de ese op y la de `CompilationStarted` llevan la misma transcripción. El campo está bien calculado y mal distribuido: es un valor scoped al run presentedo como scoped a la fila. Sepáralo significa decidir si `CONSOLETAIL` pertenece a la fila o a la cabecera de la respuesta — y si pertenece a la fila, `consoleTail` tiene que ser por-op.
 
-  **Abierto — el opId no aparece en ninguna salida del producto.** `inspect` muestra `build/sh-0` y el índice del step; el operador tiene que reconstruir `<runId>-s<idx>` para poder pedírselo a `console`. La forma está en `operation_journal.op_id`, que es interno. Un `inspect` que imprime el opId que `console` acepta no necesita un documento que lo explique.
+  **Cerrado — el opId no aparecía en ninguna salida del producto.** `console` exige `<opId>` y su línea de uso lo nombraba sin decir qué es; el operador tenía que reconstruirlo a mano.
+
+  **La primera versión del arreglo proposed fabrication, y la medición la mató.** La idea era que `inspect` imprimiera el opId de cada fila. No puede: el opId lo acuña el motor durable, no el evento —`OpId` lleva `stageIndex`, `branchIndex` y `bodyPath`, y `ShOperationsAdapter` incluso fija `stageIndex = 0` para ops scriptadas—, mientras que `StepFailed` ni siquiera lleva `stageIndex`. Reconstruirlo desde el evento habría publicado un id que `console` rechaza. Los ids reales de un run están en el `op_id` del journal, que es interno.
+
+  Lo que sí es verdad, medido sobre dos runs contra la distribución construida: **`ls <controlDir>/output-plane/streams/` lista exactamente el conjunto de ops que `console` puede servir**, uno por directorio `<runId>_<opId>_stdout`. El opId tomado de ahí, literal, se acepta:
+
+  ```text
+  streams/1a26dd9c…_1a26dd9c…-s0-1_stdout/   -> console … <rid> <rid>-s0-1   ->  DESPUES
+  (echo, que no imprime)                     -> console … <rid> <rid>-s0-0   ->  console-refused: unknown-stream
+  ```
+
+  El refusal del `echo` no es un hueco: es la misma regla, y por eso el listado es el conjunto exacto. La línea de uso de `console` dice ahora la forma y da el `ls`. Verificado sobre el binario instalado; la promesa se comprobó a mano en los dos sentidos (aceptado y rehusado) y no se/anaconda como fila permanente, porque exigiría un fixture durable para proteger un texto cuyo dueño —el layout del Output Plane— ya tiene su propia suite.
+
+  Y una corrección propia más, que viene de la misma sonda: yo creía que el opId era `<runId>-s<stepIndex>`. La autoridad única es `OpId`, y su formato es `<runId>-s<stageIndex>-<stepIndex>`. Con el formato corto, `console` responde `unknown-stream`; con el largo, imprime la salida.
 
 - [x] **H1.3c — El CLI señalaba un `--help` que no existía. Cerrado 2026-10-18.**
 

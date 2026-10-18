@@ -2,7 +2,7 @@
 type: adr
 id: ADR-0072
 title: "Layered test-harness fidelity (HF0..HF6)"
-status: proposed
+status: accepted
 date: 2026-09-08
 deciders: "Rubentxu (product owner)"
 supersedes: null

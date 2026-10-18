@@ -2,7 +2,7 @@
 type: adr
 id: ADR-0073
 title: "Block Steps re-enter the engine through BodyInvoker / BranchInvoker"
-status: proposed
+status: accepted
 date: 2026-09-08
 deciders: "Rubentxu (product owner)"
 supersedes: "ADR-0054 (block-step re-entry model only)"

@@ -146,6 +146,34 @@ tasks.test {
         .withPropertyName("publishedAbiDumps")
         .withPathSensitivity(PathSensitivity.RELATIVE)
 
+    // La documentación normativa es un input igual de externo, y su omisión es MÁS grave que la de
+    // los módulos: ocho fitnesses de este paquete leen `docs/` en runtime
+    // (`AdrStatusRegistryFitnessTest`, `FArchS0SurfaceManifestTest`,
+    // `FArchRP021NoPrivilegedStepKeyRoutingTest`, `P3EPublishedContractMaturityFitnessTest`,
+    // `Lfc0V1QuarantineFitnessTest`, `LegacyResidualSnapshot`, `FArchS3PureBuilderPurityTest`,
+    // `FArchE6AuthoringBoundaryFitnessTest`), y ninguna lo declaraba.
+    //
+    // Medido 2026-10-18: la omisión no producía `UP-TO-DATE`, que es la mitad evidentemente visible de este
+    // bloque, sino `FROM-CACHE`. `v2/gradle.properties` exige `org.gradle.caching=true`, así que
+    // editar `docs/v2/04-adrs/ADR-0090-*.md` dejaba la tarea de test restaurada de un verde
+    // anterior: `exit=0`, `failures="0"`, y la fila no había vuelto a leer un solo fichero. La
+    // clave de caché de una tarea `Test` se calcula sobre sus inputs DECLARADOS, y un fichero que
+    // la tarea lee por su cuenta no está entre ellos.
+    //
+    // Esto no es hipotético: se descubrió porque una mutación deliberada —borrar la línea
+    // `status:` de una ADR— sobrevivió a la guarda que debía cazarla, y el motivo era la caché y
+    // no la guarda. Una fila verde que no vuelve a mirar no es evidencia; es un recuerdo.
+    //
+    // El árbol se declara entero porque `docs/` no contiene ninguna salida de tarea (`find` no
+    // encuentra ningún `build/` ni `.gradle/` debajo), así que no hay solapamiento que Gradle
+    // rechace, y porque un `exclude(` está prohibido por `FArch011V2NoCompileExcludesTest`.
+    val repoDocsDir = rootProject.projectDir.resolve("docs")
+    if (repoDocsDir.isDirectory) {
+        inputs.files(repoDocsDir)
+            .withPropertyName("repoNormativeDocsTree")
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+    }
+
     // The rows that read COMPILED classes need those classes to exist and to be current. Without the
     // dependency they would read whatever the last build left behind, which is the staleness this
     // whole block exists to remove.

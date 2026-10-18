@@ -21,15 +21,9 @@ ROADMAP / ACTIVE_DOCUMENTS / ADR / specs / UAT
 2. docs/v2/05-roadmap/ROADMAP.md — única secuencia de trabajo y exit criteria actuales.
 3. docs/v2/07-uat/CERTIFICATION_PROTOCOL.md y PRODUCTION_READY_UAT_MATRIX.md — qué significa certificar.
 4. docs/v2/01-product/STEP_REGISTRY_PLAN.md — cola histórica/constitución técnica del ecosistema; reconciliar su inventario con el estado SDDK antes de ejecutar cualquier WU.
-5. docs/v2/03-specifications/STEP_PLUGIN_CERTIFICATION.md y ADR-0070..0099 aceptados y AGENTS.md — límites normativos que un roadmap no revocar. ADR-0099 fija la autoridad de `main` para candidatos y releases y supersede ADR-0091.
-   > **CONFLICTO ABIERTO (2026-10-18):** la palabra «aceptados» de esta línea **no es verificable**
-   > contra el campo `status:` de los propios ficheros — 16 ADR del rango 0070..0099, incluidos
-   > ADR-0072 y ADR-0074 que `AGENTS.md` invoca como autoridad, declaran `status: proposed`, y 61 de
-   > 111 no tienen campo. Medido y sin resolver en
-   > [`CONFLICT-ADR-STATUS-REGISTRY.md`](../04-adrs/CONFLICT-ADR-STATUS-REGISTRY.md).
-   > Por la regla de este mismo documento, un conflicto normativo se **registra y escala**, no se
-   > resuelve eligiendo ganador: hasta que exista una ADR que lo resuelva, ninguna decisión que
-   > dependa del estado de ratificación de una ADR debe declararse cerrada.
+5. docs/v2/03-specifications/STEP_PLUGIN_CERTIFICATION.md, ADR-0070..0099 y AGENTS.md — límites normativos que un roadmap no revocar. ADR-0099 fija la autoridad de `main` para candidatos y releases y supersede ADR-0091.
+   > **RESUELTO 2026-10-18 por [`ADR-PK-REG-001`](../04-adrs/ADR-PK-REG-001-adr-status-registry.md).** Esta línea ya no afirma que el rango 0070..0099 esté «aceptado» como bloque: **el registro de verdad es el campo `status:` de cada fichero**, y un rango no es una unidad de estado. El conjunto cerrado es `{proposed, accepted, superseded}` y `AdrStatusRegistryFitnessTest` lo hace cumplir con fallo cerrado. Para saber si una ADR concreta está en vigor, se lee su campo; este índice ya no lo afirma por rango.
+   > Las dos mediciones del conflicto registrado eran de un **parseo**, no del corpus: sólo aceptaba `- **Status:** v` en línea, de modo que contaba 61 ADR «sin campo» que sí lo tienen en otra de las tres formas legales, y contaba 8 grafías que son casing, negrita y backticks sobre 3 valores. Cerrado también en `CONFLICT-ADR-STATUS-REGISTRY.md`, que se conserva por trazabilidad.
 6. ADR-0105 — la publicación del check de admisión G10 pertenece a `pipelinek-release-harness`. Sin check publicado para el SHA candidato, G10 es `NOT_RUN` y el veredicto global es `RP-5 PRODUCT_GATE_STOP`; la ausencia nunca es `PASS`, y este repositorio no reintroduce GitHub Actions para cerrar esa fila.
 
 ## Proyección humana opcional (no autoridad)

@@ -38,9 +38,20 @@ challenged_by:
 
 ## Status
 
-**Proposed** · 2026-08-27 · [[CYC-2026-08-27-ml-r6-credentials-parity]]
+**Accepted** · el frontmatter y este bloque discrepaban hasta el 2026-10-18, y cada uno afirmaba
+distinto. La resolución es `accepted`, y no por una regla de forma sino por su evidencia.
 
-DRAFT advanced to "proposed" during design phase (this cycle). Pending sddk-verify PASS for "accepted".
+Historia, sin borrar: el 2026-08-27, durante [[CYC-2026-08-27-ml-r6-credentials-parity]], esta ADR
+avanzó a `proposed` en fase de diseño y quedó pendiente de un `sddk-verify PASS` para `accepted`.
+Ese verificador ya no está instalado (ver la nota SDDK de `AGENTS.md`), así que el gate que lo
+daba pendiente no puede volver a pasar ni volver a fallar: no es un bloqueo, es una referencia
+muerta. Lo que sí decide es lo que la primera línea decía desde el principio y lo que el cuerpo
+nunca desmintió: cuatro ficheros de producción la implementan —`CredentialBindingsPayload.kt` y
+`WithCredentialsExecutor.kt`, más dos tests que citan su contrato— y una decisión que el producto
+ejecuta está ratificada por el hecho de ejecutarse.
+
+El principio es el de `ADR-PK-REG-001` §2 aplicado al revés: un gate cuyo oráculo ya no existe no
+gobierna el estado, y el estado lo fija lo que ocurre, no lo que se esperaba comprobar.
 
 Supersedes (deep): D6 (`GitCredentialsApplier` two-channel auth) + D3 (structured-argv Git checkout auth channel) of [[ADR-0050-checkout-git-step]] — both replaced by D6 of this ADR (provider-agnostic credential-helper + SSH channel).
 Amended by: none

@@ -2,7 +2,7 @@
 type: adr
 id: ADR-0074
 title: "A Step is done only when CERTIFIED"
-status: proposed
+status: accepted
 date: 2026-09-08
 deciders: "Rubentxu (product owner)"
 supersedes: null

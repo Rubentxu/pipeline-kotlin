@@ -128,7 +128,7 @@ class GateCliTest {
         Files.writeString(gradlew, "#!/bin/sh\npwd > '$marker'\n")
         gradlew.toFile().setExecutable(true)
 
-        val ran = GradleSuiteRunner(repoRoot = tmp, buildRoot = v2)
+        val ran = GradleSuiteRunner(buildRoot = v2)
             .run(
                 Dispatch.GradleInvocation(
                     gradleProject = ":mod-one",

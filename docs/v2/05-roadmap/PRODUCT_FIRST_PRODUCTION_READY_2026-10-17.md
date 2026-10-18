@@ -544,9 +544,27 @@ precondición que la decisión 2b conserva para ellos.
   barrido de consumidores afectados, 17 clases                     126 tests f=0 e=0 s=0  ts 2026-10-18T10:39:09..11Z
   ```
 
-  El barrido cubre los seis verbos que tocaron producción (`events`, `events-verify`, `inspect`, `observe`, `console`, `run`) más las filas deparser y de selección: 17 clases, 126 tests, cero fallos, cero errores, cero skips. No incluye el L4 de módulo, que es el `NOT_RUN` de abajo.
+  El barrido cubre los seis verbos que tocaron producción (`events`, `events-verify`, `inspect`, `observe`, `console`, `run`) más las filas deparser y de selección: 17 clases, 126 tests, cero fallos, cero errores, cero skips. No incluye el L4 de módulo, que es el `NOT_RUN` de abajo (**obsoleto: ver la corrección de 2026-10-18**).
 
   **Lo que NO se ejecutó, y por qué no es verde.** El L4 de módulo —`:pipeline-events-store:test` completo— está **`NOT_RUN`**, no verde. La corrida de módulo terminó con `exit=1` y produjo **un solo XML** de las N clases del módulo: el mío. El bloqueo es un **cuelgue preexistente** en `SqliteEventFollowHandle.idle:530`, alcanzado desde `EventFollowerAdapterTest` / `SqliteEventFollowLiveTailTest`, y es ajeno a D3 — este arreglo no lo toca, no lo introduce y no lo arregla. Declararlo verde por el `7 de 7` de mi propia clase sería el falso verde que este mismo arreglo existe para impedir: el número es cierto y **no es el denominador**.
+
+  > **CORRECCIÓN 2026-10-18 — este `NOT_RUN` quedó obsoleto 27 minutos después de escribirse.**
+  > El párrafo anterior era cierto cuando se escribió y se conserva como registro de lo que se sabía entonces; lo que sigue es la medición que lo sustituye.
+  >
+  > Este documento se commiteó en `858fb3b6` a las 12:39:33 +0200. El cuelgue se corrigió en `41cf03fc` a las 13:06:48 +0200, que está en `HEAD`: seis filas de `EventFollowerAdapterTest` pedían un tercer evento sobre una corrida sin `RunFinished` ni `UntilSequence`, que el contrato F2 de `SqliteEventFollowHandle` (paso 3e) declara inalcanzable, así que en vez de fallar bloqueaban; y con `pollIntervalMs = 0` el `idle()` deja de dormir y hace spin dentro de una llamada nativa donde no se observa el flag de interrupción, que es por qué el `@Timeout` declarado no podía precederlos.
+  >
+  > Medido de nuevo en `50075695`, con canario (XML borrados antes de correr):
+  >
+  > ```text
+  > ./v2/gradlew -p v2 :pipeline-events-store:test --rerun-tasks
+  > exit=0   ^e:=0   48 clases  297 tests  0 failures  0 errors  0 skipped
+  > suma de tiempos de test 10.7 s   BUILD SUCCESSFUL in 32 s
+  > XML  2026-10-18T16:03:19.559Z .. 16:03:30.218Z
+  > ```
+  >
+  > La primera corrida sin `--rerun-tasks` dio `FROM-CACHE` y restauró los XML de las 15:29 **sin ejecutar nada**: mismo `exit=0`, mismo verde, timestamp intacto. Es la trampa que `41cf03fc` ya documenta — un oráculo que puede servir un verde rancio invalida la única puerta que queda sin CI remoto (`754ddda0`) — y por eso el resultado de arriba se leyó del XML regenerado, no del `BUILD SUCCESSFUL`.
+  >
+  > **Consecuencia para el roadmap:** el L4 de `:pipeline-events-store:test` **no** es un bloqueo vivo y no debe planificarse contra él. Queda `CLOSED` como gate de módulo con la medición de arriba.
 
 - [ ] **H1.4** Integrar código de producto, cambios de poda aprobados, `main`, release candidate de valor real y handoff. `CERTIFIED` solo externo.
 

@@ -136,6 +136,21 @@ class InstalledDistributionTest {
          * Adjudication with an unreadable provenance must REFUSE, because unknown is not a match.
          * Under the old shape the caller supplied both operands, so this row could only pass by the
          * caller having chosen to pass a matching value.
+         *
+         * It must also refuse as [SelectionRefusal.StaleEvidence.NoCommitObserved] and NOT as
+         * `Mismatched`. The two are separate cases precisely because the operator action differs —
+         * a distribution that reports a wrong commit needs rebuilding, one that reports nothing
+         * needs installing — so a refusal that names the wrong one sends the operator to do the
+         * more expensive of the two repairs.
+         *
+         * Measured on 2026-10-18: this row previously asserted only `it is
+         * SelectionRefusal.StaleEvidence`, the shared supertype. Mutation-measured, replacing the
+         * `NoCommitObserved` arm with `Mismatched(expected = expectedCommit, observed =
+         * expectedCommit)` — which claims the distribution reported the expected commit when it
+         * reported NOTHING, the exact tautology this class exists to prevent — left all 61 rows of
+         * the 5 classes green. Both cases are `StaleEvidence`, so the supertype assertion agreed
+         * with either. Tightened to the exact case, which is what the sibling row
+         * `a distribution built from a different commit refuses` already did for `Mismatched`.
          */
         @Test
         fun `adjudication refuses when the distribution could not be read`() {
@@ -151,9 +166,10 @@ class InstalledDistributionTest {
             assertTrue(refusal is ValidationPlan.Refused) {
                 "unknown provenance must refuse, not discharge"
             }
-            assertTrue(
-                refusal!!.reasons.any { it is SelectionRefusal.StaleEvidence },
-            ) { "the refusal must name the provenance disagreement: ${refusal.reasons}" }
+            assertEquals(
+                SelectionRefusal.StaleEvidence.NoCommitObserved(expected = commit40),
+                refusal!!.reasons.single { it is SelectionRefusal.StaleEvidence },
+            )
         }
 
         @Test

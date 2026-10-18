@@ -155,7 +155,7 @@ object EvidenceReader {
      * matches the plan's [TestSuiteId.fqcn] which is
      * the FQCN the producer wrote.
      *
-     * The XML's count, failure, error, skip gates
+     * The XML's count, failure, error and skip gates
      * (H1 mandate: `tests>0`, `tests-skipped>0`,
      * `failures=0`, `errors=0`) are applied: an XML
      * that fails any of these gates is NOT a suite
@@ -164,6 +164,17 @@ object EvidenceReader {
      * attribute is also null — the FQCN is the
      * identity, and a report without an identity is
      * not addressable.
+     *
+     * `tests>0` is NOT a separate test below. `skipped`
+     * is never negative, so `tests <= 0` implies
+     * `tests - skipped <= 0`, and one comparison decides
+     * both. This shape previously carried both branches.
+     * Mutation-measured on 2026-10-18: disabling the
+     * `tests <= 0` branch alone leaves all 14 rows green,
+     * because the skip branch catches the same input —
+     * so no row ever pinned it, and two branches in a
+     * fail-closed gate that a reader takes for independent
+     * guards are one guard plus a false impression of two.
      */
     private fun suiteFqcnFrom(xml: Path): String? = try {
         val factory = DocumentBuilderFactory.newInstance().apply {
@@ -180,8 +191,6 @@ object EvidenceReader {
         val tests = root.getAttribute("tests").toIntOrNull() ?: 0
         val skipped = root.getAttribute("skipped").toIntOrNull() ?: 0
         if (failures > 0 || errors > 0) {
-            null
-        } else if (tests <= 0) {
             null
         } else if (tests - skipped <= 0) {
             null

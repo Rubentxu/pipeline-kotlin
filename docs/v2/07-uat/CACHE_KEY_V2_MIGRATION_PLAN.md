@@ -1,9 +1,9 @@
 # Migration plan — `CacheKey` algorithm label `v1` -> `v2`
 
 **Status:** enacted
-**Authority:** `ADR-0021-adapter-isolation.md` §"Cache-key versioning contract" (Accepted 2026-08-23)
+**Authority:** `docs/v2/04-adrs/ADR-0021-adapter-isolation.md` §"Cache-key versioning contract" (Accepted 2026-08-23)
 **Declared work:** `IMPLEMENTATION_BACKLOG.md:30` E2-05 ("compilation cache key/storage", Epic E2)
-**Shape declared by:** `SCRIPTING_COMPILER_SPEC.md` §7 "Compilation cache"
+**Shape declared by:** `docs/v2/03-specifications/SCRIPTING_COMPILER_SPEC.md` §7 "Compilation cache"
 **Date:** 2026-10-18
 
 ## Why this document exists
@@ -21,7 +21,7 @@ adopted, and a receipt is evidence for its own moment.
 
 `CacheKey.Companion.v2.compute(CompilationIdentity)` went from
 `throw UnsupportedOperationException("v2 reserved …")` to the algorithm that
-`SCRIPTING_COMPILER_SPEC.md` §7 declares, and `Kotlin24ScriptingHost` now emits it.
+`docs/v2/03-specifications/SCRIPTING_COMPILER_SPEC.md` §7 declares, and `Kotlin24ScriptingHost` now emits it.
 
 Two properties of the new algorithm, both of which the old one lacked:
 

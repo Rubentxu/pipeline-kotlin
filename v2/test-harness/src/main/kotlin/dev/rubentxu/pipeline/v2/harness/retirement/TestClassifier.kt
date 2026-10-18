@@ -18,7 +18,7 @@ object TestClassifier {
         // because removing them would silently disable a permanent
         // internal guarantee. The set is fail-closed: adding a
         // permanent fitness requires a new ADR.
-        if (isPermanentFitness(input.path)) {
+        if (isPermanentContract(input.path)) {
             return DeletionDecision.KeepCoreContract
         }
         if (input.migratedPending) {
@@ -148,16 +148,65 @@ enum class KindHint {
 enum class RunnerHint { V2_GRADLE, LEGACY_NOT_DEFAULT_V2 }
 
 /**
- * The set of test paths that are permanent architectural fitness
- * gates and MUST never be retired by any heuristic. Membership is
- * ADR-protected: `UatLocal005BannedImportsTest` is the only entry
- * because it is the only V2 UAT that `docs/v2/05-roadmap/RESPONSIBILITY_MIGRATION_ROADMAP.md`
- * §2/§3 declares as **SE QUEDA** (it is a test of the
- * codebase, not of the installed binary — JGit ban, hardcoded
- * git path ban).
+ * Test paths that are permanent gates and MUST never be retired by any
+ * heuristic, because the name alone does not identify them as such.
+ *
+ * Membership is ADR-protected: `UatLocal005BannedImportsTest` is a test of
+ * the *codebase* (JGit ban, hardcoded git path ban) wearing a UAT name, so
+ * neither [PERMANENT_CONTRACT_PATTERNS] nor the process heuristic sees it.
+ * It is the single row `docs/v2/05-roadmap/RESPONSIBILITY_MIGRATION_ROADMAP.md`
+ * §2 marks **SE QUEDA**, and it is here for that reason alone.
  */
 val PERMANENT_FITNESS_PATHS: Set<String> = setOf(
     "v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UatLocal005BannedImportsTest.kt",
 )
 
-fun isPermanentFitness(path: String): Boolean = path in PERMANENT_FITNESS_PATHS
+/**
+ * The permanent-contract *families* of
+ * `RESPONSIBILITY_MIGRATION_ROADMAP.md` §3 — "tests de producto, no de
+ * certificación; viven en pipeline-kotlin indefinidamente".
+ *
+ * These were spelled out as families in the roadmap and were NOT spelled out
+ * here: the previous shape hardcoded ONE path and treated that as the whole
+ * protection, so every other §3 test fell through to the heuristics below.
+ * That is not a hypothetical, because §3's first rule is "prefer the rule over
+ * the list": five of those tests observe the installed binary and the
+ * `observedProcessApis` branch classified all five as
+ * `MigrateExternalPending` — a state §4.1 may promote to a deletion.
+ *
+ * Two of the five are the fitnesses that police the installed-distribution
+ * contract itself (`InstalledContractTagMembershipFitnessTest`,
+ * `InstalledDistributionHarnessFitnessTest`). A guard that classifies its own
+ * guard as migratable is the `green-row-that-certifies-the-defect` shape, so
+ * the rule is expressed as a family: a new §3 fitness that touches a process
+ * is protected without anybody editing a list.
+ *
+ * The fitness family has TWO spellings in this corpus and both are matched,
+ * because they are counted separately and the first attempt covered only one:
+ * `*FitnessTest` (92 files) and `FArch*Test` (57 files — the ADR-numbered
+ * architecture gates, `FArch011V2NoCompileExcludesTest` and siblings). A
+ * pattern that names a convention instead of the concept protects whichever
+ * one the author remembered.
+ *
+ * The roadmap's §3 also lists "tests in `pipeline-domain`, `pipeline-events`,
+ * `pipeline-step-sdk`, etc." The `etc.` is not enumerable and is deliberately
+ * NOT approximated here — a guessed module list would be a second authority
+ * that can disagree with the first. Those tests are protected anyway, because
+ * `classify` ends in `KeepCoreContract` for anything carrying `@Test`.
+ */
+val PERMANENT_CONTRACT_PATTERNS: List<Regex> = listOf(
+    Regex("""(^|/)StepContractSuite[A-Za-z0-9_]*\.kt$"""),
+    Regex("""(^|/)Core[A-Za-z0-9_]*Step(Unit|ContractSuite)Test\.kt$"""),
+    Regex("""[A-Za-z0-9_]FitnessTest\.kt$"""),
+    Regex("""(^|/)FArch[A-Za-z0-9_]*Test\.kt$"""),
+    Regex("""[A-Za-z0-9_]Architectur[A-Za-z0-9_]*\.kt$"""),
+    Regex("""(^|/)CompatCorpusTest[A-Za-z0-9_]*\.kt$"""),
+)
+
+/**
+ * Whether [path] is a permanent in-repo contract. Fail-closed by shape: only a
+ * `.kt` path can match, and an empty path matches nothing, which [TestRecord]
+ * already refuses at construction.
+ */
+fun isPermanentContract(path: String): Boolean =
+    path in PERMANENT_FITNESS_PATHS || PERMANENT_CONTRACT_PATTERNS.any { it.containsMatchIn(path) }

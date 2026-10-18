@@ -174,8 +174,40 @@ sealed interface StepState {
  * pure computation), one, or both. The stream id is the published
  * [OutputStreamId] value class so the consumer can pass it directly to
  * `OutputReadPort.read / readRange / readRangeDigested`.
+ *
+ * ## Why the two must differ when both are present
+ *
+ * None/one/both are the three real states of "what did this operation declare",
+ * so the nullability stays — but "both" means exactly **two** streams. A value
+ * naming one stream twice tells a consumer reading `stdoutStream` and
+ * `stderrStream` that it will see the same bytes twice and never the other
+ * channel.
+ *
+ * The guard is therefore **not** the `stdoutStream != stderrStream` it looks
+ * like it should be: that form refuses `null != null`, which is `false`, which
+ * rejects the *none* state — the one an operation declaring no stream produces.
+ * Measured 2026-10-18; the row that caught it is
+ * `the three real states are all constructible`. A guard that reads correctly
+ * and rejects a real state is worse than none, because the type then promises
+ * something it cannot keep.
+ *
+ * **Latent, not shipped.** The only construction,
+ * `RuntimeIntrospectionPortStoreAdapter.streamsForOperation`, matches `::stdout`
+ * and `::stderr` as disjoint suffixes, so it cannot produce a duplicate — but
+ * that is a property of one caller being correct, not of the type. Its sibling
+ * in `dev.rubentxu.pipeline.v2.output` had the same hole with the same cause,
+ * and closing only that one would have left the shape broken twice. See
+ * `OperationOutputStreamsDistinctStreamsTest`.
  */
 data class OperationOutputStreams(
     val stdoutStream: OutputStreamId?,
     val stderrStream: OutputStreamId?,
-)
+) {
+    init {
+        require(stdoutStream == null || stderrStream == null || stdoutStream != stderrStream) {
+            "the two fields must name two different streams, and both name $stdoutStream. " +
+                "An operation that declared stdout and stderr has two streams; a reader given one " +
+                "twice sees the same bytes twice and never sees the other channel."
+        }
+    }
+}

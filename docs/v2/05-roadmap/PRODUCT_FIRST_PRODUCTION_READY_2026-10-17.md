@@ -74,7 +74,7 @@ integrado; las cuatro amendments de `ADR-PK-DF-002` siguen requiriendo firma del
   Dos hallazgos que quedan abiertos y **no** se declaran cerrados aquí:
 
   - `f02` sobrevive a M-2 porque su aserción es una ausencia y un plano vacío la satisface. Verde sin haber medido. → **cerrado en H1.3** (marcador benigno presente + rojo bajo M-2).
-  - `OperationOutputStreams.init` valida `runId`/`operationId` y **no** que los canales sean distintos: un `stderr` con canal `STDOUT` lo satisface. La suposición que la clase expresa no tiene invariante que la sostenga. → **cerrado en H1.3** (dos `require` de identidad de canal + `OperationOutputStreamsChannelInvariantTest`).
+  - `OperationOutputStreams.init` valida `runId`/`operationId` y **no** que los canales sean distintos: un `stderr` con canal `STDOUT` lo satisface. La suposición que la clase expresa no tiene invariante que la sostenga. → **cerrado en H1.3** (dos `require` de identidad de canal + `OperationOutputStreamsChannelInvariantTest`). **Medido como latente, no vivo**: la única construcción del repo era correcta. Y existía un **gemelo** en `runtime-api` con el mismo hole → cerrado también en H1.3.
 
 - [ ] **H1.2** Corregir productor→redactor→Output Plane→CLI sin segundo writer/event plane de bytes. Propiedad redacción antes de persistencia; no duplicar responsabilidades de recovery.
 - [x] **H1.3** Solo test del seam de salida afectado + **1 UAT temporal** de CLI con stdout/stderr/cursor y negativo secreto si riesgo afectado. Reusar smoke instalado del RC. Borrar pruebas temporales y fixtures tras aceptación.
@@ -83,7 +83,7 @@ integrado; las cuatro amendments de `ADR-PK-DF-002` siguen requiriendo firma del
 
   **a) `f02` era verde por vacuidad. Cerrado.** Sus dos aserciones eran de AUSENCIA, y un Output Plane vacío las satisface — por eso sobrevivía a M-2. Ahora el productor escribe un marcador benigno **antes** de los fragmentos y la fila lo exige presente. Con M-2 (`RedactingOutputIngress` nunca hace commit) `f02` pasa de verde a **ROJA** por su propia aserción nueva. La fila ya no puede go green sobre un plano sin señal.
 
-  **b) `OperationOutputStreams` expresaba una suposición de dos canales sin invariante que la sostuviera. Cerrado.** Su `init` comparaba `runId`/`operationId` y nada más, así que `stderr` sobre el canal `STDOUT` era un valor **legal y silenciosamente aceptado**: `select(setOf(STDERR))` devolvía lista vacía sobre una transcripción viva, y `select(setOf(STDOUT))` devolvía el mismo stream dos veces. Añadidos dos `require` de identidad de canal — identidad y no `!=`, porque los campos se **llaman** `stdout` y `stderr` y `!=` habría admitido el par invertido igual. `of()` es la única construcción del repo, luego no restringe ningún call site existente.
+  **b) `OperationOutputStreams` expresaba una suposición de dos canales sin invariante que la sostuviera. Cerrado.** Su `init` comparaba `runId`/`operationId` y nada más, así que `stderr` sobre el canal `STDOUT` era un valor **legal y silenciosamente aceptado**: `select(setOf(STDERR))` devolvía lista vacía sobre una transcripción viva, y `all` rendía el mismo stream dos veces. Añadidos dos `require` de identidad de canal — identidad y no `!=`, porque los campos se **llaman** `stdout` y `stderr` y `!=` habría admitido el par invertido igual.
 
   ```text
   OperationOutputStreamsChannelInvariantTest   tests=4 skipped=0 failures=0 errors=0
@@ -91,6 +91,18 @@ integrado; las cuatro amendments de `ADR-PK-DF-002` siguen requiriendo firma del
   M-4  se elimina el require de stderr         -> RED 1 de 4, la fila que apunta
   M-3  stderr sobre STDOUT, con el invariante  -> sigue COMPILANDO; RED 2 de 4
   f02 bajo M-2 (antes sobrevivia)             -> ROJA por la asercion nueva
+  ```
+
+  **Corrección de alcance: era LATENTE, no un defecto vivo.** Antes de dar esto por cerrado enumeré **todas** las construcciones del tipo en el repo, en vez de suponerlo. `of()` es la única, y construye el par correcto: ninguna ejecución produjo un par cruzado. Lo que faltaba era el invariante que lo mantendría cierto cuando aparezca el próximo call site. El mensaje de `aeecb92a` lo describe en términos de consecuencia vivida y eso no es exacto; el KDoc de producción ya dice LATENTE con la medición que lo sostiene.
+
+  **c) El gemelo de `runtime-api`, con el mismo hole y la misma causa. Cerrado.** Existe un **segundo** `OperationOutputStreams` —este con `stdoutStream`/`stderrStream` anulables— en `pipeline-runtime-api`. Cerrar solo `:pipeline-output` habría dejado la forma rota en dos sitios. Su única construcción es `RuntimeIntrospectionPortStoreAdapter.streamsForOperation` (leído, no supuesto: `firstOrNull { endsWith("::$op::stdout") }` frente a `::stderr`, sufijos disjuntos), luego también latente.
+
+  Aquí la primera versión del guard estaba **equivocada** y el test lo cazó en la primera ejecución: escribí `require(stdoutStream != stderrStream)`, que **rechaza `null != null`**, es decir `false`, es decir rechaza el estado *ninguno* — un valor legítimo, el de una operación que no declara streams. Un guard que se lee correcto y rechaza un estado real es peor que no tenerlo, porque el tipo pasa a prometer algo que no puede cumplir. La forma correcta es la disyunción de tres términos. Filas: las dos de rechazo dicen que el guard tiene dientes; la de los tres estados dice que no tiene de más. Un guard que sólo prueba que puede rechazar algo lo cumple uno que lo rechaza todo.
+
+  ```text
+  :pipeline-runtime-api completo              tests=16 skipped=0 failures=0 errors=0
+  M-1  require(true) (guard sin dientes)       -> RED 2 de 4, exactamente las de rechazo
+  :pipeline-runtime:compileKotlin --no-build-cache -> exit=0, recompilación real
   ```
 
   **Una corrección que la medición obligó.** Escribí que el invariante hacía el cruce «irrepresentable». **Es falso, y lo medí antes de dejar el KDoc**: `require` es un rechazo en runtime, no una restricción de tipos — ambos campos son `OutputStreamAddress` y una dirección sobre el canal STDOUT es una dirección válida. Lo que M-3 demuestra es *dónde* aflora el defecto: antes el par se construía en silencio y todo consumidor lo heredaba; ahora no existe valor que heredar. El KDoc de producción y el del test llevan la corrección escrita, porque una afirmación más fuerte que la comprobada es exactamente el defecto que este test existe para cazar.

@@ -162,8 +162,12 @@ data class OutputStreamAddress(
  * where "the two channels are distinguishable" has to become a fact rather than a comment. The
  * `init` below compared `runId` and `operationId` and stopped there, which made
  * `stderr = stdout-with-channel-STDOUT` a legal value: `select(setOf(STDERR))` on such a pair
- * returns an EMPTY list over a live transcript, and `select(setOf(STDOUT))` returns one stream
- * twice. M-3 measured that on 2026-10-18; `OperationOutputStreamsChannelInvariantTest` holds it.
+ * returns an EMPTY list over a live transcript, and `all` yields one stream twice.
+ *
+ * **That was latent, not shipped.** [of] is the only construction of this type in the repository
+ * and it builds the correct pair, so no run ever produced a crossing one — measured 2026-10-18 by
+ * enumerating every construction site, not by assuming. What was missing was the invariant that
+ * would have kept it true when the next construction site appears.
  *
  * Identity rather than `!=`, because the fields are NAMED `stdout` and `stderr`: a field whose name
  * is a channel claims that channel, and `distinct` would have admitted the reversed pair just as
@@ -173,10 +177,7 @@ data class OutputStreamAddress(
  * address on the STDOUT channel is a valid address, so M-3 still compiles against this `init`. What
  * changed is where the defect surfaces: the pair cannot be constructed, so there is nothing for a
  * consumer to inherit. Removing it entirely would mean two single-valued types instead of one pair,
- * which is a larger change than a defect in one factory justifies.
- *
- * [of] is the only construction in the repository and builds exactly this pair, so the invariant
- * constrains no existing call site.
+ * which is a larger change than a latent hole in one factory justifies.
  */
 data class OperationOutputStreams(
     val stdout: OutputStreamAddress,

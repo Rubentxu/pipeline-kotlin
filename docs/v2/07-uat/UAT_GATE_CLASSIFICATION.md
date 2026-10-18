@@ -111,7 +111,7 @@ green today**, and it is non-blocking with a named owner.
 |---|---|---|---|---|---|---|
 | 1 | `ExternalPluginFourFamilyAdmissionTest` | **STEP-CERT** | `CERTIFICATION_PROTOCOL.md` §4 (STEP-CERT: "sin bypass del registro") + §3 rows C05/C08; `AGENTS.md` STEP CONSTITUTION §6 "Fail-closed admission is registry-driven" | Yes | RED. Fail-closed admission of an external JAR contributing Step+Directive+Event+Capability is not observed to hold | **BLOCKING** — see §5.1, likely a genuine product defect |
 | 2 | `Lpr011r2SecretRedactionAtRestUatTest` | **PRODUCT-GATE** (security) + STEP-CERT C15 | `CERTIFICATION_PROTOCOL.md` §4 (PRODUCT-GATE "seguridad del perfil") + §3 row C15; maps to `PRODUCTION_READY_UAT_MATRIX.md` row `UAT-RP-015` (Secretos) | PRODUCT-GATE **NO** (`BLOCKED_EXTERNAL`). STEP-CERT yes only if a Step's certification claims the secret-handling contract through this suite | RED | **BLOCKING** for any release that claims a secret-handling contract; otherwise **NON-BLOCKING** under `BLOCKED_EXTERNAL`. See §5.2 |
-| 3 | `Lfc2WaitUntilCanonicalReentryFitnessTest` | **STEP-CERT** | `CERTIFICATION_PROTOCOL.md` §4 (STEP-CERT: "sin bypass del registro", C01..C19) + §3 rows C06, C07, C14. Asserts `core.waitUntil` is registry-primary | Yes | RED. The suite's own KDoc declares its condition-evaluating loop is **deferred to WU-LPR-302** and the handler "emits a single polled/completed pair" | **BLOCKING** for the `core.waitUntil` STEP-CERT only. **NON-BLOCKING** for a release that does not certify `core.waitUntil` at this SHA. See §5.3 |
+| 3 | `Lfc2WaitUntilCanonicalReentryFitnessTest` | **STEP-CERT** | `CERTIFICATION_PROTOCOL.md` §4 (STEP-CERT: "sin bypass del registro", C01..C19) + §3 rows C06, C07, C14. Asserts `core.waitUntil` is registry-primary | Yes | **GREEN at `36734add`** (4/4, XML canary, 2026-10-18T18:03:26.673Z). Was RED: the installed-CLI row was non-hermetic and failed on a pre-pipeline credential gate before the pipeline loaded — a HARNESS FIDELITY §4 defect, not a registry defect. Fixed in `b3eeb8fe` | **NOT BLOCKING** as of `36734add` — the row passes on the HEAD bytes. The *historical* RED's recorded cause is still unestablished (§5.3); that is owed documentation, not a blocked gate |
 | 4 | `FArchS3PureBuilderPurityWitnessTest` | **STEP-CERT** (architecture half of a Step law) | `CERTIFICATION_PROTOCOL.md` §4 (STEP-CERT "sin bypass del registro") + §2 layer **T2** "fitness dependencia/registry/body-policy"; `AGENTS.md` SEMANTIC CONSTITUTION §3 "Pure builders are referentially transparent" | Yes | RED on the **installed distribution** (`@EnabledIf("isRealHostAvailable")`) | **BLOCKING** for any STEP-CERT that relies on PURE_BUILDER purity. **NON-BLOCKING** for a candidate that certifies no builder-adding Step. See §5.4 |
 | 5 | `CompatibilityCorpusTest` | **PRODUCT-GATE** | `CERTIFICATION_PROTOCOL.md` §4 (PRODUCT-GATE "todas las UAT obligatorias de PRODUCTION_READY_UAT_MATRIX.md" + "instalación limpia") + §2 layer **T2** "corpus completo" | PRODUCT-GATE **NO** (`BLOCKED_EXTERNAL`) | RED. ~30 fixtures run against the real CLI produce an EMPTY observed transcript | **NON-BLOCKING** under `BLOCKED_EXTERNAL`, but the single highest-risk row here — see §5.5 |
 | 6 | `DirScopeEndToEndTest` | **STEP-CERT** (Step semantics for `dir`) | `CERTIFICATION_PROTOCOL.md` §4 (STEP-CERT "Step completo y ejecutable en el SHA") + §3 rows C09, C16, C18; `AGENTS.md` STEP SEMANTICS §1 (`dir` Jenkins parity) | Yes | RED end-to-end through the installed CLI | **BLOCKING** for a `dir` STEP-CERT. **NON-BLOCKING** for a release that does not certify `dir` at this SHA |
@@ -131,7 +131,7 @@ green today**, and it is non-blocking with a named owner.
 | Verdict | Count | Classes |
 |---|---|---|
 | **BLOCKING** (a gate in force requires them green) | **3** | `ExternalPluginFourFamilyAdmissionTest`, `FArchS3PureBuilderPurityWitnessTest`, `Lpr011r2SecretRedactionAtRestUatTest`* |
-| **BLOCKING-conditional** (required only by the STEP-CERT of a named Step) | **4** | `Lfc2WaitUntilCanonicalReentryFitnessTest` (`core.waitUntil`), `DirScopeEndToEndTest` (`dir`), `ObsPc2LevelAUatTest` (output plane / `core.sh`) — plus `FArchS3PureBuilderPurityWitnessTest` against builder-adding Steps |
+| **BLOCKING-conditional** (required only by the STEP-CERT of a named Step) | **4** | `Lfc2WaitUntilCanonicalReentryFitnessTest` (`core.waitUntil`) — **GREEN at `36734add`, so not blocking**, see §5.3 — `DirScopeEndToEndTest` (`dir`), `ObsPc2LevelAUatTest` (output plane / `core.sh`) — plus `FArchS3PureBuilderPurityWitnessTest` against builder-adding Steps |
 | **NON-BLOCKING** (under `BLOCKED_EXTERNAL`; pre-existing defects awaiting harness migration) | **3** | `CompatibilityCorpusTest`, `SegmentOutputStoreTest` OUT-01 (prefix collision), `SegmentOutputStoreTest` OUT-02 (injective identity collapse) |
 | **DOC-ONLY** | **1** | `ObsAOutputStreamingCharacterisationTest` |
 | **Genuine product defects (escalated, not fixed)** | **2** | §5.1, §5.5; plus the durable-format migration policy the segment-store OUTPUT defect is parked behind |
@@ -188,6 +188,33 @@ Two separate problems, both recorded rather than fixed:
    for this task and would also hide a blocking security row.
 
 ### 5.3 `Lfc2WaitUntilCanonicalReentryFitnessTest` — red against a DEFERRED contract
+
+> **Superseded 2026-10-18 for the CURRENT state; the original text is kept below.**
+> The row is **GREEN on `36734add`** — `tests="4" failures="0" errors="0"
+> skipped="0"`, timestamp `2026-10-18T18:03:26.673Z`, canary
+> `v2/pipeline-application/build/test-results/installedContractTest/TEST-dev.rubentxu.pipeline.v2.application.Lfc2WaitUntilCanonicalReentryFitnessTest.xml`.
+> The tested bytes are the HEAD bytes: the fitness file's last commit is
+> `b3eeb8fe` and `36734add` touched documentation only; the working tree is
+> clean for it. **It therefore no longer blocks the `core.waitUntil` STEP-CERT.**
+>
+> The two candidate causes named below are not the only candidates. A third was
+> measured this cycle, and it is neither a registry-routing defect nor a
+> premature contract: the installed-CLI row was **non-hermetic**. Without
+> `PIPELINE_STORE_PASSPHRASE` supplied explicitly, the shipped binary exits 3
+> with "Passphrase required …" **before the pipeline is loaded**, so the row was
+> reporting on the product's start-up contract while claiming to report on
+> `waitUntil`. The same binary, given the variable, exits 0 and emits
+> 2x `WaitUntilPolled` + 1x `WaitUntilCompleted`. That was HARNESS FIDELITY
+> §4 (hermetic), fixed in `b3eeb8fe`.
+>
+> **What remains open, honestly:** whether the RED recorded in row 114 is the
+> same RED this cycle observed. No evidence of the historical failure's message
+> was retained, so its cause cannot be established here, and AGENTS.md rule 16
+> forbids calling anything pre-existing without base-vs-head evidence. The
+> determination §5.3 asks for is therefore still owed — but it is now owed about
+> a row that passes, not about a gate that is blocked.
+>
+> The original text follows.
 
 Its KDoc states its own scope boundary:
 

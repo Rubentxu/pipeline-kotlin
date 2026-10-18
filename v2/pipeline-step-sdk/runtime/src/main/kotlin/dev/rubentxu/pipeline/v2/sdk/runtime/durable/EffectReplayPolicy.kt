@@ -7,9 +7,11 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 /**
  * Interface for effect-aware replay decisions.
  *
- * ## M3-R1 → M3-R2 Contract
+ * ## Stability
  *
- * This interface is stable for M3-R2 consumption per [design.md §8].
+ * This interface is part of the durable replay contract: a Step's configured
+ * [ReplayPolicy] is part of its fingerprint, so changing what this decides
+ * changes what a resumed run is allowed to do.
  *
  * ## Decision matrix — ADR-0103 D1
  *
@@ -17,8 +19,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
  * the implementation in two ways, both of which survived because nothing
  * asserted it: the `RERUN` row did not match the enum's own documentation, and
  * the `ABORTS_PIPELINE` row was unreachable for any `RERUN` Step because the
- * policy branch returned first. The table is now pinned by
- * `EffectReplayPolicyTableFitnessTest`.
+ * policy branch returned first. The table is now pinned row by row by
+ * `DefaultEffectReplayPolicyTest`.
  *
  * The order separates **admission** from **replay**, and that separation is the
  * point: `ABORTS_PIPELINE` means "this Step, when executed, aborts the
@@ -57,8 +59,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
  * documented contract; D2b defers the rename, because the enum name is inside
  * the fingerprint hash and renaming it would migrate every operation that
  * declares it on both the canonical and the scripted history.
- *
- * @see <a href="design.md §E4-06">Design §E4-06</a>
  */
 interface EffectReplayPolicy {
     /**
@@ -96,8 +96,6 @@ fun OperationStatus.isReusableCompletion(): Boolean =
 
 /**
  * Default effect-aware replay policy implementation.
- *
- * @see <a href="design.md §E4-06">Design §E4-06</a>
  */
 class DefaultEffectReplayPolicy : EffectReplayPolicy {
 

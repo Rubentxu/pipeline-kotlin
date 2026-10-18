@@ -1,4 +1,5 @@
-#! expect-exit 1
+//@ expect-exit 1
+//@ expect-stderr unresolved directive 'acme.no.such.directive'
 // A directive key that no contributor registers must fail CLOSED and name the
 // key, never be skipped.
 //

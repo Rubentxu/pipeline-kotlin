@@ -189,20 +189,28 @@ cd v2 && ./gradlew :pipeline-application:installDist
 cd .. && v2/examples/run.sh
 ```
 
-A scenario may carry these directives in a `#!` comment near its top,
+A scenario may carry these directives as `//@` comments near its top,
 and nothing else about a scenario is interpreted:
 
-```bash
-#! expect-exit 1               # the default is 0
-#! expect-stderr <substring>   # the refusal must be this specific, not
-                              # merely a nonzero exit
-#! durable                     # run twice over one control root; the
-                              # pipeline itself asserts the effect did
-                              # not repeat, this only makes it happen
+```kotlin
+//@ expect-exit 1              // the default is 0
+//@ expect-stderr <substring>  // the refusal must be this specific, not
+                              // merely a nonzero exit
+//@ durable                    // run twice over one control root; the
+                              // pipeline itself asserts the effect did
+                              // not repeat, this only makes it happen
 ```
 
 That is the entire vocabulary. The launcher is not a framework: it has
 no registry, no fixtures and no assertions of its own.
+
+`//@` is an ordinary Kotlin comment rather than a `#!` line, and that
+is deliberate. `#!` only ever worked by accident: the script compiler
+strips a shebang from the *first* line of a file, so a second `#!` line
+became a syntax error and the scenario failed to compile instead of
+failing for its own reason. The `@` then keeps a directive from matching
+prose, since real scenarios already carry comments like
+`// durable execution over the journal`.
 
 ## Capabilities
 

@@ -1,4 +1,4 @@
-#! requires-seeded-credentials
+//@ requires-seeded-credentials
 // NOT_RUN in the local gate, and that is deliberate rather than a shrug.
 //
 // This scenario's subject is the seven binding kinds. Resolving any of them

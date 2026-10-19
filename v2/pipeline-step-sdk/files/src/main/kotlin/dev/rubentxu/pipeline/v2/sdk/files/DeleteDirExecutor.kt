@@ -150,16 +150,18 @@ class DeleteDirExecutor(
         // `escape` is removed as a link and never followed into its target.
         val walked = realTarget
         if (Files.exists(walked)) {
-            Files.walk(walked)
-                .filter { it != walked } // do NOT delete the root directory itself
-                .sorted(Comparator.reverseOrder())
-                .forEach { p ->
-                    try {
-                        Files.deleteIfExists(p)
-                    } catch (_: Exception) {
-                        // Ignore deletion errors for individual files
+            Files.walk(walked).use { walk ->
+                walk
+                    .filter { it != walked } // do NOT delete the root directory itself
+                    .sorted(Comparator.reverseOrder())
+                    .forEach { p ->
+                        try {
+                            Files.deleteIfExists(p)
+                        } catch (_: Exception) {
+                            // Ignore deletion errors for individual files
+                        }
                     }
-                }
+            }
         }
 
         // Write MEMOIZED marker inside targetPath
@@ -176,9 +178,14 @@ class DeleteDirExecutor(
 
     private fun countItems(path: Path): Int {
         if (!Files.exists(path)) return 0
-        return Files.walk(path)
-            .filter { it != path } // don't count the root itself
-            .count().toInt()
+        // `use`, not a bare chain: the Stream holds an open directory handle per
+        // level until it is closed. This runs once per deleteDir, and the leak
+        // is invisible until the process hits its descriptor limit.
+        return Files.walk(path).use { walk ->
+            walk
+                .filter { it != path } // don't count the root itself
+                .count().toInt()
+        }
     }
 
     /**

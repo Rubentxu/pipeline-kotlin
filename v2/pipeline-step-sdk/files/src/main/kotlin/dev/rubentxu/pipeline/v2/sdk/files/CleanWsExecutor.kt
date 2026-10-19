@@ -150,11 +150,13 @@ class CleanWsExecutor(
             }
         } else {
             // Delete all non-.v2 files
-            Files.walk(workspace)
-                .filter { it != workspace }
-                .filter { !it.startsWith(v2ArtifactsRoot) }
-                .filter { Files.isRegularFile(it) }
-                .forEach { filesToDelete.add(it) }
+            Files.walk(workspace).use { walk ->
+                walk
+                    .filter { it != workspace }
+                    .filter { !it.startsWith(v2ArtifactsRoot) }
+                    .filter { Files.isRegularFile(it) }
+                    .forEach { filesToDelete.add(it) }
+            }
         }
 
         // Delete files
@@ -204,16 +206,18 @@ class CleanWsExecutor(
             return emptyList()
         }
 
-        Files.walk(workspace)
-            .filter { it != workspace }
-            .filter { !it.startsWith(v2ArtifactsRoot) }
-            .filter { Files.isRegularFile(it) }
-            .forEach { file ->
-                val relPath = workspace.relativize(file).toString()
-                if (regexPattern.matcher(relPath).matches()) {
-                    results.add(file)
+        Files.walk(workspace).use { walk ->
+            walk
+                .filter { it != workspace }
+                .filter { !it.startsWith(v2ArtifactsRoot) }
+                .filter { Files.isRegularFile(it) }
+                .forEach { file ->
+                    val relPath = workspace.relativize(file).toString()
+                    if (regexPattern.matcher(relPath).matches()) {
+                        results.add(file)
+                    }
                 }
-            }
+        }
 
         return results
     }
@@ -290,24 +294,26 @@ class CleanWsExecutor(
      */
     private fun deleteEmptyParents(workspace: Path, v2ArtifactsRoot: Path): Int {
         var deleted = 0
-        Files.walk(workspace)
-            .filter { it != workspace }
-            .filter { Files.isDirectory(it) }
-            .filter { !it.startsWith(v2ArtifactsRoot) }
-            .sorted(Comparator.reverseOrder()) // depth-first (deepest first)
-            .forEach { dir ->
-                if (Files.exists(dir)) {
-                    try {
-                        val entries = dir.toFile().listFiles()
-                        if (entries != null && entries.isEmpty()) {
-                            Files.deleteIfExists(dir)
-                            deleted++
+        Files.walk(workspace).use { walk ->
+            walk
+                .filter { it != workspace }
+                .filter { Files.isDirectory(it) }
+                .filter { !it.startsWith(v2ArtifactsRoot) }
+                .sorted(Comparator.reverseOrder()) // depth-first (deepest first)
+                .forEach { dir ->
+                    if (Files.exists(dir)) {
+                        try {
+                            val entries = dir.toFile().listFiles()
+                            if (entries != null && entries.isEmpty()) {
+                                Files.deleteIfExists(dir)
+                                deleted++
+                            }
+                        } catch (_: Exception) {
+                            // Ignore
                         }
-                    } catch (_: Exception) {
-                        // Ignore
                     }
                 }
-            }
+        }
         return deleted
     }
 

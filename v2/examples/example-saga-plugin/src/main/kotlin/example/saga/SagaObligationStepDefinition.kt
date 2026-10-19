@@ -255,5 +255,5 @@ class SagaContributor : StepDefinitionContributor {
     override val id: String = "example.saga"
 
     override fun definitions(): Iterable<StepDefinition<*, *>> =
-        listOf(SagaObligationStepDefinition)
+        listOf(SagaObligationStepDefinition, SagaChainStepDefinition)
 }

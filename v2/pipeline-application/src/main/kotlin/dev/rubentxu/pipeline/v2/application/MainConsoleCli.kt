@@ -857,10 +857,12 @@ fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal)
  *
  * ## R4 / WU-C — why this object holds 21 functions, more than detekt's 12
  *
- * The object is the canonical CLI surface for `pipeline console`. Tests certified by RC3/RC4/WU-A/B
+ * The object is the canonical CLI surface for `pipeline console`. The tests that certified it by RC3/RC4/WU-A/B
  * (`ConsoleRc3FilteredFollowTest`, `ConsoleRc4FollowTerminationTest`, `ConsoleRc2FrameIntegrityTest`,
- * `ConsoleFollowTest`, `ConsoleFrameFiltersTest`, `ConsoleReadServiceTest`) reach the verbs
- * through `MainConsoleCli.X` — splitting the object into per-verb objects (Read/Follow/Emit) would
+ * `ConsoleFollowTest`, `ConsoleFrameFiltersTest`, `ConsoleReadServiceTest`) all reached the verbs
+ * through `MainConsoleCli.X`, and the test RESET removed all six in `2aa071aab`. Nothing reaches
+ * these verbs from a test today, so the 21-vs-12 count below is argued, not enforced. Splitting the
+ * object into per-verb objects (Read/Follow/Emit) would
  * require moving every public function and rewriting the test call sites, and the only honest
  * way to certify a refactor that changes both production and tests at once is to re-derive
  * every row's expectation. That is a separate slice; recorded in the receipt, not done here.

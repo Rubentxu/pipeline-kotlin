@@ -75,7 +75,12 @@ usage() { sed -n '2,57p' "$0"; }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --no-budget) skip_budget=1 ;;
+        # `--no-budget` is a subset flag as well as a budget skip. It used to set
+        # only skip_budget, so the run skipped stage 4 and then fell through to
+        # the SAME `PASS sha=… budget=900s` line the full gate prints -- a line
+        # naming a LOC budget this run never measured. The verdict belongs to the
+        # run that observed everything, so dropping a stage drops the claim with it.
+        --no-budget) skip_budget=1; subset=1 ;;
         --list)      list_only=1; subset=1 ;;
         --stage)     stage_spec="${2:-}"; stage_given=1; subset=1; shift ;;
         --module)    module_filter="${2:-}"; module_given=1; subset=1; shift ;;
@@ -596,6 +601,22 @@ if [[ "$total" -gt "$BUDGET_SECONDS" ]]; then
     fail "stage 5: wall clock ${total}s"
 fi
 
-printf '\nPASS  sha=%s  elapsed=%ss  budget=%ss%s\n' \
-    "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$BUDGET_SECONDS" \
-    "$(gaps_suffix)"
+# A scenario that did not run is not a scenario that passed. AGENTS.md section 4
+# says an absent test or a skipped task is never PASS, and the only artefact
+# anybody reads is the verdict line -- so a `gaps=1 not_run` suffix welded onto
+# `PASS` produced a sentence that contradicted itself, and the contradiction was
+# the part most likely to be quoted. The verdict word now follows the evidence.
+# The exit status stays 0 because every stage that DID run is still real
+# evidence, and a scenario the product cannot launch without a TTY is a gap to
+# name, not a defect to redden the whole gate over.
+if (( e2e_not_run > 0 )); then
+    printf '\nINCOMPLETE  sha=%s  elapsed=%ss  budget=%ss  gaps=%s not_run\n' \
+        "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" \
+        "$BUDGET_SECONDS" "$e2e_not_run"
+    printf 'Every stage above ran and passed, but %s scenario(s) never ran at all.\n' "$e2e_not_run"
+    printf 'This is not the gate: seed the credential store on a TTY, or accept the gap\n'
+    printf 'explicitly. AGENTS.md section 4 does not allow an unrun test to be a PASS.\n'
+else
+    printf '\nPASS  sha=%s  elapsed=%ss  budget=%ss\n' \
+        "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$BUDGET_SECONDS"
+fi

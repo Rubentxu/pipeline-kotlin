@@ -628,16 +628,26 @@ fi
 #    (NOT copied into the git tree). The git tree carries only the small
 #    text artefacts (manifest, handoff, git-head).
 #
-#    Prerelease-ness is derived from the TRAIN, not passed in. A train whose
-#    version carries a pre-release suffix (`0.62.0-rc1`) publishes as a
-#    prerelease; a plain version (`0.62.0`) publishes as a full release. It
-#    used to be `--prerelease` unconditionally, which meant a GA tag was
-#    created but flagged prerelease on GitHub — a published "stable" that
-#    every consumer's tooling correctly refuses to treat as stable. The flag
-#    was the only thing marking intent, and it did not follow the tag.
+#    Prerelease-ness is derived from the TAG, not passed in. A tag whose name
+#    carries a pre-release suffix (`v0.64.0-rc1`) publishes as a prerelease; a
+#    plain tag (`v0.64.0`) publishes as a full release. It used to be
+#    `--prerelease` unconditionally, which meant a GA tag was created but
+#    flagged prerelease on GitHub — a published "stable" that every consumer's
+#    tooling correctly refuses to treat as stable. The flag was the only thing
+#    marking intent, and it did not follow the tag.
+#
+#    It used to be derived from the TRAIN, which cannot work: the train IS the
+#    product version (the asset names are `pipelinek-<train>.zip` and the
+#    distribution is built from `project.version`), so the train of a release
+#    cut from a plain-version build NEVER carries a suffix. The script's own
+#    usage example — `TAG=v0.56.0-rc5 TRAIN=0.56.0` — therefore published a
+#    release candidate as a full release, and `Latest` on the releases page,
+#    which is the same lie this whole block exists to prevent: a candidate
+#    advertised as stable. The tag is what NAMES the release, so the tag is
+#    what the flag follows.
 # ----------------------------------------------------------------------------
 PRELEASE_FLAG=""
-case "${PIPELINEK_RELEASE_TRAIN}" in
+case "${PIPELINEK_RELEASE_TAG}" in
     *-alpha*|*-beta*|*-rc*|*-dev*|*-M[0-9]*|*SNAPSHOT*) PRELEASE_FLAG="--prerelease" ;;
 esac
 

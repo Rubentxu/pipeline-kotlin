@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.files
 
+import dev.rubentxu.pipeline.v2.domain.workspace.DestructiveAuthorization
+
 /**
  * What a caller is permitted to do to a workspace ROOT, as a closed set of the
  * three states that actually exist.
@@ -67,13 +69,29 @@ enum class RootDestruction {
 
     companion object {
         /**
-         * Derive the intent from a lease ownership answer.
+         * The intent a lease's verdict authorises.
          *
-         * Kept here, beside the enum, so the mapping is stated once. The
-         * adapters used to re-derive it inline, and two derivations of one rule
-         * are two rules waiting to diverge.
+         * Kept here, beside the enum, so the mapping is stated once. Both
+         * adapters used to re-derive it inline from the SAME
+         * [DestructiveAuthorization], and two derivations of one rule are two
+         * rules waiting to diverge.
+         *
+         * The parameter is the authorisation itself rather than a `Boolean` of
+         * it, for the reason this enum exists at all: a bit cannot express
+         * "nobody has decided", so a caller holding an unanswered question had to
+         * pick one of two answers. [DecidedElsewhere] stays reachable through the
+         * executors' default and nowhere else — which is the honest reading of an
+         * ownership question nobody has asked yet.
+         *
+         * [DecidedElsewhere] has no branch here, and that is deliberate rather than
+         * an oversight: an authorisation is an ANSWER. A caller that has one
+         * cannot also be in the undecided case, and manufacturing a branch for it
+         * would reintroduce the bit this type removed.
          */
-        fun fromUserOwned(isUserOwned: Boolean): RootDestruction =
-            if (isUserOwned) UserOwned else ScratchOwned
+        fun from(authorization: DestructiveAuthorization): RootDestruction =
+            when (authorization) {
+                is DestructiveAuthorization.Permitted -> ScratchOwned
+                is DestructiveAuthorization.Refused -> UserOwned
+            }
     }
 }

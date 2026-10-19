@@ -1,7 +1,6 @@
 # PipelineK
 
 [![Latest release (incl. prereleases)](https://img.shields.io/github/v/release/Rubentxu/pipeline-kotlin?include_prereleases&sort=semver)](https://github.com/Rubentxu/pipeline-kotlin/releases)
-[![CI](https://img.shields.io/github/actions/workflow/status/Rubentxu/pipeline-kotlin/v2-baseline.yml?branch=main)](https://github.com/Rubentxu/pipeline-kotlin/actions/workflows/v2-baseline.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 A local-first CI/CD engine with a Jenkins-familiar Kotlin DSL.
@@ -10,7 +9,7 @@ events, and structured failures — without a controller, agent, or
 remote state.
 
 ```bash
-VERSION=0.39.0
+VERSION=0.62.0
 
 curl -fL -o "pipelinek-${VERSION}.zip" \
   "https://github.com/Rubentxu/pipeline-kotlin/releases/download/v${VERSION}/pipelinek-${VERSION}.zip"
@@ -20,7 +19,7 @@ echo "385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8  pipeline
 
 unzip "pipelinek-${VERSION}.zip"
 
-./pipelinek-${VERSION}/bin/pipelinek version          # → pipeline 0.39.0
+./pipelinek-${VERSION}/bin/pipelinek version          # → pipeline 0.62.0
 ./pipelinek-${VERSION}/bin/pipelinek doctor           # jdk / os / workdir / writable
 ```
 
@@ -47,11 +46,11 @@ schedule remotely, and does not need a controller.
 ### 1. Install
 
 Download the canonical ZIP from
-[GitHub Releases](https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.39.0),
+[GitHub Releases](https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.62.0),
 verify its SHA-256, and unzip it:
 
 ```bash
-VERSION=0.39.0
+VERSION=0.62.0
 
 curl -fL -o "pipelinek-${VERSION}.zip" \
   "https://github.com/Rubentxu/pipeline-kotlin/releases/download/v${VERSION}/pipelinek-${VERSION}.zip"
@@ -69,10 +68,10 @@ Linux, macOS and Windows (WSL) are supported. The ZIP ships both
 `bin/pipelinek` (UNIX) and `bin/pipelinek.bat` (Windows). Java 21 or
 newer is required on the `PATH`. The snippet above assumes you run it
 from a directory where you want `pipelinek-${VERSION}/` to live
-(`./pipelinek-0.39.0/bin/pipelinek` works without touching your `PATH`
+(`./pipelinek-0.62.0/bin/pipelinek` works without touching your `PATH`
 or needing `sudo`).
 
-> **SDKMAN is not yet available.** `sdk install pipelinek 0.39.0` is the
+> **SDKMAN is not yet available.** `sdk install pipelinek 0.62.0` is the
 > canonical long-term install command but the candidate is still in
 > vendor onboarding; running it today may fail. Until SDKMAN goes live,
 > install from GitHub Releases as shown above. See
@@ -86,7 +85,7 @@ verifies its SHA-256 against the `SHA256SUMS` manifest published with
 the release, and unpacks under `~/.local/share/pipelinek/versions/`:
 
 ```bash
-VERSION=0.39.0
+VERSION=0.62.0
 
 curl -fL -o "install-pipelinek.sh" \
   "https://raw.githubusercontent.com/Rubentxu/pipeline-kotlin/main/scripts/install-pipelinek.sh"
@@ -99,7 +98,7 @@ chmod +x install-pipelinek.sh
 
 # Activate in your shell:
 export PATH="$HOME/.local/share/pipelinek/current/bin:${PATH}"
-pipelinek version                            # → pipeline 0.39.0
+pipelinek version                            # → pipeline 0.62.0
 ```
 
 Available subcommands: `install`, `use`, `list`, `uninstall`, `doctor`,
@@ -157,7 +156,7 @@ pipelinek run --help
 ## Examples
 
 The [`v2/examples/`](v2/examples/) directory holds 35 runnable
-pipelines that exercise the real CLI of the published `v0.39.0`
+pipelines that exercise the real CLI of the published `v0.62.0`
 distribution, grouped by what they cover:
 
 | Category | Scenarios | What it covers |
@@ -214,7 +213,7 @@ prose, since real scenarios already carry comments like
 
 ## Capabilities
 
-PipelineK `0.39.0` ships with:
+PipelineK `0.62.0` ships with:
 
 - Compile, validate, and inspect `.pipeline.kts` pipelines.
 - Durable local execution with a SQLite journal (`--db`) and a
@@ -266,7 +265,7 @@ it does.
 ## Releases
 
 The current published release is
-[`pipelinek 0.39.0`](https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.39.0).
+[`pipelinek 0.62.0`](https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.62.0).
 
 ## Distribution channels
 
@@ -291,7 +290,7 @@ artifact and verify its SHA-256. The one-artifact rule is enforced in
 the release scripts under `scripts/release/` and, for provenance, in
 `CandidateTagProvenance` (`:pipeline-release`).
 
-The `v0.39.0` ZIP is the public artifact authority today. SDKMAN becomes
+The `v0.62.0` ZIP is the public artifact authority today. SDKMAN becomes
 the recommended channel only once its digest resolution has been exercised
 end to end against a clean runner. It has not been: the install contract
 tests that used to cover it were deleted by the 2026-10-18 testing RESET and
@@ -302,7 +301,7 @@ oversight. Until it is closed, the canonical path remains the ZIP download.
 ### Verified against the published artifact
 
 Every claim in the README above has been verified against the official
-`pipelinek-0.39.0.zip` downloaded from GitHub Releases:
+`pipelinek-0.62.0.zip` downloaded from GitHub Releases:
 
 - **ZIP SHA-256**: `385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8`
 - **Binary SHA-256**: `92d0f67d16f7ee12888724cfe9da56f19cc2facd51ebee319770a43f40eedeee`
@@ -316,7 +315,7 @@ Every claim in the README above has been verified against the official
 Reproduce locally:
 
 ```bash
-VERSION=0.39.0
+VERSION=0.62.0
 
 curl -fL -o "pipelinek-${VERSION}.zip" \
   "https://github.com/Rubentxu/pipeline-kotlin/releases/download/v${VERSION}/pipelinek-${VERSION}.zip"

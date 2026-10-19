@@ -1,7 +1,6 @@
 # Pipeline Kotlin
 
 [![Estado de Compilación](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/rubentxu/pipeline-kotlin)
-[![Cobertura de Pruebas](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)](https://github.com/rubentxu/pipeline-kotlin)
 [![Licencia: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Kotlin](https://img.shields.io/badge/kotlin-2.0.0-blue.svg)](http://kotlinlang.org)
 
@@ -24,9 +23,9 @@ Un motor CI/CD moderno y con tipado seguro construido con Kotlin DSL, ofreciendo
 
 - **🚀 DSL con Tipado Seguro en Kotlin**: Escribe configuraciones de pipeline con soporte completo del IDE, autocompletado y validación en tiempo de compilación
 - **🔒 Seguridad Avanzada**: Modelo de sandbox dual usando GraalVM Isolates para ejecución de scripts y contenedores para aislamiento de tareas
-- **📦 Arquitectura Modular**: Separación limpia de responsabilidades con múltiples módulos (core, CLI, backend, config)
+- **📦 Arquitectura Modular**: Separación limpia de responsabilidades en módulos de dominio, aplicación, runtime, eventos, salida, credenciales y SDK de pasos
 - **🔌 Sistema de Plugins Extensible**: Basado en `java.util.ServiceLoader` con resolución de dependencias Maven
-- **🎯 100% de Cobertura de Pruebas**: Suite de pruebas completa asegurando confiabilidad y mantenibilidad
+- **🧪 Verificación con presupuesto**: `scripts/verify-all.sh` ejecuta las pruebas unitarias y los 36 escenarios E2E reales, y falla si se superan los 900 s o la razón VERIFY_LOC ≤ 2 × PRODUCT_LOC
 - **🐳 Contenedores Primero**: Soporte nativo de Docker para ejecución de tareas basadas en agentes
 - **⚡ Alto Rendimiento**: Ejecución asíncrona con corrutinas de Kotlin
 - **🛡️ Gestión de Recursos**: Límites de CPU, memoria y tiempo de ejecución con monitoreo detallado
@@ -271,7 +270,8 @@ verificación permanente vive hoy en `scripts/verify-all.sh`.
 
 ```bash
 scripts/verify-all.sh              # la puerta completa
-scripts/verify-all.sh --no-budget  # omite solo el techo de LOC
+scripts/verify-all.sh --no-budget  # omite el techo de LOC: es un subconjunto
+scripts/verify-all.sh --list       # resuelve el plan desde el disco y no corre nada
 ```
 
 Ejecuta, en este orden y-parando en el primer stage que falle:
@@ -288,13 +288,17 @@ Ejecuta, en este orden y-parando en el primer stage que falle:
 | Capa | Estado |
 |---|---|
 | Análisis estático y compatibilidad de API | Activa: `detekt`, `apiCheck` |
-| E2E sobre la distribución real | Activa: 35 escenarios en `v2/examples/` |
+| E2E sobre la distribución real | Activa: 36 escenarios en `v2/examples/` |
 | Tests unitarios Kotlin | carril `src/test` reservado y cableado; se rellena por fases |
 | Carriles de prueba bespoke (`pluginContractTest`, `installedContractTest`) | eliminados el 2026-10-18 |
 
 Un escenario E2E marcado `NOT_RUN` —hoy `security/14-credentials-bindings`,
 que necesita un almacén de credenciales sembrado por TTY— no es un verde:
-es el tercer estado honesto, y `scripts/verify-all.sh` lo cuenta aparte.
+es el tercer estado honesto, y `scripts/verify-all.sh` lo cuenta aparte. Si
+hubo alguno, la línea de veredicto dice `INCOMPLETE … gaps=N not_run` en lugar
+de `PASS`. Cualquier filtro (`--module`, `--test`, `--scenario`, `--no-budget`)
+marca la corrida como `PASS (subset)`: **sólo `scripts/verify-all.sh` sin
+filtros es evidencia del techo de 900 s**.
 
 ## Contribuyendo
 

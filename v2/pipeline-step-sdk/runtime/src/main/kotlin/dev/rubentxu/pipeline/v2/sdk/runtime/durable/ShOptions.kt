@@ -84,9 +84,9 @@ data class ShOptions(
      * Pump the transcript through an external ingest agent
      * (`ObsPc2IngestAgent`) instead of in-JVM pumps. ADR-OBS-003 §5
      * recommends "one agent per run, spawned and supervised by
-     * PipelineK". R2.3 wires the flag; R2.3 part 2 (the §4
-     * inversion of the spike test) flips the assertion in
-     * `ObsPc2ProducerSurvivalSpikeTest` from `0/50` to `50/50`.
+     * PipelineK". R2.3 wires the flag; R2.3 part 2 was to flip the `0/50` survival assertion
+     * in `ObsPc2ProducerSurvivalSpikeTest`. That spike was removed by the test RESET in
+     * `2aa071aab`, so the inversion it was to perform has no instrument left to run on.
      *
      * ## What the flag does at the call site
      *

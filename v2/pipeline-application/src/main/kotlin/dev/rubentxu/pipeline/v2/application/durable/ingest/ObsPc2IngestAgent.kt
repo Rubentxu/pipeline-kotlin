@@ -26,12 +26,13 @@ import java.nio.file.attribute.PosixFileAttributes
  *
  * ## What this is and what the prototype is not
  *
- * This file is the **production** version. The prototype
- * (`dev.rubentxu.pipeline.v2.application.durable.ObsPc2IngestAgent`,
- * in `src/test/`) is the *reference* that proved the shape, and it
- * remains in `src/test/` for the adversarial tests
- * (`ObsPc2IngestAgentPrototypeUatTest`,
- * `ObsPc2ProducerSurvivalSpikeTest`).
+ * This file is the **production** version. It was promoted from a
+ * prototype (`dev.rubentxu.pipeline.v2.application.durable.ObsPc2IngestAgent`,
+ * in `src/test/`) that proved the shape. Neither the prototype nor the two adversarial tests
+ * named beside it (`ObsPc2IngestAgentPrototypeUatTest`,
+ * `ObsPc2ProducerSurvivalSpikeTest`) exist in this tree any more: the test RESET removed all
+ * three in `2aa071aab`. The divergence from the prototype below is therefore stated but
+ * unwitnessed.
  *
  * The production version differs from the prototype in three ways:
  *
@@ -126,8 +127,8 @@ import java.nio.file.attribute.PosixFileAttributes
  *
  * ## See also
  *
- * - `ObsPc2IngestAgentPrototypeUatTest` (R1.1's prototype fixture)
- * - `ObsPc2ProducerSurvivalSpikeTest` (the inversion proof)
+ * - the prototype fixture and the inversion spike, both removed by the test
+ *   RESET in `2aa071aab` and neither replaced
  */
 object ObsPc2IngestAgent {
 
@@ -385,11 +386,10 @@ object ObsPc2IngestAgent {
      * argument order.
      *
      * Identical to the prototype's `argv`; the production launcher
-     * uses the same shape so the existing
-     * `ObsPc2JvmOwnerDeathProducer` (R2.3's spike integration) and
-     * the in-tree test fixtures (`ObsPc2IngestAgentPrototypeUatTest`,
-     * `ObsPc2ProducerSurvivalSpikeTest`) drive the agent through
-     * the same argv.
+     * uses the same shape. The three fixtures that used to drive the agent through it
+     * (`ObsPc2JvmOwnerDeathProducer`, `ObsPc2IngestAgentPrototypeUatTest`,
+     * `ObsPc2ProducerSurvivalSpikeTest`) were all removed by the test RESET in `2aa071aab`,
+     * so the `argv` shape above is stated, not checked.
      */
     fun argv(
         controlDirRoot: Path,

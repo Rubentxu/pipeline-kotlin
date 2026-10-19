@@ -88,8 +88,10 @@ data class DurableShConfig(
      *
      * ## Default
      *
-     * `false`. Switching this on is the R2.3 wiring step; the spike at
-     * `ObsPc2ProducerSurvivalSpikeTest` is the proof.
+     * `false`. Switching this on is the R2.3 wiring step, and that step has
+     * not been taken. The spike that examined the trade, `ObsPc2ProducerSurvivalSpikeTest`, was
+     * removed by the test RESET in `2aa071aab`, so the claim it used to support is now unwitnessed
+     * in this tree: nothing observes what the flag does or whether the default is right.
      */
     val pumpedViaAgent: Boolean = PUMPED_VIA_AGENT_DEFAULT,
 

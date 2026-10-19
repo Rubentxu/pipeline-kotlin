@@ -1538,7 +1538,14 @@ object CliParser {
      *
      * This used to open with `val value = args.getOrNull(index + 1) ?: return MissingOptionValue`
      * BEFORE dispatching on the name, which made every option take a value and nothing stop a valued
-     * option from swallowing a flag. `CliParserArityTest` is the row-per-row record of both.
+     * option from swallowing a flag. The arity of every option is now carried by the
+     * [FlagOptions] / [ValuedOptions] tables above, and those tables are the whole record of the
+     * fix.
+     *
+     * **Nothing observes that split.** `CliParserArityTest`, which used to be the row-per-row
+     * record, was removed by the test RESET in `2aa071aab`. This KDoc still named it in the
+     * present tense, so for one revision this tree asserted a guard it did not have. A regression
+     * in the tables would not be caught by anything today.
      *
      * Shared with [parseObservation] on purpose: one table of what each option means, whatever verb
      * is being parsed.

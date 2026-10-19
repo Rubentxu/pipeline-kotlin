@@ -71,10 +71,13 @@ internal class BeforeStageDirectiveEngine(
      *
      * The default lives HERE, on the consumer, rather than as another
      * parameter on the coordinator's constructor, and that placement is
-     * deliberate. `CoordinatorGrowthGuardrailTest` ratchets that constructor
-     * at 562 lines and instructs that new responsibilities belong in named
-     * engines; a resolver default is the engine's own dependency, and the
-     * coordinator that merely forwarded one was buying nothing but a line.
+     * deliberate. The rule is that new responsibilities belong in named engines; a resolver default
+     * is the engine's own dependency, and the coordinator that merely forwarded one was buying
+     * nothing but a line.
+     *
+     * **Nothing enforces the rule.** `CoordinatorGrowthGuardrailTest` used to ratchet the
+     * coordinator's constructor against a 562-line ceiling and was removed by the test RESET in
+     * `2aa071aab`. The ceiling in that number is a historical fact, not a live threshold.
      * `WULpr402RuntimeHonestDslFitnessTest` forbids host-environment reads
      * outside the canonical capability bridges, and the previous default read
      * `os.name` inline to build a `PlatformIdentity`. Letting the resolver

@@ -282,9 +282,10 @@ object ScriptedSourceLowering {
      * assumption about it.
      *
      * UNPINNED, and this KDoc used to say otherwise: it named
-     * `Sha256MigrationCharsetInvariantTest` as the assertion that held this, and that test has
-     * never existed in this tree (`git ls-files | grep Sha256MigrationCharsetInvariantTest` is
-     * empty). The property is real and still holds by the toolchain, but nothing here checks it,
+     * `Sha256MigrationCharsetInvariantTest` as the assertion that held this. That test existed and
+     * the test RESET removed it in `2aa071aab`. `git ls-files` returns nothing for it now, which
+     * is exactly how a deleted test and a never-written one look alike -- the absence in the tree
+     * is not evidence about the history. The property is real and still holds by the toolchain, but nothing here checks it,
      * so a future edit could reintroduce a platform-default charset and the digests would move
      * silently. The line above states the invariant; it does not claim a guard that is absent.
      */

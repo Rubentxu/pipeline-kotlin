@@ -857,7 +857,10 @@ internal class StepDispatchEngine(
         // The lease is released on EVERY path (success, typed failure, or an exception out of
         // the body). `cleanup` is a `val` assigned in `finally`: it cannot be read before it
         // holds the real outcome, so there is no default value standing in for a fact the
-        // engine has not observed yet. close() is idempotent and never throws by contract.
+        // engine has not observed yet. The SEAM is `AcquiredCredentialScope.close()`, which is
+        // idempotent and cannot throw: it maps a wipe failure to CredentialScopeCleanup.Failed.
+        // `WithCredentialsExecutor.BoundCredentials.close()` underneath it DOES throw, by design,
+        // and this is why the seam absorbs it rather than letting it replace the body's outcome.
         val cleanup: CredentialScopeCleanup
         val bodyOutcome = try {
             invokeBodyChildren(

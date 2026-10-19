@@ -577,17 +577,37 @@ internal fun BlockStepNode.projectScopedBody(
     is BodyContextProjection.CredentialLease -> decodeCredentialBindings()
 }
 
+/**
+ * Projects the declared working directory onto a [BlockShellScope.Directory], refusing anything
+ * that lands outside the authorised boundary.
+ *
+ * The boundary is [ShOptions.workingDirectory] when the body already moved, else
+ * [ShOptions.workspaceRoot], and BOTH sides of the comparison are normalised: an unnormalised
+ * root silently refuses its own children, because `/ws/./sub` does not start with `/ws/./`.
+ *
+ * Absolute paths are held to the same boundary as relative ones. They used to be exempt, and
+ * that exemption was a hole rather than a decision: ADR-0100 section 8/9 states that an absolute
+ * path inside the root is accepted and one outside it is rejected, [WorkspacePathResolver]
+ * implements that policy, and [DirExecutor.resolveTargetPath] implements it too -- but the latter
+ * has no production construction site, so this function was the live guard and it was the only
+ * one of the three letting an absolute path through unchecked. A `.pipeline.kts` could say
+ * `dir("/etc/cron.d")`, this projection accepted it, and `BodyExecutionEngine` then ran
+ * `Files.createDirectories` on it and handed it to the child as its CWD.
+ *
+ * `Path.startsWith` compares NAME ELEMENTS and `String.startsWith` compares characters, which
+ * differ exactly on the sibling that shares a prefix -- the sibling an attacker picks, because
+ * `/ws/base-evil` begins with `/ws/base` as a string. See [DirExecutor.resolveTargetPath].
+ */
 internal fun BlockStepNode.projectWorkingDirectory(options: ShOptions): BodyExecutionProjection {
     val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
     val path = payload["path"]?.jsonPrimitive?.contentOrNull
         ?: return BodyExecutionProjection.InvalidInput("requires a path")
     if (path.isBlank()) return BodyExecutionProjection.InvalidInput("path must not be blank")
 
-    val previous = options.workingDirectory ?: options.workspaceRoot
-    val target = Path.of(path).let { candidate ->
-        if (candidate.isAbsolute) candidate else previous.resolve(candidate)
-    }.normalize()
-    if (!Path.of(path).isAbsolute && !target.startsWith(previous)) {
+    val previous = (options.workingDirectory ?: options.workspaceRoot).normalize()
+    val candidate = Path.of(path)
+    val target = (if (candidate.isAbsolute) candidate else previous.resolve(candidate)).normalize()
+    if (!target.startsWith(previous)) {
         return BodyExecutionProjection.InvalidInput("path escapes the workspace: $path")
     }
     return BodyExecutionProjection.Scope(BlockShellScope.Directory(target, previous))

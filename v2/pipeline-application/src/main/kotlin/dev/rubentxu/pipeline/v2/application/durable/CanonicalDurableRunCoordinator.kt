@@ -205,7 +205,7 @@ class CanonicalDurableRunCoordinator(
      * call site), the capability stays unexposed and a Step that declares it is refused at
      * admission — the fail-closed direction, never a port that silently forgets a promise.
      */
-    private val sagaBinding: SagaCompensationBinding? = null,
+    sagaBinding: SagaCompensationBinding? = null,
 ) {
     // B10/W1c + WU-RP-033: the body execution policy authority. The production default
     // composes TWO declared-policy authorities, both fail-closed and neither key-specific:

@@ -9,7 +9,6 @@ import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
-import dev.rubentxu.pipeline.v2.events.CompensationArmed
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.CredentialBound
@@ -1505,58 +1504,16 @@ object JsonEventLog {
                     )
                 }
             }
-            // SAGA / PK-1: decode the armed-obligation notification. Every field is
-            // required: a notification whose promise is only half readable is not a
-            // promise this build can act on, and the reader must be told rather than
-            // handed a half-built obligation.
-            "CompensationArmed" -> {
-                val sagaId = EventJsonFields.stringField(s, "sagaId")
-                    ?: return EventDecodeOutcome.Failed(
-                        EventDecodeFailure.UnreadableField("sagaId", "CompensationArmed"),
-                    )
-                val actionId = EventJsonFields.stringField(s, "actionId")
-                    ?: return EventDecodeOutcome.Failed(
-                        EventDecodeFailure.UnreadableField("actionId", "CompensationArmed"),
-                    )
-                val compensationId = EventJsonFields.stringField(s, "compensationId")
-                    ?: return EventDecodeOutcome.Failed(
-                        EventDecodeFailure.UnreadableField("compensationId", "CompensationArmed"),
-                    )
-                val planFingerprint = EventJsonFields.stringField(s, "planFingerprint")
-                    ?: return EventDecodeOutcome.Failed(
-                        EventDecodeFailure.UnreadableField("planFingerprint", "CompensationArmed"),
-                    )
-                val intentVersion = EventJsonFields.intField(s, "intentVersion")
-                    ?: return EventDecodeOutcome.Failed(
-                        EventDecodeFailure.UnreadableField("intentVersion", "CompensationArmed"),
-                    )
-                val resourceRef = EventJsonFields.stringField(s, "resourceRef")
-                    ?: return EventDecodeOutcome.Failed(
-                        EventDecodeFailure.UnreadableField("resourceRef", "CompensationArmed"),
-                    )
-                val compensationOpId = EventJsonFields.stringField(s, "compensationOpId")
-                    ?: return EventDecodeOutcome.Failed(
-                        EventDecodeFailure.UnreadableField("compensationOpId", "CompensationArmed"),
-                    )
-                val leaseEpoch = EventJsonFields.longField(s, "leaseEpoch")
-                    ?: return EventDecodeOutcome.Failed(
-                        EventDecodeFailure.UnreadableField("leaseEpoch", "CompensationArmed"),
-                    )
-                CompensationArmed(
-                    eventId = eventId,
-                    runId = runId,
-                    sequence = sequence,
-                    occurredAt = occurredAt,
-                    sagaId = sagaId,
-                    actionId = actionId,
-                    compensationId = compensationId,
-                    planFingerprint = planFingerprint,
-                    intentVersion = intentVersion,
-                    resourceRef = resourceRef,
-                    compensationOpId = compensationOpId,
-                    leaseEpoch = leaseEpoch,
-                )
-            }
+            // SAGA / PK-1: decode the armed-obligation notification. The knowledge of how this
+            // event is encoded lives in CompensationArmedCodec, so the dispatcher here stays a
+            // dispatcher and does not grow one branch per event.
+            "CompensationArmed" -> CompensationArmedCodec.decode(
+                s = s,
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+            )
             else -> return EventDecodeOutcome.Failed(EventDecodeFailure.UnknownEventKind(kind))
         }
         return EventDecodeOutcome.Decoded(event ?: return malformedBranch(kind))

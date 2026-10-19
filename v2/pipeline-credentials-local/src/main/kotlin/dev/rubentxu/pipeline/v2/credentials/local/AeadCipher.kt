@@ -117,14 +117,23 @@ object AeadCipher {
      * Decrypts from a combined byte array (nonce || ciphertext || tag).
      */
     fun decrypt(key: ByteArray, combined: ByteArray, aad: ByteArray): ByteArray {
+        require(key.size == KEY_SIZE_BYTES) { "Key must be 32 bytes" }
         require(combined.size > NONCE_SIZE_BYTES + TAG_SIZE_BYTES) {
             "Combined blob too short: ${combined.size} bytes"
         }
-        val gcmSpec = GCMParameterSpec(TAG_SIZE_BYTES * 8, combined)
+        // Extract the nonce from the first 12 bytes; the rest is ciphertext || tag.
+        // A previous version passed the WHOLE combined array as the IV to GCMParameterSpec,
+        // which the JCE accepts (it is just longer than 12 bytes) but interprets as a
+        // different IV than the encrypt side, so decryption always failed with a tag
+        // mismatch. The combined overload is the public path the entry format uses, so
+        // a bug here is a silent breakage: encrypting on one call and decrypting on the
+        // other would never round-trip.
+        val nonce = combined.copyOfRange(0, NONCE_SIZE_BYTES)
+        val ciphertextPlusTag = combined.copyOfRange(NONCE_SIZE_BYTES, combined.size)
+        val gcmSpec = GCMParameterSpec(TAG_SIZE_BYTES * 8, nonce)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), gcmSpec)
         cipher.updateAAD(aad)
-        val ciphertextPlusTag = combined.copyOfRange(NONCE_SIZE_BYTES, combined.size)
         return cipher.doFinal(ciphertextPlusTag)
     }
 }

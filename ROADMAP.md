@@ -1138,12 +1138,11 @@ extra ni un segundo vocabulario en el lanzador.
 - `PRODUCT-GATE` (certificador externo, RC publicada) = **`BLOCKED_EXTERNAL`**.
   No hay CI remoto en este repositorio. La ausencia de CI **nunca** se declara
   `PASS`.
-- **Presupuesto de tiempo: CERRADO**, medido sobre `28667109`. Tres ensayos
-  desde salidas de test limpias dieron **228 s, 215 s, 215 s**: el peor, **228 s**
-  frente al límite duro de 900 s, leído del XML de JUnit (**526 tests, 55/55
+- **Presupuesto de tiempo: CERRADO**, medido sobre `9c4bd7b8`. Tres ensayos
+  desde salidas de test limpias dieron **234 s, 223 s, 223 s**: el peor, **234 s**
+  frente al límite duro de 900 s, leído del XML de JUnit (**531 tests, 56/56
   informes reescritos por la corrida, 0 fallos, 0 skips**) y no del código de
-  salida. Los tres imprimieron `PASS … gaps=1 not_run`, así que el hueco del
-  escenario `NOT_RUN` viaja dentro del veredicto en lugar de al lado.
+  salida. E2E: 36 escenarios, 35 pasan, 0 fallan, 1 `NOT_RUN`, 1 rerun durable.
   Host de referencia: Intel Xeon E5-2682 v4 @ 2.50 GHz, 64 hilos, 94 GiB, JDK
   Temurin 21.0.8, Gradle 8.14.5, cachés de dependencia ya pobladas.
   **Las salidas de test se limpian antes de CADA ensayo, no solo al principio**:
@@ -1152,16 +1151,17 @@ extra ni un segundo vocabulario en el lanzador.
   rechazo es correcto y hay que obedecerlo, no sortearlo —medir un cache hit
   como si fuera el coste del gate es justo lo que ese guard existe para
   impedir.
-  Serie anterior sobre `2d4fdf38` (224 / 227 / 231 s, 522 tests), que sigue
-  siendo cierta para aquel SHA y para ninguno más. Desde entonces los tests
-  subieron de 522 a 531 y el peor tiempo bajó de 231 a 228 s. Un gate verde
-  por inercia sería peor que uno marcado caducado; por eso esto se vuelve a
-  medir cada vez que `HEAD` avanza.
-  El commit posterior `d8b0c413` (solo comentarios, **cero líneas de código**)
-  midió **249 s** en una corrida completa con 55/55 y 526 tests: coherente con
-  la serie de tres, que es lo esperable en un cambio que no toca lógica.
+  **El veredicto de estos tres ensayos es `INCOMPLETE … gaps=1 not_run`, no
+  `PASS`.** Las series anteriores (`28667109`: 228 / 215 / 215 s, 526 tests;
+  `2d4fdf38`: 224 / 227 / 231 s, 522 tests; `d8b0c413`: 249 s) imprimían
+  `PASS … gaps=1` y leían «verde con un hueco anotado». Ese era el defecto que
+  `f37cd0234` corrigió: hoy el lanzador dice literalmente *«This is not the
+  gate»* y se niega a llamarlo aprobado mientras un escenario no se haya
+  ejecutado. Series y cifras anteriores siguen siendo ciertas **para su propio
+  SHA** y para ninguno más; se vuelven a medir en cada avance de `HEAD` porque
+  un gate verde por inercia sería peor que uno marcado caducado.
 - **Presupuesto de LOC: CERRADO**, medido en la misma corrida.
-  `VERIFY_LOC = 6981` / `PRODUCT_LOC = 61644` = **0.113**, muy por debajo del
+  `VERIFY_LOC = 6995` / `PRODUCT_LOC = 61644` = **0.113**, muy por debajo del
   límite duro de 2. Los dos módulos con test más densos también pasan con
   holgura: `pipeline-credentials-local` 1103 / 1750 = 0.63 y
   `pipeline-artefacts-local` 84 / 251 = 0.335.

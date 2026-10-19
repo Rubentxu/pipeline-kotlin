@@ -189,6 +189,14 @@ else
         tasks+=(":${gradle_path}:test")
     done
     printf '    %s\n' "${modules_with_tests[@]}" | sed 's/^/    module: /'
+    # The instant the tests are asked for, so each report can be attributed to
+    # THIS run or to an up-to-date task Gradle legitimately reused. Cached test
+    # results are correct evidence -- the inputs did not change -- but calling
+    # them "executed" reports a number this invocation did not earn, and it made
+    # 505 tests read as a 17s stage when 36 of them came from the cache. The
+    # count is therefore split: how many reports this run rewrote, and how many
+    # it read.
+    test_run_started=$(date +%s)
     ./v2/gradlew --no-daemon -p v2 "${tasks[@]}" \
         > "${TMPDIR:-/tmp}/verify-all-stage2.log" 2>&1 \
         || { tail -40 "${TMPDIR:-/tmp}/verify-all-stage2.log" >&2; fail "stage 2 (see ${TMPDIR:-/tmp}/verify-all-stage2.log)"; }
@@ -203,7 +211,7 @@ else
     # 13 reports, the other 230 reports coming from code that no longer exists.
     # A count whose set cannot be attributed to a requested task is not a
     # measurement, so the set is taken from the same list the tasks came from.
-    xml_total=0; xml_fail=0; xml_skip=0; xml_files=0
+    xml_total=0; xml_fail=0; xml_skip=0; xml_files=0; xml_fresh=0
     silent_modules=()
     for m in "${modules_with_tests[@]}"; do
         mod_reports=0
@@ -211,6 +219,9 @@ else
             [[ -n "$xml" ]] || continue
             mod_reports=$((mod_reports + 1))
             xml_files=$((xml_files + 1))
+            if [[ "$(stat -c %Y "$xml")" -ge "$test_run_started" ]]; then
+                xml_fresh=$((xml_fresh + 1))
+            fi
             line=$(head -3 "$xml" | tr '\n' ' ')
             t=$(sed -nE 's/.*tests="([0-9]+)".*/\1/p' <<<"$line"); t=${t:-0}
             f=$(sed -nE 's/.*failures="([0-9]+)".*/\1/p' <<<"$line"); f=${f:-0}
@@ -224,7 +235,15 @@ else
             silent_modules+=("$m")
         fi
     done
-    echo "    JUnit XML: $xml_files report(s), executed=$xml_total failed=$xml_fail skipped=$xml_skip"
+    echo "    JUnit XML: $xml_files report(s), $xml_fresh rewritten by this run," \
+         "tests=$xml_total failed=$xml_fail skipped=$xml_skip"
+    if [[ "$xml_fresh" -eq 0 ]]; then
+        echo "verify-all: no report was rewritten, so this run measured a fully" >&2
+        echo "up-to-date test graph. That is a valid cache hit but NOT a" >&2
+        echo "measurement of the gate's cost; remove the test outputs and rerun" >&2
+        echo "before quoting a wall clock." >&2
+        fail "stage 2: every test task was up to date"
+    fi
     [[ "$xml_fail" -eq 0 ]] || fail "stage 2: $xml_fail failing test(s) in the JUnit XML"
     if [[ "$xml_files" -eq 0 ]]; then
         echo "verify-all: no JUnit XML was produced, so the test result is UNKNOWN." >&2

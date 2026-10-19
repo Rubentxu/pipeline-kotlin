@@ -27,10 +27,32 @@ import java.util.UUID
  *
  * NOT a coordinator replacement and not a second execution path: the
  * coordinator still orchestrates stages, dispatch and failure folding. This
- * engine only records and closes the lifecycle. Its behavior is pinned by
+ * engine only records and closes the lifecycle.
+ *
+ * **This extraction is currently UNVERIFIED, and the previous version of this
+ * paragraph claimed the opposite.** It said the behavior "is pinned by
  * `CoordinatorRunLifecycleCharacterizationTest`, which it must satisfy
- * UNCHANGED: the emitted event content and their ordering are the contract,
- * including the quirks (lifecycle events always carry sequence 0).
+ * UNCHANGED". That class does not exist: the name occurs on exactly one line in
+ * the repository, the one that cited it. The testing RESET deleted it, along with
+ * the rest of the inherited corpus, and `AGENTS.md` section 2 forbids restoring
+ * that corpus. A sweep of the test sources finds nothing that names this engine,
+ * and nothing that exercises the coordinator's lifecycle bookends either, so the
+ * emitted content and ordering are a real contract with no instrument left
+ * measuring it. Someone changing a bookend here would see nothing go red.
+ *
+ * It is therefore stated as an assertion, not as a fact: the extraction was meant
+ * to preserve behavior, and preserving it has not been demonstrated since the
+ * witness was removed. Restoring a witness is a decision, not a side effect --
+ * the engine reads `Instant.now()` and `UUID.randomUUID()`, so pinning it would
+ * mean giving it a clock and an id source first.
+ *
+ * The same paragraph also asserted a quirk that no longer holds here: it said
+ * lifecycle events "always carry sequence 0". They are CONSTRUCTED with
+ * `sequence = 0L`, but 0 is the request for an assigned sequence, not a value:
+ * `SqliteEventStore.appendAssigned` maps `sequence == 0L` to
+ * `counter.incrementAndGet()`. What reaches the store is the next per-run
+ * sequence, and the durable `UNIQUE(run_id, sequence)` constraint applies to
+ * that assigned value.
  */
 internal class RunLifecycleEngine(private val eventSink: EventSink) {
 

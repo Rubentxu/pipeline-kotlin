@@ -23,11 +23,12 @@ dependencies {
     // history. `JsonEventLog` is an implementation, and BLOCK 2 moved it to `:pipeline-events-store`
     // so the published event contract would carry no wire format and no JDBC. Reaching for it from
     // here would have made the verifier depend on the thing it verifies — the exact inversion
-    // `FArch020EventHarnessIsolationTest` exists to prevent, and the reason that test failed rather
-    // than being relaxed.
+    // `FArch020EventHarnessIsolationTest` existed to prevent.
     //
-    // The test moved to `:pipeline-events-store` instead: it still runs, it still drives a real log,
-    // and the harness stays a leaf that depends only inward on the contract.
+    // That test did not survive: BOTH it and `RealHistoryParityTest` were deleted by the RESET,
+    // which `:pipeline-events-store/build.gradle.kts` already records. So the edge below is held by
+    // the module graph itself — `dependencies` is the only thing that can pull the store in here —
+    // and not by a fitness test. The harness stays a leaf that depends only inward on the contract.
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.snakeyaml)
 }
@@ -37,7 +38,9 @@ dependencies {
 // This module carries no unit tests: it is the runtime behind the `pipeline events verify` CLI
 // verb -- product functionality whose proof is running the verb. Its verification is the
 // executable E2E layer -- `.pipeline.kts` pipelines under `v2/examples/`, driven by
-// `scripts/run-e2e-pipelines.sh` -- and not a JUnit class.
+// `v2/examples/run.sh` (stage 3 of `scripts/verify-all.sh`) -- and not a JUnit class.
+// An earlier version of this comment named `scripts/run-e2e-pipelines.sh`, which does not exist
+// in this tree; `ls scripts/` is the evidence, and the runner has always been `v2/examples/run.sh`.
 //
 // The JUnit dependency, the launcher and the `useJUnitPlatform()` block were removed together.
 // Left in place they were a SILENT green: a `Test` task whose source set is empty reports

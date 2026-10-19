@@ -258,7 +258,7 @@ tasks.named("jar") {
 //
 // This module carries no unit tests: it is a git STEP whose guarantee is that a pipeline
 // mutates a real repository. Its verification is the executable E2E layer -- `.pipeline.kts`
-// pipelines under `v2/examples/`, driven by `scripts/run-e2e-pipelines.sh` -- and not a JUnit
+// pipelines under `v2/examples/`, driven by `v2/examples/run.sh` -- and not a JUnit
 // class.
 //
 // The JUnit dependency, the launcher and the `useJUnitPlatform()` block were removed together.

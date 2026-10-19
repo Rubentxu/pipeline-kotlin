@@ -1,3 +1,4 @@
+//@ expect-stdout waitUntil done
 pipeline {
     stages {
         stage("workspace-helpers") {

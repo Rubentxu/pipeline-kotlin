@@ -1,8 +1,9 @@
-// 21-milestone.pipeline.kts — S2-A9 / G5 installed-CLI canary
-// Real .pipeline.kts using core.milestone through the open-world registry path.
-// Validates that after G5 destructive (subtype/branch/constant/metadata row/dispatcher
-// file removed), the DSL `milestone(ordinal, label)` still produces a correct durable
-// trace via StepSpec.RegistryStepSpec + CoreMilestoneStep.
+//@ expect-stdout post-2
+
+// The subject is a milestone step reached through the open registry rather than
+// by a hard-wired call. Each milestone writes a durable trace entry, and the
+// two ordinals here must both land before the pipeline reaches the final echo:
+// that the run finishes is what tells us neither of them threw.
 pipeline {
     stages {
         stage("milestones") {

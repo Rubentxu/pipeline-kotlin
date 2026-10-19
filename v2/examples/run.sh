@@ -8,6 +8,10 @@
 # grow into a test suite with its own vocabulary.
 #
 #   //@ expect-exit 1                 default is 0
+#   //@ expect-stdout <substring>     the pipeline must PRODUCE this, not merely
+#                                    # exit 0: without it a step that ran and did
+#                                    # # nothing reads exactly like a step that ran
+#                                    # # and did its work
 #   //@ expect-stderr <substring>     the refusal must be this specific, not
 #                                     merely a nonzero exit
 #   //@ durable                       run twice against one control root and
@@ -76,6 +80,7 @@ run_scenario() {
     slug="$(printf '%s' "$name" | tr '/.' '--')"
 
     local expect_exit=0
+    local expect_stdout=""
     local expect_stderr=""
     local durable=0
     local needs_seeded_credentials=0
@@ -83,6 +88,7 @@ run_scenario() {
     while IFS= read -r directive; do
         case "$directive" in
             '//@ expect-exit '*)   expect_exit="${directive#//@ expect-exit }" ;;
+            '//@ expect-stdout '*) expect_stdout="${directive#//@ expect-stdout }" ;;
             '//@ expect-stderr '*) expect_stderr="${directive#//@ expect-stderr }" ;;
             '//@ durable')         durable=1 ;;
             '//@ requires-seeded-credentials') needs_seeded_credentials=1 ;;
@@ -168,6 +174,16 @@ run_scenario() {
     fi
 
     if [[ "$code" == "$expect_exit" ]]; then
+        # -a porque la salida puede traer bytes NUL, y sin el el fallo se reporta
+        # como "fichero binario" sin la coincidencia, indistinguible de su ausencia.
+        if [[ -n "$expect_stdout" ]] && ! grep -aqF -- "$expect_stdout" "$stdout"; then
+            printf 'FAIL %-52s exit %s as expected, but stdout lacked: %s\n' \
+                "$label" "$code" "$expect_stdout"
+            sed -n '1,20p' "$stdout" | sed 's/^/       | /'
+            failed=$((failed + 1))
+            failures+=("$name: exit matched but expected stdout substring absent")
+            return
+        fi
         if [[ -n "$expect_stderr" ]] && ! grep -qF -- "$expect_stderr" "$stderr"; then
             printf 'FAIL %-52s exit %s as expected, but stderr lacked: %s\n' \
                 "$label" "$code" "$expect_stderr"

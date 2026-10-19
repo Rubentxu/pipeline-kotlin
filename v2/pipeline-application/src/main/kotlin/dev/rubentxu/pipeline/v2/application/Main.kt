@@ -885,9 +885,13 @@ fun main(args: Array<String>) {
         java.util.UUID.randomUUID().toString().take(8))
     val leaseStore = FileBackedRunExecutionLeaseStore(controlDirRoot.resolve("leases"))
     val lease = leaseStore.acquire(LeaseRequest(runId, requireNotNull(runOwner)))
-    when (lease) {
-        is LeaseAcquisition.Acquired, is LeaseAcquisition.TakenOver,
-        is LeaseAcquisition.Reentered -> Unit
+    // SAGA / PK-1: the fencing token of the lease THIS process holds. It is the epoch the
+    // durable Saga store uses to refuse a write from a writer that lost the run to a
+    // takeover, so it has to travel from the acquisition to the store.
+    val leaseEpoch: Long = when (lease) {
+        is LeaseAcquisition.Acquired -> lease.fencingToken.value
+        is LeaseAcquisition.TakenOver -> lease.fencingToken.value
+        is LeaseAcquisition.Reentered -> lease.fencingToken.value
         is LeaseAcquisition.AlreadyOwned -> {
             // Typed admission rejection: this run already has a live owner.
             // Exit 2 (invocation/admission), not a pipeline failure.
@@ -1048,6 +1052,13 @@ fun main(args: Array<String>) {
     // Build orchestrator with all durable dependencies
     val clock: Clock = SystemClock()
     val journal: OperationJournal = SqliteOperationJournalImpl(factory, clock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, dbPathStr)
+    // SAGA / PK-1: the durable Saga obligations live in the SAME database as the journal and
+    // the event log, through the same connection factory. One authority for the run's durable
+    // state, not a second store with its own lifecycle.
+    val sagaObligationStore = dev.rubentxu.pipeline.v2.events.durable.SqliteSagaObligationStore(
+        connectionFactory = factory,
+        dbPath = dbPathStr,
+    )
     val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory, clock)
     val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
     val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
@@ -1178,6 +1189,12 @@ fun main(args: Array<String>) {
             composition = composition,
             secretPatternRegistry = secretPatternRegistry,
             allowNetwork = config.allowNetwork,
+            // SAGA / PK-1: the run's Saga seam — the durable store plus the lease epoch that
+            // fences a writer that lost this run to a takeover.
+            sagaBinding = dev.rubentxu.pipeline.v2.application.durable.SagaCompensationBinding(
+                store = sagaObligationStore,
+                leaseEpoch = leaseEpoch,
+            ),
         )
         pipelineSpec != null -> {
             // Fail-closed: non-canonical pipelines are not supported by the canonical bridge

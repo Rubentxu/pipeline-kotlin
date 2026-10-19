@@ -485,6 +485,39 @@ val buildExamplePlugin by tasks.registering(Exec::class) {
     )
 }
 
+// SAGA / PK-1 — the external CONSUMER of the Saga intent port.
+//
+// It exists for the same reason as the plugin above and with the same discipline: it is built
+// by a SECOND Gradle, against the SDK artifacts this revision PUBLISHED, so the contract is
+// proven from outside the repository rather than from inside it. The difference is what it
+// consumes: a published capability that only the host can provide.
+//
+// The SDK jars of THIS revision are declared inputs, so the task cannot consider its output
+// UP-TO-DATE after a change to the Saga contract: a consumer built against a stale seam is
+// exactly the failure this task exists to make visible.
+val buildExampleSagaPlugin by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Builds the independent external Saga consumer against this revision's SDK."
+    dependsOn(publishSdkForExternalPlugin)
+
+    val pluginDir = file("examples/example-saga-plugin")
+    inputs.dir(pluginDir.resolve("src"))
+    inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
+    inputs.files(":pipeline-domain:jar", ":pipeline-scripting-api:jar")
+    inputs.property("rootProject.version", rootProject.version.toString())
+    outputs.file(pluginDir.resolve("build/libs/example-saga-plugin-0.1.0.jar"))
+
+    workingDir = rootDir
+    commandLine(
+        rootDir.resolve("gradlew").absolutePath,
+        "-p", pluginDir.absolutePath,
+        "--console=plain",
+        "-PsdkRepo=" + sdkRepoDir.get().asFile.absolutePath,
+        "-PsdkVersion=" + rootProject.version.toString(),
+        "jar",
+    )
+}
+
 // S6/I: the external plugin is now the SUBJECT of a test in :pipeline-application, and a test
 // whose subject is optional is a test that passes by omission. `the artifact really carries a
 // manifest and all four ServiceLoader descriptors` would report the absence of every family as a

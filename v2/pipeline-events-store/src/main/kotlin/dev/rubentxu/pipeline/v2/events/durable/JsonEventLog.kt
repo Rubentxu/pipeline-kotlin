@@ -378,6 +378,9 @@ object JsonEventLog {
         "TimeoutTriggered", "TimestampsEntered", "TimestampsExited",
         "StepAdmissionObserved", "PostConditionSelected", "StageSkipped",
         "PluginEventEmitted",
+        // SAGA / PK-1: the armed-obligation notification. The payload carries the promise's
+        // identity and plan, never the provider's content.
+        "CompensationArmed",
     )
 
     /**
@@ -1501,6 +1504,16 @@ object JsonEventLog {
                     )
                 }
             }
+            // SAGA / PK-1: decode the armed-obligation notification. The knowledge of how this
+            // event is encoded lives in CompensationArmedCodec, so the dispatcher here stays a
+            // dispatcher and does not grow one branch per event.
+            "CompensationArmed" -> CompensationArmedCodec.decode(
+                s = s,
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+            )
             else -> return EventDecodeOutcome.Failed(EventDecodeFailure.UnknownEventKind(kind))
         }
         return EventDecodeOutcome.Decoded(event ?: return malformedBranch(kind))

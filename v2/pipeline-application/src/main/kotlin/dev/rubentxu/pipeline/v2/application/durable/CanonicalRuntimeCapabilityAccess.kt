@@ -52,6 +52,7 @@ import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
+import dev.rubentxu.pipeline.v2.domain.saga.SAGA_COMPENSATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.nio.file.Path
@@ -306,6 +307,15 @@ open class CanonicalRuntimeCapabilityAccess(
             builder[INPUT_DECISIONS_CAPABILITY] = FileInputDecisions(
                 root.resolve("inputs"),
             )
+        }
+        // SAGA / PK-1: the compensation intent port.
+        //
+        // Exposed ONLY when the engine bound one for this invocation. The port is the only
+        // way a plugin may promise a compensation, and a promise that cannot be kept is
+        // worse than no promise at all, so its absence has to be a refusal at admission
+        // rather than a null the handler discovers halfway through a forward effect.
+        context.sagaCompensation?.let { operations ->
+            builder[SAGA_COMPENSATION_CAPABILITY] = operations
         }
     }
 

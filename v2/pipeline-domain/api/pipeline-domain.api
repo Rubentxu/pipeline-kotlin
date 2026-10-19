@@ -5665,6 +5665,7 @@ public final class dev/rubentxu/pipeline/v2/domain/saga/ForwardDenial : java/lan
 
 public final class dev/rubentxu/pipeline/v2/domain/saga/InterventionReason : java/lang/Enum {
 	public static final field COMPENSATION_FAILED Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;
+	public static final field COMPENSATION_NOT_DISPATCHED Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;
 	public static final field COMPENSATION_UNCERTAIN Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;
 	public static final field OBLIGATION_NOT_ARMED Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;
 	public static final field PLAN_DIVERGENCE Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;

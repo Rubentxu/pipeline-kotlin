@@ -19,6 +19,7 @@ import dev.rubentxu.pipeline.v2.domain.saga.SagaActionId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanFingerprint
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanOperations
+import dev.rubentxu.pipeline.v2.domain.saga.SagaRecordOutcome
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
@@ -80,6 +81,10 @@ data class SagaObligationOutput(
     val owed: String,
     /** The obligation's status after the lifecycle the plugin walked. */
     val finalStatus: String,
+    /** What the forward write-ahead answered: `Recorded` or `Refused(...)`. */
+    val forwardWriteAhead: String,
+    /** What the forward record answered: `Recorded`, `Refused(...)` or `NotAttempted`. */
+    val forwardRecord: String,
 )
 
 object SagaObligationCodec : StepCodec<SagaObligationInput> {
@@ -165,11 +170,22 @@ object SagaObligationStepDefinition : StepDefinition<SagaObligationInput, SagaOb
         // under test is the CONTRACT: that a plugin can declare that an effect is about to
         // happen, report what happened, and read back what the engine says the Saga owes —
         // all of it through a published port, with the durable state owned by the host.
-        plan.beginForward(declaration.key)
-        plan.recordForward(
-            declaration.key,
-            EffectEvidence.Confirmed(EffectReceiptRef.of("example-receipt")),
-        )
+        //
+        // The port ANSWERS, and the answer is part of the contract. A plugin that ignores a
+        // refusal is a plugin whose effect can run without a durable trace of it, and a crash
+        // in that window is a crash nobody can explain afterwards. So the answer is read, and
+        // a refused write-ahead means the effect is NOT reported as having happened: a plugin
+        // with a real provider would fail the step right there, before the call leaves the
+        // process.
+        val writeAhead = plan.beginForward(declaration.key)
+        val record = if (writeAhead is SagaRecordOutcome.Recorded) {
+            plan.recordForward(
+                declaration.key,
+                EffectEvidence.Confirmed(EffectReceiptRef.of("example-receipt")),
+            )
+        } else {
+            null
+        }
         val owed = plan.next(declaration.sagaId, CompensationPolicy.NotReconcilable)
 
         val finalStatus = operations.read(declaration.key)?.status?.name ?: "MISSING"
@@ -190,7 +206,21 @@ object SagaObligationStepDefinition : StepDefinition<SagaObligationInput, SagaOb
             decision = decision.toString(),
             owed = owed.toString(),
             finalStatus = finalStatus,
+            forwardWriteAhead = answeredBy(writeAhead),
+            forwardRecord = answeredBy(record),
         )
+    }
+
+    /**
+     * What a durable write answered, said in the example's own words.
+     *
+     * The refusals are named instead of swallowed: a plugin that cannot say why the host
+     * refused a write cannot tell the operator either.
+     */
+    private fun answeredBy(outcome: SagaRecordOutcome?): String = when (outcome) {
+        null -> "NotAttempted"
+        is SagaRecordOutcome.Recorded -> "Recorded"
+        is SagaRecordOutcome.Refused -> "Refused(${outcome.reason::class.simpleName})"
     }
 
     /**

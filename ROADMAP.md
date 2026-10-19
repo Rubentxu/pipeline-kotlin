@@ -18,15 +18,25 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `81a060c9` | `git rev-parse HEAD` |
+| SHA | `3c5d1d7d` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | `v2/settings.gradle.kts` |
 | Módulos con test unitario permanente | **7** | `src/test/kotlin` con al menos un `*Test.kt` |
 | Módulos sin test | 20 | ídem |
-| Tests unitarios ejecutados | **PENUMERAR** — el último gate corrió en `e7d18e14` (106 tests) | requiere re-ejecutar el gate en el SHA actual |
-| Escenarios E2E | 35 (34 pasan, **1 `NOT_RUN`**) — medido en `e7d18e14`, **no re-verificado aquí** | `v2/examples/run.sh` |
-| `VERIFY_LOC / PRODUCT_LOC` | **PENUMERAR** — el último gate midió 2267/61319 = 0.037; los ratios por módulo de §2.2 a sí están medidos en el árbol actual | requiere re-ejecutar el gate |
-| `VERIFY_ALL_WALL_CLOCK` | **212 s** peor de tres ensayos, medido en `e7d18e14`; **no re-verificado en este SHA** | etapa 5 del gate, `§4` de `AGENTS.md` |
+| Tests unitarios ejecutados | **246** (30 informes XML, 0 fallidos, 0 saltados) | etapa 2 del gate |
+| Escenarios E2E | 35 (34 pasan, **1 `NOT_RUN`**) | etapa 3 del gate |
+| `VERIFY_LOC / PRODUCT_LOC` | **3849 / 61334 = 0.063** (límite 2) | etapa 4 del gate |
+| `VERIFY_ALL_WALL_CLOCK` | **peor de tres ensayos = 260 s** (260 / 211 / 210) (límite 900 s) | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
+
+Los ratios por módulo de §2.2 a) son mediciones independientes del gate, hechas
+sobre el mismo árbol con el mismo criterio de recuento (líneas efectivas,
+sin blancos, comentarios ni generados). El gate los agrega, no los contradice.
+
+Los tres ensayos de reloj se ejecutaron sobre el **mismo** SHA `3c5d1d7d`. El
+primero (260 s) es el peor y es el que cuenta: sigue a la corrección de un
+commit, con cachés de Gradle frías. Los otros dos (211 s, 210 s) son el régimen
+estable. `AGENTS.md` §4 exige el peor de tres, así que el número que se declara
+es 260 s y no la media.
 
 ### Los 7 módulos con test
 

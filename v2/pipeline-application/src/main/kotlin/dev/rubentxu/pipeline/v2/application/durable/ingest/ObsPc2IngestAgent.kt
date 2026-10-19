@@ -116,18 +116,18 @@ import java.nio.file.attribute.PosixFileAttributes
  * at an empty file, declared itself drained, and the Output Plane
  * stayed empty.
  *
+ * ## Shape and verification
+ *
+ * One agent per run, supervised by PipelineK.
+ *
+ * Verification invariants: `after_lines_written` 0/50 → 50/50,
+ * `bytes_after_release` > `bytes_after_kill`, DONE post-mortem,
+ * `raw_secret_on_disk == 0`.
+ *
  * ## See also
  *
- * - `ADR-OBS-003-child-output-descriptor-ownership.md` §2.1, §2.2,
- *   §2.4 (this is the §5-recommended shape: one agent per run,
- *   supervised by PipelineK)
- * - `ADR-OBS-003-child-output-descriptor-ownership.md` §4
- *   (verification: after_lines_written 0/50 → 50/50,
- *   bytes_after_release > bytes_after_kill, DONE post-mortem,
- *   raw_secret_on_disk == 0)
  * - `ObsPc2IngestAgentPrototypeUatTest` (R1.1's prototype fixture)
- * - `ObsPc2ProducerSurvivalSpikeTest` (the §4 inversion proof)
- * - `roadmap-R2.md` (R2 plan in `odd/tasks/`)
+ * - `ObsPc2ProducerSurvivalSpikeTest` (the inversion proof)
  */
 object ObsPc2IngestAgent {
 

@@ -132,7 +132,7 @@ open class StageScopeCore(
     /**
      * The STABLE historical spelling, kept as a validated adapter.
      *
-     * `error` is STABLE in `DSL_SURFACE_MANIFEST.md`, so `error("boom", "USER")` keeps
+     * `error` is STABLE, so `error("boom", "USER")` keeps
      * compiling. What it no longer does is ACCEPT anything: the token is validated here, at
      * script-construction time, and an unrecognised one refuses the pipeline before a run
      * exists. See [LegacyResultVocabulary].

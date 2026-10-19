@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
 /**
  * Default implementation of [ContributedBindingFactory] for all 7 Jenkins credential kinds.
  *
- * ## Supported Kinds (JENKINS_FAMILIARITY_CATALOG.md §1.6)
+ * ## Supported Kinds
  *
  * - `string`: Secret text → single env var
  * - `usernamePassword`: Username with password → USERNAME_VAR + PASSWORD_VAR

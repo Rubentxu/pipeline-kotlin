@@ -9,16 +9,16 @@ import dev.rubentxu.pipeline.v2.domain.FailureKind
  * ## Why this object exists at all
  *
  * `error(message, failureKind)` and `catchError(buildResult?, stageResult?, message?)` are
- * declared **STABLE** in `DSL_SURFACE_MANIFEST.md`. `StepSpec.Error`,
+ * declared **STABLE** in the published authoring contract. `StepSpec.Error`,
  * `StepSpec.CatchError` and `ContextOverlay.CatchErrorOverlay` are the **EXPERIMENTAL
  * representation** an external consumer compiles against
  * (`published-contract-maturity.json` classifies all four published modules EXPERIMENTAL,
- * and says so deliberately: the manifest classifies authoring constructs, that file
- * classifies library ABI).
+ * and says so deliberately: the authoring contract classifies authoring constructs,
+ * that file classifies library ABI).
  *
  * Typing the representation is therefore allowed. Typing the *authoring signature* was not,
  * and it silently turned `error("boom", "USER")` and `catchError(buildResult = "FAILURE")`
- * — spellings the manifest documents — into compile errors. Ten UAT scenarios failed on
+ * — spellings the authoring contract documents — into compile errors. Ten UAT scenarios failed on
  * exactly that, which is how it was found.
  *
  * So the split is:

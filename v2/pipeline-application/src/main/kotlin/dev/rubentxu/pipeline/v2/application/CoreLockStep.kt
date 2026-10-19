@@ -171,7 +171,6 @@ object CoreLockStep {
         // The output is memoized, but the ACQUISITION is not: the handler re-runs on
         // resume and re-acquires before any fresh effect. Memoizing the acquisition
         // token would replay "I hold this" for a hold this process does not have.
-        // See SPEC_WU091_LOCK.md section 4.
         replayPolicy = ReplayPolicy.MEMOIZED,
         body = StepBody.Declared(
             invocation = BodyInvocationPolicy.ONCE,
@@ -452,7 +451,7 @@ object CoreLockStep {
                 // One declaration, five halves: the port that decides WHETHER to run
                 // the body, the bound continuation that runs it, the durable lane
                 // that decides WHO owns the resulting hold, the event sink that
-                // makes the lifecycle observable (SPEC_WU091_LOCK.md §6), and the
+                // makes the lifecycle observable, and the
                 // scope budget that BOUNDS the wait. Admission is fail-closed before
                 // the handler runs when any is absent, and resolveBodyExecutionPolicy
                 // rejects the owner/capability mismatch.

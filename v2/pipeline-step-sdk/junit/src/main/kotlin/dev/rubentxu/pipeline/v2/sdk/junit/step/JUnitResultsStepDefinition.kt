@@ -88,7 +88,7 @@ class JUnitResultsStepDefinition : StepDefinition<JUnitResultsInput, JUnitResult
         // missing, so reaching this `get(...)` is guaranteed to
         // succeed when the handler was admitted.
         val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
-        // RP034-E / 04-step-path-anchor-matrix.md: the report path anchors on
+        // RP034-E: the report path anchors on
         // CURRENT_DIRECTORY, so a `dir(...)` scope scopes the report the same
         // way it scopes `sh`. Same value the legacy capability supplied; what
         // changes is that the anchor is now stated rather than implied.

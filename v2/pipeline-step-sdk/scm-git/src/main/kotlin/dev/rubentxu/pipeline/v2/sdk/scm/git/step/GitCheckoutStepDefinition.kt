@@ -137,7 +137,7 @@ class GitCheckoutStepDefinition(
         // runs and throws if any are missing, so reaching this `get(...)`
         // is guaranteed to succeed when the handler was admitted.
         val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
-        // RP034-E / 04-step-path-anchor-matrix.md: `checkout` anchors on
+        // RP034-E: `checkout` anchors on
         // CURRENT_DIRECTORY, so a `dir(...)` scope moves where the repository
         // lands. This is the value the legacy capability already supplied
         // (`workingDirectory ?: workspaceRoot`); what changes is that the Step

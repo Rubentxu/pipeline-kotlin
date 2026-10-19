@@ -163,8 +163,8 @@ object CoreStepRegistryFactory {
         // non-increasing ordinal -> MilestoneAborted + Unstable (record-only, per ML-R9 T-09
         // and ADR-0046 §ML — local single-run model, no cross-build coordination).
         //
-        // State: MilestoneStateStore is run-scoped (coordinator-owned); see
-        // CanonicalDurableRunCoordinator wiring and S2_A9_MILESTONE_DURABILITY_SPIKE.md.
+        // State: MilestoneStateStore is run-scoped (coordinator-owned); see the
+        // CanonicalDurableRunCoordinator wiring.
         CoreMilestoneStep.registerInto(this)
         // WU-LPR-301: register CoreWaitUntilStep. The descriptor declares
         // BodyExecutionPolicy.Retrying(waitUntil = WaitUntilShape()), so the

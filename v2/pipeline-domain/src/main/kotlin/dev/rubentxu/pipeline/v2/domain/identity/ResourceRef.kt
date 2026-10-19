@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.domain.identity
 
 /**
  * Typed, hierarchical, deterministic reference to an addressable pipeline entity
- * (EVT-1 / RESOURCE_REF_MODEL.md).
+ * (EVT-1).
  *
  * Laws (frozen, EVT-1):
  * - identifies; never replaces RunId/OpId/StageId/StepId, which remain the local

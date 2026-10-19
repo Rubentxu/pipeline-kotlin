@@ -19,8 +19,8 @@ import dev.rubentxu.pipeline.v2.events.EventSink
  * Above [dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink], never
  * below it. Every event reaching this sink has already been redacted, which is
  * what makes printing it safe; a console observer below redaction would put
- * credentials on the terminal. This mirrors `CLI_OBSERVABILITY_SPEC.md` §"redact
- * before durable persistence or public presentation" — and, like it, states the
+ * credentials on the terminal. That is the "redact before durable persistence
+ * or public presentation" rule — and stating it here also states the
  * limit: **this class is not a security boundary**. Redaction happens upstream;
  * this only presents what it is given.
  *

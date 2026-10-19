@@ -8,9 +8,6 @@ import dev.rubentxu.pipeline.v2.output.OutputStreamId
  * now?". Each case names a substrate condition; new cases are compile errors at
  * every `when` site that exhausts this ADT.
  *
- * The shape mirrors `PK-SPEC-02-RUNTIME-OBSERVATION.md` lines 22-28, with the
- * M2 design's corrections:
- *
  *  - `Running.process` is OPTIONAL (the runtime does not always have a durable
  *    reference to the live writer process — e.g. when Fabric is on a different
  *    host). The contract does not depend on it.

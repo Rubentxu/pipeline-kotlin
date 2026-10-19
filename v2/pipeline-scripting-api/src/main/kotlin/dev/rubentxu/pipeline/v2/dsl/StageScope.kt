@@ -165,8 +165,8 @@ class StageScope(
     /**
      * The STABLE historical spelling, kept as a validated adapter.
      *
-     * `DSL_SURFACE_MANIFEST.md` documents `catchError(buildResult?, stageResult?, message?)` and
-     * declares the construct **DEPRECATED** (LFC1-007) — which is a promise about this
+     * The published authoring contract documents `catchError(buildResult?, stageResult?,
+     * message?)` and declares the construct **DEPRECATED** (LFC1-007) — which is a promise about this
      * signature: DEPRECATED means members may be removed only after the declared removal
      * boundary, not at the convenience of the next migration. It parses IMMEDIATELY — see
      * [LegacyResultVocabulary] — so the token is typed before the pipeline exists and never
@@ -286,8 +286,7 @@ class StageScope(
         // StepSpec.Pwd / StepSpec.PwdTmp steps were retired at S2-A6/G5
         // (LEGACY_REMOVED) and S2-A6/G3T (deterministic tmp); the registry
         // candidates `core.pwd` and `core.pwd.tmp` are the only production
-        // authorities (G8 final certification, see
-        // S2_A5_CORE_ISUNIX_G8_FINAL_CERTIFICATION_RECEIPT.md pattern).
+        // authorities (G8 final certification).
         if (tmp) {
             val encoded = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue("{}")
             steps.add(
@@ -340,7 +339,7 @@ class StageScope(
      * Unsupported usage (fail-closed):
      *  - reading the synchronous return value during IR construction (this
      *    method returns `RUNTIME_VALUE_PLACEHOLDER_BOOLEAN` to make misuse
-     *    visible — see the WU-LPR-402 receipt for the matrix).
+     *    visible).
      *  - the eager `PipelineSpec` form for branches that depend on the
      *    real value.
      *

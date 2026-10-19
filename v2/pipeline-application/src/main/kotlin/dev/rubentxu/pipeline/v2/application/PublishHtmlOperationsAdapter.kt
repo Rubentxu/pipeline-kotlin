@@ -38,10 +38,10 @@ import java.util.UUID
  *
  * Reference: jenkinsci/htmlpublisher-plugin master @ 6a536b8d
  *   `HtmlPublisher.archiveReports()` + `HTMLReportTarget.getArchive()`.
- *   Pipeline-K deviation: no symlink alternative (rejected by WU-LPR-090/proposal
- *   §OQ1 for cross-platform portability); no `keepAll` run-overlap (rejected for
- *   v1 determinism; spec.md §R4 keeps `keepAll` as a typed input but the
- *   adapter treats it as a hint for future replay-aware archival).
+ *   Pipeline-K deviation: no symlink alternative (rejected for cross-platform
+ *   portability); no `keepAll` run-overlap (rejected for
+ *   v1 determinism; `keepAll` remains a typed input but the adapter treats it as
+ *   a hint for future replay-aware archival).
  */
 class PublishHtmlOperationsAdapter(
     private val runIdString: String,
@@ -78,7 +78,7 @@ class PublishHtmlOperationsAdapter(
 
     override fun publish(input: PublishHtmlInput): PublishHtmlResult {
         // S0 Semantic Honesty Gate: keepAll has NO v1 interpreter (the adapter
-        // always overwrites the run archive; spec.md §R4 kept the flag as a
+        // always overwrites the run archive; the flag was kept as a
         // "hint" nobody consumed). A declared-but-dropped policy is a silent
         // lie, so a request that sets it is rejected instead of honoured-and-ignored.
         if (input.keepAll) {

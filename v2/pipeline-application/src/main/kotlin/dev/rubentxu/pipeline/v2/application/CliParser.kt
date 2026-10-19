@@ -81,8 +81,8 @@ data class CliFlags(
      */
     val correlationId: String? = null,
     /**
-     * ADR-0088 / `CLI_OBSERVABILITY_SPEC.md` §1: which families of observation
-     * reach the reader. Orthogonal to [format]; neither changes execution.
+     * ADR-0088: which families of observation reach the reader. Orthogonal to
+     * [format]; neither changes execution.
      */
     val view: ObservationView = ObservationView.NORMAL,
     /**

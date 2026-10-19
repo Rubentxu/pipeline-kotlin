@@ -12,10 +12,9 @@ import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
  * [RecoverOutcome]. The decider is PURE: same inputs always yield the same
  * outputs; no I/O, no clock, no process id.
  *
- * The shape mirrors `PK-SPEC-02-RUNTIME-OBSERVATION.md` §"Modelo funcional".
- * `Reattach` / `ReuseTerminal` / `FailClosed` are the three cases the spec names;
- * this design adds the `AlreadyRecovered` case to make the idempotency check
- * observable from outside the implementation.
+ * `Reattach` / `ReuseTerminal` / `FailClosed` are the three substrate cases;
+ * the fourth, `AlreadyRecovered`, makes the idempotency check observable from
+ * outside the implementation.
  *
  * The decider is consulted with a `JournalProof` snapshot — the journal rows for
  * the run + the cursor state — so it does NOT call the journal itself. The
@@ -277,8 +276,7 @@ object RuntimeRecoverDecision {
 /**
  * M2 — closed ADT returned by [RuntimeRecoverDecision.decideRecovery].
  *
- * Mirrors `PK-SPEC-02-RUNTIME-OBSERVATION.md` lines 29-33 plus an
- * `AlreadyRecovered` idempotency case.
+ * The recovery-choice ADT, plus an `AlreadyRecovered` idempotency case.
  *
  */
 sealed interface RecoveryChoice {

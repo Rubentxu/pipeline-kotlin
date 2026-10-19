@@ -63,8 +63,8 @@ data class IsUnixOutput(
  * legacy-membership-wins rule keeps LegacyCore as the production authority until the
  * G3/G4 flip. Counters stay 8 / 8 / 8.
  *
- * Classification policy is **PATH_B verbatim** (G0 characterization, receipt
- * `S2_A5_ISUNIX_G0_CHARACTERIZATION_RECEIPT.md`): `osName.lowercase()` contains any of
+ * Classification policy is **PATH_B verbatim** (G0 characterization):
+ * `osName.lowercase()` contains any of
  * `linux | mac | darwin | freebsd`. The DSL-side whitelist (PATH_A) is deliberately NOT
  * copied; the canonical-policy decision belongs to G2 with a clean `C == B` baseline.
  *

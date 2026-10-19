@@ -16,8 +16,7 @@ package dev.rubentxu.pipeline.v2.application.observation
  * - [ObservationFormat] — HOW that selection is encoded on the wire;
  * - [ObservationQuery] (declared in the design docs, not yet implemented) —
  *   WHICH records are selected;
- * - presentation (see `docs/proposals/CLI-CONSOLE-OBSERVABILITY-DRAFT.md`) —
- *   HOW each selected record is decorated.
+ * - presentation — HOW each selected record is decorated.
  *
  * `view` and `format` never change execution semantics or persistence. This is
  * the law of ADR-0088.
@@ -30,10 +29,9 @@ package dev.rubentxu.pipeline.v2.application.observation
  * which is strictly worse than an error.
  *
  * `FULL` is currently in that state. Its two source planes (event `sequence`
- * and console byte `offset`) have no common order, and
- * `CLI_OBSERVABILITY_SPEC.md` §11 forbids claiming one. The interleaving rule
- * is an open product decision (draft §7.1), so `full` is refused rather than
- * approximated.
+ * and console byte `offset`) have no common order, so claiming one is forbidden.
+ * The interleaving rule is an open product decision, so `full` is refused rather
+ * than approximated.
  *
  * `CONSOLE` is also refused here because process output is owned by the Output
  * Plane, which `pipeline console` already reads as bytes. Reading it twice from

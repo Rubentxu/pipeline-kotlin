@@ -7,11 +7,10 @@ package dev.rubentxu.pipeline.v2.events.shape
  * ## What this port is and is not
  *
  * `EventShapeReadPort` is the source of truth for the M6 PARTIAL closure
- * (`M6_CONTEXT_PRESSURE_AUDIT.md` §D I.6, "synthetic single-stage /
- * single-step view"): the published `PipelineEventEnvelope` strips the
- * type-specific fields of the typed events (stageIndex, stepOrdinal,
- * stageName, stepKey), so reading them from envelopes is NOT in scope of
- * any existing port. This port returns the typed events directly, so the
+ * ("synthetic single-stage / single-step view"): the published
+ * `PipelineEventEnvelope` strips the type-specific fields of the typed events
+ * (stageIndex, stepOrdinal, stageName, stepKey), so reading them from envelopes
+ * is NOT in scope of any existing port. This port returns the typed events directly, so the
  * `RuntimeIntrospectionPort.runStructure` adapter can drive
  * event-driven grouping.
  *

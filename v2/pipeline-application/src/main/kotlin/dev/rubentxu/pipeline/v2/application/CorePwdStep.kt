@@ -61,7 +61,7 @@ data class PwdInput(
  * deliberately exposes the resolved absolute path as a typed result because the
  * product baseline requires `pwd` to be a runtime-valued Step (the eventual
  * reconnection of `PipelineDsl.pwd` to a real canonical workspace observation
- * depends on it; cf. `LFC2_HONEST_DSL_CLOSURE.md` `pwd() real return` row).
+ * depends on it).
  *
  * Durable law (G2): fresh/rerun OBSERVE the canonical stage workspace;
  * resume/reuse REPRODUCE the persisted observation (`PwdOutput` + original
@@ -84,9 +84,8 @@ data class PwdOutput(
  * `StructuralFamilyResolver`'s legacy-membership-wins rule keeps LegacyCore as
  * the production authority until the G3/G4 flip. Counters stay 7 / 7 / 7.
  *
- * The `tmp=false` truth is PATH_B verbatim (G0 characterization, receipt
- * `S2_A6_CORE_PWD_G0_CHARACTERIZATION_RECEIPT.md`): the resolved absolute path
- * comes from `WorkspaceIdentity.workspaceRoot`, which the capability bridge
+ * The `tmp=false` truth is PATH_B verbatim (G0 characterization): the resolved
+ * absolute path comes from `WorkspaceIdentity.workspaceRoot`, which the capability bridge
  * populates from `context.shOptions.workspaceRoot` — the SAME source the
  * legacy `pwdContext()` consumed.
  *

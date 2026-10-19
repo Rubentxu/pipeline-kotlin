@@ -7,8 +7,8 @@ import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
  * M2 — closed ADT returned by [RuntimeRecoverPort.recover]. Each case names a
  * real outcome; new cases are compile errors at every `when` site.
  *
- * Mirrors the audit's B.3 shape and the `PK-SPEC-02-RUNTIME-OBSERVATION.md`
- * `RecoveryChoice` ADT (plus the `AlreadyRecovered` idempotency case).
+ * Mirrors the audit's B.3 `RecoveryChoice` ADT (plus the `AlreadyRecovered`
+ * idempotency case).
  *
  */
 sealed interface RecoverOutcome {

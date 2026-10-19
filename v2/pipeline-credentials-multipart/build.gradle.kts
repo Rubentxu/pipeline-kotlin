@@ -33,3 +33,12 @@ dependencies {
 // modules it asks from the filesystem and fails when a module that has a test source produces
 // no JUnit XML. The wiring that could have produced the misleading green is gone from the
 // modules that have no tests, so no module reaches that check in silence.
+
+dependencies {
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+}
+
+tasks.test {
+    useJUnitPlatform()
+}

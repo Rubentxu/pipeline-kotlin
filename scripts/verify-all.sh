@@ -509,6 +509,24 @@ fi
 
 # --- Stage 3: E2E scenarios --------------------------------------------------
 
+# How many scenarios the launcher declared but did not run. Zero here means
+# "the launcher said zero", NOT "stage 3 did not happen": e2e_stage3_ran
+# separates those two, because a count that cannot be observed must fail
+# rather than read as a clean zero.
+e2e_not_run=0
+e2e_stage3_ran=0
+
+# The suffix travels WITH the verdict line. A gap that only exists in the
+# stage log disappears the moment somebody quotes the one line that says the
+# gate passed, which is the only line anybody actually reads. Same argument as
+# the subset marker below: the difference between this run and the full gate
+# has to be inside the line, not beside it.
+gaps_suffix() {
+    if [[ "$e2e_stage3_ran" == 1 && "$e2e_not_run" -gt 0 ]]; then
+        printf '  gaps=%s not_run' "$e2e_not_run"
+    fi
+}
+
 if want_stage 3; then
 log "stage 3/5  E2E scenarios in v2/examples/"
 stage_started_at=$(date +%s)
@@ -519,7 +537,24 @@ else
     ./v2/examples/run.sh > "${TMPDIR:-/tmp}/verify-all-stage3.log" 2>&1 \
         || { tail -40 "${TMPDIR:-/tmp}/verify-all-stage3.log" >&2; fail "stage 3 (see ${TMPDIR:-/tmp}/verify-all-stage3.log)"; }
 fi
-grep -E '^[0-9]+ scenario' "${TMPDIR:-/tmp}/verify-all-stage3.log" | sed 's/^/    /'
+stage3_summary="$(grep -E '^[0-9]+ scenario' "${TMPDIR:-/tmp}/verify-all-stage3.log" || true)"
+printf '%s\n' "$stage3_summary" | sed 's/^/    /'
+if [[ -z "$stage3_summary" ]]; then
+    fail "stage 3 printed no scenario summary; a missing count is not a zero count"
+fi
+e2e_stage3_ran=1
+e2e_not_run="$(printf '%s\n' "$stage3_summary" \
+    | sed -n 's/.*[^0-9]\([0-9][0-9]*\) not run.*/\1/p')"
+if [[ -z "$e2e_not_run" ]]; then
+    fail "stage 3 summary carries no not-run count: $stage3_summary"
+fi
+if [[ "$e2e_not_run" -gt 0 ]]; then
+    # NOT_RUN is a declared third state, not a pass: run.sh prints NOT_RUN
+    # before executing anything rather than inventing a credential store it
+    # cannot build without a TTY. The count is reported here so it reaches the
+    # verdict line, not only the stage log.
+    echo "    ${e2e_not_run} scenario(s) NOT_RUN — declared unrunnable, NOT a pass"
+fi
 echo "    ok in $(elapsed "$stage_started_at")s"
 else
   log "stage 3/5  SKIPPED by --stage"
@@ -547,8 +582,8 @@ if [[ "$subset" == 1 ]]; then
     # subset that spends 900 is not evidence the gate would. Comparing either
     # against 900 s would be a number about nothing, so none is printed.
     echo "    elapsed ${total}s (SUBSET: not compared against the ${BUDGET_SECONDS}s gate)"
-    printf '\nPASS (subset)  sha=%s  elapsed=%ss\n' \
-        "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total"
+    printf '\nPASS (subset)  sha=%s  elapsed=%ss%s\n' \
+        "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$(gaps_suffix)"
     printf 'This is not the gate. Quote scripts/verify-all.sh with no filters for that.\n'
     exit 0
 fi
@@ -561,5 +596,6 @@ if [[ "$total" -gt "$BUDGET_SECONDS" ]]; then
     fail "stage 5: wall clock ${total}s"
 fi
 
-printf '\nPASS  sha=%s  elapsed=%ss  budget=%ss\n' \
-    "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$BUDGET_SECONDS"
+printf '\nPASS  sha=%s  elapsed=%ss  budget=%ss%s\n' \
+    "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$BUDGET_SECONDS" \
+    "$(gaps_suffix)"

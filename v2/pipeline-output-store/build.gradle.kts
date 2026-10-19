@@ -26,7 +26,21 @@ dependencies {
     // With `implementation` the published POM would carry it as `runtime` scope and the consumer
     // would fail to compile against a type it is legally allowed to see.
     api(project(":pipeline-output"))
+
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 }
+
+tasks.test {
+    useJUnitPlatform()
+}
+
+// Tests cover the PURE half of this module: the sealed-segment name format, its reader, and the
+// `SealedSegment` extent. Those three are the contract between the writer that rotates a segment
+// and the reader that serves it back, and they are pure functions over a file NAME — the tests
+// build `Path` values by hand and never open one. The segment files' IO (`readChunk`, `readRange`,
+// `readRangeDigested`) is exercised by the E2E pipelines under `v2/examples/output/`, not by JUnit;
+// the AGENTS.md §2 rule against filesystem persistence in unit tests is what scopes the suite.
 
 // The `performanceTest` lane, its `tasks.test` tag exclusion and its Kover
 // `disabledForTestTasks` entry were REMOVED (2026-10-18, testing RESET). All three

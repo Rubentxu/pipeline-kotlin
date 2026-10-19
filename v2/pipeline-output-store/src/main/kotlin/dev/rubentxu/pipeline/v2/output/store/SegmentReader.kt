@@ -49,7 +49,15 @@ internal object SegmentReader {
     const val SEALED_SUFFIX: String = ".seg"
 
     /** One sealed segment: where it starts, how long it is, and the file holding it. */
-    data class SealedSegment(val base: Long, val length: Long, val file: Path)
+    data class SealedSegment(val base: Long, val length: Long, val file: Path) {
+        init {
+            // The sibling value types in :pipeline-output all guard their ranges at construction
+            // (OutputFrame.init, OutputPage.init, OutputPin.init). SealedSegment was the one that
+            // did not, so a nonsensical extent could travel the whole read path before failing.
+            require(base >= 0) { "segment base must be non-negative, got $base" }
+            require(length >= 0) { "segment length must be non-negative, got $length" }
+        }
+    }
 
     /** The file name a segment with this [base] and [length] is sealed under. */
     fun sealedName(base: Long, length: Long): String = "$base-$length$SEALED_SUFFIX"
@@ -67,7 +75,7 @@ internal object SegmentReader {
     fun currentBase(sealedDir: Path): Long =
         sealedSegments(sealedDir).maxOfOrNull { it.base + it.length } ?: 0L
 
-    private fun parseSealed(file: Path): SealedSegment? {
+    internal fun parseSealed(file: Path): SealedSegment? {
         val name = file.fileName.toString()
         if (!name.endsWith(SEALED_SUFFIX)) return null
         val stem = name.removeSuffix(SEALED_SUFFIX)
@@ -75,6 +83,14 @@ internal object SegmentReader {
         if (dash <= 0) return null
         val base = stem.substring(0, dash).toLongOrNull() ?: return null
         val length = stem.substring(dash + 1).toLongOrNull() ?: return null
+        // `sealedName` splits at the FIRST dash, so a stem like "10--5" parses as base=10 with
+        // length=-5: toLongOrNull accepts the sign. A negative length understates base+length,
+        // which lowers currentBase(), which in turn makes the caller's localStart too large and
+        // re-serves bytes already emitted — the exact "misdirected segment duplicates output"
+        // failure this reader exists to prevent. The writer cannot emit it (rotateLocked refuses
+        // length <= 0), so this is reachable only by corruption; the reader's contract is to
+        // return null on any malformation, so it rejects the value rather than throwing.
+        if (base < 0L || length < 0L) return null
         return SealedSegment(base, length, file)
     }
 

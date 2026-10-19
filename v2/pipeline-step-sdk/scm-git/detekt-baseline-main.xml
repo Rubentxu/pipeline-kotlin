@@ -48,8 +48,6 @@
     <ID>UseOrEmpty:GitCredentialsApplier.kt:GitCredentialsApplier$repoUrl?.let { extractHost(it) } ?: ""</ID>
     <ID>UseOrEmpty:GitPollExecutor.kt:GitPollExecutor$captured.combinedOutput.lines().firstOrNull() ?: ""</ID>
     <ID>UseOrEmpty:GitPollExecutor.kt:GitPollExecutor$credentialsApplier?.buildEnv() ?: emptyMap()</ID>
-    <ID>UseRequire:GitCredentialsApplier.kt:GitCredentialsApplier.Companion$throw IllegalArgumentException( "Forbidden substring in argv: 'extraHeader' and 'Authorization' " + "must not appear in process arguments (credentials must use GIT_CONFIG_GLOBAL env). " + "Found in: $arg" )</ID>
-    <ID>UseRequire:GitCredentialsApplier.kt:GitCredentialsApplier.Companion$throw IllegalArgumentException( "Forbidden: URL with embedded credentials detected. " + "Credentials must not appear in process arguments (argv) — " + "use GIT_ASKPASS or credential helper instead. Found in: $arg" )</ID>
     <ID>VariableNaming:GitCredentialsApplier.kt:GitCredentialsApplier$val dollarSHELL_KEY = "\$SSH_KEY"</ID>
   </CurrentIssues>
 </SmellBaseline>

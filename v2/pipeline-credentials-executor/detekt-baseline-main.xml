@@ -2,7 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>InstanceOfCheckForException:WithCredentialsExecutor.kt:BoundCredentials$t is dev.rubentxu.pipeline.v2.domain.credentials.ProjectionResult.WipeException</ID>
     <ID>RedundantSuspendModifier:WithCredentialsExecutor.kt:WithCredentialsExecutor$suspend</ID>
     <ID>UnusedPrivateProperty:BasicCredentialsCapabilityContributor.kt:BasicCredentialsCapabilityContributor$private val provider: CredentialProvider?</ID>
   </CurrentIssues>

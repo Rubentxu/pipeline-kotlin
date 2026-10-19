@@ -238,17 +238,3 @@ fun followDecision(
     runPlane == RunPlane.Live -> FollowDecision.ReadAgain
     else -> FollowDecision.Finished
 }
-
-/**
- * Overload for callers that still hold the `Boolean`.
- *
- * `false` maps to [RunPlane.Unavailable], NOT to [RunPlane.Live]. The `Boolean` could not
- * distinguish "still going" from "cannot ask", and mapping it to `Live` would have broken
- * FOLLOW-6; mapping it to `Unavailable` preserves the pre-existing behaviour exactly while the
- * three-state callers migrate.
- */
-fun followDecision(
-    moreFrames: Boolean,
-    tailStates: Collection<OutputTailState?>,
-    runFinished: Boolean,
-): FollowDecision = followDecision(moreFrames, tailStates, if (runFinished) RunPlane.Completed else RunPlane.Unavailable)
